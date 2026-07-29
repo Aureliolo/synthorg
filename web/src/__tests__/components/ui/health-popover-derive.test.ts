@@ -8,6 +8,7 @@ const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 function okLoadState(
   memory: MemoryHealth,
   status: 'ok' | 'unavailable' = 'ok',
+  providers: boolean | null = true,
 ): LoadState {
   return {
     state: 'ok',
@@ -15,7 +16,7 @@ function okLoadState(
       status,
       persistence: true,
       message_bus: true,
-      providers: true,
+      providers,
       telemetry: 'disabled',
       memory,
       version: '0.6.4',
@@ -54,16 +55,46 @@ describe('deriveHealthSubsystemStates api mapping', () => {
     expect(states.overallState).toBe('down')
   })
 
-  it('degrades overall for a readiness failure no card covers', () => {
-    // Providers have no card of their own, so an unavailable verdict with
-    // every card healthy must still reach the hero.
+  it('surfaces unreachable providers on their own card, not as a softened hero', () => {
+    // Providers gate readiness for real, so an unreachable provider used to
+    // land nowhere: every card stayed green and the hero said "degraded,
+    // check the cards below" with nothing below to check.
+    const states = deriveHealthSubsystemStates(
+      okLoadState(
+        { state: 'durable', backend: 'sqlvector', detail: null },
+        'unavailable',
+        false,
+      ),
+      true,
+      false,
+      false,
+    )
+    expect(states.providersState).toBe('down')
+    expect(states.apiState).toBe('ok')
+    expect(states.overallState).toBe('down')
+  })
+
+  it('reports a readiness failure no card covers as down, not degraded', () => {
+    // Every input the backend weighs has a card, so reaching this means it
+    // refused traffic for an unexplained reason. It already decided it is
+    // not serving; the panel must not soften that to "degraded".
     const states = deriveHealthSubsystemStates(
       okLoadState({ state: 'durable', backend: 'sqlvector', detail: null }, 'unavailable'),
       true,
       false,
       false,
     )
-    expect(states.overallState).toBe('degraded')
+    expect(states.overallState).toBe('down')
+  })
+
+  it('holds providers unknown when the deployment configures none', () => {
+    const states = deriveHealthSubsystemStates(
+      okLoadState({ state: 'durable', backend: 'sqlvector', detail: null }, 'ok', null),
+      true,
+      false,
+      false,
+    )
+    expect(states.providersState).toBe('unknown')
   })
 })
 

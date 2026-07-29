@@ -259,11 +259,26 @@ operator needs when the dashboard reports memory off.
 """
 
 MEMORY_EMBEDDER_PROBED: Final[str] = "memory.embedder.probed"
-"""Emitted at INFO with a model's measured width, at WARNING when the
-probe failed.
+"""Emitted at INFO with a model's measured width.
 
 The width is the model's own answer rather than a catalogued figure, so
 this event is the record of what the vector column was built for.
+"""
+
+MEMORY_EMBEDDER_PROBE_FAILED: Final[str] = "memory.embedder.probe_failed"
+"""Emitted at WARNING when a model could not answer a width probe.
+
+Separate from the success event so an alert on a failing probe does not
+also fire on every successful one, and carries ``reason`` distinguishing
+an unreachable model, a refused request, a deadline, and a response that
+arrived carrying no vector.
+"""
+
+MEMORY_EMBEDDER_WIDTH_REJECTED: Final[str] = "memory.embedder.width_rejected"
+"""Emitted at WARNING when a measured width exceeds what the store holds.
+
+Distinct from a width the store can hold but not index, which is a
+degradation rather than a refusal and is reported by the health surface.
 """
 
 MEMORY_EMBEDDER_BUILTIN_SELECTED: Final[str] = "memory.embedder.builtin_selected"

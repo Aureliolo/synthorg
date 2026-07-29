@@ -295,9 +295,14 @@ async def _run_startup(  # noqa: PLR0913
     Raises:
         MemoryError: Re-raised unchanged from the training-service wire.
         RecursionError: Re-raised unchanged from the training-service wire.
-        Exception: Re-raised after ``_safe_shutdown`` when the SettingsService
-            or workflow-observer auto-wire fails, or when the approval-gate
-            wire fails in provider-present mode.
+        CancelledError: Re-raised after ``_safe_shutdown`` when a shutdown
+            arrives while the memory wire awaits its embedder probe. It
+            derives from ``BaseException``, so it needs naming separately
+            from the ``Exception`` paths below or it would escape without
+            tearing down anything wired before it.
+        Exception: Re-raised after ``_safe_shutdown`` when the SettingsService,
+            workflow-observer or memory-backend auto-wire fails, or when the
+            approval-gate wire fails in provider-present mode.
     """
     logger.info(API_APP_STARTUP, version=__version__)
     # A reused AppState (shared-app tests, in-place restart) carries the
@@ -307,6 +312,38 @@ async def _run_startup(  # noqa: PLR0913
     # any task can register, so a restarted app accepts work again.
     app_state.shutdown_manager.reset()
     app_state.shutdown_requested.clear()
+
+    async def _abort_wired(exc: BaseException, *, detail: str) -> None:
+        """Report *exc* and tear down everything wired so far.
+
+        Every auto-wire section below needs exactly this: a boot that gives
+        up halfway leaks every service already started, so none may let an
+        exception past without cleanup. Callers re-raise afterwards, which
+        keeps the ``raise`` visible at the handler it belongs to.
+
+        Redaction matters here specifically: auto-wire pulls operator
+        settings including secret-bearing config, so a traceback's frame
+        locals must never reach the log sink.
+        """
+        log_exception_redacted(logger, API_APP_STARTUP, exc, detail=detail)
+        await _safe_shutdown(
+            task_engine=task_engine,
+            meeting_scheduler=meeting_scheduler,
+            backup_service=backup_service,
+            approval_timeout_scheduler=approval_timeout_scheduler,
+            settings_dispatcher=settings_dispatcher,
+            bridge=bridge,
+            message_bus=message_bus,
+            persistence=persistence,
+            performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
+            distributed_task_queue=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_task_queue,
+            distributed_backend_services=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_backend_services,
+        )
+
     await _safe_startup(
         persistence=persistence,
         message_bus=message_bus,
@@ -427,29 +464,7 @@ async def _run_startup(  # noqa: PLR0913
             )
         except Exception as exc:
             reraise_critical(exc)
-            # On-startup auto-wire pulls operator settings (incl. secret-bearing
-            # config). Avoid logger.exception here so traceback frame-locals
-            # never serialize raw secrets to the log sink.
-            log_exception_redacted(
-                logger, API_APP_STARTUP, exc, detail="settings_auto_wire_failed"
-            )
-            await _safe_shutdown(
-                task_engine=task_engine,
-                meeting_scheduler=meeting_scheduler,
-                backup_service=backup_service,
-                approval_timeout_scheduler=approval_timeout_scheduler,
-                settings_dispatcher=settings_dispatcher,
-                bridge=bridge,
-                message_bus=message_bus,
-                persistence=persistence,
-                performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
-                distributed_task_queue=app_state.slice(
-                    RuntimeStateSlice
-                ).distributed_task_queue,
-                distributed_backend_services=app_state.slice(
-                    RuntimeStateSlice
-                ).distributed_backend_services,
-            )
+            await _abort_wired(exc, detail="settings_auto_wire_failed")
             raise
     # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
     # Mirror the auto_wire_settings failure path so a resolver or
@@ -476,29 +491,7 @@ async def _run_startup(  # noqa: PLR0913
             )
     except Exception as exc:
         reraise_critical(exc)
-        log_exception_redacted(
-            logger,
-            API_APP_STARTUP,
-            exc,
-            detail="workflow_observer_auto_wire_failed",
-        )
-        await _safe_shutdown(
-            task_engine=task_engine,
-            meeting_scheduler=meeting_scheduler,
-            backup_service=backup_service,
-            approval_timeout_scheduler=approval_timeout_scheduler,
-            settings_dispatcher=settings_dispatcher,
-            bridge=bridge,
-            message_bus=message_bus,
-            persistence=persistence,
-            performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
-            distributed_task_queue=app_state.slice(
-                RuntimeStateSlice
-            ).distributed_task_queue,
-            distributed_backend_services=app_state.slice(
-                RuntimeStateSlice
-            ).distributed_backend_services,
-        )
+        await _abort_wired(exc, detail="workflow_observer_auto_wire_failed")
         raise
 
     # Single boot ApprovalGate: wired here (after persistence connects, before
@@ -540,7 +533,17 @@ async def _run_startup(  # noqa: PLR0913
         wire_memory_backend,
     )
 
-    await wire_memory_backend(app_state)
+    try:
+        await wire_memory_backend(app_state)
+    except (Exception, asyncio.CancelledError) as exc:
+        reraise_critical(exc)
+        # Resolving the embedder awaits a network probe, so a shutdown
+        # arriving mid-boot suspends here. ``CancelledError`` derives from
+        # ``BaseException``, so it has to be named explicitly: caught only
+        # as ``Exception`` it would escape past this handler and skip
+        # cleanup entirely, leaking every service wired above it.
+        await _abort_wired(exc, detail="memory_backend_auto_wire_failed")
+        raise
 
     # When an external caller already supplied a ``TrainingService`` to
     # ``create_app()``, we skip the auto-wire below but the injected service

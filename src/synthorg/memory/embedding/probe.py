@@ -15,6 +15,13 @@ first memory write.
 
 from typing import Final
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.memory.embedding.dispatch import (
+    embedding_retry_handler,
+    format_model_ref,
+    record_embedding_cost,
+    with_deadline,
+)
 from synthorg.memory.embedding.hashing import (
     BUILTIN_EMBEDDER_DIMS,
     BUILTIN_EMBEDDER_MODEL,
@@ -22,7 +29,10 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.memory import MEMORY_EMBEDDER_PROBED
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_PROBE_FAILED,
+    MEMORY_EMBEDDER_PROBED,
+)
 
 logger = get_logger(__name__)
 
@@ -31,7 +41,11 @@ logger = get_logger(__name__)
 #: makes a repeat probe free.
 _PROBE_TEXT: Final[str] = "embedding width probe"
 
-_PROVIDER_MODEL_SEPARATOR: Final[str] = "/"
+#: Wall-clock ceiling for one probe, retries included. This call sits on
+#: the boot path and inside setup completion's process-wide lock, so an
+#: endpoint that accepts the connection and never answers would otherwise
+#: hang startup outright and stall every concurrent setup attempt.
+DEFAULT_PROBE_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 def is_builtin_embedder(provider: str, model: str) -> bool:
@@ -43,12 +57,27 @@ def is_builtin_embedder(provider: str, model: str) -> bool:
     return provider == BUILTIN_EMBEDDER_PROVIDER and model == BUILTIN_EMBEDDER_MODEL
 
 
-async def probe_embedder_dims(*, provider: str, model: str) -> int:
+async def probe_embedder_dims(
+    *,
+    provider: str,
+    model: str,
+    cost_tracker: CostTrackerProtocol | None = None,
+    timeout_seconds: float = DEFAULT_PROBE_TIMEOUT_SECONDS,
+) -> int:
     """Return the vector width *model* actually emits.
+
+    Retries only genuinely transient provider faults, on the same budget
+    the serving embedder uses. A model that is simply wrong fails on the
+    first attempt; a connection that dropped once does not cost the
+    operator their memory subsystem for the rest of the process.
 
     Args:
         provider: Embedding provider name.
         model: Embedding model identifier.
+        cost_tracker: Sink for the probe's own spend. The probe is a real
+            billable call against the same quota as retrieval traffic, so
+            it is attributed rather than issued invisibly.
+        timeout_seconds: Wall-clock ceiling for the whole attempt.
 
     Returns:
         The measured width, which for the built-in embedder is known
@@ -56,10 +85,11 @@ async def probe_embedder_dims(*, provider: str, model: str) -> int:
 
     Raises:
         MemoryEmbeddingError: If the model cannot be reached, refuses the
-            request, or answers with a shape that carries no vector. The
-            caller must surface that: a binding whose width cannot be
-            measured is not a binding memory can be built on, and
-            substituting a guess or another embedder would hide it.
+            request, exceeds the deadline, or answers with a shape that
+            carries no vector. The caller must surface that: a binding
+            whose width cannot be measured is not a binding memory can be
+            built on, and substituting a guess or another embedder would
+            hide it.
         MemoryError: Propagated; a system-level failure must not be
             reclassified as a probe fault.
         RecursionError: Propagated, for the same reason.
@@ -67,17 +97,36 @@ async def probe_embedder_dims(*, provider: str, model: str) -> int:
     if is_builtin_embedder(provider, model):
         return BUILTIN_EMBEDDER_DIMS
 
-    model_ref = f"{provider}{_PROVIDER_MODEL_SEPARATOR}{model}"
+    model_ref = format_model_ref(provider, model)
     from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
+    retry = embedding_retry_handler()
     try:
-        response = await aembedding(model=model_ref, input=[_PROBE_TEXT])
+        response = await with_deadline(
+            lambda: retry.execute(
+                lambda: aembedding(model=model_ref, input=[_PROBE_TEXT])
+            ),
+            timeout_seconds=timeout_seconds,
+        )
     except MemoryError, RecursionError:
         raise
+    except TimeoutError as exc:
+        logger.warning(
+            MEMORY_EMBEDDER_PROBE_FAILED,
+            model=model_ref,
+            timeout_seconds=timeout_seconds,
+            reason="deadline_exceeded",
+        )
+        msg = (
+            f"Could not measure the embedding width of {model_ref!r}: the "
+            f"model did not answer within {timeout_seconds:g}s"
+        )
+        raise MemoryEmbeddingError(msg) from exc
     except Exception as exc:
         logger.warning(
-            MEMORY_EMBEDDER_PROBED,
+            MEMORY_EMBEDDER_PROBE_FAILED,
             model=model_ref,
+            reason="call_failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -87,6 +136,12 @@ async def probe_embedder_dims(*, provider: str, model: str) -> int:
         )
         raise MemoryEmbeddingError(msg) from exc
 
+    await record_embedding_cost(
+        response,
+        cost_tracker=cost_tracker,
+        provider=provider,
+        model=model,
+    )
     width = _width_of(response, model_ref=model_ref)
     logger.info(MEMORY_EMBEDDER_PROBED, model=model_ref, dims=width)
     return width
@@ -106,6 +161,15 @@ def _width_of(response: object, *, model_ref: str) -> int:
     first = data[0] if isinstance(data, list) and data else None
     raw = first.get("embedding") if isinstance(first, dict) else None
     if not isinstance(raw, list) or not raw:
+        # The sibling failure branch logs before raising; this one is the
+        # same class of fault (the model did not answer usefully) and needs
+        # the same trail, or an operator sees the raised error with nothing
+        # in the log naming which model produced it.
+        logger.warning(
+            MEMORY_EMBEDDER_PROBE_FAILED,
+            model=model_ref,
+            reason="response_carried_no_vector",
+        )
         msg = (
             f"Embedding probe of {model_ref!r} returned no vector, so its "
             f"width is unknown"

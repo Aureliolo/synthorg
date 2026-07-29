@@ -348,9 +348,15 @@ a probe string through the chosen pair and counts components
 (`memory/embedding/probe.py`). That is the model's own answer, so a model this
 codebase has never heard of is as usable as one it has, and the call doubles as
 proof the binding works at all: a model that cannot embed fails at selection
-rather than at the first memory write. `memory.embedder_dims` remains as a
-manual pin, which is how a wide Matryoshka model is brought under the index
-ceiling.
+rather than at the first memory write.
+
+The measured width is never written back. `memory.embedder_dims` is the
+operator's own truncation pin, which is how a wide Matryoshka model is brought
+under the index ceiling, and persisting a measurement into it would make the two
+indistinguishable: a width measured for one model would outlive it and be
+applied to the next as though it had been asked for, silently truncating vectors
+from a model it was never measured against. Boot measures again, against
+whatever model is bound then.
 
 The width the probe reports is used as-is, including above pgvector's 4000-
 dimension HNSW ceiling: those vectors are stored and searched correctly, just
@@ -380,19 +386,19 @@ models on long-horizon memory retrieval across four types that map directly to S
 **MTEB scores do not predict memory retrieval quality** (Pearson: -0.115, Spearman: -0.130).
 Embedding model selection must be evaluated on LMEB, not MTEB. See
 [Decision Log](../architecture/decisions.md) and the
-[Embedding Evaluation](../reference/embedding-evaluation.md) reference page for the full analysis,
-model rankings, and deployment tier recommendations.
+[Embedding Evaluation](../reference/embedding-evaluation.md) reference page for the full analysis
+and the measured results by resource class.
 
 Key findings:
 
 - Larger models do not always outperform smaller ones on memory retrieval
 - Dialogue/social memory is the hardest retrieval category for all models
 - Instruction sensitivity varies per model; must be validated per deployment
-- Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
-  CPU-only (< 1B)
+- Results are reported for three resource classes: full-resource (7-12B),
+  mid-resource (1-4B), and CPU-only (< 1B)
 
-Those tiers are guidance for an operator sizing a deployment, not inputs to a
-selection this codebase performs.
+Those classes describe what was measured, for an operator sizing a deployment.
+They are not tiers this codebase infers, and nothing reads them.
 
 ### Domain-Specific Embedding Fine-Tuning
 

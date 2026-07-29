@@ -52,9 +52,9 @@ function useCompleteStepActions(
       return
     }
     // Hold the wizard open if the backend reported a non-fatal warning
-    // (e.g. embedder auto-selection failed; provider health degraded
-    // mid-setup). The user clicks ``Continue to dashboard`` after
-    // reading the notice so a half-configured runtime does not
+    // (e.g. the chosen embedder could not be bound; provider health
+    // degraded mid-setup). The user clicks ``Continue to dashboard``
+    // after reading the notice so a half-configured runtime does not
     // silently land on the dashboard.
     if (wizardState.completionWarning !== null) {
       setConfirmOpen(false)
@@ -105,11 +105,11 @@ function CompleteStepFooter({
       )}
 
       {showWarningOnly && (
-        // Non-fatal warning surface: setup did persist, but the
-        // backend reported a runtime caveat (embedder auto-selection
-        // failed, provider health degraded mid-setup). Holding the
-        // wizard open here avoids the previous behaviour of
-        // navigating to a half-configured dashboard with no notice.
+        // Non-fatal warning surface: setup did persist, but the backend
+        // reported a runtime caveat (the chosen embedder could not be
+        // bound, provider health degraded mid-setup). Holding the wizard
+        // open here means the operator reads the caveat instead of
+        // landing on a half-configured dashboard unannounced.
         <ErrorBanner
           variant="section"
           severity="warning"

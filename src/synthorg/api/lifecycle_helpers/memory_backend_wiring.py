@@ -19,6 +19,8 @@ Two rules shape this module:
   ``memory.backend``.
 """
 
+import contextlib
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -74,15 +76,15 @@ async def wire_memory_backend(app_state: AppState) -> None:
             logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
             return
 
+    backend = create_memory_backend(
+        memory_config,
+        deps=MemoryBackendDeps(
+            repository=persistence_of(app_state).memory_vectors,
+            embedder=embedder,
+            clock=app_state.clock,
+        ),
+    )
     try:
-        backend = create_memory_backend(
-            memory_config,
-            deps=MemoryBackendDeps(
-                repository=persistence_of(app_state).memory_vectors,
-                embedder=embedder,
-                clock=app_state.clock,
-            ),
-        )
         await backend.connect()
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
@@ -93,6 +95,15 @@ async def wire_memory_backend(app_state: AppState) -> None:
             error=safe_error_description(exc),
         )
         return
+    except BaseException:
+        # A shutdown delivered inside ``connect()`` leaves a half-open
+        # connection reachable only from this frame: the slice never
+        # takes it, and shutdown disconnects only what the slice holds.
+        # Best-effort because a failed cleanup must not replace the
+        # cancellation on its way out.
+        with contextlib.suppress(Exception):
+            await backend.disconnect()
+        raise
 
     # Recorded on the slice because the health surface has to name which
     # embedder is serving, and a connected backend no longer carries that.
@@ -165,6 +176,14 @@ async def _wire_consolidation_scheduler(
             error=safe_error_description(exc),
         )
         return
+    except BaseException:
+        # ``start()`` arms a periodic loop before this frame records the
+        # scheduler on the slice. A shutdown delivered in between would
+        # leave that loop running with nothing able to reach it again,
+        # for the life of the process.
+        with contextlib.suppress(Exception):
+            await scheduler.stop()
+        raise
     # The scheduler base class emits its own started event, so this
     # records only the wiring outcome the health surface reads.
     app_state.wire(MemoryStateSlice, consolidation_scheduler=scheduler)
@@ -195,18 +214,21 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         The embedder, or ``None`` when no embedding model resolves, in
         which case the caller must not wire a backend.
     """
+    # The operator's choice is persisted to ``memory.embedder_*`` during
+    # setup, so at boot those settings are the whole answer. Nothing is
+    # selected here.
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.memory.embedding.probe import is_builtin_embedder  # noqa: PLC0415
     from synthorg.memory.embedding.resolve import (  # noqa: PLC0415
         resolve_embedder_config,
     )
 
-    # The operator's choice is persisted to ``memory.embedder_*`` during
-    # setup, so at boot those settings are the whole answer. Nothing is
-    # selected here.
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     try:
         config = await resolve_embedder_config(
             app_state.config.memory,
             settings_override=await _settings_override(app_state),
+            cost_tracker=cost_tracker,
         )
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
@@ -236,15 +258,11 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
 
         return HashingTextEmbedder(dims=config.dims)
 
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.memory.embedding.text_embedder import (  # noqa: PLC0415
         ProviderTextEmbedder,
     )
 
-    return ProviderTextEmbedder(
-        config,
-        cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
-    )
+    return ProviderTextEmbedder(config, cost_tracker=cost_tracker)
 
 
 async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | None:

@@ -1169,7 +1169,7 @@ describe('setup wizard store', () => {
             apiSuccess({
               setup_complete: true,
               embedder_selected: false,
-              embedder_failure_reason: 'no ranked model available',
+              embedder_failure_reason: 'no embedding model chosen; agents will run without recall',
             }),
           ),
         ),
@@ -1178,7 +1178,7 @@ describe('setup wizard store', () => {
       const state = useSetupWizardStore.getState()
       expect(state.completing).toBe(false)
       expect(state.completionError).toBeNull()
-      expect(state.completionWarning).toContain('no ranked model available')
+      expect(state.completionWarning).toContain('no embedding model chosen; agents will run without recall')
     })
 
     it('sets completionError on a 409 (already complete) failure', async () => {

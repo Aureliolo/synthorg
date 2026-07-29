@@ -25,12 +25,10 @@ from typing import Final
 
 import numpy as np
 
-#: Provider half of the built-in binding. A real name, not a sentinel:
-#: every dispatch resolves an explicit ``(provider, model)`` pair, and
-#: the built-in is a provider that happens to need no network.
+#: Provider and model halves of the built-in binding. Real names, not
+#: sentinels: every dispatch resolves an explicit ``(provider, model)``
+#: pair, and the built-in is a provider that happens to need no network.
 BUILTIN_EMBEDDER_PROVIDER: Final[str] = "builtin"
-
-#: Model half of the built-in binding.
 BUILTIN_EMBEDDER_MODEL: Final[str] = "hashing"
 
 #: Provider-qualified reference, matching ``ProviderTextEmbedder.model_ref``.
@@ -45,9 +43,16 @@ BUILTIN_EMBEDDER_DIMS: Final[int] = 1024
 
 _TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\w+")
 
-#: Bytes of blake2b digest per token. Eight gives a 64-bit value, which
-#: leaves the bucket distribution flat for any width the store accepts.
-_DIGEST_SIZE: Final[int] = 8
+#: Leading digest bytes selecting the bucket: 64 bits keeps the bucket
+#: distribution flat for any width the store accepts.
+_BUCKET_BYTES: Final[int] = 8
+
+#: One further byte supplies the sign. It must not overlap the bucket
+#: bytes. Deriving both from a single value makes the sign a function of
+#: the bucket whenever the width is a power of two, so colliding tokens
+#: always reinforce and never cancel, destroying the one property signed
+#: feature hashing exists to provide.
+_DIGEST_SIZE: Final[int] = _BUCKET_BYTES + 1
 
 
 class HashingTextEmbedder:
@@ -87,9 +92,8 @@ class HashingTextEmbedder:
             digest = hashlib.blake2b(
                 token.encode("utf-8"), digest_size=_DIGEST_SIZE
             ).digest()
-            value = int.from_bytes(digest, "big")
-            bucket = value % self._dims
-            sign = 1.0 if (value >> 1) & 1 else -1.0
+            bucket = int.from_bytes(digest[:_BUCKET_BYTES], "big") % self._dims
+            sign = 1.0 if digest[_BUCKET_BYTES] & 1 else -1.0
             vec[bucket] += sign
         norm = float(np.linalg.norm(vec))
         if norm == 0.0:

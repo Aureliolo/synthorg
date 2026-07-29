@@ -22,6 +22,7 @@ model this codebase has never heard of is as usable as one it has.
 from collections.abc import Awaitable
 from typing import Protocol
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
 from synthorg.memory.config import (
     CompanyMemoryConfig,
@@ -32,7 +33,11 @@ from synthorg.memory.embedding.hashing import BUILTIN_EMBEDDER_DIMS
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import MEMORY_EMBEDDER_BUILTIN_SELECTED
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_BUILTIN_SELECTED,
+    MEMORY_EMBEDDER_UNRESOLVED,
+    MEMORY_EMBEDDER_WIDTH_REJECTED,
+)
 
 logger = get_logger(__name__)
 
@@ -44,8 +49,14 @@ class DimsProbe(Protocol):
     binding without reaching a provider.
     """
 
-    def __call__(self, *, provider: str, model: str) -> Awaitable[int]:
-        """Return the width *model* emits."""
+    def __call__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        cost_tracker: CostTrackerProtocol | None = None,
+    ) -> Awaitable[int]:
+        """Return the width *model* emits, which must be at least one."""
         ...
 
 
@@ -88,6 +99,7 @@ async def resolve_embedder_config(
     *,
     settings_override: EmbedderOverrideConfig | None = None,
     measure_dims: DimsProbe = probe_embedder_dims,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> EmbedderConfig:
     """Resolve the operator's embedder choice into a usable binding.
 
@@ -96,6 +108,8 @@ async def resolve_embedder_config(
         settings_override: Runtime settings override (highest priority).
         measure_dims: Probe used to measure the model's width when the
             operator has not pinned one.
+        cost_tracker: Sink for the probe's spend. The probe is a billable
+            call on the same quota as retrieval traffic.
 
     Returns:
         A fully-populated ``EmbedderConfig``.
@@ -140,7 +154,11 @@ async def resolve_embedder_config(
         dims = (
             BUILTIN_EMBEDDER_DIMS
             if builtin
-            else await measure_dims(provider=provider, model=model)
+            else await measure_dims(
+                provider=provider,
+                model=model,
+                cost_tracker=cost_tracker,
+            )
         )
     _within_storage_ceiling(dims, model=model)
 
@@ -170,6 +188,10 @@ def _chosen_or_refused(provider: str | None, model: str | None) -> tuple[str, st
             "task with no recall. Choose one in setup, or set "
             "memory.embedder_model."
         )
+        # Both refusals here raise the same error type, and the only caller
+        # logs it generically, so without a structured reason the two are
+        # distinguishable only by parsing the message text.
+        logger.warning(MEMORY_EMBEDDER_UNRESOLVED, reason="no_model_configured")
         raise MemoryConfigError(msg)
     if provider is None or not provider.strip():
         # Deriving the provider from the model name is what the Explicit
@@ -180,6 +202,11 @@ def _chosen_or_refused(provider: str | None, model: str | None) -> tuple[str, st
             f"dispatch resolves an explicit (provider, model) pair; set "
             f'memory.embedder_model to {{"provider": ..., "model_id": '
             f"{model!r}}}."
+        )
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            reason="model_missing_provider",
+            model=model,
         )
         raise MemoryConfigError(msg)
     return provider, model
@@ -202,6 +229,15 @@ def _within_storage_ceiling(dims: int, *, model: str) -> None:
         f"Embedding model {model!r} emits {dims} dimensions, above the "
         f"vector store's ceiling of {STORAGE_MAX_DIMENSIONS}; choose a "
         f"narrower model, or set memory.embedder_dims to truncate it."
+    )
+    # Every sibling refusal here logs before raising, and this one reaches
+    # the operator wrapped in a generic "no embedder resolved" error two
+    # layers up, so without its own line the specific cause is invisible.
+    logger.warning(
+        MEMORY_EMBEDDER_WIDTH_REJECTED,
+        model=model,
+        dims=dims,
+        ceiling=STORAGE_MAX_DIMENSIONS,
     )
     raise MemoryConfigError(msg)
 

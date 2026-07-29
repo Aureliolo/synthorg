@@ -91,42 +91,33 @@ All scores are NDCG@10 (with instruction prompts unless noted). Source: LMEB pap
 
 ---
 
-## Recommendation
+## What the results show
 
-### For SynthOrg Deployments
+The embedding model is the operator's choice. This section reports what the
+published evaluations measured, grouped by the resource class a deployment can
+afford, so that choice can be an informed one. Nothing here is a default, and
+nothing in the codebase reads it.
 
-The embedding model choice depends on the deployment's resource constraints and primary memory
-retrieval patterns. Three tiers are recommended:
+### Full-resource deployment (GPU server, 7-12B model)
 
-#### Tier 1: Full-resource deployment (GPU server, 7-12B model)
+`bge-multilingual-gemma2` (9B) scores highest overall on LMEB (61.41 NDCG@10)
+and leads on dialogue and social recall (59.60), the hardest category, alongside
+strong episodic (70.88) and procedural (61.40) results and a consistent +1.96
+gain from instruction prompts. `NV-Embed-v2` (7B) leads on semantic recall
+instead (62.18) and scores consistently regardless of prompt formatting.
 
-**Recommended: bge-multilingual-gemma2 (9B)**
+### Mid-resource deployment (consumer GPU, 1-4B model)
 
-- Best overall LMEB score (61.41 NDCG@10)
-- Best dialogue/social memory retrieval (59.60), the hardest category
-- Strong episodic (70.88) and procedural (61.40)
-- Consistent instruction-following (+1.96 gain with prompts)
-- Multilingual support (relevant for international org simulations)
+`Qwen3-Embedding-4B` (4B) scores 59.81 NDCG@10 on procedural recall with a
+reasonable balance across the other memory types, and fits in the 16-24 GB of
+VRAM a consumer GPU offers for inference.
 
-**Alternative: NV-Embed-v2 (7B)** if semantic memory is the priority (best semantic at 62.18)
-and instruction stability is preferred (performs consistently regardless of prompt formatting).
+### CPU-only or embedded deployment (under 1B model)
 
-#### Tier 2: Mid-resource deployment (consumer GPU, 1-4B model)
-
-**Recommended: Qwen3-Embedding-4B (4B)**
-
-- Strong procedural memory performance (59.81 NDCG@10)
-- Reasonable balance across all types
-- Fits on consumer GPUs (16-24 GB VRAM for inference)
-
-#### Tier 3: CPU-only / embedded deployment (< 1B model)
-
-**Recommended: EmbeddingGemma-300M (307M)**
-
-- Surprisingly competitive overall score (56.03 w/o instructions)
-- Runs on CPU with acceptable latency for async memory retrieval
-- Best cost-performance ratio in the LMEB evaluation
-- **Do not use instruction prompts**: performance degrades with instructions for this model
+`EmbeddingGemma-300M` (307M) scores 56.03 without instructions, competitive with
+models an order of magnitude larger, and runs on CPU at a latency asynchronous
+retrieval tolerates. Its scores fall when given instruction prompts, so the
+figure above is measured without them.
 
 ### Embedder Configuration
 
@@ -199,7 +190,7 @@ first production deployment regardless.
 
 ## Domain Fine-Tuning Pipeline
 
-Even with LMEB-optimised model selection, domain-specific fine-tuning can improve retrieval
+Whichever model an operator picks, domain-specific fine-tuning can improve retrieval
 quality by 10-27% ([NVIDIA blog](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune),
 tested on NVDocs and Jira datasets). The pipeline requires no manual annotation and runs on a
 single GPU.
@@ -211,8 +202,9 @@ graph LR
     S1["1. Synthetic Data Generation\nOrg docs, ADRs, procedures\nLLM generates query-doc pairs"]
     S2["2. Hard Negative Mining\nBase model embeds all passages,\nselects top-k confusing negatives"]
     S3["3. Contrastive Fine-Tuning\nInfoNCE loss, tau = 0.02\n3 epochs, lr = 1e-5"]
-    S4["4. Deploy\nSave checkpoint,\nupdate embedder config"]
-    S1 --> S2 --> S3 --> S4
+    S4["4. Evaluation\nNDCG@10 A/B against the incumbent,\npromotion gated on a positive margin"]
+    S5["5. Deploy\nSave checkpoint,\nrecord it as active"]
+    S1 --> S2 --> S3 --> S4 --> S5
 ```
 
 ### Stage Details

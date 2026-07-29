@@ -19,6 +19,7 @@ from synthorg.memory.fine_tune_plan import FineTunePlan, MemoryBackendUnsupporte
 from synthorg.memory.service import MemoryService
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.models import SettingValue
 from tests._shared import as_uuid, sid
 
@@ -495,9 +496,19 @@ class TestGetActiveEmbedder:
         assert snap.checkpoint_id == sid("ckpt-1")
 
     async def test_with_settings_reads_provider_and_model(self) -> None:
+        """Both halves come out of the one MODEL_REF value.
+
+        They were previously read from two independent keys, which could
+        disagree and did once the provider key was retired.
+        """
         settings = _FakeSettings()
-        await settings.set("memory", "embedder_provider", "local")
-        await settings.set("memory", "embedder_model", "local/ckpt-1")
+        await settings.set(
+            "memory",
+            "embedder_model",
+            serialize_model_ref(
+                ModelRef(provider="test-provider", model_id="test-embed-001")
+            ),
+        )
         service = _service(
             checkpoints=[_checkpoint(is_active=True)],
             settings=settings,
@@ -506,9 +517,28 @@ class TestGetActiveEmbedder:
         snap = await service.get_active_embedder()
 
         assert snap.read_from_settings is True
-        assert snap.provider == "local"
-        assert snap.model == "local/ckpt-1"
+        assert snap.provider == "test-provider"
+        assert snap.model == "test-embed-001"
         assert snap.checkpoint_id == sid("ckpt-1")
+
+    async def test_a_legacy_bare_model_value_reports_no_provider(self) -> None:
+        """A value stored before the setting became a MODEL_REF.
+
+        It names a model with no provider, which is exactly the unbound
+        state the operator must resolve, so it is reported as such rather
+        than guessed at.
+        """
+        settings = _FakeSettings()
+        await settings.set("memory", "embedder_model", "test-embed-001")
+        service = _service(
+            checkpoints=[_checkpoint(is_active=True)],
+            settings=settings,
+        )
+
+        snap = await service.get_active_embedder()
+
+        assert snap.provider is None
+        assert snap.model == "test-embed-001"
 
     async def test_no_active_checkpoint(self) -> None:
         service = _service(checkpoints=[])

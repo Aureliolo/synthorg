@@ -8,17 +8,22 @@ const okStates: DerivedSubsystemStates = {
   wsState: 'ok',
   persistenceState: 'ok',
   busState: 'ok',
+  providersState: 'ok',
   memoryState: 'ok',
   memoryDetail: 'sqlvector',
   overallState: 'ok',
   wsDetail: undefined,
 }
 
+// A down message bus behind a healthy API: the hero must say a subsystem is
+// unreachable, not that the backend is, while the API card beside it reads
+// operational and the panel shows data that backend just returned.
 const degradedStates: DerivedSubsystemStates = {
   apiState: 'ok',
   wsState: 'degraded',
   persistenceState: 'ok',
   busState: 'down',
+  providersState: 'ok',
   memoryState: 'degraded',
   memoryDetail: 'Ephemeral keyword backend; recall is lost on restart.',
   overallState: 'down',
@@ -30,6 +35,7 @@ const loadingStates: DerivedSubsystemStates = {
   wsState: 'loading',
   persistenceState: 'loading',
   busState: 'loading',
+  providersState: 'loading',
   memoryState: 'loading',
   memoryDetail: undefined,
   overallState: 'loading',

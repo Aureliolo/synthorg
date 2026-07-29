@@ -17,6 +17,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
 )
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.model_ref import ModelRef, parse_model_ref
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -73,22 +74,18 @@ class MemoryEmbedderController(Controller):
                 "Settings Service",
             )
             try:
-                # Each setting is independently optional: a successful
-                # auto-selection persists only ``embedder_model`` +
-                # ``embedder_dims``, so a missing ``embedder_provider``
-                # is "unset", not a backend failure. Treat a per-field
+                # Both halves of the binding come out of one MODEL_REF
+                # value, so they cannot disagree. Each setting is still
+                # independently optional: treat a per-field
                 # SettingNotFoundError as ``None`` and reserve the outer
                 # re-raise for genuine settings-backend errors.
                 try:
-                    provider_sv = await svc.get("memory", "embedder_provider")
-                    provider_value = provider_sv.value or None
-                except SettingNotFoundError:
-                    provider_value = None
-                try:
                     model_sv = await svc.get("memory", "embedder_model")
-                    model_value = model_sv.value or None
+                    ref = parse_model_ref(model_sv.value or "")
                 except SettingNotFoundError:
-                    model_value = None
+                    ref = ModelRef()
+                provider_value = ref.provider or None
+                model_value = ref.model_id or None
                 try:
                     dims_sv = await svc.get("memory", "embedder_dims")
                     dims_raw = dims_sv.value

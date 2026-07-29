@@ -107,7 +107,7 @@ def test_embedder_built_in_handler_is_flagged(
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
     err = capsys.readouterr().err
     assert "memory_backend_wiring.py:5" in err
-    assert "exception handler" in err
+    assert "on an exception path" in err
 
 
 def test_any_embedder_built_in_handler_is_flagged(tmp_path: Path) -> None:
@@ -122,6 +122,104 @@ def test_any_embedder_built_in_handler_is_flagged(tmp_path: Path) -> None:
         "        return build_text_embedder('hashing')\n",
     )
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_embedder_built_in_a_finally_block_is_flagged(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``finally`` runs on the failure path exactly as a handler does."""
+    _write(
+        tmp_path,
+        "finally_fallback.py",
+        "def build(config):\n"
+        "    try:\n"
+        "        return ProviderTextEmbedder(config)\n"
+        "    finally:\n"
+        "        _cache = HashingTextEmbedder(dims=1024)\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+    assert "finally_fallback.py:5" in capsys.readouterr().err
+
+
+def test_embedder_built_by_a_helper_the_handler_calls_is_flagged(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Moving the construction one line away must not defeat the rule."""
+    _write(
+        tmp_path,
+        "indirect_fallback.py",
+        "def _fallback():\n"
+        "    return HashingTextEmbedder(dims=1024)\n"
+        "\n"
+        "def build(config):\n"
+        "    try:\n"
+        "        return ProviderTextEmbedder(config)\n"
+        "    except Exception:\n"
+        "        return _fallback()\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "via _fallback" in err
+
+
+def test_mutually_recursive_helpers_terminate(tmp_path: Path) -> None:
+    """Following calls must not loop on a cycle."""
+    _write(
+        tmp_path,
+        "cyclic.py",
+        "def _left():\n"
+        "    return _right()\n"
+        "\n"
+        "def _right():\n"
+        "    return _left()\n"
+        "\n"
+        "def build(config):\n"
+        "    try:\n"
+        "        return ProviderTextEmbedder(config)\n"
+        "    except Exception:\n"
+        "        return _left()\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 0
+
+
+def test_an_aliased_import_does_not_hide_a_construction(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Both rules read the call-site name, so an alias defeated both."""
+    _write(
+        tmp_path,
+        "aliased.py",
+        "from synthorg.memory.embedding.hashing import HashingTextEmbedder as HTE\n"
+        "\n"
+        "def build():\n"
+        "    return HTE(dims=1024)\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+    assert "aliased.py:4" in capsys.readouterr().err
+
+
+def test_an_aliased_import_does_not_hide_a_handler_fallback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write(
+        tmp_path,
+        "aliased_handler.py",
+        "from synthorg.memory.embedding.text_embedder import (\n"
+        "    ProviderTextEmbedder as PTE,\n"
+        ")\n"
+        "\n"
+        "def build(config):\n"
+        "    try:\n"
+        "        return _primary(config)\n"
+        "    except Exception:\n"
+        "        return PTE(config)\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+    assert "builds ProviderTextEmbedder" in capsys.readouterr().err
 
 
 def test_dead_construction_after_raise_is_not_flagged(tmp_path: Path) -> None:

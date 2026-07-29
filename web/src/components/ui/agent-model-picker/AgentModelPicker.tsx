@@ -17,6 +17,15 @@ export interface AgentModelPickerProps {
   label?: string | undefined
   /** Visually hide the label (e.g. inside a labelled table column). */
   hideLabel?: boolean | undefined
+  /**
+   * Option groups appended after the provider catalogue. For a binding that
+   * a provider cannot serve (the built-in embedder needs no network), so it
+   * is offered last rather than competing with real models for the first
+   * slot in the list.
+   */
+  extraGroups?: readonly SelectOptionGroup[] | undefined
+  /** Help text under the control, e.g. a warning about the current choice. */
+  hint?: string | undefined
 }
 
 const OTHER_FAMILY = 'Other'
@@ -114,8 +123,14 @@ export function AgentModelPicker({
   disabled,
   label = 'Model',
   hideLabel,
+  extraGroups,
+  hint,
 }: AgentModelPickerProps) {
-  const groups = useMemo(() => buildModelGroups(providers), [providers])
+  const providerGroups = useMemo(() => buildModelGroups(providers), [providers])
+  const groups = useMemo(
+    () => [...providerGroups, ...(extraGroups ?? [])],
+    [providerGroups, extraGroups],
+  )
   const hasModels = groups.some((g) => g.options.length > 0)
   const currentValue =
     currentProvider && currentModelId
@@ -134,6 +149,7 @@ export function AgentModelPicker({
       }}
       disabled={disabled}
       placeholder={hasModels ? 'Select model...' : 'No models available'}
+      hint={hint}
     />
   )
 }

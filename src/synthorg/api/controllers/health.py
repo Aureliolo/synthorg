@@ -338,23 +338,16 @@ def _memory_readiness(memory_health: MemoryHealth) -> bool | None:
 
     An unwired backend (``OFF``) does not block either: the config default
     is ``sqlvector``, so a not-yet-configured deployment reports ``OFF``
-    without any durable memory having been wired. ``inmemory`` is degraded
-    by design and likewise never blocks.
+    without any durable memory having been wired. ``inmemory`` is reported
+    DEGRADED by construction and so likewise never blocks, which is why
+    the backend name needs no special case of its own here.
 
     Returns:
         ``False`` when a wired backend is UNREACHABLE, ``True`` when it is
         DURABLE, or ``None`` (does not block) for a degraded, unwired or
         inmemory store.
     """
-    from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
-
-    if memory_health.backend == IN_MEMORY_BACKEND:
-        return None
-    if memory_health.state is MemoryState.UNREACHABLE:
-        return False
-    if memory_health.state is MemoryState.DURABLE:
-        return True
-    return None
+    return memory_health.state.readiness
 
 
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:

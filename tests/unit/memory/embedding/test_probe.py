@@ -6,6 +6,7 @@ it cannot get one: a width guessed wrong by a single component makes every
 stored vector incomparable.
 """
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -112,10 +113,38 @@ class TestFailures:
         with pytest.raises(MemoryEmbeddingError):
             await probe_embedder_dims(provider="test-provider", model="test-embed-001")
 
+    @pytest.mark.parametrize("fatal", [MemoryError, RecursionError])
     async def test_a_fatal_signal_is_not_reclassified(
+        self, monkeypatch: pytest.MonkeyPatch, fatal: type[BaseException]
+    ) -> None:
+        """A system-level failure must reach the supervisor as itself.
+
+        Both share one ``except`` clause, so exercising only one leaves the
+        other free to be dropped from it unnoticed.
+        """
+        _patch_aembedding(monkeypatch, fatal())
+        with pytest.raises(fatal):
+            await probe_embedder_dims(provider="test-provider", model="test-embed-001")
+
+    async def test_an_unanswered_probe_is_bounded_by_its_deadline(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A system-level failure must reach the supervisor as itself."""
-        _patch_aembedding(monkeypatch, MemoryError())
-        with pytest.raises(MemoryError):
-            await probe_embedder_dims(provider="test-provider", model="test-embed-001")
+        """An endpoint that accepts the connection and never answers.
+
+        Without a deadline this hangs boot outright, and on the setup path
+        it holds a process-wide lock while doing so, stalling every other
+        operator's completion too.
+        """
+        import litellm
+
+        async def _never_answers(**_kwargs: object) -> object:
+            await asyncio.Event().wait()
+            raise AssertionError  # unreachable; satisfies the return type
+
+        monkeypatch.setattr(litellm, "aembedding", _never_answers)
+        with pytest.raises(MemoryEmbeddingError, match="did not answer within"):
+            await probe_embedder_dims(
+                provider="test-provider",
+                model="test-embed-001",
+                timeout_seconds=0.05,
+            )

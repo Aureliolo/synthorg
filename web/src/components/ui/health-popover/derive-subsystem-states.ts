@@ -8,6 +8,7 @@ export interface DerivedSubsystemStates {
   readonly wsState: SubsystemState
   readonly persistenceState: SubsystemState
   readonly busState: SubsystemState
+  readonly providersState: SubsystemState
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
   readonly overallState: SubsystemState
@@ -89,9 +90,12 @@ function _overallStateOf(
   if (states.includes('degraded')) return 'degraded'
   if (states.includes('loading')) return 'loading'
   if (states.includes('unknown')) return 'unknown'
-  // The backend reported itself not ready for something no card covers
-  // (providers, say). Degraded rather than down: it is answering.
-  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'degraded'
+  // Every input the backend weighs has its own card above, so reaching
+  // here means it refused traffic for a reason none of them explains.
+  // Down, not degraded: the backend already decided it is not serving,
+  // and showing five green cards under a softer word is how an outage
+  // reads as fine.
+  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'down'
   return 'ok'
 }
 
@@ -106,13 +110,15 @@ export function deriveHealthSubsystemStates(
   const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive)
   const persistence = loadState.state === 'ok' ? loadState.data.persistence : null
   const messageBus = loadState.state === 'ok' ? loadState.data.message_bus : null
+  const providers = loadState.state === 'ok' ? loadState.data.providers : null
   const memory = loadState.state === 'ok' ? loadState.data.memory : null
   const persistenceState = _booleanProbeState(loadState, persistence)
   const busState = _booleanProbeState(loadState, messageBus)
+  const providersState = _booleanProbeState(loadState, providers)
   const memoryState = _memoryStateFor(loadState, memory)
   const memoryDetail = _memoryDetailFor(memory)
   const overallState = _overallStateOf(
-    [apiState, wsState, persistenceState, busState, memoryState],
+    [apiState, wsState, persistenceState, busState, providersState, memoryState],
     loadState,
   )
   return {
@@ -120,6 +126,7 @@ export function deriveHealthSubsystemStates(
     wsState,
     persistenceState,
     busState,
+    providersState,
     memoryState,
     memoryDetail,
     overallState,

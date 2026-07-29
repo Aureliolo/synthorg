@@ -31,7 +31,10 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.probe import probe_embedder_dims
 from synthorg.memory.embedding.resolve import DimsProbe
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.memory import MEMORY_EMBEDDER_PROBED
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_PROBE_FAILED,
+    MEMORY_EMBEDDER_UNRESOLVED,
+)
 from synthorg.observability.events.setup import (
     SETUP_FEATURE_MODEL_SELECT_FAILED,
     SETUP_FEATURE_MODEL_SELECTED,
@@ -59,12 +62,11 @@ _PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
     ("charter", "interview_model", PromptPurposeId.CHARTER_INTERVIEW),
 )
 
-# Inverted-convention result from ``auto_select_embedder``: ``None``
-# means success (a model was ranked and persisted); a ``str`` carries
-# the human-readable failure reason. Aliased here so the call site
-# can pass the result directly to
-# ``SetupCompleteResponse.embedder_failure_reason`` without re-stating
-# the inversion at every call.
+# Inverted-convention result from ``bind_chosen_embedder``: ``None`` means
+# the operator's chosen model answered a probe; a ``str`` carries the
+# human-readable failure reason. Aliased here so the call site can pass the
+# result directly to ``SetupCompleteResponse.embedder_failure_reason``
+# without re-stating the inversion at every call.
 type EmbedderSelectResult = str | None
 
 
@@ -396,51 +398,77 @@ async def bind_chosen_embedder(
     settings_svc: SettingsServiceProtocol,
     measure_dims: DimsProbe = probe_embedder_dims,
 ) -> EmbedderSelectResult:
-    """Measure and persist the width of the embedder the operator chose.
+    """Prove the embedder the operator chose can actually embed.
 
     Nothing is selected here. An operator who chose no model gets memory
     off and a reason saying so, never a model picked on their behalf and
     never the built-in embedder standing in for one.
 
     Called during setup completion, after providers are validated, so the
-    probe reaches a provider that is known to work.
+    probe reaches a provider that is known to work, and a binding that
+    cannot embed is reported while the operator is still in setup rather
+    than at the first memory write.
+
+    The measured width is deliberately not persisted.
+    ``memory.embedder_dims`` is the operator's own truncation pin, and
+    writing a measurement into it makes the two indistinguishable: a width
+    measured for one model then outlives it, and the next model's vectors
+    are silently truncated to it as though that had been asked for. The
+    width is measured again at boot, against whatever model is bound then.
 
     Args:
-        settings_svc: Settings service for reading the choice and
-            persisting the measured width.
-        measure_dims: Probe used to measure the chosen model's width.
+        settings_svc: Settings service for reading the operator's choice.
+        measure_dims: Probe used to exercise the chosen model.
 
     Returns:
         ``None`` on success, or a short human-readable reason string when
-        no model was chosen, the pair was incomplete, the model could not
-        be probed, or the write failed. The inverted convention
-        (None = success, str = failure) keeps the caller free to pass the
-        result straight to ``SetupCompleteResponse.embedder_failure_reason``.
+        no model was chosen, the pair was incomplete, or the model could
+        not be probed. The inverted convention (None = success, str =
+        failure) keeps the caller free to pass the result straight to
+        ``SetupCompleteResponse.embedder_failure_reason``.
     """
     ref = parse_model_ref(await _setting_text(settings_svc, "embedder_model"))
     provider, model = ref.provider, ref.model_id
     if not model:
-        return "no embedding model chosen; agents will run without recall"
+        reason = "no embedding model chosen; agents will run without recall"
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="no_model_chosen",
+            remedy="set memory.embedder_model to a provider-bound reference",
+        )
+        return reason
     if not provider:
-        return (
+        reason = (
             f"embedding model {model!r} has no provider bound to it; "
             f"set memory.embedder_model to a provider-bound reference"
         )
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="model_missing_provider",
+            model=model,
+            remedy="set memory.embedder_model to a provider-bound reference",
+        )
+        return reason
 
-    pinned = await _setting_text(settings_svc, "embedder_dims")
-    if pinned:
+    if await _setting_text(settings_svc, "embedder_dims"):
         # An operator who pinned a width is asking for that width, usually
-        # to bring a wide model under the store's index ceiling. Measuring
-        # over the top of it would silently undo the request.
+        # to bring a wide model under the store's index ceiling. Probing
+        # would neither change nor validate that request.
         return None
 
     try:
-        dims = await measure_dims(provider=provider, model=model)
+        await measure_dims(provider=provider, model=model)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reason = f"embedding model {model!r} did not answer a width probe"
+        # The probe logs the call-level fault; this records the setup-level
+        # outcome, which is what an operator reading the completion warning
+        # will search for.
         logger.warning(
-            MEMORY_EMBEDDER_PROBED,
+            MEMORY_EMBEDDER_PROBE_FAILED,
+            stage="setup_completion",
             provider=provider,
             model=model,
             reason=reason,
@@ -448,7 +476,7 @@ async def bind_chosen_embedder(
             error=safe_error_description(exc),
         )
         return reason
-    return await _persist_embedder_dims(settings_svc, dims, model=model)
+    return None
 
 
 async def _setting_text(
@@ -462,37 +490,3 @@ async def _setting_text(
     """
     value = (await settings_svc.get("memory", key)).value
     return value.strip() if isinstance(value, str) else ""
-
-
-async def _persist_embedder_dims(
-    settings_svc: SettingsServiceProtocol,
-    dims: int,
-    *,
-    model: str,
-) -> EmbedderSelectResult:
-    """Persist the measured width for the chosen model.
-
-    Returns:
-        ``None`` on success, or a human-readable reason when the write
-        failed.
-    """
-    try:
-        await settings_svc.set_many(
-            [("memory", "embedder_dims", str(dims))],
-            expected_updated_at_map={},
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        reason = "failed to persist the measured embedding width"
-        logger.warning(
-            MEMORY_EMBEDDER_PROBED,
-            model=model,
-            dims=dims,
-            reason=reason,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return reason
-    # Logged AFTER the write commits so the event reflects stored state.
-    logger.info(MEMORY_EMBEDDER_PROBED, model=model, dims=dims)
-    return None

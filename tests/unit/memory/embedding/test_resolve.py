@@ -9,6 +9,7 @@ nobody selected is the failure this module is shaped to prevent.
 
 import pytest
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.vector_limits import (
     HNSW_HALFVEC_MAX_DIMENSIONS,
     STORAGE_MAX_DIMENSIONS,
@@ -30,7 +31,13 @@ def _probe(width: int) -> object:
 
     calls: list[tuple[str, str]] = []
 
-    async def _measure(*, provider: str, model: str) -> int:
+    async def _measure(
+        *,
+        provider: str,
+        model: str,
+        cost_tracker: CostTrackerProtocol | None = None,
+    ) -> int:
+        _ = cost_tracker
         calls.append((provider, model))
         return width
 
@@ -38,9 +45,14 @@ def _probe(width: int) -> object:
     return _measure
 
 
-async def _failing_probe(*, provider: str, model: str) -> int:
+async def _failing_probe(
+    *,
+    provider: str,
+    model: str,
+    cost_tracker: CostTrackerProtocol | None = None,
+) -> int:
     """A dims probe standing in for a model that cannot be reached."""
-    _ = provider
+    _ = provider, cost_tracker
     msg = f"could not measure {model!r}"
     raise MemoryEmbeddingError(msg)
 
@@ -159,6 +171,52 @@ class TestMeasuredWidth:
         )
         assert result.dims == 2000
         assert probe.calls == []  # type: ignore[attr-defined]
+
+    async def test_a_settings_dims_pin_applies_to_a_yaml_model(self) -> None:
+        """The documented manual-override workflow.
+
+        ``memory.embedder_dims`` is the operator's truncation pin for a
+        model too wide to index. Pinning it in Settings while the model
+        comes from YAML builds an override naming a width and no model.
+        Enforcing completeness per layer rejected exactly that, and the
+        resulting error was swallowed at boot: memory went off and told
+        the operator to choose a model they had already configured.
+        """
+        probe = _probe(4096)
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(
+                embedder=EmbedderOverrideConfig(
+                    provider="test-provider", model="test-embed-wide"
+                )
+            ),
+            settings_override=EmbedderOverrideConfig(dims=2000),
+            measure_dims=probe,  # type: ignore[arg-type]
+        )
+        assert result.provider == "test-provider"
+        assert result.model == "test-embed-wide"
+        assert result.dims == 2000
+        assert result.dims_explicit is True
+        assert probe.calls == []  # type: ignore[attr-defined]
+
+    async def test_a_width_pin_with_no_model_anywhere_is_still_refused(self) -> None:
+        """Completeness moved altitude; it did not disappear."""
+        with pytest.raises(MemoryConfigError, match="No embedding model"):
+            await resolve_embedder_config(
+                CompanyMemoryConfig(embedder=None),
+                settings_override=EmbedderOverrideConfig(dims=2000),
+                measure_dims=_probe(768),  # type: ignore[arg-type]
+            )
+
+    async def test_width_exactly_at_the_storage_ceiling_is_accepted(self) -> None:
+        """Guards the boundary itself, so a ``<`` for ``<=`` slip is caught."""
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider="test-provider", model="test-embed-widest"
+            ),
+            measure_dims=_probe(STORAGE_MAX_DIMENSIONS),  # type: ignore[arg-type]
+        )
+        assert result.dims == STORAGE_MAX_DIMENSIONS
 
     async def test_unindexable_width_resolves_rather_than_refusing(self) -> None:
         """Above the HNSW ceiling dense search still returns correct results

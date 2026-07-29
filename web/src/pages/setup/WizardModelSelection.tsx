@@ -6,6 +6,10 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
+import {
+  BUILTIN_EMBEDDER_HINT,
+  isBuiltinEmbedderProvider,
+} from '@/utils/builtin-embedder'
 import { createCancellationToken, type CancellationToken } from '@/utils/cancellation'
 import { getErrorMessage } from '@/utils/errors'
 import { normalizeModelRef } from '@/utils/model-ref'
@@ -152,19 +156,12 @@ function placeholderFor(spec: PickerSpec): string | undefined {
   return spec.key === 'embedding' ? 'Select an embedding model' : undefined
 }
 
-const BUILTIN_EMBEDDER_PROVIDER = 'builtin'
-
-const BUILTIN_EMBEDDER_HINT =
-  'Running without an embedding model: recall matches shared vocabulary, not meaning, so agents get literal term overlap instead of related memories. Pick a model here to recall by meaning.'
-
 // The warning for the built-in embedder lives on this control rather than in a
 // banner elsewhere: it is a consequence of this choice, so it belongs where the
 // choice is made and disappears when the choice changes.
 function hintFor(spec: PickerSpec, value: string): string {
   if (spec.key !== 'embedding' || !value) return spec.hint
-  return providerOf(value) === BUILTIN_EMBEDDER_PROVIDER
-    ? BUILTIN_EMBEDDER_HINT
-    : spec.hint
+  return isBuiltinEmbedderProvider(providerOf(value)) ? BUILTIN_EMBEDDER_HINT : spec.hint
 }
 
 /**

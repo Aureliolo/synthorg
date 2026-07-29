@@ -87,14 +87,16 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set) => ({
     try {
       const response = await completeSetup()
       // The completion succeeded, but the backend may still report a
-      // non-fatal warning (embedder auto-selection produced no ranked
-      // model, persistence error for embedder choice). Surface it as
-      // ``completionWarning`` so the post-completion step can render
-      // an inline notice without claiming the whole setup failed.
+      // non-fatal warning: the operator chose no embedding model, chose one
+      // with no provider bound, or chose one that could not answer a probe.
+      // Surface it as ``completionWarning`` so the post-completion step can
+      // render an inline notice without claiming the whole setup failed.
+      // Every one of those paths returns a reason, so the fallback text is
+      // for a backend that broke its own contract, not a real outcome.
       const embedderWarning =
         !response.embedder_selected
           ? (response.embedder_failure_reason
-            ?? 'Embedder auto-selection did not pick a model. Configure one in Settings.')
+            ?? 'No embedding model is configured. Choose one in Settings.')
           : null
       // Theme is persisted live by the Theme step (write-through to the
       // ``appearance.*`` settings as the operator picks), so completion has no

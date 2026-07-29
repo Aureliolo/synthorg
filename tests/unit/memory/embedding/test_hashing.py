@@ -51,6 +51,33 @@ class TestVectors:
         with pytest.raises(ValueError, match="dims must be"):
             HashingTextEmbedder(dims=0)
 
+    @pytest.mark.parametrize("dims", [32, 256, 1024])
+    def test_sign_is_independent_of_bucket(self, dims: int) -> None:
+        """Colliding tokens must be able to cancel.
+
+        Signed feature hashing buys one thing over unsigned: two distinct
+        tokens landing in the same bucket cancel in expectation instead of
+        reinforcing, so a collision costs precision rather than inventing
+        similarity. That holds only while the sign is independent of the
+        bucket. Drawing both from one value made the sign a pure function
+        of the bucket at every power-of-two width, which is every width
+        used here, so the property silently did not hold.
+        """
+        embedder = HashingTextEmbedder(dims=dims)
+        signs_per_bucket: dict[int, set[float]] = {}
+        for index in range(20_000):
+            vector = embedder.embed(f"token{index}")
+            bucket = next(i for i, value in enumerate(vector) if value != 0.0)
+            signs_per_bucket.setdefault(bucket, set()).add(
+                1.0 if vector[bucket] > 0.0 else -1.0
+            )
+        both_signs = [b for b, signs in signs_per_bucket.items() if len(signs) == 2]
+        assert both_signs, (
+            f"every one of {len(signs_per_bucket)} populated buckets at "
+            f"dims={dims} produced a single sign; collisions can only "
+            "reinforce, never cancel"
+        )
+
 
 class TestPort:
     def test_default_width_is_indexable(self) -> None:

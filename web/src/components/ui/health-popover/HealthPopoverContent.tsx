@@ -3,6 +3,7 @@ import {
   Brain,
   Clock,
   Database,
+  Plug,
   RefreshCw,
   Tag,
   Waves,
@@ -29,7 +30,7 @@ import type { DerivedSubsystemStates } from './derive-subsystem-states'
 const HERO_HEADLINES: Record<SubsystemState, string> = {
   ok: 'All systems operational',
   degraded: 'Some subsystems degraded',
-  down: 'Backend unreachable',
+  down: 'Some subsystems unreachable',
   unknown: 'Status unknown',
   loading: 'Checking system health...',
 }
@@ -37,16 +38,24 @@ const HERO_HEADLINES: Record<SubsystemState, string> = {
 const HERO_SUBS: Record<SubsystemState, string> = {
   ok: 'Every tracked component is reporting healthy.',
   degraded: 'One or more subsystems are not fully operational. Check the cards below.',
-  down: 'The backend API is not responding. Live data may be stale.',
+  down: 'One or more subsystems are not responding. Check the cards below.',
   unknown: 'No recent health snapshot. Waiting for the first probe to complete.',
   loading: 'Fetching the latest snapshot from the backend.',
 }
 
+// Reserved for the one case it is actually true of. The roll-up reaches
+// 'down' whenever any single subsystem is, so wording it as an API outage
+// claimed the backend was unreachable while the cards beside it displayed
+// data that backend had just returned.
+const API_UNREACHABLE_HEADLINE = 'Backend unreachable'
+const API_UNREACHABLE_SUB = 'The backend API is not responding. Live data may be stale.'
+
 export interface HealthPopoverHeroProps {
   state: SubsystemState
+  apiReachable: boolean
 }
 
-function HealthPopoverHero({ state }: HealthPopoverHeroProps) {
+function HealthPopoverHero({ state, apiReachable }: HealthPopoverHeroProps) {
   const meta = STATE_META[state]
   return (
     <div
@@ -58,8 +67,12 @@ function HealthPopoverHero({ state }: HealthPopoverHeroProps) {
     >
       <HealthStatusIcon state={state} className="size-10" />
       <div className="flex-1">
-        <div className={cn('text-lg font-semibold', meta.textClass)}>{HERO_HEADLINES[state]}</div>
-        <p className="text-sm text-muted-foreground">{HERO_SUBS[state]}</p>
+        <div className={cn('text-lg font-semibold', meta.textClass)}>
+          {apiReachable ? HERO_HEADLINES[state] : API_UNREACHABLE_HEADLINE}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {apiReachable ? HERO_SUBS[state] : API_UNREACHABLE_SUB}
+        </p>
       </div>
     </div>
   )
@@ -132,7 +145,13 @@ function HealthSubsystemGrid({
         description="Internal async queue carrying inter-agent messages and engine events."
         state={states.busState}
       />
-      {/* Fifth card fills the final row rather than sitting alone in a
+      <HealthStatusRow
+        icon={Plug}
+        label="Providers"
+        description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
+        state={states.providersState}
+      />
+      {/* Sixth card fills the final row rather than sitting alone in a
           half-width column at the sm two-column breakpoint. */}
       <HealthStatusRow
         className="sm:col-span-2"
@@ -200,7 +219,10 @@ export function HealthPopoverContent({
           />
         </div>
       </div>
-      <HealthPopoverHero state={states.overallState} />
+      <HealthPopoverHero
+        state={states.overallState}
+        apiReachable={states.apiState !== 'down'}
+      />
       {loadState.state === 'error' && (
         <div
           role="alert"

@@ -58,6 +58,27 @@ class MemoryState(StrEnum):
     UNREACHABLE = "unreachable"
     OFF = "off"
 
+    @property
+    def readiness(self) -> bool | None:
+        """This state's contribution to the readiness verdict.
+
+        Carried here rather than in a branch table beside the caller so a
+        state added later cannot be given a meaning in one place and
+        forgotten in the other.
+
+        Returns:
+            ``False`` to block traffic, ``True`` to count as ready, and
+            ``None`` to abstain: a degradation still returns correct
+            results, so failing readiness for one would take a working
+            system offline and collapse "recall got slower" into "recall
+            stopped".
+        """
+        if self is MemoryState.UNREACHABLE:
+            return False
+        if self is MemoryState.DURABLE:
+            return True
+        return None
+
 
 class MemoryHealth(BaseModel):
     """Agent-memory substrate state.
@@ -100,8 +121,8 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
             detail=(
                 "No memory backend is wired, so agents start every task "
                 "with no recall. The usual cause is that no embedding "
-                "model resolved: set memory.embedder_provider and "
-                "memory.embedder_model, or connect a provider that "
+                "model resolved: set memory.embedder_model to a "
+                "provider-bound reference, or connect a provider that "
                 "offers an embedding model."
             ),
         )

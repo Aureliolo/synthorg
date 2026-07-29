@@ -65,7 +65,6 @@ from synthorg.observability import (
 from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
     MEMORY_CHECKPOINT_DELETE_FAILED,
-    MEMORY_CHECKPOINT_DEPLOY_FAILED,
     MEMORY_CHECKPOINT_DEPLOYED,
     MEMORY_CHECKPOINT_NOT_FOUND,
     MEMORY_CHECKPOINT_REREAD_FAILED,
@@ -402,15 +401,18 @@ class MemoryService:
         self,
         checkpoint_id: NotBlankStr,
     ) -> CheckpointRecord:
-        """Activate *checkpoint_id* and update runtime embedder config.
+        """Activate *checkpoint_id* as the recorded active checkpoint.
 
-        Captures the prior active checkpoint + settings, activates the
-        target, and writes ``memory.embedder_model`` /
-        ``memory.embedder_provider``. On any settings-side failure the
-        prior state is restored atomically. Held under
-        ``_embedder_state_lock`` so a concurrent
+        Activation is a checkpoint-repository fact and lives only there.
+        It deliberately writes no embedder setting: a checkpoint is a
+        local artefact path, not a provider-bound model reference, and a
+        path written into ``memory.embedder_model`` reaches the boot path
+        as a model name to dispatch on. Which embedder actually serves
+        stays the operator's explicit choice.
+
+        Held under ``_embedder_state_lock`` so a concurrent
         :meth:`get_active_embedder` cannot observe a partially-updated
-        checkpoint / settings pair.
+        state.
 
         Returns:
             Result of type ``CheckpointRecord``.
@@ -433,13 +435,6 @@ class MemoryService:
 
             prior = await checkpoints.get_active_checkpoint()
             await checkpoints.set_active(checkpoint_id)
-
-            if self._settings is not None:
-                await self._apply_deploy_settings(
-                    checkpoint_id=checkpoint_id,
-                    model_path=cp.model_path,
-                    prior=prior,
-                )
 
             updated = await checkpoints.get(checkpoint_id)
             if updated is None:
@@ -529,7 +524,11 @@ class MemoryService:
                     raise CheckpointRollbackCorruptError(msg)
                 backup: dict[str, object] = parsed
                 for key, value in backup.items():
-                    await self._settings.set("memory", key, str(value))
+                    await self._restore_backup_key(
+                        key,
+                        value,
+                        checkpoint_id=checkpoint_id,
+                    )
 
             await checkpoints.deactivate_all()
             updated = await checkpoints.get(checkpoint_id)
@@ -674,17 +673,22 @@ class MemoryService:
         """Return the active embedder snapshot read from settings.
 
         Combines the active checkpoint id (from
-        :meth:`get_active_checkpoint`) with the
-        ``memory.embedder_model`` / ``memory.embedder_provider``
-        settings so MCP callers get a single atomic read. The
-        ``_embedder_state_lock`` is held across all three reads so a
-        concurrent deploy / rollback cannot interleave between them
-        and leave the caller observing ``checkpoint_id`` from one
-        state and ``provider`` / ``model`` from another.
+        :meth:`get_active_checkpoint`) with the ``memory.embedder_model``
+        setting so MCP callers get a single atomic read. That setting is
+        a ``MODEL_REF``, so both halves of the binding are parsed out of
+        the one value rather than read from two keys that could disagree.
+        The ``_embedder_state_lock`` is held across both reads so a
+        concurrent deploy or rollback cannot interleave between them and
+        leave the caller observing ``checkpoint_id`` from one state and
+        the binding from another.
 
         Returns:
             Result of type ``ActiveEmbedderSnapshot``.
         """
+        from synthorg.settings.model_ref import (  # noqa: PLC0415 -- cycle break
+            parse_model_ref,
+        )
+
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
             active_checkpoint = await checkpoints.get_active_checkpoint()
@@ -697,19 +701,11 @@ class MemoryService:
                     ),
                     read_from_settings=False,
                 )
-            provider_value, _ = await self._read_setting("embedder_provider")
             model_value, _ = await self._read_setting("embedder_model")
+        ref = parse_model_ref(model_value or "")
         return ActiveEmbedderSnapshot(
-            provider=(
-                NotBlankStr(provider_value)
-                if provider_value is not None and provider_value
-                else None
-            ),
-            model=(
-                NotBlankStr(model_value)
-                if model_value is not None and model_value
-                else None
-            ),
+            provider=NotBlankStr(ref.provider) if ref.provider.strip() else None,
+            model=NotBlankStr(ref.model_id) if ref.model_id.strip() else None,
             checkpoint_id=(
                 str(active_checkpoint.id) if active_checkpoint is not None else None
             ),
@@ -745,115 +741,48 @@ class MemoryService:
             raise MemoryBackendUnsupportedError(msg)
         return self._orchestrator
 
-    async def _apply_deploy_settings(
-        self,
-        *,
-        checkpoint_id: NotBlankStr,
-        model_path: str,
-        prior: CheckpointRecord | None,
-    ) -> None:
-        """Push embedder settings for a freshly-activated checkpoint.
-
-        Rolls back the checkpoint activation + any already-applied
-        settings if a subsequent ``set`` call fails, so a failed deploy
-        leaves the prior config intact.
-
-        Raises:
-            Exception: Raised when the relevant invariant fails.
-        """
-        assert self._settings is not None  # noqa: S101 - guarded by caller
-
-        prior_model_value, prior_model_state = await self._read_setting(
-            "embedder_model",
-        )
-        prior_provider_value, prior_provider_state = await self._read_setting(
-            "embedder_provider",
-        )
-
-        checkpoints = self._require_checkpoints()
-        try:
-            await self._settings.set("memory", "embedder_model", model_path)
-            await self._settings.set("memory", "embedder_provider", "local")
-        except Exception as exc:
-            reraise_critical(exc)
-            if prior is not None:
-                await self._rollback_step(
-                    checkpoints.set_active(str(prior.id)),
-                    checkpoint_id=checkpoint_id,
-                    step="reactivate_prior_checkpoint",
-                )
-            else:
-                await self._rollback_step(
-                    checkpoints.deactivate_all(),
-                    checkpoint_id=checkpoint_id,
-                    step="deactivate_all_checkpoints",
-                )
-            # Restore / delete / leave each setting based on the
-            # three-valued prior state captured by ``_read_setting``.
-            # ``read_failed`` explicitly leaves the newly-written key
-            # in place so a transient read error cannot erase a real
-            # pre-existing setting: "absent" and "read failed" must
-            # stay distinct branches, never collapsed.
-            await self._restore_or_delete(
-                "embedder_model",
-                prior_model_value,
-                prior_model_state,
-                checkpoint_id,
-            )
-            await self._restore_or_delete(
-                "embedder_provider",
-                prior_provider_value,
-                prior_provider_state,
-                checkpoint_id,
-            )
-            logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
-                checkpoint_id=checkpoint_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-
-    async def _restore_or_delete(
+    async def _restore_backup_key(
         self,
         key: str,
-        prior_value: str | None,
-        prior_state: _PriorSettingState,
+        value: object,
+        *,
         checkpoint_id: str,
     ) -> None:
-        """Restore *prior_value* or delete the key based on *prior_state*.
+        """Re-write one backed-up ``memory.<key>`` value.
 
-        Three branches, one per :class:`_PriorSettingState` value:
-
-        * ``was_set`` -- restore the captured prior value.
-        * ``was_unset`` -- delete the newly-written setting so rollback
-          returns to a pristine "key absent" state.
-        * ``read_failed`` -- leave the key untouched. A transient
-          settings-service outage during the pre-deploy read could make
-          a real existing value look absent; deleting it on rollback
-          would erase a legitimate pre-deploy setting. Leaving it means
-          the rollback is best-effort for this key, which the
-          ``MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED`` telemetry already
-          signals for operator review.
+        A backup outlives the settings schema that produced it, so a key
+        it names may since have been retired, and a value it holds may no
+        longer be one that key accepts. Neither is a rollback failure:
+        both are logged with the reason and skipped, so one unrestorable
+        key cannot abort the restore of every surviving one. The operator
+        sees which keys did not come back rather than a half-applied
+        rollback reported as complete. Anything else propagates.
         """
         assert self._settings is not None  # noqa: S101 - guarded by caller
-        if prior_state == "was_set" and prior_value is not None:
-            await self._rollback_step(
-                self._settings.set("memory", key, prior_value),
+        from synthorg.settings.errors import (  # noqa: PLC0415 -- cycle break
+            SettingNotFoundError,
+            SettingValidationError,
+        )
+
+        # A structured value (a MODEL_REF pair) must round-trip as JSON;
+        # ``str()`` on a mapping yields a Python repr the validator rejects.
+        rendered = value if isinstance(value, str) else json.dumps(value)
+        try:
+            await self._settings.set("memory", key, rendered)
+        except SettingNotFoundError:
+            logger.warning(
+                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
                 checkpoint_id=checkpoint_id,
                 step=f"restore_{key}",
+                reason="setting_retired_since_backup",
             )
-        elif prior_state == "was_unset":
-            # Genuinely absent before the deploy: remove the newly
-            # written value so rollback returns to a pristine state.
-            await self._rollback_step(
-                self._settings.delete("memory", key),
+        except SettingValidationError:
+            logger.warning(
+                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
                 checkpoint_id=checkpoint_id,
-                step=f"delete_{key}",
+                step=f"restore_{key}",
+                reason="backed_up_value_rejected_by_current_schema",
             )
-        # ``read_failed`` intentionally leaves the newly-written key in
-        # place; the settings-read warning already fired from
-        # :meth:`_read_setting` so operators can triage.
 
     async def _read_setting(
         self,

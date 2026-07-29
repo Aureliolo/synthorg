@@ -105,17 +105,21 @@ class MemoryOptionsConfig(BaseModel):
 
 
 class EmbedderOverrideConfig(BaseModel):
-    """User-facing embedder override configuration.
+    """One layer of an operator's embedder override.
 
-    Allows users to override the auto-selected embedding model via
-    company YAML config, runtime settings, or template config.  All
-    fields are optional -- ``None`` means "use auto-selection".
+    Set from company YAML config, runtime settings, or template config.
+    Every field is independently optional because this is a patch over the
+    layer below, not the whole answer: pinning a width here while the model
+    comes from another layer is a supported combination, so the completeness
+    rules (a model needs its provider, a width needs a model) are enforced
+    once on the merged result in ``resolve_embedder_config`` rather than
+    here, where no layer can see what the others supplied.
 
     Attributes:
         provider: Embedding provider name override.
         model: Embedding model identifier override.
-        dims: Embedding vector dimensions (required when ``model``
-            is set, since dimensions are model-dependent).
+        dims: Embedding vector width override, pinning the width instead of
+            measuring it from the model.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -134,34 +138,6 @@ class EmbedderOverrideConfig(BaseModel):
         description="Embedding vector dimensions",
     )
 
-    @model_validator(mode="after")
-    def _dims_requires_model(self) -> Self:
-        """Require a model when dims is set.
-
-        The reverse does not hold: a model without dims is the normal case,
-        because the width is measured from the model rather than declared
-        alongside it. Requiring both would make an operator look up a figure
-        the model itself can answer for.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if self.dims is not None and self.model is None:
-            msg = (
-                "model must be set when dims is overridden "
-                "(dimensions are model-dependent)"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="model",
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
-
 
 class CompanyMemoryConfig(BaseModel):
     """Top-level company-wide memory configuration.
@@ -172,7 +148,9 @@ class CompanyMemoryConfig(BaseModel):
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
         consolidation: Memory consolidation settings.
-        embedder: Optional embedder override (``None`` = auto-select).
+        embedder: Optional embedder override (``None`` = no override at
+            this layer; runtime settings decide, and resolution refuses if
+            no layer ever names a model).
         procedural: Procedural memory auto-generation settings.
         composite: Composite backend routing config (required when
             backend is ``"composite"``).
@@ -216,8 +194,9 @@ class CompanyMemoryConfig(BaseModel):
     embedder: EmbedderOverrideConfig | None = Field(
         default=None,
         description=(
-            "Optional embedder override.  When set, overrides "
-            "auto-selection for provider, model, and/or dims."
+            "Optional embedder binding from company YAML. Runtime settings "
+            "override it per field; resolution refuses unless some layer "
+            "names both a provider and a model."
         ),
     )
     procedural: ProceduralMemoryConfig = Field(

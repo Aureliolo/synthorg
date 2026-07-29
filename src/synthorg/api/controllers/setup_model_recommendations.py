@@ -51,8 +51,8 @@ class SetupModelRecommendationsResponse(BaseModel):
     """Wizard model-selection recommendations + candidate lists.
 
     Lets the setup wizard prefill each per-feature model with a sensible
-    default (best-ranked / most-senior catalogue model) while leaving the
-    operator free to override any of them from the full configured catalogue.
+    default (the most-senior catalogue model) while leaving the operator free
+    to override any of them from the full configured catalogue.
 
     Every per-feature model setting is a ``SettingType.MODEL_REF``, which
     rejects a provider-less value at write time, so both the recommendation and
@@ -62,8 +62,8 @@ class SetupModelRecommendationsResponse(BaseModel):
 
     Embedding carries candidates but no recommendation. The operator names the
     embedding model; nothing suggests one, because a suggestion is a decision
-    made without knowing what the deployment can serve, and the last one shipped
-    a width its own vector store could not index.
+    made without knowing what the deployment's vector store can index, and a
+    width it cannot index degrades every dense search silently.
 
     Attributes:
         model_ref_candidates: The shared provider-bound catalogue every

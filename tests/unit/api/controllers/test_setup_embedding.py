@@ -11,6 +11,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
     pick_decomposition_model_ref,
     pick_model_ref_for_tier,
 )
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
@@ -26,18 +27,6 @@ def _mock_settings_svc() -> AsyncMock:
     return AsyncMock(spec=SettingsService)
 
 
-def _set_many_values(settings_svc: AsyncMock) -> dict[tuple[str, str], str]:
-    """Return the ``(namespace, key) -> value`` map from the single set_many call.
-
-    The embedder writes both keys atomically through ``set_many`` (one
-    transaction), so the items batch is the first positional argument.
-    """
-    calls = settings_svc.set_many.call_args_list
-    assert len(calls) == 1
-    items = calls[0].args[0]
-    return {(ns, key): value for ns, key, value in items}
-
-
 def _settings_reading(values: dict[str, str]) -> AsyncMock:
     """A settings mock answering the memory keys from *values*."""
     settings_svc = _mock_settings_svc()
@@ -47,9 +36,14 @@ def _settings_reading(values: dict[str, str]) -> AsyncMock:
     return settings_svc
 
 
-async def _probe_1536(*, provider: str, model: str) -> int:
+async def _probe_1536(
+    *,
+    provider: str,
+    model: str,
+    cost_tracker: CostTrackerProtocol | None = None,
+) -> int:
     """A width probe standing in for a reachable model."""
-    _ = provider, model
+    _ = provider, model, cost_tracker
     return 1536
 
 
@@ -61,7 +55,15 @@ class TestBindChosenEmbedder:
     serving recall, so every incomplete choice returns a reason instead.
     """
 
-    async def test_measures_and_persists_the_chosen_width(self) -> None:
+    async def test_proves_the_binding_embeds_and_persists_nothing(self) -> None:
+        """The width is measured to prove the binding, then discarded.
+
+        Persisting it into ``memory.embedder_dims`` would make a measurement
+        indistinguishable from the operator's own truncation pin, so a width
+        measured for one model would outlive it and silently truncate the
+        next model's vectors. Boot measures again, against whatever model is
+        bound then.
+        """
         settings_svc = _settings_reading(
             {"embedder_model": _bound("test-provider", "test-embed-001")}
         )
@@ -73,10 +75,8 @@ class TestBindChosenEmbedder:
             is None
         )
 
-        values = _set_many_values(settings_svc)
-        assert values[("memory", "embedder_dims")] == "1536"
-        # The model is never rewritten: it is the operator's, not ours.
-        assert ("memory", "embedder_model") not in values
+        settings_svc.set_many.assert_not_called()
+        settings_svc.set.assert_not_called()
 
     async def test_no_chosen_model_reports_and_writes_nothing(self) -> None:
         settings_svc = _settings_reading({})
@@ -122,8 +122,13 @@ class TestBindChosenEmbedder:
             {"embedder_model": _bound("test-provider", "unreachable")}
         )
 
-        async def _fails(*, provider: str, model: str) -> int:
-            _ = provider, model
+        async def _fails(
+            *,
+            provider: str,
+            model: str,
+            cost_tracker: CostTrackerProtocol | None = None,
+        ) -> int:
+            _ = provider, model, cost_tracker
             msg = "unreachable"
             raise MemoryEmbeddingError(msg)
 

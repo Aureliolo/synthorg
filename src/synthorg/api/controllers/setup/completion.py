@@ -2,8 +2,8 @@
 """Setup-completion endpoint and its prerequisite-validation helpers.
 
 Marks first-run setup complete after validating company / providers /
-agent assignments, running best-effort embedder auto-selection, and
-reloading the runtime (provider reload + agent bootstrap). The
+agent assignments, best-effort binding the operator's chosen embedder,
+and reloading the runtime (provider reload + agent bootstrap). The
 completion flag is persisted only after the reinit returns clean, so a
 broken provider config leaves the operator a retryable error rather than
 a half-configured runtime that reports itself as "complete".

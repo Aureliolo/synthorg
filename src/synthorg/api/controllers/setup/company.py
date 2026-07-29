@@ -143,14 +143,15 @@ class SetupCompanyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[SetupModelRecommendationsResponse]:
-        """Recommend + enumerate the wizard's coordinator + embedding models.
+        """Recommend the coordinator model and enumerate embedding candidates.
 
         The wizard prefills the coordinator's decomposition model (a
-        top-cost-tier agent's model) and the memory embedding model (the
-        best-ranked embedder in the catalogue) from these, and lets the operator
-        override either from the candidate lists. Read-only: it persists nothing
-        -- the wizard writes any override through the settings API, and
-        completion auto-selects only when the operator left a value unset.
+        top-cost-tier agent's model) from these and lets the operator override
+        it. The embedding list carries no recommendation: nothing ranks
+        embedders, so the operator names one or memory stays off. Read-only:
+        it persists nothing -- the wizard writes any choice through the
+        settings API, and completion fills in only the decomposition model,
+        and only when the operator left it unset.
 
         Args:
             state: Application state.

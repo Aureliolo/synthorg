@@ -7,6 +7,7 @@ Integration-level behaviour against the real SQLite repo lives in the
 conformance suite.
 """
 
+import json
 from datetime import UTC, datetime
 from typing import override
 
@@ -31,9 +32,15 @@ from synthorg.memory.service import (
     CheckpointRollbackUnavailableError,
     MemoryService,
 )
+from synthorg.settings import (
+    definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
+)
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.models import SettingValue
+from synthorg.settings.registry import get_registry
+from synthorg.settings.type_validators import validate_by_type
 from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
@@ -190,6 +197,16 @@ class _FakeSettingsService:
             self.fail_next_set_keys.discard((namespace, key))
             msg = f"set({namespace}, {key}) configured to fail"
             raise RuntimeError(msg)
+        # Enforce what the real service enforces. Accepting any string
+        # let this suite pin writes production would reject: a bare
+        # filesystem path into a MODEL_REF setting, and a key with no
+        # definition at all, both stayed green here while failing for
+        # every real caller.
+        definition = get_registry().get(namespace, key)
+        if definition is None:
+            msg = f"Unknown setting: {namespace}/{key}"
+            raise SettingNotFoundError(msg)
+        validate_by_type(definition, value)
         self.set_calls.append((namespace, key, value))
         self._values[(namespace, key)] = value
 
@@ -317,7 +334,15 @@ class TestMemoryServiceDeploy:
         assert updated.is_active is True
         assert repo.set_active_calls == [sid("a")]
 
-    async def test_deploy_with_settings_pushes_embedder_config(self) -> None:
+    async def test_deploy_writes_no_embedder_setting(self) -> None:
+        """Activation is a checkpoint fact, not an embedder binding.
+
+        A checkpoint is a local artefact path; ``memory.embedder_model``
+        is a provider-bound reference the boot path dispatches on.
+        Writing the former into the latter failed every deploy once the
+        setting became a ``MODEL_REF``, and would have reached the
+        provider registry as a model name before that.
+        """
         repo = _FakeCheckpointRepo()
         await repo.save(_checkpoint(checkpoint_id="a"))
         settings = _FakeSettingsService()
@@ -327,96 +352,29 @@ class TestMemoryServiceDeploy:
             settings_service=settings,
         )
 
-        await service.deploy_checkpoint(sid("a"))
-        assert ("memory", "embedder_model", "local/models/ckpt-1") in settings.set_calls
-        assert ("memory", "embedder_provider", "local") in settings.set_calls
+        updated = await service.deploy_checkpoint(sid("a"))
 
-    async def test_deploy_rollback_deletes_newly_written_missing_settings(
-        self,
-    ) -> None:
+        assert updated.is_active is True
+        assert repo.set_active_calls == [sid("a")]
+        assert settings.set_calls == []
+
+    async def test_deploy_survives_a_settings_service_entirely(self) -> None:
+        """Deploy touches no setting, so a settings outage cannot fail it."""
         repo = _FakeCheckpointRepo()
+        await repo.save(_checkpoint(checkpoint_id="prior", is_active=True))
         await repo.save(_checkpoint(checkpoint_id="a"))
-        # No prior value exists for either embedder setting AND the
-        # second ``set`` raises -- rollback must explicitly delete
-        # ``embedder_model`` so the setting does not remain after
-        # rollback.
-        settings = _FakeSettingsService(
-            missing_keys={
-                ("memory", "embedder_model"),
-                ("memory", "embedder_provider"),
-            },
-        )
-        settings.fail_next_set_keys.add(("memory", "embedder_provider"))
+        settings = _FakeSettingsService()
+        settings.fail_next_set_keys.add(("memory", "embedder_model"))
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
             settings_service=settings,
         )
 
-        with pytest.raises(RuntimeError):
-            await service.deploy_checkpoint(sid("a"))
+        updated = await service.deploy_checkpoint(sid("a"))
 
-        assert ("memory", "embedder_model") in settings.delete_calls
-        assert ("memory", "embedder_provider") in settings.delete_calls
-        # The rollback path invokes ``deactivate_all`` exactly once when
-        # there is no prior active checkpoint to reactivate; asserting
-        # ``== 1`` (not ``>= 1``) locks down the contract so an extra
-        # call introduced later trips the test.
-        assert repo.deactivate_all_calls == 1
-
-    async def test_deploy_rollback_reactivates_prior_active_checkpoint(
-        self,
-    ) -> None:
-        """When a prior active checkpoint exists, rollback re-activates it.
-
-        Complements ``test_deploy_rollback_deletes_newly_written_missing_settings``
-        (which exercises the no-prior branch): here the service must
-        pick the prior-reactivation path, NOT call ``deactivate_all``,
-        and still delete the newly-written settings whose prior values
-        were absent.
-        """
-        repo = _FakeCheckpointRepo()
-        await repo.save(
-            _checkpoint(checkpoint_id="prior", is_active=True),
-        )
-        await repo.save(_checkpoint(checkpoint_id="a"))
-        # Track the pre-deploy ``deactivate_all`` count so we can assert
-        # the rollback path does not increment it (the prior-exists
-        # branch routes through ``set_active(prior.id)`` instead).
-        baseline_deactivate_calls = repo.deactivate_all_calls
-        settings = _FakeSettingsService(
-            missing_keys={
-                ("memory", "embedder_model"),
-                ("memory", "embedder_provider"),
-            },
-        )
-        settings.fail_next_set_keys.add(("memory", "embedder_provider"))
-        service = MemoryService(
-            checkpoint_repo=repo,
-            run_repo=_FakeRunRepo(),
-            settings_service=settings,
-        )
-
-        with pytest.raises(RuntimeError):
-            await service.deploy_checkpoint(sid("a"))
-
-        # Rollback restored the prior active checkpoint in the expected
-        # order: first the attempted activation for "a", then the
-        # rollback reactivation for "prior". Asserting the exact
-        # sequence catches a future regression where rollback fires an
-        # extra ``set_active`` or flips the order.
-        assert repo.set_active_calls == [sid("a"), sid("prior")]
-        # ``deactivate_all`` must NOT be invoked on this branch -- the
-        # prior-active-exists path routes through ``set_active(prior)``
-        # instead. Asserting unchanged-from-baseline catches a
-        # regression that would otherwise fall through to the no-prior
-        # branch.
-        assert repo.deactivate_all_calls == baseline_deactivate_calls
-        # Newly-written settings whose prior values were absent must
-        # still be explicitly deleted so rollback leaves a pristine
-        # state.
-        assert ("memory", "embedder_model") in settings.delete_calls
-        assert ("memory", "embedder_provider") in settings.delete_calls
+        assert updated.is_active is True
+        assert repo.set_active_calls == [sid("a")]
 
 
 class TestMemoryServiceRollback:
@@ -469,11 +427,14 @@ class TestMemoryServiceRollback:
             await service.rollback_checkpoint(sid("a"))
 
     async def test_rollback_with_valid_mapping_restores_settings(self) -> None:
+        prev = serialize_model_ref(
+            ModelRef(provider="test-provider", model_id="test-embed-001")
+        )
         repo = _FakeCheckpointRepo()
         await repo.save(
             _checkpoint(
                 checkpoint_id="a",
-                backup_config_json='{"embedder_model": "prev-model"}',
+                backup_config_json=json.dumps({"embedder_model": prev}),
             ),
         )
         settings = _FakeSettingsService()
@@ -484,12 +445,63 @@ class TestMemoryServiceRollback:
         )
 
         await service.rollback_checkpoint(sid("a"))
-        assert (
-            "memory",
-            "embedder_model",
-            "prev-model",
-        ) in settings.set_calls
+        assert ("memory", "embedder_model", prev) in settings.set_calls
         assert repo.deactivate_all_calls == 1
+
+    async def test_rollback_skips_a_value_the_current_schema_rejects(self) -> None:
+        """A backup outlives the schema that produced it.
+
+        ``embedder_model`` held a bare model id before it became a
+        MODEL_REF, so an old backup carries a value the validator now
+        refuses. Restoring what still fits beats failing the whole
+        rollback over one unrestorable key, and the skip is logged rather
+        than reported as a completed restore.
+        """
+        repo = _FakeCheckpointRepo()
+        await repo.save(
+            _checkpoint(
+                checkpoint_id="a",
+                backup_config_json=json.dumps(
+                    {"embedder_model": "legacy-bare-id", "embedder_dims": "768"}
+                ),
+            ),
+        )
+        settings = _FakeSettingsService()
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=settings,
+        )
+
+        await service.rollback_checkpoint(sid("a"))
+
+        written = {(ns, key) for ns, key, _ in settings.set_calls}
+        assert ("memory", "embedder_dims") in written
+        assert ("memory", "embedder_model") not in written
+
+    async def test_rollback_skips_a_key_retired_since_the_backup(self) -> None:
+        """``embedder_provider`` was retired when the model ref absorbed it."""
+        repo = _FakeCheckpointRepo()
+        await repo.save(
+            _checkpoint(
+                checkpoint_id="a",
+                backup_config_json=json.dumps(
+                    {"embedder_provider": "gone", "embedder_dims": "512"}
+                ),
+            ),
+        )
+        settings = _FakeSettingsService()
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=settings,
+        )
+
+        await service.rollback_checkpoint(sid("a"))
+
+        written = {(ns, key) for ns, key, _ in settings.set_calls}
+        assert ("memory", "embedder_dims") in written
+        assert ("memory", "embedder_provider") not in written
 
     async def test_rollback_returns_success_when_artifacts_consistent(
         self,
@@ -501,7 +513,7 @@ class TestMemoryServiceRollback:
         await repo.save(
             _checkpoint(
                 checkpoint_id="a",
-                backup_config_json='{"embedder_model": "prev"}',
+                backup_config_json=json.dumps({"embedder_dims": "768"}),
             ),
         )
         service = MemoryService(

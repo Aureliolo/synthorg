@@ -192,10 +192,18 @@ class TestEmbedderOverrideConfig:
         with pytest.raises(ValidationError):
             EmbedderOverrideConfig(model="test-model", dims=-1)
 
-    def test_dims_without_model_rejected(self) -> None:
-        """dims-only is rejected (dimensions are model-dependent)."""
-        with pytest.raises(ValidationError, match="model"):
-            EmbedderOverrideConfig(dims=1024)
+    def test_dims_without_model_is_a_valid_layer(self) -> None:
+        """One layer of a merge chain, not the whole answer.
+
+        Pinning a width in runtime settings while the model comes from YAML
+        produces exactly this shape. Rejecting it here rejected the
+        documented manual-override workflow, and the error surfaced at boot
+        as "choose an embedding model" to an operator who had. Completeness
+        is checked once on the merged result, in ``resolve_embedder_config``.
+        """
+        c = EmbedderOverrideConfig(dims=1024)
+        assert c.dims == 1024
+        assert c.model is None
 
 
 # ── CompanyMemoryConfig ──────────────────────────────────────────

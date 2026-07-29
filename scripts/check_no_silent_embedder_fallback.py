@@ -37,9 +37,9 @@ import ast
 import io
 import sys
 import tokenize
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -105,6 +105,57 @@ def _called_name(node: ast.Call) -> str:
     return ""
 
 
+def _import_aliases(tree: ast.Module) -> dict[str, str]:
+    """Map local aliases back to the tracked names they were imported under.
+
+    Both rules read the name written at the call site, so an aliased import
+    was invisible to them: ``import HashingTextEmbedder as HTE`` followed by
+    ``HTE()`` matched neither the allowlist check nor the handler check, and
+    a one-word rename defeated the whole gate.
+
+    Returns:
+        Alias to canonical name, for tracked names only.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.asname and alias.name in _EMBEDDER_BUILDERS:
+                    aliases[alias.asname] = alias.name
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                tail = alias.name.rsplit(".", 1)[-1]
+                if alias.asname and tail in _EMBEDDER_BUILDERS:
+                    aliases[alias.asname] = tail
+    return aliases
+
+
+def _resolved_name(node: ast.Call, aliases: Mapping[str, str]) -> str:
+    """The call's target name with any local import alias undone.
+
+    Returns:
+        The canonical name where the call targets a tracked alias.
+    """
+    name = _called_name(node)
+    return aliases.get(name, name)
+
+
+def _local_functions(
+    tree: ast.Module,
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Every function defined in this module, by name.
+
+    Returns:
+        Name to definition. A later definition of the same name wins, which
+        matches what the interpreter would call.
+    """
+    found: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            found[node.name] = node
+    return found
+
+
 def _marker_lines(text: str, rel: str) -> set[int]:
     """The 1-indexed lines carrying a valid suppression marker.
 
@@ -143,37 +194,93 @@ def _is_valid_marker(comment: str) -> bool:
     return suffix.startswith("--") and bool(suffix[2:].strip())
 
 
-def _handler_builder_calls(tree: ast.Module) -> Iterator[ast.Call]:
-    """Yield embedder constructions reachable inside an exception handler.
+class _HandlerBuild(NamedTuple):
+    """One embedder construction a handler can reach."""
+
+    call: ast.Call
+    builder: str
+    via: str | None
+
+
+def _reachable_builds(
+    node: ast.AST,
+    aliases: Mapping[str, str],
+    functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    seen: set[str],
+    via: str | None = None,
+) -> Iterator[_HandlerBuild]:
+    """Yield embedder constructions *node* can reach, one call hop deep.
+
+    Following a call into a locally-defined function is what stops the
+    obvious way around this rule: moving the construction one line away,
+    into a helper the handler calls. Matching only the name written at the
+    handler saw ``return _fallback()`` as harmless.
+
+    Nested ``def``s inside a handler are deliberately still walked. Such a
+    definition is far more often the fallback itself than a deferred
+    callback that merely happens to be declared there, and the per-line
+    opt-out is the cheaper side of that trade.
+
+    Yields:
+        Each construction, with the helper it was reached through.
+    """
+    for inner in ast.walk(node):
+        if not isinstance(inner, ast.Call):
+            continue
+        name = _resolved_name(inner, aliases)
+        if name in _EMBEDDER_BUILDERS:
+            yield _HandlerBuild(call=inner, builder=name, via=via)
+            continue
+        target = functions.get(name)
+        if target is not None and name not in seen:
+            seen.add(name)
+            yield from _reachable_builds(target, aliases, functions, seen, via=name)
+
+
+def _handler_builder_calls(
+    tree: ast.Module,
+    aliases: Mapping[str, str],
+    functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+) -> Iterator[_HandlerBuild]:
+    """Yield embedder constructions reachable from exception handling.
+
+    Covers both the handler bodies and ``finally``. A ``finally`` block runs
+    on the failure path exactly as a handler does, so a construction there
+    substitutes one embedder for another just the same; walking only
+    ``handlers`` left that shape unpoliced.
 
     Only reachable statements count: a construction after an unconditional
-    ``raise`` in the same handler never runs, and reporting it would send a
+    ``raise`` in the same block never runs, and reporting it would send a
     developer to fix dead code.
 
     Yields:
-        Each embedder-building call inside a handler body.
+        Each embedder-building call an exception path can reach.
     """
     for node in ast.walk(tree):
         if not isinstance(node, ast.Try | ast.TryStar):
             continue
-        for handler in node.handlers:
-            for stmt in reachable_statements(handler.body):
-                for inner in ast.walk(stmt):
-                    if (
-                        isinstance(inner, ast.Call)
-                        and _called_name(inner) in _EMBEDDER_BUILDERS
-                    ):
-                        yield inner
+        blocks = [handler.body for handler in node.handlers]
+        if node.finalbody:
+            blocks.append(node.finalbody)
+        for block in blocks:
+            for stmt in reachable_statements(block):
+                yield from _reachable_builds(stmt, aliases, functions, set())
 
 
-def _builtin_constructions(tree: ast.Module) -> Iterator[ast.Call]:
+def _builtin_constructions(
+    tree: ast.Module,
+    aliases: Mapping[str, str],
+) -> Iterator[ast.Call]:
     """Yield every construction of the built-in embedder.
 
     Yields:
-        Each call constructing the built-in.
+        Each call constructing the built-in, under any local alias.
     """
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and _called_name(node) == _BUILTIN_CLASS:
+        if (
+            isinstance(node, ast.Call)
+            and _resolved_name(node, aliases) == _BUILTIN_CLASS
+        ):
             yield node
 
 
@@ -188,6 +295,8 @@ def _check_file(path: Path, rel: str) -> list[str]:
     """
     text, tree = read_and_parse(path)
     suppressed = _marker_lines(text, rel)
+    aliases = _import_aliases(tree)
+    functions = _local_functions(tree)
     violations: list[str] = []
 
     if rel not in _CONSTRUCTION_ALLOWLIST:
@@ -198,17 +307,18 @@ def _check_file(path: Path, rel: str) -> list[str]:
             f"_CONSTRUCTION_ALLOWLIST in this gate if the construction really "
             f"is honouring an explicit choice, or opt out per line with "
             f"'# {_SUPPRESSION_MARKER} -- <reason>'"
-            for call in _builtin_constructions(tree)
+            for call in _builtin_constructions(tree, aliases)
             if call.lineno not in suppressed
         )
 
     violations.extend(
-        f"{rel}:{call.lineno}: builds {_called_name(call)} inside an exception "
-        f"handler, which substitutes one embedder for another that failed. "
-        f"Let the failure propagate so memory reports itself off, or opt out "
-        f"per line with '# {_SUPPRESSION_MARKER} -- <reason>'"
-        for call in _handler_builder_calls(tree)
-        if call.lineno not in suppressed
+        f"{rel}:{build.call.lineno}: builds {build.builder} on an exception "
+        f"path{f' (via {build.via})' if build.via else ''}, which substitutes "
+        f"one embedder for another that failed. Let the failure propagate so "
+        f"memory reports itself off, or opt out per line with "
+        f"'# {_SUPPRESSION_MARKER} -- <reason>'"
+        for build in _handler_builder_calls(tree, aliases, functions)
+        if build.call.lineno not in suppressed
     )
     return violations
 

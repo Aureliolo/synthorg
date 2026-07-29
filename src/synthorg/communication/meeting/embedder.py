@@ -19,13 +19,19 @@ conflicts, not a fallback for a failed model: neither factory substitutes
 one embedder for another, and a missing extra raises.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 import numpy as np
 
 from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableError
 from synthorg.core.registry.strategy import StrategyRegistry
 from synthorg.memory.embedding.hashing import HashingTextEmbedder
+
+#: Bucket count for conflict scoring, narrower than the memory default.
+#: These vectors are compared in-process and never indexed, so the width
+#: buys nothing against a vector store's ceiling and only costs time over
+#: a corpus of meeting titles.
+_CONFLICT_HASH_DIMS: Final[int] = 256
 
 
 @runtime_checkable
@@ -66,9 +72,9 @@ def _build_hashing(**_kwargs: object) -> TextEmbedder:
     """Build the hashing embedder (the dependency-free default).
 
     Returns:
-        A :class:`HashingTextEmbedder`.
+        A :class:`HashingTextEmbedder` at the conflict-scoring width.
     """
-    return HashingTextEmbedder()
+    return HashingTextEmbedder(dims=_CONFLICT_HASH_DIMS)
 
 
 def _build_sentence_transformer(**_kwargs: object) -> TextEmbedder:

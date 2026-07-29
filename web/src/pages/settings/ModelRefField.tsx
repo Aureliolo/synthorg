@@ -1,13 +1,46 @@
 import { useEffect, useMemo } from 'react'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
+import type { SelectOptionGroup } from '@/components/ui/select-field'
 import { useProvidersStore } from '@/stores/providers'
+import {
+  BUILTIN_EMBEDDER_HINT,
+  BUILTIN_EMBEDDER_LABEL,
+  BUILTIN_EMBEDDER_MODEL,
+  BUILTIN_EMBEDDER_PROVIDER,
+  isBuiltinEmbedderProvider,
+} from '@/utils/builtin-embedder'
 import { decodeModelRef, encodeModelRef } from '@/utils/model-ref'
 import type { ProviderConfig } from '@/api/types/providers'
+
+/**
+ * The one MODEL_REF setting whose binding no provider serves. Without it here
+ * the picker lists connected providers only, so an operator who chose the
+ * built-in during setup could never see it, change to it, or be warned about
+ * it again afterwards.
+ */
+const EMBEDDER_SETTING_KEY = 'memory/embedder_model'
+
+const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
+  {
+    label: 'No embedding model',
+    options: [
+      {
+        value: JSON.stringify({
+          provider: BUILTIN_EMBEDDER_PROVIDER,
+          modelId: BUILTIN_EMBEDDER_MODEL,
+        }),
+        label: BUILTIN_EMBEDDER_LABEL,
+      },
+    ],
+  },
+]
 
 interface ModelRefFieldProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean | undefined
+  /** ``namespace/key``, so the embedder setting can offer the built-in. */
+  settingKey?: string | undefined
 }
 
 /**
@@ -17,7 +50,12 @@ interface ModelRefFieldProps {
  * that happens to serve the id. Sources the live provider catalogue from the
  * providers store (hydrated on mount when empty).
  */
-export function ModelRefField({ value, onChange, disabled }: ModelRefFieldProps) {
+export function ModelRefField({
+  value,
+  onChange,
+  disabled,
+  settingKey,
+}: ModelRefFieldProps) {
   const providers = useProvidersStore((s) => s.providers)
   const listLoading = useProvidersStore((s) => s.listLoading)
   const fetchProviders = useProvidersStore((s) => s.fetchProviders)
@@ -32,6 +70,7 @@ export function ModelRefField({ value, onChange, disabled }: ModelRefFieldProps)
   )
 
   const { provider, modelId } = useMemo(() => decodeModelRef(value), [value])
+  const isEmbedder = settingKey === EMBEDDER_SETTING_KEY
 
   return (
     <AgentModelPicker
@@ -43,6 +82,12 @@ export function ModelRefField({ value, onChange, disabled }: ModelRefFieldProps)
       }
       disabled={disabled}
       hideLabel
+      extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}
+      hint={
+        isEmbedder && isBuiltinEmbedderProvider(provider)
+          ? BUILTIN_EMBEDDER_HINT
+          : undefined
+      }
     />
   )
 }
