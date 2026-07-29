@@ -200,41 +200,41 @@
       },
       {
         "name": "ncurses-terminfo-base",
-        "url": "https://packages.wolfi.dev/os/x86_64/ncurses-terminfo-base-6.6.20260718-r0.apk",
-        "version": "6.6.20260718-r0",
+        "url": "https://packages.wolfi.dev/os/x86_64/ncurses-terminfo-base-6.6.20260725-r0.apk",
+        "version": "6.6.20260725-r0",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10349",
-          "checksum": "sha1-ohry9iJ9EPiq1h84PvmLK0L3Ne8="
+          "range": "bytes=0-10344",
+          "checksum": "sha1-U7SYCoOewVJdXDLzjgZgxgQmuHI="
         },
         "data": {
-          "range": "bytes=10350-118080",
-          "checksum": "sha256-4MGGnP2I2FqS0SllL0xvWMGCuF6BAUzpjEaQ0k3BFu8="
+          "range": "bytes=10345-118111",
+          "checksum": "sha256-qLblR/bssHvcCvyuRhQFCaXoLC4uc3EbapeN48qdoN0="
         },
-        "checksum": "Q1ohry9iJ9EPiq1h84PvmLK0L3Ne8="
+        "checksum": "Q1U7SYCoOewVJdXDLzjgZgxgQmuHI="
       },
       {
         "name": "ncurses",
-        "url": "https://packages.wolfi.dev/os/x86_64/ncurses-6.6.20260718-r0.apk",
-        "version": "6.6.20260718-r0",
+        "url": "https://packages.wolfi.dev/os/x86_64/ncurses-6.6.20260725-r0.apk",
+        "version": "6.6.20260725-r0",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10489",
-          "checksum": "sha1-0gyrR0IeyJCrMsHGLqw8bscyewQ="
+          "range": "bytes=0-10491",
+          "checksum": "sha1-yu52cGNrMGFOHpxzuLK24b3Vm3A="
         },
         "data": {
-          "range": "bytes=10490-621086",
-          "checksum": "sha256-HrQRncGKYRcErxKaVUr30rsWcK5Xpv4iSCpBMOzPGRI="
+          "range": "bytes=10492-621204",
+          "checksum": "sha256-T9fDHmJfavPIFwxyC4S9c91COoXA+akWn/aWwI/z3b0="
         },
-        "checksum": "Q10gyrR0IeyJCrMsHGLqw8bscyewQ="
+        "checksum": "Q1yu52cGNrMGFOHpxzuLK24b3Vm3A="
       },
       {
         "name": "readline",
@@ -694,41 +694,41 @@
       },
       {
         "name": "ncurses-terminfo-base",
-        "url": "https://packages.wolfi.dev/os/aarch64/ncurses-terminfo-base-6.6.20260718-r0.apk",
-        "version": "6.6.20260718-r0",
+        "url": "https://packages.wolfi.dev/os/aarch64/ncurses-terminfo-base-6.6.20260725-r0.apk",
+        "version": "6.6.20260725-r0",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10390",
-          "checksum": "sha1-tjfUXO9UKcQcmSd7xBIXPHgcGWM="
+          "range": "bytes=0-10384",
+          "checksum": "sha1-IMcQsedM9n6WtUl+0P2LFqkZZko="
         },
         "data": {
-          "range": "bytes=10391-118108",
-          "checksum": "sha256-B+OUuu13uVYtdrLfv4PLZHUtU4SglNdonIuVw4cQDPY="
+          "range": "bytes=10385-118138",
+          "checksum": "sha256-NjxR9BYKEZE0sRXI7cdreM4IJJL+L3KipxMeSr9s0x4="
         },
-        "checksum": "Q1tjfUXO9UKcQcmSd7xBIXPHgcGWM="
+        "checksum": "Q1IMcQsedM9n6WtUl+0P2LFqkZZko="
       },
       {
         "name": "ncurses",
-        "url": "https://packages.wolfi.dev/os/aarch64/ncurses-6.6.20260718-r0.apk",
-        "version": "6.6.20260718-r0",
+        "url": "https://packages.wolfi.dev/os/aarch64/ncurses-6.6.20260725-r0.apk",
+        "version": "6.6.20260725-r0",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-10526",
-          "checksum": "sha1-kC+mEsy2dPzn6oU6dGk7Rt2cn08="
+          "range": "bytes=0-10529",
+          "checksum": "sha1-wy4/fDiPvQxyGyzxL4QWt4un/l0="
         },
         "data": {
-          "range": "bytes=10527-612572",
-          "checksum": "sha256-TiSKciiAzJWA7dFiimB5QqX+2Q2uxMn+h9ckCQcXOdY="
+          "range": "bytes=10530-612755",
+          "checksum": "sha256-5pU7v/n4DfH8JR5lSGkQ0lXPCdHmA1sFR3ZiXlRz/t0="
         },
-        "checksum": "Q1kC+mEsy2dPzn6oU6dGk7Rt2cn08="
+        "checksum": "Q1wy4/fDiPvQxyGyzxL4QWt4un/l0="
       },
       {
         "name": "readline",
