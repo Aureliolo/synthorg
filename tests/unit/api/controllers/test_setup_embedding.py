@@ -1,4 +1,4 @@
-"""Tests for embedding auto-selection during setup."""
+"""Tests for binding the operator's chosen embedder during setup."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -7,11 +7,12 @@ import pytest
 
 from synthorg.api.controllers.setup._embedder_setup import (
     _set_model_if_blank,
-    auto_select_embedder,
+    bind_chosen_embedder,
     pick_decomposition_model_ref,
     pick_model_ref_for_tier,
 )
-from synthorg.memory.embedding.rankings import LMEB_RANKINGS
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 
@@ -26,84 +27,118 @@ def _mock_settings_svc() -> AsyncMock:
     return AsyncMock(spec=SettingsService)
 
 
-def _set_many_values(settings_svc: AsyncMock) -> dict[tuple[str, str], str]:
-    """Return the ``(namespace, key) -> value`` map from the single set_many call.
+def _settings_reading(values: dict[str, str]) -> AsyncMock:
+    """A settings mock answering the memory keys from *values*."""
+    settings_svc = _mock_settings_svc()
+    settings_svc.get = AsyncMock(
+        side_effect=lambda _ns, key: SimpleNamespace(value=values.get(key, "")),
+    )
+    return settings_svc
 
-    The embedder writes both keys atomically through ``set_many`` (one
-    transaction), so the items batch is the first positional argument.
-    """
-    calls = settings_svc.set_many.call_args_list
-    assert len(calls) == 1
-    items = calls[0].args[0]
-    return {(ns, key): value for ns, key, value in items}
+
+async def _probe_1536(
+    *,
+    provider: str,
+    model: str,
+    cost_tracker: CostTrackerProtocol | None = None,
+) -> int:
+    """A width probe standing in for a reachable model."""
+    _ = provider, model, cost_tracker
+    return 1536
 
 
 @pytest.mark.unit
-class TestAutoSelectEmbedder:
-    async def test_selects_best_model(self) -> None:
-        top = LMEB_RANKINGS[0]
-        settings_svc = _mock_settings_svc()
+class TestBindChosenEmbedder:
+    """Setup binds the operator's choice; it never makes one.
 
-        await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=(top.model_id,),
+    The failure this shape prevents is a model nobody selected quietly
+    serving recall, so every incomplete choice returns a reason instead.
+    """
+
+    async def test_proves_the_binding_embeds_and_persists_nothing(self) -> None:
+        """The width is measured to prove the binding, then discarded.
+
+        Persisting it into ``memory.embedder_dims`` would make a measurement
+        indistinguishable from the operator's own truncation pin, so a width
+        measured for one model would outlive it and silently truncate the
+        next model's vectors. Boot measures again, against whatever model is
+        bound then.
+        """
+        settings_svc = _settings_reading(
+            {"embedder_model": _bound("test-provider", "test-embed-001")}
         )
 
-        # Should have stored model and dims (not provider).
-        values = _set_many_values(settings_svc)
-        assert values[("memory", "embedder_model")] == top.model_id
-        assert values[("memory", "embedder_dims")] == str(top.output_dims)
-        assert ("memory", "embedder_provider") not in values
+        assert (
+            await bind_chosen_embedder(
+                settings_svc=settings_svc, measure_dims=_probe_1536
+            )
+            is None
+        )
 
-    async def test_no_models_available_does_not_raise(self) -> None:
-        """Auto-selection is best-effort -- no error on failure."""
-        settings_svc = _mock_settings_svc()
+        settings_svc.set_many.assert_not_called()
+        settings_svc.set.assert_not_called()
 
-        await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=(),
+    async def test_no_chosen_model_reports_and_writes_nothing(self) -> None:
+        settings_svc = _settings_reading({})
+
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc, measure_dims=_probe_1536
+        )
+
+        assert reason is not None
+        assert "no embedding model chosen" in reason
+        settings_svc.set_many.assert_not_called()
+
+    async def test_model_without_a_provider_is_reported(self) -> None:
+        settings_svc = _settings_reading({"embedder_model": "bare-model-id"})
+
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc, measure_dims=_probe_1536
+        )
+
+        assert reason is not None
+        assert "no provider bound" in reason
+        settings_svc.set_many.assert_not_called()
+
+    async def test_a_pinned_width_is_left_alone(self) -> None:
+        """Measuring over a pinned width would silently undo the request."""
+        settings_svc = _settings_reading(
+            {
+                "embedder_model": _bound("test-provider", "test-embed-001"),
+                "embedder_dims": "2000",
+            }
+        )
+
+        assert (
+            await bind_chosen_embedder(
+                settings_svc=settings_svc, measure_dims=_probe_1536
+            )
+            is None
         )
         settings_svc.set_many.assert_not_called()
 
-    async def test_no_lmeb_match_does_not_raise(self) -> None:
-        settings_svc = _mock_settings_svc()
-
-        await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=("unknown-model-xyz",),
+    async def test_an_unprobeable_model_is_reported_not_replaced(self) -> None:
+        settings_svc = _settings_reading(
+            {"embedder_model": _bound("test-provider", "unreachable")}
         )
+
+        async def _fails(
+            *,
+            provider: str,
+            model: str,
+            cost_tracker: CostTrackerProtocol | None = None,
+        ) -> int:
+            _ = provider, model, cost_tracker
+            msg = "unreachable"
+            raise MemoryEmbeddingError(msg)
+
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc, measure_dims=_fails
+        )
+
+        assert reason is not None
+        assert "width probe" in reason
         settings_svc.set_many.assert_not_called()
-
-    async def test_persists_model_and_dims_atomically(self) -> None:
-        top = LMEB_RANKINGS[0]
-        settings_svc = _mock_settings_svc()
-
-        await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=(top.model_id,),
-        )
-
-        # A single atomic batch carries both keys (no partial-write window).
-        values = _set_many_values(settings_svc)
-        assert ("memory", "embedder_model") in values
-        assert ("memory", "embedder_dims") in values
-
-    async def test_respects_operator_chosen_embedder(self) -> None:
-        """An already-set embedder is kept; only its dims are (re)resolved."""
-        top = LMEB_RANKINGS[0]
-        settings_svc = _mock_settings_svc()
-        settings_svc.get = AsyncMock(return_value=SimpleNamespace(value=top.model_id))
-
-        # A different model is also available, but the operator's choice wins.
-        await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=("some-other-embedder", top.model_id),
-        )
-
-        values = _set_many_values(settings_svc)
-        # The model is NOT rewritten; only the matching dims are persisted.
-        assert ("memory", "embedder_model") not in values
-        assert values[("memory", "embedder_dims")] == str(top.output_dims)
 
 
 @pytest.mark.unit

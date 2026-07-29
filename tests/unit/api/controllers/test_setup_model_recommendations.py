@@ -15,6 +15,10 @@ from synthorg.api.controllers.setup_model_recommendations import (
     SetupModelCandidate,
     SetupModelRecommendationsResponse,
 )
+from synthorg.memory.embedding.hashing import (
+    BUILTIN_EMBEDDER_MODEL,
+    BUILTIN_EMBEDDER_PROVIDER,
+)
 from synthorg.settings import (
     definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
 )
@@ -25,8 +29,8 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.type_validators import validate_by_type
 
 # Every per-feature model picker the wizard renders, paired with the setting it
-# writes to. The embedding picker is deliberately absent: ``memory.embedder_model``
-# is a plain STRING setting and keeps a bare model id.
+# writes to. ``memory.embedder_model`` is included: it carries no recommendation,
+# but it is a MODEL_REF like the rest and its write path has the same contract.
 _MODEL_REF_SETTINGS: tuple[tuple[str, str], ...] = (
     ("coordination", "decomposition_model"),
     ("research", "model"),
@@ -35,6 +39,7 @@ _MODEL_REF_SETTINGS: tuple[tuple[str, str], ...] = (
     ("chief_of_staff", "routing_model"),
     ("chief_of_staff", "narrative_model"),
     ("charter", "interview_model"),
+    ("memory", "embedder_model"),
 )
 
 
@@ -105,14 +110,45 @@ class TestCandidateRefIsWritable:
 
 
 @pytest.mark.unit
-class TestSetupModelRecommendationsResponse:
-    def test_embedding_recommendation_requires_its_dims(self) -> None:
-        with pytest.raises(ValidationError):
-            SetupModelRecommendationsResponse(embedding_recommended="embed-001")
+class TestBuiltinEmbedderRefIsWritable:
+    """The built-in is only reachable if its own ref survives the validator.
 
-    def test_embedding_dims_require_a_recommendation(self) -> None:
-        with pytest.raises(ValidationError):
-            SetupModelRecommendationsResponse(embedding_recommended_dims=1024)
+    It is the one option no provider serves, so it is also the one whose
+    ref nothing else would exercise: both surfaces that offer it write this
+    exact value, and a validator that refused it would make the operator's
+    only no-model option unselectable.
+    """
+
+    def test_the_builtin_ref_passes_write_validation(self) -> None:
+        definition = get_registry().get("memory", "embedder_model")
+        assert definition is not None
+        builtin = SetupModelCandidate(
+            provider=BUILTIN_EMBEDDER_PROVIDER,
+            model_id=BUILTIN_EMBEDDER_MODEL,
+        )
+        validate_by_type(definition, builtin.ref)
+
+    def test_the_builtin_ref_round_trips(self) -> None:
+        builtin = SetupModelCandidate(
+            provider=BUILTIN_EMBEDDER_PROVIDER,
+            model_id=BUILTIN_EMBEDDER_MODEL,
+        )
+        parsed = parse_model_ref(builtin.ref)
+        assert parsed.provider == BUILTIN_EMBEDDER_PROVIDER
+        assert parsed.model_id == BUILTIN_EMBEDDER_MODEL
+        assert parsed.is_bound
+
+
+@pytest.mark.unit
+class TestSetupModelRecommendationsResponse:
+    def test_embedding_carries_candidates_but_no_recommendation(self) -> None:
+        """The operator names the embedding model, so there is nothing to
+        recommend and no width to prefill alongside it."""
+        response = SetupModelRecommendationsResponse(
+            embedding_candidates=(_candidate(),)
+        )
+        assert response.embedding_candidates[0].ref
+        assert not hasattr(response, "embedding_recommended")
 
     def test_candidates_carry_refs_the_recommendations_can_match(self) -> None:
         candidate = _candidate()

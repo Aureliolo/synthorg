@@ -102,14 +102,19 @@ const MODEL_DEFAULT_REF = JSON.stringify({
   model_id: 'model-default',
 })
 
+const EMBED_DEFAULT_REF = JSON.stringify({
+  provider: 'test-provider',
+  model_id: 'embed-default',
+})
+
 /** Recommendations the Complete step's model panel loads on mount. */
 const MODEL_RECS: SetupModelRecommendationsResponse = {
   charter_recommended: MODEL_DEFAULT_REF,
   cos_recommended: MODEL_DEFAULT_REF,
   decomposition_recommended: MODEL_DEFAULT_REF,
-  embedding_candidates: ['embed-default'],
-  embedding_recommended: 'embed-default',
-  embedding_recommended_dims: 1024,
+  embedding_candidates: [
+    { provider: 'test-provider', model_id: 'embed-default', ref: EMBED_DEFAULT_REF },
+  ],
   model_ref_candidates: [
     { provider: 'test-provider', model_id: 'model-default', ref: MODEL_DEFAULT_REF },
   ],

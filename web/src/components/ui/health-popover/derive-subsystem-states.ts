@@ -8,6 +8,7 @@ export interface DerivedSubsystemStates {
   readonly wsState: SubsystemState
   readonly persistenceState: SubsystemState
   readonly busState: SubsystemState
+  readonly providersState: SubsystemState
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
   readonly overallState: SubsystemState
@@ -17,13 +18,23 @@ export interface DerivedSubsystemStates {
 const _MEMORY_STATES: Record<MemoryState, SubsystemState> = {
   durable: 'ok',
   degraded: 'degraded',
+  unreachable: 'down',
   off: 'down',
 }
 
+/**
+ * State of the HTTP layer itself, which is what this card claims to report.
+ *
+ * Derived from whether the fetch succeeded, never from the readiness verdict
+ * inside it: a parsed response is proof the API answered, so folding the
+ * aggregate verdict in here reported a fully-serving backend as unreachable
+ * whenever any one subsystem was degraded. The aggregate reaches the hero
+ * through the overall roll-up, which is where it belongs.
+ */
 function _apiStateFor(loadState: LoadState): SubsystemState {
   if (loadState.state === 'loading') return 'loading'
   if (loadState.state === 'error') return 'down'
-  if (loadState.state === 'ok') return loadState.data.status === 'ok' ? 'ok' : 'down'
+  if (loadState.state === 'ok') return 'ok'
   return 'unknown'
 }
 
@@ -71,8 +82,18 @@ function _memoryDetailFor(memory: MemoryHealth | null): string | undefined {
   return memory.detail ?? (backend === '' ? undefined : backend)
 }
 
-function _overallStateOf(states: readonly SubsystemState[]): SubsystemState {
+function _overallStateOf(
+  states: readonly SubsystemState[],
+  loadState: LoadState,
+): SubsystemState {
   if (states.includes('down')) return 'down'
+  // Above every softer verdict, because the probe fan-out timing out
+  // answers 503 with every component null, which reads as five `unknown`
+  // cards. Ranked below them this branch was unreachable on exactly the
+  // outage it exists to catch. Down, not degraded: the backend already
+  // decided it is not serving, and a refusal none of the cards explains
+  // is the least understood outage, not the mildest.
+  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'down'
   if (states.includes('degraded')) return 'degraded'
   if (states.includes('loading')) return 'loading'
   if (states.includes('unknown')) return 'unknown'
@@ -90,23 +111,23 @@ export function deriveHealthSubsystemStates(
   const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive)
   const persistence = loadState.state === 'ok' ? loadState.data.persistence : null
   const messageBus = loadState.state === 'ok' ? loadState.data.message_bus : null
+  const providers = loadState.state === 'ok' ? loadState.data.providers : null
   const memory = loadState.state === 'ok' ? loadState.data.memory : null
   const persistenceState = _booleanProbeState(loadState, persistence)
   const busState = _booleanProbeState(loadState, messageBus)
+  const providersState = _booleanProbeState(loadState, providers)
   const memoryState = _memoryStateFor(loadState, memory)
   const memoryDetail = _memoryDetailFor(memory)
-  const overallState = _overallStateOf([
-    apiState,
-    wsState,
-    persistenceState,
-    busState,
-    memoryState,
-  ])
+  const overallState = _overallStateOf(
+    [apiState, wsState, persistenceState, busState, providersState, memoryState],
+    loadState,
+  )
   return {
     apiState,
     wsState,
     persistenceState,
     busState,
+    providersState,
     memoryState,
     memoryDetail,
     overallState,

@@ -1802,7 +1802,3 @@ class TestListPersonalityPresets:
             "/api/v1/setup/personality-presets?cursor=garbage",
         )
         assert resp.status_code == 400
-
-
-# ``TestReadHasGpuSetting`` moved to test_setup_has_gpu.py to keep this
-# file under the project's file-length guideline.

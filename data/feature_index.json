@@ -917,6 +917,7 @@
       "settings_namespace": "memory",
       "state_slice_fields": [
         "backend",
+        "embedder_ref",
         "fine_tune_orchestrator",
         "service",
         "org_memory_backend",
@@ -1476,6 +1477,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-24T22:47:22.197592Z",
+  "generated_at": "2026-07-29T05:34:06.975354Z",
   "schema_version": 1
 }

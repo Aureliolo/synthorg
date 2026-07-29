@@ -27,6 +27,17 @@ class TextEmbedder(Protocol):
         """
         ...
 
+    @property
+    def model_ref(self) -> str:
+        """The provider-qualified identifier of what is embedding.
+
+        Part of the port because the health surface has to name which
+        embedder is serving: an operator reading "degraded" needs to know
+        whether that is a wide model without an index or the built-in
+        lexical one.
+        """
+        ...
+
     async def embed_many(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
         """Embed a batch of texts, preserving input order.
 

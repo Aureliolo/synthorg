@@ -1,11 +1,14 @@
 # module-kind: code
-"""Embedder auto-selection and template-driven agent creation.
+"""Template-driven agent creation and embedder binding.
 
 Expands template agents, matches models to tiers, persists the agent
-array, collects provider model IDs, and ranks an embedding model for
-the memory subsystem. The agents-settings write reuses the shared
-``AGENT_LOCK`` so it serialises against the setup controllers'
+array, collects provider model IDs, and measures the width of the
+embedding model the operator chose. The agents-settings write reuses the
+shared ``AGENT_LOCK`` so it serialises against the setup controllers'
 read-modify-write paths.
+
+Nothing here chooses an embedding model. Setup binds the operator's
+choice or reports that none was made.
 """
 
 import asyncio
@@ -25,9 +28,13 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.memory.embedding.rankings import DeploymentTier
-from synthorg.memory.embedding.selector import EmbeddingSelection
+from synthorg.memory.embedding.probe import probe_embedder_dims
+from synthorg.memory.embedding.resolve import DimsProbe
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_PROBE_FAILED,
+    MEMORY_EMBEDDER_UNRESOLVED,
+)
 from synthorg.observability.events.setup import (
     SETUP_FEATURE_MODEL_SELECT_FAILED,
     SETUP_FEATURE_MODEL_SELECTED,
@@ -37,7 +44,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import provider_management_of
-from synthorg.settings.model_ref import ModelRef, serialize_model_ref
+from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.templates.loader import LoadedTemplate
@@ -55,12 +62,11 @@ _PER_FEATURE_MODEL_SETTINGS: tuple[tuple[str, str, PromptPurposeId], ...] = (
     ("charter", "interview_model", PromptPurposeId.CHARTER_INTERVIEW),
 )
 
-# Inverted-convention result from ``auto_select_embedder``: ``None``
-# means success (a model was ranked and persisted); a ``str`` carries
-# the human-readable failure reason. Aliased here so the call site
-# can pass the result directly to
-# ``SetupCompleteResponse.embedder_failure_reason`` without re-stating
-# the inversion at every call.
+# Inverted-convention result from ``bind_chosen_embedder``: ``None`` means
+# the operator's chosen model answered a probe; a ``str`` carries the
+# human-readable failure reason. Aliased here so the call site can pass the
+# result directly to ``SetupCompleteResponse.embedder_failure_reason``
+# without re-stating the inversion at every call.
 type EmbedderSelectResult = str | None
 
 
@@ -387,144 +393,100 @@ async def collect_provider_models(
         return ()
 
 
-async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
-    """Extract model IDs from provider configs for embedding selection.
-
-    The bare-id projection of :func:`collect_provider_models`, for the
-    embedding picker and ranking helpers whose setting is a plain string.
-
-    Returns:
-        Tuple of model ids across all configured providers.
-    """
-    return tuple(model_id for _, model_id in await collect_provider_models(app_state))
-
-
-async def auto_select_embedder(
+async def bind_chosen_embedder(
     *,
     settings_svc: SettingsServiceProtocol,
-    available_model_ids: tuple[str, ...],
-    provider_preset_name: str | None = None,
-    has_gpu: bool | None = None,
+    measure_dims: DimsProbe = probe_embedder_dims,
 ) -> EmbedderSelectResult:
-    """Auto-select an embedding model and persist the choice.
+    """Prove the embedder the operator chose can actually embed.
 
-    Best-effort: logs a warning but does not raise on failure.
-    Called during setup completion after providers are validated.
+    Nothing is selected here. An operator who chose no model gets memory
+    off and a reason saying so, never a model picked on their behalf and
+    never the built-in embedder standing in for one.
+
+    Called during setup completion, after providers are validated, so the
+    probe reaches a provider that is known to work, and a binding that
+    cannot embed is reported while the operator is still in setup rather
+    than at the first memory write.
+
+    The measured width is deliberately not persisted.
+    ``memory.embedder_dims`` is the operator's own truncation pin, and
+    writing a measurement into it makes the two indistinguishable: a width
+    measured for one model then outlives it, and the next model's vectors
+    are silently truncated to it as though that had been asked for. The
+    width is measured again at boot, against whatever model is bound then.
 
     Args:
-        settings_svc: Settings service for persisting the selection.
-        available_model_ids: Model IDs discovered from providers.
-        provider_preset_name: Provider preset for tier inference.
-        has_gpu: Whether the host has a GPU.
+        settings_svc: Settings service for reading the operator's choice.
+        measure_dims: Probe used to exercise the chosen model.
 
     Returns:
-        ``None`` on success (a model was ranked and persisted), or a
-        short human-readable failure reason string when selection or
-        persistence failed. The inverted convention (None = success,
-        str = failure) keeps the caller free to pass the result
-        directly to ``SetupCompleteResponse.embedder_failure_reason``.
+        ``None`` on success, or a short human-readable reason string when
+        no model was chosen, the pair was incomplete, or the model could
+        not be probed. The inverted convention (None = success, str =
+        failure) keeps the caller free to pass the result straight to
+        ``SetupCompleteResponse.embedder_failure_reason``.
     """
-    from synthorg.memory.embedding.selector import (  # noqa: PLC0415
-        infer_deployment_tier,
-        select_embedding_model,
-    )
-
-    # Respect an operator-chosen embedder (e.g. set via the wizard's override):
-    # keep the chosen model rather than clobbering it with an auto-selection,
-    # but resolve embedder_dims for that model so the vector store is
-    # provisioned with the right dimensionality (ingest captures the real dims
-    # later if they differ). A model in no ranking leaves dims untouched.
-    existing = await settings_svc.get("memory", "embedder_model")
-    if isinstance(existing.value, str) and existing.value.strip():
-        await _sync_chosen_embedder_dims(settings_svc, existing.value)
-        return None
-
-    tier = infer_deployment_tier(provider_preset_name, has_gpu=has_gpu)
-    # The selector falls back to all tiers internally when the inferred tier
-    # has no ranked match, so a single call covers the CPU-host case too.
-    ranking = select_embedding_model(available_model_ids, deployment_tier=tier)
-    return await _persist_selected_embedder(
-        settings_svc, ranking, tier, available_count=len(available_model_ids)
-    )
-
-
-async def _sync_chosen_embedder_dims(
-    settings_svc: SettingsServiceProtocol,
-    chosen_model: str,
-) -> None:
-    """Persist ``embedder_dims`` for an operator-chosen embedder, if ranked.
-
-    A model in no ranking leaves dims untouched (ingest captures the real dims
-    later at ingest time).
-    """
-    from synthorg.memory.embedding.selector import (  # noqa: PLC0415
-        select_embedding_model,
-    )
-
-    chosen = select_embedding_model((chosen_model,))
-    if chosen is not None:
-        await settings_svc.set_many(
-            [("memory", "embedder_dims", str(chosen.output_dims))],
-            expected_updated_at_map={},
-        )
-
-
-async def _persist_selected_embedder(
-    settings_svc: SettingsServiceProtocol,
-    ranking: EmbeddingSelection | None,
-    tier: DeploymentTier,
-    *,
-    available_count: int,
-) -> EmbedderSelectResult:
-    """Persist the auto-selected embedder model + dims in one transaction.
-
-    Returns:
-        ``None`` on success, or a human-readable failure reason when nothing
-        ranked or the persist failed.
-    """
-    from synthorg.observability.events.memory import (  # noqa: PLC0415
-        MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-        MEMORY_EMBEDDER_AUTO_SELECTED,
-    )
-
-    if ranking is None:
-        reason = "no ranked embedding model available for configured providers"
+    ref = parse_model_ref(await _setting_text(settings_svc, "embedder_model"))
+    provider, model = ref.provider, ref.model_id
+    if not model:
+        reason = "no embedding model chosen; agents will run without recall"
         logger.warning(
-            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-            available_models=available_count,
-            tier=tier.value,
-            reason=reason,
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="no_model_chosen",
+            remedy="set memory.embedder_model to a provider-bound reference",
         )
         return reason
-    try:
-        # Persist both keys in one transaction so a mid-write failure cannot
-        # leave embedder_model set without a matching embedder_dims. The empty
-        # CAS map keeps the unconditional upsert semantics of two ``set`` calls.
-        await settings_svc.set_many(
-            [
-                ("memory", "embedder_model", ranking.model_id),
-                ("memory", "embedder_dims", str(ranking.output_dims)),
-            ],
-            expected_updated_at_map={},
+    if not provider:
+        reason = (
+            f"embedding model {model!r} has no provider bound to it; "
+            f"set memory.embedder_model to a provider-bound reference"
         )
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="model_missing_provider",
+            model=model,
+            remedy="set memory.embedder_model to a provider-bound reference",
+        )
+        return reason
+
+    if await _setting_text(settings_svc, "embedder_dims"):
+        # An operator who pinned a width is asking for that width, usually
+        # to bring a wide model under the store's index ceiling. Probing
+        # would neither change nor validate that request.
+        return None
+
+    try:
+        await measure_dims(provider=provider, model=model)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        reason = "failed to persist embedder settings"
+        reason = f"embedding model {model!r} did not answer a width probe"
+        # The probe logs the call-level fault; this records the setup-level
+        # outcome, which is what an operator reading the completion warning
+        # will search for.
         logger.warning(
-            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+            MEMORY_EMBEDDER_PROBE_FAILED,
+            stage="setup_completion",
+            provider=provider,
+            model=model,
             reason=reason,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return reason
-    # INFO log emitted AFTER the persistence writes succeed so the event
-    # accurately reflects committed state.
-    logger.info(
-        MEMORY_EMBEDDER_AUTO_SELECTED,
-        model_id=ranking.model_id,
-        tier=tier.value,
-        ranking_source=ranking.source,
-        ranking_model=ranking.ranking_model_id,
-        dims=ranking.output_dims,
-    )
     return None
+
+
+async def _setting_text(
+    settings_svc: SettingsServiceProtocol,
+    key: str,
+) -> str:
+    """Read one memory setting as trimmed text.
+
+    Returns:
+        The trimmed value, or an empty string when unset or non-textual.
+    """
+    value = (await settings_svc.get("memory", key)).value
+    return value.strip() if isinstance(value, str) else ""

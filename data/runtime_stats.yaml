@@ -1,9 +1,9 @@
 schema_version: 1
-last_generated_utc: '2026-07-28T10:55:10Z'
-generator_revision: 377b17d81
+last_generated_utc: '2026-07-29T05:35:33Z'
+generator_revision: a284dbc87
 stats:
   tests:
-    raw: 42968
+    raw: 42976
     rounded: 42000
     display: 42,000+
   providers_curated:
@@ -16,8 +16,8 @@ stats:
     raw: 28
     display: '28'
   convention_gates:
-    raw: 103
-    display: '103'
+    raw: 104
+    display: '104'
   mcp_tools:
     raw: 247
     display: '247'

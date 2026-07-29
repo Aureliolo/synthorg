@@ -19,6 +19,8 @@ Two rules shape this module:
   ``memory.backend``.
 """
 
+import contextlib
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -74,15 +76,15 @@ async def wire_memory_backend(app_state: AppState) -> None:
             logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
             return
 
+    backend = create_memory_backend(
+        memory_config,
+        deps=MemoryBackendDeps(
+            repository=persistence_of(app_state).memory_vectors,
+            embedder=embedder,
+            clock=app_state.clock,
+        ),
+    )
     try:
-        backend = create_memory_backend(
-            memory_config,
-            deps=MemoryBackendDeps(
-                repository=persistence_of(app_state).memory_vectors,
-                embedder=embedder,
-                clock=app_state.clock,
-            ),
-        )
         await backend.connect()
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
@@ -93,8 +95,23 @@ async def wire_memory_backend(app_state: AppState) -> None:
             error=safe_error_description(exc),
         )
         return
+    except BaseException:
+        # A shutdown delivered inside ``connect()`` leaves a half-open
+        # connection reachable only from this frame: the slice never
+        # takes it, and shutdown disconnects only what the slice holds.
+        # Best-effort because a failed cleanup must not replace the
+        # cancellation on its way out.
+        with contextlib.suppress(Exception):
+            await backend.disconnect()
+        raise
 
-    app_state.wire(MemoryStateSlice, backend=backend)
+    # Recorded on the slice because the health surface has to name which
+    # embedder is serving, and a connected backend no longer carries that.
+    app_state.wire(
+        MemoryStateSlice,
+        backend=backend,
+        embedder_ref=embedder.model_ref if embedder is not None else None,
+    )
     logger.info(
         MEMORY_BACKEND_WIRED,
         backend=memory_config.backend,
@@ -159,6 +176,14 @@ async def _wire_consolidation_scheduler(
             error=safe_error_description(exc),
         )
         return
+    except BaseException:
+        # ``start()`` arms a periodic loop before this frame records the
+        # scheduler on the slice. A shutdown delivered in between would
+        # leave that loop running with nothing able to reach it again,
+        # for the life of the process.
+        with contextlib.suppress(Exception):
+            await scheduler.stop()
+        raise
     # The scheduler base class emits its own started event, so this
     # records only the wiring outcome the health surface reads.
     app_state.wire(MemoryStateSlice, consolidation_scheduler=scheduler)
@@ -189,33 +214,36 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         The embedder, or ``None`` when no embedding model resolves, in
         which case the caller must not wire a backend.
     """
+    # The operator's choice is persisted to ``memory.embedder_*`` during
+    # setup, so at boot those settings are the whole answer. Nothing is
+    # selected here.
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.memory.embedding.probe import is_builtin_embedder  # noqa: PLC0415
     from synthorg.memory.embedding.resolve import (  # noqa: PLC0415
         resolve_embedder_config,
     )
-    from synthorg.memory.embedding.text_embedder import (  # noqa: PLC0415
-        ProviderTextEmbedder,
-    )
 
-    # Auto-selection from live provider models happens once, in the setup
-    # wizard, which persists the winner to ``memory.embedder_*``. At boot
-    # those settings are the source of truth, so an empty candidate list
-    # here is expected rather than a degraded path.
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     try:
-        config = resolve_embedder_config(
+        config = await resolve_embedder_config(
             app_state.config.memory,
             settings_override=await _settings_override(app_state),
+            cost_tracker=cost_tracker,
         )
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
         logger.error(
             MEMORY_EMBEDDER_UNRESOLVED,
             remedy=(
-                "set memory.embedder_provider and memory.embedder_model, "
-                "or connect a provider that offers an embedding model"
+                "choose an embedding model in setup, or set "
+                "memory.embedder_model to a provider-bound reference"
             ),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        # Memory stays off, loudly. Starting the built-in embedder here
+        # would turn a configuration the operator needs to fix into a
+        # working-looking system with materially weaker recall.
         return None
     logger.info(
         MEMORY_EMBEDDER_RESOLVED,
@@ -223,12 +251,18 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         model=config.model,
         dims=config.dims,
     )
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    if is_builtin_embedder(config.provider, config.model):
+        from synthorg.memory.embedding.hashing import (  # noqa: PLC0415
+            HashingTextEmbedder,
+        )
 
-    return ProviderTextEmbedder(
-        config,
-        cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        return HashingTextEmbedder(dims=config.dims)
+
+    from synthorg.memory.embedding.text_embedder import (  # noqa: PLC0415
+        ProviderTextEmbedder,
     )
+
+    return ProviderTextEmbedder(config, cost_tracker=cost_tracker)
 
 
 async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | None:
@@ -236,30 +270,34 @@ async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | No
 
     Returns:
         The override, or ``None`` when unset or unreadable, in which case
-        resolution falls back to the YAML config and auto-selection.
+        resolution reads the YAML config alone and refuses if that names
+        no model either.
     """
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     settings = app_state.slice(SettingsStateSlice).settings_service
     if settings is None:
         return None
     try:
-        provider = (await settings.get("memory", "embedder_provider")).value
-        model = (await settings.get("memory", "embedder_model")).value
+        raw_model = (await settings.get("memory", "embedder_model")).value
         dims = (await settings.get("memory", "embedder_dims")).value
-    except Exception as exc:  # noqa: BLE001 -- degrade to auto-selection
+    except Exception as exc:  # noqa: BLE001 -- reported, then the YAML config decides
         reraise_critical(exc)
         logger.warning(
             MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
-            fallback="auto_selection",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return None
-    if not provider and not model:
+    ref = parse_model_ref(raw_model) if raw_model else None
+    if ref is None and not dims:
         return None
+    # A ref that parsed to a model with no provider stays provider-less
+    # here on purpose: resolution refuses it by name rather than this
+    # layer quietly inventing the missing half.
     return EmbedderOverrideConfig(
-        provider=provider or None,
-        model=model or None,
+        provider=(ref.provider or None) if ref is not None else None,
+        model=(ref.model_id or None) if ref is not None else None,
         dims=int(dims) if dims else None,
     )

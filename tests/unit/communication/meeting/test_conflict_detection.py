@@ -20,7 +20,7 @@ from synthorg.communication.meeting.conflict_detection import (
     LlmJudgeDetector,
     StructuredComparisonDetector,
 )
-from synthorg.communication.meeting.embedder import HashingTextEmbedder
+from synthorg.memory.embedding.hashing import HashingTextEmbedder
 
 _DIVERGENT = json.dumps(
     {

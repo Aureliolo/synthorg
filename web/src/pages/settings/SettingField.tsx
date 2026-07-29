@@ -184,7 +184,14 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     return <JsonField value={value} onChange={onChange} disabled={disabled} />
   }
   if (definition.type === 'model_ref') {
-    return <ModelRefField value={value} onChange={onChange} disabled={disabled} />
+    return (
+      <ModelRefField
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        settingKey={compositeKey}
+      />
+    )
   }
   return <TextSettingField definition={definition} value={value} onChange={onChange} disabled={disabled} />
 }

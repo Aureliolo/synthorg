@@ -43,15 +43,41 @@ class MemoryState(StrEnum):
     Attributes:
         DURABLE: Wired on a store that survives restart and retrieves
             by meaning.
-        DEGRADED: Wired, but not fully: the ephemeral keyword store, a
-            failed probe, a missing dense index, or maintenance off.
-        OFF: Not wired. Usually no embedding model resolved, which the
+        DEGRADED: Wired and answering correctly, but not fully: the
+            ephemeral keyword store, the built-in lexical embedder, a
+            missing dense index, or maintenance off. Costs latency or
+            recall quality, never correctness.
+        UNREACHABLE: Wired but not answering. Reads and writes are
+            failing, so this is the one memory state that gates traffic.
+        OFF: Not wired. Usually no embedding model chosen, which the
             startup log records at ERROR.
     """
 
     DURABLE = "durable"
     DEGRADED = "degraded"
+    UNREACHABLE = "unreachable"
     OFF = "off"
+
+    @property
+    def readiness(self) -> bool | None:
+        """This state's contribution to the readiness verdict.
+
+        Carried here rather than in a branch table beside the caller so a
+        state added later cannot be given a meaning in one place and
+        forgotten in the other.
+
+        Returns:
+            ``False`` to block traffic, ``True`` to count as ready, and
+            ``None`` to abstain: a degradation still returns correct
+            results, so failing readiness for one would take a working
+            system offline and collapse "recall got slower" into "recall
+            stopped".
+        """
+        if self is MemoryState.UNREACHABLE:
+            return False
+        if self is MemoryState.DURABLE:
+            return True
+        return None
 
 
 class MemoryHealth(BaseModel):
@@ -95,8 +121,8 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
             detail=(
                 "No memory backend is wired, so agents start every task "
                 "with no recall. The usual cause is that no embedding "
-                "model resolved: set memory.embedder_provider and "
-                "memory.embedder_model, or connect a provider that "
+                "model resolved: set memory.embedder_model to a "
+                "provider-bound reference, or connect a provider that "
                 "offers an embedding model."
             ),
         )
@@ -116,6 +142,7 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
 def _runtime_degradation(
     backend_name: str,
     *,
+    builtin_embedder: bool,
     dense_available: bool,
     dense_indexed: bool,
     consolidation_running: bool,
@@ -129,6 +156,17 @@ def _runtime_degradation(
     Returns:
         The degradation to report, or ``None`` when memory is durable.
     """
+    if builtin_embedder:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Recall is running on the built-in embedder, which matches "
+                "shared vocabulary rather than meaning, so agents get "
+                "literal term overlap instead of related memories. Choose "
+                "an embedding model in settings to recall by meaning."
+            ),
+        )
     if not dense_available:
         return MemoryHealth(
             state=MemoryState.DEGRADED,
@@ -202,7 +240,7 @@ async def resolve_memory_health(
     )
     if not healthy:
         return MemoryHealth(
-            state=MemoryState.DEGRADED,
+            state=MemoryState.UNREACHABLE,
             backend=backend_name,
             detail=(
                 "The memory backend is wired but did not answer a health "
@@ -210,8 +248,11 @@ async def resolve_memory_health(
                 "database the memory tables live in."
             ),
         )
+    from synthorg.memory.embedding.hashing import BUILTIN_EMBEDDER_REF  # noqa: PLC0415
+
     degraded = _runtime_degradation(
         backend_name,
+        builtin_embedder=memory_slice.embedder_ref == BUILTIN_EMBEDDER_REF,
         dense_available=backend.supports_dense_search,
         dense_indexed=backend.dense_search_indexed,
         consolidation_running=memory_slice.consolidation_scheduler is not None,
