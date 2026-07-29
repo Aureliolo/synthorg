@@ -13,6 +13,7 @@ a model that cannot embed fails here, at selection, rather than at the
 first memory write.
 """
 
+import builtins
 from typing import Final
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -108,7 +109,7 @@ async def probe_embedder_dims(
             ),
             timeout_seconds=timeout_seconds,
         )
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except TimeoutError as exc:
         logger.warning(

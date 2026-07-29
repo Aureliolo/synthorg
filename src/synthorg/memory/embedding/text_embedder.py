@@ -20,6 +20,7 @@ quota shared with completion traffic, so every batch is attributed as
 spend an operator cannot see.
 """
 
+import builtins
 import math
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -107,7 +108,7 @@ class ProviderTextEmbedder:
                 ),
                 timeout_seconds=self._timeout_seconds,
             )
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except TimeoutError as exc:
             logger.warning(

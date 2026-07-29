@@ -467,7 +467,7 @@ async def _run_startup(  # noqa: PLR0913
                 build_dispatcher=_build_settings_dispatcher,
                 approval_timeout_scheduler=approval_timeout_scheduler,
             )
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError) as exc:
             reraise_critical(exc)
             await _abort_wired(exc, detail="settings_auto_wire_failed")
             raise
@@ -494,7 +494,7 @@ async def _run_startup(  # noqa: PLR0913
                 app_state,
                 bridge.plugin if bridge is not None else None,
             )
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
         reraise_critical(exc)
         await _abort_wired(exc, detail="workflow_observer_auto_wire_failed")
         raise
@@ -507,7 +507,7 @@ async def _run_startup(  # noqa: PLR0913
     # persistence-bound auto-wires.
     try:
         await _wire_approval_gate(persistence, app_state)
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
         reraise_critical(exc)
         # In provider-present mode the engine WILL run agents and park them; if
         # the shared gate is unset the runtime builds its own private gate from
@@ -515,14 +515,18 @@ async def _run_startup(  # noqa: PLR0913
         # runs can never be resumed via /approvals. A boot that "succeeds" into
         # that state is worse than a clear failure -- abort. Without a provider
         # no agent runs, so the review-gate degrade is acceptable and stays a
-        # warning.
-        logger.warning(
-            API_SERVICE_AUTO_WIRE_FAILED,
-            service="approval_gate",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        if has_active_provider(app_state):
+        # warning. A cancellation is never that degrade: boot is already being
+        # torn down, so it aborts whatever the provider state.
+        cancelled = isinstance(exc, asyncio.CancelledError)
+        if not cancelled:
+            logger.warning(
+                API_SERVICE_AUTO_WIRE_FAILED,
+                service="approval_gate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        if cancelled or has_active_provider(app_state):
+            await _abort_wired(exc, detail="approval_gate_auto_wire_failed")
             raise
 
     # Wire durable agent memory before anything downstream reads it, and
