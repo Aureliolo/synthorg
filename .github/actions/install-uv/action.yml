@@ -33,18 +33,25 @@ runs:
         # The installer fetches the script AND the binary; a stalled fetch
         # (connection opens, no data) would hang untouched until the job
         # timeout because retry_cmd retries a non-zero EXIT, not a hang. A
-        # per-attempt timeout converts that hang into a retryable 124. 45s is
-        # generous for a healthy fetch of a single binary and leaves the
-        # deadline room for a real retry: 45 + 15 + 45 = 105s.
-        RETRY_CMD_ATTEMPT_TIMEOUT: "45"
+        # per-attempt timeout converts that hang into a retryable 124.
+        #
+        # 90s, not the 45s this started at. A healthy fetch is a few seconds,
+        # so 45s read as generous, but it left no margin: when the CDN is
+        # merely slow rather than dead, every attempt lands just past 43s and
+        # the ladder burns all three on a download that was going to finish.
+        # Four jobs failed that way in one day, each retrying to exhaustion.
+        # The bound has to exceed a degraded-but-working fetch, not just a
+        # healthy one, or it converts slowness into failure.
+        RETRY_CMD_ATTEMPT_TIMEOUT: "90"
         # Without a deadline the ladder's worst case is 5 attempts x its
         # per-attempt timeout plus ~3m45s of backoff -- longer than every job
         # that installs uv (600s at most, 300s at least). The reaper would
         # always win, so the exhaustion error below was unreachable and a
         # stalled CDN surfaced as an opaque cancelled job. The bound must sit
         # above the healthy duration (a few seconds) and below the smallest
-        # job budget, with room for a second full attempt inside it.
-        RETRY_CMD_DEADLINE: "150"
+        # job budget, with room for a second full attempt inside it:
+        # 90 + 15 + 90 = 195s, under the 300s smallest job budget.
+        RETRY_CMD_DEADLINE: "240"
       run: | # zizmor: ignore[github-env] -- UV_UNMANAGED_INSTALL / $HOME are static paths, not untrusted input
         # pipefail so a curl failure (transient blip / DNS) propagates: without
         # it the pipe's exit is sh's, which exits 0 on empty EOF input, so

@@ -130,7 +130,7 @@ def _abort_handlers() -> list[ast.ExceptHandler]:
     """
     return [
         node
-        for node in ast.walk(_startup_tree())
+        for node in _own_body_nodes(_startup_tree())
         if isinstance(node, ast.ExceptHandler) and _abort_details(node)
     ]
 
