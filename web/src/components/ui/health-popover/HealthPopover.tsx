@@ -28,10 +28,13 @@ export interface HealthPopoverProps {
  */
 export function HealthPopover({ children }: HealthPopoverProps) {
   const [open, setOpen] = useState(false)
+  // Local, not store state: the "x ago" wall clock only ticks while this dialog
+  // is open and nothing else renders it, so keeping it in the shared store
+  // would re-render every health consumer once a second for a label none of
+  // them show.
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const loadState = useHealthStore((s) => s.loadState)
-  const nowMs = useHealthStore((s) => s.nowMs)
-  const setNowMs = useHealthStore((s) => s.setNowMs)
-  const fetchHealth = useHealthStore((s) => s.fetch)
+  const fetchHealth = useHealthStore((s) => s.fetchHealth)
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
@@ -45,19 +48,24 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   // Live-updating "X seconds ago" ticker. Starts when the dialog opens,
   // stops when it closes, so we never hold a background timer for a
   // closed modal. 1-second cadence is fine at this scale: the dialog
-  // shows at most 5 subsystem cards and a small metadata block.
+  // shows a handful of subsystem cards and a small metadata block.
   useEffect(() => {
     if (!open) return
     const id = setInterval(() => setNowMs(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [open, setNowMs])
+  }, [open])
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       setOpen(nextOpen)
+      // Re-read the clock here rather than in the ticker effect: opening is an
+      // event, and the value left behind by a previous open can be minutes old,
+      // which would show a stale "x ago" until the first tick landed.
+      if (!nextOpen) return
+      setNowMs(Date.now())
       // Fire and forget: the snapshot renders from the store, and the probe
       // never rejects, so there is nothing to await or handle here.
-      if (nextOpen) void fetchHealth()
+      void fetchHealth()
     },
     [fetchHealth],
   )

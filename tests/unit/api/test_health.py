@@ -1,9 +1,8 @@
 """Tests for liveness (/healthz), readiness (/readyz), and health (/health).
 
 ``/readyz`` is the unauthenticated supervisor probe: it returns the
-binary outcome plus version and uptime only, never the component
-topology. The per-component breakdown lives behind authentication on
-``/health``.
+binary outcome and uptime only, never the component topology and never the
+build version. Both live behind authentication on ``/health``.
 """
 
 from contextlib import AbstractContextManager
@@ -13,14 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
-from synthorg.api.controllers.health import (
+from synthorg.api.controllers._health_probes import (
     TelemetryStatus,
-    _memory_readiness,
-    _probe_persistence,
-    _resolve_memory_health,
-    _resolve_telemetry_status,
+    memory_readiness,
+    probe_persistence,
+    resolve_memory_state,
+    resolve_telemetry_status,
 )
+from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.health import (
@@ -46,7 +45,7 @@ class TestLiveness:
         body = response.json()
         assert body["success"] is True
         assert body["data"]["status"] == "ok"
-        assert "version" in body["data"]
+        assert "version" not in body["data"]
         assert body["data"]["uptime_seconds"] >= 0
 
     async def test_liveness_ignores_bus_down(
@@ -74,7 +73,6 @@ class TestReadinessProbe:
         body = response.json()
         assert body["success"] is True
         assert body["data"]["status"] == "ok"
-        assert "version" in body["data"]
         assert body["data"]["uptime_seconds"] >= 0
 
     async def test_body_carries_no_topology(
@@ -85,6 +83,13 @@ class TestReadinessProbe:
         body = response.json()["data"]
         for key in _TOPOLOGY_KEYS:
             assert key not in body, f"/readyz must not expose {key!r}"
+
+    async def test_body_carries_no_build_version(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The exact version tells an anonymous caller which advisories apply."""
+        response = await async_test_client.get("/api/v1/readyz")
+        assert "version" not in response.json()["data"]
 
 
 @pytest.mark.unit
@@ -130,9 +135,9 @@ class TestReadinessMemoryOverHttp:
     @staticmethod
     def _patch_memory(state: MemoryState) -> AbstractContextManager[AsyncMock]:
         return patch(
-            "synthorg.api.controllers.health._resolve_memory_health",
+            "synthorg.api.controllers.health.resolve_memory_state",
             AsyncMock(
-                spec=_resolve_memory_health,
+                spec=resolve_memory_state,
                 return_value=MemoryHealth(state=state, backend="sqlvector"),
             ),
         )
@@ -323,7 +328,7 @@ class TestMemoryHealth:
 
 @pytest.mark.unit
 class TestResolveMemoryHealth:
-    """``_resolve_memory_health`` probes the live backend, not just wiring.
+    """``resolve_memory_state`` probes the live backend, not just wiring.
 
     A wired backend can still have lost its store or its dense index
     after boot; keyword-only recall answers every query, so it reads as
@@ -357,14 +362,14 @@ class TestResolveMemoryHealth:
 
     async def test_healthy_dense_backend_with_scheduler_is_durable(self) -> None:
         app_state = self._app_state(backend=self._backend(healthy=True, dense=True))
-        result = await _resolve_memory_health(app_state)
+        result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.DURABLE
 
     async def test_failed_probe_is_unreachable(self) -> None:
         # Distinct from DEGRADED: reads and writes are failing, which is the
         # one memory condition that gates traffic.
         app_state = self._app_state(backend=self._backend(healthy=False, dense=True))
-        result = await _resolve_memory_health(app_state)
+        result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.UNREACHABLE
         assert result.detail is not None
 
@@ -373,7 +378,7 @@ class TestResolveMemoryHealth:
             backend=self._backend(healthy=True, dense=True),
             embedder_ref="builtin/hashing",
         )
-        result = await _resolve_memory_health(app_state)
+        result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.DEGRADED
         assert "built-in embedder" in (result.detail or "")
 
@@ -381,7 +386,7 @@ class TestResolveMemoryHealth:
         # Recall answers every query on keyword matches, so a lost dense
         # index must surface rather than read as healthy.
         app_state = self._app_state(backend=self._backend(healthy=True, dense=False))
-        result = await _resolve_memory_health(app_state)
+        result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.DEGRADED
         assert "keyword-only" in (result.detail or "")
 
@@ -389,12 +394,12 @@ class TestResolveMemoryHealth:
         app_state = self._app_state(
             backend=self._backend(healthy=True, dense=True), scheduler=None
         )
-        result = await _resolve_memory_health(app_state)
+        result = await resolve_memory_state(app_state)
         assert result.state is MemoryState.DEGRADED
         assert "maintenance" in (result.detail or "")
 
     async def test_unwired_backend_is_off(self) -> None:
-        result = await _resolve_memory_health(self._app_state(backend=None))
+        result = await resolve_memory_state(self._app_state(backend=None))
         assert result.state is MemoryState.OFF
 
 
@@ -416,15 +421,15 @@ class TestMemoryReadiness:
 
     def test_inmemory_never_blocks(self) -> None:
         health = self._health(backend="inmemory", state=MemoryState.DEGRADED)
-        assert _memory_readiness(health) is None
+        assert memory_readiness(health) is None
 
     def test_durable_backend_when_durable_is_ready(self) -> None:
         health = self._health(backend="sqlvector", state=MemoryState.DURABLE)
-        assert _memory_readiness(health) is True
+        assert memory_readiness(health) is True
 
     def test_unreachable_backend_fails_readiness(self) -> None:
         health = self._health(backend="sqlvector", state=MemoryState.UNREACHABLE)
-        assert _memory_readiness(health) is False
+        assert memory_readiness(health) is False
 
     def test_degraded_backend_does_not_block(self) -> None:
         # An unindexed dense column, or the built-in embedder, answers every
@@ -432,19 +437,19 @@ class TestMemoryReadiness:
         # offline over a latency or recall-quality cost the memory surface
         # already reports.
         health = self._health(backend="sqlvector", state=MemoryState.DEGRADED)
-        assert _memory_readiness(health) is None
+        assert memory_readiness(health) is None
 
     def test_unwired_backend_does_not_block(self) -> None:
         # OFF is a minimal or not-yet-configured deployment (the config
         # default is sqlvector), not a runtime failure, so it must not
         # fail the readiness probe of every memory-less stack.
         health = self._health(backend="sqlvector", state=MemoryState.OFF)
-        assert _memory_readiness(health) is None
+        assert memory_readiness(health) is None
 
 
 @pytest.mark.unit
 class TestProbePersistence:
-    """``_probe_persistence`` distinguishes absent-by-design from failure."""
+    """``probe_persistence`` distinguishes absent-by-design from failure."""
 
     def _app_state(self, *, backend: object, expected: bool) -> AppState:
         app_state = MagicMock(spec=AppState)
@@ -456,17 +461,17 @@ class TestProbePersistence:
     async def test_expected_but_absent_is_unavailable(self) -> None:
         # A configured-but-absent backend is a real failure, not a
         # deliberately persistence-less dev run.
-        result = await _probe_persistence(self._app_state(backend=None, expected=True))
+        result = await probe_persistence(self._app_state(backend=None, expected=True))
         assert result is False
 
     async def test_unconfigured_absent_is_none(self) -> None:
-        result = await _probe_persistence(self._app_state(backend=None, expected=False))
+        result = await probe_persistence(self._app_state(backend=None, expected=False))
         assert result is None
 
     async def test_connected_backend_is_health_checked(self) -> None:
         backend = FakePersistenceBackend()
         await backend.connect()
-        result = await _probe_persistence(
+        result = await probe_persistence(
             self._app_state(backend=backend, expected=True)
         )
         assert result is True
@@ -479,21 +484,21 @@ class TestResolveTelemetryStatus:
     async def test_disabled_when_no_collector(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(collector=None)
-        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+        assert resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     async def test_enabled_when_collector_is_functional(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(
             collector=SimpleNamespace(is_functional=True)
         )
-        assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
+        assert resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
 
     async def test_disabled_when_collector_opted_out(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(
             collector=SimpleNamespace(is_functional=False)
         )
-        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+        assert resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     async def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
         """Enabled config + noop reporter must surface as ``disabled``."""
@@ -501,7 +506,7 @@ class TestResolveTelemetryStatus:
         app_state.slice.return_value = SimpleNamespace(
             collector=SimpleNamespace(enabled=True, is_functional=False)
         )
-        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+        assert resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
 
 @pytest.mark.unit

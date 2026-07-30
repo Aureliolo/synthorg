@@ -237,8 +237,8 @@ func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) {
 	hr := snap.healthData
 	if snap.isReady() {
 		out.Success(fmt.Sprintf(
-			"Backend healthy (v%s, uptime %s) -- all configured dependencies passing",
-			hr.Version, formatUptime(hr.Uptime)))
+			"Backend healthy (uptime %s) -- all configured dependencies passing",
+			formatUptime(hr.Uptime)))
 		return
 	}
 	out.Error(fmt.Sprintf(

@@ -79,6 +79,16 @@ HARDCODED_MOTION_DURATION_RE = re.compile(
     re.DOTALL,
 )
 
+# Arbitrary sub-grid pixel sizing on a Tailwind size/width/height utility
+# (``size-[5px]``, ``w-[6px]``). Anything this small is a marker dot, which has
+# its own token (``size-dot``); the density-aware spacing scale starts at 4px, so
+# an arbitrary value here is always a surface inventing its own odd pixel.
+# The lookbehind keeps ``max-w-[6px]`` / ``min-h-[2px]`` out: a bound on a box is
+# a layout constraint, not a glyph, so it is not the dot token's business.
+HARDCODED_DOT_SIZE_RE = re.compile(
+    r"(?<![\w-])(?:size|[wh])-\[(?P<px>[0-9](?:\.[0-9]+)?)px\]",
+)
+
 # BCP 47 tags used inside Intl or toLocale* calls. Covers the full
 # language-(script?)-(region?)-(variant*) shape so bypasses like
 # ``'zh-Hans-CN'``, ``'sr-Latn-RS'``, or ``'de-CH-1996'`` are caught,

@@ -33,7 +33,7 @@ from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence.auth_protocol import (
     LockoutRepository,
 )
-from synthorg.persistence.config import PostgresConfig
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.postgres._repository_wiring import (
     _PostgresRepositoryWiring,
@@ -130,12 +130,19 @@ class PostgresPersistenceBackend(
         return True
 
     @property
-    def config(self) -> PostgresConfig:
+    def config(self) -> SQLiteConfig | PostgresConfig:
         """Public read-only view of the backend's Postgres config.
 
         Exposed so callers needing the connection details (the
         backup-handler factory) do not have to reach for the
         private ``_config`` attribute.
+
+        Typed as the protocol's union rather than as this backend's own config,
+        so the public surface stays dialect-uniform: a caller narrows by
+        discriminating, which it has to do anyway to know what the details mean.
+
+        Returns:
+            This backend's ``PostgresConfig``.
         """
         return self._config
 

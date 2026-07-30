@@ -12,6 +12,7 @@ both the nonce and nonce-less branches with the appropriate key
 shape.
 """
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -281,7 +282,7 @@ class TestReceiveWebhookEndToEnd:
         ``_publish_with_durable_idempotency`` for assertion.
         """
 
-        async def fake_get_connection_or_404(
+        async def fake_get_verified_connection(
             state: object,
             connection_name: str,
         ) -> object:
@@ -301,10 +302,15 @@ class TestReceiveWebhookEndToEnd:
         async def fake_verify_signature(
             *,
             catalog: object,
-            connection_name: str,
-            connection_type: str,
+            connection: object,
             body: bytes,
             headers: dict[str, str],
+        ) -> None:
+            return None
+
+        def fake_read_delivery_id(
+            headers: dict[str, str],
+            connection_type: object,
         ) -> None:
             return None
 
@@ -319,7 +325,8 @@ class TestReceiveWebhookEndToEnd:
             *,
             state: object,
             connection_name: str,
-            nonce: str | None,
+            dedup_key: str,
+            delivery_id: str | None,
             timestamp: object,
         ) -> None:
             return None
@@ -331,9 +338,10 @@ class TestReceiveWebhookEndToEnd:
             return {"status": "accepted", "event_type": kwargs["event_type"]}
 
         for name, fn in (
-            ("_get_connection_or_404", fake_get_connection_or_404),
+            ("_get_verified_connection", fake_get_verified_connection),
             ("_enforce_max_payload", fake_enforce_max_payload),
             ("_verify_signature", fake_verify_signature),
+            ("_read_delivery_id", fake_read_delivery_id),
             ("_parse_timestamp", fake_parse_timestamp),
             ("_check_replay_or_freshness", fake_check_replay_or_freshness),
             ("_publish_with_durable_idempotency", spy_publish_with_durable_idempotency),
@@ -404,28 +412,52 @@ class TestReceiveWebhookEndToEnd:
         )
         return captured
 
-    async def test_nonce_branch_flows_through_idempotency(
+    async def test_a_header_nonce_cannot_change_the_idempotency_key(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Header-supplied nonce reaches ``_publish_with_durable_idempotency``."""
+        """A supplied nonce is ignored for keying, which is what stops replay.
+
+        No verifier signs ``X-Nonce`` (the HMAC schemes cover the body only, and
+        GitLab's token scheme signs nothing), so keying on it let one captured
+        signed body publish repeatedly under fresh values. The key is the body
+        digest, so the header cannot move it.
+        """
+        body = b'{"x": 1}'
+        expected = f"sha256:{hashlib.sha256(body).hexdigest()}"
         captured = await self._invoke_branch(
             monkeypatch,
-            body_bytes=b'{"x": 1}',
-            request_headers={"x-nonce": "provider-nonce-123"},
+            body_bytes=body,
+            request_headers={"x-nonce": "attacker-chosen-value"},
         )
-        assert captured["nonce"] == "provider-nonce-123"
-        assert captured["dedup_source"] == "nonce"
+        assert captured["nonce"] == expected
+        assert captured["dedup_source"] == "body_sha256"
         assert captured["connection_name"] == "github-prod"
         assert captured["event_type"] == "issues.opened"
 
-    async def test_nonce_less_branch_flows_through_idempotency_with_sha256(
+    async def test_varying_the_nonce_reuses_one_key_for_one_body(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Missing nonce -> body SHA-256 reaches the helper as the key."""
-        import hashlib
+        """The replay attempt collapses onto the original delivery's key."""
+        body = b'{"event": "push", "ref": "main"}'
+        first = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={"x-nonce": "first"},
+        )
+        replay = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={"x-nonce": "second"},
+        )
+        assert first["nonce"] == replay["nonce"]
 
+    async def test_a_nonce_less_delivery_keys_on_the_body(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """No provider sends the generic nonce headers, so this is the real path."""
         body = b'{"event": "push", "ref": "main"}'
         expected_digest = hashlib.sha256(body).hexdigest()
         captured = await self._invoke_branch(

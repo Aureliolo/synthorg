@@ -26,7 +26,9 @@ import { useWebSocketStore } from '@/stores/websocket'
  * 2. health rolls up ``degraded``      -> amber  "system degraded"
  * 3. health not yet resolved           -> grey   "checking..." (initial
  *    mount -- do not escalate a disconnected WS to "reconnecting"
- *    before we have even confirmed the backend is up)
+ *    before we have even confirmed the backend is up), EXCEPT when the WS
+ *    reconnect budget is also exhausted, which means nothing has reached
+ *    the backend at all -> red "unable to connect"
  * 4. WS reconnect budget exhausted     -> red    "live stream offline"
  * 5. WS still reconnecting             -> amber  "reconnecting"
  * 6. health healthy AND WS connected   -> green  "all systems normal"
@@ -138,7 +140,8 @@ function HealthStatusButton() {
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
   const loadState = useHealthStore((s) => s.loadState)
-  const fetchHealth = useHealthStore((s) => s.fetch)
+  const fetchHealth = useHealthStore((s) => s.fetchHealth)
+  const cancelProbe = useHealthStore((s) => s.cancelProbe)
 
   // Polls the same ``/health`` snapshot the dialog this pill opens renders, and
   // rolls it up with the same derivation, so the two cannot report different
@@ -148,21 +151,26 @@ function HealthStatusButton() {
   const { start: startHealthPolling, stop: stopHealthPolling } = healthPolling
   useEffect(() => {
     startHealthPolling()
-    return () => stopHealthPolling()
-  }, [startHealthPolling, stopHealthPolling])
+    return () => {
+      // `stop` only cancels the next tick; the tick already in flight has to be
+      // released too, or it outlives this pill by the client's whole timeout.
+      stopHealthPolling()
+      cancelProbe()
+    }
+  }, [startHealthPolling, stopHealthPolling, cancelProbe])
 
-  // ``backendState``, not ``overallState``: the WebSocket priority in
+  // ``backendOnlyState``, not ``withWebSocketState``: the WebSocket priority in
   // ``resolveCombinedStatus`` is this pill's own, so folding the roll-up's
   // WebSocket verdict in here would count it twice under two orderings and let a
   // stream that has not connected yet report the system degraded before the
   // backend has answered once.
-  const { backendState } = deriveHealthSubsystemStates(
+  const { backendOnlyState } = deriveHealthSubsystemStates(
     loadState,
     wsConnected,
     wsReconnectExhausted,
     sseFallbackActive,
   )
-  const statusCfg = resolveCombinedStatus(backendState, wsConnected, wsReconnectExhausted)
+  const statusCfg = resolveCombinedStatus(backendOnlyState, wsConnected, wsReconnectExhausted)
   return (
     <HealthPopover>
       <button
@@ -250,7 +258,7 @@ function Divider() {
 function Dot({ color }: { color: string }) {
   return (
     <span
-      className={cn('mr-1.5 inline-block size-[5px] shrink-0 rounded-full', color)}
+      className={cn('mr-1.5 inline-block size-dot shrink-0 rounded-full', color)}
       aria-hidden="true"
     />
   )

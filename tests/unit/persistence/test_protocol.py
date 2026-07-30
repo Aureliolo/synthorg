@@ -38,6 +38,7 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportArchiveRepository,
 )
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.deliverable_receipt_protocol import (
@@ -1397,6 +1398,10 @@ class _FakeBackend:
     @property
     def kind(self) -> Literal["sqlite", "postgres"]:
         return "sqlite"
+
+    @property
+    def config(self) -> SQLiteConfig | PostgresConfig:
+        return SQLiteConfig(path=":memory:")
 
     @property
     def supports_conversational_approvals(self) -> bool:

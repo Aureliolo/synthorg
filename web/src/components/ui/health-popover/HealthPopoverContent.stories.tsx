@@ -11,8 +11,9 @@ const okStates: DerivedSubsystemStates = {
   providersState: 'ok',
   memoryState: 'ok',
   memoryDetail: 'sqlvector',
-  overallState: 'ok',
-  backendState: 'ok',
+  backupState: 'ok',
+  withWebSocketState: 'ok',
+  backendOnlyState: 'ok',
   wsDetail: undefined,
 }
 
@@ -27,8 +28,9 @@ const degradedStates: DerivedSubsystemStates = {
   providersState: 'ok',
   memoryState: 'degraded',
   memoryDetail: 'Ephemeral keyword backend; recall is lost on restart.',
-  overallState: 'down',
-  backendState: 'down',
+  backupState: 'degraded',
+  withWebSocketState: 'down',
+  backendOnlyState: 'down',
   wsDetail: 'auto-reconnecting',
 }
 
@@ -40,8 +42,9 @@ const loadingStates: DerivedSubsystemStates = {
   providersState: 'loading',
   memoryState: 'loading',
   memoryDetail: undefined,
-  overallState: 'loading',
-  backendState: 'loading',
+  backupState: 'loading',
+  withWebSocketState: 'loading',
+  backendOnlyState: 'loading',
   wsDetail: undefined,
 }
 
@@ -83,6 +86,7 @@ const OK_PAYLOAD = {
   providers: true,
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
+  backup: true,
   version: '0.6.4',
   uptime_seconds: 847_200,
 }
@@ -110,7 +114,7 @@ export const Degraded: Story = {
 
 export const Loading: Story = {
   args: {
-    loadState: { state: 'loading' },
+    loadState: { state: 'loading', previous: null },
     states: loadingStates,
     fetchedAtLabel: null,
     onRefresh: () => undefined,
@@ -124,7 +128,7 @@ export const LoadError: Story = {
       message: 'Service unavailable',
       fetchedAt: STORY_FETCHED_AT,
     },
-    states: { ...okStates, apiState: 'down', overallState: 'down', backendState: 'down' },
+    states: { ...okStates, apiState: 'down', withWebSocketState: 'down', backendOnlyState: 'down' },
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
   },

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnectionTypeMetadata } from '@/api/types/integrations'
-import {
-  connectionTypeUsesWebhookReceipts,
-  webhookSecretFieldFor,
-} from '@/api/types/integrations'
+import { webhookSecretFieldFor } from '@/api/types/integrations'
 import {
   type ConnectionFieldSpec,
   conditionMet,
@@ -15,6 +12,8 @@ import {
   validateConnectionField,
   validateConnectionName,
 } from '@/pages/connections/connection-fields'
+import { webhookRetentionApplies } from '@/pages/connections/connection-submit'
+import type { ConnectionFormState } from '@/pages/connections/connection-form-state'
 
 const databaseMeta: ConnectionTypeMetadata = {
   connection_type: 'database',
@@ -469,7 +468,6 @@ describe('webhook receipt applicability', () => {
 
   it('names none for a type that cannot', () => {
     expect(webhookSecretFieldFor('database', registry)).toBeNull()
-    expect(connectionTypeUsesWebhookReceipts('database', registry)).toBe(false)
   })
 
   it('names none before the registry has loaded', () => {
@@ -494,5 +492,68 @@ describe('webhook receipt applicability', () => {
     const spec = resolveConnectionSpec(genericHttpMeta)
     const field = spec.credentialFields.find((f) => f.key === 'signing_secret')
     expect(isFieldRequired(field as ConnectionFieldSpec, { vendor: 'custom' })).toBe(false)
+  })
+})
+
+/**
+ * The rendered control and the submitted body must gate on one predicate.
+ *
+ * Gating them differently is how a value typed before a vendor switch rode along
+ * invisibly: the control disappeared while the type-level check still said the
+ * connection supported webhooks, so the stale value was still sent.
+ */
+describe('webhookRetentionApplies', () => {
+  const registry = [databaseMeta, genericHttpMeta]
+
+  function form(overrides: Partial<ConnectionFormState> = {}): ConnectionFormState {
+    return {
+      name: 'primary',
+      type: 'generic_http',
+      topLevel: {},
+      credentials: {},
+      metadata: { vendor: 'custom' },
+      webhookRetention: '',
+      sensitive: false,
+      allowedRepos: [],
+      ...overrides,
+    }
+  }
+
+  it('applies while the signing secret is visible', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    expect(webhookRetentionApplies(form(), spec, registry)).toBe(true)
+  })
+
+  it('stops applying once the vendor switches to a preset', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    const switched = form({ metadata: { vendor: 'example-preset' } })
+    expect(webhookRetentionApplies(switched, spec, registry)).toBe(false)
+  })
+
+  it('does not apply to a type that can never receive a webhook', () => {
+    const spec = resolveConnectionSpec(databaseMeta)
+    expect(webhookRetentionApplies(form({ type: 'database' }), spec, registry)).toBe(false)
+  })
+
+  it('does not apply before a type is chosen', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    expect(webhookRetentionApplies(form({ type: null }), spec, registry)).toBe(false)
+  })
+
+  it('does not apply before the registry has loaded', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    expect(webhookRetentionApplies(form(), spec, [])).toBe(false)
+  })
+
+  it('ignores a retention value left behind by a vendor switch', () => {
+    // The operator typed a value while the control was visible, then switched
+    // vendor. Nothing clears the form field, so the predicate is what stops the
+    // value being submitted for a connection that cannot accumulate receipts.
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    const stale = form({
+      metadata: { vendor: 'example-preset' },
+      webhookRetention: '30',
+    })
+    expect(webhookRetentionApplies(stale, spec, registry)).toBe(false)
   })
 })

@@ -56,6 +56,9 @@
   --spacing-section-gap: var(--so-density-section-gap);
   --spacing-grid-gap: var(--so-density-grid-gap);
 
+  /* Density-independent: a marker dot is a glyph, not layout breathing room. */
+  --spacing-dot: var(--so-dot);
+
   /* ---- Dialog widths (bridges --so-dialog-* into Tailwind max-w-*) ----
    * Tailwind v4 derives named max-w-* utilities from the --container-*
    * namespace, so these must live there for `max-w-dialog`,

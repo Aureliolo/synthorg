@@ -9,6 +9,7 @@ function okLoadState(
   memory: MemoryHealth,
   status: 'ok' | 'unavailable' = 'ok',
   providers: boolean | null = true,
+  backup: boolean | null = true,
 ): LoadState {
   return {
     state: 'ok',
@@ -19,6 +20,7 @@ function okLoadState(
       providers,
       telemetry: 'disabled',
       memory,
+      backup,
       version: '0.6.4',
       uptime_seconds: 1,
     },
@@ -43,7 +45,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
     expect(states.apiState).toBe('ok')
     // Degraded memory abstains from readiness, so it cannot be why the
     // backend refused: the refusal is unexplained, which is down.
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('reports the timed-out probe fan-out as down rather than unknown', () => {
@@ -61,6 +63,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
           providers: null,
           telemetry: 'disabled',
           memory: { state: 'durable', backend: 'sqlvector', detail: null },
+          backup: null,
           version: '0.6.4',
           uptime_seconds: 1,
         },
@@ -72,7 +75,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
     )
     expect(states.persistenceState).toBe('unknown')
     expect(states.busState).toBe('unknown')
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('reports the API down only when the fetch itself failed', () => {
@@ -83,7 +86,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
       false,
     )
     expect(states.apiState).toBe('down')
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('surfaces unreachable providers on their own card, not as a softened hero', () => {
@@ -102,7 +105,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
     )
     expect(states.providersState).toBe('down')
     expect(states.apiState).toBe('ok')
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('reports a readiness failure no card covers as down, not degraded', () => {
@@ -115,7 +118,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
       false,
       false,
     )
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('holds providers unknown when the deployment configures none', () => {
@@ -139,7 +142,7 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
     )
     expect(states.memoryState).toBe('ok')
     expect(states.memoryDetail).toBe('sqlvector')
-    expect(states.overallState).toBe('ok')
+    expect(states.withWebSocketState).toBe('ok')
   })
 
   it('drags the overall state down when memory runs on the ephemeral backend', () => {
@@ -155,15 +158,16 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
     )
     expect(states.memoryState).toBe('degraded')
     expect(states.memoryDetail).toBe('Recall is lost on restart.')
-    expect(states.overallState).toBe('degraded')
+    expect(states.withWebSocketState).toBe('degraded')
   })
 
   it('reports memory off as degraded, distinctly from unreachable', () => {
-    // Off means never wired; unreachable means wired and not answering. Reading
-    // both as down made the hero announce an outage over an embedding model
-    // nobody had chosen, and claimed the whole system was down while every
-    // other component served normally. Degraded still surfaces it, and the
-    // card's own detail says what to do.
+    // Off means never wired; unreachable means wired and not answering. Folding
+    // off into down would conflate an unconfigured optional capability with an
+    // operational failure, and roll the whole deployment up as down for want of
+    // an embedding model nobody has chosen, even though every other component
+    // is serving normally. Degraded still surfaces it, and the card's own
+    // detail says what to do.
     const states = deriveHealthSubsystemStates(
       okLoadState({
         state: 'off',
@@ -175,7 +179,7 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
       false,
     )
     expect(states.memoryState).toBe('degraded')
-    expect(states.overallState).toBe('degraded')
+    expect(states.withWebSocketState).toBe('degraded')
     expect(states.memoryDetail).toBe('No embedding model resolved.')
   })
 
@@ -211,7 +215,7 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
       false,
     )
     expect(states.memoryState).toBe('down')
-    expect(states.overallState).toBe('down')
+    expect(states.withWebSocketState).toBe('down')
   })
 
   it('falls back to no detail when the backend name is blank', () => {

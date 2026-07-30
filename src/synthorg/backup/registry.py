@@ -17,6 +17,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.registry.strategy import StrategyRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import BACKUP_HANDLER_REGISTRATION_FAILED
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backup_utils import ensure_pg_tools_available
 
 logger = get_logger(__name__)
@@ -26,6 +27,7 @@ def _build_sqlite_handler(
     config: RootConfig,
     *,
     resolved_db_path: object,
+    connected_config: SQLiteConfig | PostgresConfig | None = None,
 ) -> ComponentHandler:
     """Construct a SQLite persistence backup handler from RootConfig.
 
@@ -42,7 +44,10 @@ def _build_sqlite_handler(
     """
     from pathlib import Path  # noqa: PLC0415
 
-    db_path = resolved_db_path or Path(config.persistence.sqlite.path)
+    connected_path = (
+        connected_config.path if isinstance(connected_config, SQLiteConfig) else None
+    )
+    db_path = resolved_db_path or connected_path or config.persistence.sqlite.path
     if not isinstance(db_path, Path):
         db_path = Path(str(db_path))
     return SQLitePersistenceComponentHandler(db_path=db_path)
@@ -52,8 +57,17 @@ def _build_postgres_handler(
     config: RootConfig,
     *,
     resolved_db_path: object,  # noqa: ARG001 -- unused, parity with sqlite signature
+    connected_config: SQLiteConfig | PostgresConfig | None = None,
 ) -> ComponentHandler:
-    """Construct a Postgres persistence backup handler from RootConfig.
+    """Construct a Postgres persistence backup handler.
+
+    Prefers the connection details of the backend that was actually
+    built over ``config.persistence.postgres``. An env-driven boot
+    (``SYNTHORG_DATABASE_URL``) parses its own config in
+    ``api/boot_persistence`` and never writes it back into
+    ``RootConfig``, whose ``postgres`` block then stays ``None`` (or,
+    worse, describes a stale database that a dump would silently
+    succeed against).
 
     Verifies ``pg_dump`` and ``pg_restore`` are on PATH before
     constructing the handler so missing tooling surfaces at factory
@@ -64,14 +78,20 @@ def _build_postgres_handler(
         A Postgres persistence ``ComponentHandler``.
 
     Raises:
-        BackupConfigurationError: When ``pg_dump`` / ``pg_restore`` are
+        BackupConfigurationError: When no Postgres connection details
+            are available from either source.
+        PgToolUnavailableError: When ``pg_dump`` / ``pg_restore`` are
             not available on PATH.
     """
-    pg_config = config.persistence.postgres
+    pg_config = (
+        connected_config
+        if isinstance(connected_config, PostgresConfig)
+        else config.persistence.postgres
+    )
     if pg_config is None:
         msg = (
-            "persistence.backend is 'postgres' but persistence.postgres is "
-            "None; supply Postgres connection details to enable backup."
+            "Postgres backup requires connection details, but neither the "
+            "connected backend nor persistence.postgres supplied any."
         )
         logger.error(
             BACKUP_HANDLER_REGISTRATION_FAILED,

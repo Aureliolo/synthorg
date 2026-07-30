@@ -39,6 +39,7 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.observability.events.backup import BACKUP_SERVICE_UNAVAILABLE
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
@@ -473,7 +474,22 @@ async def _safe_startup(  # noqa: PLR0913
                 )
                 raise
             started_meeting_scheduler = True
-        if backup_service is not None:
+        if backup_service is None:
+            # ``build_backup_service`` attempts construction on every boot
+            # regardless of ``backup.enabled``, so a ``None`` here means it
+            # failed. Recorded on the slice as expected-but-absent (the shape
+            # ``persistence_expected`` already uses) so ``/health`` can say
+            # backups are off: otherwise this boot runs with no backup coverage
+            # and no ``backup.*`` setting has a live consumer, and the only
+            # trace is one line from the factory.
+            app_state.wire(BackupStateSlice, expected=True)
+            logger.error(
+                BACKUP_SERVICE_UNAVAILABLE,
+                component="backup_service",
+                error="backup service could not be built; this boot has no "
+                "backup coverage and every backup.* setting is inert",
+            )
+        else:
             # Skip start() when the backup scheduler is already running
             # (shared-app test fixture re-enters startup). Also only flip
             # ``started_backup_service`` to ``True`` *after* a fresh ``start()``
@@ -483,7 +499,11 @@ async def _safe_startup(  # noqa: PLR0913
             _bs_already_running = getattr(_bs_scheduler, "is_running", False)
             try:
                 if app_state.slice(BackupStateSlice).service is None:
-                    app_state.wire(BackupStateSlice, service=backup_service)
+                    app_state.wire(
+                        BackupStateSlice,
+                        service=backup_service,
+                        expected=True,
+                    )
                 if not _bs_already_running:
                     await backup_service.start()
                     started_backup_service = True

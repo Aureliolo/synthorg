@@ -118,10 +118,10 @@ _r.register(
         default="0",
         description=(
             "Default retention window for webhook receipts (days)."
-            " 0 (the default) never sweeps: a receipt is the delivery"
-            " audit trail, so nothing discards one unless an operator asks"
-            " for a window. Per-connection overrides on the connection"
-            " itself take precedence when set."
+            " 0 (the default) never sweeps, so nothing is discarded unless an"
+            " operator asks for a window. Per-connection overrides on the"
+            " connection itself take precedence when set. No code path writes"
+            " a receipt yet, so this currently has nothing to sweep."
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,

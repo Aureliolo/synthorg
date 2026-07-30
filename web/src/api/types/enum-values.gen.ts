@@ -1251,6 +1251,13 @@ export const VELOCITY_CALC_TYPE_VALUES = [
 ] as const
 export type VelocityCalcType = (typeof VELOCITY_CALC_TYPE_VALUES)[number]
 
+export const WEBHOOK_INGEST_STATE_VALUES = [
+    'not_applicable',
+    'ready',
+    'unconfigured',
+] as const
+export type WebhookIngestState = (typeof WEBHOOK_INGEST_STATE_VALUES)[number]
+
 export const WORKFLOW_EDGE_TYPE_VALUES = [
     'sequential',
     'conditional_true',

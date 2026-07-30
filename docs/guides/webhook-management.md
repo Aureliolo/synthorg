@@ -1,92 +1,150 @@
 ---
 title: Webhook Management
-description: Register inbound webhook receivers, choose the right envelope shape, observe retries and idempotency.
+description: Give a connection a signing secret, POST a verified delivery, and understand what ingest accepts and refuses.
 ---
 
 # Webhook Management
 
-SynthOrg accepts inbound webhooks from external providers (GitHub, Stripe, Linear, etc.) at `/webhooks/{connection}`. Each receiver registers a connection record (transport, signing secret, replay window) and is handled by an integration-specific dispatcher that validates the typed envelope and routes the payload.
+SynthOrg accepts inbound webhooks at `/webhooks/{connection_name}/{event_type}`.
+There is no standalone webhook registration: ingest authenticates a delivery
+against the `signing_secret` credential on an existing connection, and a
+connection without one has no reachable inbound path.
+
+Verified deliveries are published to the `#webhooks` channel on the message bus,
+where `ExternalTriggerStrategy` matches the event name against configured
+ceremony triggers. The payload itself is not forwarded into any prompt.
+
+## Which connection types can receive one
+
+Only the types with a registered verifier: `github`, `gitlab`, `gitea`,
+`forgejo`, `slack`, `generic_http`, `a2a_peer`. Each exposes a `signing_secret`
+credential field, optional on all but `slack`. `generic_http` exposes it only for
+a custom vendor, because a vendor preset describes an API you call rather than
+one you hear from.
+
+`GET /api/v1/connections/types` reports this per type as `webhook_secret_field`:
+the field name when ingest is reachable, `null` when it can never be. Read it
+rather than keeping a list, so a client cannot drift from the verifier coverage.
+
+The full verifier table (algorithms, signature headers, delivery-id headers) is
+in [docs/design/integrations.md](../design/integrations.md).
 
 ## Envelope contract
 
-Wire shape: any JSON object. Inbound bodies route through `parse_typed("webhook.payload", body, WebhookEventPayload)` which enforces:
-
-- Object root (arrays, scalars, non-JSON bodies are rejected with HTTP 400).
-- Arbitrary keys via `ConfigDict(extra="allow")` so provider-specific schemas flow through unchanged.
-
-Details: [docs/reference/typed-boundaries.md](../reference/typed-boundaries.md) (webhook payload envelope section).
+Any JSON object. Inbound bodies route through
+`parse_typed("webhook.payload", body, WebhookEventPayload)`, which requires an
+object root (arrays, scalars and non-JSON are rejected 400) and allows arbitrary
+keys so provider schemas flow through unchanged. Details:
+[docs/reference/typed-boundaries.md](../reference/typed-boundaries.md).
 
 ## Configuration surface
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `integrations.webhooks.enabled` | bool | `false` | Master switch. |
-| `integrations.webhooks.replay_window_seconds` | int | `300` | Reject nonces older than this. |
-| `integrations.webhooks.max_payload_bytes` | int | `1048576` | Bound inbound body size. |
-| `integrations.webhooks.idempotency_ttl_seconds` | int | `86400` | Idempotency-key cache lifetime. |
+| `integrations.webhook_receipt_retention_days` | int | `0` | Receipt retention window in days; `0` never sweeps. |
 
-Connection records are stored per integration via `WebhookConnectionRepository`. Each connection carries `signing_secret`, `nonce_header`, `signature_header`, and a per-integration retry policy.
+The remaining knobs live on `RootConfig.integrations.webhooks` rather than the
+settings registry: `replay_window_seconds` (300), `max_payload_bytes` (1000000)
+and `rate_limit_rpm` (100). Signature verification is not configurable; it runs
+on every delivery.
 
-## Worked example: configure and POST
+## Worked example: give a connection a secret, then POST
 
-Inbound webhooks are verified against a `signing_secret` credential stored on an
-integration connection (there is no standalone webhook-registration call). Create the
-connection through `POST /api/v1/connections` with the secret as a credential; the
-inbound endpoint then resolves to `/webhooks/{connection_type}/{connection_name}`:
+A signing secret is credential material, so it is captured **out of band** and
+never sent in the create body. Sending it inline is refused at the boundary.
+
+Capture the secret against a client-chosen draft id, then create the connection
+with the returned handle:
 
 ```bash
+DRAFT=$(uuidgen)
+
+HANDLE=$(curl -s -b cookies.txt -X POST \
+  "http://localhost:8000/api/v1/connections/drafts/$DRAFT/fields/signing_secret/capture" \
+  -H "Content-Type: application/json" \
+  --data '{"value": "a-secret-of-at-least-16-chars", "secret_kind": "signing_secret"}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["data"]["handle"])')
+
 curl -s -b cookies.txt -X POST http://localhost:8000/api/v1/connections \
   -H "Content-Type: application/json" \
-  --data '{
-    "name": "primary",
-    "connection_type": "github",
-    "credentials": {"signing_secret": "whsec_PROVIDED_BY_GITHUB"}
-  }'
+  --data "{
+    \"name\": \"primary\",
+    \"connection_type\": \"github\",
+    \"connection_draft_id\": \"$DRAFT\",
+    \"credential_handles\": {\"signing_secret\": \"$HANDLE\"}
+  }"
 ```
 
-`WebhookActivityService.list_activity(...)` then surfaces the receipt log for that
-connection.
+The secret must be at least 16 non-whitespace characters: it is compared against
+a header on an endpoint reachable without credentials.
 
-POST a sample payload from the command line:
+Then POST a signed delivery:
 
 ```bash
-NONCE=$(uuidgen)
-TS=$(date +%s)
+SECRET='a-secret-of-at-least-16-chars'
 BODY='{"action":"opened","number":7,"pull_request":{"id":42}}'
-SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac whsec_PROVIDED_BY_GITHUB | sed 's/^.* //')
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | sed 's/^.* //')
 
-curl -i http://localhost:8000/webhooks/github/primary \
+curl -i http://localhost:8000/webhooks/primary/issues.opened \
   -H "Content-Type: application/json" \
-  -H "X-GitHub-Delivery: $NONCE" \
+  -H "X-GitHub-Delivery: $(uuidgen)" \
   -H "X-Hub-Signature-256: sha256=$SIG" \
   --data "$BODY"
 ```
 
+Note the path order: **connection name first, then event type**. The event type
+is yours to choose and is what ceremony triggers match on.
+
 Expected:
 
-- `204 No Content` on the first delivery (handler accepted).
-- `204` again on a retry within the replay window (idempotency-key short-circuit).
-- `400` on a malformed JSON body (envelope rejection at `parse_typed` time).
-- `401` on a signature mismatch.
-- `409` on a replay older than the replay window.
+- `202 Accepted` on the first delivery.
+- `202` again on a byte-identical retry, short-circuited by the idempotency cache.
+- `409` on a replay of the same body once the first has been recorded.
+- `400` on a malformed or non-object JSON body.
+- `401` on anything that cannot be authenticated.
 
-## Retry semantics
+**Every pre-authentication failure answers the same 401** with one message,
+whether the connection does not exist, its type has no verifier, its secret is
+unset, or the signature did not match. The endpoint takes no credentials, so
+distinguishing them would let an unauthenticated caller enumerate connections
+and probe their configuration. The specific reason is in the structured log
+(`integrations.webhook.rejected`).
 
-Providers retry on non-2xx responses; SynthOrg accepts duplicate deliveries up to `idempotency_ttl_seconds`. The composed idempotency key is `connection_name:event_type:nonce`, length-clamped to `255` chars (DB schema cap), then folded to a SHA-256 digest if oversized so the cache lookup never fails on length.
+## Deduplication
 
-Per-delivery state transitions land on the `WebhookReceipt`:
+The idempotency key is derived from `sha256(body)`, never from a header. Header
+ids sit outside every verifier's signature, so keying on one would let a single
+captured signed body publish repeatedly under fresh values. A provider's own
+retry of an identical body therefore collapses onto the first publish on any
+replica; a genuinely new delivery has a different body and its own key.
 
-- `received` -> `dispatched` (handler returned) -> `acknowledged` (downstream completed).
-- `received` -> `duplicate` when the idempotency key has been observed.
-- `received` -> `rejected` on signature/nonce failure.
+The provider's delivery id (`X-GitHub-Delivery` and friends, declared per
+verifier) is recorded for traceability only.
 
-The `WEBHOOK_RECEIPT_STATUS_TRANSITIONED` event fires AFTER each persistence write so dashboards can chart delivery health.
+## Receipts
+
+`WebhookReceipt` rows carry the connection, event type, status, timestamps and
+the raw body, and `WebhookReceiptService` / `WebhookActivityService` read and
+retry them.
+
+**No code path writes one yet.** The repositories, the services and the retention
+sweep are all wired, but nothing populates the table, so the activity endpoint
+and the retention setting currently have nothing to act on.
 
 ## Adding a new provider
 
-1. Add a row to `WebhookConnectionRepository` schema (already covers the common columns).
-2. Implement a handler in `src/synthorg/integrations/webhooks/handlers/<provider>.py` that consumes a typed `WebhookEventPayload` and dispatches to the right service.
-3. Register the handler in the dispatcher's strategy registry.
-4. Add a per-provider test under `tests/unit/integrations/webhooks/` covering accept, replay, signature mismatch, and oversized payload.
+1. Implement a `SignatureVerifier` under
+   `src/synthorg/integrations/webhooks/verifiers/`, exposing `signature_header`,
+   `delivery_id_header`, and `verify(body, headers, secret)`. Compare digests
+   with `hmac.compare_digest`, and return `False` (never raise) on a missing or
+   malformed header.
+2. Register it in `_VERIFIER_FACTORIES` in `verifiers/factory.py`.
+3. Add a `signing_secret` credential field to that connection type in
+   `integrations/connections/field_metadata.py`, via the `_signing_secret(...)`
+   factory. Without it the verifier is unreachable, which
+   `test_a_type_with_a_secret_field_has_a_verifier` and its converse both check.
+4. Add tests covering accept, replay, signature mismatch, missing header, and
+   oversized payload.
 
-See [docs/design/integrations.md](../design/integrations.md) for the broader integrations architecture.
+See [docs/design/integrations.md](../design/integrations.md) for the broader
+integrations architecture.

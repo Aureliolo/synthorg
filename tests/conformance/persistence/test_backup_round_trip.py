@@ -12,7 +12,7 @@ alongside the testcontainers postgres image.
 
 import shutil
 from pathlib import Path
-from typing import assert_never, cast
+from typing import assert_never
 
 import pytest
 
@@ -22,9 +22,8 @@ from synthorg.backup.handlers.postgres_persistence import (
 from synthorg.backup.handlers.sqlite_persistence import (
     SQLitePersistenceComponentHandler,
 )
-from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
-from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 pytestmark = pytest.mark.integration
 
@@ -36,18 +35,19 @@ def _build_handler(
 
     Uses the public ``backend.kind`` plus ``backend.config`` accessors
     so the conformance test does not depend on either the backend's
-    concrete class or its private ``_config`` attribute.
+    concrete class or its private ``_config`` attribute. ``config`` is typed as
+    the dialect-uniform union, so each arm narrows it the same way the
+    production dispatch in ``backup/registry.py`` does.
     """
+    config = backend.config
     if backend.kind == PersistenceBackendKind.SQLITE:
-        sqlite_backend = cast(SQLitePersistenceBackend, backend)
-        return SQLitePersistenceComponentHandler(
-            db_path=Path(sqlite_backend.config.path),
-        )
+        assert isinstance(config, SQLiteConfig)
+        return SQLitePersistenceComponentHandler(db_path=Path(config.path))
     if backend.kind == PersistenceBackendKind.POSTGRES:
         if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
             pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
-        postgres_backend = cast(PostgresPersistenceBackend, backend)
-        return PostgresPersistenceComponentHandler(config=postgres_backend.config)
+        assert isinstance(config, PostgresConfig)
+        return PostgresPersistenceComponentHandler(config=config)
     assert_never(backend.kind)
 
 

@@ -1,10 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
-import {
-  webhookSecretFieldFor,
-  type Connection,
-  type ConnectionType,
-} from '@/api/types/integrations'
+import type { Connection, ConnectionType } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,10 +21,15 @@ import {
   isFieldVisible,
   metadataGovernsOtherFields,
 } from './connection-fields'
-import { allFormValues, isForgeConnectionType } from './connection-submit'
+import {
+  allFormValues,
+  isForgeConnectionType,
+  webhookRetentionApplies,
+} from './connection-submit'
 import { RepoScopePicker } from './RepoScopePicker'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
+import { useConnectionTypes } from './useConnectionTypes'
 
 export interface ConnectionFormModalProps {
   open: boolean
@@ -117,7 +118,7 @@ function ConnectionTypeCard({
 function TypePicker({ onSelect }: { onSelect: (type: ConnectionType) => void }) {
   // The registry is the single source of truth for which types exist and how
   // they are labelled/described; render exactly what the backend returns.
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const connectionTypes = useConnectionTypes()
   const typesLoading = useConnectionsStore((s) => s.typesLoading)
   const typesError = useConnectionsStore((s) => s.typesError)
   const fetchConnectionTypes = useConnectionsStore((s) => s.fetchConnectionTypes)
@@ -228,20 +229,14 @@ function ConnectionFieldList({
 }
 
 function WebhookRetentionField({ f, spec }: { f: ConnectionForm; spec: ResolvedConnectionSpec }) {
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
-  const allValues = useMemo(() => allFormValues(f.form), [f.form])
-  const secretField = f.form.type
-    ? webhookSecretFieldFor(f.form.type, connectionTypes)
-    : null
-  // Resolving the secret field's own condition rather than just its existence:
-  // a Generic HTTP connection to a known outbound vendor preset hides its
-  // signing secret, so retention over receipts it can never receive is hidden
-  // with it. Metadata-driven, so this holds on edit too, where credentials are
-  // never re-surfaced but the vendor still is.
-  const secretApplies = spec.credentialFields.some(
-    (field) => field.key === secretField && isFieldVisible(field, allValues),
+  const connectionTypes = useConnectionTypes()
+  // The same predicate the submit path gates on, so the control and the
+  // submitted body cannot disagree about whether retention applies.
+  const applies = useMemo(
+    () => webhookRetentionApplies(f.form, spec, connectionTypes),
+    [f.form, spec, connectionTypes],
   )
-  if (!secretApplies) return null
+  if (!applies) return null
   return (
     <InputField
       label="Webhook receipt retention (days)"

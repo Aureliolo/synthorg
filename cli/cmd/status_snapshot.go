@@ -249,14 +249,15 @@ func filterAllowsService(service string) bool {
 }
 
 // healthResponse holds the parsed /readyz payload. The unauthenticated
-// probe is topology-free by design: status is "ok" only when every
-// configured dependency (persistence / message bus / providers) passed
-// its health check, and the per-component breakdown is only available
-// behind authentication on GET /health.
+// probe is topology-free and version-free by design: status is "ok" only
+// when every configured dependency (persistence / message bus / providers)
+// passed its health check, and the per-component breakdown and build
+// version are only available behind authentication on GET /health. The
+// version an operator wants here is the deployed image tag, which
+// printVersionInfo already reports from local state.
 type healthResponse struct {
-	Status  string  `json:"status"`
-	Version string  `json:"version"`
-	Uptime  float64 `json:"uptime_seconds"`
+	Status string  `json:"status"`
+	Uptime float64 `json:"uptime_seconds"`
 }
 
 // fetchHealth is a package var so tests can stub the probe instead of

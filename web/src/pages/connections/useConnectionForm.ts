@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { type Connection, type ConnectionType } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
 import { type ResolvedConnectionSpec, resolveConnectionSpec } from './connection-fields'
 import { type ConnectionFormState, type Mode } from './connection-form-state'
 import { useConnectionSubmit } from './connection-submit'
+import { useConnectionTypes } from './useConnectionTypes'
 
 export type { ConnectionFormState, Mode } from './connection-form-state'
 
@@ -168,14 +169,7 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
   const createConnection = useConnectionsStore((s) => s.createConnection)
   const updateConnection = useConnectionsStore((s) => s.updateConnection)
   const captureSecret = useConnectionsStore((s) => s.captureSecret)
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
-  const fetchConnectionTypes = useConnectionsStore((s) => s.fetchConnectionTypes)
-
-  // Hydrate the connection-type registry the form renders from (idempotent;
-  // pure API consumer, re-fetched on mount, never persisted client-side).
-  useEffect(() => {
-    void fetchConnectionTypes()
-  }, [fetchConnectionTypes])
+  const connectionTypes = useConnectionTypes()
 
   const [form, setForm] = useState<ConnectionFormState>(() =>
     makeInitialState(mode, initialType, connection),

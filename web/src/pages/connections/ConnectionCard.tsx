@@ -1,15 +1,14 @@
 import { memo } from 'react'
-import { Inbox, MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { Inbox, MoreVertical, Plug, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
 import type { Connection, HealthReport } from '@/api/types/integrations'
-import { connectionTypeUsesWebhookReceipts } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
 import { ROUTES } from '@/router/routes'
-import { useConnectionsStore } from '@/stores/connections'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
 import { TypeBadge } from './TypeBadge'
+import { useWebhookSecretField } from './useConnectionTypes'
 
 function formatTimestamp(value: string | null): string {
   if (!value) return 'never'
@@ -68,6 +67,49 @@ function ConnectionCardActions({
   )
 }
 
+/**
+ * The two webhook affordances, which only apply to a webhook-capable type.
+ *
+ * Together in one component because they answer one operator question: can this
+ * connection receive deliveries, and where do the ones it received go.
+ */
+function ConnectionWebhookMeta({
+  connection,
+  report,
+}: {
+  connection: Connection
+  report: HealthReport | null
+}) {
+  const webhookSecretField = useWebhookSecretField(connection.connection_type)
+  if (webhookSecretField === null) return null
+  return (
+    <>
+      {/* Inbound deliveries are rejected outright without a signing secret, and
+          a rejection writes no receipt: the only other trace is a server log, so
+          this line is the whole operator-facing signal. Not folded into the
+          health badge, which reports the outbound probe. */}
+      {report?.webhook_ingest === 'unconfigured' && (
+        <p className="flex items-start gap-1.5 pt-1 text-xs text-warning">
+          <ShieldAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>
+            No webhook signing secret, so inbound deliveries are rejected.
+            Recreate the connection with one to accept them.
+          </span>
+        </p>
+      )}
+      {/* Cross-link into the receipt inspector pre-selected on this connection
+          (receipts are scoped per-connection there). */}
+      <Link
+        to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
+        className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
+      >
+        <Inbox className="size-3.5" aria-hidden />
+        View webhook receipts
+      </Link>
+    </>
+  )
+}
+
 function ConnectionCardMeta({
   connection,
   report,
@@ -77,7 +119,6 @@ function ConnectionCardMeta({
   report: HealthReport | null
   lastChecked: string | null
 }) {
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
   return (
     <div className="mt-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
@@ -108,19 +149,7 @@ function ConnectionCardMeta({
           {report.error_detail}
         </p>
       )}
-      {/* Cross-link into the receipt inspector pre-selected on this
-          connection (receipts are scoped per-connection there). Only
-          webhook-emitting connection types receive receipts, so the link is
-          meaningless on e.g. an LLM-provider connection. */}
-      {connectionTypeUsesWebhookReceipts(connection.connection_type, connectionTypes) && (
-        <Link
-          to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
-          className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
-        >
-          <Inbox className="size-3.5" aria-hidden />
-          View webhook receipts
-        </Link>
-      )}
+      <ConnectionWebhookMeta connection={connection} report={report} />
     </div>
   )
 }

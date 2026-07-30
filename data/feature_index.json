@@ -116,7 +116,8 @@
       "protocol_exports": [],
       "settings_namespace": "backup",
       "state_slice_fields": [
-        "service"
+        "service",
+        "expected"
       ]
     },
     {
@@ -1477,6 +1478,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-29T05:34:06.975354Z",
+  "generated_at": "2026-07-30T12:32:37.650243Z",
   "schema_version": 1
 }

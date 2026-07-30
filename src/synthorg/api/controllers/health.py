@@ -9,7 +9,6 @@
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Literal
 
@@ -19,11 +18,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg import __version__
 from synthorg._core.features import require_service
+from synthorg.api.controllers._health_probes import (
+    TelemetryStatus,
+    memory_readiness,
+    probe_backup,
+    probe_persistence,
+    probe_service,
+    resolve_memory_state,
+    resolve_telemetry_status,
+)
 from synthorg.api.controllers._memory_health import (
     MemoryHealth,
     MemoryState,
     memory_wiring_health,
-    resolve_memory_health,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
@@ -37,11 +44,9 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_HEALTH_CHECK
-from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-from synthorg.telemetry.state import TelemetryStateSlice
 
 logger = get_logger(__name__)
 
@@ -58,23 +63,13 @@ class ReadinessOutcome(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-class TelemetryStatus(StrEnum):
-    """Project telemetry runtime state.
-
-    ``enabled`` means the collector is opted in AND the reporter can
-    deliver events. ``disabled`` covers every other case.
-    """
-
-    ENABLED = "enabled"
-    DISABLED = "disabled"
-
-
 class LivenessStatus(BaseModel):
     """Liveness response payload.
 
+    Carries no version, for the same reason :class:`ReadinessProbe` does not.
+
     Attributes:
         status: Always ``"ok"``.
-        version: Application version.
         uptime_seconds: Seconds since startup.
     """
 
@@ -84,7 +79,6 @@ class LivenessStatus(BaseModel):
         default="ok",
         description="Always 'ok' while the process is alive",
     )
-    version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
 
 
@@ -92,22 +86,24 @@ class ReadinessProbe(BaseModel):
     """Minimal readiness payload for the unauthenticated ``/readyz`` probe.
 
     Deliberately carries no component topology (persistence / message
-    bus / provider / telemetry state): the binary outcome plus version
-    and uptime is all a supervisor or load-balancer needs, and exposing
-    the component breakdown to unauthenticated callers aids
-    reconnaissance. The authenticated ``/health`` endpoint returns the
-    full :class:`ReadinessStatus` breakdown for operators.
+    bus / provider / telemetry state): the binary outcome plus uptime is all a
+    supervisor or load-balancer needs, and exposing the component breakdown to
+    unauthenticated callers aids reconnaissance. The authenticated ``/health``
+    endpoint returns the full :class:`ReadinessStatus` breakdown for operators.
+
+    The exact build version is withheld on the same grounds: it tells an
+    unauthenticated caller precisely which published advisories apply, and no
+    supervisor decision depends on it. An operator reads the running version from
+    the authenticated breakdown, or locally from the deployed image tag.
 
     Attributes:
         status: Overall readiness outcome.
-        version: Application version.
         uptime_seconds: Seconds since startup.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     status: ReadinessOutcome = Field(description="Overall readiness outcome")
-    version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
 
 
@@ -123,6 +119,11 @@ class ReadinessStatus(BaseModel):
             status). ``None`` when no provider health tracker is
             wired (dev stacks without provider configuration).
         telemetry: Project telemetry delivery state.
+        backup: Backup service wired (``False`` when it was attempted and
+            could not be built, ``None`` when it was never attempted).
+            Deliberately excluded from the ``status`` roll-up: a process with
+            no backup coverage still serves traffic correctly, so flipping
+            readiness would have a supervisor restart a healthy deployment.
         version: Application version.
         uptime_seconds: Seconds since startup.
     """
@@ -146,97 +147,12 @@ class ReadinessStatus(BaseModel):
     memory: MemoryHealth = Field(
         description="Agent-memory substrate state",
     )
+    backup: bool | None = Field(
+        default=None,
+        description="Backup service wired (None if backups were not attempted)",
+    )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
-
-
-async def _probe_service(
-    *,
-    configured: bool,
-    probe: Callable[[], Awaitable[bool]],
-    component: str,
-) -> bool | None:
-    """Probe an async service, returning None if not configured.
-
-    Returns:
-        The ``bool`` value when present, ``None`` otherwise.
-    """
-    if not configured:
-        return None
-    try:
-        return await probe()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        # ``exc_info=True`` would serialize frame locals from the probe
-        # into the log record; persistence / bus probes carry connection
-        # objects and partial auth state, so we emit only the sanitized
-        # description (see CLAUDE.md ``## Logging``).
-        logger.warning(
-            API_HEALTH_CHECK,
-            component=component,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return False
-
-
-async def _probe_persistence(app_state: AppState) -> bool | None:
-    """Probe persistence, distinguishing absent-by-design from absent-by-failure.
-
-    A connected backend is health-checked normally. A *missing* backend
-    that startup intended to wire (``persistence_expected``) is reported
-    UNAVAILABLE (``False``), not ``None``: a configured-but-absent backend
-    is a real failure, where the previous behaviour silently treated it
-    the same as a deliberately persistence-less dev run and reported
-    ready.
-
-    Returns:
-        ``True``/``False`` from the health-check, ``False`` when expected
-        but absent, or ``None`` when persistence is deliberately
-        unconfigured.
-    """
-    slice_ = app_state.slice(PersistenceStateSlice)
-    backend = slice_.backend
-    if backend is not None:
-        return await _probe_service(
-            configured=True,
-            probe=backend.health_check,
-            component="persistence",
-        )
-    if slice_.persistence_expected:
-        logger.warning(
-            API_HEALTH_CHECK,
-            component="persistence",
-            error="persistence expected but no backend is connected",
-        )
-        return False
-    return None
-
-
-def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
-    """Read the telemetry collector and map to a public status.
-
-    Returns:
-        ``TelemetryStatus`` instance.
-    """
-    collector = app_state.slice(TelemetryStateSlice).collector
-    if collector is None:
-        return TelemetryStatus.DISABLED
-    return (
-        TelemetryStatus.ENABLED if collector.is_functional else TelemetryStatus.DISABLED
-    )
-
-
-async def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
-    """Report whether agent memory is actually running.
-
-    Thin wrapper binding the controller's probe helper to the shared
-    resolver in ``_memory_health``.
-
-    Returns:
-        ``MemoryHealth`` describing the substrate.
-    """
-    return await resolve_memory_health(app_state, probe=_probe_service)
 
 
 def _unavailable_status(app_state: AppState) -> ReadinessStatus:
@@ -266,8 +182,12 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         persistence=None,
         message_bus=None,
         providers=None,
-        telemetry=_resolve_telemetry_status(app_state),
+        telemetry=resolve_telemetry_status(app_state),
         memory=memory,
+        # Read from the slice rather than left unknown: unlike the probed
+        # components, this is a boot-time fact the failed fan-out did not
+        # touch, so it stays reportable.
+        backup=probe_backup(app_state),
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -320,36 +240,6 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
         return boot_value
 
 
-def _memory_readiness(memory_health: MemoryHealth) -> bool | None:
-    """Fold agent memory into the readiness verdict.
-
-    Only a wired backend that cannot answer at all (``UNREACHABLE``)
-    blocks: its reads and writes are failing, so serving traffic that
-    depends on recall would produce errors.
-
-    A DEGRADED backend does not block. Every degradation in that state
-    still returns correct results and differs only in latency or in
-    matching by term instead of by meaning, so failing readiness for one
-    would take a working system offline. It would also collapse the
-    distinction the memory design requires be kept: "recall got slower"
-    is not "recall changed meaning", and neither is "recall stopped".
-    The degradation is reported on the memory surface, which is where an
-    operator acts on it.
-
-    An unwired backend (``OFF``) does not block either: the config default
-    is ``sqlvector``, so a not-yet-configured deployment reports ``OFF``
-    without any durable memory having been wired. ``inmemory`` is reported
-    DEGRADED by construction and so likewise never blocks, which is why
-    the backend name needs no special case of its own here.
-
-    Returns:
-        ``False`` when a wired backend is UNREACHABLE, ``True`` when it is
-        DURABLE, or ``None`` (does not block) for a degraded, unwired or
-        inmemory store.
-    """
-    return memory_health.state.readiness
-
-
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     """Probe every configured dependency and compute the readiness status.
 
@@ -375,9 +265,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         # timeout. ``asyncio.timeout`` cancels the TaskGroup on expiry;
         # the resulting ``TimeoutError`` arrives wrapped in the group.
         async with asyncio.timeout(probe_timeout), asyncio.TaskGroup() as tg:
-            persistence_task = tg.create_task(_probe_persistence(app_state))
+            persistence_task = tg.create_task(probe_persistence(app_state))
             bus_task = tg.create_task(
-                _probe_service(
+                probe_service(
                     configured=app_state.slice(CommunicationStateSlice).message_bus
                     is not None,
                     probe=lambda: require_service(
@@ -395,7 +285,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
                 ).are_all_reachable()
 
             providers_task = tg.create_task(
-                _probe_service(
+                probe_service(
                     configured=app_state.slice(ProvidersStateSlice).health_tracker
                     is not None,
                     probe=_probe_providers,
@@ -404,7 +294,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
             )
             # Inside the fan-out so a wedged memory store is bounded by
             # the same probe budget as every other dependency.
-            memory_task = tg.create_task(_resolve_memory_health(app_state))
+            memory_task = tg.create_task(resolve_memory_state(app_state))
     except TimeoutError:
         # The probe fan-out exceeded the budget; ``asyncio.timeout``
         # cancelled the TaskGroup and surfaced a bare ``TimeoutError``.
@@ -435,9 +325,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     persistence_ok = persistence_task.result()
     bus_ok = bus_task.result()
     providers_ok = providers_task.result()
-    telemetry_status = _resolve_telemetry_status(app_state)
+    telemetry_status = resolve_telemetry_status(app_state)
     memory_health = memory_task.result()
-    memory_ready = _memory_readiness(memory_health)
+    memory_ready = memory_readiness(memory_health)
 
     # Readiness is a pass/fail: every *configured* dependency must
     # report healthy. Unconfigured (None) is treated as not blocking
@@ -468,6 +358,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         providers=providers_ok,
         telemetry=telemetry_status,
         memory=memory_health,
+        backup=probe_backup(app_state),
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -499,7 +390,6 @@ class LivenessController(Controller):
         return ApiResponse(
             data=LivenessStatus(
                 status="ok",
-                version=__version__,
                 uptime_seconds=uptime,
             ),
         )
@@ -511,10 +401,11 @@ class ReadinessController(Controller):
     Intentionally unauthenticated (excluded from the auth middleware in
     ``middleware_factory``): supervisors and load-balancers must reach
     it without credentials to gate traffic. For that reason the body is
-    deliberately topology-free, carrying only the binary ``ok`` /
-    ``unavailable`` outcome plus version and uptime; the per-component
-    breakdown (persistence / message bus / providers / telemetry) lives
-    behind authentication on ``GET /health`` (:class:`HealthController`).
+    deliberately topology-free and version-free, carrying only the binary
+    ``ok`` / ``unavailable`` outcome plus uptime; the per-component
+    breakdown (persistence / message bus / providers / telemetry) and the
+    build version live behind authentication on ``GET /health``
+    (:class:`HealthController`).
     Returns 200 when every configured dependency is healthy, else 503.
     """
 
@@ -541,7 +432,6 @@ class ReadinessController(Controller):
             content=ApiResponse(
                 data=ReadinessProbe(
                     status=status.status,
-                    version=status.version,
                     uptime_seconds=status.uptime_seconds,
                 ),
             ),
@@ -563,7 +453,16 @@ class HealthController(Controller):
     tags = ("health",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @get()
+    @get(
+        guards=[
+            # Every call fans out to a live persistence health_check, a bus
+            # health_check and a memory probe, and the dashboard polls this on an
+            # interval per open tab, so it needs its own ceiling. Keyed per user
+            # rather than per IP: several tabs behind one NAT are one operator's
+            # dashboards, not a shared quota to fight over.
+            per_op_rate_limit_from_policy("health.detail", key="user"),
+        ],
+    )
     async def health(
         self,
         state: State,

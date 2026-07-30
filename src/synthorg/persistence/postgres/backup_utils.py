@@ -93,19 +93,36 @@ _LOCAL_PASSTHROUGH_ENV_KEYS: Final[tuple[str, ...]] = (
     "LC_CTYPE",
 )
 
+#: Owner-only mode for a dump file. The artefact is a full plaintext copy of
+#: the database, credential blobs included, so it must not be readable by
+#: another local user or a co-mounted sidecar.
+_PRIVATE_FILE_MODE: Final[int] = 0o600
+
 
 def _child_env(config: PostgresConfig) -> dict[str, str]:
-    """Return a child-process env with ``PGPASSWORD`` injected.
+    """Return a minimal child-process env carrying the connection settings.
 
-    Copies the current environment so PATH / locale stay intact; sets
-    ``PGPASSWORD`` so libpq picks it up without ever putting it on
-    argv (where ``ps`` would expose it).
+    Passes through only PATH + locale, then supplies every connection
+    parameter through the ``PG*`` variables libpq reads. Inheriting the
+    parent environment instead would hand ``pg_dump`` the API keys, the
+    settings-encryption key and ``SYNTHORG_DATABASE_URL`` itself, none of
+    which it needs.
+
+    ``PGDATABASE`` rather than a ``--dbname=`` argument because libpq treats
+    that slot as a full conninfo string when the value contains ``=`` or
+    ``://``, which would let a config-derived database name redirect the dump
+    to another host or downgrade ``sslmode``.
 
     Returns:
-        Result of type ``dict[str, str]``.
+        Mapping of the passthrough keys plus the ``PG*`` connection settings.
     """
-    env = os.environ.copy()
+    env = _minimal_local_env()
     env["PGPASSWORD"] = config.password.get_secret_value()
+    env["PGHOST"] = config.host
+    env["PGPORT"] = str(config.port)
+    env["PGUSER"] = config.username
+    env["PGDATABASE"] = config.database
+    env["PGSSLMODE"] = config.ssl_mode
     return env
 
 
@@ -124,6 +141,22 @@ def _minimal_local_env() -> dict[str, str]:
         for key, value in os.environ.items()
         if key in _LOCAL_PASSTHROUGH_ENV_KEYS
     }
+
+
+def _open_private_binary(path: Path) -> IO[bytes]:
+    """Open *path* for binary writing, readable only by the owner.
+
+    Created through ``os.open`` with the mode supplied up front rather than
+    ``Path.open`` followed by a ``chmod``: the dump is a complete plaintext
+    copy of the database including every credential blob, and a
+    create-then-tighten sequence leaves a window in which it is world-readable
+    while ``pg_dump`` is already streaming into it.
+
+    Returns:
+        A binary file object for the newly created private file.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _PRIVATE_FILE_MODE)
+    return os.fdopen(fd, "wb")
 
 
 async def _terminate_proc(proc: asyncio.subprocess.Process) -> None:
@@ -214,7 +247,7 @@ async def _run_pg_tool_file(
     """
     # ``open()`` can block on slow / network-attached storage, so
     # offload to a thread to keep the event loop responsive.
-    fp = await asyncio.to_thread(output_path.open, "wb")
+    fp = await asyncio.to_thread(_open_private_binary, output_path)
     try:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -349,11 +382,10 @@ async def pg_dump_to_file(
         TimeoutError: ``pg_dump`` exceeded ``timeout_seconds``.
     """
     binary = _resolve_binary(_PG_DUMP_BINARY)
+    # Connection parameters travel via the PG* env vars set in ``_child_env``,
+    # never argv: a ``--dbname=`` value is a libpq conninfo slot, so a name
+    # carrying ``=`` or ``://`` could redirect the dump or weaken ``sslmode``.
     args = [
-        f"--host={config.host}",
-        f"--port={config.port}",
-        f"--username={config.username}",
-        f"--dbname={config.database}",
         "--format=custom",
         "--no-owner",
         "--no-privileges",
@@ -395,11 +427,8 @@ async def pg_restore_from_file(
         TimeoutError: ``pg_restore`` exceeded ``timeout_seconds``.
     """
     binary = _resolve_binary(_PG_RESTORE_BINARY)
+    # Connection parameters travel via the PG* env vars (see ``_child_env``).
     args = [
-        f"--host={config.host}",
-        f"--port={config.port}",
-        f"--username={config.username}",
-        f"--dbname={config.database}",
         "--clean",
         "--if-exists",
         "--single-transaction",

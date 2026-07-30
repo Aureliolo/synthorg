@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import {
+  Archive,
   Brain,
   Clock,
   Database,
@@ -12,6 +13,7 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
+import { renderedSnapshot } from '@/stores/health'
 import { useWebSocketStore } from '@/stores/websocket'
 import { formatTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -151,15 +153,18 @@ function HealthSubsystemGrid({
         description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
         state={states.providersState}
       />
-      {/* Sixth card fills the final row rather than sitting alone in a
-          half-width column at the sm two-column breakpoint. */}
       <HealthStatusRow
-        className="sm:col-span-2"
         icon={Brain}
         label="Memory"
         description="Org, agent, and project recall injected into working agents. Durable requires an embedding model."
         state={states.memoryState}
         detail={states.memoryDetail}
+      />
+      <HealthStatusRow
+        icon={Archive}
+        label="Backups"
+        description="Scheduled snapshots of the database, memory, and config. Absent means no recovery point is being taken and every backup setting is inert."
+        state={states.backupState}
       />
     </div>
   )
@@ -178,10 +183,12 @@ export function HealthPopoverContent({
   fetchedAtLabel,
   onRefresh,
 }: HealthPopoverContentProps) {
-  const backendVersion = loadState.state === 'ok' ? loadState.data.version : '--'
-  const uptime = loadState.state === 'ok'
-    ? formatUptime(loadState.data.uptime_seconds)
-    : '--'
+  // Read through the rendered snapshot, like the cards do: reading `state ===
+  // 'ok'` blanked both rows to `--` for the duration of every refresh while the
+  // cards beside them kept displaying the very snapshot these describe.
+  const snapshot = renderedSnapshot(loadState)
+  const backendVersion = snapshot?.data.version ?? '--'
+  const uptime = snapshot === null ? '--' : formatUptime(snapshot.data.uptime_seconds)
   return (
     <>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -220,7 +227,7 @@ export function HealthPopoverContent({
         </div>
       </div>
       <HealthPopoverHero
-        state={states.overallState}
+        state={states.withWebSocketState}
         apiReachable={states.apiState !== 'down'}
       />
       {loadState.state === 'error' && (
@@ -249,7 +256,13 @@ export function buildFetchedAtLabel(
   loadState: LoadState,
   nowMs: number,
 ): string | null {
-  if (loadState.state !== 'ok' && loadState.state !== 'error') return null
-  const fetchedAt = loadState.fetchedAt
+  // A refresh keeps showing when the snapshot on screen was taken, rather than
+  // blanking the label for the duration of the round trip: the cards are still
+  // rendering that snapshot, so its age is exactly what the operator needs.
+  const fetchedAt =
+    loadState.state === 'error'
+      ? loadState.fetchedAt
+      : (renderedSnapshot(loadState)?.fetchedAt ?? null)
+  if (fetchedAt === null) return null
   return `${formatTime(fetchedAt.toISOString())} (${formatRelative(fetchedAt.getTime(), nowMs)})`
 }

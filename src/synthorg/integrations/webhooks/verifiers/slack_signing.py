@@ -39,6 +39,18 @@ class SlackSigningVerifier:
         """HTTP header name containing the signature."""
         return "x-slack-signature"
 
+    @property
+    def delivery_id_header(self) -> str | None:
+        """Slack sends no delivery id; freshness rides in the signature.
+
+        Slack signs ``v0:{timestamp}:{body}`` and this verifier enforces the
+        skew, so replay is already bounded without a nonce to dedup on.
+
+        Returns:
+            ``None``.
+        """
+        return None
+
     async def verify(
         self,
         *,

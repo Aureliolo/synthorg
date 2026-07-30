@@ -64,6 +64,18 @@ class A2APushVerifier:
         """HTTP header name containing the A2A signature."""
         return "x-a2a-signature"
 
+    @property
+    def delivery_id_header(self) -> str | None:
+        """No separate delivery id; the signed timestamp bounds replay.
+
+        This verifier folds ``x-a2a-timestamp`` into the HMAC input and enforces
+        the skew, so a captured delivery expires rather than replaying forever.
+
+        Returns:
+            ``None``.
+        """
+        return None
+
     async def verify(
         self,
         *,

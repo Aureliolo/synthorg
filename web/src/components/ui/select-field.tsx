@@ -119,6 +119,7 @@ interface SelectControlProps {
   id: string
   errorId: string
   hintId: string
+  staleId: string
   hasError: boolean
   value: string
   onChange: (value: string) => void
@@ -129,6 +130,21 @@ interface SelectControlProps {
   placeholder: string | undefined
   options: readonly SelectOption[] | undefined
   groups: readonly SelectOptionGroup[] | undefined
+}
+
+/**
+ * Whether the control is displaying a stale value: non-empty, but not a choice.
+ *
+ * Distinct from an unset value, which reads as a placeholder and needs no
+ * explanation. A stale one looks like an ordinary selection, so a screen-reader
+ * user would hear it announced with nothing saying it cannot be submitted.
+ */
+function hasStaleValue(
+  value: string,
+  options: readonly SelectOption[] | undefined,
+  groups: readonly SelectOptionGroup[] | undefined,
+): boolean {
+  return value !== '' && !valueHasOption(value, options, groups)
 }
 
 /**
@@ -156,8 +172,27 @@ function SelectFallbackOption({
   return <option value={value} disabled>{label}</option>
 }
 
+/**
+ * Resolve the ``aria-describedby`` target for the control.
+ *
+ * The stale-value note wins over the hint: it explains why the announced value
+ * cannot be used, which the hint does not, and an error message already has its
+ * own ``aria-errormessage`` channel.
+ *
+ * @returns The id to describe by, or `undefined` when there is nothing to add.
+ */
+function describedById(
+  props: SelectControlProps,
+  hasError: boolean,
+  isStale: boolean,
+): string | undefined {
+  if (isStale) return props.staleId
+  return props.hint && !hasError ? props.hintId : undefined
+}
+
 function SelectControl(props: SelectControlProps) {
-  const { id, errorId, hintId, hasError, value, onChange } = props
+  const { id, errorId, hasError, value, onChange } = props
+  const isStale = hasStaleValue(value, props.options, props.groups)
   return (
     <select
       id={id}
@@ -168,7 +203,7 @@ function SelectControl(props: SelectControlProps) {
       aria-required={props.required || undefined}
       aria-invalid={hasError}
       aria-errormessage={hasError ? errorId : undefined}
-      aria-describedby={props.hint && !hasError ? hintId : undefined}
+      aria-describedby={describedById(props, hasError, isStale)}
       className={cn(
         'w-full rounded-md border bg-surface px-3 py-2 text-sm text-foreground',
         'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',
@@ -205,6 +240,7 @@ export function SelectField({
   const id = useId()
   const errorId = `${id}-error`
   const hintId = `${id}-hint`
+  const staleId = `${id}-stale`
   const hasError = !!error
   return (
     <div className="flex flex-col gap-1.5">
@@ -219,6 +255,7 @@ export function SelectField({
         id={id}
         errorId={errorId}
         hintId={hintId}
+        staleId={staleId}
         hasError={hasError}
         value={value}
         onChange={onChange}
@@ -230,6 +267,11 @@ export function SelectField({
         options={options}
         groups={groups}
       />
+      {hasStaleValue(value, options, groups) && (
+        <p id={staleId} className="text-xs text-warning">
+          {`"${value}" is not available; choose another option.`}
+        </p>
+      )}
       <SelectFieldHelp hintId={hintId} errorId={errorId} hint={hint} error={error} />
     </div>
   )

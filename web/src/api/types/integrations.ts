@@ -52,7 +52,9 @@ export type ConnectionHealthStatus = ConnectionStatus
 
 /**
  * The credential field this connection type's webhook signing secret goes in,
- * or `null` when the type can never receive a webhook.
+ * or `null` when the type declares no such field and so can never receive a
+ * webhook. `null` is a fact about the *type*, never about whether some
+ * connection's secret happens to be set.
  *
  * Read from the backend's own `webhook_secret_field`, which derives it from the
  * one condition that decides it: inbound ingest rejects any delivery it cannot
@@ -60,6 +62,10 @@ export type ConnectionHealthStatus = ConnectionStatus
  * reachable ingest path and can never accumulate a receipt. Asking the registry
  * rather than keeping a list here is what stops the dashboard drifting from the
  * backend's verifier coverage in either direction.
+ *
+ * Prefer `useWebhookSecretField` in a component: it sources the registry itself,
+ * so a caller cannot pass an array that has not loaded yet and read the answer
+ * as "no webhooks".
  */
 export function webhookSecretFieldFor(
   type: ConnectionType,
@@ -67,21 +73,6 @@ export function webhookSecretFieldFor(
 ): string | null {
   return metadata.find((m) => m.connection_type === type)?.webhook_secret_field ?? null
 }
-
-/**
- * Whether a connection of this type can ever accumulate a webhook receipt, and
- * so whether a retention control over those receipts means anything.
- *
- * The `webhook_receipt_retention_days` column exists on every connection row
- * regardless, and backend validation still accepts the field on any type.
- */
-export function connectionTypeUsesWebhookReceipts(
-  type: ConnectionType,
-  metadata: readonly ConnectionTypeMetadata[],
-): boolean {
-  return webhookSecretFieldFor(type, metadata) !== null
-}
-
 
 /**
  * Tunnel provider ids the backend ships. Mirrors the

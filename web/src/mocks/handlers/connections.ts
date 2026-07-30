@@ -269,6 +269,7 @@ export const connectionsList = [
         error_detail: conn.health.status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,
         consecutive_failures: conn.health.status === 'unhealthy' ? 4 : 0,
+        webhook_ingest: 'not_applicable',
       }),
     )
   }),
@@ -349,6 +350,7 @@ export const connectionsHandlers = [
         error_detail: null,
         checked_at: NOW,
         consecutive_failures: 0,
+        webhook_ingest: 'not_applicable',
       }),
     ),
   ),

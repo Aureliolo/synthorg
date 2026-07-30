@@ -9,6 +9,11 @@ HTTP import, an MCP handler, nor a CLI/import path can silently disable scanning
 audit, or an isolation boundary. Enabling / tightening is unguarded and applies
 immediately.
 
+Shortening an evidence-retention window is guarded on the same terms even though
+it relaxes no boundary: the next sweep destroys records irreversibly, so it is
+not a change an operator should be able to make as a side effect of a bulk
+import.
+
 The guard is enforced centrally in :class:`SettingsService` (both the single
 and batch write paths) so every surface inherits it; callers thread a
 :class:`SettingsWriteGovernance` through ``set`` / ``set_many``.
@@ -39,6 +44,17 @@ _ENGINE_NS: Final[str] = SettingNamespace.ENGINE.value
 _TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
 _OUTPUT_STYLE_NS: Final[str] = SettingNamespace.OUTPUT_STYLE.value
 _PROVIDERS_NS: Final[str] = SettingNamespace.PROVIDERS.value
+_INTEGRATIONS_NS: Final[str] = SettingNamespace.INTEGRATIONS.value
+
+# Webhook-receipt retention. Shortening the window destroys inbound-delivery
+# evidence on the next sweep, and the destruction is irreversible, so the
+# shortening direction routes through the deliberate guardrail. Lengthening it,
+# or setting the never-sweep value, retains strictly more and is unguarded.
+_WEBHOOK_RETENTION_KEY: Final[str] = "webhook_receipt_retention_days"
+# The registered default, and the value that means "never sweep": a window of
+# zero days would otherwise read as "discard everything immediately", which is
+# the opposite of what it does.
+_RETENTION_NEVER_SWEEP: Final[str] = "0"
 
 # Enabling the LLM gateway opens an OpenAI-compatible egress path that lets an
 # embedded harness make provider calls, so the ``false -> true`` transition is
@@ -310,6 +326,33 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     return False
 
 
+def _retention_days(value: str) -> int | None:
+    """Return a retention window in days, or ``None`` when unparseable."""
+    try:
+        return int(value)
+    except ValueError:
+        # A malformed value is rejected downstream by the type validator; do not
+        # treat an unparseable window as a weakening transition.
+        return None
+
+
+def _is_integrations_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether an ``integrations.*`` change shortens evidence retention."""
+    if key != _WEBHOOK_RETENTION_KEY:
+        return False
+    effective_current = current if current is not None else _RETENTION_NEVER_SWEEP
+    new_days = _retention_days(new)
+    current_days = _retention_days(effective_current)
+    if new_days is None or current_days is None:
+        return False
+    if new_days == 0:
+        # Never-sweep retains everything, whatever the previous window was.
+        return False
+    # A finite window against never-sweep starts discarding what was kept
+    # indefinitely; against a longer window it discards the difference.
+    return current_days == 0 or new_days < current_days
+
+
 def _is_providers_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``providers.*`` change relaxes posture."""
     if key == _GATEWAY_ENABLED_KEY:
@@ -351,6 +394,8 @@ def _is_guarded(namespace: str, key: str) -> bool:
         return key in _OUTPUT_STYLE_GUARDED_KEYS
     if namespace == _PROVIDERS_NS:
         return key == _GATEWAY_ENABLED_KEY
+    if namespace == _INTEGRATIONS_NS:
+        return key == _WEBHOOK_RETENTION_KEY
     return False
 
 
@@ -358,6 +403,8 @@ def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) ->
     """Return whether ``current -> new`` weakens the posture for *namespace.key*."""
     if namespace == _PROVIDERS_NS:
         return _is_providers_weakening(key, current=current, new=new)
+    if namespace == _INTEGRATIONS_NS:
+        return _is_integrations_weakening(key, current=current, new=new)
     if namespace == _ENGINE_NS:
         return _is_engine_weakening(key, current=current, new=new)
     if namespace == _TOOLS_NS:
@@ -468,13 +515,19 @@ async def guard_security_delete(
     delete that would drop a currently-secure toggle to a weaker effective
     value must go through the explicit confirm+reason set path, never a silent
     delete. This holds across every governed namespace (``security``,
-    ``engine``, ``tools``, ``output_style``, ``providers``): deleting, say, the
+    ``engine``, ``tools``, ``output_style``, ``providers``, ``integrations``):
+    deleting, say, the
     ``tools.credentialed_mcp_enabled`` or ``providers.gateway_enabled``
     override would otherwise revert to a broader env/default value, bypassing
     the set-path guardrail. The guarded value is the real env>default fallback
     (resolved via *resolve_fallback*), not the bare code default, so a
     weakening env override is not missed. ``governance=None`` is passed so a
     weakening delete is hard-blocked rather than confirmable inline.
+
+    ``integrations`` is in that set for a different reason from the toggles: its
+    guarded key destroys stored evidence rather than relaxing a boundary, but a
+    delete reverting a never-sweep override to a finite env window would start
+    discarding receipts just as silently.
     """
     items = [
         (namespace, definition.key, (await resolve_fallback(definition)).value)

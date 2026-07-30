@@ -54,6 +54,7 @@ if __package__ in {None, ""}:  # standalone invocation
         HARDCODED_COLOR_RE,
         HARDCODED_CURRENCY_RE,
         HARDCODED_CURRENCY_SYMBOL_RE,
+        HARDCODED_DOT_SIZE_RE,
         HARDCODED_FONT_RE,
         HARDCODED_LOCALE_RE,
         HARDCODED_MOTION_DURATION_RE,
@@ -83,6 +84,7 @@ else:
         HARDCODED_COLOR_RE,
         HARDCODED_CURRENCY_RE,
         HARDCODED_CURRENCY_SYMBOL_RE,
+        HARDCODED_DOT_SIZE_RE,
         HARDCODED_FONT_RE,
         HARDCODED_LOCALE_RE,
         HARDCODED_MOTION_DURATION_RE,
@@ -296,6 +298,45 @@ def _locate(stripped: str, lines: list[str], start: int) -> tuple[int, int, str,
     col = start - stripped.rfind("\n", 0, start) - 1
     original_line = lines[line_num - 1]
     return line_num, col, original_line, original_line.strip()
+
+
+def check_hardcoded_dot_size(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find arbitrary sub-4px sizing that should use the marker-dot token.
+
+    The density-aware spacing scale starts at 4px, so an arbitrary value below it
+    is always a decorative marker dot. Left ungated, each surface picks its own
+    odd pixel (a 5px status-bar dot beside a 6px feed dot) and the arbitrary-value
+    syntax slips past the status-dot recipe check entirely.
+    """
+    if file_path.suffix not in {".tsx", ".ts"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_DOT_SIZE_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Arbitrary `{m.group()}` below the 4px "
+            f"spacing scale -- size a decorative marker dot with `size-dot`, "
+            f"or use `<StatusBadge>` if it reports a state.\n"
+            f"    {line_text}"
+        )
+
+    return warnings
 
 
 def _collect_hardcoded_locale_literals(
@@ -754,6 +795,7 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     all_warnings.extend(
         check_hardcoded_motion_transitions(content, file_path, project_root),
     )
+    all_warnings.extend(check_hardcoded_dot_size(content, file_path, project_root))
     all_warnings.extend(check_hardcoded_locale(content, file_path, project_root))
     all_warnings.extend(check_hardcoded_currency(content, file_path, project_root))
     all_warnings.extend(

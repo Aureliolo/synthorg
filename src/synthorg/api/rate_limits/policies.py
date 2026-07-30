@@ -125,6 +125,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "connections.accessible_repos": (10, 60),
     "connections.create": (20, 60),
     "connections.delete": (10, 60),
+    # Tightest of the family: each call hands back one credential in plaintext,
+    # so a compromised write-role session should not be able to walk the whole
+    # credential store field by field at HTTP speed. A reveal is an operator
+    # clicking one eye icon, so a handful a minute is generous.
+    "connections.reveal_secret": (10, 60),
     "connections.update": (30, 60),
     # coordination
     "coordination.metrics_query": (30, 60),
@@ -158,6 +163,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     ),
     # health (readiness probe)
     "health.ready": (120, 60),
+    # The authenticated detail endpoint fans out to a live persistence
+    # health_check, a bus health_check and a memory probe on every call, and the
+    # dashboard polls it every 15s per open tab. Bounded per user rather than per
+    # IP so many tabs behind one NAT do not starve each other.
+    "health.detail": (60, 60),
     # integrations (health controller)
     "integrations.health_aggregate": (30, 60),
     "integrations.health_single": (60, 60),

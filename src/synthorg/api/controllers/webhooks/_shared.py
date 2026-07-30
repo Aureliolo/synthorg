@@ -10,6 +10,7 @@ this module so there is one canonical patch target.
 """
 
 from collections.abc import Mapping
+from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
@@ -23,13 +24,19 @@ from synthorg.api.controllers._webhooks_wiring import (
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.domain_errors import (
     ConflictError,
-    NotFoundError,
     UnauthorizedError,
     ValidationError,
 )
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.field_metadata import (
+    WEBHOOK_SIGNING_SECRET_FIELD,
+    get_connection_type_metadata,
+)
 from synthorg.integrations.connections.models import Connection, ConnectionType
-from synthorg.integrations.errors import WebhookProcessingError
+from synthorg.integrations.errors import (
+    WebhookProcessingError,
+    WebhookVerifierUnavailableError,
+)
 from synthorg.integrations.state import (
     IntegrationsStateSlice,
     webhook_replay_protector_of,
@@ -46,15 +53,28 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
+#: The single message every unauthenticated rejection carries.
+#:
+#: Ingest is reachable without credentials, so any distinction between "no such
+#: connection", "this type has no verifier", "the secret is unset" and "the
+#: signature did not match" is an oracle: an unauthenticated caller could
+#: enumerate connection names and learn, per name, whether a signing secret is
+#: configured. The distinction is kept in the structured log, where an operator
+#: can see it and an attacker cannot.
+_UNVERIFIABLE_DELIVERY: Final[str] = (
+    "Webhook delivery could not be authenticated; request rejected"
+)
 
-async def _get_connection_or_404(state: State, connection_name: str) -> Connection:
-    """Look up the named connection or raise 404 with a logged reason.
+
+async def _get_verified_connection(state: State, connection_name: str) -> Connection:
+    """Look up the named connection, rejecting an unknown name as unauthorised.
 
     Returns:
         ``Connection`` instance.
 
     Raises:
-        NotFoundError: Raised on the corresponding failure path.
+        UnauthorizedError: When no such connection exists. Deliberately not a
+            404: see :data:`_UNVERIFIABLE_DELIVERY`.
     """
     catalog: ConnectionCatalog = require_service(
         state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
@@ -67,8 +87,7 @@ async def _get_connection_or_404(state: State, connection_name: str) -> Connecti
             connection_name=connection_name,
             reason="connection not found",
         )
-        msg = f"Connection '{connection_name}' not found"
-        raise NotFoundError(msg)
+        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
     return conn
 
 
@@ -146,33 +165,66 @@ async def _enforce_max_payload(
 async def _verify_signature(
     *,
     catalog: ConnectionCatalog,
-    connection_name: str,
-    connection_type: ConnectionType,
+    connection: Connection,
     body: bytes,
     headers: dict[str, str],
 ) -> None:
     """Verify the webhook signature, raising 401 on missing secret or mismatch.
 
+    Reads exactly one credential key, ``signing_secret``, the one the connection
+    registry declares. Honouring a second undeclared name would open an ingest
+    path no metadata-driven surface can see: the dashboard form and
+    ``webhook_secret_field`` name only the declared field, and
+    ``reject_inline_secret_fields`` can only refuse keys the registry knows are
+    secret, so an undeclared alias could be posted inline through the create
+    body and never appear as a credential anywhere an operator looks.
+
+    Whitespace is stripped before the emptiness test: a blank-but-present secret
+    is not a secret, and passing it through would hand the verifier a key an
+    attacker can guess in one attempt.
+
+    The secret field's own ``visible_when`` is resolved against the connection's
+    stored values, so a secret captured while the field applied stops
+    authenticating once it no longer does. Otherwise an operator who repointed a
+    ``generic_http`` connection at a vendor preset would have retired the inbound
+    path in every surface they can see while it kept publishing verified events.
+
     Raises:
         UnauthorizedError: Raised on the corresponding failure path.
     """
-    verifier = get_verifier(connection_type)
+    connection_name = connection.name
+    connection_type = connection.connection_type
+    metadata = get_connection_type_metadata(connection_type)
+    if not metadata.webhook_ingest_is_reachable(connection.metadata):
+        logger.warning(
+            WEBHOOK_REJECTED,
+            connection_name=connection_name,
+            connection_type=connection_type.value,
+            reason="signing secret does not apply to this connection",
+        )
+        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
+    try:
+        verifier = get_verifier(connection_type)
+    except WebhookVerifierUnavailableError:
+        # Collapsed into the same 401 rather than surfacing 501: a distinct
+        # status tells an unauthenticated caller that the connection exists and
+        # which types are ingest-capable.
+        logger.warning(
+            WEBHOOK_REJECTED,
+            connection_name=connection_name,
+            connection_type=connection_type.value,
+            reason="no verifier registered for connection type",
+        )
+        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY) from None
     credentials = await catalog.get_credentials(connection_name)
-    signing_secret = credentials.get(
-        "signing_secret",
-        credentials.get("webhook_secret", ""),
-    )
+    signing_secret = credentials.get(WEBHOOK_SIGNING_SECRET_FIELD, "").strip()
     if not signing_secret:
         logger.warning(
             WEBHOOK_REJECTED,
             connection_name=connection_name,
             reason="signing secret not configured",
         )
-        msg = (
-            "Webhook signing secret is not configured for this "
-            "connection; request rejected"
-        )
-        raise UnauthorizedError(msg)
+        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
     valid = await verifier.verify(
         body=body,
         headers=headers,
@@ -184,8 +236,30 @@ async def _verify_signature(
             connection_name=connection_name,
             reason="signature verification failed",
         )
-        msg = "Signature verification failed"
-        raise UnauthorizedError(msg)
+        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
+
+
+def _read_delivery_id(
+    headers: dict[str, str],
+    connection_type: ConnectionType,
+) -> str | None:
+    """Read the sender's own delivery id, for logging only.
+
+    Each provider names it differently, so the verifier declares the header;
+    ``None`` for a scheme that sends none. Not used for deduplication: the id is
+    outside the signature and therefore attacker-controlled, which is exactly
+    why :func:`_check_replay_or_freshness` keys on the body instead.
+
+    Returns:
+        The trimmed delivery id, or ``None`` when absent or unsupported.
+    """
+    try:
+        header = get_verifier(connection_type).delivery_id_header
+    except WebhookVerifierUnavailableError:  # pragma: no cover -- verified first
+        return None
+    if header is None:
+        return None
+    return (headers.get(header) or "").strip() or None
 
 
 def _parse_timestamp(
@@ -220,52 +294,49 @@ async def _check_replay_or_freshness(
     *,
     state: State,
     connection_name: str,
-    nonce: str | None,
+    dedup_key: str,
+    delivery_id: str | None,
     timestamp: float | None,
 ) -> None:
     """In-memory replay/freshness guard; durable dedup runs separately.
 
-    For nonce-bearing requests we only validate timestamp staleness
-    here; durable IdempotencyService below handles dedup so a
-    legitimate retry with the same nonce on a different replica
-    receives the cached 202 instead of an early 409.
+    Deduplicates on ``dedup_key``, which the caller derives from the request
+    body, and never on a header value alone. Header-supplied ids are not covered
+    by any verifier's signature (the HMAC schemes sign the body only, and
+    GitLab's token scheme signs nothing), so an attacker holding one captured
+    signed body could replay it unlimited times simply by varying the id: each
+    fresh value looked unseen, minted a fresh idempotency key, and published
+    another verified event. Keying on the body means a captured delivery
+    collapses onto its first publish however its headers are dressed up.
 
-    The hard ``MAX_NONCE_CHARS`` cap that ``ReplayProtector.check``
-    enforces in the no-nonce branch must apply here too -- otherwise
-    an attacker can sidestep the limit by passing a freshness-only
-    nonce and let the durable path try to hash an unbounded string.
+    ``delivery_id`` is logged for traceability but does not weaken the check.
+
+    The hard ``MAX_NONCE_CHARS`` cap ``ReplayProtector.check`` enforces applies
+    to the derived key too, so an unbounded value can never reach the durable
+    path's hashing.
 
     Raises:
         ConflictError: Raised on the corresponding failure path.
     """
-    if nonce is not None and len(nonce) > MAX_NONCE_CHARS:
+    if len(dedup_key) > MAX_NONCE_CHARS:
         logger.warning(
             WEBHOOK_REJECTED,
             connection_name=connection_name,
-            reason="nonce exceeds max size",
-            nonce_length=len(nonce),
+            reason="dedup key exceeds max size",
+            key_length=len(dedup_key),
             max_nonce_chars=MAX_NONCE_CHARS,
         )
-        msg = "Nonce exceeds maximum size"
+        msg = "Dedup key exceeds maximum size"
         raise ConflictError(msg)
     replay_protector = webhook_replay_protector_of(state["app_state"])
-    if nonce:
-        if replay_protector.check_freshness(timestamp):
-            return
+    if not replay_protector.check(nonce=dedup_key, timestamp=timestamp):
         logger.warning(
             WEBHOOK_REJECTED,
             connection_name=connection_name,
-            reason="stale timestamp",
-        )
-        msg = "Replay detected (stale timestamp)"
-        raise ConflictError(msg)
-    if not replay_protector.check(nonce=nonce, timestamp=timestamp):
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
+            delivery_id=delivery_id,
             reason="replay detected",
         )
-        msg = "Replay detected (duplicate nonce or stale timestamp)"
+        msg = "Replay detected (duplicate delivery or stale timestamp)"
         raise ConflictError(msg)
 
 
@@ -279,12 +350,11 @@ async def _publish_webhook_event_and_log(
 ) -> dict[str, object]:
     """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``.
 
-    ``dedup_source`` carries the provenance of the idempotency key
-    (``"nonce"`` for the standard ``X-Nonce`` / ``X-Request-Id`` path,
-    ``"body_sha256"`` for the nonce-less path that hashes the request
-    body). Surfacing the source on the success log lets operators
-    distinguish well-behaved providers from those without nonces and
-    spot redelivery patterns.
+    ``dedup_source`` carries the provenance of the idempotency key:
+    ``"body_sha256"`` for inbound ingest, which always keys on the body digest,
+    and ``"manual_retry"`` for an operator-triggered redelivery. Surfacing it on
+    the success log is what distinguishes a sender's own retry from a human
+    replaying one.
 
     Returns:
         Mapping with the declared key/value types.

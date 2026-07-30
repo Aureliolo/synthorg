@@ -11,8 +11,7 @@ import type { HealthStatus, MemoryHealth } from '@/api/types/system'
 /**
  * The top-bar health pill must resolve to a definite state after the first
  * probe and never hang on "checking...". These tests exercise the real
- * usePolling loop (no mock) so the on-mount poll actually fires against MSW,
- * covering the failure modes that previously left the pill stuck.
+ * usePolling loop (no mock) so the on-mount poll actually fires against MSW.
  *
  * The pill reads ``/health``, the same per-subsystem snapshot the dialog it
  * opens renders, so the two cannot report different verdicts. Readiness cannot
@@ -47,6 +46,7 @@ function healthBody(overrides: Partial<HealthStatus> = {}) {
     providers: true,
     telemetry: 'disabled',
     memory: DURABLE_MEMORY,
+    backup: true,
     version: '0.0.0-test',
     uptime_seconds: 1,
     ...overrides,

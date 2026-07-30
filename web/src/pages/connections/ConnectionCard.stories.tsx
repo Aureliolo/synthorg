@@ -28,6 +28,7 @@ const healthyReport: HealthReport = {
   error_detail: null,
   checked_at: '2026-04-12T08:00:00Z',
   consecutive_failures: 0,
+  webhook_ingest: 'ready',
 }
 
 const meta = {
@@ -103,5 +104,18 @@ export const Checking: Story = {
     connection: baseConnection,
     report: healthyReport,
     checking: true,
+  },
+}
+
+/**
+ * A connection that can be sent webhooks but has no signing secret: every
+ * inbound delivery is rejected, and a rejection writes no receipt, so this line
+ * is the only place an operator sees it.
+ */
+export const WebhookIngestUnconfigured: Story = {
+  args: {
+    connection: baseConnection,
+    report: { ...healthyReport, webhook_ingest: 'unconfigured' },
+    checking: false,
   },
 }

@@ -1,7 +1,7 @@
 import type { ConnectionType } from '@/api/types/integrations'
 import { cn } from '@/lib/utils'
-import { useConnectionsStore } from '@/stores/connections'
 import { connectionTypeLabel } from './connection-fields'
+import { useConnectionTypes } from './useConnectionTypes'
 
 interface TypeBadgeProps {
   type: ConnectionType
@@ -9,8 +9,7 @@ interface TypeBadgeProps {
 }
 
 export function TypeBadge({ type, className }: TypeBadgeProps) {
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
-  const label = connectionTypeLabel(type, connectionTypes)
+  const label = connectionTypeLabel(type, useConnectionTypes())
   return (
     <span
       className={cn(

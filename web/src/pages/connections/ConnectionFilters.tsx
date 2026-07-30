@@ -9,6 +9,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { useConnectionsStore } from '@/stores/connections'
 import type { ConnectionSortKey } from '@/stores/connections/types'
 import { connectionTypeLabel } from './connection-fields'
+import { useConnectionTypes } from './useConnectionTypes'
 
 const HEALTH_OPTIONS = [
   { value: '', label: 'All health' },
@@ -46,7 +47,7 @@ export function ConnectionFilters() {
   const typeFilter = useConnectionsStore((s) => s.typeFilter)
   const healthFilter = useConnectionsStore((s) => s.healthFilter)
   const sortBy = useConnectionsStore((s) => s.sortBy)
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const connectionTypes = useConnectionTypes()
   const setSearchQuery = useConnectionsStore((s) => s.setSearchQuery)
   const setTypeFilter = useConnectionsStore((s) => s.setTypeFilter)
   const setHealthFilter = useConnectionsStore((s) => s.setHealthFilter)

@@ -62,6 +62,7 @@ const sampleReport: HealthReport = {
   error_detail: null,
   checked_at: '2026-04-12T08:00:00Z',
   consecutive_failures: 0,
+  webhook_ingest: 'ready',
 }
 
 describe('useConnectionsStore', () => {

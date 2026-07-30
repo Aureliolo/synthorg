@@ -4,10 +4,11 @@
 import asyncio
 import re
 import shutil
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Final
 from uuid import uuid4
 
 from synthorg import __version__
@@ -61,6 +62,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+#: Owner-only mode for directories this service creates under the backup root.
+_PRIVATE_DIR_MODE: Final[int] = 0o700
+
 _BACKUP_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
@@ -113,6 +117,18 @@ class BackupService(BackupServiceArchiveMixin):
     def scheduler(self) -> BackupScheduler:
         """Return the backup scheduler instance."""
         return self._scheduler
+
+    @property
+    def handlers(self) -> Mapping[BackupComponent, ComponentHandler]:
+        """Return the component handlers this service dispatches to.
+
+        Which handler a component resolved to is the observable outcome of
+        boot-time wiring (a Postgres deployment must not end up with the SQLite
+        handler), so it needs a supported way to be asserted. Safe to expose
+        because the mapping is already an immutable view over a deep copy taken
+        at construction.
+        """
+        return self._handlers
 
     async def set_backup_path(self, path: str) -> None:
         """Update the backup output directory in place (hot).
@@ -314,8 +330,23 @@ class BackupService(BackupServiceArchiveMixin):
                 handler (a wiring error); the outer ``_do_backup`` then removes
                 the partial directory, so no incomplete backup is published.
         """
-        await asyncio.to_thread(self._backup_path.mkdir, parents=True, exist_ok=True)
-        await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
+        # Owner-only: a backup directory holds complete database dumps and
+        # config copies, so a traversable directory leaks the artefact names
+        # and exposes any file whose own mode is looser. ``mode`` applies only
+        # to directories this call creates, so an operator who pre-created the
+        # root with their own policy keeps it.
+        await asyncio.to_thread(
+            self._backup_path.mkdir,
+            mode=_PRIVATE_DIR_MODE,
+            parents=True,
+            exist_ok=True,
+        )
+        await asyncio.to_thread(
+            backup_dir.mkdir,
+            mode=_PRIVATE_DIR_MODE,
+            parents=True,
+            exist_ok=True,
+        )
 
         # Per-component handlers run sequentially: backups for the
         # SQLite DB, on-disk memory, and on-disk config can share file

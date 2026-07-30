@@ -234,6 +234,15 @@ All API responses include:
 | `Cache-Control` | `no-store` (API); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
 | `Content-Security-Policy` | Strict default; dashboard uses CSP Level 3 directive splitting: `style-src-elem 'self' 'nonce-...'` locks `<style>` elements to the per-request nonce, `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI. `script-src 'self'` with no `'unsafe-inline'`. See [CSP Nonce Infrastructure](#csp-nonce-infrastructure). Docs UI location has its own relaxed CSP (inline syntax-highlighting requirement of the Material theme). |
 
+### Unauthenticated Probe Disclosure
+
+The two unauthenticated probes are deliberately minimal. `GET /api/v1/healthz` returns
+`status` + `uptime_seconds`; `GET /api/v1/readyz` adds only the binary `ok` / `unavailable`
+outcome. Neither carries the component topology and neither carries the build version: an
+exact version tells an anonymous caller precisely which published advisories apply, and no
+supervisor or load-balancer decision depends on it. Both live behind authentication on
+`GET /api/v1/health`, which requires a read-access role.
+
 ---
 
 ## Container Hardening

@@ -66,6 +66,11 @@
   --so-space-10: 48px;
   --so-space-12: 64px;
 
+  /* -- Decorative marker dot (status-bar labels, feed indicators).
+   * Below the 4px spacing sub-grid on purpose: a label dot reads as a bullet at
+   * this size, and one token stops each surface picking its own odd pixel. -- */
+  --so-dot: 6px;
+
   /* -- Layout widths -- */
   --so-sidebar-collapsed: 3.5rem;  /* 56px = w-14 */
   --so-sidebar-compact: 180px;

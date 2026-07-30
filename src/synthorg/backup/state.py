@@ -16,3 +16,9 @@ class BackupStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     service: BackupService | None = None
+    #: Whether the operator asked for backups (``backup.enabled``). Set
+    #: independently of ``service`` so a construction failure is
+    #: distinguishable from a deliberately backup-less run: without it, a
+    #: service that could not be built is indistinguishable from one nobody
+    #: wanted, and every ``backup.*`` setting silently loses its consumer.
+    expected: bool = False

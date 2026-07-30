@@ -27,6 +27,7 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
 )
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 from synthorg.persistence.integration_inmemory import (
     InMemoryConnectionRepository,
@@ -899,6 +900,13 @@ class FakePersistenceBackend(PersistenceBackend):
         # ``SQLITE`` as the closest single-process analogue for the
         # in-memory store the fake actually provides.
         return PersistenceBackendKind.SQLITE
+
+    @override
+    @property
+    def config(self) -> SQLiteConfig | PostgresConfig:
+        # Paired with ``kind`` so the discriminator and the connection details
+        # cannot disagree: an in-memory store is what ``:memory:`` names.
+        return SQLiteConfig(path=":memory:")
 
     @override
     @property
