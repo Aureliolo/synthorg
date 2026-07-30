@@ -49,6 +49,16 @@ class PostgresPersistenceComponentHandler(BasePersistenceComponentHandler):
     def __init__(self, config: PostgresConfig) -> None:
         self._config = config
 
+    @property
+    def database(self) -> str:
+        """Return the name of the database this handler dumps and restores.
+
+        Which database a boot bound the handler to is worth asserting without
+        reaching into the config, and the name alone carries none of the
+        credentials the rest of the config holds.
+        """
+        return self._config.database
+
     @override
     def _started_log_fields(self) -> dict[str, object]:
         """Return database/host identity for the STARTED log event."""

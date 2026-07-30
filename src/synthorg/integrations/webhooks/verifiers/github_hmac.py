@@ -41,6 +41,15 @@ class GitHubHmacVerifier:
         """HTTP header name containing the signature."""
         return "x-hub-signature-256"
 
+    @property
+    def delivery_id_header(self) -> str | None:
+        """GitHub's per-delivery GUID, repeated on its own redeliveries.
+
+        Returns:
+            The GitHub delivery-id header name.
+        """
+        return "x-github-delivery"
+
     async def verify(
         self,
         *,

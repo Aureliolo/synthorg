@@ -17,7 +17,11 @@ The backup system protects persistent data (persistence DB, agent memory, and co
   - `PostgresPersistenceComponentHandler`: `pg_dump` / `pg_restore` shellouts with `PGPASSWORD` injected via the child environment (never on argv) and a per-invocation timeout
   - `MemoryComponentHandler`: `shutil.copytree` with `symlinks=True` for agent memory data directory
   - `ConfigComponentHandler`: `shutil.copy2` for company YAML configuration
-- **PERSISTENCE_BACKUP_HANDLER_REGISTRY**: `StrategyRegistry` keyed on `config.persistence.backend` ("sqlite" / "postgres"); `_build_persistence_handler` dispatches by backend so swapping SQLite for Postgres at deploy time picks the matching `VACUUM INTO` / `pg_dump` implementation without editing the factory.
+- **PERSISTENCE_BACKUP_HANDLER_REGISTRY**: `StrategyRegistry` keyed on the backend discriminator ("sqlite" / "postgres"), so swapping SQLite for Postgres at deploy time picks the matching `VACUUM INTO` / `pg_dump` implementation without editing the factory.
+  - `_build_persistence_handler` dispatches on the backend **assembled at boot**, taking both its `kind` and its `config` off the one object, and falls back to `config.persistence` only when no backend was built. Reality outranks intent: an env-driven deployment (`SYNTHORG_DATABASE_URL`) builds its backend from a boot config in `api/boot_persistence` that is never written back into `RootConfig`, whose `backend` stays at its `sqlite` default and whose `postgres` block stays `None`. Dispatching on the config alone hands a Postgres deployment a SQLite handler pointed at a file that does not exist, and reading connection details from the config alone leaves the Postgres handler nothing to connect to.
+  - A mismatch between the two is logged: at INFO when the boot backend is the more durable one (Postgres-in-env over a default SQLite YAML is the routine compose shape), at WARNING when the configured backend was Postgres and SQLite is what actually came up, since that is a migration that did not take effect.
+  - Backup artefacts are written owner-only (`0600` files, `0700` directories): a dump is a complete plaintext copy of the database including every encrypted-at-rest credential blob.
+  - The Postgres handler needs `pg_dump` / `pg_restore` on PATH; the backend image ships `postgresql-client` for this. `ensure_pg_tools_available` verifies both at factory dispatch, so missing tooling surfaces at boot rather than at the first scheduled backup.
 - **BackupScheduler**: Background asyncio task for periodic backups with interruptible sleep via `asyncio.Event`
 - **RetentionManager**: Prunes old backups by count and age; never prunes the most recent backup or `pre_migration`-tagged backups
 
@@ -93,6 +97,26 @@ not translate it explicitly):
 | `BackupNotFoundError` | `404` | `RECORD_NOT_FOUND` |
 | `BackupInProgressError` | `409` | `RESOURCE_CONFLICT` |
 | Any other `BackupError` subtype (`ManifestError`, `RestoreError`, `RetentionError`, `ComponentBackupError`, plain `BackupError`) | `500` | `INTERNAL_ERROR` (detail `"Backup operation failed"`) |
+
+---
+
+## When the service cannot be built
+
+`build_backup_service` returns `None` if handler construction fails, and a `None`
+service means this process has no backup coverage at all: the scheduler never
+starts and no `backup.*` setting has a live consumer, so every knob still renders
+in the dashboard and does nothing.
+
+That outcome is reported rather than left silent. `BackupStateSlice.expected`
+records that construction was attempted, the startup path logs
+`backup.service.unavailable` at ERROR where it skips the wiring, and `/health`
+carries a `backup` field: `true` when wired, `false` when attempted and absent,
+`null` when never attempted.
+
+`backup` is deliberately **excluded** from the readiness roll-up. A process with
+no backup coverage still serves traffic correctly, so folding it into `/readyz`
+would have a supervisor restart a healthy deployment over a condition only an
+operator can fix.
 
 ---
 

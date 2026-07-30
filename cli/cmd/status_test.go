@@ -217,7 +217,7 @@ func TestComputeVerdict(t *testing.T) {
 	oldServices := statusServices
 	t.Cleanup(func() { statusServices = oldServices })
 
-	okHealth := healthResponse{Status: "ok", Version: "0.0.1"}
+	okHealth := healthResponse{Status: "ok"}
 
 	tests := []struct {
 		name           string
@@ -291,7 +291,7 @@ func TestComputeVerdict(t *testing.T) {
 				servicesFilterEmpty: true,
 				healthStatusCode:    503,
 				healthEnvelopeOK:    true,
-				healthData:          healthResponse{Status: "unavailable", Version: "0.0.1"},
+				healthData:          healthResponse{Status: "unavailable"},
 			},
 			wantLevel:    statusLevelCritical,
 			wantHasIssue: "dependency",
@@ -447,7 +447,7 @@ func TestFormatUptime(t *testing.T) {
 // decodes `synthorg status --json`.
 func TestRenderHealthSectionJSON(t *testing.T) {
 	t.Parallel()
-	okHealth := healthResponse{Status: "ok", Version: "1.2.3", Uptime: 90}
+	okHealth := healthResponse{Status: "ok", Uptime: 90}
 
 	tests := []struct {
 		name      string
@@ -460,7 +460,7 @@ func TestRenderHealthSectionJSON(t *testing.T) {
 				healthStatusCode: 200,
 				healthEnvelopeOK: true,
 				healthData:       okHealth,
-				healthBody:       []byte(`{"data":{"status":"ok","version":"1.2.3","uptime_seconds":90}}`),
+				healthBody:       []byte(`{"data":{"status":"ok","uptime_seconds":90}}`),
 			},
 			wantReady: true,
 		},
@@ -610,7 +610,7 @@ func TestRenderHealthSectionBackend(t *testing.T) {
 			snap: statusSnapshot{
 				healthStatusCode: 200,
 				healthEnvelopeOK: true,
-				healthData:       healthResponse{Status: "ok", Version: "1.2.3"},
+				healthData:       healthResponse{Status: "ok"},
 			},
 			wantSubstr: "healthy",
 		},

@@ -17,6 +17,25 @@ class SignatureVerifier(Protocol):
         """HTTP header name containing the signature."""
         ...
 
+    @property
+    def delivery_id_header(self) -> str | None:
+        """Header carrying the provider's own single-use delivery id.
+
+        Each provider names this differently (``X-GitHub-Delivery``,
+        ``X-Gitea-Delivery``, ...) and none of them sends a generic ``X-Nonce``,
+        so the name has to come from the scheme that knows it.
+
+        Logged for traceability, and deliberately NOT used for deduplication:
+        the id sits outside everything :meth:`verify` covers, so an attacker
+        holding one captured signed body could replay it indefinitely by varying
+        the id. Dedup keys on the delivery identity instead (connection + body
+        digest), which the signature does cover.
+
+        ``None`` for a scheme that sends no id of its own (Slack and A2A bind
+        freshness into the signature by signing a timestamp).
+        """
+        ...
+
     async def verify(
         self,
         *,

@@ -1,10 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
-import {
-  connectionTypeUsesWebhookReceipts,
-  type Connection,
-  type ConnectionType,
-} from '@/api/types/integrations'
+import type { Connection, ConnectionType } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,10 +21,15 @@ import {
   isFieldVisible,
   metadataGovernsOtherFields,
 } from './connection-fields'
-import { allFormValues, isForgeConnectionType } from './connection-submit'
+import {
+  allFormValues,
+  isForgeConnectionType,
+  webhookRetentionApplies,
+} from './connection-submit'
 import { RepoScopePicker } from './RepoScopePicker'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
+import { useConnectionTypes } from './useConnectionTypes'
 
 export interface ConnectionFormModalProps {
   open: boolean
@@ -57,6 +58,9 @@ function renderField({ spec, value, error, required, onChange, readOnly }: Rende
         label={spec.label}
         value={value}
         options={spec.options.map((o) => ({ value: o, label: o }))}
+        // Named after the field, so an unanswered select reads as a prompt
+        // rather than as an option the operator might think they picked.
+        placeholder={`Select a ${spec.label.toLowerCase()}`}
         hint={spec.hint}
         error={error ?? undefined}
         required={required}
@@ -114,7 +118,7 @@ function ConnectionTypeCard({
 function TypePicker({ onSelect }: { onSelect: (type: ConnectionType) => void }) {
   // The registry is the single source of truth for which types exist and how
   // they are labelled/described; render exactly what the backend returns.
-  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const connectionTypes = useConnectionTypes()
   const typesLoading = useConnectionsStore((s) => s.typesLoading)
   const typesError = useConnectionsStore((s) => s.typesError)
   const fetchConnectionTypes = useConnectionsStore((s) => s.fetchConnectionTypes)
@@ -224,8 +228,15 @@ function ConnectionFieldList({
   )
 }
 
-function WebhookRetentionField({ f }: { f: ConnectionForm }) {
-  if (f.form.type === null || !connectionTypeUsesWebhookReceipts(f.form.type)) return null
+function WebhookRetentionField({ f, spec }: { f: ConnectionForm; spec: ResolvedConnectionSpec }) {
+  const connectionTypes = useConnectionTypes()
+  // The same predicate the submit path gates on, so the control and the
+  // submitted body cannot disagree about whether retention applies.
+  const applies = useMemo(
+    () => webhookRetentionApplies(f.form, spec, connectionTypes),
+    [f.form, spec, connectionTypes],
+  )
+  if (!applies) return null
   return (
     <InputField
       label="Webhook receipt retention (days)"
@@ -355,7 +366,7 @@ function ConnectionFormFields({
         </p>
       )}
 
-      <WebhookRetentionField f={f} />
+      <WebhookRetentionField f={f} spec={spec} />
 
       <RepoScopeField f={f} mode={mode} />
 

@@ -33,6 +33,78 @@ describe('SelectField', () => {
     expect(screen.getByText('Select...')).toBeInTheDocument()
   })
 
+  // A native <select> whose value matches no <option> displays the first option
+  // instead, so without a matching option the control reports a selection the
+  // form state does not hold and a required-field validator rejects what the
+  // operator can see is filled in.
+  it('does not display the first option as selected when the value is unset', () => {
+    render(<SelectField label="Currency" options={options} value="" onChange={() => {}} />)
+    expect(screen.getByLabelText<HTMLSelectElement>('Currency').value).toBe('')
+  })
+
+  it('renders a fallback option for an unset value with no placeholder', () => {
+    render(<SelectField label="Currency" options={options} value="" onChange={() => {}} />)
+    expect(screen.getAllByRole('option')).toHaveLength(4)
+    // Asserted by text, not just by count: the count alone passes even if the
+    // label goes blank, which is the visible half of this behaviour.
+    expect(screen.getByText('Select an option')).toBeInTheDocument()
+  })
+
+  it('marks the fallback option unselectable', () => {
+    // The value is not one of the real choices, so offering it as one would let
+    // the operator "pick" a value the form does not accept.
+    render(<SelectField label="Currency" options={options} value="CHF" onChange={() => {}} />)
+    expect(screen.getByRole('option', { name: 'CHF' })).toBeDisabled()
+  })
+
+  it('describes an unmatched value as unavailable for assistive tech', () => {
+    // A screen-reader user tabbing to the closed control otherwise hears only
+    // the value, with nothing saying it is not among the choices.
+    render(<SelectField label="Currency" options={options} value="CHF" onChange={() => {}} />)
+    const select = screen.getByLabelText<HTMLSelectElement>('Currency')
+    const describedBy = select.getAttribute('aria-describedby')
+    expect(describedBy).not.toBeNull()
+    expect(document.getElementById(describedBy ?? '')?.textContent).toContain(
+      'not available',
+    )
+  })
+
+  it('adds no unavailable-value hint when the value matches an option', () => {
+    render(<SelectField label="Currency" options={options} value="EUR" onChange={() => {}} />)
+    expect(screen.queryByText(/not available/)).not.toBeInTheDocument()
+  })
+
+  it('shows an unmatched value as itself rather than another option', () => {
+    render(<SelectField label="Currency" options={options} value="CHF" onChange={() => {}} />)
+    const select = screen.getByLabelText<HTMLSelectElement>('Currency')
+    expect(select.value).toBe('CHF')
+    expect(screen.getByText('CHF')).toBeInTheDocument()
+  })
+
+  it('adds no fallback option when the value matches a grouped option', () => {
+    render(
+      <SelectField
+        label="Currency"
+        groups={[{ label: 'Europe', options: [{ value: 'EUR', label: 'EUR - Euro' }] }]}
+        value="EUR"
+        onChange={() => {}}
+      />,
+    )
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+  })
+
+  it('adds a fallback option when the value matches no grouped option', () => {
+    render(
+      <SelectField
+        label="Currency"
+        groups={[{ label: 'Europe', options: [{ value: 'EUR', label: 'EUR - Euro' }] }]}
+        value=""
+        onChange={() => {}}
+      />,
+    )
+    expect(screen.getByLabelText<HTMLSelectElement>('Currency').value).toBe('')
+  })
+
   it('calls onChange with selected value', async () => {
     const handleChange = vi.fn()
     const user = userEvent.setup()

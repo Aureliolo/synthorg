@@ -27,6 +27,12 @@ export interface ConnectionHealthBadgeProps {
  * the shared provider health primitive (up/degraded/down/unknown).
  * This is the single source of truth for that mapping so call sites
  * don't have to reconcile the enum mismatch themselves.
+ *
+ * Reports the **outbound** probe only, and deliberately does not fold in
+ * `HealthReport.webhook_ingest`: a signing secret is optional by design, so a
+ * connection used purely outbound would read as degraded for lacking something
+ * it does not need. Inbound readiness is surfaced separately, where it is
+ * actionable, by `ConnectionCard`.
  */
 export function ConnectionHealthBadge({
   status,

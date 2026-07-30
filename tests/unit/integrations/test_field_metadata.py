@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import (
     CONNECTION_FIELD_METADATA,
+    WEBHOOK_SIGNING_SECRET_FIELD,
     ConnectionFieldMetadata,
     ConnectionTypeMetadata,
     FieldCondition,
@@ -22,6 +23,7 @@ from synthorg.integrations.connections.field_metadata import (
 )
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.integrations.connections.types import get_authenticator
+from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 
 pytestmark = pytest.mark.unit
 
@@ -66,9 +68,9 @@ def test_secret_fields_declare_masked_capture(
 
 
 def test_github_shape() -> None:
-    """GitHub exposes a masked secret ``token`` and an optional base_url."""
+    """GitHub exposes masked ``token`` + ``signing_secret`` and an optional base_url."""
     metadata = get_connection_type_metadata(ConnectionType.GITHUB)
-    assert metadata.secret_field_names == ("token",)
+    assert metadata.secret_field_names == ("token", "signing_secret")
     by_name = {field.name: field for field in metadata.fields}
     assert by_name["token"].secret is True
     assert by_name["token"].placement is FieldPlacement.CREDENTIAL
@@ -111,6 +113,162 @@ def test_a_secret_outside_the_credential_placement_is_refused(
             secret=True,
             capture_mode=SecretCaptureMode.MASKED_FIELD,
         )
+
+
+class TestWebhookIngestion:
+    """``webhook_secret_field`` tracks whether ingest can authenticate at all."""
+
+    def test_a_type_with_a_signing_secret_names_the_field(self) -> None:
+        metadata = get_connection_type_metadata(ConnectionType.SLACK)
+        assert metadata.webhook_secret_field == "signing_secret"
+
+    def test_a_type_that_cannot_receive_a_webhook_names_none(self) -> None:
+        assert (
+            get_connection_type_metadata(
+                ConnectionType.LLM_PROVIDER
+            ).webhook_secret_field
+            is None
+        )
+
+    @pytest.mark.parametrize(
+        "connection_type",
+        [
+            ConnectionType.GITHUB,
+            ConnectionType.GITLAB,
+            ConnectionType.GITEA,
+            ConnectionType.FORGEJO,
+            ConnectionType.GENERIC_HTTP,
+            ConnectionType.SLACK,
+            ConnectionType.A2A_PEER,
+        ],
+    )
+    def test_every_verifier_backed_type_can_be_given_a_secret(
+        self,
+        connection_type: ConnectionType,
+    ) -> None:
+        """Ingest is reachable for every type that has a verifier.
+
+        A type registered with a verifier but no configurable signing-secret
+        field has no way to ever pass authentication: ingest resolves the
+        verifier, finds no secret to check the signature against, and rejects
+        every delivery. The verifier would be unreachable code and the inbound
+        path dead.
+        """
+        metadata = get_connection_type_metadata(connection_type)
+        assert metadata.webhook_secret_field is not None
+
+    def test_every_signing_secret_is_captured_out_of_band(self) -> None:
+        """A signing secret is credential material like any other."""
+        for metadata in list_connection_type_metadata():
+            name = metadata.webhook_secret_field
+            if name is None:
+                continue
+            field = next(f for f in metadata.fields if f.name == name)
+            assert field.secret is True
+            assert field.capture_mode is SecretCaptureMode.MASKED_FIELD
+
+    @pytest.mark.parametrize(
+        "connection_type",
+        [
+            ConnectionType.GITHUB,
+            ConnectionType.GITLAB,
+            ConnectionType.GITEA,
+            ConnectionType.FORGEJO,
+            ConnectionType.GENERIC_HTTP,
+        ],
+    )
+    def test_a_forge_or_http_signing_secret_is_optional(
+        self,
+        connection_type: ConnectionType,
+    ) -> None:
+        """These connections exist primarily to make outbound calls.
+
+        Requiring a webhook secret would block creating one for API access
+        alone; blank simply means this connection receives no webhooks. Slack is
+        deliberately different: its signing secret is required, because the
+        inbound events path is core to what a Slack connection is for.
+        """
+        metadata = get_connection_type_metadata(connection_type)
+        name = metadata.webhook_secret_field
+        assert name is not None
+        assert next(f for f in metadata.fields if f.name == name).required is False
+
+    def test_the_slack_signing_secret_is_required(self) -> None:
+        """The other half of the asymmetry, so it cannot drift unnoticed.
+
+        A Slack connection exists for the inbound events path, so a missing
+        signing secret is a half-configured connection rather than a deliberate
+        outbound-only one.
+        """
+        metadata = get_connection_type_metadata(ConnectionType.SLACK)
+        name = metadata.webhook_secret_field
+        assert name is not None
+        assert next(f for f in metadata.fields if f.name == name).required is True
+
+    def test_the_a2a_signing_secret_is_optional(self) -> None:
+        """A2A peers are reachable outbound without accepting push."""
+        metadata = get_connection_type_metadata(ConnectionType.A2A_PEER)
+        name = metadata.webhook_secret_field
+        assert name is not None
+        assert next(f for f in metadata.fields if f.name == name).required is False
+
+    def test_ingest_is_unreachable_while_the_secret_field_is_hidden(self) -> None:
+        """A hidden field means no reachable inbound path, not a form detail.
+
+        ``generic_http`` exposes its signing secret only for a custom vendor. A
+        connection later repointed at a vendor preset must stop authenticating
+        deliveries: the secret cannot be cleared through an update and the form
+        no longer shows it, so an operator would otherwise have retired the
+        inbound path everywhere they can see while it kept publishing.
+        """
+        metadata = get_connection_type_metadata(ConnectionType.GENERIC_HTTP)
+        assert metadata.webhook_ingest_is_reachable({"vendor": "custom"}) is True
+        assert metadata.webhook_ingest_is_reachable({"vendor": "some-preset"}) is False
+        assert metadata.webhook_ingest_is_reachable({}) is False
+
+    def test_an_unconditional_secret_field_is_always_reachable(self) -> None:
+        """Only a conditional field consults the connection's values."""
+        metadata = get_connection_type_metadata(ConnectionType.GITHUB)
+        assert metadata.webhook_ingest_is_reachable({}) is True
+
+    def test_a_type_without_a_verifier_is_never_reachable(self) -> None:
+        assert (
+            get_connection_type_metadata(
+                ConnectionType.LLM_PROVIDER
+            ).webhook_ingest_is_reachable({})
+            is False
+        )
+
+    @pytest.mark.parametrize("metadata", list_connection_type_metadata())
+    def test_a_type_with_a_secret_field_has_a_verifier(
+        self,
+        metadata: ConnectionTypeMetadata,
+    ) -> None:
+        """A configurable signing secret with no verifier is a dead field.
+
+        Ingest resolves the verifier before it checks the secret, so a type that
+        prompts for one it could never use would take an operator's secret and
+        still reject every delivery.
+        """
+        if metadata.webhook_secret_field is None:
+            return
+        assert get_verifier(metadata.connection_type) is not None
+
+    @pytest.mark.parametrize("metadata", list_connection_type_metadata())
+    def test_every_named_field_is_the_key_ingest_reads(
+        self,
+        metadata: ConnectionTypeMetadata,
+    ) -> None:
+        """The derivation and ingest agree on one credential key by construction.
+
+        Both sides resolve ``WEBHOOK_SIGNING_SECRET_FIELD`` rather than repeating
+        a literal, so there is one name to keep in step instead of a list, and no
+        alias ingest would honour that no type declares.
+        """
+        named = metadata.webhook_secret_field
+        if named is None:
+            return
+        assert named == WEBHOOK_SIGNING_SECRET_FIELD
 
 
 class TestFieldCondition:

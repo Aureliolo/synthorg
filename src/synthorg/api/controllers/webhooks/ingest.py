@@ -1,21 +1,26 @@
 # module-kind: controller
 """Webhook ingest endpoint -- receive, verify, dedup, publish."""
 
-import hashlib
 import json
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers._webhooks_wiring import WebhookEventPayload
+from synthorg.api.controllers._webhooks_wiring import (
+    WebhookEventPayload,
+    build_delivery_key,
+)
+from synthorg.api.controllers.webhooks._authentication import (
+    get_verified_connection,
+    read_delivery_id,
+    verify_signature,
+)
 from synthorg.api.controllers.webhooks._shared import (
     _check_replay_or_freshness,
     _enforce_max_payload,
-    _get_connection_or_404,
     _parse_timestamp,
     _publish_with_durable_idempotency,
-    _verify_signature,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.path_params import PathEventType, PathName
@@ -60,17 +65,22 @@ class WebhooksIngestController(Controller):
         Thin orchestrator: delegates to module-level helpers for
         connection lookup, payload-size enforcement, signature
         verification, replay/freshness, durable idempotency, and
-        bus publication. Returns 202 Accepted on success; raises
-        structured errors (404 on unknown connection, 401 on missing
-        or failed signature, 400 on malformed timestamp, 409 on
-        replay).
+        bus publication. Returns 202 Accepted on success.
+
+        Every rejection before the delivery authenticates answers 401 with one
+        message, whether the connection is unknown, the type has no verifier, the
+        secret is unset, or the signature did not match. This endpoint takes no
+        credentials, so distinguishing them would let an unauthenticated caller
+        enumerate connection names and probe their configuration; the reason is
+        kept in the structured log instead. A malformed timestamp is 400 and a
+        duplicate delivery 409, neither of which reveals anything a caller that
+        already holds a valid signature does not know.
 
         Returns:
             ``ApiResponse[dict[str, object]]`` instance.
 
         Raises:
-            NotFoundError: If the named connection does not exist.
-            UnauthorizedError: If the signature is missing or invalid.
+            UnauthorizedError: If the delivery cannot be authenticated.
             ConflictError: If replay or freshness validation fails.
             ValidationError: Raised on the corresponding failure path.
         """
@@ -78,7 +88,7 @@ class WebhooksIngestController(Controller):
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
             "Connection Catalog",
         )
-        conn = await _get_connection_or_404(state, connection_name)
+        conn = await get_verified_connection(state, connection_name)
         logger.info(
             WEBHOOK_RECEIVED,
             connection_name=connection_name,
@@ -93,38 +103,30 @@ class WebhooksIngestController(Controller):
         )
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        await _verify_signature(
+        verifier = await verify_signature(
             catalog=catalog,
-            connection_name=connection_name,
-            connection_type=conn.connection_type,
+            connection=conn,
             body=body,
             headers=headers,
         )
 
-        # Strip each candidate header individually before fallback
-        # selection. ``headers.get("x-nonce") or
-        # headers.get("x-request-id")`` short-circuits on a
-        # whitespace-only ``x-nonce`` (truthy before ``.strip()``)
-        # and never tries ``x-request-id``, which routes real retries
-        # down the body-hash path and changes the idempotency key.
-        # Stripping each candidate first picks the first non-empty
-        # value, or ``None``.
-        nonce = next(
-            (
-                candidate
-                for candidate in (
-                    (headers.get("x-nonce") or "").strip(),
-                    (headers.get("x-request-id") or "").strip(),
-                )
-                if candidate
-            ),
-            None,
-        )
+        # One identity for both dedup gates: this connection, these bytes. The
+        # digest is what the signature just covered, and it is always present,
+        # so the replay gate never fails closed for want of a freshness signal,
+        # which is what rejected every genuine delivery (no provider sends the
+        # generic ``X-Nonce`` / ``X-Request-Id`` / ``X-Timestamp`` headers this
+        # path used to look for on its own). Nothing outside the signature is in
+        # it, so no header value and no URL ``event_type`` can widen it.
+        dedup_key = build_delivery_key(connection_name=connection_name, body=body)
+        # Recorded for traceability only: each provider names its own delivery
+        # id (``X-GitHub-Delivery`` and friends), which the verifier declares.
+        delivery_id = read_delivery_id(headers, verifier)
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
         await _check_replay_or_freshness(
             state=state,
             connection_name=connection_name,
-            nonce=nonce,
+            dedup_key=dedup_key,
+            delivery_id=delivery_id,
             timestamp=timestamp,
         )
 
@@ -156,30 +158,19 @@ class WebhooksIngestController(Controller):
             "Message Bus",
         )
 
-        # Both branches below publish through the durable
-        # idempotency service so JetStream redelivery / retried POSTs
-        # cannot double-bus the same event. When the provider
-        # supplies a nonce / request-id we use that directly;
-        # otherwise we synthesise one from the body's SHA-256 so
-        # byte-identical redeliveries collapse to a single publish.
-        # The ``dedup_source`` tag on the success log lets operators
-        # distinguish the two paths in audit traces.
-        if nonce:
-            idem_nonce = nonce
-            dedup_source = "nonce"
-        else:
-            body_digest = hashlib.sha256(body).hexdigest()
-            idem_nonce = f"sha256:{body_digest}"
-            dedup_source = "body_sha256"
-
+        # The same key the in-memory gate just asserted on, so the durable
+        # service agrees with it in both directions: a provider retry of a
+        # byte-identical delivery collapses onto the cached 202 on any replica,
+        # and a replay cannot mint a second publish by dressing up its headers or
+        # posting the same bytes to a different event name.
         cached = await _publish_with_durable_idempotency(
             state=state,
             connection_name=connection_name,
             event_type=event_type,
-            nonce=idem_nonce,
+            delivery_key=dedup_key,
             connection_type=conn.connection_type,
             bus=bus,
             payload=normalized_payload,
-            dedup_source=dedup_source,
+            dedup_source="body_sha256",
         )
         return ApiResponse(data=cached)

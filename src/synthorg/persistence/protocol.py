@@ -66,6 +66,7 @@ from synthorg.persistence.codebase_structure_map_protocol import (
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportArchiveRepository,
 )
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     ConnectionSecretRepository,
@@ -298,6 +299,21 @@ class PersistenceBackend(Protocol):
         mypy rejects an implementation that returns any other value, and
         because it is a ``StrEnum`` it still keys string-keyed dispatch
         tables.
+        """
+        ...
+
+    @property
+    def config(self) -> SQLiteConfig | PostgresConfig:
+        """Return the connection details this backend was built from.
+
+        The backup-handler factory needs the database it is actually
+        pointed at, which is not recoverable from ``RootConfig``: an
+        env-driven boot (``SYNTHORG_DATABASE_URL``) parses its own
+        config in ``api/boot_persistence`` and leaves
+        ``RootConfig.persistence`` describing the operator's declared
+        intent instead. Pairing this with :attr:`kind` means the
+        discriminator and the connection details always come from one
+        object and cannot disagree.
         """
         ...
 

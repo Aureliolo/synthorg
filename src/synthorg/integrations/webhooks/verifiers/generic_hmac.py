@@ -22,6 +22,9 @@ class GenericHmacVerifier:
     Args:
         header_name: HTTP header containing the signature.
         prefix: Optional prefix before the hex digest (e.g. ``"sha256="``).
+        delivery_id_header: HTTP header carrying the sender's single-use
+            delivery id, read as the replay nonce. ``None`` for a sender that
+            supplies none, where ingest falls back to the body digest.
     """
 
     def __init__(
@@ -29,14 +32,23 @@ class GenericHmacVerifier:
         *,
         header_name: str = "x-signature",
         prefix: str = "",
+        delivery_id_header: str | None = None,
     ) -> None:
         self._header_name = header_name.lower()
         self._prefix = prefix
+        self._delivery_id_header = (
+            None if delivery_id_header is None else delivery_id_header.lower()
+        )
 
     @property
     def signature_header(self) -> str:
         """HTTP header name containing the signature."""
         return self._header_name
+
+    @property
+    def delivery_id_header(self) -> str | None:
+        """HTTP header carrying the sender's single-use delivery id."""
+        return self._delivery_id_header
 
     async def verify(
         self,

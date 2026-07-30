@@ -86,7 +86,7 @@ describe('StatusBar', () => {
       http.get('/api/v1/departments', () =>
         HttpResponse.json(apiError('blocked for StatusBar placeholder test')),
       ),
-      http.get('/api/v1/readyz', () =>
+      http.get('/api/v1/health', () =>
         HttpResponse.json(apiError('blocked for StatusBar placeholder test')),
       ),
     )

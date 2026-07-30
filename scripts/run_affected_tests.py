@@ -15,6 +15,12 @@ file (``__init__.py``, ``constants.py``), and a ``pyproject.toml`` edit, which
 carries pytest's own configuration. ``--full`` runs the whole suite on demand,
 with the timing-regression guards armed.
 
+A change can also be too broad to fit the budget without any of those triggers
+firing, simply by touching many packages at once. Past
+``_MAX_AFFECTED_TEST_FILES`` the unit run is deferred whole for the same reason
+and with the same announcement: at that breadth the local run has stopped being
+a fast screen and become a slower copy of what CI is about to do anyway.
+
 The affected-tests run uses ``--max-worker-restart=0`` (matching CI) so any
 xdist worker crash (commonly the Python 3.14 + Windows ProactorEventLoop
 IOCP teardown race) surfaces and blocks the push rather than being silently
@@ -48,6 +54,23 @@ from typing import Final, Literal
 _PYTEST_FULL_SUITE_TIMEOUT_SECONDS: Final[float] = 12 * 60
 _PYTEST_AFFECTED_TIMEOUT_SECONDS: Final[float] = 6 * 60
 _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
+
+# Above this many affected test files the local run stops being a fast screen
+# and becomes a slower duplicate of CI, so the unit run is deferred whole.
+#
+# Derived, not guessed: a nine-package change ran 862 test files in 218s, and the
+# rest of the pre-push hook costs ~145s, which leaves ~155s of the 300s budget
+# for pytest. At the measured ~0.25s per file that is ~600 files. File count
+# rather than package count because packages differ by two orders of magnitude
+# (``tests/unit/a2a`` against ``tests/unit/api``), so counting packages would
+# defer a cheap nine-package change and admit an expensive two-package one.
+#
+# All-or-nothing on purpose. Running a subset means choosing which affected
+# packages go unverified, and every rule for choosing is either arbitrary or
+# perverse: dropping the largest drops the packages a broad change most affects.
+# Deferring the whole run says one true thing (CI owns this one) instead of
+# quietly verifying an unprincipled fraction of it.
+_MAX_AFFECTED_TEST_FILES: Final[int] = 600
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -889,6 +912,27 @@ def _defer_to_ci(reason: str, *, scoped_run_follows: bool) -> None:
     )
 
 
+def count_affected_test_files(test_dirs: Sequence[str]) -> int:
+    """Count the test files the affected run would collect.
+
+    A cheap stand-in for its wall-clock cost, taken before pytest starts so the
+    budget decision happens instead of the expensive run rather than after it.
+    A path that names a file counts as one; a directory counts its ``test_*.py``
+    descendants.
+
+    Returns:
+        The number of test files across *test_dirs*.
+    """
+    total = 0
+    for entry in test_dirs:
+        path = _REPO_ROOT / entry
+        if path.is_dir():
+            total += sum(1 for _ in path.rglob("test_*.py"))
+        elif path.is_file():
+            total += 1
+    return total
+
+
 def _pytest_config_changed(changed: Sequence[str]) -> bool:
     """Whether the push touches pytest's own configuration.
 
@@ -947,6 +991,16 @@ def _run_tests() -> int:
             print("No Python files changed -- skipping unit tests.")
             return 0
         print("Changed files don't map to any test directories -- skipping.")
+        return 0
+
+    affected_files = count_affected_test_files(test_dirs)
+    if affected_files > _MAX_AFFECTED_TEST_FILES:
+        _defer_to_ci(
+            f"{affected_files} affected test files across "
+            f"{len(test_dirs)} package(s) exceeds the "
+            f"{_MAX_AFFECTED_TEST_FILES}-file local budget",
+            scoped_run_follows=False,
+        )
         return 0
 
     print(f"Running affected tests: {', '.join(test_dirs)}")

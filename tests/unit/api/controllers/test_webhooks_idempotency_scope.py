@@ -3,14 +3,12 @@
 The webhook flow uses the durable ``IdempotencyService`` under a scope
 of the form
 ``webhooks:{len(connection_type)}:{connection_type}:{len(connection_name)}:{connection_name}``
-and a key of the form
-``{len(connection_name)}:{connection_name}:{len(event_type)}:{event_type}:{len(nonce_for_key)}:{nonce_for_key}``.
-Length-prefixing every segment makes the encoding injective: distinct
-``(connection_type, connection_name)`` (or ``(connection_name,
-event_type, nonce)``) tuples can never produce the same composite
-string, even when one of the parts contains a literal ``":"``. Pinning
-both fields prevents two distinct connections of the same provider
-from colliding on a shared dedup row.
+and a key derived from the delivery identity (the connection name plus the
+body's digest). Length-prefixing every segment makes the encoding
+injective: distinct tuples can never produce the same composite string, even
+when one of the parts contains a literal ``":"``. Pinning both fields prevents
+two distinct connections of the same provider from colliding on a shared dedup
+row.
 """
 
 import pytest
@@ -18,32 +16,35 @@ import pytest
 from synthorg.api.controllers._webhooks_wiring import (
     _build_idem_key,
     _build_idem_scope,
+    build_delivery_key,
 )
 
 pytestmark = pytest.mark.unit
 
 
 class TestWebhookIdempotencyKey:
-    def test_key_contains_connection_name(self) -> None:
+    def test_key_carries_the_connection_name(self) -> None:
         key = _build_idem_key(
-            connection_name="example-provider-primary",
-            event_type="push",
-            nonce="nonce-abc",
+            delivery_key=build_delivery_key(
+                connection_name="example-provider-primary",
+                body=b'{"ref": "main"}',
+            ),
         )
         assert "example-provider-primary" in key
-        assert "push" in key
-        assert "nonce-abc" in key
 
     def test_distinct_connections_produce_distinct_keys(self) -> None:
+        body = b'{"ref": "main"}'
         first = _build_idem_key(
-            connection_name="example-provider-primary",
-            event_type="push",
-            nonce="nonce-abc",
+            delivery_key=build_delivery_key(
+                connection_name="example-provider-primary",
+                body=body,
+            ),
         )
         second = _build_idem_key(
-            connection_name="example-provider-secondary",
-            event_type="push",
-            nonce="nonce-abc",
+            delivery_key=build_delivery_key(
+                connection_name="example-provider-secondary",
+                body=body,
+            ),
         )
         assert first != second
 

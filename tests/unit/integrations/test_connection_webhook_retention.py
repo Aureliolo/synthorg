@@ -15,11 +15,14 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.config import WebhooksConfig
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionType,
 )
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import get_registry
 
 pytestmark = pytest.mark.unit
 
@@ -56,3 +59,44 @@ class TestWebhookReceiptRetentionDaysField:
     def test_negative_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _connection(webhook_receipt_retention_days=-1)
+
+
+class TestWebhooksConfigRetentionBound:
+    """The static mirror must admit every value the setting does.
+
+    The mirror is unconditional, so the registry default lands on every
+    ``WebhooksConfig`` construction. A lower bound above ``0`` would therefore
+    reject the documented opt-out and fail config construction at boot for every
+    deployment, not just one that opted out.
+    """
+
+    def test_zero_accepted(self) -> None:
+        assert WebhooksConfig(receipt_retention_days=0).receipt_retention_days == 0
+
+    def test_the_default_is_never_sweep(self) -> None:
+        assert WebhooksConfig().receipt_retention_days == 0
+
+    def test_positive_accepted(self) -> None:
+        assert WebhooksConfig(receipt_retention_days=30).receipt_retention_days == 30
+
+    def test_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            WebhooksConfig(receipt_retention_days=-1)
+
+    def test_the_registry_default_matches_the_mirror_default(self) -> None:
+        """Two sources for one value, so they are asserted equal by name.
+
+        Against the *declared* field default, not against a constructed
+        instance: ``_apply_mirrors`` fills an unset field from the registry, so
+        an instance's value is the registry's own and the assertion would hold
+        however far the declared default had drifted.
+        """
+        registered = get_registry().get(
+            SettingNamespace.INTEGRATIONS.value,
+            "webhook_receipt_retention_days",
+        )
+        assert registered is not None
+        assert registered.default is not None
+        assert WebhooksConfig.model_fields["receipt_retention_days"].default == int(
+            registered.default
+        )

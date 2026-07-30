@@ -44,7 +44,10 @@ class GiteaHmacVerifier(GenericHmacVerifier):
     """Verifies Gitea webhook signatures (raw-hex HMAC-SHA256)."""
 
     def __init__(self) -> None:
-        super().__init__(header_name="x-gitea-signature")
+        super().__init__(
+            header_name="x-gitea-signature",
+            delivery_id_header="x-gitea-delivery",
+        )
 
 
 class ForgejoHmacVerifier:
@@ -65,6 +68,15 @@ class ForgejoHmacVerifier:
             The preferred Forgejo signature header.
         """
         return self._PRIMARY_HEADER
+
+    @property
+    def delivery_id_header(self) -> str | None:
+        """Forgejo's per-delivery id.
+
+        Returns:
+            The Forgejo delivery-id header name.
+        """
+        return "x-forgejo-delivery"
 
     async def verify(
         self,
@@ -119,6 +131,19 @@ class GitLabTokenVerifier:
             The GitLab token header name.
         """
         return "x-gitlab-token"
+
+    @property
+    def delivery_id_header(self) -> str | None:
+        """GitLab's per-event UUID.
+
+        Load-bearing for this verifier in particular: the token scheme binds
+        neither the body nor a timestamp, so nonce dedup over the delivery id is
+        the only thing standing between a captured token and unlimited replay.
+
+        Returns:
+            The GitLab event-UUID header name.
+        """
+        return "x-gitlab-event-uuid"
 
     async def verify(
         self,

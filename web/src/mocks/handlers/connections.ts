@@ -35,7 +35,10 @@ const mockConnectionTypes: ConnectionTypeMetadata[] = [
     label: 'GitHub',
     description: 'Access GitHub repositories, issues, and pull requests.',
     required_field_names: ['token'],
-    secret_field_names: ['token'],
+    secret_field_names: ['token', 'signing_secret'],
+    // Matches the backend registry, where github declares an optional
+    // signing_secret so inbound ingest can authenticate a delivery to it.
+    webhook_secret_field: 'signing_secret',
     fields: [
       {
         name: 'base_url',
@@ -65,6 +68,20 @@ const mockConnectionTypes: ConnectionTypeMetadata[] = [
         visible_when: null,
         required_when: null,
       },
+      {
+        name: 'signing_secret',
+        label: 'Webhook Secret',
+        input_type: 'password',
+        placement: 'credential',
+        required: false,
+        secret: true,
+        options: [],
+        placeholder: '',
+        help_text: 'Set to receive inbound webhooks.',
+        capture_mode: 'masked_field',
+        visible_when: null,
+        required_when: null,
+      },
     ],
   },
   {
@@ -74,6 +91,7 @@ const mockConnectionTypes: ConnectionTypeMetadata[] = [
     description: 'Connect to a SQL database.',
     required_field_names: ['dialect'],
     secret_field_names: ['password'],
+    webhook_secret_field: null,
     fields: [
       {
         name: 'dialect',
@@ -251,6 +269,7 @@ export const connectionsList = [
         error_detail: conn.health.status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,
         consecutive_failures: conn.health.status === 'unhealthy' ? 4 : 0,
+        webhook_ingest: 'not_applicable',
       }),
     )
   }),
@@ -331,6 +350,7 @@ export const connectionsHandlers = [
         error_detail: null,
         checked_at: NOW,
         consecutive_failures: 0,
+        webhook_ingest: 'not_applicable',
       }),
     ),
   ),

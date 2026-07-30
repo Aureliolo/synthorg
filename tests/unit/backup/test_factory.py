@@ -1,9 +1,10 @@
 """Tests for the backup service factory.
 
-The factory always constructs a real ``BackupService`` so the
-registered ``backup.*`` settings have a live consumer at boot;
-``BackupService.start()`` honours the ``enabled`` flag internally
-without needing the factory to early-return ``None``.
+The ``enabled`` flag alone never makes the factory return ``None``: it
+constructs a real ``BackupService`` regardless, so the registered ``backup.*``
+settings have a live consumer at boot, and ``BackupService.start()`` honours
+``enabled`` internally. A genuine handler-construction failure still yields
+``None``, which is why callers null-check.
 """
 
 from pathlib import Path
@@ -25,12 +26,18 @@ from synthorg.backup.handlers.sqlite_persistence import (
 from synthorg.backup.models import BackupComponent
 from synthorg.backup.service import BackupService
 from synthorg.config.schema import RootConfig
-from synthorg.persistence.config import PersistenceConfig, PostgresConfig
+from synthorg.persistence.config import (
+    PersistenceConfig,
+    PostgresConfig,
+    SQLiteConfig,
+)
+from synthorg.persistence.factory import create_backend
+from synthorg.persistence.protocol import PersistenceBackend
 
 
 @pytest.mark.unit
 class TestBuildBackupService:
-    """build_backup_service always constructs a real service."""
+    """The ``enabled`` flag alone never causes an early ``None`` return."""
 
     def test_returns_backup_service_when_disabled(
         self,
@@ -142,6 +149,231 @@ class TestBackendPluggableHandlers:
         )
 
 
+def _postgres_backend(database: str = "synthorg") -> PersistenceBackend:
+    """Build a real, disconnected Postgres backend.
+
+    A real instance rather than a double because ``kind`` and ``config`` are
+    exactly the seam under test, and ``create_backend`` returns a disconnected
+    object so nothing here touches a database.
+
+    Returns:
+        A disconnected ``PostgresBackend``.
+    """
+    return create_backend(
+        PersistenceConfig(
+            backend="postgres",
+            postgres=PostgresConfig(
+                host="db.example.test",
+                database=database,
+                username="synthorg",
+                password=SecretStr("hunter2"),
+            ),
+        ),
+    )
+
+
+def _sqlite_backend(path: Path) -> PersistenceBackend:
+    """Build a real, disconnected SQLite backend.
+
+    Returns:
+        A disconnected ``SQLiteBackend``.
+    """
+    return create_backend(
+        PersistenceConfig(backend="sqlite", sqlite=SQLiteConfig(path=str(path))),
+    )
+
+
+@pytest.mark.unit
+class TestBootBackendWinsOverConfig:
+    """The handler follows the backend built at boot, not the YAML's intent.
+
+    An env-driven deployment (``SYNTHORG_DATABASE_URL``) assembles its backend
+    from a boot config built in ``api/boot_persistence`` and never writes that
+    choice back into ``RootConfig``, whose ``persistence.backend`` defaults to
+    ``sqlite`` and whose ``postgres`` block stays ``None``. Dispatching on the
+    config alone hands a Postgres deployment a SQLite handler, and every
+    scheduled backup then fails on a database file that does not exist.
+    Backing up the wrong database is worse than not backing up, so reality
+    wins over intent.
+    """
+
+    def test_boot_postgres_overrides_sqlite_config(self) -> None:
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        assert config.persistence.backend == "sqlite"
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            handlers = build_backup_handlers(
+                config,
+                backup_config,
+                boot_backend=_postgres_backend(),
+            )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            PostgresPersistenceComponentHandler,
+        )
+
+    def test_postgres_handler_uses_the_boot_connection_details(self) -> None:
+        """The config's Postgres block is empty on the deployment this serves.
+
+        ``SYNTHORG_DATABASE_URL`` is parsed into a boot config that never
+        reaches ``RootConfig``, so ``persistence.postgres`` is ``None`` while a
+        Postgres backend is live. Reading the details off the config alone
+        raises and drops the whole service, and reading them off a *stale*
+        config block would dump a different database and report success.
+        """
+        config = RootConfig(company_name="test-co")
+        assert config.persistence.postgres is None
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            handlers = build_backup_handlers(
+                config,
+                backup_config,
+                boot_backend=_postgres_backend(database="live_db"),
+            )
+
+        handler = handlers[BackupComponent.PERSISTENCE]
+        assert isinstance(handler, PostgresPersistenceComponentHandler)
+        assert handler._config.database == "live_db"
+
+    def test_boot_details_outrank_a_stale_config_block(self) -> None:
+        """A half-migrated YAML must not redirect the dump."""
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                backend="postgres",
+                postgres=PostgresConfig(
+                    host="stale.example.test",
+                    database="stale_db",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            handlers = build_backup_handlers(
+                config,
+                backup_config,
+                boot_backend=_postgres_backend(database="live_db"),
+            )
+
+        handler = handlers[BackupComponent.PERSISTENCE]
+        assert isinstance(handler, PostgresPersistenceComponentHandler)
+        assert handler._config.database == "live_db"
+        assert handler._config.host == "db.example.test"
+
+    def test_boot_sqlite_overrides_postgres_config(self, tmp_path: Path) -> None:
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                backend="postgres",
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_db_path=tmp_path / "synthorg.db",
+            boot_backend=_sqlite_backend(tmp_path / "synthorg.db"),
+        )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            SQLitePersistenceComponentHandler,
+        )
+
+    def test_boot_sqlite_path_is_used_without_a_resolved_path(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The live backend's own path beats the config's default."""
+        live_db = tmp_path / "live.db"
+        config = RootConfig(company_name="test-co")
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            boot_backend=_sqlite_backend(live_db),
+        )
+
+        handler = handlers[BackupComponent.PERSISTENCE]
+        assert isinstance(handler, SQLitePersistenceComponentHandler)
+        assert handler._db_path == live_db
+
+    def test_falls_back_to_config_when_no_backend_was_built(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A persistence-less boot has no reality to defer to."""
+        config = RootConfig(company_name="test-co")
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_db_path=tmp_path / "synthorg.db",
+            boot_backend=None,
+        )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            SQLitePersistenceComponentHandler,
+        )
+
+    def test_service_threads_the_boot_backend_through(self, tmp_path: Path) -> None:
+        """``build_backup_service`` is the seam ``construction_phase`` calls."""
+        config = RootConfig(
+            company_name="test-co",
+            backup=BackupConfig(
+                include=(BackupComponent.PERSISTENCE,),
+                path=str(tmp_path / "backups"),
+            ),
+        )
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            service = build_backup_service(
+                config,
+                boot_backend=_postgres_backend(database="live_db"),
+            )
+
+        assert service is not None
+        handler = service.handlers[BackupComponent.PERSISTENCE]
+        assert isinstance(handler, PostgresPersistenceComponentHandler)
+        assert handler.database == "live_db"
+
+
 @pytest.mark.unit
 class TestBackupComponentDispatch:
     """build_backup_handlers covers every BackupComponent branch."""
@@ -187,10 +419,9 @@ class TestBackupComponentDispatch:
     ) -> None:
         """The factory consumes the resolved path injected by boot.
 
-        ``SYNTHORG_CONFIG_PATH`` is read exactly once at app boot
-        (``api/app.py``) and the resolved ``Path`` is threaded in as
-        ``resolved_config_path`` -- this module never re-reads the env
-        var (single config-path read, no env re-reads in this module).
+        ``SYNTHORG_CONFIG_PATH`` is read exactly once, in
+        ``api/boot_persistence``, and the resolved ``Path`` is threaded in as
+        ``resolved_config_path`` -- the factory never re-reads the env var.
         """
         config = RootConfig(company_name="test-co")
         backup_config = BackupConfig(include=(BackupComponent.CONFIG,))

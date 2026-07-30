@@ -18,13 +18,25 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
+from synthorg.integrations.connections.field_metadata import (
+    WEBHOOK_SIGNING_SECRET_FIELD,
+    reject_inline_secret_fields,
+)
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 
 _MAX_NAME_LEN: Final[int] = 128
 _MAX_BASE_URL_LEN: Final[int] = 2048
 _MAX_CRED_VALUE_LEN: Final[int] = 8192
+#: Floor on a captured webhook signing secret, counted after stripping
+#: whitespace. Applied to this field alone, not to credentials generally: a
+#: database password is checked by the database, behind no unauthenticated
+#: endpoint, and rejecting a short one would break a legitimate setup. A signing
+#: secret is different: it is compared against a header on an endpoint reachable
+#: without credentials, GitLab's scheme binds neither body nor timestamp, so a
+#: short value is guessable inside the per-IP limit. Every provider that mints
+#: these issues far longer ones, so the floor only rejects a hand-typed value.
+_MIN_SIGNING_SECRET_LEN: Final[int] = 16
 _MAX_METADATA_KEY_LEN: Final[int] = 128
 _MAX_METADATA_VALUE_LEN: Final[int] = 1024
 _MAX_REPO_ENTRIES: Final[int] = 1000
@@ -319,6 +331,32 @@ class SecretCaptureRequest(BaseModel):
             msg = f"secret value exceeds the {_MAX_CRED_VALUE_LEN}-character limit"
             raise ValueError(msg)
         return v
+
+
+def signing_secret_floor_error(*, field_name: str, value: SecretStr) -> str | None:
+    """The refusal message for a webhook signing secret too short to resist guessing.
+
+    Keyed on the field the handle is *bound* to, never on the request's own
+    ``secret_kind``: the binding field comes from the capture URL and decides
+    which credential the value ends up in, while ``secret_kind`` is a label the
+    caller writes for audit. Keying on the label would let a caller capture four
+    characters as some other kind, bind the handle to the signing-secret field
+    anyway, and never meet the floor at all.
+
+    Whitespace does not count: a blank-but-present secret is not a secret, and
+    ingest would otherwise hand the verifier a key guessable in one attempt.
+
+    Returns:
+        The message to refuse with, or ``None`` when the value is acceptable.
+    """
+    if field_name != WEBHOOK_SIGNING_SECRET_FIELD:
+        return None
+    if len(value.get_secret_value().strip()) >= _MIN_SIGNING_SECRET_LEN:
+        return None
+    return (
+        "webhook signing secret must be at least "
+        f"{_MIN_SIGNING_SECRET_LEN} non-whitespace characters"
+    )
 
 
 class SecretCaptureResponse(BaseModel):

@@ -490,6 +490,18 @@ immediately with no gate. The per-request interceptor reads the live config
 through `app_state.security_runtime_config`, which the
 `SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
+The same guardrail covers four more namespaces: `engine` (the completion-oracle
+keys), `tools` (MCP sandbox isolation, the credentialed-MCP grant, and each
+destructive tool family's enable + targets), `output_style` (disable, shadow,
+exemptions, pack swap), and `providers` (`gateway_enabled`).
+
+`integrations.webhook_receipt_retention_days` is governed for a different reason:
+it relaxes no boundary, but **shortening** the window has the next sweep destroy
+delivery evidence irreversibly, so the shortening direction (including the
+default never-sweep `0` becoming any finite window) needs the same
+confirm + reason + actor. Lengthening it, or returning to `0`, retains strictly
+more and is unguarded.
+
 ## Kill-Switch Idiom (MANDATORY)
 
 Every long-running async loop in `src/synthorg/` MUST be pause-able

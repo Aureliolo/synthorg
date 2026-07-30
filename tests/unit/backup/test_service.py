@@ -119,7 +119,7 @@ class TestCreateBackup:
         assert manifest.checksum.startswith("sha256:")
 
         # Handler backup methods were called
-        for handler in service._handlers.values():
+        for handler in service.handlers.values():
             handler.backup.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_raises_backup_in_progress_error_when_locked(

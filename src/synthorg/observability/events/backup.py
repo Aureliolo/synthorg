@@ -21,6 +21,12 @@ BACKUP_COMPONENT_FAILED: Final[str] = "backup.component.failed"
 # Handler-registration events (factory dispatch failures, e.g. missing
 # pg_dump binary on Postgres deployments).
 BACKUP_HANDLER_REGISTRATION_FAILED: Final[str] = "backup.handler.registration_failed"
+BACKUP_HANDLER_SELECTED: Final[str] = "backup.handler.selected"
+BACKUP_HANDLER_BACKEND_MISMATCH: Final[str] = "backup.handler.backend_mismatch"
+
+# Emitted when the whole service could not be constructed, so this boot has
+# no backup coverage at all and no ``backup.*`` setting has a live consumer.
+BACKUP_SERVICE_UNAVAILABLE: Final[str] = "backup.service.unavailable"
 
 # Manifest events
 BACKUP_MANIFEST_WRITTEN: Final[str] = "backup.manifest.written"

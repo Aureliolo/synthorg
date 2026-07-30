@@ -34,6 +34,107 @@ const mockConnections = [
   },
 ]
 
+/**
+ * The connection-type registry, mirroring the two types the mock connections
+ * use. Field shapes copy the backend's own ``field_metadata`` entries, because
+ * the form renders labels, required flags and secret capture straight from
+ * them.
+ */
+const mockConnectionTypes = [
+  {
+    connection_type: 'github',
+    label: 'GitHub',
+    description: 'Access GitHub repositories, issues, and pull requests.',
+    default_auth_method: 'bearer_token',
+    required_field_names: ['token'],
+    secret_field_names: ['token', 'signing_secret'],
+    webhook_secret_field: 'signing_secret',
+    fields: [
+      {
+        name: 'token',
+        label: 'Personal Access Token',
+        input_type: 'password',
+        placement: 'credential',
+        required: true,
+        secret: true,
+        capture_mode: 'masked_field',
+        placeholder: 'ghp_...',
+        help_text: '',
+        options: [],
+        required_when: null,
+        visible_when: null,
+      },
+      {
+        name: 'base_url',
+        label: 'API URL',
+        input_type: 'url',
+        placement: 'base_url',
+        required: false,
+        secret: false,
+        capture_mode: null,
+        placeholder: 'https://api.github.com',
+        help_text: 'Leave blank for github.com',
+        options: [],
+        required_when: null,
+        visible_when: null,
+      },
+      {
+        name: 'signing_secret',
+        label: 'Webhook Secret',
+        input_type: 'password',
+        placement: 'credential',
+        required: false,
+        secret: true,
+        capture_mode: 'masked_field',
+        placeholder: '',
+        help_text: 'Set to receive inbound webhooks.',
+        options: [],
+        required_when: null,
+        visible_when: null,
+      },
+    ],
+  },
+  {
+    connection_type: 'slack',
+    label: 'Slack',
+    description: 'Post messages and read channels in a Slack workspace.',
+    default_auth_method: 'bearer_token',
+    required_field_names: ['token', 'signing_secret'],
+    secret_field_names: ['token', 'signing_secret'],
+    webhook_secret_field: 'signing_secret',
+    fields: [
+      {
+        name: 'token',
+        label: 'Bot Token',
+        input_type: 'password',
+        placement: 'credential',
+        required: true,
+        secret: true,
+        capture_mode: 'masked_field',
+        placeholder: '',
+        help_text: '',
+        options: [],
+        required_when: null,
+        visible_when: null,
+      },
+      {
+        name: 'signing_secret',
+        label: 'Signing Secret',
+        input_type: 'password',
+        placement: 'credential',
+        required: true,
+        secret: true,
+        capture_mode: 'masked_field',
+        placeholder: '',
+        help_text: 'Slack signs every request with it.',
+        options: [],
+        required_when: null,
+        visible_when: null,
+      },
+    ],
+  },
+]
+
 const mockHealthReports = mockConnections.map((c) => ({
   connection_name: c.name,
   status: c.health.status,
@@ -142,6 +243,13 @@ export async function mockIntegrationRoutes(page: Page): Promise<void> {
   )
   await page.route('**/api/v1/connections/*/health', (route) =>
     route.fulfill({ json: apiSuccess(mockHealthReports[0]) }),
+  )
+  // Registered after the broad ``connections**`` route so it wins: the registry
+  // is what every type-driven surface renders from (the picker's cards, the
+  // field list, the type badge), and served the connections array instead it
+  // renders label-less cards nothing can select.
+  await page.route('**/api/v1/connections/types', (route) =>
+    route.fulfill({ json: apiSuccess(mockConnectionTypes) }),
   )
   await page.route('**/api/v1/integrations/health/', (route) =>
     route.fulfill({ json: apiSuccess(mockHealthReports) }),

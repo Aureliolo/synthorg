@@ -37,10 +37,16 @@ export async function getReadiness(): Promise<ReadinessProbe> {
  * operator needs to know which subsystem is down, so `validateStatus`
  * accepts it and the body is unwrapped rather than thrown away as a
  * generic request failure.
+ *
+ * Accepts an `AbortSignal` so a caller can release the request rather than only
+ * ignoring its result. Without one a slow probe holds a real network handle for
+ * the client's full timeout after the poller has stopped or the store has been
+ * reset, which the test suite's active-handle gate treats as a leak.
  */
-export async function getHealthDetail(): Promise<ReadinessStatus> {
+export async function getHealthDetail(signal?: AbortSignal): Promise<ReadinessStatus> {
   const response = await apiClient.get<ApiResponse<ReadinessStatus>>('/health', {
     validateStatus: (status) => status === 200 || status === 503,
+    ...(signal ? { signal } : {}),
   })
   return unwrap(response)
 }

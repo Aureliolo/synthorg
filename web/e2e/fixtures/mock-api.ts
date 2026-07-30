@@ -104,6 +104,32 @@ export async function mockApiRoutes(page: Page) {
     }),
   )
 
+  // Component-health detail. The status pill in the app shell polls this on
+  // every route, so the catch-all's ``data: []`` would leave the roll-up
+  // reading ``memory.state`` off an array and take the whole shell down with
+  // it -- the same class of break the ``/analytics/overview`` stub below
+  // exists to avoid, but on every page rather than one.
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: 'ok',
+          persistence: true,
+          message_bus: true,
+          providers: true,
+          backup: true,
+          memory: { backend: 'sqlvector', detail: null, state: 'durable' },
+          telemetry: 'disabled',
+          version: '0.6.4',
+          uptime_seconds: 0,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
   // Readiness -- returns the full ``ApiResponse<ReadinessStatus>``
   // envelope so the dashboard's ``unwrap()`` call gets the expected
   // ``data`` shape (a bare ``{ status: 'ok' }`` response would fail

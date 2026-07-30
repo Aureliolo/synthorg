@@ -301,6 +301,36 @@ class PostgresConfig(BaseModel):
             raise ValueError(msg)
         return value
 
+    @field_validator("database")
+    @classmethod
+    def _reject_conninfo_shaped_database(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject a database name libpq would expand into a connection string.
+
+        ``pg_restore`` only restores into a database when it is named on argv
+        (``--dbname``); given none it writes a SQL script to stdout instead, so
+        the flag is load-bearing rather than a convenience. libpq's
+        ``expand_dbname`` then reinterprets that slot as a full conninfo string
+        whenever the value contains ``=`` or a ``postgres[ql]://`` prefix, which
+        would let a config-derived name redirect the restore at another host or
+        downgrade ``sslmode`` past the connection settings around it. Neither
+        form is a legal database name, so refusing them at construction is what
+        makes naming the database on argv safe.
+
+        Returns:
+            The validated value, unchanged.
+
+        Raises:
+            ValueError: If the value could be read as a connection string.
+        """
+        lowered = value.lower()
+        if "=" in value or lowered.startswith(("postgres://", "postgresql://")):
+            msg = (
+                "database must be a plain name, not a libpq connection string: "
+                f"{value!r}"
+            )
+            raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:
         """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``.

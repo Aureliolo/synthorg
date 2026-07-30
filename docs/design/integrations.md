@@ -33,14 +33,14 @@ methods.
 
 | Type | Auth Fields | Health Check |
 |------|------------|--------------|
-| `github` | `token`, `api_url` | `GET /user` |
-| `gitlab` | `token`, `api_url` | `GET /user` |
-| `gitea` | `token`, `api_url` | `GET /api/v1/user` |
-| `forgejo` | `token`, `api_url` | `GET /api/v1/user` |
+| `github` | `token`, `api_url`, `signing_secret` (optional) | `GET /user` |
+| `gitlab` | `token`, `api_url`, `signing_secret` (optional) | `GET /user` |
+| `gitea` | `token`, `api_url`, `signing_secret` (optional) | `GET /api/v1/user` |
+| `forgejo` | `token`, `api_url`, `signing_secret` (optional) | `GET /api/v1/user` |
 | `slack` | `token`, `signing_secret` | `POST auth.test` |
 | `smtp` | `host`, `port`, `username`, `password` | SMTP EHLO |
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |
-| `generic_http` | `vendor`, `base_url` (custom only), `token` | preset probe, else `HEAD base_url` |
+| `generic_http` | `vendor`, `base_url` (custom only), `token`, `signing_secret` (custom only) | preset probe, else `HEAD base_url` |
 | `oauth_app` | `client_id`, `client_secret`, `auth_url`, `token_url` | N/A |
 | `a2a_peer` | `base_url`, `auth_scheme`, scheme credentials (`api_key` / `bearer_token` / `client_id` + `client_secret` / mTLS `cert_path` + `key_path`), `signing_secret` | N/A |
 | `llm_provider` | `api_key` | N/A |
@@ -217,15 +217,112 @@ SynthOrg message bus.
 
 ### Signature Verifiers
 
-| Verifier | Algorithm | Header |
-|----------|-----------|--------|
-| `GitHubHmacVerifier` | HMAC-SHA256 | `X-Hub-Signature-256` |
-| `SlackSigningVerifier` | HMAC-SHA256 (v0 scheme) | `X-Slack-Signature` |
-| `GenericHmacVerifier` | Configurable HMAC-SHA256 | Configurable |
+| Verifier | Connection type | Algorithm | Signature header | Delivery-id header |
+|----------|-----------------|-----------|------------------|--------------------|
+| `GitHubHmacVerifier` | `github` | HMAC-SHA256, `sha256=` prefix | `X-Hub-Signature-256` | `X-GitHub-Delivery` |
+| `GitLabTokenVerifier` | `gitlab` | shared-secret equality (no signing) | `X-Gitlab-Token` | `X-Gitlab-Event-UUID` |
+| `GiteaHmacVerifier` | `gitea` | HMAC-SHA256, bare digest | `X-Gitea-Signature` | `X-Gitea-Delivery` |
+| `ForgejoHmacVerifier` | `forgejo` | HMAC-SHA256, bare digest | `X-Forgejo-Signature` (falls back to `X-Gitea-Signature`) | `X-Forgejo-Delivery` |
+| `SlackSigningVerifier` | `slack` | HMAC-SHA256 (v0 scheme, signs its timestamp) | `X-Slack-Signature` | none |
+| `GenericHmacVerifier` | `generic_http` | HMAC-SHA256 | `X-Signature` | none |
+| `A2APushVerifier` | `a2a_peer` | HMAC-SHA256 (signs its timestamp) | see [A2A](a2a-protocol.md) | none |
+
+A type absent from this table has no verifier, so `get_verifier` fails closed
+rather than applying a generic scheme that would weaken the authenticity
+guarantee.
+
+The delivery-id header is what each provider actually sends; it is recorded for
+traceability and is deliberately **not** what dedup keys on (see Replay
+Protection). No provider sends a generic `X-Nonce` / `X-Request-Id`.
+
+### The signing secret gates ingest
+
+Ingest reads exactly one credential key, `signing_secret`, and refuses any
+delivery it cannot authenticate. Every type in the table above therefore exposes
+a `signing_secret` field, optional on all but `slack`: a connection is normally
+created for outbound API calls, and requiring a webhook secret would block that,
+so blank simply means this connection receives no webhooks.
+
+Only that one key is honoured. An alias ingest accepted but no type declared
+would be invisible to every metadata-driven surface, including the guard that
+refuses secrets sent inline in a create body, so it could open an authenticated
+ingest path an operator could not see.
+
+A captured signing secret must be at least 16 non-whitespace characters. The
+value is compared against a header on an endpoint reachable without credentials,
+and GitLab's scheme binds neither the body nor a timestamp, so a short secret is
+guessable within the per-IP rate limit; every provider that mints these issues
+far longer ones.
+
+`ConnectionTypeMetadata.webhook_secret_field` reports the field name, and
+`webhook_ingest_is_reachable` resolves that field's own `visible_when` against a
+connection's stored values. Both the dashboard and ingest itself consult it: a
+`generic_http` connection bound to a known outbound vendor preset hides its
+signing secret, because such an API is called rather than heard from, and ingest
+then refuses deliveries on it rather than authenticating with a secret no surface
+still shows.
+
+**Every pre-authentication rejection answers 401 with one message** -- unknown
+connection, no verifier for the type, secret unset, signature mismatch. The
+endpoint takes no credentials, so distinguishing them would let an
+unauthenticated caller enumerate connection names and probe their configuration.
+The reason is kept in the structured log.
 
 ### Replay Protection
 
-In-memory nonce + timestamp dedup window (default 5 minutes).
+A delivery is identified by the connection it addressed and the bytes it carried,
+and by nothing else. `build_delivery_key` composes that identity as
+`<len>:<connection_name>:sha256:<body digest>`, and **both** dedup gates key on
+it: the in-memory `ReplayProtector` bounds a replay within its window (default 5
+minutes), and the durable `IdempotencyService` bounds it for the whole TTL across
+replicas.
+
+What is excluded is the point. The body is the only part of the request a
+verifier inspects at all, so anything else is attacker-controlled:
+
+- **A header-supplied id.** Keying on one let a single captured body publish
+  repeatedly under fresh values. The delivery id is read for logging only.
+- **The URL `event_type`.** No verifier takes the path as an input, so a body
+  that passes verification passes against *any* path. While the durable key
+  included the event name, one captured delivery bought a fresh verified publish
+  per name an attacker chose to post it to: enough to drive event names the
+  upstream never sent, including a sprint's `transition_event`.
+
+How strongly the body is bound varies by scheme, and the key does not depend on
+it: the signing schemes HMAC the body, while the token-equality scheme
+authenticates the sender rather than the bytes and binds nothing. For that one
+the digest identifies the delivery without evidencing its origin, and there is
+nothing stronger available to key on.
+
+The connection name is included for the opposite reason: two connections can
+legitimately be sent the same bytes, and the first must not suppress the second.
+Both gates take the identical key deliberately. Keyed differently, each dimension
+is only as guarded as whichever gate happens to cover it, which is exactly how the
+`event_type` widening survived: the in-memory gate never had it.
+
+A signed timestamp, where the scheme provides one (`slack`, `a2a_peer`), is
+additionally checked against the dedup window.
+
+Two byte-identical bodies genuinely sent as distinct events therefore collapse
+onto one publish. That is the intended trade: identical signed bytes are
+indistinguishable from a replay, so a sender that needs two events to be distinct
+has to make their bodies distinct.
+
+### Receipt retention
+
+`integrations.webhook_receipt_retention_days` defaults to `0`, which never
+sweeps. A positive value sets a window in days; a per-connection
+`webhook_receipt_retention_days` overrides the global one, with the same `0`
+meaning. The sweep reads the setting live on each tick, so a change takes effect
+without a restart.
+
+Note that **no production code path writes a receipt yet**: the repositories and
+the read/retry services exist, and the sweep is wired, but nothing populates the
+table. Until a writer lands the setting is inert, and the `0` default is a
+choice about what should happen once receipts exist rather than a description of
+current behaviour. A receipt stores the raw inbound body, so whoever adds the
+writer should revisit whether unbounded retention of attacker-authored payloads
+is the right default.
 
 ### Event Bus Bridge
 
@@ -288,6 +385,26 @@ Per-type health check implementations with a background `HealthProberService`.
   under a repository-scoped token exchange, so a generic probe would report
   `UNHEALTHY` for a correctly-configured connection. See
   [credentialed-mcp.md](credentialed-mcp.md#registry-targets).
+
+### Inbound readiness is reported separately from the probe
+
+Every `HealthReport` also carries `webhook_ingest`
+(`not_applicable` / `ready` / `unconfigured`), computed by
+`check_connection_health` rather than by any per-type checker: the derivation is
+identical for every type, and a checker that forgot it would silently report
+`not_applicable` for a connection that does have an inbound path. It follows the
+ingest path's own order: the type must declare a signing-secret field, that
+field's `visible_when` must hold for this connection's stored values, and a
+usable secret must be stored.
+
+It is deliberately **not** folded into `ConnectionStatus`. A signing secret is
+optional by design (see [The signing secret gates
+ingest](#the-signing-secret-gates-ingest)), so an outbound-only connection would
+otherwise read as degraded for lacking something it never needed. But when the
+secret *is* what stands between a sender and ingest, every delivery 401s and a
+rejection writes no receipt, so without this field the only trace is a server
+log. The dashboard's connection card surfaces `unconfigured` as its own line; the
+health badge stays the outbound verdict.
 
 The stdio MCP bridge exposes a parallel liveness surface:
 `MCPToolFactory.server_statuses` records each server's last connect outcome,
@@ -419,7 +536,7 @@ integrations:
     rate_limit_rpm: 100
     replay_window_seconds: 300
     max_payload_bytes: 1000000
-    verify_signatures: true
+    receipt_retention_days: 0  # 0 never sweeps
   health:
     check_interval_seconds: 300
     unhealthy_threshold: 3

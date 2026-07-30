@@ -83,6 +83,10 @@ test.describe('Integrations dashboard', () => {
   test('Create connection flow opens the form and picks a type', async ({ page }) => {
     await page.goto('/connections')
     await waitForFonts(page)
+    // Wait for a row before clicking: the empty state carries its own
+    // "New Connection" action, so until the list settles two buttons match
+    // the name and the click is a strict-mode violation rather than a wait.
+    await expect(page.getByText('primary-github')).toBeVisible()
     await page.getByRole('button', { name: /new connection/i }).click()
     await expect(page.getByRole('dialog', { name: /new connection/i })).toBeVisible()
     await page.getByRole('button', { name: /GitHub/ }).first().click()

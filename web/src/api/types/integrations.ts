@@ -32,7 +32,12 @@ export type {
 } from './enum-values.gen'
 export { CONNECTION_TYPE_VALUES } from './enum-values.gen'
 
-import type { CatalogEntry, InstallEntryRequest, InstallEntryResponse } from './dtos.gen'
+import type {
+  CatalogEntry,
+  ConnectionTypeMetadata,
+  InstallEntryRequest,
+  InstallEntryResponse,
+} from './dtos.gen'
 import type { ConnectionStatus, ConnectionType } from './enum-values.gen'
 
 /**
@@ -46,27 +51,28 @@ export type McpInstallResponse = InstallEntryResponse
 export type ConnectionHealthStatus = ConnectionStatus
 
 /**
- * Connection types that emit webhook receipts the retention sweep cleans up.
- * The `webhook_receipt_retention_days` column exists on every connection row,
- * but configuring it for a non-webhook type (smtp, database, a2a_peer) is
- * meaningless: those connections never produce receipts. The dashboard only
- * surfaces the field for the types below; backend validation accepts the
- * field on any type so a future webhook-emitting type only needs adding to
- * this list.
+ * The credential field this connection type's webhook signing secret goes in,
+ * or `null` when the type declares no such field and so can never receive a
+ * webhook. `null` is a fact about the *type*, never about whether some
+ * connection's secret happens to be set.
+ *
+ * Read from the backend's own `webhook_secret_field`, which derives it from the
+ * one condition that decides it: inbound ingest rejects any delivery it cannot
+ * authenticate, so a type exposing no signing-secret credential has no
+ * reachable ingest path and can never accumulate a receipt. Asking the registry
+ * rather than keeping a list here is what stops the dashboard drifting from the
+ * backend's verifier coverage in either direction.
+ *
+ * Prefer `useWebhookSecretField` in a component: it sources the registry itself,
+ * so a caller cannot pass an array that has not loaded yet and read the answer
+ * as "no webhooks".
  */
-const WEBHOOK_RECEIPT_CONNECTION_TYPES = [
-  'github',
-  'slack',
-  'generic_http',
-  'oauth_app',
-] as const satisfies readonly ConnectionType[]
-
-export function connectionTypeUsesWebhookReceipts(
+export function webhookSecretFieldFor(
   type: ConnectionType,
-): boolean {
-  return (WEBHOOK_RECEIPT_CONNECTION_TYPES as readonly ConnectionType[]).includes(type)
+  metadata: readonly ConnectionTypeMetadata[],
+): string | null {
+  return metadata.find((m) => m.connection_type === type)?.webhook_secret_field ?? null
 }
-
 
 /**
  * Tunnel provider ids the backend ships. Mirrors the

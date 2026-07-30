@@ -28,7 +28,7 @@ from synthorg.observability.events.persistence.backend import (
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence.auth_protocol import LockoutRepository
-from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.migrations import migrate_apply, to_sqlite_url
 from synthorg.persistence.protocol import PersistenceBackendKind
@@ -83,13 +83,20 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         return True
 
     @property
-    def config(self) -> SQLiteConfig:
+    def config(self) -> SQLiteConfig | PostgresConfig:
         """Public read-only view of the backend's config.
 
         Exposed so callers that need backend-specific details (the
         backup-handler factory walks the path; tests assert against
         the resolved sqlite path) do not have to reach for the
         private ``_config`` attribute.
+
+        Typed as the protocol's union rather than as this backend's own config,
+        so the public surface stays dialect-uniform: a caller narrows by
+        discriminating, which it has to do anyway to know what the details mean.
+
+        Returns:
+            This backend's ``SQLiteConfig``.
         """
         return self._config
 

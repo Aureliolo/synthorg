@@ -15,17 +15,15 @@ export const healthHandlers = [
     HttpResponse.json(
       successFor<typeof getLiveness>({
         status: 'ok',
-        version: '0.6.4',
         uptime_seconds: 0,
       }),
     ),
   ),
-  // Readiness -- topology-free public probe (status + version + uptime).
+  // Readiness -- topology- and version-free public probe (status + uptime).
   http.get('/api/v1/readyz', () =>
     HttpResponse.json(
       successFor<typeof getReadiness>({
         status: 'ok',
-        version: '0.6.4',
         uptime_seconds: 0,
       }),
     ),
@@ -40,6 +38,7 @@ export const healthHandlers = [
         providers: true,
         telemetry: 'disabled',
         memory: { state: 'durable', backend: 'sqlvector', detail: null },
+        backup: true,
         version: '0.6.4',
         uptime_seconds: 0,
       }),

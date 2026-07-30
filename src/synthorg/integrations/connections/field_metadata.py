@@ -19,7 +19,7 @@ present here, and that a consumer can render the same conditional form the
 console prompts without hardcoding the rules itself.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, Self
@@ -193,6 +193,15 @@ class ConnectionFieldMetadata(BaseModel):
         return self
 
 
+#: The one credential field the webhook ingest path reads as its signing secret
+#: (``api/controllers/webhooks/_authentication.py::verify_signature``). Exactly one
+#: name, so a type either declares it and is reachable or does not and is not:
+#: an alias ingest honoured but no type declared would be invisible to every
+#: metadata-driven surface, including ``reject_inline_secret_fields``, which can
+#: only refuse keys the registry knows are secret.
+WEBHOOK_SIGNING_SECRET_FIELD: Final[str] = "signing_secret"  # noqa: S105 -- field name, not a secret value
+
+
 class ConnectionTypeMetadata(BaseModel):
     """Declarative metadata for one connection type (ordered fields)."""
 
@@ -203,6 +212,86 @@ class ConnectionTypeMetadata(BaseModel):
     description: str = ""
     default_auth_method: AuthMethod
     fields: tuple[ConnectionFieldMetadata, ...]
+
+    def _declared_webhook_secret_field(self) -> ConnectionFieldMetadata | None:
+        """Return this type's signing-secret field, or ``None`` if it declares none.
+
+        Field names are unique within a type (``_field_names_unique``), so at most
+        one field can match.
+
+        Returns:
+            The declared credential field, or ``None``.
+        """
+        return next(
+            (
+                field
+                for field in self.fields
+                if field.name == WEBHOOK_SIGNING_SECRET_FIELD
+                and field.placement is FieldPlacement.CREDENTIAL
+            ),
+            None,
+        )
+
+    @computed_field
+    @property
+    def webhook_secret_field(self) -> str | None:
+        """The credential field a webhook signing secret goes in, if any.
+
+        Inbound ingest refuses any delivery it cannot authenticate. A type with
+        no registered verifier is refused before credentials are read at all,
+        and a type whose secret is unset is refused when they are; either way
+        there is no reachable ingest path, so such a type can never accumulate a
+        webhook receipt, which is what makes a retention control over those
+        receipts meaningful or dead.
+
+        The field *name* rather than a bare boolean, because the field can itself
+        be conditional: a Generic HTTP connection to a known outbound vendor
+        preset will never be sent a webhook, so its signing secret is hidden and
+        a consumer needs to resolve that same condition before offering
+        retention. Naming the field lets it, without restating the rule.
+
+        Derived here rather than listed, so no consuming surface keeps its own
+        set of webhook-capable types to drift out of step with this registry in
+        either direction.
+
+        ``None`` is a fact about the *type*, never about a connection: it means
+        no signing-secret field is declared at all, not that some connection left
+        one unset. The instance-level question is
+        :meth:`webhook_ingest_is_reachable`, which takes the stored values.
+
+        Returns:
+            The declared field's name, or ``None`` when this type declares none.
+        """
+        field = self._declared_webhook_secret_field()
+        return None if field is None else field.name
+
+    def webhook_ingest_is_reachable(self, values: Mapping[str, str]) -> bool:
+        """Whether ingest applies to a connection holding *values*.
+
+        The declared field is not enough on its own: ``generic_http`` exposes its
+        signing secret only for a custom vendor, so a connection later pointed at
+        a vendor preset can never legitimately be sent a webhook. Resolving the
+        field's own ``visible_when`` against the connection's stored values is
+        what makes that condition load-bearing rather than a form hint. Without
+        it a secret captured while the field was visible keeps authenticating
+        deliveries after the operator has relabelled the connection as
+        outbound-only, and no surface shows it: credentials cannot be cleared
+        through an update, and the dashboard has stopped displaying the field.
+
+        Args:
+            values: The connection's current field values (metadata, base URL),
+                as the condition's ``field`` names them.
+
+        Returns:
+            ``True`` when a signing-secret field is declared and its condition
+            currently holds.
+        """
+        field = self._declared_webhook_secret_field()
+        if field is None:
+            return False
+        if field.visible_when is None:
+            return True
+        return field.visible_when.is_met(values.get(field.visible_when.field))
 
     @model_validator(mode="after")
     def _field_names_unique(self) -> Self:
@@ -347,6 +436,37 @@ def _token(
     )
 
 
+def _signing_secret(
+    *,
+    label: str = "Webhook Secret",
+    help_text: str,
+    required: bool = False,
+    visible_when: FieldCondition | None = None,
+) -> ConnectionFieldMetadata:
+    """Build the credential inbound webhook verification reads.
+
+    Optional by default: a connection is usually created for outbound API calls,
+    and requiring a webhook secret would block that. Leaving it blank simply
+    means this connection receives no webhooks, which is what ingest already
+    enforces by rejecting an unauthenticatable delivery. ``required=True`` is for
+    a type whose outbound use needs the secret anyway (Slack's request signing).
+
+    Returns:
+        The configured ``signing_secret`` field metadata.
+    """
+    return ConnectionFieldMetadata(
+        name=NotBlankStr(WEBHOOK_SIGNING_SECRET_FIELD),
+        label=NotBlankStr(label),
+        input_type=FieldInputType.PASSWORD,
+        placement=FieldPlacement.CREDENTIAL,
+        required=required,
+        secret=True,
+        capture_mode=SecretCaptureMode.MASKED_FIELD,
+        help_text=help_text,
+        visible_when=visible_when,
+    )
+
+
 def _api_url(
     *,
     required: bool,
@@ -381,6 +501,13 @@ _GITHUB = ConnectionTypeMetadata(
             help_text="Leave blank for github.com",
             placeholder="https://api.github.com",
         ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Must match the secret on the "
+                "repository webhook; GitHub signs the body with it and sends "
+                "the digest in X-Hub-Signature-256."
+            ),
+        ),
     ),
 )
 
@@ -395,6 +522,14 @@ _GITLAB = ConnectionTypeMetadata(
             required=False,
             help_text="Leave blank for gitlab.com; set for self-hosted",
             placeholder="https://gitlab.com",
+        ),
+        _signing_secret(
+            label="Webhook Secret Token",
+            help_text=(
+                "Set to receive inbound webhooks. GitLab does not sign the "
+                "body: it echoes this token verbatim in X-Gitlab-Token, which "
+                "is compared against the stored value."
+            ),
         ),
     ),
 )
@@ -411,6 +546,12 @@ _GITEA = ConnectionTypeMetadata(
             help_text="Self-hosted Gitea instance URL",
             placeholder="https://gitea.example.com",
         ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Gitea signs the body with it "
+                "and sends the bare digest in X-Gitea-Signature."
+            ),
+        ),
     ),
 )
 
@@ -426,6 +567,13 @@ _FORGEJO = ConnectionTypeMetadata(
             help_text="Self-hosted Forgejo instance URL (e.g. codeberg.org)",
             placeholder="https://forgejo.example.com",
         ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Forgejo signs the body with "
+                "it and sends the bare digest in X-Forgejo-Signature (older "
+                "instances send X-Gitea-Signature, which is also accepted)."
+            ),
+        ),
     ),
 )
 
@@ -436,15 +584,10 @@ _SLACK = ConnectionTypeMetadata(
     default_auth_method=AuthMethod.BEARER_TOKEN,
     fields=(
         _token(label="Bot Token", placeholder="xoxb-..."),
-        ConnectionFieldMetadata(
-            name=NotBlankStr("signing_secret"),
-            label=NotBlankStr("Signing Secret"),
-            input_type=FieldInputType.PASSWORD,
-            placement=FieldPlacement.CREDENTIAL,
-            required=True,
-            secret=True,
-            capture_mode=SecretCaptureMode.MASKED_FIELD,
+        _signing_secret(
+            label="Signing Secret",
             help_text="Used to verify inbound webhooks",
+            required=True,
         ),
         ConnectionFieldMetadata(
             name=NotBlankStr("app_token"),
@@ -614,6 +757,17 @@ _GENERIC_HTTP = ConnectionTypeMetadata(
             placeholder="https://api.example.com",
         ),
         _token(label="API Key / Token"),
+        # Conditional for the same reason the base URL is: a known vendor preset
+        # is an outbound API this org calls, so it never delivers webhooks here
+        # and a signing secret on one would be a field nothing reads.
+        _signing_secret(
+            label="Webhook Signing Secret",
+            visible_when=_CUSTOM_VENDOR,
+            help_text=(
+                "Set only if this API sends webhooks back. It must sign the raw "
+                "body with HMAC-SHA256 and send the hex digest in X-Signature."
+            ),
+        ),
     ),
 )
 
@@ -764,14 +918,8 @@ _A2A_PEER = ConnectionTypeMetadata(
             required_when=_a2a_scheme("mtls"),
             help_text="Path to client private key (required for mtls scheme)",
         ),
-        ConnectionFieldMetadata(
-            name=NotBlankStr("signing_secret"),
-            label=NotBlankStr("Push Signing Secret"),
-            input_type=FieldInputType.PASSWORD,
-            placement=FieldPlacement.CREDENTIAL,
-            required=False,
-            secret=True,
-            capture_mode=SecretCaptureMode.MASKED_FIELD,
+        _signing_secret(
+            label="Push Signing Secret",
             help_text="HMAC secret for verifying push notifications from this peer",
         ),
     ),

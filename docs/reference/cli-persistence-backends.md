@@ -65,7 +65,7 @@ The helper `writeNATSConfigIfNeeded` keeps the file in sync on every compose wri
 
 ## Status banner verdict levels
 
-`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status_snapshot.go`. The banner's readiness signal is topology-free: the unauthenticated `/readyz` probe reports a single `ok`/`unavailable` outcome rather than a per-component breakdown, so the CLI cannot distinguish "persistence not wired" from "message bus not wired" from "a provider is failing its health check" -- any one of them renders the same `CRITICAL` line. The per-component breakdown is only available behind authentication on `GET /health`.
+`synthorg status` renders a top-of-screen verdict banner computed by `computeVerdict()` in `cli/cmd/status_snapshot.go`. The banner's readiness signal is topology-free: the unauthenticated `/readyz` probe reports a single `ok`/`unavailable` outcome rather than a per-component breakdown, so the CLI cannot distinguish "persistence not wired" from "message bus not wired" from "a provider is failing its health check" -- any one of them renders the same `CRITICAL` line. The per-component breakdown is only available behind authentication on `GET /health`, as is the running build version, which is why the healthy line reports uptime alone and the version an operator wants comes from the `Image tag` row above it.
 
 - `OK`: collapses to a single green "All systems operational" line; the happy path stays compact.
 - `DEGRADED`: amber box for recoverable container-fleet issues (a service restarting).

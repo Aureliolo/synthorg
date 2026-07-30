@@ -1,7 +1,9 @@
-/** Hook deriving the five subsystem states (and overall) from health + WS state. */
+/** Derives every subsystem state, and the two roll-ups, from health + WS state. */
 
+import { renderedSnapshot } from '@/stores/health'
 import type { MemoryHealth, MemoryState } from '@/api/types/system'
-import type { LoadState, SubsystemState } from './health-popover.utils'
+import type { HealthSnapshot, LoadState } from '@/stores/health'
+import type { SubsystemState } from './health-popover.utils'
 
 export interface DerivedSubsystemStates {
   readonly apiState: SubsystemState
@@ -11,31 +13,55 @@ export interface DerivedSubsystemStates {
   readonly providersState: SubsystemState
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
-  readonly overallState: SubsystemState
+  /**
+   * Whether a backup service is wired for this boot.
+   *
+   * Absent reads `degraded`, never `down`: the deployment serves correctly and
+   * has lost a recovery capability, which is exactly why the backend keeps it
+   * out of the readiness verdict too.
+   */
+  readonly backupState: SubsystemState
+  /**
+   * Roll-up across every subsystem including the WebSocket.
+   *
+   * For the dialog hero, which renders a WebSocket card beside the others and so
+   * wants one verdict covering all of them.
+   */
+  readonly withWebSocketState: SubsystemState
+  /**
+   * The same roll-up over the backend subsystems only, excluding the WebSocket.
+   *
+   * For the status pill, which applies its own WebSocket priority: a
+   * disconnected stream must not read as an outage before the backend has
+   * answered once. Handing it the WebSocket-inclusive roll-up would count the
+   * stream twice under two different orderings and report the system degraded at
+   * first paint.
+   *
+   * Neither field is the default choice; both are named for what they fold in,
+   * because picking the wrong one is silent and produces a plausible-looking
+   * wrong verdict rather than an error.
+   */
+  readonly backendOnlyState: SubsystemState
   readonly wsDetail: string | undefined
 }
 
+/**
+ * How each backend memory state reads on this surface.
+ *
+ * `off` is degraded, not down, and the distinction is load-bearing.
+ * `unreachable` is the backend's own word for "wired but not answering", so
+ * folding `off` into it would announce an outage where nothing was ever wired
+ * and point an operator at a failure instead of at the embedding model they have
+ * not chosen. It would also roll the whole system up as down while every other
+ * component serves normally: a deployment without recall is missing a
+ * capability, which is what degraded means here. The Memory card carries the
+ * backend's own remedy text either way, so no specificity is lost.
+ */
 const _MEMORY_STATES: Record<MemoryState, SubsystemState> = {
   durable: 'ok',
   degraded: 'degraded',
   unreachable: 'down',
-  off: 'down',
-}
-
-/**
- * State of the HTTP layer itself, which is what this card claims to report.
- *
- * Derived from whether the fetch succeeded, never from the readiness verdict
- * inside it: a parsed response is proof the API answered, so folding the
- * aggregate verdict in here reported a fully-serving backend as unreachable
- * whenever any one subsystem was degraded. The aggregate reaches the hero
- * through the overall roll-up, which is where it belongs.
- */
-function _apiStateFor(loadState: LoadState): SubsystemState {
-  if (loadState.state === 'loading') return 'loading'
-  if (loadState.state === 'error') return 'down'
-  if (loadState.state === 'ok') return 'ok'
-  return 'unknown'
+  off: 'degraded',
 }
 
 function _wsStateFor(
@@ -62,29 +88,98 @@ function _wsDetailFor(
   return wsReconnectExhausted ? 'reconnect budget exhausted' : 'auto-reconnecting'
 }
 
-function _booleanProbeState(loadState: LoadState, value: boolean | null | undefined): SubsystemState {
-  if (loadState.state === 'loading') return 'loading'
-  if (loadState.state !== 'ok') return 'unknown'
+function _probeState(value: boolean | null): SubsystemState {
   if (value === true) return 'ok'
   if (value === false) return 'down'
   return 'unknown'
 }
 
-function _memoryStateFor(loadState: LoadState, memory: MemoryHealth | null): SubsystemState {
-  if (loadState.state === 'loading') return 'loading'
-  if (loadState.state !== 'ok' || memory === null) return 'unknown'
-  return _MEMORY_STATES[memory.state]
+/**
+ * Backups absent is degraded, not down, for the same reason memory `off` is.
+ *
+ * A process with no backup coverage serves every request correctly; what it has
+ * lost is a recovery capability. The backend keeps this out of its readiness
+ * roll-up so a supervisor cannot restart a healthy deployment over it, and
+ * reading it as `down` here would announce an outage the operator can see is
+ * not happening. `null` means backups were never attempted for this boot, which
+ * is not a verdict at all.
+ */
+function _backupState(wired: boolean | null): SubsystemState {
+  if (wired === true) return 'ok'
+  if (wired === false) return 'degraded'
+  return 'unknown'
 }
 
-function _memoryDetailFor(memory: MemoryHealth | null): string | undefined {
-  if (memory === null) return undefined
+function _memoryDetailFor(memory: MemoryHealth): string | undefined {
   const backend = memory.backend.trim()
   return memory.detail ?? (backend === '' ? undefined : backend)
 }
 
-function _overallStateOf(
-  states: readonly SubsystemState[],
+/** The backend subsystems, which are the ones a `/health` snapshot reports. */
+type BackendStates = Pick<
+  DerivedSubsystemStates,
+  | 'apiState'
+  | 'persistenceState'
+  | 'busState'
+  | 'providersState'
+  | 'memoryState'
+  | 'memoryDetail'
+  | 'backupState'
+>
+
+/**
+ * Every subsystem's state from a snapshot that has settled.
+ *
+ * `apiState` is `ok` by construction rather than derived from the readiness
+ * verdict inside the body: a parsed response is proof the API answered, so
+ * folding the aggregate verdict in here reported a fully-serving backend as
+ * unreachable whenever any one subsystem was degraded. The aggregate reaches
+ * the hero through the roll-up, which is where it belongs. It also stays `ok`
+ * through a refresh over an already-settled snapshot, so the pill does not blink
+ * through "checking..." on every poll tick.
+ */
+function _settledStates(snapshot: HealthSnapshot): BackendStates {
+  const health = snapshot.data
+  return {
+    apiState: 'ok',
+    persistenceState: _probeState(health.persistence),
+    busState: _probeState(health.message_bus),
+    providersState: _probeState(health.providers),
+    memoryState: _MEMORY_STATES[health.memory.state],
+    memoryDetail: _memoryDetailFor(health.memory),
+    backupState: _backupState(health.backup),
+  }
+}
+
+/**
+ * Every subsystem's state, whether or not anything has settled.
+ *
+ * The no-snapshot case is resolved once here rather than re-checked per
+ * component: with no body there is nothing component-specific to say, and five
+ * copies of the same check are five chances for one of them to disagree.
+ */
+function _backendStatesOf(
   loadState: LoadState,
+  snapshot: HealthSnapshot | null,
+): BackendStates {
+  if (snapshot !== null) return _settledStates(snapshot)
+  const pending: SubsystemState = loadState.state === 'loading' ? 'loading' : 'unknown'
+  return {
+    // Only the API card can say anything without a body, and a failed probe is
+    // exactly what it reports.
+    apiState: loadState.state === 'error' ? 'down' : pending,
+    persistenceState: pending,
+    busState: pending,
+    providersState: pending,
+    memoryState: pending,
+    memoryDetail: undefined,
+    backupState: pending,
+  }
+}
+
+function _rollUpOf(
+  states: readonly SubsystemState[],
+  snapshot: HealthSnapshot | null,
 ): SubsystemState {
   if (states.includes('down')) return 'down'
   // Above every softer verdict, because the probe fan-out timing out
@@ -93,7 +188,7 @@ function _overallStateOf(
   // outage it exists to catch. Down, not degraded: the backend already
   // decided it is not serving, and a refusal none of the cards explains
   // is the least understood outage, not the mildest.
-  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'down'
+  if (snapshot !== null && snapshot.data.status !== 'ok') return 'down'
   if (states.includes('degraded')) return 'degraded'
   if (states.includes('loading')) return 'loading'
   if (states.includes('unknown')) return 'unknown'
@@ -106,31 +201,22 @@ export function deriveHealthSubsystemStates(
   wsReconnectExhausted: boolean,
   sseFallbackActive: boolean,
 ): DerivedSubsystemStates {
-  const apiState = _apiStateFor(loadState)
+  const snapshot = renderedSnapshot(loadState)
+  const backend = _backendStatesOf(loadState, snapshot)
   const wsState = _wsStateFor(loadState, wsConnected, wsReconnectExhausted, sseFallbackActive)
-  const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive)
-  const persistence = loadState.state === 'ok' ? loadState.data.persistence : null
-  const messageBus = loadState.state === 'ok' ? loadState.data.message_bus : null
-  const providers = loadState.state === 'ok' ? loadState.data.providers : null
-  const memory = loadState.state === 'ok' ? loadState.data.memory : null
-  const persistenceState = _booleanProbeState(loadState, persistence)
-  const busState = _booleanProbeState(loadState, messageBus)
-  const providersState = _booleanProbeState(loadState, providers)
-  const memoryState = _memoryStateFor(loadState, memory)
-  const memoryDetail = _memoryDetailFor(memory)
-  const overallState = _overallStateOf(
-    [apiState, wsState, persistenceState, busState, providersState, memoryState],
-    loadState,
-  )
+  const rolledUp = [
+    backend.apiState,
+    backend.persistenceState,
+    backend.busState,
+    backend.providersState,
+    backend.memoryState,
+    backend.backupState,
+  ]
   return {
-    apiState,
+    ...backend,
     wsState,
-    persistenceState,
-    busState,
-    providersState,
-    memoryState,
-    memoryDetail,
-    overallState,
-    wsDetail,
+    wsDetail: _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive),
+    withWebSocketState: _rollUpOf([...rolledUp, wsState], snapshot),
+    backendOnlyState: _rollUpOf(rolledUp, snapshot),
   }
 }

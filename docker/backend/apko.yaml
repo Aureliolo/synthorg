@@ -16,6 +16,11 @@ contents:
     - ca-certificates-bundle
     - tzdata
     - python-3.14
+    # pg_dump / pg_restore. The Postgres backup handler shells out to both, so
+    # without them every Postgres deployment boots with no backup coverage at
+    # all: the handler factory raises at dispatch and the whole BackupService
+    # is dropped.
+    - postgresql-client
 
 accounts:
   groups:

@@ -89,7 +89,7 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
         <Avatar name={activity.agent_name} size="sm" />
         <span
           className={cn(
-            'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-card',
+            'absolute -bottom-0.5 -right-0.5 size-dot rounded-full ring-1 ring-card',
             dotColor,
           )}
           // With a run outcome the dot's colour mirrors the outcome and the

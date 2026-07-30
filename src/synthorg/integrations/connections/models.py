@@ -387,6 +387,21 @@ class WebhookReceipt(BaseModel):
     error: str | None = None
 
 
+class WebhookIngestState(StrEnum):
+    """Whether inbound webhook deliveries to a connection can be authenticated.
+
+    Deliberately separate from :class:`ConnectionStatus`, which reports the
+    outbound probe. A signing secret is optional by design (a connection used
+    only outbound never needs one), so an absent secret must not read as an
+    outbound outage; equally, when the secret *is* the thing standing between a
+    sender and ingest, every delivery 401s and nothing but a server log says so.
+    """
+
+    NOT_APPLICABLE = "not_applicable"
+    READY = "ready"
+    UNCONFIGURED = "unconfigured"
+
+
 class HealthReport(BaseModel):
     """Result of a single connection health check.
 
@@ -397,6 +412,11 @@ class HealthReport(BaseModel):
         error_detail: Human-readable error if unhealthy.
         checked_at: When the check ran.
         consecutive_failures: Running failure count.
+        webhook_ingest: Whether inbound deliveries can be authenticated.
+            ``NOT_APPLICABLE`` when this connection has no inbound path at all,
+            which is also what an unresolved check reports: the state is derived
+            from configuration, so a check that never got that far claims
+            nothing.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -409,6 +429,7 @@ class HealthReport(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
     consecutive_failures: int = Field(default=0, ge=0)
+    webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE
 
 
 class CatalogEntry(BaseModel):

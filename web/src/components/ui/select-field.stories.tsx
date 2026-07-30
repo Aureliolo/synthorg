@@ -21,6 +21,23 @@ export const Default: Story = {
   args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {} },
 }
 
+// A value held by the form that is not among the choices: a persisted setting
+// whose option has since been removed, or a stale API value. The control shows
+// it as itself rather than silently displaying the first option, and says it
+// cannot be used.
+export const UnmatchedValue: Story = {
+  args: {
+    label: 'Currency',
+    options: currencies,
+    value: 'CHF',
+    onChange: () => {},
+  },
+}
+
+export const UnsetWithoutPlaceholder: Story = {
+  args: { label: 'Currency', options: currencies, value: '', onChange: () => {} },
+}
+
 export const WithPlaceholder: Story = {
   args: {
     label: 'Provider',

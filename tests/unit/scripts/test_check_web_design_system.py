@@ -307,6 +307,48 @@ def test_barrel_check_ignores_modules_outside_a_ui_subpackage(
     assert check.check_subpackage_barrel_boundary(src, p, web_file) == []
 
 
+# Marker-dot sizing
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("utility", ["size-[5px]", "size-[6px]", "w-[3px]", "h-[6px]"])
+def test_arbitrary_sub_grid_size_is_flagged(web_file: Path, utility: str) -> None:
+    """Every arbitrary single-digit-pixel value points at the dot token."""
+    src = f"const dot = '{utility} rounded-full'\n"
+    p = _write(web_file, "web/src/components/layout/Bar.tsx", src)
+    warnings = check.check_hardcoded_dot_size(src, p, web_file)
+    assert len(warnings) == 1
+    assert "size-dot" in warnings[0]
+
+
+@pytest.mark.unit
+def test_the_dot_token_itself_is_clean(web_file: Path) -> None:
+    """The fix the message recommends must not itself trip the check."""
+    src = "const dot = 'size-dot shrink-0 rounded-full'\n"
+    p = _write(web_file, "web/src/components/layout/Bar.tsx", src)
+    assert check.check_hardcoded_dot_size(src, p, web_file) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("utility", ["size-[10px]", "w-[240px]", "max-w-[6px]"])
+def test_sizes_outside_the_dot_range_are_left_alone(
+    web_file: Path,
+    utility: str,
+) -> None:
+    """Only single-digit `size`/`w`/`h` pixels are dot-shaped; the rest are layout."""
+    src = f"const box = '{utility}'\n"
+    p = _write(web_file, "web/src/components/layout/Bar.tsx", src)
+    assert check.check_hardcoded_dot_size(src, p, web_file) == []
+
+
+@pytest.mark.unit
+def test_a_commented_out_size_is_not_flagged(web_file: Path) -> None:
+    """A recipe quoted in a comment is documentation, not a violation."""
+    src = "// Superseded: size-[5px] became size-dot\nconst dot = 'size-dot'\n"
+    p = _write(web_file, "web/src/components/layout/Bar.tsx", src)
+    assert check.check_hardcoded_dot_size(src, p, web_file) == []
+
+
 # Integration: check_file runs all new checks
 
 

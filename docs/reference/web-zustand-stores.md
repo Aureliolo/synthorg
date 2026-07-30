@@ -20,6 +20,12 @@ All Zustand store **mutation** actions (create / update / delete) MUST follow th
 
 **List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting; the UI surface (usually a page-level error banner) consumes the error state.
 
+### When a read may use a discriminated `LoadState` instead
+
+The flat `{ data, loading, error }` shape is the default and stays the default. `useHealthStore` is the sanctioned exception, and the bar for another one is the same: **the surfaces must be unable to render a combination the backend never reported.** Health has three such combinations (a snapshot with an error beside it, a refresh that has blanked its own snapshot, an error still displaying stale cards as current), and every consumer reads the same snapshot, so a flat shape would have each consumer re-deriving which fields to trust. `LoadState`'s `loading` variant carries the snapshot it is refreshing over, and one exported resolver (`renderedSnapshot`) answers "what should I render", so a refresh cannot half-apply across the pill and the dialog.
+
+Reach for `LoadState` only on that argument. "The union is tidier" is not it: a list page with an error banner has no impossible combination to prevent, and paying a discriminant there just makes two stores in the codebase read differently for no invariant.
+
 ## Cursor Pagination (MANDATORY)
 
 List endpoints use opaque cursor-based paging. The wire envelope is `PaginationMeta { limit, next_cursor: string | null, has_more: boolean, total: number | null, offset: number }`, unwrapped in `@/api/client` to `PaginatedResult<T> { data, total, offset, limit, nextCursor, hasMore, pagination }`.
@@ -33,10 +39,16 @@ Stores that expose `fetchMore*` actions keep `nextCursor` + `hasMore` in state (
 The dashboard calls:
 
 - `getLiveness()` (`/api/v1/healthz`): always 200 while the process is alive.
-- `getReadiness()` (`/api/v1/readyz`): 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise. The body is topology-free (binary outcome + version + uptime).
-- `getHealthDetail()` (`/api/v1/health`): authenticated per-component breakdown (persistence / message bus / providers / telemetry) for the health popover; requires a read-access role. 200 healthy / 503 unavailable.
+- `getReadiness()` (`/api/v1/readyz`): 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise. The body is topology-free **and version-free** (binary outcome + uptime): both are unauthenticated, and an exact build version tells an anonymous caller which advisories apply.
+- `getHealthDetail()` (`/api/v1/health`): authenticated per-component breakdown (persistence / message bus / providers / telemetry / memory / backup) plus the build version, for the health surfaces; requires a read-access role. 200 healthy / 503 unavailable. Takes an optional `AbortSignal` so a caller can release the request rather than only ignore its result.
 
-`ReadinessOutcome` is a binary `'ok' | 'unavailable'` union. Supervisors have no sensible action for a partial-degraded state, so the binary is intentional. `StatusBar` / `health-popover` map `'unavailable'` to the local `SubsystemState` / `SystemStatus` models; any new caller must handle the 503 path explicitly rather than assuming a 200 body.
+`ReadinessOutcome` is a binary `'ok' | 'unavailable'` union. Supervisors have no sensible action for a partial-degraded state, so the binary is intentional. Any caller of `getReadiness()` must handle the 503 path explicitly rather than assuming a 200 body.
+
+**Both operator-facing health surfaces read one `/health` snapshot** from `useHealthStore`, mapped to `SubsystemState` by `deriveHealthSubsystemStates`: the `StatusBar` pill and the `health-popover` dialog it opens answer the same question, so they cannot report different verdicts, and the refresh button in the dialog refreshes what the pill shows. Neither consumes `/readyz`: it is binary, carries no component topology, and a subsystem may abstain from its verdict on purpose (an unwired memory backend does, rather than take a serving deployment offline), so it cannot say which subsystem needs attention.
+
+The derivation returns two roll-ups, neither named as the default: `withWebSocketState` folds in the WebSocket verdict and is for the dialog hero, which renders a WebSocket card beside the others; `backendOnlyState` excludes it and is for the pill, which applies its own WebSocket priority (feeding it the WebSocket-inclusive roll-up would count the stream twice under two orderings and report degraded at first paint). `backup` is reported but excluded from the readiness roll-up on both sides, and absent reads `degraded` rather than `down`: a deployment with no backup coverage still serves every request.
+
+`LoadState`'s `loading` variant carries the snapshot it is refreshing over, so a poll tick or a dialog open does not wipe a good snapshot back to "checking...". A superseded or cancelled probe is **aborted**, not merely ignored: `latestProbe` alone would leave the request holding a socket for the client's full timeout on behalf of a surface that has gone away, which the active-handle gate reads as a leak. `cancelProbe()` is what a consumer calls as it goes away; it falls back to the carried snapshot under its own original timestamp, so nothing is left stuck on "checking..." and nothing claims to be fresher than it is.
 
 ## MSW Handlers (MANDATORY)
 

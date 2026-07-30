@@ -505,7 +505,10 @@ class ConnectionsController(Controller):
 
     @get(
         "/{name:str}/secrets/{field:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("connections.reveal_secret", key="user"),
+        ],
         summary="Reveal a single credential field",
     )
     async def reveal_secret(
@@ -521,6 +524,11 @@ class ConnectionsController(Controller):
         of the credential blob. The implementation (uniform-404 on any miss,
         audit by field name only) lives in ``_connection_secrets`` to keep
         this controller within its size budget.
+
+        Per-user rate-limited on the same grounds as the capture sibling: the
+        response body is a live credential, so the budget bounds how fast a
+        stolen write-role session can enumerate the credential store rather
+        than relying on the audit trail to notice afterwards.
 
         Returns:
             ``ApiResponse[RevealedSecretResponse]`` instance.

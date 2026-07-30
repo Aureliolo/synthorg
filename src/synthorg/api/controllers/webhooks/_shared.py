@@ -1,11 +1,11 @@
 """Receive-path helpers for the webhooks ingest controller.
 
-Pure helper module: connection lookup, streaming payload-size
-enforcement, signature verification, timestamp parsing,
-replay/freshness guarding, the bus-publish-and-log primitive, and the
-durable-idempotency wrapper. The ingest controller imports these as
-bare names (so tests patch them on the ingest module); the retry path
-reaches ``_publish_webhook_event_and_log`` module-qualified through
+What ingest does once a delivery has authenticated: streaming payload-size
+enforcement, timestamp parsing, replay/freshness guarding, the
+bus-publish-and-log primitive, and the durable-idempotency wrapper.
+Authentication itself lives in ``_authentication``. The ingest controller
+imports these as bare names (so tests patch them on the ingest module); the
+retry path reaches ``_publish_webhook_event_and_log`` module-qualified through
 this module so there is one canonical patch target.
 """
 
@@ -14,29 +14,17 @@ from collections.abc import Mapping
 from litestar import Request
 from litestar.datastructures import State
 
-from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.controllers._webhooks_wiring import (
     _build_idem_key,
     _build_idem_scope,
 )
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.core.domain_errors import (
-    ConflictError,
-    NotFoundError,
-    UnauthorizedError,
-    ValidationError,
-)
-from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.integrations.connections.models import Connection, ConnectionType
+from synthorg.core.domain_errors import ConflictError, ValidationError
 from synthorg.integrations.errors import WebhookProcessingError
-from synthorg.integrations.state import (
-    IntegrationsStateSlice,
-    webhook_replay_protector_of,
-)
+from synthorg.integrations.state import webhook_replay_protector_of
 from synthorg.integrations.webhooks.event_bus_bridge import publish_webhook_event
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
-from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
@@ -45,31 +33,6 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
-
-
-async def _get_connection_or_404(state: State, connection_name: str) -> Connection:
-    """Look up the named connection or raise 404 with a logged reason.
-
-    Returns:
-        ``Connection`` instance.
-
-    Raises:
-        NotFoundError: Raised on the corresponding failure path.
-    """
-    catalog: ConnectionCatalog = require_service(
-        state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
-        "Connection Catalog",
-    )
-    conn = await catalog.get(connection_name)
-    if conn is None:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="connection not found",
-        )
-        msg = f"Connection '{connection_name}' not found"
-        raise NotFoundError(msg)
-    return conn
 
 
 async def _enforce_max_payload(
@@ -143,51 +106,6 @@ async def _enforce_max_payload(
     return b"".join(chunks)
 
 
-async def _verify_signature(
-    *,
-    catalog: ConnectionCatalog,
-    connection_name: str,
-    connection_type: ConnectionType,
-    body: bytes,
-    headers: dict[str, str],
-) -> None:
-    """Verify the webhook signature, raising 401 on missing secret or mismatch.
-
-    Raises:
-        UnauthorizedError: Raised on the corresponding failure path.
-    """
-    verifier = get_verifier(connection_type)
-    credentials = await catalog.get_credentials(connection_name)
-    signing_secret = credentials.get(
-        "signing_secret",
-        credentials.get("webhook_secret", ""),
-    )
-    if not signing_secret:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="signing secret not configured",
-        )
-        msg = (
-            "Webhook signing secret is not configured for this "
-            "connection; request rejected"
-        )
-        raise UnauthorizedError(msg)
-    valid = await verifier.verify(
-        body=body,
-        headers=headers,
-        secret=signing_secret,
-    )
-    if not valid:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="signature verification failed",
-        )
-        msg = "Signature verification failed"
-        raise UnauthorizedError(msg)
-
-
 def _parse_timestamp(
     headers: dict[str, str],
     *,
@@ -220,52 +138,53 @@ async def _check_replay_or_freshness(
     *,
     state: State,
     connection_name: str,
-    nonce: str | None,
+    dedup_key: str,
+    delivery_id: str | None,
     timestamp: float | None,
 ) -> None:
     """In-memory replay/freshness guard; durable dedup runs separately.
 
-    For nonce-bearing requests we only validate timestamp staleness
-    here; durable IdempotencyService below handles dedup so a
-    legitimate retry with the same nonce on a different replica
-    receives the cached 202 instead of an early 409.
+    Deduplicates on ``dedup_key``, the delivery identity
+    :func:`build_delivery_key` composed, and never on a header value alone.
+    Header-supplied ids are not covered by any verifier's signature (the HMAC
+    schemes sign the body only, and GitLab's token scheme signs nothing), so an
+    attacker holding one captured signed body could replay it unlimited times
+    simply by varying the id: each fresh value looked unseen, minted a fresh
+    idempotency key, and published another verified event.
 
-    The hard ``MAX_NONCE_CHARS`` cap that ``ReplayProtector.check``
-    enforces in the no-nonce branch must apply here too -- otherwise
-    an attacker can sidestep the limit by passing a freshness-only
-    nonce and let the durable path try to hash an unbounded string.
+    Both gates take the identical key, which is the point: this one bounds a
+    replay within its window, and the durable one bounds it for the whole TTL
+    across replicas. Keyed differently, each dimension is only as guarded as
+    whichever gate happens to cover it.
+
+    ``delivery_id`` is logged for traceability but does not weaken the check.
+
+    The hard ``MAX_NONCE_CHARS`` cap ``ReplayProtector.check`` enforces applies
+    to the derived key too, so an unbounded value can never reach the durable
+    path's hashing.
 
     Raises:
         ConflictError: Raised on the corresponding failure path.
     """
-    if nonce is not None and len(nonce) > MAX_NONCE_CHARS:
+    if len(dedup_key) > MAX_NONCE_CHARS:
         logger.warning(
             WEBHOOK_REJECTED,
             connection_name=connection_name,
-            reason="nonce exceeds max size",
-            nonce_length=len(nonce),
+            reason="dedup key exceeds max size",
+            key_length=len(dedup_key),
             max_nonce_chars=MAX_NONCE_CHARS,
         )
-        msg = "Nonce exceeds maximum size"
+        msg = "Dedup key exceeds maximum size"
         raise ConflictError(msg)
     replay_protector = webhook_replay_protector_of(state["app_state"])
-    if nonce:
-        if replay_protector.check_freshness(timestamp):
-            return
+    if not replay_protector.check(nonce=dedup_key, timestamp=timestamp):
         logger.warning(
             WEBHOOK_REJECTED,
             connection_name=connection_name,
-            reason="stale timestamp",
-        )
-        msg = "Replay detected (stale timestamp)"
-        raise ConflictError(msg)
-    if not replay_protector.check(nonce=nonce, timestamp=timestamp):
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
+            delivery_id=delivery_id,
             reason="replay detected",
         )
-        msg = "Replay detected (duplicate nonce or stale timestamp)"
+        msg = "Replay detected (duplicate delivery or stale timestamp)"
         raise ConflictError(msg)
 
 
@@ -279,12 +198,11 @@ async def _publish_webhook_event_and_log(
 ) -> dict[str, object]:
     """Publish the event to the bus and emit ``WEBHOOK_ACCEPTED``.
 
-    ``dedup_source`` carries the provenance of the idempotency key
-    (``"nonce"`` for the standard ``X-Nonce`` / ``X-Request-Id`` path,
-    ``"body_sha256"`` for the nonce-less path that hashes the request
-    body). Surfacing the source on the success log lets operators
-    distinguish well-behaved providers from those without nonces and
-    spot redelivery patterns.
+    ``dedup_source`` carries the provenance of the idempotency key:
+    ``"body_sha256"`` for inbound ingest, which always keys on the body digest,
+    and ``"manual_retry"`` for an operator-triggered redelivery. Surfacing it on
+    the success log is what distinguishes a sender's own retry from a human
+    replaying one.
 
     Returns:
         Mapping with the declared key/value types.
@@ -309,7 +227,7 @@ async def _publish_with_durable_idempotency(
     state: State,
     connection_name: str,
     event_type: str,
-    nonce: str,
+    delivery_key: str,
     connection_type: str,
     bus: MessageBus,
     payload: Mapping[str, object],
@@ -319,6 +237,13 @@ async def _publish_with_durable_idempotency(
 
     Returns the cached/fresh response body. Raises 409 on contention
     that the polling window could not resolve.
+
+    ``event_type`` is published but is deliberately NOT part of the key. It
+    comes from the URL and no verifier signs the path, so keying on it would let
+    one captured signed body mint a fresh verified publish per event name the
+    attacker chose to post it to. The key is the delivery identity
+    :func:`build_delivery_key` composed, which the in-memory replay gate already
+    asserted on the same request.
 
     Returns:
         Mapping with the declared key/value types.
@@ -336,13 +261,7 @@ async def _publish_with_durable_idempotency(
             connection_name=connection_name,
         ),
     )
-    idem_key = NotBlankStr(
-        _build_idem_key(
-            connection_name=connection_name,
-            event_type=event_type,
-            nonce=nonce,
-        ),
-    )
+    idem_key = NotBlankStr(_build_idem_key(delivery_key=delivery_key))
 
     async def _publish_and_accept() -> dict[str, object]:
         """Return publish and accept."""

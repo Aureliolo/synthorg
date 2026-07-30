@@ -1,11 +1,24 @@
 """Backup service factory: wiring helpers for app startup.
 
-Dispatches per-component handler construction. The persistence
-handler is selected by ``config.persistence.backend`` via
-:data:`synthorg.backup.registry.PERSISTENCE_BACKUP_HANDLER_REGISTRY`,
-so swapping SQLite for Postgres at deploy time picks up the
-backend-appropriate ``VACUUM INTO`` or ``pg_dump`` implementation
-without editing this file.
+Dispatches per-component handler construction via
+:data:`synthorg.backup.registry.PERSISTENCE_BACKUP_HANDLER_REGISTRY`, so
+swapping SQLite for Postgres at deploy time picks up the backend-appropriate
+``VACUUM INTO`` or ``pg_dump`` implementation without editing this file.
+
+The persistence handler follows the backend built at boot, falling back to
+``config.persistence`` only when none was. An env-driven deployment
+(``SYNTHORG_DATABASE_URL``) assembles its backend from a boot config in
+``api/boot_persistence`` and never writes that choice back into ``RootConfig``,
+whose ``backend`` defaults to ``sqlite`` and whose ``postgres`` block stays
+``None``, so the config states an intent the deployment may not be honouring.
+Backing up the wrong database is worse than not backing one up, so reality
+outranks intent here, the same way ``resolved_db_path`` already outranks the
+configured path.
+
+Both halves of that reality come off one object: taking the whole backend rather
+than its discriminator means the connection details cannot disagree with the kind
+they are dispatched under, and it is the connection details that the Postgres
+handler actually needs.
 """
 
 from pathlib import Path
@@ -20,7 +33,12 @@ from synthorg.backup.registry import PERSISTENCE_BACKUP_HANDLER_REGISTRY
 from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.backup import (
+    BACKUP_HANDLER_BACKEND_MISMATCH,
+    BACKUP_HANDLER_SELECTED,
+    BACKUP_SERVICE_UNAVAILABLE,
+)
+from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 if TYPE_CHECKING:
@@ -31,26 +49,70 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Default company-template filename when no config path was resolved at
-# boot. ``SYNTHORG_CONFIG_PATH`` is read exactly once at the app boot
-# site (``api/app.py``); a resolved value flows in via
+# boot. ``SYNTHORG_CONFIG_PATH`` is read exactly once, in
+# ``api/boot_persistence``; a resolved value flows in via
 # ``resolved_config_path`` so this module never re-reads the env var.
 _DEFAULT_CONFIG_FILENAME: Final[str] = "company.yaml"
+
+
+def _log_backend_choice(
+    selected: str,
+    configured: str,
+    connected_kind: PersistenceBackendKind,
+) -> None:
+    """Record which backend the persistence handler bound to.
+
+    A mismatch is logged at WARNING only when the configured backend is the
+    more durable of the two. Postgres-in-env over a default SQLite YAML is the
+    routine compose shape and says nothing is wrong, but an operator who wrote
+    ``postgres`` into ``company.yaml`` and got SQLite has a migration that did
+    not take effect, and this is the only place in the system where that
+    surfaces at all.
+    """
+    if selected == configured:
+        logger.info(
+            BACKUP_HANDLER_SELECTED,
+            component="backup_persistence_handler",
+            selected_backend=selected,
+        )
+        return
+    downgraded = (
+        connected_kind is PersistenceBackendKind.SQLITE
+        and configured == PersistenceBackendKind.POSTGRES.value
+    )
+    log = logger.warning if downgraded else logger.info
+    log(
+        BACKUP_HANDLER_BACKEND_MISMATCH,
+        component="backup_persistence_handler",
+        selected_backend=selected,
+        configured_backend=configured,
+        durability_downgraded=downgraded,
+    )
 
 
 def _build_persistence_handler(
     config: RootConfig,
     resolved_db_path: Path | None,
+    boot_backend: PersistenceBackend | None,
 ) -> ComponentHandler:
     """Dispatch the persistence backup handler by backend discriminator.
 
     Returns:
-        The ``ComponentHandler`` built for the configured persistence
-        backend.
+        The ``ComponentHandler`` built for the backend assembled at boot, or
+        for the configured one when none was.
     """
+    if boot_backend is None:
+        selected = config.persistence.backend
+        connected_config = None
+    else:
+        selected = boot_backend.kind.value
+        connected_config = boot_backend.config
+        _log_backend_choice(selected, config.persistence.backend, boot_backend.kind)
     return PERSISTENCE_BACKUP_HANDLER_REGISTRY.build(
-        config.persistence.backend,
+        selected,
         config,
         resolved_db_path=resolved_db_path,
+        connected_config=connected_config,
     )
 
 
@@ -60,6 +122,7 @@ def build_backup_handlers(
     *,
     resolved_db_path: Path | None = None,
     resolved_config_path: Path | None = None,
+    boot_backend: PersistenceBackend | None = None,
 ) -> dict[BackupComponent, ComponentHandler]:
     """Build component handlers from config and resolved runtime paths.
 
@@ -71,6 +134,10 @@ def build_backup_handlers(
             ``config.persistence.sqlite.path``.
         resolved_config_path: Actual company YAML path loaded at
             startup (falls back to ``company.yaml`` when absent).
+        boot_backend: The persistence backend assembled at boot. Its kind and
+            its connection details both outrank ``config.persistence``; ``None``
+            on a persistence-less boot, where the config is the only thing to
+            go on.
 
     Returns:
         Handler map keyed by component enum.
@@ -83,6 +150,7 @@ def build_backup_handlers(
             handlers[component] = _build_persistence_handler(
                 config,
                 resolved_db_path,
+                boot_backend,
             )
         elif component is BackupComponent.MEMORY:
             handlers[component] = MemoryComponentHandler(
@@ -105,6 +173,7 @@ def build_backup_service(
     resolved_db_path: Path | None = None,
     resolved_config_path: Path | None = None,
     config_resolver: ConfigResolverProtocol | None = None,
+    boot_backend: PersistenceBackend | None = None,
 ) -> BackupService | None:
     """Create backup service from config.
 
@@ -127,6 +196,8 @@ def build_backup_service(
         config_resolver: Optional resolver so the retention manager reads
             the live ``backup.retention_days`` setting (DB > env > code
             default) at prune time instead of only the static config.
+        boot_backend: The persistence backend assembled at boot, whose kind and
+            connection details outrank ``config.persistence``.
 
     Returns:
         Configured backup service, or ``None`` if handler construction
@@ -142,6 +213,7 @@ def build_backup_service(
             backup_config,
             resolved_db_path=resolved_db_path,
             resolved_config_path=resolved_config_path,
+            boot_backend=boot_backend,
         )
         return BackupService(
             backup_config,
@@ -150,9 +222,14 @@ def build_backup_service(
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            note="Failed to build backup service",
+        # ERROR, not WARNING: a ``None`` service means this boot has no backup
+        # coverage at all and no ``backup.*`` setting has a live consumer, for
+        # the whole process lifetime. That is a standing operational condition,
+        # not a transient hiccup, and ``/health`` reports it via
+        # ``BackupStateSlice`` staying unwired.
+        logger.error(
+            BACKUP_SERVICE_UNAVAILABLE,
+            component="backup_service",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

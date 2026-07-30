@@ -99,50 +99,66 @@ def _build_idem_scope(
     return f"webhooks:{_len_prefixed(connection_type)}:{_len_prefixed(connection_name)}"
 
 
-def _build_idem_key(
-    *,
-    connection_name: str,
-    event_type: str,
-    nonce: str,
-) -> str:
-    """Compose the durable idempotency key with bounded length.
+def build_delivery_key(*, connection_name: str, body: bytes) -> str:
+    """Compose the one delivery identity both webhook dedup gates key on.
 
-    Two-step bounding: (1) fingerprint the nonce up front when it
-    exceeds ``MAX_NONCE_CHARS`` so an attacker cannot force
-    unbounded string copies into the f-string; (2) collapse the
-    composed key via SHA-256 if it still exceeds the DB column's
-    255-char CHECK constraint, preserving the (connection, event)
-    prefix for operator visibility when possible. Each input segment
-    is length-prefixed via :func:`_len_prefixed` so two distinct
-    ``(connection_name, event_type, nonce)`` tuples can never produce
-    the same key string even when one of the parts contains ``":"``.
+    A delivery is identified by the connection it addressed and the bytes it
+    carried, and by nothing else. Both halves matter:
+
+    * The body digest, because the body is the only part of the request a
+      verifier ever inspects. A header-supplied id, and the ``event_type`` in
+      the URL, are attacker-controlled: no verifier takes the path as an input,
+      so a body that passes verification passes against any path. Keying on
+      anything the verifier never saw lets one captured delivery mint a fresh
+      verified publish per value the attacker picks. The signing schemes bind
+      the body
+      through an HMAC over it; the token-equality scheme authenticates the
+      sender rather than the bytes and binds nothing, so for that one the digest
+      is the delivery's identity without being evidence of origin, and there is
+      nothing stronger available to key on.
+    * The connection name, because two connections can legitimately be sent the
+      same bytes, and one must not suppress the other.
+
+    Composed here rather than at each gate because the two used to key
+    differently: the in-memory gate on the digest alone and the durable one on
+    ``(connection, event_type, digest)``. Disagreeing gates do not fail loudly,
+    they just leave each dimension guarded by whichever gate happens to cover
+    it, and the durable gate's extra ``event_type`` widened the key with
+    unauthenticated URL data.
+
+    Returns:
+        The length-prefixed connection name joined to the body's digest.
+    """
+    digest = hashlib.sha256(body).hexdigest()
+    return f"{_len_prefixed(connection_name)}:sha256:{digest}"
+
+
+def _build_idem_key(*, delivery_key: str) -> str:
+    """Bound a delivery key to the durable idempotency column's length.
+
+    Two-step bounding: (1) fingerprint the key up front when it exceeds
+    ``MAX_NONCE_CHARS`` so an attacker cannot force unbounded string copies
+    into the f-string; (2) collapse it via SHA-256 if it still exceeds the DB
+    column's 255-char CHECK constraint.
 
     Returns:
         Resulting string.
     """
-    # Domain-separate raw from hashed nonce material: without the prefix a
-    # short raw nonce that happens to equal some long nonce's SHA-256 hex
-    # digest would collide on the same idempotency key and suppress a
-    # distinct webhook event.
-    if len(nonce) <= MAX_NONCE_CHARS:
-        nonce_for_key = f"raw:{nonce}"
+    # Domain-separate raw from hashed material: without the prefix a short raw
+    # key that happens to equal some long key's SHA-256 hex digest would collide
+    # on the same idempotency key and suppress a distinct webhook event.
+    if len(delivery_key) <= MAX_NONCE_CHARS:
+        bounded = f"raw:{delivery_key}"
     else:
-        nonce_for_key = (
+        bounded = (
             "sha256:"
             + hashlib.sha256(
-                nonce.encode("utf-8", errors="replace"),
+                delivery_key.encode("utf-8", errors="replace"),
             ).hexdigest()
         )
-    encoded_name = _len_prefixed(connection_name)
-    encoded_event = _len_prefixed(event_type)
-    raw_key = f"{encoded_name}:{encoded_event}:{_len_prefixed(nonce_for_key)}"
+    raw_key = _len_prefixed(bounded)
     if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-        nonce_digest = hashlib.sha256(
-            nonce_for_key.encode("utf-8", errors="replace"),
+        raw_key = hashlib.sha256(
+            raw_key.encode("utf-8", errors="replace"),
         ).hexdigest()
-        raw_key = f"{encoded_name}:{encoded_event}:sha256:{nonce_digest}"
-        if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-            raw_key = hashlib.sha256(
-                raw_key.encode("utf-8", errors="replace"),
-            ).hexdigest()
     return raw_key

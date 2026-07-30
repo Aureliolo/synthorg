@@ -9476,6 +9476,35 @@ export type components = {
             readonly required_field_names: readonly string[];
             /** @description Names of fields whose value is a secret captured out of band. */
             readonly secret_field_names: readonly string[];
+            /**
+             * @description The credential field a webhook signing secret goes in, if any.
+             *
+             *     Inbound ingest refuses any delivery it cannot authenticate. A type with
+             *     no registered verifier is refused before credentials are read at all,
+             *     and a type whose secret is unset is refused when they are; either way
+             *     there is no reachable ingest path, so such a type can never accumulate a
+             *     webhook receipt, which is what makes a retention control over those
+             *     receipts meaningful or dead.
+             *
+             *     The field *name* rather than a bare boolean, because the field can itself
+             *     be conditional: a Generic HTTP connection to a known outbound vendor
+             *     preset will never be sent a webhook, so its signing secret is hidden and
+             *     a consumer needs to resolve that same condition before offering
+             *     retention. Naming the field lets it, without restating the rule.
+             *
+             *     Derived here rather than listed, so no consuming surface keeps its own
+             *     set of webhook-capable types to drift out of step with this registry in
+             *     either direction.
+             *
+             *     ``None`` is a fact about the *type*, never about a connection: it means
+             *     no signing-secret field is declared at all, not that some connection left
+             *     one unset. The instance-level question is
+             *     :meth:`webhook_ingest_is_reachable`, which takes the stored values.
+             *
+             *     Returns:
+             *         The declared field's name, or ``None`` when this type declares none.
+             */
+            readonly webhook_secret_field: string | null;
         };
         /** ConsoleTurnResult */
         readonly ConsoleTurnResult: {
@@ -11690,6 +11719,7 @@ export type components = {
             readonly error_detail: string | null;
             readonly latency_ms: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
+            readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
         /**
          * HRRegistry
@@ -12150,8 +12180,6 @@ export type components = {
             readonly status: "ok";
             /** @description Seconds since startup */
             readonly uptime_seconds: number;
-            /** @description Application version */
-            readonly version: string;
         };
         /** LivingDocument */
         readonly LivingDocument: {
@@ -15431,11 +15459,11 @@ export type components = {
             readonly status: components["schemas"]["ReadinessOutcome"];
             /** @description Seconds since startup */
             readonly uptime_seconds: number;
-            /** @description Application version */
-            readonly version: string;
         };
         /** ReadinessStatus */
         readonly ReadinessStatus: {
+            /** @description Backup service wired (None if backups were not attempted) */
+            readonly backup: boolean | null;
             readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;
@@ -17568,10 +17596,7 @@ export type components = {
         };
         /**
          * TelemetryStatus
-         * @description Project telemetry runtime state.
-         *
-         *     ``enabled`` means the collector is opted in AND the reporter can
-         *     deliver events. ``disabled`` covers every other case.
+         * @description Project-telemetry delivery state as reported to operators.
          * @enum {string}
          */
         readonly TelemetryStatus: "enabled" | "disabled";
@@ -18634,6 +18659,19 @@ export type components = {
              */
             readonly policy: "wait";
         };
+        /**
+         * WebhookIngestState
+         * @description Whether inbound webhook deliveries to a connection can be authenticated.
+         *
+         *     Deliberately separate from :class:`ConnectionStatus`, which reports the
+         *     outbound probe. A signing secret is optional by design (a connection used
+         *     only outbound never needs one), so an absent secret must not read as an
+         *     outbound outage; equally, when the secret *is* the thing standing between a
+         *     sender and ingest, every delivery 401s and nothing but a server log says so.
+         * @default not_applicable
+         * @enum {string}
+         */
+        readonly WebhookIngestState: "not_applicable" | "ready" | "unconfigured";
         /** WebhookReceipt */
         readonly WebhookReceipt: {
             readonly connection_name: string;
