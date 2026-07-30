@@ -553,12 +553,15 @@ class TestWebhooksController:
 
         from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 
-        # Use generic_http so the generic HMAC verifier kicks in.
+        # Use generic_http so the generic HMAC verifier kicks in. The vendor is
+        # the required field the create path always populates, and only the
+        # custom value exposes a signing secret at all.
         conn = Connection(
             name=NotBlankStr("c1"),
             connection_type=ConnectionType.GENERIC_HTTP,
             auth_method=AuthMethod.API_KEY,
             base_url=NotBlankStr("https://example.com"),
+            metadata={"vendor": "custom"},
         )
         catalog = MagicMock()
         catalog.get = AsyncMock(return_value=conn)
