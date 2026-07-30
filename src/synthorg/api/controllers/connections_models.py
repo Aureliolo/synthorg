@@ -332,29 +332,31 @@ class SecretCaptureRequest(BaseModel):
             raise ValueError(msg)
         return v
 
-    @model_validator(mode="after")
-    def _signing_secret_meets_the_floor(self) -> Self:
-        """Refuse a webhook signing secret too short to resist guessing.
 
-        Needs both fields, so it cannot be a per-field validator. Whitespace does
-        not count: a blank-but-present secret is not a secret, and ingest would
-        otherwise hand the verifier a key an attacker guesses in one attempt.
+def signing_secret_floor_error(*, field_name: str, value: SecretStr) -> str | None:
+    """The refusal message for a webhook signing secret too short to resist guessing.
 
-        Returns:
-            The validated request.
+    Keyed on the field the handle is *bound* to, never on the request's own
+    ``secret_kind``: the binding field comes from the capture URL and decides
+    which credential the value ends up in, while ``secret_kind`` is a label the
+    caller writes for audit. Keying on the label would let a caller capture four
+    characters as some other kind, bind the handle to the signing-secret field
+    anyway, and never meet the floor at all.
 
-        Raises:
-            ValueError: If a signing secret is under the length floor.
-        """
-        if self.secret_kind != WEBHOOK_SIGNING_SECRET_FIELD:
-            return self
-        if len(self.value.get_secret_value().strip()) < _MIN_SIGNING_SECRET_LEN:
-            msg = (
-                "webhook signing secret must be at least "
-                f"{_MIN_SIGNING_SECRET_LEN} non-whitespace characters"
-            )
-            raise ValueError(msg)
-        return self
+    Whitespace does not count: a blank-but-present secret is not a secret, and
+    ingest would otherwise hand the verifier a key guessable in one attempt.
+
+    Returns:
+        The message to refuse with, or ``None`` when the value is acceptable.
+    """
+    if field_name != WEBHOOK_SIGNING_SECRET_FIELD:
+        return None
+    if len(value.get_secret_value().strip()) >= _MIN_SIGNING_SECRET_LEN:
+        return None
+    return (
+        "webhook signing secret must be at least "
+        f"{_MIN_SIGNING_SECRET_LEN} non-whitespace characters"
+    )
 
 
 class SecretCaptureResponse(BaseModel):

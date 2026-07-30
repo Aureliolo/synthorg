@@ -1,13 +1,13 @@
 """Dual-backend conformance for persistence backup handlers.
 
-Exercises backup creation and structural validation through whichever
+Exercises the whole backup -> validate -> restore cycle through whichever
 persistence backend the conformance ``backend`` fixture supplied. The
-SQLite arm goes through ``VACUUM INTO`` + ``PRAGMA integrity_check``;
-the Postgres arm goes through ``pg_dump`` for backup and
-``pg_restore --list`` for validation. The Postgres arm is skipped when
-``pg_dump`` or ``pg_restore`` is not on PATH (e.g. a dev workstation
-without the postgres-client package); CI provisions the binaries
-alongside the testcontainers postgres image.
+SQLite arm goes through ``VACUUM INTO`` + ``PRAGMA integrity_check`` and a
+file swap; the Postgres arm goes through ``pg_dump`` for backup,
+``pg_restore --list`` for validation and ``pg_restore`` for the restore. The
+Postgres arm is skipped when ``pg_dump`` or ``pg_restore`` is not on PATH
+(e.g. a dev workstation without the postgres-client package); CI provisions
+the binaries alongside the testcontainers postgres image.
 """
 
 import shutil
@@ -24,6 +24,8 @@ from synthorg.backup.handlers.sqlite_persistence import (
 )
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
+from tests._shared import sid
+from tests.unit.persistence.conftest import make_task
 
 pytestmark = pytest.mark.integration
 
@@ -55,11 +57,34 @@ async def test_backup_handler_round_trip(
     backend: PersistenceBackend,
     tmp_path: Path,
 ) -> None:
-    """``backup -> validate_source`` succeeds for the active backend."""
+    """A row deleted after the backup comes back when the backup is restored.
+
+    Asserting on data rather than on a zero exit status is the whole point: a
+    restore that connects to nothing exits cleanly and changes nothing, so a
+    ``restore`` call with no observable effect asserted passes either way.
+    """
     target_dir = tmp_path / "backup"
     target_dir.mkdir()
-
     handler = _build_handler(backend)
+
+    task = make_task(task_id="backup-round-trip", title="Survives a restore")
+    await backend.tasks.save(task)
+
     size = await handler.backup(target_dir)
     assert size > 0
     assert await handler.validate_source(target_dir) is True
+
+    await backend.tasks.delete(sid("backup-round-trip"))
+    assert await backend.tasks.get(sid("backup-round-trip")) is None
+
+    # Restore replaces the database under any open handle, which is the
+    # handler's documented single-owner precondition rather than a test
+    # convenience; reconnecting afterwards also rebuilds the repositories, so
+    # the read below goes through the restored database and not a stale one.
+    await backend.disconnect()
+    await handler.restore(target_dir)
+    await backend.connect()
+
+    restored = await backend.tasks.get(sid("backup-round-trip"))
+    assert restored is not None
+    assert restored.title == "Survives a restore"

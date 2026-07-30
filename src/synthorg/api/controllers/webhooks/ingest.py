@@ -103,7 +103,7 @@ class WebhooksIngestController(Controller):
         )
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        await verify_signature(
+        verifier = await verify_signature(
             catalog=catalog,
             connection=conn,
             body=body,
@@ -120,7 +120,7 @@ class WebhooksIngestController(Controller):
         dedup_key = build_delivery_key(connection_name=connection_name, body=body)
         # Recorded for traceability only: each provider names its own delivery
         # id (``X-GitHub-Delivery`` and friends), which the verifier declares.
-        delivery_id = read_delivery_id(headers, conn.connection_type)
+        delivery_id = read_delivery_id(headers, verifier)
         timestamp = _parse_timestamp(headers, connection_name=connection_name)
         await _check_replay_or_freshness(
             state=state,

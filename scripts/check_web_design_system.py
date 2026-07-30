@@ -305,12 +305,13 @@ def check_hardcoded_dot_size(
     file_path: Path,
     project_root: Path,
 ) -> list[str]:
-    """Find arbitrary sub-4px sizing that should use the marker-dot token.
+    """Find arbitrary single-digit-pixel sizing that should use the marker-dot token.
 
-    The density-aware spacing scale starts at 4px, so an arbitrary value below it
-    is always a decorative marker dot. Left ungated, each surface picks its own
-    odd pixel (a 5px status-bar dot beside a 6px feed dot) and the arbitrary-value
-    syntax slips past the status-dot recipe check entirely.
+    The density-aware spacing scale is built in 4px steps, so a single-digit
+    pixel value is off that grid and is always a decorative marker dot. Left
+    ungated, each surface picks its own odd pixel (a 5px status-bar dot beside a
+    6px feed dot) and the arbitrary-value syntax slips past the status-dot recipe
+    check entirely.
     """
     if file_path.suffix not in {".tsx", ".ts"}:
         return []
@@ -330,7 +331,7 @@ def check_hardcoded_dot_size(
         if _is_in_comment_context(original_line, col):
             continue
         warnings.append(
-            f"  {rel_path}:{line_num}: Arbitrary `{m.group()}` below the 4px "
+            f"  {rel_path}:{line_num}: Arbitrary `{m.group()}` off the 4px "
             f"spacing scale -- size a decorative marker dot with `size-dot`, "
             f"or use `<StatusBadge>` if it reports a state.\n"
             f"    {line_text}"

@@ -98,8 +98,12 @@ is yours to choose and is what ceremony triggers match on.
 Expected:
 
 - `202 Accepted` on the first delivery.
-- `202` again on a byte-identical retry, short-circuited by the idempotency cache.
-- `409` on a replay of the same body once the first has been recorded.
+- `409` on a byte-identical retry while the in-memory replay window is still
+  open. That gate runs first, so it is what a prompt retry meets.
+- `202` again on a byte-identical retry that gets past the replay window (it has
+  elapsed, or the retry lands on a replica that never saw the first): the
+  durable idempotency cache returns the original response and republishes
+  nothing.
 - `400` on a malformed or non-object JSON body.
 - `401` on anything that cannot be authenticated.
 
@@ -113,11 +117,14 @@ and probe their configuration. The specific reason is in the structured log
 ## Deduplication
 
 A delivery is keyed on the connection it addressed plus `sha256(body)`, and on
-nothing else. The digest is the only part of the request any verifier signs, so
-neither a header id nor the `event_type` in the URL takes part: keying on either
-would let one captured signed body publish repeatedly, once per value the caller
-picked. The connection name is in the key because two connections can
-legitimately be sent the same bytes.
+nothing else. The body is the only part of the request a verifier inspects at
+all, so neither a header id nor the `event_type` in the URL takes part: keying
+on either would let one captured body publish repeatedly, once per value the
+caller picked. The signing schemes bind the body through an HMAC over it; the
+token-equality scheme authenticates the sender instead and binds nothing, so
+there the digest identifies the delivery without evidencing its origin. The
+connection name is in the key because two connections can legitimately be sent
+the same bytes.
 
 A provider's own retry of an identical body therefore collapses onto the first
 publish on any replica, whatever path it arrives on; a genuinely new delivery has

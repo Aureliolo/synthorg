@@ -86,6 +86,18 @@ async def test_a_malformed_window_is_left_to_the_type_validator() -> None:
     )
 
 
+@pytest.mark.parametrize("stored", ["not-a-number", "", "  "])
+async def test_a_malformed_stored_window_does_not_break_the_guard(
+    stored: str,
+) -> None:
+    # The stored side is read before any validator has seen it, so an
+    # unparsable one must resolve to "cannot compare" rather than escaping the
+    # guard as an error on a write that is itself perfectly valid.
+    await enforce_security_write_governance(
+        [(*_KEY, "30")], governance=None, get_current=_current(stored)
+    )
+
+
 async def test_an_unrelated_integrations_key_is_unguarded() -> None:
     await enforce_security_write_governance(
         [("integrations", "secret_capture_ttl_seconds", "30")],

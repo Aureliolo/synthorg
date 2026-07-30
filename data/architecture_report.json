@@ -1699,7 +1699,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1949,
+    "synthorg.observability": 1950,
     "synthorg.observability.background_tasks": 30,
     "synthorg.observability.events.api": 235,
     "synthorg.observability.events.approval_gate": 27,

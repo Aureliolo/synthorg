@@ -455,7 +455,7 @@ def _signing_secret(
         The configured ``signing_secret`` field metadata.
     """
     return ConnectionFieldMetadata(
-        name=NotBlankStr("signing_secret"),
+        name=NotBlankStr(WEBHOOK_SIGNING_SECRET_FIELD),
         label=NotBlankStr(label),
         input_type=FieldInputType.PASSWORD,
         placement=FieldPlacement.CREDENTIAL,

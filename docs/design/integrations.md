@@ -277,16 +277,22 @@ it: the in-memory `ReplayProtector` bounds a replay within its window (default 5
 minutes), and the durable `IdempotencyService` bounds it for the whole TTL across
 replicas.
 
-What is excluded is the point. The body digest is the only part of the request a
-verifier signs, so anything else is attacker-controlled:
+What is excluded is the point. The body is the only part of the request a
+verifier inspects at all, so anything else is attacker-controlled:
 
-- **A header-supplied id.** Keying on one let a single captured signed body
-  publish repeatedly under fresh values. The delivery id is read for logging only.
-- **The URL `event_type`.** No verifier takes the path as an input (GitLab's token
-  scheme signs nothing at all), so a captured body verifies against *any* path.
-  While the durable key included the event name, one captured delivery bought a
-  fresh verified publish per name an attacker chose to post it to: enough to drive
-  event names the upstream never sent, including a sprint's `transition_event`.
+- **A header-supplied id.** Keying on one let a single captured body publish
+  repeatedly under fresh values. The delivery id is read for logging only.
+- **The URL `event_type`.** No verifier takes the path as an input, so a body
+  that verifies verifies against *any* path. While the durable key included the
+  event name, one captured delivery bought a fresh verified publish per name an
+  attacker chose to post it to: enough to drive event names the upstream never
+  sent, including a sprint's `transition_event`.
+
+How strongly the body is bound varies by scheme, and the key does not depend on
+it: the signing schemes HMAC the body, while the token-equality scheme
+authenticates the sender rather than the bytes and binds nothing. For that one
+the digest identifies the delivery without evidencing its origin, and there is
+nothing stronger available to key on.
 
 The connection name is included for the opposite reason: two connections can
 legitimately be sent the same bytes, and the first must not suppress the second.

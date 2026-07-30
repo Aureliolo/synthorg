@@ -28,9 +28,9 @@ function body(overrides: Partial<HealthStatus> = {}) {
 }
 
 interface ResponseGate {
-  /** Awaited by a handler to hold its response back. */
+  /** Awaited by a handler to hold its response back, or by a test to observe it. */
   readonly opened: Promise<void>
-  /** Lets the held response go. */
+  /** Lets the held response go, or signals that the handler has been reached. */
   readonly open: () => void
 }
 
@@ -42,6 +42,13 @@ interface ResponseGate {
  * running past the test end is a leaked handle the active-handle gate fails on.
  * It also makes "the response had not been sent yet" an exact claim rather than
  * a race against a delay.
+ *
+ * Each test below uses a second gate purely as an arrival signal. Branching a
+ * handler on a call counter would otherwise be timing-dependent now that the
+ * store aborts: the second `fetchHealth()` supersedes the first synchronously,
+ * so if the abort beats MSW's dispatch of the first request the counter never
+ * reaches 1 and the *second* probe takes the hold-open branch, hanging on a gate
+ * the test only opens afterwards.
  */
 function responseGate(): ResponseGate {
   let open!: () => void
@@ -56,12 +63,14 @@ describe('useHealthStore probe ordering', () => {
     // The first request answers `unavailable` once released; the second answers
     // `ok` immediately. The stale outage verdict must never reach the pill,
     // which has already been told the system is serving.
+    const arrived = responseGate()
     const gate = responseGate()
     let call = 0
     server.use(
       http.get('/api/v1/health', async () => {
         call += 1
         if (call === 1) {
+          arrived.open()
           await gate.opened
           return HttpResponse.json(body({ status: 'unavailable', persistence: false }))
         }
@@ -70,6 +79,7 @@ describe('useHealthStore probe ordering', () => {
     )
 
     const slow = useHealthStore.getState().fetchHealth()
+    await arrived.opened
     const fast = useHealthStore.getState().fetchHealth()
     await fast
     await slow
@@ -84,12 +94,14 @@ describe('useHealthStore probe ordering', () => {
     // The failure path needs the same treatment: a slow transport failure
     // landing after a fresh success would report the backend down while it is
     // serving.
+    const arrived = responseGate()
     const gate = responseGate()
     let call = 0
     server.use(
       http.get('/api/v1/health', async () => {
         call += 1
         if (call === 1) {
+          arrived.open()
           await gate.opened
           return HttpResponse.error()
         }
@@ -98,6 +110,7 @@ describe('useHealthStore probe ordering', () => {
     )
 
     const slow = useHealthStore.getState().fetchHealth()
+    await arrived.opened
     const fast = useHealthStore.getState().fetchHealth()
     await fast
     await slow
@@ -109,12 +122,14 @@ describe('useHealthStore probe ordering', () => {
   it('applies the newest outcome even when it is the failure', async () => {
     // Success is not privileged: if the latest probe genuinely failed, that is
     // the current truth.
+    const arrived = responseGate()
     const gate = responseGate()
     let call = 0
     server.use(
       http.get('/api/v1/health', async () => {
         call += 1
         if (call === 1) {
+          arrived.open()
           await gate.opened
           return HttpResponse.json(body())
         }
@@ -123,6 +138,7 @@ describe('useHealthStore probe ordering', () => {
     )
 
     const slow = useHealthStore.getState().fetchHealth()
+    await arrived.opened
     const fast = useHealthStore.getState().fetchHealth()
     await fast
     await slow
@@ -136,12 +152,14 @@ describe('useHealthStore probe ordering', () => {
     // its response has not been sent, so it can only settle by having been
     // released. Ignoring the response instead would hold the request open for
     // the client's whole timeout, and this await would never return.
+    const arrived = responseGate()
     const gate = responseGate()
     let call = 0
     server.use(
       http.get('/api/v1/health', async () => {
         call += 1
         if (call === 1) {
+          arrived.open()
           await gate.opened
           return HttpResponse.json(body())
         }
@@ -150,6 +168,9 @@ describe('useHealthStore probe ordering', () => {
     )
 
     const superseded = useHealthStore.getState().fetchHealth()
+    // Its request is provably open and parked on the shut gate before the
+    // supersede, so the await below can only return by release.
+    await arrived.opened
     await useHealthStore.getState().fetchHealth()
     await superseded
 

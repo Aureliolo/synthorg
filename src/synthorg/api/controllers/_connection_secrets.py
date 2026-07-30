@@ -13,6 +13,7 @@ from synthorg.api.controllers.connections_models import (
     RevealedSecretResponse,
     SecretCaptureRequest,
     SecretCaptureResponse,
+    signing_secret_floor_error,
 )
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ValidationError
@@ -157,7 +158,17 @@ async def capture_secret_value(
 
     Returns:
         A ``SecretCaptureResponse`` wrapping the opaque handle.
+
+    Raises:
+        ValidationError: If the value is too weak for the field it binds to.
     """
+    # Checked here rather than on the request model because the binding field
+    # is the path segment, and it is the binding that decides which credential
+    # the value becomes. The model sees only the caller's own ``secret_kind``
+    # label, which a caller is free to write as anything.
+    floor_error = signing_secret_floor_error(field_name=field, value=data.value)
+    if floor_error is not None:
+        raise ValidationError(floor_error)
     service = secret_capture_service_of(app_state)
     handle = await service.capture(
         draft_id=NotBlankStr(draft_id),

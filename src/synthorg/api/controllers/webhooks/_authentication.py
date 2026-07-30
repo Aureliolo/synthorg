@@ -20,10 +20,11 @@ from synthorg.integrations.connections.field_metadata import (
     WEBHOOK_SIGNING_SECRET_FIELD,
     get_connection_type_metadata,
 )
-from synthorg.integrations.connections.models import Connection, ConnectionType
+from synthorg.integrations.connections.models import Connection
 from synthorg.integrations.errors import WebhookVerifierUnavailableError
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
+from synthorg.integrations.webhooks.verifiers.protocol import SignatureVerifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import WEBHOOK_REJECTED
 
@@ -73,7 +74,7 @@ async def verify_signature(
     connection: Connection,
     body: bytes,
     headers: dict[str, str],
-) -> None:
+) -> SignatureVerifier:
     """Verify the webhook signature, raising 401 on missing secret or mismatch.
 
     Reads exactly one credential key, ``signing_secret``, the one the connection
@@ -93,6 +94,11 @@ async def verify_signature(
     authenticating once it no longer does. Otherwise an operator who repointed a
     ``generic_http`` connection at a vendor preset would have retired the inbound
     path in every surface they can see while it kept publishing verified events.
+
+    Returns:
+        The verifier that authenticated this delivery, so the caller can read
+        the scheme's delivery-id header off it without resolving it a second
+        time (a second lookup would carry an unreachable failure branch).
 
     Raises:
         UnauthorizedError: Raised on the corresponding failure path.
@@ -142,26 +148,29 @@ async def verify_signature(
             reason="signature verification failed",
         )
         raise UnauthorizedError(UNVERIFIABLE_DELIVERY)
+    return verifier
 
 
 def read_delivery_id(
     headers: dict[str, str],
-    connection_type: ConnectionType,
+    verifier: SignatureVerifier,
 ) -> str | None:
     """Read the sender's own delivery id, for logging only.
 
     Each provider names it differently, so the verifier declares the header;
-    ``None`` for a scheme that sends none. Not used for deduplication: the id is
-    outside the signature and therefore attacker-controlled, which is why dedup
-    keys on the delivery identity (connection plus body digest) instead.
+    ``None`` for a scheme that sends none. Takes the verifier that already
+    authenticated the delivery rather than resolving one from the connection
+    type: the only way that second lookup could fail is a type with no verifier,
+    which never reaches here because verification refused it first.
+
+    Not used for deduplication: the id sits outside anything the verifier
+    inspects and is therefore attacker-controlled, which is why dedup keys on the
+    delivery identity (connection plus body digest) instead.
 
     Returns:
         The trimmed delivery id, or ``None`` when absent or unsupported.
     """
-    try:
-        header = get_verifier(connection_type).delivery_id_header
-    except WebhookVerifierUnavailableError:  # pragma: no cover -- verified first
-        return None
+    header = verifier.delivery_id_header
     if header is None:
         return None
     return (headers.get(header) or "").strip() or None

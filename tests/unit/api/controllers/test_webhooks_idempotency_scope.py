@@ -4,7 +4,7 @@ The webhook flow uses the durable ``IdempotencyService`` under a scope
 of the form
 ``webhooks:{len(connection_type)}:{connection_type}:{len(connection_name)}:{connection_name}``
 and a key derived from the delivery identity (the connection name plus the
-signed body's digest). Length-prefixing every segment makes the encoding
+body's digest). Length-prefixing every segment makes the encoding
 injective: distinct tuples can never produce the same composite string, even
 when one of the parts contains a literal ``":"``. Pinning both fields prevents
 two distinct connections of the same provider from colliding on a shared dedup

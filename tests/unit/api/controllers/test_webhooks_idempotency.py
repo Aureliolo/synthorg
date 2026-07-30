@@ -1,9 +1,9 @@
 """Tests for webhook delivery-identity dedup.
 
 A delivery is identified by the connection it addressed and the bytes it
-carried, and by nothing else: the body digest is the only part of the request a
-verifier signs, and the connection is what keeps two connections sent the same
-bytes from suppressing each other. Both dedup gates take that one key, so these
+carried, and by nothing else: the body is the only part of the request a
+verifier inspects at all, and the connection is what keeps two connections sent
+the same bytes from suppressing each other. Both dedup gates take that key, so these
 tests pin what it does and does not include, particularly the two attacker-chosen
 inputs deliberately left out of it: any header id, and the URL ``event_type``.
 """
@@ -313,12 +313,14 @@ class TestReceiveWebhookEndToEnd:
             connection: object,
             body: bytes,
             headers: dict[str, str],
-        ) -> None:
-            return None
+        ) -> object:
+            # Stands in for the resolved verifier the real one hands back; this
+            # branch never reads it, only forwards it to the delivery-id read.
+            return object()
 
         def fake_read_delivery_id(
             headers: dict[str, str],
-            connection_type: object,
+            verifier: object,
         ) -> None:
             return None
 

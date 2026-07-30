@@ -84,11 +84,19 @@ class TestWebhooksConfigRetentionBound:
             WebhooksConfig(receipt_retention_days=-1)
 
     def test_the_registry_default_matches_the_mirror_default(self) -> None:
-        """Two sources for one value, so they are asserted equal by name."""
+        """Two sources for one value, so they are asserted equal by name.
+
+        Against the *declared* field default, not against a constructed
+        instance: ``_apply_mirrors`` fills an unset field from the registry, so
+        an instance's value is the registry's own and the assertion would hold
+        however far the declared default had drifted.
+        """
         registered = get_registry().get(
             SettingNamespace.INTEGRATIONS.value,
             "webhook_receipt_retention_days",
         )
         assert registered is not None
         assert registered.default is not None
-        assert int(registered.default) == WebhooksConfig().receipt_retention_days
+        assert WebhooksConfig.model_fields["receipt_retention_days"].default == int(
+            registered.default
+        )

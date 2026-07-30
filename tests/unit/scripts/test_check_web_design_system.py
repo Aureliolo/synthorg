@@ -313,7 +313,7 @@ def test_barrel_check_ignores_modules_outside_a_ui_subpackage(
 @pytest.mark.unit
 @pytest.mark.parametrize("utility", ["size-[5px]", "size-[6px]", "w-[3px]", "h-[6px]"])
 def test_arbitrary_sub_grid_size_is_flagged(web_file: Path, utility: str) -> None:
-    """Every arbitrary value below the 4px scale points at the dot token."""
+    """Every arbitrary single-digit-pixel value points at the dot token."""
     src = f"const dot = '{utility} rounded-full'\n"
     p = _write(web_file, "web/src/components/layout/Bar.tsx", src)
     warnings = check.check_hardcoded_dot_size(src, p, web_file)
