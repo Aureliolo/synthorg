@@ -562,6 +562,10 @@ def build_construction_services(
         resolved_db_path=boot.resolved_db_path,
         resolved_config_path=boot.resolved_config_path,
         config_resolver=config_resolver,
+        # The env-driven backend never reaches ``effective_config``, so without
+        # this the handler is picked from a config field the deployment left at
+        # its default and backs up a database nothing is using.
+        connected_backend_kind=None if persistence is None else persistence.kind,
     )
     # ``_build_settings_dispatcher`` wires the timeout-check subscriber onto the
     # scheduler, so the scheduler must exist before the dispatcher is built.

@@ -18,11 +18,11 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { HealthStatusIcon } from './HealthStatusIcon'
 import { HealthStatusRow } from './HealthStatusRow'
+import type { LoadState } from '@/stores/health'
 import {
   STATE_META,
   formatRelative,
   formatUptime,
-  type LoadState,
   type SubsystemState,
 } from './health-popover.utils'
 import type { DerivedSubsystemStates } from './derive-subsystem-states'

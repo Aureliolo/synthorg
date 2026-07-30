@@ -1,13 +1,5 @@
 /** Shared types, format helpers, and metadata table for the HealthPopover package. */
 
-import type { HealthStatus } from '@/api/types/system'
-
-export type LoadState =
-  | { state: 'idle' }
-  | { state: 'loading' }
-  | { state: 'ok'; data: HealthStatus; fetchedAt: Date }
-  | { state: 'error'; message: string; fetchedAt: Date }
-
 export type SubsystemState = 'ok' | 'degraded' | 'down' | 'unknown' | 'loading'
 
 export interface SubsystemStateMeta {

@@ -503,7 +503,10 @@ class TestConnectionsHandlers:
         types = {entry["connection_type"] for entry in payload["data"]}
         assert "github" in types
         github = next(e for e in payload["data"] if e["connection_type"] == "github")
-        assert github["secret_field_names"] == ["token"]
+        assert github["secret_field_names"] == ["token", "signing_secret"]
+        # The console prompts from this payload, so it has to carry the field
+        # inbound ingest authenticates against, not just the outbound token.
+        assert github["webhook_secret_field"] == "signing_secret"
 
     @staticmethod
     def _capture_app_state() -> tuple[AppState, SecretCaptureService]:

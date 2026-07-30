@@ -41,6 +41,7 @@ import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
 import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { resetDashboardPrefs } from '@/stores/dashboard-prefs'
+import { resetHealthStore } from '@/stores/health'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
@@ -317,6 +318,11 @@ afterEach(() => {
   // Dashboard prefs store is backend-sourced; reset its in-memory singleton
   // so a test's toggles do not bleed into the next test in the same worker.
   resetDashboardPrefs()
+  // Health store holds the shared /health snapshot the status pill and the
+  // health dialog both render; reset it so a prior test's subsystem verdicts
+  // do not bleed into the next in the same worker, and so a probe still in
+  // flight cannot land on the next test's state.
+  resetHealthStore()
   // Plan-forecast store holds a per-view forecast + request token; clear it so
   // a prior test's forecast does not bleed into the next in the same worker.
   usePlanForecastStore.getState().clear()

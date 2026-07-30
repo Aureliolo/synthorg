@@ -3,9 +3,11 @@ import {
   connectionTypeUsesWebhookReceipts,
   type Connection,
   type ConnectionType,
+  type ConnectionTypeMetadata,
   type CreateConnectionRequest,
   type UpdateConnectionRequest,
 } from '@/api/types/integrations'
+import { useConnectionsStore } from '@/stores/connections'
 import {
   type ConnectionFieldSpec,
   type ResolvedConnectionSpec,
@@ -290,11 +292,14 @@ function prepareConnectionSubmit(
   form: ConnectionFormState,
   spec: ResolvedConnectionSpec,
   mode: Mode,
+  connectionTypes: readonly ConnectionTypeMetadata[],
 ): PreparedSubmit {
   const errors = validateConnectionForm(form, spec, mode)
   const base = { errors, proceed: false, supportsWebhook: false, retentionValue: null, retentionError: null }
   if (!Object.values(errors).every((v) => v === null)) return base
-  const supportsWebhook = form.type ? connectionTypeUsesWebhookReceipts(form.type) : false
+  const supportsWebhook = form.type
+    ? connectionTypeUsesWebhookReceipts(form.type, connectionTypes)
+    : false
   const retention: RetentionResult = supportsWebhook
     ? parseRetentionDays(form.webhookRetention)
     : { ok: true, value: null }
@@ -328,6 +333,9 @@ export function useConnectionSubmit(args: UseSubmitArgs): {
 } {
   const { form, spec, mode, connection, onClose, setSubmitted, setErrors } = args
   const { createConnection, updateConnection, captureSecret } = args
+  // The registry says which types can receive a webhook at all, so retention is
+  // only parsed and submitted for a connection that can accumulate receipts.
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
   const [submitting, setSubmitting] = useState(false)
   // Synchronous guard against a double-fire: `submitting` state updates async,
   // so two rapid submit events could both pass a state-based check before the
@@ -342,7 +350,7 @@ export function useConnectionSubmit(args: UseSubmitArgs): {
       try {
         setSubmitted(true)
         if (!spec || !form.type) return
-        const prep = prepareConnectionSubmit(form, spec, mode)
+        const prep = prepareConnectionSubmit(form, spec, mode, connectionTypes)
         setErrors(
           prep.retentionError
             ? { ...prep.errors, webhook_receipt_retention_days: prep.retentionError }
@@ -381,6 +389,7 @@ export function useConnectionSubmit(args: UseSubmitArgs): {
       spec,
       mode,
       connection,
+      connectionTypes,
       createConnection,
       updateConnection,
       captureSecret,

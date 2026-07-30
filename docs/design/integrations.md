@@ -217,15 +217,46 @@ SynthOrg message bus.
 
 ### Signature Verifiers
 
-| Verifier | Algorithm | Header |
-|----------|-----------|--------|
-| `GitHubHmacVerifier` | HMAC-SHA256 | `X-Hub-Signature-256` |
-| `SlackSigningVerifier` | HMAC-SHA256 (v0 scheme) | `X-Slack-Signature` |
-| `GenericHmacVerifier` | Configurable HMAC-SHA256 | Configurable |
+| Verifier | Connection type | Algorithm | Header |
+|----------|-----------------|-----------|--------|
+| `GitHubHmacVerifier` | `github` | HMAC-SHA256, `sha256=` prefix | `X-Hub-Signature-256` |
+| `GitLabTokenVerifier` | `gitlab` | shared-secret equality (no signing) | `X-Gitlab-Token` |
+| `GiteaHmacVerifier` | `gitea` | HMAC-SHA256, bare digest | `X-Gitea-Signature` |
+| `ForgejoHmacVerifier` | `forgejo` | HMAC-SHA256, bare digest | `X-Forgejo-Signature` (falls back to `X-Gitea-Signature`) |
+| `SlackSigningVerifier` | `slack` | HMAC-SHA256 (v0 scheme) | `X-Slack-Signature` |
+| `GenericHmacVerifier` | `generic_http` | HMAC-SHA256 | `X-Signature` |
+| `A2APushVerifier` | `a2a_peer` | HMAC-SHA256 | see [A2A](a2a-protocol.md) |
+
+A type absent from this table has no verifier, so `get_verifier` fails closed
+rather than applying a generic scheme that would weaken the authenticity
+guarantee.
+
+### The signing secret gates ingest
+
+Ingest resolves the verifier, then reads the connection's `signing_secret`
+credential and **rejects with 401 when there is none**. Every type in the table
+above therefore exposes a `signing_secret` field, optional on all but `slack`:
+a connection is normally created for outbound API calls, and requiring a webhook
+secret would block that, so blank simply means this connection receives no
+webhooks.
+
+This is what `ConnectionTypeMetadata.webhook_secret_field` reports, and it is the
+only honest answer to "can this connection accumulate receipts?" A consumer
+resolves the named field's own `visible_when` before offering anything scoped to
+receipts: a `generic_http` connection bound to a known outbound vendor preset
+hides its signing secret, because such an API is called rather than heard from.
 
 ### Replay Protection
 
 In-memory nonce + timestamp dedup window (default 5 minutes).
+
+### Receipt retention
+
+A receipt is the delivery audit trail, so nothing discards one by default:
+`integrations.webhook_receipt_retention_days` defaults to `0`, which never
+sweeps. A positive value sets a window in days; a per-connection
+`webhook_receipt_retention_days` overrides the global one, with the same `0`
+meaning.
 
 ### Event Bus Bridge
 
@@ -420,6 +451,7 @@ integrations:
     replay_window_seconds: 300
     max_payload_bytes: 1000000
     verify_signatures: true
+    receipt_retention_days: 0  # 0 never sweeps
   health:
     check_interval_seconds: 300
     unhealthy_threshold: 3

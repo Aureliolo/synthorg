@@ -1,39 +1,38 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { createLogger } from '@/lib/logger'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
-import { getReadiness } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { LiveRegion } from '@/components/ui/live-region'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { HealthPopover } from '@/components/ui/health-popover'
+import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
+import type { SubsystemState } from '@/components/ui/health-popover/health-popover.utils'
+import { useHealthStore } from '@/stores/health'
 import { useWebSocketStore } from '@/stores/websocket'
-import type { ReadinessProbe } from '@/api/types/system'
-
-const log = createLogger('status-bar')
-
-type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
 /**
- * Combine the HTTP health-probe status and the WebSocket connection
+ * Combine the rolled-up subsystem health and the WebSocket connection
  * state into a single operator-facing pill. A single pill with a strict
  * worst-signal-wins priority order avoids the ambiguity of two separate
  * indicators that agree in the happy path and only differ when one signal
  * is green and the other red.
  *
  * Priority (worst first):
- * 1. HTTP health reports ``down``      -> red    "system down"
- * 2. HTTP health reports ``degraded``  -> amber  "system degraded"
- * 3. HTTP health still ``unknown``     -> grey   "checking..." (initial
+ * 1. health rolls up ``down``          -> red    "system down"
+ * 2. health rolls up ``degraded``      -> amber  "system degraded"
+ * 3. health not yet resolved           -> grey   "checking..." (initial
  *    mount -- do not escalate a disconnected WS to "reconnecting"
  *    before we have even confirmed the backend is up)
  * 4. WS reconnect budget exhausted     -> red    "live stream offline"
  * 5. WS still reconnecting             -> amber  "reconnecting"
- * 6. HTTP healthy AND WS connected     -> green  "all systems normal"
+ * 6. health healthy AND WS connected   -> green  "all systems normal"
+ *
+ * The roll-up is the one the health dialog renders, so the pill and the
+ * dialog it opens always agree.
  *
  * **A11y contract**: callers MUST render the returned ``label`` as
  * visible text next to the colour-bearing ``Dot`` so high-contrast
@@ -43,7 +42,7 @@ type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
  * and an outer ``aria-label`` on the wrapping button.
  */
 function resolveCombinedStatus(
-  healthStatus: SystemStatus,
+  healthStatus: SubsystemState,
   wsConnected: boolean,
   wsReconnectExhausted: boolean,
 ): { color: string; label: string } {
@@ -53,7 +52,7 @@ function resolveCombinedStatus(
   if (healthStatus === 'degraded') {
     return { color: 'bg-warning', label: 'system degraded' }
   }
-  if (healthStatus === 'unknown') {
+  if (healthStatus === 'unknown' || healthStatus === 'loading') {
     // If WebSocket reconnection is exhausted and we still have no
     // health response, the backend is likely unreachable -- show an
     // error state instead of "checking..." forever.
@@ -137,37 +136,33 @@ function BudgetSpendRow() {
 function HealthStatusButton() {
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
-  const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
+  const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
+  const loadState = useHealthStore((s) => s.loadState)
+  const fetchHealth = useHealthStore((s) => s.fetch)
 
-  // Poll system health. Readiness returns a binary outcome (``ok`` /
-  // ``unavailable``); ``unavailable`` maps to ``down``. Any failure to obtain
-  // a readiness verdict at all -- a 503, a network error, a timeout, CORS, or
-  // a malformed body -- also resolves to ``down``: once a poll has run we can
-  // no longer confirm the backend is ready, so the badge must show a definite
-  // state rather than hang on "checking..." forever. The pill recovers to
-  // ``ok`` automatically on the next poll that succeeds, so a transient blip
-  // self-heals on the following tick.
-  const pollHealth = useCallback(async () => {
-    try {
-      const health: ReadinessProbe = await getReadiness()
-      setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
-    } catch (err) {
-      // Debug, not warn: a probe failing while the backend is down is the
-      // expected steady state, not an anomaly worth escalating; the trail
-      // just distinguishes "backend down" from a poll-implementation bug.
-      log.debug('health poll failed', err)
-      setHealthStatus('down')
-    }
-  }, [])
-
-  const healthPolling = usePolling(pollHealth, HEALTH_POLL_INTERVAL)
+  // Polls the same ``/health`` snapshot the dialog this pill opens renders, and
+  // rolls it up with the same derivation, so the two cannot report different
+  // verdicts. Readiness cannot serve this: it is binary, carries no component
+  // topology, and a subsystem may abstain from its verdict on purpose.
+  const healthPolling = usePolling(fetchHealth, HEALTH_POLL_INTERVAL)
   const { start: startHealthPolling, stop: stopHealthPolling } = healthPolling
   useEffect(() => {
     startHealthPolling()
     return () => stopHealthPolling()
   }, [startHealthPolling, stopHealthPolling])
 
-  const statusCfg = resolveCombinedStatus(healthStatus, wsConnected, wsReconnectExhausted)
+  // ``backendState``, not ``overallState``: the WebSocket priority in
+  // ``resolveCombinedStatus`` is this pill's own, so folding the roll-up's
+  // WebSocket verdict in here would count it twice under two orderings and let a
+  // stream that has not connected yet report the system degraded before the
+  // backend has answered once.
+  const { backendState } = deriveHealthSubsystemStates(
+    loadState,
+    wsConnected,
+    wsReconnectExhausted,
+    sseFallbackActive,
+  )
+  const statusCfg = resolveCombinedStatus(backendState, wsConnected, wsReconnectExhausted)
   return (
     <HealthPopover>
       <button

@@ -194,7 +194,12 @@ class WebhooksConfig(BaseModel):
         replay_window_seconds: Nonce/timestamp dedup window.
         max_payload_bytes: Maximum webhook body size.
         verify_signatures: Require signature verification.
-        receipt_retention_days: How long to keep webhook receipts.
+        receipt_retention_days: How long to keep webhook receipts, in days.
+            ``0`` (the default) never sweeps them. Mirrors
+            ``integrations.webhook_receipt_retention_days``, so the bound must
+            admit every value that setting does: a lower bound above ``0`` would
+            reject the documented opt-out, and the mirror parsing an operator's
+            ``0`` would fail config construction at boot.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -212,7 +217,7 @@ class WebhooksConfig(BaseModel):
     replay_window_seconds: int = Field(default=300, gt=0)
     max_payload_bytes: int = Field(default=1_000_000, gt=0)
     verify_signatures: bool = True
-    receipt_retention_days: int = Field(default=7, ge=1)
+    receipt_retention_days: int = Field(default=0, ge=0)
 
     @model_validator(mode="before")
     @classmethod

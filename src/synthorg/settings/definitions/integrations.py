@@ -115,11 +115,13 @@ _r.register(
         namespace=SettingNamespace.INTEGRATIONS,
         key="webhook_receipt_retention_days",
         type=SettingType.INTEGER,
-        default="90",
+        default="0",
         description=(
             "Default retention window for webhook receipts (days)."
-            " 0 disables the sweep entirely; per-connection overrides on"
-            " the connection itself take precedence when set."
+            " 0 (the default) never sweeps: a receipt is the delivery"
+            " audit trail, so nothing discards one unless an operator asks"
+            " for a window. Per-connection overrides on the connection"
+            " itself take precedence when set."
         ),
         group="Webhooks",
         level=SettingLevel.ADVANCED,

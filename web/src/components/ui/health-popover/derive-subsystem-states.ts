@@ -1,7 +1,8 @@
 /** Hook deriving the five subsystem states (and overall) from health + WS state. */
 
 import type { MemoryHealth, MemoryState } from '@/api/types/system'
-import type { LoadState, SubsystemState } from './health-popover.utils'
+import type { LoadState } from '@/stores/health'
+import type { SubsystemState } from './health-popover.utils'
 
 export interface DerivedSubsystemStates {
   readonly apiState: SubsystemState
@@ -12,14 +13,37 @@ export interface DerivedSubsystemStates {
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
   readonly overallState: SubsystemState
+  /**
+   * The same roll-up over the backend subsystems only, excluding the WebSocket.
+   *
+   * The status pill applies its own WebSocket priority (a disconnected stream
+   * must not read as an outage before the backend has even answered once), so
+   * feeding it ``overallState`` would count the WebSocket twice under two
+   * different orderings and let a not-yet-connected stream report the system
+   * degraded at first paint. The popover hero uses ``overallState``, because it
+   * renders a WebSocket card beside the others.
+   */
+  readonly backendState: SubsystemState
   readonly wsDetail: string | undefined
 }
 
+/**
+ * How each backend memory state reads on this surface.
+ *
+ * `off` is degraded, not down, and the distinction is load-bearing.
+ * `unreachable` is the backend's own word for "wired but not answering", so
+ * folding `off` into it would announce an outage where nothing was ever wired
+ * and point an operator at a failure instead of at the embedding model they have
+ * not chosen. It would also roll the whole system up as down while every other
+ * component serves normally: a deployment without recall is missing a
+ * capability, which is what degraded means here. The Memory card carries the
+ * backend's own remedy text either way, so no specificity is lost.
+ */
 const _MEMORY_STATES: Record<MemoryState, SubsystemState> = {
   durable: 'ok',
   degraded: 'degraded',
   unreachable: 'down',
-  off: 'down',
+  off: 'degraded',
 }
 
 /**
@@ -118,10 +142,15 @@ export function deriveHealthSubsystemStates(
   const providersState = _booleanProbeState(loadState, providers)
   const memoryState = _memoryStateFor(loadState, memory)
   const memoryDetail = _memoryDetailFor(memory)
-  const overallState = _overallStateOf(
-    [apiState, wsState, persistenceState, busState, providersState, memoryState],
-    loadState,
-  )
+  const backendStates = [
+    apiState,
+    persistenceState,
+    busState,
+    providersState,
+    memoryState,
+  ]
+  const overallState = _overallStateOf([...backendStates, wsState], loadState)
+  const backendState = _overallStateOf(backendStates, loadState)
   return {
     apiState,
     wsState,
@@ -131,6 +160,7 @@ export function deriveHealthSubsystemStates(
     memoryState,
     memoryDetail,
     overallState,
+    backendState,
     wsDetail,
   }
 }

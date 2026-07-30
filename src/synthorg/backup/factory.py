@@ -1,11 +1,18 @@
 """Backup service factory: wiring helpers for app startup.
 
-Dispatches per-component handler construction. The persistence
-handler is selected by ``config.persistence.backend`` via
-:data:`synthorg.backup.registry.PERSISTENCE_BACKUP_HANDLER_REGISTRY`,
-so swapping SQLite for Postgres at deploy time picks up the
-backend-appropriate ``VACUUM INTO`` or ``pg_dump`` implementation
-without editing this file.
+Dispatches per-component handler construction via
+:data:`synthorg.backup.registry.PERSISTENCE_BACKUP_HANDLER_REGISTRY`, so
+swapping SQLite for Postgres at deploy time picks up the backend-appropriate
+``VACUUM INTO`` or ``pg_dump`` implementation without editing this file.
+
+The persistence handler follows the backend that **connected**, falling back to
+``config.persistence.backend`` only when nothing did. An env-driven deployment
+(``SYNTHORG_DATABASE_URL``) creates its backend from a boot config assembled in
+``api/boot_persistence`` and never writes that choice back into ``RootConfig``,
+whose ``backend`` field defaults to ``sqlite``, so the config states an intent
+the deployment may not be honouring. Backing up the wrong database is worse than
+not backing one up, so reality outranks intent here, the same way
+``resolved_db_path`` already outranks the configured path.
 """
 
 from pathlib import Path
@@ -21,6 +28,7 @@ from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 if TYPE_CHECKING:
@@ -40,15 +48,33 @@ _DEFAULT_CONFIG_FILENAME: Final[str] = "company.yaml"
 def _build_persistence_handler(
     config: RootConfig,
     resolved_db_path: Path | None,
+    connected_backend_kind: PersistenceBackendKind | None,
 ) -> ComponentHandler:
     """Dispatch the persistence backup handler by backend discriminator.
 
     Returns:
-        The ``ComponentHandler`` built for the configured persistence
-        backend.
+        The ``ComponentHandler`` built for the backend that connected, or for
+        the configured one when no backend did.
     """
+    backend = (
+        config.persistence.backend
+        if connected_backend_kind is None
+        else connected_backend_kind.value
+    )
+    if connected_backend_kind is not None and backend != config.persistence.backend:
+        # The routine deployment shape, not a fault: the compose template
+        # configures Postgres through the environment and leaves the YAML at its
+        # default. Logged because a wrong dispatch here is invisible until a
+        # scheduled backup fails hours later, and this line names the winner.
+        logger.info(
+            API_APP_STARTUP,
+            component="backup_persistence_handler",
+            note="backup handler bound to the connected backend, not the config",
+            connected_backend=backend,
+            configured_backend=config.persistence.backend,
+        )
     return PERSISTENCE_BACKUP_HANDLER_REGISTRY.build(
-        config.persistence.backend,
+        backend,
         config,
         resolved_db_path=resolved_db_path,
     )
@@ -60,6 +86,7 @@ def build_backup_handlers(
     *,
     resolved_db_path: Path | None = None,
     resolved_config_path: Path | None = None,
+    connected_backend_kind: PersistenceBackendKind | None = None,
 ) -> dict[BackupComponent, ComponentHandler]:
     """Build component handlers from config and resolved runtime paths.
 
@@ -71,6 +98,9 @@ def build_backup_handlers(
             ``config.persistence.sqlite.path``.
         resolved_config_path: Actual company YAML path loaded at
             startup (falls back to ``company.yaml`` when absent).
+        connected_backend_kind: Discriminator of the backend that actually
+            connected. Outranks ``config.persistence.backend``; ``None`` on a
+            persistence-less boot, where the config is the only thing to go on.
 
     Returns:
         Handler map keyed by component enum.
@@ -83,6 +113,7 @@ def build_backup_handlers(
             handlers[component] = _build_persistence_handler(
                 config,
                 resolved_db_path,
+                connected_backend_kind,
             )
         elif component is BackupComponent.MEMORY:
             handlers[component] = MemoryComponentHandler(
@@ -105,6 +136,7 @@ def build_backup_service(
     resolved_db_path: Path | None = None,
     resolved_config_path: Path | None = None,
     config_resolver: ConfigResolverProtocol | None = None,
+    connected_backend_kind: PersistenceBackendKind | None = None,
 ) -> BackupService | None:
     """Create backup service from config.
 
@@ -127,6 +159,8 @@ def build_backup_service(
         config_resolver: Optional resolver so the retention manager reads
             the live ``backup.retention_days`` setting (DB > env > code
             default) at prune time instead of only the static config.
+        connected_backend_kind: Discriminator of the backend that actually
+            connected, which outranks ``config.persistence.backend``.
 
     Returns:
         Configured backup service, or ``None`` if handler construction
@@ -142,6 +176,7 @@ def build_backup_service(
             backup_config,
             resolved_db_path=resolved_db_path,
             resolved_config_path=resolved_config_path,
+            connected_backend_kind=connected_backend_kind,
         )
         return BackupService(
             backup_config,

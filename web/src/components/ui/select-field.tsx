@@ -66,6 +66,26 @@ function SelectOptionItem({ opt }: { opt: SelectOption }) {
   )
 }
 
+/** Placeholder text shown for an unset value when the caller supplies none. */
+const UNSET_OPTION_LABEL = 'Select an option'
+
+/**
+ * Whether *value* corresponds to one of the rendered options.
+ *
+ * A native ``<select>`` given a value no option carries falls back to
+ * displaying the first option, so the control shows a selection the caller
+ * never made. Knowing this lets the control render an option for its own
+ * value instead of silently adopting someone else's.
+ */
+function valueHasOption(
+  value: string,
+  options: readonly SelectOption[] | undefined,
+  groups: readonly SelectOptionGroup[] | undefined,
+): boolean {
+  const rendered = groups ? groups.flatMap((group) => group.options) : (options ?? [])
+  return rendered.some((opt) => opt.value === value)
+}
+
 function SelectFieldOptions({
   options,
   groups,
@@ -111,6 +131,31 @@ interface SelectControlProps {
   groups: readonly SelectOptionGroup[] | undefined
 }
 
+/**
+ * An option carrying the control's own value, when no real option does.
+ *
+ * Gives the browser something to select that matches ``value``, so the control
+ * cannot fall back to displaying the first option instead. Disabled, because it
+ * is the absence of a choice rather than one of the choices; an unmatched
+ * non-empty value shows as itself so a stale selection is legible rather than
+ * being reported as another option.
+ */
+function SelectFallbackOption({
+  value,
+  placeholder,
+  options,
+  groups,
+}: {
+  value: string
+  placeholder: string | undefined
+  options: readonly SelectOption[] | undefined
+  groups: readonly SelectOptionGroup[] | undefined
+}) {
+  if (valueHasOption(value, options, groups)) return null
+  const label = placeholder ?? (value === '' ? UNSET_OPTION_LABEL : value)
+  return <option value={value} disabled>{label}</option>
+}
+
 function SelectControl(props: SelectControlProps) {
   const { id, errorId, hintId, hasError, value, onChange } = props
   return (
@@ -132,9 +177,12 @@ function SelectControl(props: SelectControlProps) {
         props.className,
       )}
     >
-      {props.placeholder && (
-        <option value="" disabled>{props.placeholder}</option>
-      )}
+      <SelectFallbackOption
+        value={value}
+        placeholder={props.placeholder}
+        options={props.options}
+        groups={props.groups}
+      />
       <SelectFieldOptions options={props.options ?? []} groups={props.groups} />
     </select>
   )

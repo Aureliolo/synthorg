@@ -9476,6 +9476,29 @@ export type components = {
             readonly required_field_names: readonly string[];
             /** @description Names of fields whose value is a secret captured out of band. */
             readonly secret_field_names: readonly string[];
+            /**
+             * @description The credential field a webhook signing secret goes in, if any.
+             *
+             *     Inbound ingest refuses any request it cannot authenticate: it reads the
+             *     connection's signing secret and rejects with 401 when there is none. A
+             *     type exposing no signing-secret field therefore has no reachable ingest
+             *     path and can never accumulate a webhook receipt, which is what makes a
+             *     retention control over those receipts meaningful or dead.
+             *
+             *     The field *name* rather than a bare boolean, because the field can itself
+             *     be conditional: a Generic HTTP connection to a known outbound vendor
+             *     preset will never be sent a webhook, so its signing secret is hidden and
+             *     a consumer needs to resolve that same condition before offering
+             *     retention. Naming the field lets it, without restating the rule.
+             *
+             *     Derived here rather than listed, so no consuming surface keeps its own
+             *     set of webhook-capable types to drift out of step with this registry in
+             *     either direction.
+             *
+             *     Returns:
+             *         The field name, or ``None`` when this type cannot receive webhooks.
+             */
+            readonly webhook_secret_field: string | null;
         };
         /** ConsoleTurnResult */
         readonly ConsoleTurnResult: {

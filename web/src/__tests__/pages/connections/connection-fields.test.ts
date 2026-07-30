@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnectionTypeMetadata } from '@/api/types/integrations'
 import {
+  connectionTypeUsesWebhookReceipts,
+  webhookSecretFieldFor,
+} from '@/api/types/integrations'
+import {
   type ConnectionFieldSpec,
   conditionMet,
   connectionTypeLabel,
   isFieldRequired,
+  isFieldVisible,
   metadataGovernsOtherFields,
   resolveConnectionSpec,
   validateConnectionField,
@@ -18,6 +23,7 @@ const databaseMeta: ConnectionTypeMetadata = {
   description: 'Connect to a SQL database.',
   required_field_names: ['dialect'],
   secret_field_names: ['password'],
+  webhook_secret_field: null,
   fields: [
     {
       name: 'base_url',
@@ -71,6 +77,7 @@ const deployMeta: ConnectionTypeMetadata = {
   description: 'A deploy target.',
   required_field_names: ['token', 'base_url', 'platform', 'project'],
   secret_field_names: ['token'],
+  webhook_secret_field: null,
   fields: [
     {
       name: 'token',
@@ -152,7 +159,8 @@ const genericHttpMeta: ConnectionTypeMetadata = {
   label: 'Generic HTTP',
   description: 'An HTTP API behind a key.',
   required_field_names: ['token'],
-  secret_field_names: ['token'],
+  secret_field_names: ['token', 'signing_secret'],
+  webhook_secret_field: 'signing_secret',
   fields: [
     {
       name: 'vendor',
@@ -196,6 +204,20 @@ const genericHttpMeta: ConnectionTypeMetadata = {
       visible_when: null,
       required_when: null,
     },
+    {
+      name: 'signing_secret',
+      label: 'Webhook Signing Secret',
+      input_type: 'password',
+      placement: 'credential',
+      required: false,
+      secret: true,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: 'masked_field',
+      visible_when: { field: 'vendor', values: ['custom'] },
+      required_when: null,
+    },
   ],
 }
 
@@ -212,6 +234,7 @@ const secretMetadataMeta: ConnectionTypeMetadata = {
   description: 'A deploy target.',
   required_field_names: ['token'],
   secret_field_names: ['token'],
+  webhook_secret_field: null,
   fields: [
     {
       name: 'token',
@@ -434,5 +457,42 @@ describe('connectionTypeLabel', () => {
 
   it('humanizes the enum as a fallback before metadata loads', () => {
     expect(connectionTypeLabel('generic_http', [])).toBe('Generic Http')
+  })
+})
+
+describe('webhook receipt applicability', () => {
+  const registry = [databaseMeta, genericHttpMeta]
+
+  it('names the signing-secret field for a type that can receive webhooks', () => {
+    expect(webhookSecretFieldFor('generic_http', registry)).toBe('signing_secret')
+  })
+
+  it('names none for a type that cannot', () => {
+    expect(webhookSecretFieldFor('database', registry)).toBeNull()
+    expect(connectionTypeUsesWebhookReceipts('database', registry)).toBe(false)
+  })
+
+  it('names none before the registry has loaded', () => {
+    expect(webhookSecretFieldFor('generic_http', [])).toBeNull()
+  })
+
+  // The retention control follows the signing secret's own condition, not just
+  // the type: a Generic HTTP connection to a known outbound vendor preset hides
+  // its signing secret, so it can never be sent a webhook and must not be
+  // offered retention over receipts it cannot accumulate.
+  it('hides the signing secret for a preset vendor and shows it for custom', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    const field = spec.credentialFields.find((f) => f.key === 'signing_secret')
+    expect(field).toBeDefined()
+    expect(isFieldVisible(field as ConnectionFieldSpec, { vendor: 'example-preset' })).toBe(
+      false,
+    )
+    expect(isFieldVisible(field as ConnectionFieldSpec, { vendor: 'custom' })).toBe(true)
+  })
+
+  it('never requires the signing secret, so outbound-only creation still works', () => {
+    const spec = resolveConnectionSpec(genericHttpMeta)
+    const field = spec.credentialFields.find((f) => f.key === 'signing_secret')
+    expect(isFieldRequired(field as ConnectionFieldSpec, { vendor: 'custom' })).toBe(false)
   })
 })

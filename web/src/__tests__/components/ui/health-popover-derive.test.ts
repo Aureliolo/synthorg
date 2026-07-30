@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
-import type { LoadState } from '@/components/ui/health-popover/health-popover.utils'
+import type { LoadState } from '@/stores/health'
 import type { MemoryHealth } from '@/api/types/system'
 
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
@@ -158,7 +158,12 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
     expect(states.overallState).toBe('degraded')
   })
 
-  it('reports memory off as down so a missing embedder cannot look healthy', () => {
+  it('reports memory off as degraded, distinctly from unreachable', () => {
+    // Off means never wired; unreachable means wired and not answering. Reading
+    // both as down made the hero announce an outage over an embedding model
+    // nobody had chosen, and claimed the whole system was down while every
+    // other component served normally. Degraded still surfaces it, and the
+    // card's own detail says what to do.
     const states = deriveHealthSubsystemStates(
       okLoadState({
         state: 'off',
@@ -169,8 +174,9 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
       false,
       false,
     )
-    expect(states.memoryState).toBe('down')
-    expect(states.overallState).toBe('down')
+    expect(states.memoryState).toBe('degraded')
+    expect(states.overallState).toBe('degraded')
+    expect(states.memoryDetail).toBe('No embedding model resolved.')
   })
 
   it('holds memory unknown while no snapshot has been fetched', () => {

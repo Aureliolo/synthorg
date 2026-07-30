@@ -26,6 +26,7 @@ from synthorg.backup.models import BackupComponent
 from synthorg.backup.service import BackupService
 from synthorg.config.schema import RootConfig
 from synthorg.persistence.config import PersistenceConfig, PostgresConfig
+from synthorg.persistence.protocol import PersistenceBackendKind
 
 
 @pytest.mark.unit
@@ -138,6 +139,127 @@ class TestBackendPluggableHandlers:
 
         assert isinstance(
             handlers[BackupComponent.PERSISTENCE],
+            PostgresPersistenceComponentHandler,
+        )
+
+
+@pytest.mark.unit
+class TestConnectedBackendWinsOverConfig:
+    """The handler follows the backend that connected, not the YAML's intent.
+
+    An env-driven deployment (``SYNTHORG_DATABASE_URL``) creates its backend
+    from a boot config built in ``api/boot_persistence`` and never writes that
+    choice back into ``RootConfig``, whose ``persistence.backend`` defaults to
+    ``sqlite``. Dispatching on the config alone hands a Postgres deployment a
+    SQLite handler, and every scheduled backup then fails on a database file that
+    does not exist. Backing up the wrong database is worse than not backing up,
+    so reality wins over intent.
+    """
+
+    def test_connected_postgres_overrides_sqlite_config(self) -> None:
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        assert config.persistence.backend == "sqlite"
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            handlers = build_backup_handlers(
+                config,
+                backup_config,
+                connected_backend_kind=PersistenceBackendKind.POSTGRES,
+            )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            PostgresPersistenceComponentHandler,
+        )
+
+    def test_connected_sqlite_overrides_postgres_config(self, tmp_path: Path) -> None:
+        config = RootConfig(
+            company_name="test-co",
+            persistence=PersistenceConfig(
+                backend="postgres",
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_db_path=tmp_path / "synthorg.db",
+            connected_backend_kind=PersistenceBackendKind.SQLITE,
+        )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            SQLitePersistenceComponentHandler,
+        )
+
+    def test_falls_back_to_config_when_no_backend_connected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A persistence-less boot has no reality to defer to."""
+        config = RootConfig(company_name="test-co")
+        backup_config = BackupConfig(include=(BackupComponent.PERSISTENCE,))
+
+        handlers = build_backup_handlers(
+            config,
+            backup_config,
+            resolved_db_path=tmp_path / "synthorg.db",
+            connected_backend_kind=None,
+        )
+
+        assert isinstance(
+            handlers[BackupComponent.PERSISTENCE],
+            SQLitePersistenceComponentHandler,
+        )
+
+    def test_service_threads_the_connected_kind_through(self, tmp_path: Path) -> None:
+        """``build_backup_service`` is the seam boot actually calls."""
+        config = RootConfig(
+            company_name="test-co",
+            backup=BackupConfig(
+                include=(BackupComponent.PERSISTENCE,),
+                path=str(tmp_path / "backups"),
+            ),
+            persistence=PersistenceConfig(
+                postgres=PostgresConfig(
+                    database="synthorg",
+                    username="synthorg",
+                    password=SecretStr("hunter2"),
+                ),
+            ),
+        )
+
+        with patch(
+            "synthorg.backup.registry.ensure_pg_tools_available",
+            return_value=None,
+        ):
+            service = build_backup_service(
+                config,
+                connected_backend_kind=PersistenceBackendKind.POSTGRES,
+            )
+
+        assert service is not None
+        assert isinstance(
+            service._handlers[BackupComponent.PERSISTENCE],
             PostgresPersistenceComponentHandler,
         )
 

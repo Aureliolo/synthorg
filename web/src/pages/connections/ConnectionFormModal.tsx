@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
 import {
-  connectionTypeUsesWebhookReceipts,
+  webhookSecretFieldFor,
   type Connection,
   type ConnectionType,
 } from '@/api/types/integrations'
@@ -57,6 +57,9 @@ function renderField({ spec, value, error, required, onChange, readOnly }: Rende
         label={spec.label}
         value={value}
         options={spec.options.map((o) => ({ value: o, label: o }))}
+        // Named after the field, so an unanswered select reads as a prompt
+        // rather than as an option the operator might think they picked.
+        placeholder={`Select a ${spec.label.toLowerCase()}`}
         hint={spec.hint}
         error={error ?? undefined}
         required={required}
@@ -224,8 +227,21 @@ function ConnectionFieldList({
   )
 }
 
-function WebhookRetentionField({ f }: { f: ConnectionForm }) {
-  if (f.form.type === null || !connectionTypeUsesWebhookReceipts(f.form.type)) return null
+function WebhookRetentionField({ f, spec }: { f: ConnectionForm; spec: ResolvedConnectionSpec }) {
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const allValues = useMemo(() => allFormValues(f.form), [f.form])
+  const secretField = f.form.type
+    ? webhookSecretFieldFor(f.form.type, connectionTypes)
+    : null
+  // Resolving the secret field's own condition rather than just its existence:
+  // a Generic HTTP connection to a known outbound vendor preset hides its
+  // signing secret, so retention over receipts it can never receive is hidden
+  // with it. Metadata-driven, so this holds on edit too, where credentials are
+  // never re-surfaced but the vendor still is.
+  const secretApplies = spec.credentialFields.some(
+    (field) => field.key === secretField && isFieldVisible(field, allValues),
+  )
+  if (!secretApplies) return null
   return (
     <InputField
       label="Webhook receipt retention (days)"
@@ -355,7 +371,7 @@ function ConnectionFormFields({
         </p>
       )}
 
-      <WebhookRetentionField f={f} />
+      <WebhookRetentionField f={f} spec={spec} />
 
       <RepoScopeField f={f} mode={mode} />
 

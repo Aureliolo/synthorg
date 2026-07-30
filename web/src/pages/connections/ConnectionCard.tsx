@@ -6,6 +6,7 @@ import { connectionTypeUsesWebhookReceipts } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
 import { ROUTES } from '@/router/routes'
+import { useConnectionsStore } from '@/stores/connections'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
 import { TypeBadge } from './TypeBadge'
@@ -76,6 +77,7 @@ function ConnectionCardMeta({
   report: HealthReport | null
   lastChecked: string | null
 }) {
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
   return (
     <div className="mt-3 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
@@ -110,7 +112,7 @@ function ConnectionCardMeta({
           connection (receipts are scoped per-connection there). Only
           webhook-emitting connection types receive receipts, so the link is
           meaningless on e.g. an LLM-provider connection. */}
-      {connectionTypeUsesWebhookReceipts(connection.connection_type) && (
+      {connectionTypeUsesWebhookReceipts(connection.connection_type, connectionTypes) && (
         <Link
           to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
           className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"

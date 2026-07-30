@@ -1,69 +1,37 @@
 import { Dialog } from '@base-ui/react/dialog'
-import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { getHealthDetail } from '@/api/endpoints/health'
+import { useCallback, useEffect, useState, type ReactElement } from 'react'
+import { useHealthStore } from '@/stores/health'
 import { useWebSocketStore } from '@/stores/websocket'
-import { createLogger } from '@/lib/logger'
-import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 import { buildFetchedAtLabel, HealthPopoverContent } from './HealthPopoverContent'
 import { deriveHealthSubsystemStates } from './derive-subsystem-states'
-import type { LoadState } from './health-popover.utils'
-
-const log = createLogger('HealthDialog')
 
 export interface HealthPopoverProps {
   /** The trigger element, cloned into ``Dialog.Trigger render``. */
   children: ReactElement
 }
 
-function useFetchHealth(): {
-  loadState: LoadState
-  nowMs: number
-  setNowMs: (now: number) => void
-  fetchHealth: () => void
-} {
-  const [loadState, setLoadState] = useState<LoadState>({ state: 'idle' })
-  const [nowMs, setNowMs] = useState(() => Date.now())
-  const latestProbeRef = useRef(0)
-
-  const fetchHealth = useCallback(() => {
-    setLoadState({ state: 'loading' })
-    const probeId = ++latestProbeRef.current
-    getHealthDetail()
-      .then((data) => {
-        if (probeId !== latestProbeRef.current) return
-        const fetchedAt = new Date()
-        setLoadState({ state: 'ok', data, fetchedAt })
-        setNowMs(fetchedAt.getTime())
-      })
-      .catch((err: unknown) => {
-        if (probeId !== latestProbeRef.current) return
-        const fetchedAt = new Date()
-        const message = err instanceof Error ? err.message : 'Health probe failed'
-        log.warn('Health probe failed', { error: sanitizeForLog(message) })
-        setLoadState({ state: 'error', message, fetchedAt })
-        setNowMs(fetchedAt.getTime())
-      })
-  }, [])
-
-  return { loadState, nowMs, setNowMs, fetchHealth }
-}
-
 /**
- * Shared health-status modal dialog used by both the StatusBar "all
- * systems normal" pill and the Sidebar "Connected" indicator. A fresh
- * ``/health`` snapshot is fetched each time the dialog opens (and on
- * demand via the refresh button), combined with the live WebSocket
- * connection state from ``useWebSocketStore``, and rendered as a
- * centered modal covering ~70% of the viewport at laptop sizes.
+ * Shared health-status modal dialog used by both the StatusBar status pill and
+ * the Sidebar "Connected" indicator. It renders the snapshot in
+ * ``useHealthStore`` combined with the live WebSocket connection state from
+ * ``useWebSocketStore``, as a centered modal covering ~70% of the viewport at
+ * laptop sizes.
+ *
+ * Reading the shared snapshot rather than fetching its own is what keeps the
+ * dialog and the pill that opens it from reporting different verdicts; opening
+ * refreshes it, so the pill is up to date the moment the operator looks.
  *
  * The trigger is provided by the caller (any existing visual) via the
- * `children` prop; this component handles the Dialog shell, the
- * fetching, and the rendered health-screen content.
+ * `children` prop; this component handles the Dialog shell and the rendered
+ * health-screen content.
  */
 export function HealthPopover({ children }: HealthPopoverProps) {
   const [open, setOpen] = useState(false)
-  const { loadState, nowMs, setNowMs, fetchHealth } = useFetchHealth()
+  const loadState = useHealthStore((s) => s.loadState)
+  const nowMs = useHealthStore((s) => s.nowMs)
+  const setNowMs = useHealthStore((s) => s.setNowMs)
+  const fetchHealth = useHealthStore((s) => s.fetch)
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const sseFallbackActive = useWebSocketStore((s) => s.sseFallbackActive)
@@ -87,10 +55,14 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       setOpen(nextOpen)
-      if (nextOpen) fetchHealth()
+      // Fire and forget: the snapshot renders from the store, and the probe
+      // never rejects, so there is nothing to await or handle here.
+      if (nextOpen) void fetchHealth()
     },
     [fetchHealth],
   )
+
+  const refresh = useCallback(() => void fetchHealth(), [fetchHealth])
 
   const fetchedAtLabel = buildFetchedAtLabel(loadState, nowMs)
 
@@ -113,7 +85,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
             loadState={loadState}
             states={states}
             fetchedAtLabel={fetchedAtLabel}
-            onRefresh={fetchHealth}
+            onRefresh={refresh}
           />
         </Dialog.Popup>
       </Dialog.Portal>

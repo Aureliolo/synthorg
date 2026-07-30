@@ -12,6 +12,7 @@ const okStates: DerivedSubsystemStates = {
   memoryState: 'ok',
   memoryDetail: 'sqlvector',
   overallState: 'ok',
+  backendState: 'ok',
   wsDetail: undefined,
 }
 
@@ -27,6 +28,7 @@ const degradedStates: DerivedSubsystemStates = {
   memoryState: 'degraded',
   memoryDetail: 'Ephemeral keyword backend; recall is lost on restart.',
   overallState: 'down',
+  backendState: 'down',
   wsDetail: 'auto-reconnecting',
 }
 
@@ -39,6 +41,7 @@ const loadingStates: DerivedSubsystemStates = {
   memoryState: 'loading',
   memoryDetail: undefined,
   overallState: 'loading',
+  backendState: 'loading',
   wsDetail: undefined,
 }
 
@@ -121,7 +124,7 @@ export const LoadError: Story = {
       message: 'Service unavailable',
       fetchedAt: STORY_FETCHED_AT,
     },
-    states: { ...okStates, apiState: 'down', overallState: 'down' },
+    states: { ...okStates, apiState: 'down', overallState: 'down', backendState: 'down' },
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
   },

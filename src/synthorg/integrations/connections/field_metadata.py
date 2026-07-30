@@ -193,6 +193,14 @@ class ConnectionFieldMetadata(BaseModel):
         return self
 
 
+#: Credential field names the webhook ingest path accepts as its signing secret
+#: (``api/controllers/webhooks/_shared.py::_verify_signature`` reads exactly
+#: these two keys, in this order).
+WEBHOOK_SIGNING_SECRET_FIELDS: Final[frozenset[str]] = frozenset(
+    {"signing_secret", "webhook_secret"}
+)
+
+
 class ConnectionTypeMetadata(BaseModel):
     """Declarative metadata for one connection type (ordered fields)."""
 
@@ -203,6 +211,40 @@ class ConnectionTypeMetadata(BaseModel):
     description: str = ""
     default_auth_method: AuthMethod
     fields: tuple[ConnectionFieldMetadata, ...]
+
+    @computed_field
+    @property
+    def webhook_secret_field(self) -> str | None:
+        """The credential field a webhook signing secret goes in, if any.
+
+        Inbound ingest refuses any request it cannot authenticate: it reads the
+        connection's signing secret and rejects with 401 when there is none. A
+        type exposing no signing-secret field therefore has no reachable ingest
+        path and can never accumulate a webhook receipt, which is what makes a
+        retention control over those receipts meaningful or dead.
+
+        The field *name* rather than a bare boolean, because the field can itself
+        be conditional: a Generic HTTP connection to a known outbound vendor
+        preset will never be sent a webhook, so its signing secret is hidden and
+        a consumer needs to resolve that same condition before offering
+        retention. Naming the field lets it, without restating the rule.
+
+        Derived here rather than listed, so no consuming surface keeps its own
+        set of webhook-capable types to drift out of step with this registry in
+        either direction.
+
+        Returns:
+            The field name, or ``None`` when this type cannot receive webhooks.
+        """
+        return next(
+            (
+                str(field.name)
+                for field in self.fields
+                if field.name in WEBHOOK_SIGNING_SECRET_FIELDS
+                and field.placement is FieldPlacement.CREDENTIAL
+            ),
+            None,
+        )
 
     @model_validator(mode="after")
     def _field_names_unique(self) -> Self:
@@ -347,6 +389,35 @@ def _token(
     )
 
 
+def _signing_secret(
+    *,
+    label: str = "Webhook Secret",
+    help_text: str,
+    visible_when: FieldCondition | None = None,
+) -> ConnectionFieldMetadata:
+    """Build the optional credential inbound webhook verification reads.
+
+    Optional on every type that has one: a connection is usually created for
+    outbound API calls, and requiring a webhook secret would block that. Leaving
+    it blank simply means this connection receives no webhooks, which is what
+    ingest already enforces by rejecting an unauthenticatable delivery.
+
+    Returns:
+        The configured ``signing_secret`` field metadata.
+    """
+    return ConnectionFieldMetadata(
+        name=NotBlankStr("signing_secret"),
+        label=NotBlankStr(label),
+        input_type=FieldInputType.PASSWORD,
+        placement=FieldPlacement.CREDENTIAL,
+        required=False,
+        secret=True,
+        capture_mode=SecretCaptureMode.MASKED_FIELD,
+        help_text=help_text,
+        visible_when=visible_when,
+    )
+
+
 def _api_url(
     *,
     required: bool,
@@ -381,6 +452,13 @@ _GITHUB = ConnectionTypeMetadata(
             help_text="Leave blank for github.com",
             placeholder="https://api.github.com",
         ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Must match the secret on the "
+                "repository webhook; GitHub signs the body with it and sends "
+                "the digest in X-Hub-Signature-256."
+            ),
+        ),
     ),
 )
 
@@ -395,6 +473,14 @@ _GITLAB = ConnectionTypeMetadata(
             required=False,
             help_text="Leave blank for gitlab.com; set for self-hosted",
             placeholder="https://gitlab.com",
+        ),
+        _signing_secret(
+            label="Webhook Secret Token",
+            help_text=(
+                "Set to receive inbound webhooks. GitLab does not sign the "
+                "body: it echoes this token verbatim in X-Gitlab-Token, which "
+                "is compared against the stored value."
+            ),
         ),
     ),
 )
@@ -411,6 +497,12 @@ _GITEA = ConnectionTypeMetadata(
             help_text="Self-hosted Gitea instance URL",
             placeholder="https://gitea.example.com",
         ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Gitea signs the body with it "
+                "and sends the bare digest in X-Gitea-Signature."
+            ),
+        ),
     ),
 )
 
@@ -425,6 +517,13 @@ _FORGEJO = ConnectionTypeMetadata(
             required=True,
             help_text="Self-hosted Forgejo instance URL (e.g. codeberg.org)",
             placeholder="https://forgejo.example.com",
+        ),
+        _signing_secret(
+            help_text=(
+                "Set to receive inbound webhooks. Forgejo signs the body with "
+                "it and sends the bare digest in X-Forgejo-Signature (older "
+                "instances send X-Gitea-Signature, which is also accepted)."
+            ),
         ),
     ),
 )
@@ -614,6 +713,17 @@ _GENERIC_HTTP = ConnectionTypeMetadata(
             placeholder="https://api.example.com",
         ),
         _token(label="API Key / Token"),
+        # Conditional for the same reason the base URL is: a known vendor preset
+        # is an outbound API this org calls, so it never delivers webhooks here
+        # and a signing secret on one would be a field nothing reads.
+        _signing_secret(
+            label="Webhook Signing Secret",
+            visible_when=_CUSTOM_VENDOR,
+            help_text=(
+                "Set only if this API sends webhooks back. It must sign the raw "
+                "body with HMAC-SHA256 and send the hex digest in X-Signature."
+            ),
+        ),
     ),
 )
 
