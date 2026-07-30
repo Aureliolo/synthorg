@@ -108,9 +108,10 @@ def build_delivery_key(*, connection_name: str, body: bytes) -> str:
     * The body digest, because the body is the only part of the request a
       verifier ever inspects. A header-supplied id, and the ``event_type`` in
       the URL, are attacker-controlled: no verifier takes the path as an input,
-      so a body that verifies verifies against any path. Keying on anything the
-      verifier never saw lets one captured delivery mint a fresh verified
-      publish per value the attacker picks. The signing schemes bind the body
+      so a body that passes verification passes against any path. Keying on
+      anything the verifier never saw lets one captured delivery mint a fresh
+      verified publish per value the attacker picks. The signing schemes bind
+      the body
       through an HMAC over it; the token-equality scheme authenticates the
       sender rather than the bytes and binds nothing, so for that one the digest
       is the delivery's identity without being evidence of origin, and there is

@@ -283,10 +283,10 @@ verifier inspects at all, so anything else is attacker-controlled:
 - **A header-supplied id.** Keying on one let a single captured body publish
   repeatedly under fresh values. The delivery id is read for logging only.
 - **The URL `event_type`.** No verifier takes the path as an input, so a body
-  that verifies verifies against *any* path. While the durable key included the
-  event name, one captured delivery bought a fresh verified publish per name an
-  attacker chose to post it to: enough to drive event names the upstream never
-  sent, including a sprint's `transition_event`.
+  that passes verification passes against *any* path. While the durable key
+  included the event name, one captured delivery bought a fresh verified publish
+  per name an attacker chose to post it to: enough to drive event names the
+  upstream never sent, including a sprint's `transition_event`.
 
 How strongly the body is bound varies by scheme, and the key does not depend on
 it: the signing schemes HMAC the body, while the token-equality scheme
