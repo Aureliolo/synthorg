@@ -223,7 +223,7 @@ class WebhooksConfig(BaseModel):
     rate_limit_rpm: int = Field(default=100, ge=0)
     replay_window_seconds: int = Field(default=300, gt=0)
     max_payload_bytes: int = Field(default=1_000_000, gt=0)
-    # No `verify_signatures` toggle: `_verify_signature` runs unconditionally on
+    # No `verify_signatures` toggle: `verify_signature` runs unconditionally on
     # every delivery. A knob nothing read looked like a supported control an
     # operator could turn off, and wiring one later would be the signature
     # bypass this path exists to prevent.

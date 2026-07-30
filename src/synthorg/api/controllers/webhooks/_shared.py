@@ -1,49 +1,30 @@
 """Receive-path helpers for the webhooks ingest controller.
 
-Pure helper module: connection lookup, streaming payload-size
-enforcement, signature verification, timestamp parsing,
-replay/freshness guarding, the bus-publish-and-log primitive, and the
-durable-idempotency wrapper. The ingest controller imports these as
-bare names (so tests patch them on the ingest module); the retry path
-reaches ``_publish_webhook_event_and_log`` module-qualified through
+What ingest does once a delivery has authenticated: streaming payload-size
+enforcement, timestamp parsing, replay/freshness guarding, the
+bus-publish-and-log primitive, and the durable-idempotency wrapper.
+Authentication itself lives in ``_authentication``. The ingest controller
+imports these as bare names (so tests patch them on the ingest module); the
+retry path reaches ``_publish_webhook_event_and_log`` module-qualified through
 this module so there is one canonical patch target.
 """
 
 from collections.abc import Mapping
-from typing import Final
 
 from litestar import Request
 from litestar.datastructures import State
 
-from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.controllers._webhooks_wiring import (
     _build_idem_key,
     _build_idem_scope,
 )
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.core.domain_errors import (
-    ConflictError,
-    UnauthorizedError,
-    ValidationError,
-)
-from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.integrations.connections.field_metadata import (
-    WEBHOOK_SIGNING_SECRET_FIELD,
-    get_connection_type_metadata,
-)
-from synthorg.integrations.connections.models import Connection, ConnectionType
-from synthorg.integrations.errors import (
-    WebhookProcessingError,
-    WebhookVerifierUnavailableError,
-)
-from synthorg.integrations.state import (
-    IntegrationsStateSlice,
-    webhook_replay_protector_of,
-)
+from synthorg.core.domain_errors import ConflictError, ValidationError
+from synthorg.integrations.errors import WebhookProcessingError
+from synthorg.integrations.state import webhook_replay_protector_of
 from synthorg.integrations.webhooks.event_bus_bridge import publish_webhook_event
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
-from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
@@ -52,43 +33,6 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
-
-#: The single message every unauthenticated rejection carries.
-#:
-#: Ingest is reachable without credentials, so any distinction between "no such
-#: connection", "this type has no verifier", "the secret is unset" and "the
-#: signature did not match" is an oracle: an unauthenticated caller could
-#: enumerate connection names and learn, per name, whether a signing secret is
-#: configured. The distinction is kept in the structured log, where an operator
-#: can see it and an attacker cannot.
-_UNVERIFIABLE_DELIVERY: Final[str] = (
-    "Webhook delivery could not be authenticated; request rejected"
-)
-
-
-async def _get_verified_connection(state: State, connection_name: str) -> Connection:
-    """Look up the named connection, rejecting an unknown name as unauthorised.
-
-    Returns:
-        ``Connection`` instance.
-
-    Raises:
-        UnauthorizedError: When no such connection exists. Deliberately not a
-            404: see :data:`_UNVERIFIABLE_DELIVERY`.
-    """
-    catalog: ConnectionCatalog = require_service(
-        state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
-        "Connection Catalog",
-    )
-    conn = await catalog.get(connection_name)
-    if conn is None:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="connection not found",
-        )
-        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
-    return conn
 
 
 async def _enforce_max_payload(
@@ -162,106 +106,6 @@ async def _enforce_max_payload(
     return b"".join(chunks)
 
 
-async def _verify_signature(
-    *,
-    catalog: ConnectionCatalog,
-    connection: Connection,
-    body: bytes,
-    headers: dict[str, str],
-) -> None:
-    """Verify the webhook signature, raising 401 on missing secret or mismatch.
-
-    Reads exactly one credential key, ``signing_secret``, the one the connection
-    registry declares. Honouring a second undeclared name would open an ingest
-    path no metadata-driven surface can see: the dashboard form and
-    ``webhook_secret_field`` name only the declared field, and
-    ``reject_inline_secret_fields`` can only refuse keys the registry knows are
-    secret, so an undeclared alias could be posted inline through the create
-    body and never appear as a credential anywhere an operator looks.
-
-    Whitespace is stripped before the emptiness test: a blank-but-present secret
-    is not a secret, and passing it through would hand the verifier a key an
-    attacker can guess in one attempt.
-
-    The secret field's own ``visible_when`` is resolved against the connection's
-    stored values, so a secret captured while the field applied stops
-    authenticating once it no longer does. Otherwise an operator who repointed a
-    ``generic_http`` connection at a vendor preset would have retired the inbound
-    path in every surface they can see while it kept publishing verified events.
-
-    Raises:
-        UnauthorizedError: Raised on the corresponding failure path.
-    """
-    connection_name = connection.name
-    connection_type = connection.connection_type
-    metadata = get_connection_type_metadata(connection_type)
-    if not metadata.webhook_ingest_is_reachable(connection.metadata):
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            connection_type=connection_type.value,
-            reason="signing secret does not apply to this connection",
-        )
-        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
-    try:
-        verifier = get_verifier(connection_type)
-    except WebhookVerifierUnavailableError:
-        # Collapsed into the same 401 rather than surfacing 501: a distinct
-        # status tells an unauthenticated caller that the connection exists and
-        # which types are ingest-capable.
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            connection_type=connection_type.value,
-            reason="no verifier registered for connection type",
-        )
-        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY) from None
-    credentials = await catalog.get_credentials(connection_name)
-    signing_secret = credentials.get(WEBHOOK_SIGNING_SECRET_FIELD, "").strip()
-    if not signing_secret:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="signing secret not configured",
-        )
-        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
-    valid = await verifier.verify(
-        body=body,
-        headers=headers,
-        secret=signing_secret,
-    )
-    if not valid:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="signature verification failed",
-        )
-        raise UnauthorizedError(_UNVERIFIABLE_DELIVERY)
-
-
-def _read_delivery_id(
-    headers: dict[str, str],
-    connection_type: ConnectionType,
-) -> str | None:
-    """Read the sender's own delivery id, for logging only.
-
-    Each provider names it differently, so the verifier declares the header;
-    ``None`` for a scheme that sends none. Not used for deduplication: the id is
-    outside the signature and therefore attacker-controlled, which is exactly
-    why :func:`_check_replay_or_freshness` keys on the body instead.
-
-    Returns:
-        The trimmed delivery id, or ``None`` when absent or unsupported.
-    """
-    try:
-        header = get_verifier(connection_type).delivery_id_header
-    except WebhookVerifierUnavailableError:  # pragma: no cover -- verified first
-        return None
-    if header is None:
-        return None
-    return (headers.get(header) or "").strip() or None
-
-
 def _parse_timestamp(
     headers: dict[str, str],
     *,
@@ -300,14 +144,18 @@ async def _check_replay_or_freshness(
 ) -> None:
     """In-memory replay/freshness guard; durable dedup runs separately.
 
-    Deduplicates on ``dedup_key``, which the caller derives from the request
-    body, and never on a header value alone. Header-supplied ids are not covered
-    by any verifier's signature (the HMAC schemes sign the body only, and
-    GitLab's token scheme signs nothing), so an attacker holding one captured
-    signed body could replay it unlimited times simply by varying the id: each
-    fresh value looked unseen, minted a fresh idempotency key, and published
-    another verified event. Keying on the body means a captured delivery
-    collapses onto its first publish however its headers are dressed up.
+    Deduplicates on ``dedup_key``, the delivery identity
+    :func:`build_delivery_key` composed, and never on a header value alone.
+    Header-supplied ids are not covered by any verifier's signature (the HMAC
+    schemes sign the body only, and GitLab's token scheme signs nothing), so an
+    attacker holding one captured signed body could replay it unlimited times
+    simply by varying the id: each fresh value looked unseen, minted a fresh
+    idempotency key, and published another verified event.
+
+    Both gates take the identical key, which is the point: this one bounds a
+    replay within its window, and the durable one bounds it for the whole TTL
+    across replicas. Keyed differently, each dimension is only as guarded as
+    whichever gate happens to cover it.
 
     ``delivery_id`` is logged for traceability but does not weaken the check.
 
@@ -379,7 +227,7 @@ async def _publish_with_durable_idempotency(
     state: State,
     connection_name: str,
     event_type: str,
-    nonce: str,
+    delivery_key: str,
     connection_type: str,
     bus: MessageBus,
     payload: Mapping[str, object],
@@ -389,6 +237,13 @@ async def _publish_with_durable_idempotency(
 
     Returns the cached/fresh response body. Raises 409 on contention
     that the polling window could not resolve.
+
+    ``event_type`` is published but is deliberately NOT part of the key. It
+    comes from the URL and no verifier signs the path, so keying on it would let
+    one captured signed body mint a fresh verified publish per event name the
+    attacker chose to post it to. The key is the delivery identity
+    :func:`build_delivery_key` composed, which the in-memory replay gate already
+    asserted on the same request.
 
     Returns:
         Mapping with the declared key/value types.
@@ -406,13 +261,7 @@ async def _publish_with_durable_idempotency(
             connection_name=connection_name,
         ),
     )
-    idem_key = NotBlankStr(
-        _build_idem_key(
-            connection_name=connection_name,
-            event_type=event_type,
-            nonce=nonce,
-        ),
-    )
+    idem_key = NotBlankStr(_build_idem_key(delivery_key=delivery_key))
 
     async def _publish_and_accept() -> dict[str, object]:
         """Return publish and accept."""

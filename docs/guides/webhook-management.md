@@ -112,18 +112,25 @@ and probe their configuration. The specific reason is in the structured log
 
 ## Deduplication
 
-The idempotency key is derived from `sha256(body)`, never from a header. Header
-ids sit outside every verifier's signature, so keying on one would let a single
-captured signed body publish repeatedly under fresh values. A provider's own
-retry of an identical body therefore collapses onto the first publish on any
-replica; a genuinely new delivery has a different body and its own key.
+A delivery is keyed on the connection it addressed plus `sha256(body)`, and on
+nothing else. The digest is the only part of the request any verifier signs, so
+neither a header id nor the `event_type` in the URL takes part: keying on either
+would let one captured signed body publish repeatedly, once per value the caller
+picked. The connection name is in the key because two connections can
+legitimately be sent the same bytes.
+
+A provider's own retry of an identical body therefore collapses onto the first
+publish on any replica, whatever path it arrives on; a genuinely new delivery has
+a different body and its own key. Two events that carry byte-identical bodies
+count as one delivery, so a sender that needs them distinguished must make their
+bodies differ.
 
 The provider's delivery id (`X-GitHub-Delivery` and friends, declared per
 verifier) is recorded for traceability only.
 
 ## Receipts
 
-`WebhookReceipt` rows carry the connection, event type, status, timestamps and
+`WebhookReceipt` rows carry the connection, event type, status, timestamps, and
 the raw body, and `WebhookReceiptService` / `WebhookActivityService` read and
 retry them.
 

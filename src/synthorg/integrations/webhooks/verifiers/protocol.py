@@ -21,18 +21,18 @@ class SignatureVerifier(Protocol):
     def delivery_id_header(self) -> str | None:
         """Header carrying the provider's own single-use delivery id.
 
-        Read as the replay nonce. Each provider names this differently
-        (``X-GitHub-Delivery``, ``X-Gitea-Delivery``, ...), and none of them
-        sends the generic ``X-Nonce`` / ``X-Request-Id`` the ingest path used to
-        look for on its own, so without this a genuine delivery arrives with no
-        nonce and no timestamp and the replay gate refuses it.
+        Each provider names this differently (``X-GitHub-Delivery``,
+        ``X-Gitea-Delivery``, ...) and none of them sends a generic ``X-Nonce``,
+        so the name has to come from the scheme that knows it.
 
-        A provider delivery id is minted once per delivery and repeated on the
-        provider's own retries, which is exactly what nonce dedup needs: a retry
-        collapses, a replay with a fresh id does not get a free pass.
+        Logged for traceability, and deliberately NOT used for deduplication:
+        the id sits outside everything :meth:`verify` covers, so an attacker
+        holding one captured signed body could replay it indefinitely by varying
+        the id. Dedup keys on the delivery identity instead (connection + body
+        digest), which the signature does cover.
 
-        ``None`` for a scheme that binds freshness into the signature itself
-        (Slack signs its timestamp), where there is no separate id to read.
+        ``None`` for a scheme that sends no id of its own (Slack and A2A bind
+        freshness into the signature by signing a timestamp).
         """
         ...
 

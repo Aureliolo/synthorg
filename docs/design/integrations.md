@@ -270,16 +270,37 @@ The reason is kept in the structured log.
 
 ### Replay Protection
 
-Deduplication keys on `sha256(body)`, never on a header value. Header-supplied
-ids sit outside every verifier's signature, so keying on one let a single
-captured signed body publish repeatedly under fresh values; the digest is covered
-by the signature that just verified, and is always present, so the guard never
-fails closed for want of a freshness signal. A provider's own retry of an
-identical body collapses onto the first publish, on any replica, through the same
-key in the durable idempotency service.
+A delivery is identified by the connection it addressed and the bytes it carried,
+and by nothing else. `build_delivery_key` composes that identity as
+`<len>:<connection_name>:sha256:<body digest>`, and **both** dedup gates key on
+it: the in-memory `ReplayProtector` bounds a replay within its window (default 5
+minutes), and the durable `IdempotencyService` bounds it for the whole TTL across
+replicas.
+
+What is excluded is the point. The body digest is the only part of the request a
+verifier signs, so anything else is attacker-controlled:
+
+- **A header-supplied id.** Keying on one let a single captured signed body
+  publish repeatedly under fresh values. The delivery id is read for logging only.
+- **The URL `event_type`.** No verifier takes the path as an input (GitLab's token
+  scheme signs nothing at all), so a captured body verifies against *any* path.
+  While the durable key included the event name, one captured delivery bought a
+  fresh verified publish per name an attacker chose to post it to: enough to drive
+  event names the upstream never sent, including a sprint's `transition_event`.
+
+The connection name is included for the opposite reason: two connections can
+legitimately be sent the same bytes, and the first must not suppress the second.
+Both gates take the identical key deliberately. Keyed differently, each dimension
+is only as guarded as whichever gate happens to cover it, which is exactly how the
+`event_type` widening survived: the in-memory gate never had it.
 
 A signed timestamp, where the scheme provides one (`slack`, `a2a_peer`), is
-additionally checked against the dedup window (default 5 minutes).
+additionally checked against the dedup window.
+
+Two byte-identical bodies genuinely sent as distinct events therefore collapse
+onto one publish. That is the intended trade: identical signed bytes are
+indistinguishable from a replay, so a sender that needs two events to be distinct
+has to make their bodies distinct.
 
 ### Receipt retention
 

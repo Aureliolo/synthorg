@@ -194,7 +194,7 @@ class ConnectionFieldMetadata(BaseModel):
 
 
 #: The one credential field the webhook ingest path reads as its signing secret
-#: (``api/controllers/webhooks/_shared.py::_verify_signature``). Exactly one
+#: (``api/controllers/webhooks/_authentication.py::verify_signature``). Exactly one
 #: name, so a type either declares it and is reachable or does not and is not:
 #: an alias ingest honoured but no type declared would be invisible to every
 #: metadata-driven surface, including ``reject_inline_secret_fields``, which can

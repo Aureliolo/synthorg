@@ -1,15 +1,11 @@
-"""Tests for webhook nonce-less idempotency dedup.
+"""Tests for webhook delivery-identity dedup.
 
-When a provider does not supply ``X-Nonce`` / ``X-Request-Id``, the
-webhook handler must still dedupe redeliveries to prevent
-double-bus publishes. The handler hashes the request body with
-SHA-256 and feeds the digest into the existing durable
-``IdempotencyService``.
-
-These tests pin the helper-level contract: the success log records
-``dedup_source`` and the durable-idempotency path is invoked for
-both the nonce and nonce-less branches with the appropriate key
-shape.
+A delivery is identified by the connection it addressed and the bytes it
+carried, and by nothing else: the body digest is the only part of the request a
+verifier signs, and the connection is what keeps two connections sent the same
+bytes from suppressing each other. Both dedup gates take that one key, so these
+tests pin what it does and does not include, particularly the two attacker-chosen
+inputs deliberately left out of it: any header id, and the URL ``event_type``.
 """
 
 import hashlib
@@ -25,6 +21,7 @@ from litestar.testing import RequestFactory
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers import _webhooks_wiring
+from synthorg.api.controllers._webhooks_wiring import build_delivery_key
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.communication.bus_protocol import MessageBus
@@ -150,7 +147,7 @@ class TestPublishWithDurableIdempotency:
             state=state,
             connection_name="conn-b",
             event_type="push",
-            nonce="sha256:deadbeef",
+            delivery_key="6:conn-b:sha256:deadbeef",
             connection_type="github",
             bus=mock_of[MessageBus](),
             payload={"y": 2},
@@ -164,39 +161,67 @@ class TestPublishWithDurableIdempotency:
 
 
 @pytest.mark.unit
-class TestNoncelessWebhookKeyShape:
-    """Body-hash idempotency key shape: ``sha256:<digest>`` -> wrapper."""
+class TestDeliveryKeyIdentity:
+    """The delivery key is the connection and the signed bytes, nothing else.
 
-    def test_helper_consumes_sha256_prefixed_nonce(self) -> None:
-        """``_build_idem_key`` accepts the synthesised body-digest nonce.
+    Both dedup gates take this one key, so what it does and does not include is
+    the whole dedup contract. The ``event_type`` exclusion is the load-bearing
+    part: it comes from the URL and no verifier signs the path.
+    """
 
-        The handler synthesises ``nonce=f"sha256:{digest}"`` for the
-        nonce-less path. ``_build_idem_key`` is unchanged: it accepts
-        any string. Asserting that the resulting key is bounded under
-        ``_IDEMPOTENCY_KEY_MAX_LEN`` catches a regression where the
-        prefix pushes the composite over the DB column cap.
-        """
-        digest = "a" * 64  # SHA-256 hex is 64 chars
-        synthesised = f"sha256:{digest}"
-        key = _webhooks_wiring._build_idem_key(
-            connection_name="some-connection",
-            event_type="some.event",
-            nonce=synthesised,
+    def test_the_same_body_to_a_different_event_type_keys_the_same(self) -> None:
+        # The attack this closes: one captured signed body, posted to a second
+        # event name, used to mint a second verified publish because the durable
+        # key included the name from the URL.
+        body = b'{"action": "opened"}'
+        first = _webhooks_wiring.build_delivery_key(
+            connection_name="github-prod",
+            body=body,
         )
-        assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
-        # The prefix or a hash-of-prefix appears in the key (operator
-        # visibility); the entire key is non-empty.
-        assert key
+        assert first == _webhooks_wiring.build_delivery_key(
+            connection_name="github-prod",
+            body=body,
+        )
 
-    def test_nonce_less_key_uses_sha256_not_truncated(self) -> None:
-        """Real-body SHA-256 digest survives ``_build_idem_key`` unmangled.
+    def test_the_same_body_to_a_different_connection_keys_differently(self) -> None:
+        # The other direction: two connections can legitimately be sent the same
+        # bytes, and the first must not suppress the second.
+        body = b'{"action": "opened"}'
+        assert _webhooks_wiring.build_delivery_key(
+            connection_name="github-prod",
+            body=body,
+        ) != _webhooks_wiring.build_delivery_key(
+            connection_name="github-staging",
+            body=body,
+        )
 
-        Asserts that the helper keeps the full 64-hex-char digest
-        visible (or as a hash-of-key when the composite is over the
-        column cap), bounded under ``_IDEMPOTENCY_KEY_MAX_LEN``. A
-        regression that swapped to a weaker hash or truncated the
-        digest mid-key would otherwise slip past the test surface.
-        """
+    def test_a_different_body_keys_differently(self) -> None:
+        assert _webhooks_wiring.build_delivery_key(
+            connection_name="c",
+            body=b'{"n": 1}',
+        ) != _webhooks_wiring.build_delivery_key(
+            connection_name="c",
+            body=b'{"n": 2}',
+        )
+
+    def test_the_connection_name_cannot_be_confused_with_the_digest(self) -> None:
+        # Length-prefixed, so a name containing the separator cannot shift the
+        # boundary and collide two distinct deliveries onto one key.
+        body = b"x"
+        assert _webhooks_wiring.build_delivery_key(
+            connection_name="a:b",
+            body=body,
+        ) != _webhooks_wiring.build_delivery_key(
+            connection_name="a",
+            body=body,
+        )
+
+
+@pytest.mark.unit
+class TestDurableKeyBounding:
+    """``_build_idem_key`` bounds a delivery key to the DB column cap."""
+
+    def test_a_normal_delivery_key_is_bounded_and_deterministic(self) -> None:
         import hashlib
 
         body = b'{"event": "issues.opened", "number": 42}'
@@ -205,52 +230,35 @@ class TestNoncelessWebhookKeyShape:
         sha256_hex_length = 64
         assert len(digest) == sha256_hex_length
 
-        key = _webhooks_wiring._build_idem_key(
+        delivery_key = _webhooks_wiring.build_delivery_key(
             connection_name="github-prod",
-            event_type="issues.opened",
-            nonce=f"sha256:{digest}",
+            body=body,
         )
-        assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
-        # The digest survives in the key (either inline or reduced via
-        # the helper's two-stage SHA-256 collapse for oversized
-        # composites). Either way the key is deterministic and
-        # non-empty for the same body.
-        assert key
-        # Re-hashing the same body produces the same key; this is the
-        # core idempotency invariant.
-        repeat_key = _webhooks_wiring._build_idem_key(
-            connection_name="github-prod",
-            event_type="issues.opened",
-            nonce=f"sha256:{digest}",
-        )
-        assert key == repeat_key
-
-    def test_nonce_less_key_at_column_cap_boundary(self) -> None:
-        """Composite key sitting exactly at the DB cap is accepted.
-
-        A connection_name + event_type + ``sha256:`` prefix + 64-hex
-        digest crafted to land near the cap should still fit; pad
-        up to the boundary and confirm the helper does not truncate
-        or crash.
-        """
-        # Pad connection_name so the full composite is right at the cap.
-        digest = "0" * 64
-        prefix_overhead = len(":") + len(":") + len("sha256:") + len(digest)
-        # ``_IDEMPOTENCY_KEY_MAX_LEN`` is 255; reserve event_type=8 chars.
-        event_type = "evt.test"
-        room = (
-            _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
-            - prefix_overhead
-            - len(event_type)
-        )
-        connection_name = "x" * max(1, room)
-        key = _webhooks_wiring._build_idem_key(
-            connection_name=connection_name,
-            event_type=event_type,
-            nonce=f"sha256:{digest}",
-        )
+        key = _webhooks_wiring._build_idem_key(delivery_key=delivery_key)
         assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
         assert key
+        assert key == _webhooks_wiring._build_idem_key(delivery_key=delivery_key)
+
+    def test_an_oversized_delivery_key_collapses_rather_than_truncating(self) -> None:
+        # A connection name long enough to push the composite past the column
+        # cap must still yield a distinct, bounded key rather than a prefix two
+        # different deliveries could share.
+        long_name = "x" * (_webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN * 2)
+        first = _webhooks_wiring._build_idem_key(
+            delivery_key=_webhooks_wiring.build_delivery_key(
+                connection_name=long_name,
+                body=b'{"n": 1}',
+            ),
+        )
+        second = _webhooks_wiring._build_idem_key(
+            delivery_key=_webhooks_wiring.build_delivery_key(
+                connection_name=long_name,
+                body=b'{"n": 2}',
+            ),
+        )
+        assert len(first) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
+        assert len(second) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
+        assert first != second
 
 
 @pytest.mark.unit
@@ -338,10 +346,10 @@ class TestReceiveWebhookEndToEnd:
             return {"status": "accepted", "event_type": kwargs["event_type"]}
 
         for name, fn in (
-            ("_get_verified_connection", fake_get_verified_connection),
+            ("get_verified_connection", fake_get_verified_connection),
             ("_enforce_max_payload", fake_enforce_max_payload),
-            ("_verify_signature", fake_verify_signature),
-            ("_read_delivery_id", fake_read_delivery_id),
+            ("verify_signature", fake_verify_signature),
+            ("read_delivery_id", fake_read_delivery_id),
             ("_parse_timestamp", fake_parse_timestamp),
             ("_check_replay_or_freshness", fake_check_replay_or_freshness),
             ("_publish_with_durable_idempotency", spy_publish_with_durable_idempotency),
@@ -375,6 +383,7 @@ class TestReceiveWebhookEndToEnd:
         *,
         body_bytes: bytes,
         request_headers: dict[str, str],
+        event_type: str = "issues.opened",
     ) -> JsonDict:
         """Run ``receive_webhook`` once and return the captured kwargs.
 
@@ -408,7 +417,7 @@ class TestReceiveWebhookEndToEnd:
             state=state,
             request=request_stub,
             connection_name="github-prod",
-            event_type="issues.opened",
+            event_type=event_type,
         )
         return captured
 
@@ -424,13 +433,13 @@ class TestReceiveWebhookEndToEnd:
         digest, so the header cannot move it.
         """
         body = b'{"x": 1}'
-        expected = f"sha256:{hashlib.sha256(body).hexdigest()}"
+        expected = build_delivery_key(connection_name="github-prod", body=body)
         captured = await self._invoke_branch(
             monkeypatch,
             body_bytes=body,
             request_headers={"x-nonce": "attacker-chosen-value"},
         )
-        assert captured["nonce"] == expected
+        assert captured["delivery_key"] == expected
         assert captured["dedup_source"] == "body_sha256"
         assert captured["connection_name"] == "github-prod"
         assert captured["event_type"] == "issues.opened"
@@ -451,7 +460,35 @@ class TestReceiveWebhookEndToEnd:
             body_bytes=body,
             request_headers={"x-nonce": "second"},
         )
-        assert first["nonce"] == replay["nonce"]
+        assert first["delivery_key"] == replay["delivery_key"]
+
+    async def test_the_url_event_type_cannot_change_the_key(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The event name comes from the URL, which no verifier signs.
+
+        With it in the key, one captured signed body bought a fresh verified
+        publish per name an attacker chose to post it to, since a different key
+        meant the durable claim did not suppress it.
+        """
+        body = b'{"event": "push", "ref": "main"}'
+        first = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={},
+            event_type="issues.opened",
+        )
+        elsewhere = await self._invoke_branch(
+            monkeypatch,
+            body_bytes=body,
+            request_headers={},
+            event_type="deploy.finished",
+        )
+        assert first["delivery_key"] == elsewhere["delivery_key"]
+        # The name is still published, it just does not key the dedup.
+        assert first["event_type"] == "issues.opened"
+        assert elsewhere["event_type"] == "deploy.finished"
 
     async def test_a_nonce_less_delivery_keys_on_the_body(
         self,
@@ -459,13 +496,16 @@ class TestReceiveWebhookEndToEnd:
     ) -> None:
         """No provider sends the generic nonce headers, so this is the real path."""
         body = b'{"event": "push", "ref": "main"}'
-        expected_digest = hashlib.sha256(body).hexdigest()
         captured = await self._invoke_branch(
             monkeypatch,
             body_bytes=body,
             request_headers={},
         )
-        assert captured["nonce"] == f"sha256:{expected_digest}"
+        assert captured["delivery_key"] == build_delivery_key(
+            connection_name="github-prod",
+            body=body,
+        )
+        assert hashlib.sha256(body).hexdigest() in str(captured["delivery_key"])
         assert captured["dedup_source"] == "body_sha256"
         assert captured["connection_name"] == "github-prod"
         assert captured["event_type"] == "issues.opened"
@@ -486,5 +526,5 @@ class TestReceiveWebhookEndToEnd:
             body_bytes=body,
             request_headers={},
         )
-        assert first["nonce"] == second["nonce"]
+        assert first["delivery_key"] == second["delivery_key"]
         assert first["dedup_source"] == second["dedup_source"] == "body_sha256"
