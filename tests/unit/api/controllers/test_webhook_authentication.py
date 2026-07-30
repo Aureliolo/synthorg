@@ -43,8 +43,9 @@ def _signed_headers() -> dict[str, str]:
 
 
 def _catalog() -> ConnectionCatalog:
-    catalog = mock_of[ConnectionCatalog]()
-    catalog.get_credentials = AsyncMock(return_value={"signing_secret": _SECRET})
+    catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
+        get_credentials=AsyncMock(return_value={"signing_secret": _SECRET}),
+    )
     return catalog
 
 

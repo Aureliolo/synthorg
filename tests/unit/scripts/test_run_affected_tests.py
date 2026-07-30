@@ -742,11 +742,12 @@ def test_an_affected_set_at_the_cap_still_runs(
         lambda _dirs: _MODULE._MAX_AFFECTED_TEST_FILES,
     )
     ran: list[list[str]] = []
-    monkeypatch.setattr(
-        _MODULE,
-        "_run_pytest",
-        lambda dirs, **_kwargs: ran.append(dirs) or 0,
-    )
+
+    def _record(dirs: list[str], **_kwargs: object) -> int:
+        ran.append(dirs)
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_run_pytest", _record)
     assert _MODULE._run_tests() == 0
     assert ran == [["tests/unit/api"]]
 
