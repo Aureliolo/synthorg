@@ -631,6 +631,126 @@ def test_classify_regression_when_single_crash_blocks() -> None:
     )
 
 
+# The affected-run size budget.
+#
+# A change can be too broad for the push budget without tripping any of the
+# blast-radius triggers, just by touching many packages. These pin that the
+# estimate is taken before pytest starts, that going over defers rather than
+# silently running a subset, and that the deferral is announced.
+
+
+def _fake_tree(tmp_path: Path, *, packages: dict[str, int]) -> None:
+    """Create ``tests/unit/<pkg>/test_N.py`` files under *tmp_path*."""
+    for package, count in packages.items():
+        directory = tmp_path / "tests" / "unit" / package
+        directory.mkdir(parents=True)
+        for index in range(count):
+            (directory / f"test_{index}.py").write_text("", encoding="utf-8")
+
+
+def test_counts_test_files_across_packages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+    _fake_tree(tmp_path, packages={"api": 3, "backup": 2})
+    counted = _MODULE.count_affected_test_files(["tests/unit/api", "tests/unit/backup"])
+    assert counted == 5
+
+
+def test_counts_nested_test_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Package counts would read `tests/unit/api` as one unit; its real cost is
+    # every file underneath it, sub-packages included.
+    monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+    _fake_tree(tmp_path, packages={"api": 1})
+    nested = tmp_path / "tests" / "unit" / "api" / "controllers"
+    nested.mkdir()
+    (nested / "test_deep.py").write_text("", encoding="utf-8")
+    assert _MODULE.count_affected_test_files(["tests/unit/api"]) == 2
+
+
+def test_counts_a_single_file_path_as_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The root-level `test_smoke.py` enters the selection as a file, not a dir.
+    monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+    smoke = tmp_path / "tests" / "unit" / "test_smoke.py"
+    smoke.parent.mkdir(parents=True)
+    smoke.write_text("", encoding="utf-8")
+    assert _MODULE.count_affected_test_files(["tests/unit/test_smoke.py"]) == 1
+
+
+def test_ignores_a_path_that_does_not_exist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+    assert _MODULE.count_affected_test_files(["tests/unit/gone"]) == 0
+
+
+def test_an_oversized_affected_set_defers_instead_of_running(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Over the cap, pytest must not start at all.
+
+    Running a subset would mean choosing which affected packages go unverified,
+    and every rule for choosing is arbitrary or perverse, so the whole run goes
+    to CI and says so.
+    """
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["src/x/a.py"])
+    monkeypatch.setattr(
+        _MODULE,
+        "_affected_test_dirs",
+        lambda _changed: (["tests/unit/api"], False),
+    )
+    monkeypatch.setattr(
+        _MODULE,
+        "count_affected_test_files",
+        lambda _dirs: _MODULE._MAX_AFFECTED_TEST_FILES + 1,
+    )
+
+    def _must_not_run(*_args: object, **_kwargs: object) -> int:
+        pytest.fail("pytest ran despite the affected set exceeding the budget")
+
+    monkeypatch.setattr(_MODULE, "_run_pytest", _must_not_run)
+
+    assert _MODULE._run_tests() == 0
+    announced = capsys.readouterr().out
+    assert "deferred to CI" in announced
+    assert "NOTHING runs locally" in announced
+
+
+def test_an_affected_set_at_the_cap_still_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Boundary: the cap is the largest set that still runs, so an off-by-one
+    # here would quietly stop verifying pushes that fit the budget.
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["src/x/a.py"])
+    monkeypatch.setattr(
+        _MODULE,
+        "_affected_test_dirs",
+        lambda _changed: (["tests/unit/api"], False),
+    )
+    monkeypatch.setattr(
+        _MODULE,
+        "count_affected_test_files",
+        lambda _dirs: _MODULE._MAX_AFFECTED_TEST_FILES,
+    )
+    ran: list[list[str]] = []
+    monkeypatch.setattr(
+        _MODULE,
+        "_run_pytest",
+        lambda dirs, **_kwargs: ran.append(dirs) or 0,
+    )
+    assert _MODULE._run_tests() == 0
+    assert ran == [["tests/unit/api"]]
+
+
 def test_parse_worker_crashes_ignores_malformed_line() -> None:
     """Lines that don't match the regex are silently skipped, not raised."""
     stdout = (
