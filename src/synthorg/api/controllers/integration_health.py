@@ -89,6 +89,7 @@ def _cached_report(connection: Connection) -> HealthReport:
         error_detail=health.detail,
         checked_at=health.last_check_at or datetime.now(UTC),
         webhook_ingest=health.webhook_ingest,
+        retry_after_seconds=health.retry_after_seconds,
     )
 
 

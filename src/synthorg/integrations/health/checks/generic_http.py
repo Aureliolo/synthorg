@@ -226,15 +226,23 @@ class GenericHttpHealthCheck:
     async def _preflight(
         self,
         connection: Connection,
+        target: _ProbeTarget,
     ) -> DnsValidationOk | HealthReport:
         """Clear the endpoint for probing, or report why it cannot be.
+
+        Validates the URL the probe will actually contact, not the
+        connection's ``base_url``: a preset is free to name a metadata
+        endpoint on another host, and clearing one host while contacting
+        another is no check at all. The pin built from this validation
+        covers only the hostname it validated, so it would not close the
+        gap either.
 
         Returns:
             The validated host on success; a finished ``HealthReport`` when
             the connection carries no endpoint or its endpoint fails the
             SSRF pre-flight.
         """
-        if not connection.base_url:
+        if not target.url:
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNKNOWN,
@@ -242,7 +250,7 @@ class GenericHttpHealthCheck:
                 checked_at=datetime.now(UTC),
             )
         validation = await validate_url_host(
-            connection.base_url,
+            target.url,
             self._network_policy,
         )
         if isinstance(validation, DnsValidationOk):
@@ -250,7 +258,7 @@ class GenericHttpHealthCheck:
         logger.warning(
             HEALTH_CHECK_FAILED,
             connection_name=connection.name,
-            reason="ssrf_policy_rejected_base_url",
+            reason="ssrf_policy_rejected_probe_url",
         )
         # Prefix the consumer-facing detail so dashboards can distinguish a
         # security rejection from a generic network failure (both currently
@@ -342,7 +350,8 @@ class GenericHttpHealthCheck:
             SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
             is configured.
         """
-        validation = await self._preflight(connection)
+        target = _probe_target(connection)
+        validation = await self._preflight(connection, target)
         if isinstance(validation, HealthReport):
             return validation
         headers, failure = await self._auth_headers(connection)
@@ -355,7 +364,7 @@ class GenericHttpHealthCheck:
             )
         return await self._run_probe(
             connection,
-            _probe_target(connection),
+            target,
             headers,
             self._pinned_transport(validation),
         )

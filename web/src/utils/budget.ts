@@ -42,6 +42,13 @@ const UNATTRIBUTED_PROMPT_CLASS = 'unattributed'
  */
 const UNATTRIBUTED_AGENT = 'unattributed'
 
+/**
+ * What the unattributed bucket is called on screen. The bucket keys above are
+ * internal join keys that no name map contains, so a row keyed by one would
+ * otherwise render the key itself to the operator.
+ */
+const UNATTRIBUTED_LABEL = 'Unattributed'
+
 /** Severity ordering: normal < amber < red < critical. */
 export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
 
@@ -149,7 +156,10 @@ export function computeAgentSpending(
     const taskCount = group.tasks.size
     rows.push({
       agentId,
-      agentName: agentNameMap.get(agentId) ?? agentId,
+      agentName:
+        agentId === UNATTRIBUTED_AGENT
+          ? UNATTRIBUTED_LABEL
+          : (agentNameMap.get(agentId) ?? agentId),
       totalCost: group.cost,
       budgetPercent: budgetTotal > 0 ? (group.cost / budgetTotal) * 100 : 0,
       taskCount,
@@ -168,7 +178,8 @@ interface DimensionResolver {
 const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
   agent: {
     key: (r) => r.agent_id ?? UNATTRIBUTED_AGENT,
-    label: (key, agentNameMap) => agentNameMap.get(key) ?? key,
+    label: (key, agentNameMap) =>
+      key === UNATTRIBUTED_AGENT ? UNATTRIBUTED_LABEL : (agentNameMap.get(key) ?? key),
   },
   provider: {
     key: (r) => r.provider,
@@ -181,7 +192,7 @@ const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
   },
   prompt_class: {
     key: (r) => r.prompt_class_id ?? UNATTRIBUTED_PROMPT_CLASS,
-    label: (key) => key,
+    label: (key) => (key === UNATTRIBUTED_PROMPT_CLASS ? UNATTRIBUTED_LABEL : key),
   },
 }
 

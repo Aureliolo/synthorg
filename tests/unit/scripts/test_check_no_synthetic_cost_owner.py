@@ -164,6 +164,23 @@ async def run() -> None:
 """
 
 
+_CONCATENATION = """\
+def build() -> CostRecord:
+    return CostRecord(
+        task_id="system:memory:" + kind,
+        provider=NotBlankStr(provider),
+    )
+"""
+
+_CONCATENATION_SUFFIX = """\
+def build() -> CostRecord:
+    return CostRecord(
+        task_id=prefix + ":synthetic",
+        provider=NotBlankStr(provider),
+    )
+"""
+
+
 @pytest.mark.parametrize(
     ("source", "keyword"),
     [
@@ -173,6 +190,8 @@ async def run() -> None:
         (_OR_FALLBACK, "agent_id"),
         (_PLAIN_LITERAL, "agent_id"),
         (_COMPLETE_TEXT, "task_id"),
+        (_CONCATENATION, "task_id"),
+        (_CONCATENATION_SUFFIX, "task_id"),
     ],
 )
 def test_flags_every_fabricated_shape(

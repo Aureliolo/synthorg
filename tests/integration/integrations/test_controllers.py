@@ -1512,6 +1512,7 @@ class TestControllerHttpLayer:
                     detail=None,
                     latency_ms=12.5,
                     webhook_ingest=WebhookIngestState.READY,
+                    retry_after_seconds=30.0,
                 ),
             }
         )
@@ -1532,6 +1533,7 @@ class TestControllerHttpLayer:
         assert report["status"] == "healthy"
         assert report["latency_ms"] == 12.5
         assert report["webhook_ingest"] == "ready"
+        assert report["retry_after_seconds"] == 30.0
 
     async def test_expired_verdict_is_reprobed(
         self,

@@ -14,8 +14,10 @@ per cycle, indefinitely, without anyone asking for a search.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.clock import Clock
+from synthorg.integrations.config import IntegrationHealthConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.http_vendor import (
     HTTP_VENDOR_PRESETS,
@@ -170,3 +172,39 @@ class TestProbeIsDueOnlyWhenItsVerdictExpired:
         )
 
         assert prober._is_due(conn) is True
+
+
+@pytest.mark.unit
+class TestRecheckCadenceRunsOneWay:
+    """The intervals only control cost while they shorten as health worsens."""
+
+    def test_an_inverted_cadence_is_refused(self) -> None:
+        # Each interval is separately mirrored and separately bounded, so
+        # without this nothing stops a configuration that re-probes working
+        # connections more often than failing ones.
+        with pytest.raises(ValidationError, match="must shorten as health worsens"):
+            IntegrationHealthConfig(
+                healthy_recheck_seconds=60,
+                degraded_recheck_seconds=1_800,
+                unhealthy_recheck_seconds=300,
+            )
+
+    def test_the_defaults_satisfy_the_ordering(self) -> None:
+        config = IntegrationHealthConfig()
+
+        assert (
+            config.unhealthy_recheck_seconds
+            <= config.degraded_recheck_seconds
+            <= config.healthy_recheck_seconds
+        )
+
+    def test_equal_intervals_are_accepted(self) -> None:
+        # A deployment that wants one cadence for everything is expressing a
+        # preference, not an inversion.
+        config = IntegrationHealthConfig(
+            healthy_recheck_seconds=300,
+            degraded_recheck_seconds=300,
+            unhealthy_recheck_seconds=300,
+        )
+
+        assert config.healthy_recheck_seconds == 300

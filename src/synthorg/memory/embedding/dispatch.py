@@ -10,6 +10,7 @@ protection the other had.
 """
 
 import asyncio
+import math
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
@@ -121,6 +122,11 @@ def _embedding_retry_after(exc: Exception) -> float | None:
     try:
         seconds = float(raw)  # type: ignore[arg-type]
     except TypeError, ValueError:
+        return None
+    # A hint wins over the computed backoff and is deliberately not
+    # re-capped, so "inf" would park the retry forever on the say-so of the
+    # endpoint that just refused the call.
+    if not math.isfinite(seconds):
         return None
     return seconds if seconds > 0 else None
 

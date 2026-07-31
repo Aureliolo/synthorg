@@ -8,10 +8,11 @@ the call belongs to and how the record is submitted.
 import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypedDict
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import CurrencyCode
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.models import CompletionResponse, TokenUsage
@@ -114,6 +115,55 @@ def is_successful_finish(finish_reason: object) -> bool:
     return str(value) not in _NON_SUCCESS_FINISH_REASONS
 
 
+class _ScopeFields(TypedDict):
+    """The fields every ``CostRecord`` reads off the scope and the usage.
+
+    Extracted so the two builders cannot drift: they differ only in where
+    the provider metadata comes from, and a field added to one call site
+    but not the other is invisible until the analytics that needed it come
+    back empty.
+    """
+
+    agent_id: NotBlankStr | None
+    task_id: NotBlankStr | None
+    project_id: NotBlankStr | None
+    prompt_class_id: NotBlankStr | None
+    provider: NotBlankStr
+    model: NotBlankStr
+    input_tokens: int
+    output_tokens: int
+    cost: float
+    currency: CurrencyCode
+    timestamp: datetime
+
+
+def _scope_fields(
+    ctx: CostRecordingContext,
+    usage: TokenUsage,
+    *,
+    model: str,
+    provider: str,
+) -> _ScopeFields:
+    """Bind the owner, the binding and the usage into one field mapping.
+
+    Returns:
+        The shared ``CostRecord`` keyword arguments.
+    """
+    return _ScopeFields(
+        agent_id=ctx.agent_id,
+        task_id=ctx.task_id,
+        project_id=ctx.project_id,
+        prompt_class_id=ctx.prompt_class_id,
+        provider=NotBlankStr(provider),
+        model=NotBlankStr(model),
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cost=usage.cost,
+        currency=ctx.currency,
+        timestamp=datetime.now(UTC),
+    )
+
+
 def build_cost_record(
     ctx: CostRecordingContext,
     response: CompletionResponse,
@@ -136,19 +186,8 @@ def build_cost_record(
     latency_ms, cache_hit, retry_count, retry_reason = extract_provider_metadata(
         response.provider_metadata,
     )
-    usage = response.usage
     return CostRecord(
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        project_id=ctx.project_id,
-        prompt_class_id=ctx.prompt_class_id,
-        provider=NotBlankStr(provider),
-        model=NotBlankStr(model),
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cost=usage.cost,
-        currency=ctx.currency,
-        timestamp=datetime.now(UTC),
+        **_scope_fields(ctx, response.usage, model=model, provider=provider),
         call_category=ctx.call_category,
         latency_ms=latency_ms,
         cache_hit=cache_hit,
@@ -188,17 +227,7 @@ def build_cost_record_from_usage(
         A ``CostRecord`` populated from the active context + usage.
     """
     return CostRecord(
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        project_id=ctx.project_id,
-        prompt_class_id=ctx.prompt_class_id,
-        provider=NotBlankStr(provider),
-        model=NotBlankStr(model),
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cost=usage.cost,
-        currency=ctx.currency,
-        timestamp=datetime.now(UTC),
+        **_scope_fields(ctx, usage, model=model, provider=provider),
         call_category=call_category if call_category is not None else ctx.call_category,
         latency_ms=None,
         cache_hit=None,

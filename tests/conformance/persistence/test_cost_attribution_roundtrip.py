@@ -123,7 +123,10 @@ class TestCostAttributionRoundTrip:
         await backend.cost_records.append(record)
 
         persisted = await backend.cost_records.query(CostRecordFilterSpec())
-        unowned = [r for r in persisted if r.task_id is None]
+        # Both ownership columns, not just the task: a backend that invented
+        # an agent_id would still satisfy a task-only filter, which is the
+        # exact fabrication this test exists to rule out.
+        unowned = [r for r in persisted if r.agent_id is None and r.task_id is None]
         assert len(unowned) == 1
         assert unowned[0].cost == pytest.approx(0.02)
         # The owner is gone but what the call was for is not: that is the

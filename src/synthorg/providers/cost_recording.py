@@ -340,8 +340,10 @@ async def _skip_build_and_submit(
 
     Shared by the completion and streaming emitters. A zero-cost AND
     zero-token call is skipped (free-tier no-op). A build failure is
-    logged at WARNING and swallowed -- the provider call's user-visible
-    result must not depend on recording success. Otherwise the record is
+    logged and swallowed -- the provider call's user-visible result must
+    not depend on recording success -- at WARNING while it looks like a
+    blip, escalating to ERROR once ``COST_FAILURE_ESCALATION_STREAK``
+    consecutive failures make it a pattern. Otherwise the record is
     submitted on a tracked background task so a slow tracker cannot add
     user-visible latency; the task is bounded and owned by the
     per-instance tracker (GC-safe, xdist-isolated). ``MemoryError`` /

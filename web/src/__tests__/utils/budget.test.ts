@@ -109,6 +109,14 @@ describe('computeAgentSpending', () => {
     expect(rows[0]!.budgetPercent).toBe(0)
   })
 
+  it('names the unowned bucket rather than showing its internal key', () => {
+    // No name map contains the synthetic bucket key, so the plain fallback
+    // renders the key itself and the operator reads 'unattributed'.
+    const records = [makeRecord({ agent_id: null, task_id: null, cost: 4 })]
+    const rows = computeAgentSpending(records, 100, new Map([['a1', 'Agent One']]))
+    expect(rows[0]!.agentName).toBe('Unattributed')
+  })
+
   it('uses agentNameMap for display names', () => {
     const records = [makeRecord({ agent_id: 'a1' })]
     const nameMap = new Map([['a1', 'Alice Bot']])

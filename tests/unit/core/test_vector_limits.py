@@ -46,3 +46,13 @@ def test_the_common_large_embedder_width_is_the_unindexable_one() -> None:
     # they commit rather than after a restart.
     assert index_support_for(4096) is IndexSupport.EXACT_SCAN
     assert index_support_for(4000) is IndexSupport.INDEXED_HALF_PRECISION
+
+
+@pytest.mark.parametrize("dims", [0, -1, -1536])
+def test_a_non_positive_width_is_refused_rather_than_called_indexable(
+    dims: int,
+) -> None:
+    # Reading this as the narrowest indexable width would report storage that
+    # cannot exist: a vector of no components is not a small vector.
+    with pytest.raises(ValueError, match="must be positive"):
+        index_support_for(dims)

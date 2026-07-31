@@ -121,10 +121,10 @@ class AbstractiveSummarizer:
 
         Args:
             content: The sparse/conversational text to summarize.
-            agent_id: Owning agent for cost attribution.  When
-                ``None`` and a ``cost_tracker`` was wired, the call
-                is attributed to ``"system"`` with ``task_id``
-                ``"system:memory:abstractive"``.
+            agent_id: Owning agent for cost attribution. ``None`` leaves
+                the spend unowned rather than inventing an owner for it:
+                summarising with no caller belongs to no agent, and it is
+                not a task either, so ``task_id`` stays unset too.
 
         Returns:
             Summary text.

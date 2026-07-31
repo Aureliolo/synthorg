@@ -79,21 +79,25 @@ class TestRestartStatus:
         async_test_client: LoopAsyncClient,
     ) -> None:
         """Only settings the process reads once at boot can be pending."""
-        write = await async_test_client.put(
-            "/api/v1/settings/memory/planning_memory_digest_budget",
-            headers=_HEADERS,
-            json={"value": "1200"},
-        )
-        assert write.status_code == 200, write.text
+        # The application is module-shared, so the override has to come back
+        # off even when an assertion between the write and the delete fails;
+        # otherwise one failure here silently reconfigures later tests.
+        try:
+            write = await async_test_client.put(
+                "/api/v1/settings/memory/planning_memory_digest_budget",
+                headers=_HEADERS,
+                json={"value": "1200"},
+            )
+            assert write.status_code == 200, write.text
 
-        resp = await async_test_client.get(_PATH, headers=_HEADERS)
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["data"]["pending"] == []
-
-        await async_test_client.delete(
-            "/api/v1/settings/memory/planning_memory_digest_budget",
-            headers=_HEADERS,
-        )
+            resp = await async_test_client.get(_PATH, headers=_HEADERS)
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["data"]["pending"] == []
+        finally:
+            await async_test_client.delete(
+                "/api/v1/settings/memory/planning_memory_digest_budget",
+                headers=_HEADERS,
+            )
 
 
 @pytest.mark.unit

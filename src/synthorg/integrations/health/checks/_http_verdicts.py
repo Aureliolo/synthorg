@@ -6,6 +6,7 @@ cleared; a rate limit proves nothing either way), while issuing it is
 transport mechanics.
 """
 
+import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Final, NamedTuple
@@ -35,6 +36,23 @@ UNAUTHORIZED: Final[int] = 401
 FORBIDDEN: Final[int] = 403
 
 
+def _header(headers: Mapping[str, str], name: str) -> str:
+    """Read a header without depending on the sender's capitalisation.
+
+    HTTP field names are case-insensitive, and the probe flattens
+    ``httpx.Headers`` into a plain mapping whose keys arrive lower-cased, so
+    a lookup spelled the way the RFC writes the name finds nothing.
+
+    Returns:
+        The header value, or the empty string when it is absent.
+    """
+    wanted = name.lower()
+    return next(
+        (value for key, value in headers.items() if key.lower() == wanted),
+        "",
+    )
+
+
 def _retry_after_seconds(raw: str) -> float | None:
     """Read a ``Retry-After`` delay, ignoring the HTTP-date form.
 
@@ -48,6 +66,11 @@ def _retry_after_seconds(raw: str) -> float | None:
     try:
         seconds = float(raw.strip())
     except ValueError:
+        return None
+    # ``float`` accepts "inf" and "nan". The value becomes a floor on the
+    # recheck interval, so an infinite one would retire the connection from
+    # probing for good on the say-so of the endpoint that just refused it.
+    if not math.isfinite(seconds):
         return None
     return seconds if seconds > 0 else None
 
@@ -189,7 +212,7 @@ def report_response(
     # A rate limit says nothing about whether the credential is valid, so it
     # is reported as its own cause rather than folded into the generic
     # failure detail an operator would read as one.
-    retry_after = resp.headers.get("Retry-After") or ""
+    retry_after = _header(resp.headers, "Retry-After")
     rate_limited = resp.status_code == TOO_MANY_REQUESTS
     logger.warning(
         HEALTH_CHECK_FAILED,

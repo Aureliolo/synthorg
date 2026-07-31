@@ -154,6 +154,9 @@ export function ModelRefField({
   const [probeError, setProbeError] = useState<string | null>(null)
   const [probing, setProbing] = useState(false)
   const inFlightRef = useRef<AbortController | null>(null)
+  // The last value this field set itself, so the reset below can tell an
+  // operator's own selection from one imposed on it from outside.
+  const ownedValueRef = useRef<string | null>(null)
 
   // Abandon a probe the operator has already moved on from. Without this,
   // changing selection twice leaves both calls running, and against a local
@@ -161,9 +164,28 @@ export function ModelRefField({
   // turned a 16-second first load into three timed-out probes.
   useEffect(() => () => inFlightRef.current?.abort(), [])
 
+  // A verdict describes the model it was measured on, so it cannot outlive a
+  // value that changed without going through handleChange. Discarding edits
+  // resets the row to the persisted value, which would otherwise leave the
+  // previous model's width, or its failure hint, sitting under the new one.
+  //
+  // Skipped for the selection handleChange itself just made: that path routes
+  // its own new value back through `value`, so an unguarded reset would abort
+  // the probe it started one render earlier.
+  useEffect(() => {
+    if (ownedValueRef.current === value) return
+    inFlightRef.current?.abort()
+    inFlightRef.current = null
+    setProbe(null)
+    setProbeError(null)
+    setProbing(false)
+  }, [value])
+
   const handleChange = useCallback(
     (nextProvider: string, nextModelId: string) => {
-      onChange(encodeModelRef(nextProvider, nextModelId))
+      const next = encodeModelRef(nextProvider, nextModelId)
+      ownedValueRef.current = next
+      onChange(next)
       inFlightRef.current?.abort()
       setProbeError(null)
       // Cleared before branching, not inside the probe path: the aborted

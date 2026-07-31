@@ -246,8 +246,7 @@ class TestHealthProberCycle:
         clock.advance(_PAST_RECHECK_SECONDS)
         await svc._probe_all()
         statuses = [status for _, status in catalog.updates]
-        # Three cycles actually ran, so non-escalation is proved rather than
-        # inferred from a prober that never probed.
-        assert len(statuses) == 3
-        assert ConnectionStatus.DEGRADED not in statuses
-        assert ConnectionStatus.UNHEALTHY not in statuses
+        # Pinned to UNKNOWN rather than merely "not escalated": three cycles
+        # actually ran, and a prober that quietly reported them HEALTHY would
+        # satisfy a non-escalation check while inventing a verdict.
+        assert statuses == [ConnectionStatus.UNKNOWN] * 3

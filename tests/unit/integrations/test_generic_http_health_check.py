@@ -253,7 +253,7 @@ class TestAuthenticatedProbe:
 
 
 class TestVendorPresetProbe:
-    """A preset names the header its API accepts and the query it needs."""
+    """A preset names the header its API accepts and how to read its errors."""
 
     async def test_probe_sends_the_vendor_header_and_buys_nothing(
         self,
@@ -335,6 +335,34 @@ class TestVendorPresetProbe:
         # A quota exhausted by the probe itself says nothing about the key.
         assert report.status is ConnectionStatus.UNHEALTHY
         assert "42" in (report.error_detail or "")
+        # The parsed field, not just the rendered detail: the recheck floor
+        # reads this one, and the probe flattens httpx's case-insensitive
+        # headers into a lower-cased dict on the way here.
+        assert report.retry_after_seconds == 42.0
+
+    @pytest.mark.parametrize("advertised", ["inf", "nan", "-inf"])
+    async def test_a_non_finite_retry_after_is_ignored(
+        self,
+        respx_mock: object,
+        advertised: str,
+    ) -> None:
+        # ``float`` accepts these, and the value becomes a floor on the
+        # recheck interval, so honouring one would let the endpoint that just
+        # refused the probe retire the connection from probing for good.
+        preset = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
+        respx_mock.get(preset.base_url).mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(429, headers={"Retry-After": advertised}),
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {"token": "key-123"}
+        check = GenericHttpHealthCheck(catalog=catalog)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_vendor_connection(HttpVendor.BRAVE.value))
+
+        assert report.retry_after_seconds is None
 
     def test_probe_target_prefers_a_free_metadata_endpoint(self) -> None:
         # A vendor that publishes a way to read its own key state is probed

@@ -39,6 +39,13 @@ ALTER TABLE cost_records ALTER COLUMN task_id DROP NOT NULL;
 -- in the dashboard as though it were an agent. Only agent_id needs this: a
 -- synthetic task_id could never have been committed, because the foreign key
 -- rejected it, so a scan for one would be work with no possible result.
+--
+-- This scans cost_records once. A LIKE 'prefix%' predicate cannot use a
+-- plain B-tree index under a non-C collation, and adding a text_pattern_ops
+-- index to serve one statement would cost a full build of its own on the
+-- highest-insert-rate table here, then be dropped. The scan is accepted: it
+-- runs once, it holds no ACCESS EXCLUSIVE lock (the statement-per-commit
+-- note above), and concurrent writers are unblocked throughout.
 UPDATE cost_records SET agent_id = NULL
 WHERE agent_id LIKE 'system%';
 

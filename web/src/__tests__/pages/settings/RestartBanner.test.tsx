@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { RestartBanner } from '@/pages/settings/RestartBanner'
 import type { PendingRestartSetting } from '@/api/types/system'
@@ -28,9 +28,12 @@ describe('RestartBanner', () => {
     seedStatus([], true)
     const { container } = render(<RestartBanner />)
     // The banner hydrates on mount, so the empty answer has to be the settled
-    // state rather than merely the initial one.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(container.firstChild).toBeNull()
+    // state rather than merely the initial one. Polled rather than timed: one
+    // macrotask tick is not a wait condition for a mocked fetch resolving
+    // through the store.
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull()
+    })
   })
 
   it('renders the singular message for one pending setting', async () => {

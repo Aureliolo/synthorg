@@ -60,7 +60,16 @@ def index_support_for(dimensions: int) -> IndexSupport:
 
     Returns:
         The support level for *dimensions*.
+
+    Raises:
+        ValueError: If *dimensions* is not positive. A width of zero or
+            below is not a narrow vector, it is not a vector, so
+            classifying it as indexable would report storage that cannot
+            exist.
     """
+    if dimensions <= 0:
+        msg = f"dimensions must be positive; got {dimensions}"
+        raise ValueError(msg)
     if dimensions > STORAGE_MAX_DIMENSIONS:
         return IndexSupport.UNSTORABLE
     if dimensions <= HNSW_VECTOR_MAX_DIMENSIONS:

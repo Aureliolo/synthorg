@@ -81,18 +81,22 @@ function renderNamespace(entry: string) {
 }
 
 describe('SettingsNamespacePage URL-backed filter', () => {
-  it('seeds the filter from the URL so a deep link lands on one row', () => {
+  // The page renders RestartBanner, which fetches restart status in a mount
+  // effect. Asserting synchronously returns before that settles, so the
+  // store's set() lands after the test, outside act() and past the
+  // active-handle gate.
+  it('seeds the filter from the URL so a deep link lands on one row', async () => {
     renderNamespace('/settings/memory?q=embedder_model')
 
-    expect(screen.getByLabelText('Search settings')).toHaveValue('embedder_model')
+    expect(await screen.findByLabelText('Search settings')).toHaveValue('embedder_model')
     expect(screen.getByText('Embedder Model')).toBeInTheDocument()
     expect(screen.queryByText('Retention Days')).toBeNull()
   })
 
-  it('shows the whole namespace when the URL carries no filter', () => {
+  it('shows the whole namespace when the URL carries no filter', async () => {
     renderNamespace('/settings/memory')
 
-    expect(screen.getByText('Embedder Model')).toBeInTheDocument()
+    expect(await screen.findByText('Embedder Model')).toBeInTheDocument()
     expect(screen.getByText('Retention Days')).toBeInTheDocument()
   })
 

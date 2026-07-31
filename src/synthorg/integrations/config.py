@@ -306,20 +306,38 @@ class IntegrationHealthConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> Self:
-        """Ensure ``degraded_threshold`` is not above ``unhealthy_threshold``.
+        """Ensure the thresholds and the recheck cadence both run one way.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
             ValueError: If ``degraded_threshold`` exceeds
-                ``unhealthy_threshold``.
+                ``unhealthy_threshold``, or if the recheck intervals do not
+                shorten as health worsens.
         """
         if self.degraded_threshold > self.unhealthy_threshold:
             msg = (
                 "IntegrationHealthConfig.degraded_threshold "
                 f"({self.degraded_threshold}) must be <= "
                 f"unhealthy_threshold ({self.unhealthy_threshold})"
+            )
+            raise ValueError(msg)
+        # Each interval is separately settings-mirrored and separately
+        # bounded, so nothing else stops an operator inverting the cadence
+        # and re-probing working connections more often than failing ones:
+        # the exact opposite of what the intervals exist to control.
+        if not (
+            self.unhealthy_recheck_seconds
+            <= self.degraded_recheck_seconds
+            <= self.healthy_recheck_seconds
+        ):
+            msg = (
+                "IntegrationHealthConfig recheck intervals must shorten as "
+                "health worsens: unhealthy_recheck_seconds "
+                f"({self.unhealthy_recheck_seconds}) <= "
+                f"degraded_recheck_seconds ({self.degraded_recheck_seconds}) "
+                f"<= healthy_recheck_seconds ({self.healthy_recheck_seconds})"
             )
             raise ValueError(msg)
         return self

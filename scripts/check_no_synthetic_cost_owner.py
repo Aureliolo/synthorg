@@ -234,8 +234,10 @@ def _called_name(node: ast.Call) -> str | None:
 def _is_fabricated(value: ast.expr) -> bool:
     """Return True iff *value* is an invented id rather than a derived one.
 
-    Unwraps the transparent ``NotBlankStr(...)`` narrowing and both sides of
-    an ``or`` fallback, so neither shape hides a literal.
+    Unwraps the transparent ``NotBlankStr(...)`` narrowing, both sides of an
+    ``or`` fallback, and both operands of a ``+`` concatenation, so no shape
+    hides a literal: a prefix glued to a variable is as invented as the
+    f-string spelling of the same value, and fails the same foreign key.
 
     Returns:
         ``True`` when the expression can only produce a made-up id.
@@ -246,6 +248,8 @@ def _is_fabricated(value: ast.expr) -> bool:
         return True
     if isinstance(value, ast.BoolOp):
         return any(_is_fabricated(operand) for operand in value.values)
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+        return _is_fabricated(value.left) or _is_fabricated(value.right)
     if isinstance(value, ast.Call):
         name = _called_name(value)
         if name in _TRANSPARENT_WRAPPERS and value.args:
