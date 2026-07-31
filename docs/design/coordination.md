@@ -176,9 +176,9 @@ Three properties make it safe rather than merely convenient:
 - **It refuses when nothing would bring the process back.** A process with no
   supervisor that stops itself is simply gone, so the endpoint returns 409
   unless `api.restart_supervised` says something will restart it. That setting
-  is announced by the deployment (the CLI's generated compose sets it beside
-  its own `restart:` policy), never inferred, and defaults to false so an
-  unknown deployment refuses rather than strands itself.
+  is announced by the deployment (the compose file the CLI generates sets it
+  beside its own `restart:` policy), never inferred, and defaults to false so
+  an unknown deployment refuses rather than strands itself.
 - **Pending state is derived, never remembered.** The status endpoint reads
   persisted setting writes newer than this process's boot time, so the notice
   survives a reload, reads the same for every operator, and clears itself when

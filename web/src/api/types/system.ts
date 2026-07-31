@@ -4,7 +4,6 @@ export type {
   AutonomyLevelRequest,
   AutonomyLevelResponse,
   BackupHealth,
-  CostRecordingHealth,
   EmbedderProbeResponse,
   LivenessStatus,
   MemoryHealth,
