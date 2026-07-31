@@ -2,12 +2,20 @@ import { AnimatePresence, motion } from 'motion/react'
 import { springDefault } from '@/lib/motion'
 import { AlertTriangle, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { useRestartStore } from '@/stores/restart'
 
 export interface RestartBannerProps {
   count: number
   onDismiss: () => void
 }
+
+// Shown instead of the control where the process is not supervised. Offering
+// a button whose only possible outcome is a refusal reads as a broken button;
+// saying why up front is the same information without the dead end.
+const UNSUPERVISED_NOTE =
+  'This process is not supervised, so it cannot restart itself: restart it the ' +
+  'way this deployment is started.'
 
 /**
  * Notice that saved settings are not in effect yet, and the control that puts
@@ -22,6 +30,7 @@ export interface RestartBannerProps {
 export function RestartBanner({ count, onDismiss }: RestartBannerProps) {
   const restarting = useRestartStore((s) => s.restarting)
   const restart = useRestartStore((s) => s.restart)
+  const { capabilities } = useCapabilities()
   const message = count === 1
     ? '1 setting requires a restart to take effect.'
     : `${count} settings require a restart to take effect.`
@@ -41,20 +50,23 @@ export function RestartBanner({ count, onDismiss }: RestartBannerProps) {
           <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden />
           <span className="flex-1 text-sm text-warning">
             {restarting ? 'Restarting the backend...' : message}
+            {!capabilities.restart && ` ${UNSUPERVISED_NOTE}`}
           </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void restart()}
-            disabled={restarting}
-          >
-            <RotateCw
-              className={restarting ? 'size-3.5 animate-spin' : 'size-3.5'}
-              aria-hidden
-            />
-            {restarting ? 'Restarting' : 'Restart now'}
-          </Button>
+          {capabilities.restart && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void restart()}
+              disabled={restarting}
+            >
+              <RotateCw
+                className={restarting ? 'size-3.5 animate-spin' : 'size-3.5'}
+                aria-hidden
+              />
+              {restarting ? 'Restarting' : 'Restart now'}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

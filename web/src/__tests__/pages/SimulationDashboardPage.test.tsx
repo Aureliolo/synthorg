@@ -31,6 +31,7 @@ const ALL_ENABLED: Capabilities = {
   a2a: true,
   telemetry: false,
   integrations: true,
+  restart: false,
 }
 
 function seedRunningSimulation() {

@@ -8891,6 +8891,7 @@ export type components = {
             readonly integrations: boolean;
             readonly ontology: boolean;
             readonly requests: boolean;
+            readonly restart: boolean;
             readonly simulations: boolean;
             readonly telemetry: boolean;
             readonly tunnel: boolean;
