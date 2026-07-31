@@ -229,6 +229,9 @@ PROVIDER_STRUCTURED_TEXT_REQUESTED: Final[str] = "provider.structured_text.reque
 PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
 PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"
 PROVIDER_COST_FAILED: Final[str] = "provider.cost.failed"
+# Fires only after a run of failures long enough to have been escalated, so
+# the recovery is as findable as the fault that preceded it.
+PROVIDER_COST_RECOVERED: Final[str] = "provider.cost.recovered"
 PROVIDER_COST_INVALID: Final[str] = "provider.cost.invalid"
 # Fires once per cost-recording scope opened with a registered prompt
 # purpose, before any tracker check, so prompt-purpose invocation is

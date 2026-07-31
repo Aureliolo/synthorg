@@ -17,7 +17,6 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.json_parsing import extract_json_from_llm_response
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
@@ -49,8 +48,6 @@ from synthorg.settings.resolver import ConfigResolver
 logger = get_logger(__name__)
 
 _PROSE_MAX: int = 8192
-_NARRATOR_TASK_ID: NotBlankStr = NotBlankStr("system:cos:narrative")
-_NARRATOR_AGENT: NotBlankStr = NotBlankStr("system")
 
 
 class NarrativeSynthesiser:
@@ -161,8 +158,6 @@ class NarrativeSynthesiser:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_NARRATOR_AGENT,
-                task_id=_NARRATOR_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

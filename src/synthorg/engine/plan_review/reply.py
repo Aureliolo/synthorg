@@ -63,8 +63,6 @@ logger = get_logger(__name__)
 _COS_NAME: NotBlankStr = NotBlankStr("Chief of Staff")
 _COS_AGENT_ID: NotBlankStr = NotBlankStr("chief-of-staff")
 
-_REPLY_AGENT_ID: NotBlankStr = NotBlankStr("system")
-_REPLY_TASK_ID: NotBlankStr = NotBlankStr("system:plan_review:item_reply")
 
 _REPLY_SYSTEM = "\n".join(
     [
@@ -340,8 +338,6 @@ class LlmPlanItemReplyService:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_REPLY_AGENT_ID,
-                task_id=_REPLY_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

@@ -108,18 +108,3 @@ export function buildCodeEntries(
 export function isRedactedSensitiveValue(value: string): boolean {
   return value === SENSITIVE_VALUE_PLACEHOLDER
 }
-
-/** Count restart-required settings among a set of saved keys. */
-export function countRestartRequired(
-  keys: Iterable<string>,
-  entries: SettingEntry[],
-  failedKeys?: ReadonlySet<string>,
-): number {
-  let count = 0
-  for (const ck of keys) {
-    if (failedKeys?.has(ck)) continue
-    const entry = entries.find((e) => compositeKey(e) === ck)
-    if (entry?.definition.restart_required === true) count++
-  }
-  return count
-}

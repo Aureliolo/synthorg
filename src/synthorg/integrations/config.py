@@ -245,33 +245,99 @@ class IntegrationHealthConfig(BaseModel):
     """Health monitoring configuration.
 
     Attributes:
-        check_interval_seconds: Background probe interval.
+        check_interval_seconds: How often the loop wakes to look for work.
+            Not how often any one connection is probed -- that is decided
+            per connection by its last outcome, below.
+        healthy_recheck_seconds: How long a healthy connection is trusted
+            before it is probed again. Long on purpose: a probe against a
+            metered third-party API is not free, and re-proving a working
+            connection every few minutes buys nothing.
+        degraded_recheck_seconds: Recheck interval once a connection has
+            started failing but has not been written off.
+        unhealthy_recheck_seconds: Recheck interval for a failed
+            connection, where the operator is waiting to see it recover.
         unhealthy_threshold: Consecutive failures before ``unhealthy``.
         degraded_threshold: Consecutive failures before ``degraded``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="healthy_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_healthy_recheck_seconds",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="degraded_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_degraded_recheck_seconds",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="unhealthy_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_unhealthy_recheck_seconds",
+            parse=parse_int,
+        ),
+    )
+
     check_interval_seconds: int = Field(default=300, gt=0)
+    # Bounds mirror the INTEGRATIONS.health_*_recheck_seconds setting
+    # definitions so the typed config and the settings registry agree on the
+    # accepted range.
+    healthy_recheck_seconds: int = Field(default=21_600, ge=60, le=604_800)
+    degraded_recheck_seconds: int = Field(default=1_800, ge=30, le=604_800)
+    unhealthy_recheck_seconds: int = Field(default=300, ge=30, le=604_800)
     unhealthy_threshold: int = Field(default=3, ge=1)
     degraded_threshold: int = Field(default=1, ge=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
     @model_validator(mode="after")
     def _validate_thresholds(self) -> Self:
-        """Ensure ``degraded_threshold`` is not above ``unhealthy_threshold``.
+        """Ensure the thresholds and the recheck cadence both run one way.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
             ValueError: If ``degraded_threshold`` exceeds
-                ``unhealthy_threshold``.
+                ``unhealthy_threshold``, or if the recheck intervals do not
+                shorten as health worsens.
         """
         if self.degraded_threshold > self.unhealthy_threshold:
             msg = (
                 "IntegrationHealthConfig.degraded_threshold "
                 f"({self.degraded_threshold}) must be <= "
                 f"unhealthy_threshold ({self.unhealthy_threshold})"
+            )
+            raise ValueError(msg)
+        # Each interval is separately settings-mirrored and separately
+        # bounded, so nothing else stops an operator inverting the cadence
+        # and re-probing working connections more often than failing ones:
+        # the exact opposite of what the intervals exist to control.
+        if not (
+            self.unhealthy_recheck_seconds
+            <= self.degraded_recheck_seconds
+            <= self.healthy_recheck_seconds
+        ):
+            msg = (
+                "IntegrationHealthConfig recheck intervals must shorten as "
+                "health worsens: unhealthy_recheck_seconds "
+                f"({self.unhealthy_recheck_seconds}) <= "
+                f"degraded_recheck_seconds ({self.degraded_recheck_seconds}) "
+                f"<= healthy_recheck_seconds ({self.healthy_recheck_seconds})"
             )
             raise ValueError(msg)
         return self

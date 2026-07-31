@@ -96,28 +96,32 @@ async def test_purpose_emit_surfaces_in_breakdown() -> None:
     assert row.cache_hit_rate == pytest.approx(1.0)
 
 
-async def test_multiple_purposes_grouped_and_unattributed_excluded() -> None:
+async def test_multiple_purposes_grouped_with_promptless_bucket() -> None:
     tracker = CostTracker()
     await _emit(tracker, PromptPurposeId.MEMORY_RERANK)
     await _emit(tracker, PromptPurposeId.COS_CHAT)
-    # A call with no registered purpose carries no prompt_class_id and must
-    # not appear as a row in the by-purpose breakdown.
+    # A call wrapping no system prompt carries no prompt_class_id. It gets its
+    # own bucket rather than being dropped, so the breakdown keeps summing to
+    # the headline total.
     await _emit(tracker, None)
 
     service = CallAnalyticsService(cost_tracker=tracker, config=CallAnalyticsConfig())
     breakdown = await service.get_prompt_class_breakdown()
 
     ids = [row.prompt_class_id for row in breakdown.rows]
-    # Rows are sorted by prompt_class_id value: 'system:cos:chat' precedes
-    # 'system:memory:rerank'.
-    assert ids == [PromptPurposeId.COS_CHAT, PromptPurposeId.MEMORY_RERANK]
+    # The promptless bucket sorts first; the rest by prompt_class_id value.
+    assert ids == [None, PromptPurposeId.COS_CHAT, PromptPurposeId.MEMORY_RERANK]
+    assert sum(row.total_cost for row in breakdown.rows) == pytest.approx(_COST * 3)
 
 
-async def test_unattributed_only_yields_no_rows() -> None:
+async def test_promptless_only_still_yields_its_bucket() -> None:
     tracker = CostTracker()
     await _emit(tracker, None)
 
     service = CallAnalyticsService(cost_tracker=tracker, config=CallAnalyticsConfig())
     breakdown = await service.get_prompt_class_breakdown()
 
-    assert breakdown.rows == ()
+    assert len(breakdown.rows) == 1
+    assert breakdown.rows[0].prompt_class_id is None
+    assert breakdown.rows[0].tier is None
+    assert breakdown.rows[0].total_cost == pytest.approx(_COST)

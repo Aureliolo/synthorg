@@ -12,7 +12,8 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import { ROUTES } from '@/router/routes'
 import { formatCurrency } from '@/utils/format'
-import { computeExhaustionDate, type BudgetMetricCardData } from '@/utils/budget'
+import { computeExhaustionDate } from '@/utils/budget'
+import type { BudgetMetricCardData } from '@/utils/budget-cards'
 import type { ForecastPoint } from '@/api/types/analytics'
 
 const SpendBurnChart = lazy(() =>

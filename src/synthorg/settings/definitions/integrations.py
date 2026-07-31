@@ -152,6 +152,60 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="health_healthy_recheck_seconds",
+        type=SettingType.INTEGER,
+        default="21600",
+        description=(
+            "How long a healthy connection's verdict is trusted before it is"
+            " probed again. Long on purpose: a probe against a metered"
+            " third-party API costs real quota, and re-proving a working"
+            " credential every few minutes spends money to change nothing."
+        ),
+        group="Connections",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=604_800,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="health_degraded_recheck_seconds",
+        type=SettingType.INTEGER,
+        default="1800",
+        description=(
+            "Recheck interval for a connection that has started failing but"
+            " has not been written off yet."
+        ),
+        group="Connections",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=604_800,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="health_unhealthy_recheck_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=(
+            "Recheck interval for a failed connection, where the operator is"
+            " waiting to see it recover. Shortest of the three: this is the"
+            " state someone is actively watching."
+        ),
+        group="Connections",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=604_800,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="webhook_receipt_cleanup_tick_seconds",
         type=SettingType.FLOAT,
         default="86400.0",

@@ -74,9 +74,6 @@ from synthorg.security.redteam.routing import SUBSTRATE_DROP_FLOOR
 
 logger = get_logger(__name__)
 
-_GROUNDING_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:red_team:grounding")
-"""Synthetic attribution id for the checker's extraction / entailment calls."""
-
 _DEFAULT_SEARCH_LIMIT: Final[int] = 5
 """Default top-k chunks retrieved per claim for entailment."""
 
@@ -144,6 +141,7 @@ class KnowledgeSubstrateGroundingChecker:
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> tuple[UngroundedClaim, ...]:
         """Flag deliverable claims unsupported by the project corpus.
 
@@ -174,7 +172,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
             return await self._delegate(deliverable_content, execution_id, project_id)
         return await self._check_with_substrate(
-            context, deliverable_content, execution_id, project_id
+            context, deliverable_content, execution_id, project_id, task_id
         )
 
     async def _check_with_substrate(
@@ -183,6 +181,7 @@ class KnowledgeSubstrateGroundingChecker:
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None,
+        task_id: NotBlankStr | None,
     ) -> tuple[UngroundedClaim, ...]:
         """Extract claims and evaluate each against the wired corpus.
 
@@ -197,7 +196,7 @@ class KnowledgeSubstrateGroundingChecker:
         """
         try:
             claims = await self._extract_claims(
-                context, deliverable_content, execution_id
+                context, deliverable_content, execution_id, task_id
             )
         except asyncio.CancelledError:
             raise
@@ -219,7 +218,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
             return ()
         return await self._evaluate_claims_concurrently(
-            context, claims, execution_id, project_id
+            context, claims, execution_id, project_id, task_id
         )
 
     async def _evaluate_claims_concurrently(
@@ -228,6 +227,7 @@ class KnowledgeSubstrateGroundingChecker:
         claims: tuple[str, ...],
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None,
+        task_id: NotBlankStr | None,
     ) -> tuple[UngroundedClaim, ...]:
         """Evaluate every extracted claim concurrently, order-preserving.
 
@@ -250,7 +250,7 @@ class KnowledgeSubstrateGroundingChecker:
 
         async def _evaluate_into(index: int, claim: str) -> None:
             flagged[index] = await self._evaluate_claim(
-                context, claim, execution_id, project_id
+                context, claim, execution_id, project_id, task_id
             )
 
         async with asyncio.TaskGroup() as task_group:
@@ -307,6 +307,7 @@ class KnowledgeSubstrateGroundingChecker:
         context: GroundingSubstrateContext,
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
+        task_id: NotBlankStr | None,
     ) -> tuple[str, ...]:
         """Extract assertive factual claims from the deliverable.
 
@@ -322,7 +323,7 @@ class KnowledgeSubstrateGroundingChecker:
             )
         response = await self._complete_extraction(
             context,
-            execution_id,
+            task_id,
             messages=build_extraction_messages(deliverable_content),
         )
         return parse_extracted_claims(response)
@@ -333,6 +334,7 @@ class KnowledgeSubstrateGroundingChecker:
         claim: str,
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None,
+        task_id: NotBlankStr | None,
     ) -> UngroundedClaim | None:
         """Resolve one claim against the corpus; flag it only if unsupported.
 
@@ -352,7 +354,7 @@ class KnowledgeSubstrateGroundingChecker:
         hits = await self._search_corpus(context, claim, execution_id, project_id)
         if not hits:
             return None
-        return await self._entail_claim(context, claim, hits, execution_id)
+        return await self._entail_claim(context, claim, hits, execution_id, task_id)
 
     async def _search_corpus(
         self,
@@ -404,6 +406,7 @@ class KnowledgeSubstrateGroundingChecker:
         claim: str,
         hits: tuple[KnowledgeHit, ...],
         execution_id: NotBlankStr,
+        task_id: NotBlankStr | None,
     ) -> UngroundedClaim | None:
         """Judge one claim against its evidence; flag it only if unsupported.
 
@@ -419,7 +422,7 @@ class KnowledgeSubstrateGroundingChecker:
         try:
             response = await self._complete_entailment(
                 context,
-                execution_id,
+                task_id,
                 messages=build_entailment_messages(claim, hits),
             )
         except asyncio.CancelledError:
@@ -462,7 +465,7 @@ class KnowledgeSubstrateGroundingChecker:
     async def _complete_extraction(
         self,
         context: GroundingSubstrateContext,
-        execution_id: NotBlankStr,
+        task_id: NotBlankStr | None,
         *,
         messages: list[ChatMessage],
     ) -> CompletionResponse:
@@ -473,7 +476,7 @@ class KnowledgeSubstrateGroundingChecker:
         """
         return await self._run_completion(
             context,
-            execution_id,
+            task_id,
             messages=messages,
             tools=[EXTRACT_CLAIMS_TOOL],
             config=EXTRACTION_CONFIG,
@@ -483,7 +486,7 @@ class KnowledgeSubstrateGroundingChecker:
     async def _complete_entailment(
         self,
         context: GroundingSubstrateContext,
-        execution_id: NotBlankStr,
+        task_id: NotBlankStr | None,
         *,
         messages: list[ChatMessage],
     ) -> CompletionResponse:
@@ -494,7 +497,7 @@ class KnowledgeSubstrateGroundingChecker:
         """
         return await self._run_completion(
             context,
-            execution_id,
+            task_id,
             messages=messages,
             tools=[GROUNDING_VERDICT_TOOL],
             config=ENTAILMENT_CONFIG,
@@ -504,7 +507,7 @@ class KnowledgeSubstrateGroundingChecker:
     async def _run_completion(
         self,
         context: GroundingSubstrateContext,
-        execution_id: NotBlankStr,
+        task_id: NotBlankStr | None,
         *,
         messages: list[ChatMessage],
         tools: list[ToolDefinition],
@@ -514,15 +517,16 @@ class KnowledgeSubstrateGroundingChecker:
         """Run one structured completion under a cost-recording scope.
 
         ``purpose`` attributes the call to a prompt class (extraction vs
-        entailment) so spend and drift split per prompt.
+        entailment) so spend and drift split per prompt. ``task_id`` owns the
+        spend: grounding runs on a deliverable produced for a real task, so
+        the review's cost belongs to that task rather than to no one.
 
         Returns:
             The provider's completion response.
         """
         async with cost_recording_scope(
             cost_tracker=context.cost_tracker,
-            agent_id=_GROUNDING_AGENT_ID,
-            task_id=execution_id,
+            task_id=task_id,
             purpose=purpose,
             call_category=LLMCallCategory.SYSTEM,
         ):

@@ -1,7 +1,12 @@
 /** Derives every subsystem state, and the two roll-ups, from health + WS state. */
 
 import { renderedSnapshot } from '@/stores/health'
-import type { MemoryHealth, MemoryState } from '@/api/types/system'
+import type {
+  BackupState,
+  CostRecordingState,
+  MemoryHealth,
+  MemoryState,
+} from '@/api/types/system'
 import type { HealthSnapshot, LoadState } from '@/stores/health'
 import type { SubsystemState } from './health-popover.utils'
 
@@ -14,6 +19,16 @@ export interface DerivedSubsystemStates {
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
   /**
+   * The backend's own memory state, carried beside the surface mapping.
+   *
+   * `memoryState` collapses `off` into `degraded` on purpose, but the two part
+   * company on what the operator does next: `off` means no embedding model was
+   * ever chosen, which is theirs to fix, while every other unhealthy state is a
+   * wired backend misbehaving, where naming the embedder would misdirect. Null
+   * until a snapshot settles.
+   */
+  readonly memoryBackendState: MemoryState | null
+  /**
    * Whether a backup service is wired for this boot.
    *
    * Absent reads `degraded`, never `down`: the deployment serves correctly and
@@ -21,6 +36,19 @@ export interface DerivedSubsystemStates {
    * out of the readiness verdict too.
    */
   readonly backupState: SubsystemState
+  /** Why there is no coverage, when the backend says so. */
+  readonly backupDetail: string | undefined
+  /**
+   * Whether LLM spend is currently being recorded.
+   *
+   * Degraded, never down, for the same reason as backups: the organisation
+   * keeps working, and what it has lost is an accounting guarantee. The
+   * spend still happens, so an operator wants to know the budget is
+   * under-reporting before they trust a total.
+   */
+  readonly costRecordingState: SubsystemState
+  /** What the failure means, when the backend says so. */
+  readonly costRecordingDetail: string | undefined
   /**
    * Roll-up across every subsystem including the WebSocket.
    *
@@ -101,13 +129,19 @@ function _probeState(value: boolean | null): SubsystemState {
  * lost is a recovery capability. The backend keeps this out of its readiness
  * roll-up so a supervisor cannot restart a healthy deployment over it, and
  * reading it as `down` here would announce an outage the operator can see is
- * not happening. `null` means backups were never attempted for this boot, which
- * is not a verdict at all.
+ * not happening. `unattempted` means backups were never tried for this boot,
+ * which is not a verdict at all.
  */
-function _backupState(wired: boolean | null): SubsystemState {
-  if (wired === true) return 'ok'
-  if (wired === false) return 'degraded'
-  return 'unknown'
+const _BACKUP_STATES: Record<BackupState, SubsystemState> = {
+  wired: 'ok',
+  absent: 'degraded',
+  unattempted: 'unknown',
+}
+
+/** Spend going unrecorded costs an accounting guarantee, not availability. */
+const _COST_RECORDING_STATES: Record<CostRecordingState, SubsystemState> = {
+  ok: 'ok',
+  degraded: 'degraded',
 }
 
 function _memoryDetailFor(memory: MemoryHealth): string | undefined {
@@ -124,7 +158,11 @@ type BackendStates = Pick<
   | 'providersState'
   | 'memoryState'
   | 'memoryDetail'
+  | 'memoryBackendState'
   | 'backupState'
+  | 'backupDetail'
+  | 'costRecordingState'
+  | 'costRecordingDetail'
 >
 
 /**
@@ -147,7 +185,11 @@ function _settledStates(snapshot: HealthSnapshot): BackendStates {
     providersState: _probeState(health.providers),
     memoryState: _MEMORY_STATES[health.memory.state],
     memoryDetail: _memoryDetailFor(health.memory),
-    backupState: _backupState(health.backup),
+    memoryBackendState: health.memory.state,
+    backupState: _BACKUP_STATES[health.backup.state],
+    backupDetail: health.backup.detail ?? undefined,
+    costRecordingState: _COST_RECORDING_STATES[health.cost_recording.state],
+    costRecordingDetail: health.cost_recording.detail ?? undefined,
   }
 }
 
@@ -173,7 +215,11 @@ function _backendStatesOf(
     providersState: pending,
     memoryState: pending,
     memoryDetail: undefined,
+    memoryBackendState: null,
     backupState: pending,
+    backupDetail: undefined,
+    costRecordingState: pending,
+    costRecordingDetail: undefined,
   }
 }
 
@@ -211,6 +257,7 @@ export function deriveHealthSubsystemStates(
     backend.providersState,
     backend.memoryState,
     backend.backupState,
+    backend.costRecordingState,
   ]
   return {
     ...backend,

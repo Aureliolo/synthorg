@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import { CONNECTION_TYPE_VALUES, type ConnectionType } from '@/api/types/integrations'
-import { connectionsList } from '@/mocks/handlers/connections'
+import { buildHealth, connectionsList } from '@/mocks/handlers/connections'
 import { ConnectionFormModal } from './ConnectionFormModal'
 
 const meta = {
@@ -75,7 +75,7 @@ export const EditMode: Story = {
       auth_method: 'bearer_token',
       base_url: 'https://api.github.com',
       health_check_enabled: true,
-      health: { status: 'healthy', last_check_at: '2026-04-12T08:00:00Z' },
+      health: buildHealth('healthy', '2026-04-12T08:00:00Z'),
       metadata: {},
       rate_limiter: null,
       secret_refs: [],

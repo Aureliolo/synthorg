@@ -353,7 +353,6 @@ class SeparateAnalyzerProposer:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=agent_id,
-                task_id=NotBlankStr("system:evolution:propose"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

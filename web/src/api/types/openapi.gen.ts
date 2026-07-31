@@ -114,6 +114,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/admin/memory/embedder/probe": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ProbeEmbedder */
+        readonly post: operations["ApiV1AdminMemoryEmbedderProbeProbeEmbedder"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/admin/memory/fine-tune": {
         readonly parameters: {
             readonly query?: never;
@@ -3109,6 +3126,24 @@ export type paths = {
         readonly get: operations["ApiV1MetaProposalsListProposals"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/restart": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Status */
+        readonly get: operations["ApiV1MetaRestartStatus"];
+        readonly put?: never;
+        /** Restart */
+        readonly post: operations["ApiV1MetaRestartRestart"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6946,6 +6981,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[EmbedderProbeResponse] */
+        readonly ApiResponse_EmbedderProbeResponse_: {
+            readonly data: components["schemas"]["EmbedderProbeResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[EntityResponse] */
         readonly ApiResponse_EntityResponse_: {
             readonly data: components["schemas"]["EntityResponse"] | null;
@@ -7397,6 +7440,22 @@ export type components = {
         /** ApiResponse[ResolvedCeremonyPolicyResponse] */
         readonly ApiResponse_ResolvedCeremonyPolicyResponse_: {
             readonly data: components["schemas"]["ResolvedCeremonyPolicyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RestartResponse] */
+        readonly ApiResponse_RestartResponse_: {
+            readonly data: components["schemas"]["RestartResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RestartStatusResponse] */
+        readonly ApiResponse_RestartStatusResponse_: {
+            readonly data: components["schemas"]["RestartStatusResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8435,6 +8494,15 @@ export type components = {
          * @enum {string}
          */
         readonly BackupComponent: "persistence" | "memory" | "config";
+        /**
+         * BackupHealth
+         * @description Backup coverage for this boot
+         */
+        readonly BackupHealth: {
+            /** @description Operator-facing remedy, when action is needed */
+            readonly detail: string | null;
+            readonly state: components["schemas"]["BackupState"];
+        };
         /** BackupInfo */
         readonly BackupInfo: {
             readonly backup_id: string;
@@ -8454,6 +8522,21 @@ export type components = {
             readonly timestamp: string;
             readonly trigger: components["schemas"]["BackupTrigger"];
         };
+        /**
+         * BackupState
+         * @description Whether this boot has backup coverage.
+         *
+         *     Attributes:
+         *         WIRED: A backup service was built, so recovery points are taken on
+         *             the configured schedule.
+         *         ABSENT: Construction was attempted and failed. No recovery point is
+         *             being taken and every ``backup.*`` setting is inert for the
+         *             lifetime of the process.
+         *         UNATTEMPTED: Backups were never attempted for this boot, which is
+         *             not a verdict about them at all.
+         * @enum {string}
+         */
+        readonly BackupState: "wired" | "absent" | "unattempted";
         /**
          * BackupTrigger
          * @description What initiated the backup.
@@ -9444,12 +9527,16 @@ export type components = {
         };
         /** ConnectionHealth */
         readonly ConnectionHealth: {
+            readonly detail: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_check_at: string | null;
+            readonly latency_ms: number | null;
+            readonly retry_after_seconds: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
+            readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
         /**
          * ConnectionStatus
@@ -9716,8 +9803,8 @@ export type components = {
         readonly CostRecord: {
             /** @description Accuracy-effort ratio for the task this call belongs to (populated at task completion when quality signals are available) */
             readonly accuracy_effort_ratio: number | null;
-            /** @description Agent identifier */
-            readonly agent_id: string;
+            /** @description Owning agent; None for work no agent owns */
+            readonly agent_id: string | null;
             /** @description Whether the provider served this call from cache */
             readonly cache_hit: boolean | null;
             /**
@@ -9756,14 +9843,40 @@ export type components = {
             readonly retry_reason: string | null;
             /** @description Whether the call completed without error or content filter */
             readonly success: boolean | null;
-            /** @description Task identifier */
-            readonly task_id: string;
+            /** @description Owning task; None for work that is not a task */
+            readonly task_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly timestamp: string;
         };
+        /**
+         * CostRecordingHealth
+         * @description Whether LLM spend is currently being recorded
+         */
+        readonly CostRecordingHealth: {
+            /** @description Operator-facing explanation, when action is needed */
+            readonly detail: string | null;
+            /**
+             * @description Consecutive failed cost writes
+             * @default 0
+             */
+            readonly dropped_records: number;
+            readonly state: components["schemas"]["CostRecordingState"];
+        };
+        /**
+         * CostRecordingState
+         * @description Whether spend is currently being recorded.
+         *
+         *     Attributes:
+         *         OK: Records are landing, or have failed too few times in a row to
+         *             distinguish a blip from a fault.
+         *         DEGRADED: Enough records have failed back to back that the budget is
+         *             under-reporting for as long as it lasts.
+         * @enum {string}
+         */
+        readonly CostRecordingState: "ok" | "degraded";
         /** CostRecordListResponse */
         readonly CostRecordListResponse: {
             /**
@@ -10756,6 +10869,23 @@ export type components = {
          * @enum {string}
          */
         readonly EfficiencyRating: "efficient" | "normal" | "inefficient";
+        /** EmbedderProbeRequest */
+        readonly EmbedderProbeRequest: {
+            /** @description Embedding model identifier */
+            readonly model_id: string;
+            /** @description Embedding provider name */
+            readonly provider: string;
+        };
+        /** EmbedderProbeResponse */
+        readonly EmbedderProbeResponse: {
+            /** @description Measured embedding vector width */
+            readonly dims: number;
+            /** @description Widest half-precision vector an HNSW index accepts */
+            readonly halfvec_ceiling: number;
+            readonly index_support: components["schemas"]["IndexSupport"];
+            /** @description Widest full-precision vector an HNSW index accepts */
+            readonly vector_ceiling: number;
+        };
         /** EntityFieldInput */
         readonly EntityFieldInput: {
             /**
@@ -11718,6 +11848,7 @@ export type components = {
             readonly consecutive_failures: number;
             readonly error_detail: string | null;
             readonly latency_ms: number | null;
+            readonly retry_after_seconds: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
             readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
@@ -11785,6 +11916,27 @@ export type components = {
              */
             readonly title: string;
         };
+        /**
+         * IndexSupport
+         * @description What a vector store can do with a given embedding width.
+         *
+         *     A statement about the store, not a judgement of the model: the same
+         *     embedder is indexable against one backend and not another. Named so a
+         *     surface can report the mechanical consequence of a width without
+         *     ranking, recommending, or choosing an embedder on the operator's behalf.
+         *
+         *     Attributes:
+         *         INDEXED: An HNSW index covers this width at full precision.
+         *         INDEXED_HALF_PRECISION: Indexed, but only by storing half-precision
+         *             components. Approximate recall is kept; exactness is traded for
+         *             it, which is worth saying out loud.
+         *         EXACT_SCAN: Stored and searchable, with no index. Results stay
+         *             correct; every query reads the whole corpus, so latency grows
+         *             with it.
+         *         UNSTORABLE: Beyond what the store holds at all.
+         * @enum {string}
+         */
+        readonly IndexSupport: "indexed" | "indexed_half_precision" | "exact_scan" | "unstorable";
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
             /** @description Name of the connection to initiate the OAuth flow for. */
@@ -14120,6 +14272,16 @@ export type components = {
             readonly target_name: string;
             readonly target_role: string | null;
         };
+        /** PendingRestartSetting */
+        readonly PendingRestartSetting: {
+            /** @description What the setting does */
+            readonly description: string;
+            /** @description Setting key within namespace */
+            readonly key: string;
+            readonly namespace: components["schemas"]["SettingNamespace"];
+            /** @description ISO 8601 timestamp of the write */
+            readonly updated_at: string;
+        };
         /** PendingSecretCapture */
         readonly PendingSecretCapture: {
             readonly connection_type: string;
@@ -15091,8 +15253,8 @@ export type components = {
             readonly output_tokens: number;
             /** @description 95th-percentile latency in ms, or None. */
             readonly p95_latency_ms: number | null;
-            /** @description Registered prompt purpose id. */
-            readonly prompt_class_id: string;
+            /** @description Registered prompt purpose id, or None when the call wraps no system prompt. */
+            readonly prompt_class_id: string | null;
             /** @description Fraction of calls with at least one retry. */
             readonly retry_rate: number;
             /** @description Success fraction over success-reporting calls, or None. */
@@ -15462,8 +15624,8 @@ export type components = {
         };
         /** ReadinessStatus */
         readonly ReadinessStatus: {
-            /** @description Backup service wired (None if backups were not attempted) */
-            readonly backup: boolean | null;
+            readonly backup: components["schemas"]["BackupHealth"];
+            readonly cost_recording: components["schemas"]["CostRecordingHealth"];
             readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;
@@ -15932,6 +16094,25 @@ export type components = {
              * @enum {string}
              */
             readonly status: "allowed" | "denied";
+        };
+        /** RestartRequest */
+        readonly RestartRequest: {
+            /** @description Must be true to proceed */
+            readonly confirm: boolean;
+        };
+        /** RestartResponse */
+        readonly RestartResponse: {
+            /** @description Seconds until this process signals itself to shut down */
+            readonly delay_seconds: number;
+            /** @description Whether a restart was scheduled */
+            readonly restarting: boolean;
+        };
+        /** RestartStatusResponse */
+        readonly RestartStatusResponse: {
+            /** @description Settings saved but not in effect until a restart */
+            readonly pending: readonly components["schemas"]["PendingRestartSetting"][];
+            /** @description Whether this process can restart itself */
+            readonly supervised: boolean;
         };
         /** RestoreRequest */
         readonly RestoreRequest: {
@@ -19616,6 +19797,37 @@ export interface operations {
             };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AdminMemoryEmbedderProbeProbeEmbedder: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmbedderProbeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_EmbedderProbeResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -26035,6 +26247,62 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaRestartStatus: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_RestartStatusResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaRestartRestart: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RestartRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_RestartResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -47,7 +47,6 @@ from synthorg.providers.structured_text import complete_text, extract_json_objec
 logger = get_logger(__name__)
 
 _SYNTHESIS_BOUNDARY: Final[str] = "knowledge.synthesis"
-_SYNTHESIS_TASK_ID: Final[NotBlankStr] = NotBlankStr("system:knowledge:synthesis")
 
 _SYSTEM_PROMPT: Final[str] = (
     "You are a knowledge-base assistant. Using ONLY the provided sources, "
@@ -144,7 +143,6 @@ class KnowledgeSynthesizer:
             system=_SYSTEM_PROMPT,
             user=self._build_user_prompt(query, hits_by_ref),
             cost_tracker=self._cost_tracker,
-            task_id=_SYNTHESIS_TASK_ID,
             project_id=project_id,
             purpose=self.metadata.prompt_class_id,
         )

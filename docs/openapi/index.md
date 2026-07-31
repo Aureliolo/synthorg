@@ -128,7 +128,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Admin | `/admin` | 15 routes under Admin. |
+| Admin | `/admin` | 16 routes under Admin. |
 | Analytics | `/analytics` | 3 routes under Analytics. |
 | Backups | `/admin/backups` | 3 routes under Backups. |
 | Budget | `/budget` | 15 routes under Budget. |
@@ -146,8 +146,8 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Interrupts | `/interrupts` | 2 routes under Interrupts. |
 | Knowledge | `/knowledge` | Knowledge endpoint. |
 | Learning | `/learning/curve` | Learning endpoint. |
-| Memory Admin | `/admin/memory` | 12 routes under Memory Admin. |
-| Meta | `/meta` | 16 routes under Meta. |
+| Memory Admin | `/admin/memory` | 13 routes under Memory Admin. |
+| Meta | `/meta` | 17 routes under Meta. |
 | Meta Alerts | `/meta/alerts` | Meta Alerts endpoint. |
 | Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
 | Meta Chat | `/meta/chat/conversations` | 2 routes under Meta Chat. |

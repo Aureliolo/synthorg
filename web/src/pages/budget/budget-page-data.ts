@@ -6,13 +6,13 @@ import { getErrorMessage } from '@/utils/errors'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import {
   computeAgentSpending,
-  computeBudgetMetricCards,
   computeCategoryBreakdown,
   computeCostBreakdown,
   filterCfoEvents,
   getThresholdZone,
   type BreakdownDimension,
 } from '@/utils/budget'
+import { computeBudgetMetricCards } from '@/utils/budget-cards'
 import { useBudgetForecastStore } from '@/stores/budgetForecast'
 
 const log = createLogger('budget-page')

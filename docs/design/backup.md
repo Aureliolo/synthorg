@@ -110,8 +110,10 @@ in the dashboard and does nothing.
 That outcome is reported rather than left silent. `BackupStateSlice.expected`
 records that construction was attempted, the startup path logs
 `backup.service.unavailable` at ERROR where it skips the wiring, and `/health`
-carries a `backup` field: `true` when wired, `false` when attempted and absent,
-`null` when never attempted.
+carries a `backup` object: `state` is `wired`, `absent` when construction was attempted
+and failed, or `unattempted` when it was never tried, and `detail` carries the
+redacted reason when there is one. A bare boolean could say only that backups
+are off, never why, which leaves an operator with nothing to act on.
 
 `backup` is deliberately **excluded** from the readiness roll-up. A process with
 no backup coverage still serves traffic correctly, so folding it into `/readyz`

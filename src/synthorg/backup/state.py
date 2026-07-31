@@ -22,3 +22,10 @@ class BackupStateSlice(BaseFeatureStateSlice):
     #: service that could not be built is indistinguishable from one nobody
     #: wanted, and every ``backup.*`` setting silently loses its consumer.
     expected: bool = False
+    #: Why construction failed, redacted, when it did. Carried here because
+    #: the reason exists only inside the factory's handler and is otherwise
+    #: lost the moment it is logged: an operator then sees a subsystem
+    #: reporting "absent" with no way to learn that, say, ``pg_dump`` is not
+    #: on PATH, which is the difference between a fixable fault and a
+    #: mystery. ``None`` whenever the service is wired or was never wanted.
+    unavailable_reason: str | None = None

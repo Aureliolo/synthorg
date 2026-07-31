@@ -70,8 +70,16 @@ class TestCostAttributionRoundTrip:
         breakdown = await service.get_prompt_class_breakdown()
 
         ids = [row.prompt_class_id for row in breakdown.rows]
-        # The unattributed record is excluded; rows sort by prompt_class_id value.
-        assert ids == [PromptPurposeId.COS_CHAT, PromptPurposeId.MEMORY_RERANK]
+        # The unattributed record keeps its own row so the breakdown still sums
+        # to the headline total; it sorts ahead of every registered id.
+        assert ids == [
+            None,
+            PromptPurposeId.COS_CHAT,
+            PromptPurposeId.MEMORY_RERANK,
+        ]
+        unattributed = breakdown.rows[0]
+        assert unattributed.total_cost == pytest.approx(0.10)
+        assert unattributed.call_count == 1
 
         by_id = {row.prompt_class_id: row for row in breakdown.rows}
         rerank = by_id[PromptPurposeId.MEMORY_RERANK]
@@ -86,3 +94,41 @@ class TestCostAttributionRoundTrip:
         assert rerank.avg_latency_ms is None
         assert rerank.cache_hit_rate is None
         assert rerank.success_rate is None
+
+    async def test_subsystem_spend_persists_with_no_owner(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Work owned by no agent and no task still records its spend.
+
+        ``cost_records.task_id`` is a foreign key into ``tasks``. Subsystem
+        calls (embedding, reranking, consolidation, safety classification)
+        belong to no task, and naming one anyway made every such insert fail
+        the constraint, so their spend was silently dropped and the budget
+        under-reported. They must persist unowned, carrying their purpose.
+        """
+        record = CostRecord(
+            provider="test-provider",
+            model="example-small-001",
+            input_tokens=100,
+            output_tokens=0,
+            cost=0.02,
+            currency="EUR",
+            timestamp=datetime(2026, 5, 1, 12, tzinfo=UTC),
+            call_category=LLMCallCategory.EMBEDDING,
+            prompt_class_id=PromptPurposeId.MEMORY_RERANK,
+        )
+        assert record.agent_id is None
+        assert record.task_id is None
+
+        await backend.cost_records.append(record)
+
+        persisted = await backend.cost_records.query(CostRecordFilterSpec())
+        # Both ownership columns, not just the task: a backend that invented
+        # an agent_id would still satisfy a task-only filter, which is the
+        # exact fabrication this test exists to rule out.
+        unowned = [r for r in persisted if r.agent_id is None and r.task_id is None]
+        assert len(unowned) == 1
+        assert unowned[0].cost == pytest.approx(0.02)
+        # The owner is gone but what the call was for is not: that is the
+        # whole reason the synthetic task id was never needed.
+        assert unowned[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK

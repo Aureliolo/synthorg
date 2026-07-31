@@ -10,6 +10,7 @@ protection the other had.
 """
 
 import asyncio
+import math
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
@@ -64,13 +65,6 @@ RETRY_CAP_SECONDS: Final[float] = 8.0
 #: long as the provider cared to keep the socket open.
 DEFAULT_EMBED_TIMEOUT_SECONDS: Final[float] = 60.0
 
-# Cost attribution needs an owner. Embedding is issued by the memory
-# subsystem on behalf of the whole company rather than by any one agent
-# or task, so it is attributed to the subsystem instead of being charged
-# to whichever agent happened to trigger the recall.
-SYSTEM_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:memory")
-SYSTEM_TASK_ID: Final[NotBlankStr] = NotBlankStr("system:memory:embedding")
-
 # LiteLLM's own transient exception types. A deterministic fault
 # (auth, bad request, model-not-found, content policy) is NOT here: it
 # repeats identically, so retrying it only burns the backoff budget on
@@ -107,13 +101,44 @@ def is_retryable_embedding_error(exc: Exception) -> bool:
     return isinstance(exc, RETRYABLE_EMBEDDING_ERRORS)
 
 
+def _embedding_retry_after(exc: Exception) -> float | None:
+    """Return the provider's own ``Retry-After`` hint, when it gave one.
+
+    Read by attribute rather than by exception class: the driver surfaces
+    whatever error type the provider raised, and no single class covers them.
+    A hint that cannot be read leaves the computed backoff in place, which is
+    the safe default: retrying sooner than a rate limit allows just spends
+    another request to be refused again.
+
+    Returns:
+        The advertised delay in seconds, or ``None`` when there is none.
+    """
+    raw: object = getattr(exc, "retry_after", None)
+    if raw is None:
+        headers = getattr(getattr(exc, "response", None), "headers", None)
+        raw = headers.get("retry-after") if headers is not None else None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)  # type: ignore[arg-type]
+    except TypeError, ValueError:
+        return None
+    # A hint wins over the computed backoff and is deliberately not
+    # re-capped, so "inf" would park the retry forever on the say-so of the
+    # endpoint that just refused the call.
+    if not math.isfinite(seconds):
+        return None
+    return seconds if seconds > 0 else None
+
+
 def embedding_retry_handler(
     event: str = MEMORY_EMBEDDING_RETRIED,
 ) -> GeneralRetryHandler:
     """Build the retry handler both embedding call sites share.
 
     Returns:
-        A handler retrying only transient provider faults.
+        A handler retrying only transient provider faults, honouring a
+        provider-advertised retry delay over its own computed backoff.
     """
     return GeneralRetryHandler(
         retryable=is_retryable_embedding_error,
@@ -121,6 +146,7 @@ def embedding_retry_handler(
         base=RETRY_BASE_SECONDS,
         cap=RETRY_CAP_SECONDS,
         event=event,
+        delay_override=_embedding_retry_after,
     )
 
 
@@ -167,8 +193,11 @@ async def record_embedding_cost(
     try:
         await cost_tracker.record(
             CostRecord(
-                agent_id=SYSTEM_AGENT_ID,
-                task_id=SYSTEM_TASK_ID,
+                # Embedding is issued by the memory subsystem for the whole
+                # company, so it is charged to no agent and no task rather
+                # than to whichever agent happened to trigger the recall.
+                # It also has no prompt class, because there is no system
+                # prompt: ``call_category`` is what carries its purpose.
                 provider=NotBlankStr(provider),
                 model=NotBlankStr(model),
                 input_tokens=int(prompt_tokens),
@@ -197,8 +226,6 @@ __all__ = [
     "RETRY_BASE_SECONDS",
     "RETRY_CAP_SECONDS",
     "RETRY_MAX_ATTEMPTS",
-    "SYSTEM_AGENT_ID",
-    "SYSTEM_TASK_ID",
     "embedding_retry_handler",
     "format_model_ref",
     "is_retryable_embedding_error",

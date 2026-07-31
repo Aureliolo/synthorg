@@ -343,7 +343,21 @@ Verified events are published to the `#webhooks` channel on the message bus.
 Per-type health check implementations with a background `HealthProberService`.
 
 - **Smoothing**: N consecutive failures before marking `unhealthy` (default 3)
-- **Interval**: Configurable (default 5 minutes)
+- **Interval**: the loop wakes every 5 minutes (configurable), but that is not
+  how often any one connection is probed. A verdict is trusted for a period
+  set by its own outcome: 6 hours for `healthy`, 30 minutes for `degraded`,
+  5 minutes for `unhealthy`, each configurable via
+  `integrations.health_*_recheck_seconds`. The gap is wide on purpose, because
+  a probe against a metered third-party API costs the operator real quota and
+  re-proving a working credential every few minutes buys nothing. A rate
+  limit's own `Retry-After` raises that floor further: the provider has
+  already said when it will answer again.
+- **One freshness policy**: the background loop and the aggregate-health
+  endpoint share `health/freshness.py`. The endpoint serves the stored verdict
+  while it is fresh instead of probing, so opening the Connections view (which
+  polls) cannot re-probe the whole catalogue on a timer. That is why the
+  stored verdict carries its detail, latency and ingest state, not just a
+  status: a cached answer has to be as complete as a live one.
 - **Pattern**: Matches the `ProviderHealthProber` design
 - **`UNKNOWN` is a no-op**: a checker that cannot probe (e.g. an
   `LLM_PROVIDER` connection with no `base_url`) reports `UNKNOWN`; the prober
@@ -366,10 +380,15 @@ Per-type health check implementations with a background `HealthProberService`.
   is bound (`bind_catalog`) the probe resolves the connection's credentials
   and sends them as auth headers, so a configured-but-broken credential
   reports `UNHEALTHY` rather than false-greening on mere reachability. A vendor
-  preset supplies both the header its API actually accepts and the query the
-  endpoint needs to answer: probing a search API with the generic `X-API-Key`
-  and no query is a 4xx however valid the key, which would report every
-  correctly-configured connection as unhealthy. This is the connection type the
+  preset supplies the header its API actually accepts and a free metadata
+  endpoint to send it to, and never a payload: a health check must not buy
+  anything to prove a credential works, or watching a connection would bill
+  the operator for it. Where a vendor publishes no such endpoint, the probe
+  reads the vendor's own rejection instead: an authentication failure is a
+  real fault, a rejection of the request shape proves the credential cleared,
+  and anything else is reported `UNKNOWN` rather than guessed at. The response
+  body is read under a size cap, since the endpoint is operator-supplied and
+  re-read on a loop. This is the connection type the
   native web-search feature binds its API key to. A credential that cannot be
   resolved reports which of the two causes applied: a misconfigured credential
   is deterministic and the operator must re-enter it, whereas a secret store

@@ -117,6 +117,13 @@ export const BACKUP_COMPONENT_VALUES = [
 ] as const
 export type BackupComponent = (typeof BACKUP_COMPONENT_VALUES)[number]
 
+export const BACKUP_STATE_VALUES = [
+    'wired',
+    'absent',
+    'unattempted',
+] as const
+export type BackupState = (typeof BACKUP_STATE_VALUES)[number]
+
 export const BACKUP_TRIGGER_VALUES = [
     'scheduled',
     'manual',
@@ -320,6 +327,12 @@ export const COORDINATION_TOPOLOGY_VALUES = [
 ] as const
 export type CoordinationTopology = (typeof COORDINATION_TOPOLOGY_VALUES)[number]
 
+export const COST_RECORDING_STATE_VALUES = [
+    'ok',
+    'degraded',
+] as const
+export type CostRecordingState = (typeof COST_RECORDING_STATE_VALUES)[number]
+
 export const CREATIVITY_LEVEL_VALUES = [
     'low',
     'medium',
@@ -500,6 +513,14 @@ export const HUMAN_ROLE_VALUES = [
     'system',
 ] as const
 export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
+
+export const INDEX_SUPPORT_VALUES = [
+    'indexed',
+    'indexed_half_precision',
+    'exact_scan',
+    'unstorable',
+] as const
+export type IndexSupport = (typeof INDEX_SUPPORT_VALUES)[number]
 
 export const INTENT_ROUTING_REASON_VALUES = [
     'classified',

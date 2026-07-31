@@ -371,6 +371,7 @@ class RedTeamGateService:
                 deliverable_content=review_input.deliverable_content,
                 execution_id=review_input.execution_id,
                 project_id=review_input.project_id,
+                task_id=review_input.task_id,
             )
         except asyncio.CancelledError:
             raise

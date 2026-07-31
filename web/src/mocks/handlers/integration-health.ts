@@ -25,6 +25,7 @@ export const integrationHealthHandlers = [
         checked_at: NOW,
         consecutive_failures: 0,
         webhook_ingest: 'not_applicable',
+        retry_after_seconds: null,
       }),
     ),
   ),

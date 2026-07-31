@@ -130,7 +130,6 @@ class LlmJudgeEvaluator:
             self._model,
             system=_SYSTEM_PROMPT,
             user=user,
-            task_id=NotBlankStr(f"system:conflict:judge:{conflict.id}"),
             purpose=self.metadata.prompt_class_id,
             cost_tracker=self._cost_tracker,
         )

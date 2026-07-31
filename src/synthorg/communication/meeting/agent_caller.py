@@ -141,7 +141,6 @@ def build_meeting_agent_caller(
             async with cost_recording_scope(
                 cost_tracker=cost_tracker,
                 agent_id=typed_agent_id,
-                task_id=NotBlankStr(f"meeting:{cleaned_meeting_id}"),
                 # Meeting coordination is not a registered system prompt class.
                 purpose=None,
                 call_category=LLMCallCategory.COORDINATION,

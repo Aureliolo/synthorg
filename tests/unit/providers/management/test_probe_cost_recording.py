@@ -85,9 +85,13 @@ class TestProbeCostRecording:
         records = await tracker.get_records()
         assert len(records) == 1
         record = records[0]
-        assert record.agent_id == "system"
-        assert record.task_id == "system:providers:test_connection:test-provider"
+        # A connection probe belongs to no agent and no task. Naming one
+        # anyway pointed task_id at a row that does not exist, so the
+        # foreign key rejected the insert and the spend was never recorded.
+        assert record.agent_id is None
+        assert record.task_id is None
         assert record.call_category == LLMCallCategory.SYSTEM
+        # What the call was is still recorded, which is why no id was needed.
         assert record.prompt_class_id == PromptPurposeId.PROVIDERS_TEST_CONNECTION
         assert record.provider == "test-provider"
         assert record.model == "test-model-001"
@@ -247,72 +251,3 @@ class TestProbeCostRecording:
                 config,
                 "test-model-001",
             )
-
-
-@pytest.mark.unit
-class TestSafeTaskIdSegment:
-    """Direct unit tests for ``_safe_task_id_segment``.
-
-    The end-to-end path (provider creation -> probe -> task_id stamp)
-    can't exercise this sanitiser because ``CreateProviderRequest``'s
-    name validator rejects colons / control characters / whitespace
-    long before they reach the probe. The sanitiser exists as
-    defence-in-depth: if the validator regex is ever loosened, or if a
-    future caller bypasses ``CreateProviderRequest`` (a different
-    persistence path, a YAML-loaded provider, an admin-tool override),
-    the sanitiser still keeps task-id segments well-formed. These
-    direct tests pin that contract.
-    """
-
-    def test_colon_is_rewritten(self) -> None:
-        """Colons must be replaced; they're the task-id segment delimiter."""
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("bad:provider") == "bad_provider"
-
-    def test_newline_and_other_controls_are_rewritten(self) -> None:
-        """Control characters (newline / tab / carriage return / NUL)
-        must be replaced so they can't break log line framing."""
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("a\nb") == "a_b"
-        assert _safe_task_id_segment("a\tb") == "a_b"
-        assert _safe_task_id_segment("a\rb") == "a_b"
-        assert _safe_task_id_segment("a\x00b") == "a_b"
-
-    def test_whitespace_is_rewritten(self) -> None:
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("a b") == "a_b"
-
-    def test_combined_unsafe_chars_all_rewritten(self) -> None:
-        """A single name carrying multiple unsafe characters has every
-        one of them replaced -- the most likely real-world abuse path."""
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("bad:provider\nname") == "bad_provider_name"
-
-    def test_safe_unicode_preserved(self) -> None:
-        """Printable non-ASCII characters survive the sanitiser
-        unchanged -- the sanitiser is a security guard, not an
-        ASCII-only filter."""
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("provider-é") == "provider-é"
-        assert _safe_task_id_segment("provider-日本") == "provider-日本"
-
-    def test_all_unsafe_input_returns_underscore(self) -> None:
-        """Every unsafe character is replaced with ``"_"`` individually,
-        so all-unsafe input becomes a string of underscores (one per
-        input character), not a single ``"_"``. The single-``"_"``
-        fallback only fires when the input is truly empty -- it exists
-        so callers wrapping the result in ``NotBlankStr`` don't trip
-        the empty-string guard on the empty-string case."""
-        from synthorg.providers.management.service import _safe_task_id_segment
-
-        assert _safe_task_id_segment("\n\t\r") == "___"
-        assert _safe_task_id_segment(":::") == "___"
-        # The cleaned-or-"_" branch: only an empty input collapses to a
-        # single "_". Pin it explicitly so the fallback isn't deleted in
-        # a future "simplification" without surfacing here.
-        assert _safe_task_id_segment("") == "_"

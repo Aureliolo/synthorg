@@ -6,7 +6,6 @@ unrecognised value rather than guessing a vendor.
 """
 
 import pytest
-from pydantic import ValidationError
 from structlog.testing import capture_logs
 
 from synthorg.core.types import NotBlankStr
@@ -16,6 +15,7 @@ from synthorg.integrations.connections.http_vendor import (
     METADATA_KEY_VENDOR,
     HttpVendor,
     HttpVendorPreset,
+    ProbeVerdict,
     resolve_vendor,
 )
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
@@ -68,24 +68,52 @@ class TestPresets:
     def test_custom_has_no_preset(self) -> None:
         assert HttpVendor.CUSTOM not in HTTP_VENDOR_PRESETS
 
-    def test_every_preset_declares_a_probe_its_endpoint_answers(self) -> None:
-        # A search endpoint refuses a bare request, so a preset with neither
-        # a query nor a body probes as unhealthy on a perfectly good key.
+    def test_no_preset_can_buy_anything_to_prove_itself(self) -> None:
+        # The defect this replaced: every metered search vendor probed by
+        # issuing a real query, so a connection's health badge cost one
+        # billable search per probe, on a five-minute loop, forever.
         for vendor, preset in HTTP_VENDOR_PRESETS.items():
-            assert preset.health_params or preset.health_body, (
-                f"{vendor.value} probes its search endpoint with no payload"
-            )
+            fields = set(type(preset).model_fields)
+            assert "health_params" not in fields, f"{vendor.value} sends a query"
+            assert "health_body" not in fields, f"{vendor.value} sends a body"
 
-    def test_a_preset_cannot_declare_two_probe_shapes(self) -> None:
-        with pytest.raises(ValidationError, match="not two"):
-            HttpVendorPreset(
-                id=NotBlankStr("example-preset"),
-                label=NotBlankStr("Example"),
-                base_url=NotBlankStr("https://api.example.test/search"),
-                auth_header=NotBlankStr("X-Key"),
-                health_params={"q": "ping"},
-                health_body={"query": "ping"},
+    def test_a_verdict_needs_a_verified_contract(self) -> None:
+        # A preset that claims nothing must not be read as claiming success:
+        # guessing that some 4xx proves the credential would report a revoked
+        # key as healthy.
+        preset = HttpVendorPreset(
+            id=NotBlankStr("example-preset"),
+            label=NotBlankStr("Example"),
+            base_url=NotBlankStr("https://api.example.test/search"),
+            auth_header=NotBlankStr("X-Key"),
+        )
+
+        assert preset.probe_verdict(422, "{}") is ProbeVerdict.INDETERMINATE
+
+    def test_brave_reads_its_own_error_bodies(self) -> None:
+        # The three shapes observed against the live API, all unbilled.
+        brave = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
+
+        assert (
+            brave.probe_verdict(
+                422,
+                '{"error":{"code":"VALIDATION","meta":{"errors":'
+                '[{"loc":["query","q"],"msg":"Field required"}]}}}',
             )
+            is ProbeVerdict.AUTH_OK
+        )
+        assert (
+            brave.probe_verdict(422, '{"error":{"code":"SUBSCRIPTION_TOKEN_INVALID"}}')
+            is ProbeVerdict.AUTH_FAILED
+        )
+        assert (
+            brave.probe_verdict(
+                422,
+                '{"error":{"meta":{"errors":[{"loc":["header",'
+                '"x-subscription-token"],"msg":"Field required"}]}}}',
+            )
+            is ProbeVerdict.AUTH_FAILED
+        )
 
     def test_auth_headers_render_the_template(self) -> None:
         tavily = HTTP_VENDOR_PRESETS[HttpVendor.TAVILY]

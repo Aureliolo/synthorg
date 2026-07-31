@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { Dialog } from '@base-ui/react/dialog'
+import { MemoryRouter } from 'react-router'
 import { HealthPopoverContent } from './HealthPopoverContent'
 import type { DerivedSubsystemStates } from './derive-subsystem-states'
 
@@ -11,7 +12,11 @@ const okStates: DerivedSubsystemStates = {
   providersState: 'ok',
   memoryState: 'ok',
   memoryDetail: 'sqlvector',
+  memoryBackendState: 'durable',
   backupState: 'ok',
+  backupDetail: undefined,
+  costRecordingState: 'ok',
+  costRecordingDetail: undefined,
   withWebSocketState: 'ok',
   backendOnlyState: 'ok',
   wsDetail: undefined,
@@ -27,8 +32,12 @@ const degradedStates: DerivedSubsystemStates = {
   busState: 'down',
   providersState: 'ok',
   memoryState: 'degraded',
-  memoryDetail: 'Ephemeral keyword backend; recall is lost on restart.',
+  memoryDetail: 'no embedding model chosen; agents will run without recall',
+  memoryBackendState: 'off',
   backupState: 'degraded',
+  backupDetail: 'pg_dump is not available on PATH',
+  costRecordingState: 'degraded',
+  costRecordingDetail: '3 cost records in a row failed to persist',
   withWebSocketState: 'down',
   backendOnlyState: 'down',
   wsDetail: 'auto-reconnecting',
@@ -42,7 +51,11 @@ const loadingStates: DerivedSubsystemStates = {
   providersState: 'loading',
   memoryState: 'loading',
   memoryDetail: undefined,
+  memoryBackendState: null,
   backupState: 'loading',
+  backupDetail: undefined,
+  costRecordingState: 'ok',
+  costRecordingDetail: undefined,
   withWebSocketState: 'loading',
   backendOnlyState: 'loading',
   wsDetail: undefined,
@@ -58,13 +71,15 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <Dialog.Root open>
-        <Dialog.Portal>
-          <Dialog.Popup className="w-full max-w-3xl rounded-xl border border-border-bright bg-surface p-card">
-            <Story />
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <MemoryRouter>
+        <Dialog.Root open>
+          <Dialog.Portal>
+            <Dialog.Popup className="w-full max-w-3xl rounded-xl border border-border-bright bg-surface p-card">
+              <Story />
+            </Dialog.Popup>
+          </Dialog.Portal>
+        </Dialog.Root>
+      </MemoryRouter>
     ),
   ],
 } satisfies Meta<typeof HealthPopoverContent>
@@ -86,7 +101,8 @@ const OK_PAYLOAD = {
   providers: true,
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
-  backup: true,
+  backup: { state: 'wired' as const, detail: null },
+  cost_recording: { state: 'ok' as const, dropped_records: 0, detail: null },
   version: '0.6.4',
   uptime_seconds: 847_200,
 }
@@ -97,6 +113,7 @@ export const Default: Story = {
     states: okStates,
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
+    onDismiss: () => undefined,
   },
 }
 
@@ -118,6 +135,7 @@ export const Loading: Story = {
     states: loadingStates,
     fetchedAtLabel: null,
     onRefresh: () => undefined,
+    onDismiss: () => undefined,
   },
 }
 
@@ -131,6 +149,7 @@ export const LoadError: Story = {
     states: { ...okStates, apiState: 'down', withWebSocketState: 'down', backendOnlyState: 'down' },
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
+    onDismiss: () => undefined,
   },
 }
 

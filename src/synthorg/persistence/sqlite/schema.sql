@@ -108,8 +108,13 @@ CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 -- ── Cost records ──────────────────────────────────────────────
 CREATE TABLE cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL REFERENCES tasks (id),
+    -- Nullable because subsystem work (embedding, reranking, consolidation,
+    -- safety classification) belongs to no agent and no task. task_id is a
+    -- real foreign key, so inventing an id for those calls made every one of
+    -- their inserts fail the constraint and lose the spend; what the call was
+    -- for is carried by prompt_class_id instead.
+    agent_id TEXT,
+    task_id TEXT REFERENCES tasks (id),
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,
@@ -1285,6 +1290,21 @@ CREATE TABLE connections (
         health_status IN ('healthy', 'degraded', 'unhealthy', 'unknown')
     ),
     last_health_check_at TEXT,
+    health_detail TEXT,
+    health_latency_ms REAL
+    CHECK (
+        health_latency_ms IS NULL
+        OR (health_latency_ms >= 0 AND health_latency_ms < 9e999)
+    ),
+    health_webhook_ingest TEXT NOT NULL DEFAULT 'not_applicable'
+    CHECK (
+        health_webhook_ingest IN ('not_applicable', 'ready', 'unconfigured')
+    ),
+    health_retry_after_seconds REAL
+    CHECK (
+        health_retry_after_seconds IS NULL
+        OR (health_retry_after_seconds > 0 AND health_retry_after_seconds < 9e999)
+    ),
     metadata_json TEXT NOT NULL DEFAULT '{}',
     webhook_receipt_retention_days INTEGER
     CHECK (

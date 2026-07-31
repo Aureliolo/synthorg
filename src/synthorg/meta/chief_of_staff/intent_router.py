@@ -81,8 +81,6 @@ class _IntentFloors:
     configure: float
 
 
-_INTENT_AGENT_ID: NotBlankStr = NotBlankStr("system")
-_INTENT_TASK_ID: NotBlankStr = NotBlankStr("system:cos:turn_intent")
 # A convened group needs at least two named participants to be a group at
 # all; a "group" request naming fewer is treated as a plain turn.
 _MIN_GROUP_TARGETS: int = 2
@@ -475,8 +473,6 @@ class LlmIntentClassifier:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_INTENT_AGENT_ID,
-                task_id=_INTENT_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

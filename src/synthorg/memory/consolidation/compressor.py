@@ -272,7 +272,6 @@ class LLMExperienceCompressor:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=agent_id,
-                task_id=NotBlankStr(f"system:memory:compress:{source_artifact_ids[0]}"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

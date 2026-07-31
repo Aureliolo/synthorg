@@ -24,8 +24,11 @@ from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.config import IntegrationHealthConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.integrations.connections.models import ConnectionStatus
+from synthorg.integrations.connections.models import Connection, ConnectionStatus
+from synthorg.integrations.health.freshness import is_probe_due
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.service import check_connection_health
 from synthorg.integrations.state import IntegrationsStateSlice
@@ -70,6 +73,56 @@ async def _safe_check(
             error_detail=(f"Health check raised unexpectedly: {type(exc).__name__}"),
             checked_at=datetime.now(UTC),
         )
+
+
+def _cached_report(connection: Connection) -> HealthReport:
+    """Rebuild the last stored verdict as a report, without probing.
+
+    Returns:
+        The persisted verdict in ``HealthReport`` shape.
+    """
+    health = connection.health
+    return HealthReport(
+        connection_name=NotBlankStr(connection.name),
+        status=health.status,
+        latency_ms=health.latency_ms,
+        error_detail=health.detail,
+        checked_at=health.last_check_at or datetime.now(UTC),
+        webhook_ingest=health.webhook_ingest,
+        retry_after_seconds=health.retry_after_seconds,
+    )
+
+
+async def _report_for(
+    catalog: ConnectionCatalog,
+    connection: Connection,
+    *,
+    now: datetime,
+    config: IntegrationHealthConfig,
+) -> HealthReport:
+    """Probe *connection* only when its stored verdict has expired.
+
+    The dashboard polls this endpoint on a timer while the Connections view
+    is open. Probing unconditionally would re-check every connection every
+    few seconds, and a probe against a metered third-party API costs real
+    quota, so a verdict that is still inside its recheck interval is served
+    from storage instead.
+
+    Returns:
+        A fresh report when the connection is due, the stored one otherwise.
+    """
+    if not connection.health_check_enabled:
+        return _cached_report(connection)
+    due = is_probe_due(
+        connection,
+        now=now,
+        healthy_seconds=config.healthy_recheck_seconds,
+        degraded_seconds=config.degraded_recheck_seconds,
+        unhealthy_seconds=config.unhealthy_recheck_seconds,
+    )
+    if not due:
+        return _cached_report(connection)
+    return await _safe_check(catalog, str(connection.name))
 
 
 class IntegrationHealthController(Controller):
@@ -124,9 +177,14 @@ class IntegrationHealthController(Controller):
         if not page_conns:
             return PaginatedResponse(data=(), pagination=meta)
 
+        health_config = app_state.config.integrations.health
+        now = datetime.now(UTC)
         async with asyncio.TaskGroup() as tg:
             tasks = [
-                tg.create_task(_safe_check(catalog, conn.name)) for conn in page_conns
+                tg.create_task(
+                    _report_for(catalog, conn, now=now, config=health_config)
+                )
+                for conn in page_conns
             ]
         reports = tuple(task.result() for task in tasks)
         return PaginatedResponse(data=reports, pagination=meta)

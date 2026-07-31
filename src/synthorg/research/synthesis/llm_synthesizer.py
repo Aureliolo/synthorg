@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_RESEARCH_SOURCE,
     TAG_TASK_DATA,
@@ -120,7 +119,6 @@ class LlmSynthesizer:
             system=_SYSTEM_PROMPT,
             user=self._build_user_prompt(brief, plan, sources),
             cost_tracker=self._cost_tracker,
-            task_id=NotBlankStr(f"system:research:synthesis:{brief.brief_id}"),
             project_id=brief.project_id,
             purpose=self.metadata.prompt_class_id,
         )

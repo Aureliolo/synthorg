@@ -23,6 +23,7 @@ function report(overrides: Partial<HealthReport> = {}): HealthReport {
     checked_at: '2026-04-12T08:00:00Z',
     consecutive_failures: 0,
     webhook_ingest: 'ready',
+    retry_after_seconds: null,
     ...overrides,
   }
 }

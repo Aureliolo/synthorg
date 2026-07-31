@@ -16,7 +16,6 @@ single audit chain operators rely on.
 """
 
 import os
-import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 
@@ -43,18 +42,31 @@ from synthorg.observability.events.settings import (
 from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
+from synthorg.settings._overrides_scan import (
+    ALL_OVERRIDES_LIMIT,
+    collect_pending_restart,
+)
 from synthorg.settings._setting_audit import emit_security_setting_changed
+from synthorg.settings._value_rules import (
+    SENSITIVE_MASK,
+    env_var_name,
+    reject_if_read_only,
+    validate_value,
+)
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
     SettingNotFoundError,
-    SettingReadOnlyError,
     SettingsEncryptionError,
     SettingValidationError,
 )
-from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
+from synthorg.settings.models import (
+    PendingRestartSetting,
+    SettingDefinition,
+    SettingEntry,
+    SettingValue,
+)
 from synthorg.settings.registry import SettingsRegistry
-from synthorg.settings.type_validators import validate_by_type
 from synthorg.settings.write_governance import (
     SettingsWriteGovernance,
     guard_security_delete,
@@ -63,80 +75,6 @@ from synthorg.settings.write_governance import (
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
-
-_SENSITIVE_MASK = "********"
-
-
-def _env_var_name(namespace: str, key: str) -> str:
-    """Build env var name: ``SYNTHORG_{NAMESPACE}_{KEY}`` (uppercased).
-
-    Returns:
-        The environment-variable name with both namespace and key
-        uppercased.
-    """
-    return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
-
-
-def _reject_if_read_only(
-    definition: SettingDefinition,
-    *,
-    action: str,
-    import_source: SettingsImportSource | None = None,
-) -> None:
-    """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
-
-    The registry entry exists for discoverability via the /settings
-    API; the resolved value is sourced from environment variables or
-    YAML at process startup.  Mutation surfaces (``set``, ``set_many``,
-    ``delete``, ``delete_namespace``) must reject so an operator does
-    not believe the override took effect when the running process keeps
-    the boot-time value.
-
-    ``import_source`` is included in the validation log when supplied
-    so the every ``set()`` rejection path carries the same tag the
-    happy path emits, keeping the log tagging contract consistent.
-
-    Raises:
-        SettingReadOnlyError: If the setting's ``read_only_post_init``
-            flag is set, meaning the value was sourced from env/YAML at
-            startup and cannot be mutated at runtime.
-    """
-    if not definition.read_only_post_init:
-        return
-    payload: dict[str, object] = {
-        "namespace": definition.namespace,
-        "key": definition.key,
-        "reason": "read_only_post_init",
-        "action": action,
-    }
-    if import_source is not None:
-        payload["import_source"] = import_source.value
-    logger.warning(SETTINGS_VALIDATION_FAILED, **payload)
-    msg = (
-        f"Setting {definition.namespace}/{definition.key} is sourced"
-        f" from env / YAML at startup and cannot be modified at runtime"
-        f" (action={action!r}). Update the env var or YAML and restart."
-    )
-    raise SettingReadOnlyError(msg)
-
-
-def _validate_value(definition: SettingDefinition, value: str) -> None:
-    """Validate a value against its definition.
-
-    For sensitive settings, error messages mask the actual value
-    to prevent secret leakage through validation errors.
-
-    Raises:
-        SettingValidationError: If validation fails.
-    """
-    validate_by_type(definition, value)
-
-    if definition.validator_pattern is not None and not re.fullmatch(
-        definition.validator_pattern, value
-    ):
-        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
-        msg = f"Value {display} does not match pattern {definition.validator_pattern!r}"
-        raise SettingValidationError(msg)
 
 
 class SettingsService:
@@ -362,7 +300,7 @@ class SettingsService:
         value = await self.get(namespace, key)
         definition = self._registry.get(namespace, key)
         assert definition is not None  # noqa: S101 -- get() guarantees
-        display_value = _SENSITIVE_MASK if definition.sensitive else value.value
+        display_value = SENSITIVE_MASK if definition.sensitive else value.value
         return SettingEntry(
             definition=definition,
             value=display_value,
@@ -412,7 +350,7 @@ class SettingsService:
             return ()
 
         # Batch-fetch all DB values in one query.
-        db_rows = await self._repository.list_items(limit=10_000)
+        db_rows = await self._repository.list_items(limit=ALL_OVERRIDES_LIMIT)
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
             (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
@@ -423,6 +361,25 @@ class SettingsService:
             entry = await self._resolve_with_db_lookup(defn, db_hit)
             entries.append(entry)
         return tuple(entries)
+
+    async def pending_restart(
+        self,
+        *,
+        since: datetime,
+    ) -> tuple[PendingRestartSetting, ...]:
+        """List restart-required settings written after ``since``.
+
+        Args:
+            since: This process's boot instant.
+
+        Returns:
+            The pending settings, sorted by namespace then key.
+        """
+        return await collect_pending_restart(
+            self._repository,
+            self._registry,
+            since=since,
+        )
 
     async def get_page(
         self,
@@ -469,7 +426,7 @@ class SettingsService:
         # Single DB round-trip for the override values; bounded by the
         # number of overridden settings (typically << total definition
         # count) so we keep the existing batch shape.
-        db_rows = await self._repository.list_items(limit=10_000)
+        db_rows = await self._repository.list_items(limit=ALL_OVERRIDES_LIMIT)
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
             (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
@@ -499,7 +456,7 @@ class SettingsService:
         env_name = (
             definition.env_var_override
             if definition.env_var_override is not None
-            else _env_var_name(ns, key)
+            else env_var_name(ns, key)
         )
         env_val = os.environ.get(env_name)
         if env_val is not None:
@@ -561,7 +518,7 @@ class SettingsService:
                     )
                     return SettingEntry(
                         definition=definition,
-                        value=_SENSITIVE_MASK,
+                        value=SENSITIVE_MASK,
                         source=SettingSource.DATABASE,
                         updated_at=updated_at,
                     )
@@ -576,11 +533,11 @@ class SettingsService:
                     )
                     return SettingEntry(
                         definition=definition,
-                        value=_SENSITIVE_MASK,
+                        value=SENSITIVE_MASK,
                         source=SettingSource.DATABASE,
                         updated_at=updated_at,
                     )
-            display = _SENSITIVE_MASK if definition.sensitive else value
+            display = SENSITIVE_MASK if definition.sensitive else value
             await self._emit_resolved(definition, source="db")
             return SettingEntry(
                 definition=definition,
@@ -591,7 +548,7 @@ class SettingsService:
 
         # Fall back to env, then default
         fallback = await self._resolve_fallback(definition)
-        display = _SENSITIVE_MASK if definition.sensitive else fallback.value
+        display = SENSITIVE_MASK if definition.sensitive else fallback.value
         return SettingEntry(
             definition=definition,
             value=display,
@@ -730,7 +687,7 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
-        _reject_if_read_only(
+        reject_if_read_only(
             definition,
             action="set",
             import_source=import_source,
@@ -743,7 +700,7 @@ class SettingsService:
         )
 
         try:
-            _validate_value(definition, value)
+            validate_value(definition, value)
         except SettingValidationError as exc:
             logger.warning(
                 SETTINGS_VALIDATION_FAILED,
@@ -791,7 +748,7 @@ class SettingsService:
         emit_security_setting_changed(namespace, key=key, action_type="set")
         await self._publish_change(namespace, key, definition)
 
-        display_value = _SENSITIVE_MASK if definition.sensitive else value
+        display_value = SENSITIVE_MASK if definition.sensitive else value
         return SettingEntry(
             definition=definition,
             value=display_value,
@@ -983,14 +940,14 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
-            _reject_if_read_only(
+            reject_if_read_only(
                 definition,
                 action="set_many",
                 import_source=import_source,
             )
 
             try:
-                _validate_value(definition, value)
+                validate_value(definition, value)
             except SettingValidationError as exc:
                 logger.warning(
                     SETTINGS_VALIDATION_FAILED,
@@ -1087,7 +1044,7 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
-            _reject_if_read_only(definition, action="delete")
+            reject_if_read_only(definition, action="delete")
 
             await guard_security_delete(
                 namespace,

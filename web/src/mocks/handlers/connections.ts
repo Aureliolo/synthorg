@@ -125,6 +125,28 @@ const mockConnectionTypes: ConnectionTypeMetadata[] = [
   },
 ]
 
+/**
+ * Build a health snapshot with the fields a fixture rarely cares about
+ * already filled in. The stored verdict carries its reason, latency and
+ * ingest state so a cached read is as complete as a live probe; a fixture
+ * that only wants "healthy as of now" should not have to restate that.
+ */
+export function buildHealth(
+  status: Connection['health']['status'],
+  lastCheckAt: string | null,
+  overrides: Partial<Connection['health']> = {},
+): Connection['health'] {
+  return {
+    status,
+    last_check_at: lastCheckAt,
+    detail: null,
+    latency_ms: null,
+    webhook_ingest: 'not_applicable',
+    retry_after_seconds: null,
+    ...overrides,
+  }
+}
+
 export function buildConnection(
   overrides: Partial<Connection> = {},
 ): Connection {
@@ -135,7 +157,7 @@ export function buildConnection(
     auth_method: 'bearer_token',
     base_url: null,
     health_check_enabled: true,
-    health: { status: 'unknown', last_check_at: null },
+    health: buildHealth('unknown', null),
     metadata: {},
     rate_limiter: null,
     secret_refs: [],
@@ -157,7 +179,7 @@ const mockConnections: Connection[] = [
     connection_type: 'github',
     auth_method: 'bearer_token',
     base_url: 'https://api.github.com',
-    health: { status: 'healthy', last_check_at: NOW },
+    health: buildHealth('healthy', NOW),
     created_at: '2026-04-01T09:00:00Z',
   }),
   buildConnection({
@@ -165,7 +187,7 @@ const mockConnections: Connection[] = [
     name: 'dev-slack',
     connection_type: 'slack',
     auth_method: 'bearer_token',
-    health: { status: 'degraded', last_check_at: NOW },
+    health: buildHealth('degraded', NOW),
     created_at: '2026-04-02T10:30:00Z',
   }),
   buildConnection({
@@ -173,7 +195,7 @@ const mockConnections: Connection[] = [
     name: 'ops-smtp',
     connection_type: 'smtp',
     auth_method: 'basic_auth',
-    health: { status: 'unhealthy', last_check_at: NOW },
+    health: buildHealth('unhealthy', NOW),
     created_at: '2026-04-03T11:15:00Z',
   }),
   buildConnection({
@@ -181,7 +203,7 @@ const mockConnections: Connection[] = [
     name: 'reporting-db',
     connection_type: 'database',
     auth_method: 'basic_auth',
-    health: { status: 'healthy', last_check_at: NOW },
+    health: buildHealth('healthy', NOW),
     created_at: '2026-04-04T08:00:00Z',
   }),
   buildConnection({
@@ -190,7 +212,7 @@ const mockConnections: Connection[] = [
     connection_type: 'generic_http',
     auth_method: 'api_key',
     base_url: 'https://billing.example.com',
-    health: { status: 'unknown', last_check_at: null },
+    health: buildHealth('unknown', null),
     created_at: '2026-04-05T14:20:00Z',
   }),
   buildConnection({
@@ -199,7 +221,7 @@ const mockConnections: Connection[] = [
     connection_type: 'oauth_app',
     auth_method: 'oauth2',
     health_check_enabled: false,
-    health: { status: 'unknown', last_check_at: null },
+    health: buildHealth('unknown', null),
     created_at: '2026-04-06T09:45:00Z',
   }),
 ]
@@ -270,6 +292,7 @@ export const connectionsList = [
         checked_at: NOW,
         consecutive_failures: conn.health.status === 'unhealthy' ? 4 : 0,
         webhook_ingest: 'not_applicable',
+        retry_after_seconds: null,
       }),
     )
   }),
@@ -351,6 +374,7 @@ export const connectionsHandlers = [
         checked_at: NOW,
         consecutive_failures: 0,
         webhook_ingest: 'not_applicable',
+        retry_after_seconds: null,
       }),
     ),
   ),

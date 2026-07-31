@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { InputField } from '@/components/ui/input-field'
+import { useRestartStore } from '@/stores/restart'
 import { useSettingsStore } from '@/stores/settings'
 
 /**
@@ -39,7 +40,12 @@ export function GuardedWriteConfirmDialog(): React.ReactNode {
       onConfirm={async () => {
         const result = await confirmPendingUpdate(reason)
         setReason('')
-        return result !== null
+        if (result === null) return false
+        // This is a settings write like any other, so it can leave a restart
+        // owed. Every other write path re-reads the pending set; without this
+        // one the banner stays silent about the change just made through it.
+        await useRestartStore.getState().refresh()
+        return true
       }}
       onCancel={close}
     >

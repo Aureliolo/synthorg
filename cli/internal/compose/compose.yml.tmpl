@@ -129,6 +129,10 @@ services:
       SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_TELEMETRY_ENABLED: "{{if .TelemetryOptIn}}true{{else}}false{{end}}"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
+      # Paired with `restart: unless-stopped` below: it is that policy, and
+      # only that policy, which makes the dashboard's restart control safe to
+      # offer. Drop one and drop the other.
+      SYNTHORG_API_RESTART_SUPERVISED: "true"
 {{- if .Sandbox}}
       SYNTHORG_SANDBOX_IMAGE: {{yamlStr (sandboxImageRef .ImageTag)}}
       SYNTHORG_SIDECAR_IMAGE: {{yamlStr (sidecarImageRef .ImageTag)}}

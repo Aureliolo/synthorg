@@ -1,17 +1,26 @@
 # module-kind: controller
 """Active-embedder configuration endpoint (CEO / SYSTEM only)."""
 
-from litestar import Controller, get
+from litestar import Controller, get, post
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_roles
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.core.vector_limits import (
+    HNSW_HALFVEC_MAX_DIMENSIONS,
+    HNSW_VECTOR_MAX_DIMENSIONS,
+    IndexSupport,
+    index_support_for,
+)
+from synthorg.memory.embedding.probe import probe_embedder_dims
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
@@ -40,6 +49,41 @@ class ActiveEmbedderResponse(BaseModel):
         default=None,
         ge=1,
         description="Embedding vector dimensions",
+    )
+
+
+class EmbedderProbeRequest(BaseModel):
+    """The binding whose vector width should be measured."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    provider: NotBlankStr = Field(description="Embedding provider name")
+    model_id: NotBlankStr = Field(description="Embedding model identifier")
+
+
+class EmbedderProbeResponse(BaseModel):
+    """A model's measured width and what this store can do with it.
+
+    Attributes:
+        dims: The width the model actually emitted, measured by asking it.
+        index_support: What the vector store can do at that width.
+        vector_ceiling: Widest full-precision vector an index accepts.
+        halfvec_ceiling: Widest half-precision vector an index accepts.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    dims: int = Field(ge=1, description="Measured embedding vector width")
+    index_support: IndexSupport = Field(
+        description="What the vector store can do at this width",
+    )
+    vector_ceiling: int = Field(
+        ge=1,
+        description="Widest full-precision vector an HNSW index accepts",
+    )
+    halfvec_ceiling: int = Field(
+        ge=1,
+        description="Widest half-precision vector an HNSW index accepts",
     )
 
 
@@ -135,3 +179,52 @@ class MemoryEmbedderController(Controller):
                 )
                 raise
         return ApiResponse(data=result)
+
+    @post(
+        "/embedder/probe",
+        guards=[per_op_rate_limit_from_policy("memory.embedder_probe", key="user")],
+    )
+    async def probe_embedder(
+        self,
+        state: State,
+        data: EmbedderProbeRequest,
+    ) -> ApiResponse[EmbedderProbeResponse]:
+        """Measure a candidate embedder's width and report what it costs.
+
+        Issues one real embedding call, deliberately and only when asked:
+        the width is a property of the model and the model is the only
+        authority on it, so there is nothing to read from a table. Scoped to
+        the single binding the operator is considering rather than run
+        across the catalogue, because on a metered provider every probe is
+        billed and sweeping them all would spend the operator's quota to
+        populate a dropdown.
+
+        Nothing is chosen here. The response states the measured width and
+        the mechanical consequence for this store; which embedder to run
+        stays the operator's call.
+
+        Args:
+            state: Application state.
+            data: The provider/model pair to measure.
+
+        Returns:
+            The measured width alongside the store's ceilings.
+
+        Raises:
+            MemoryEmbeddingError: When the model cannot be reached or
+                answers with no vector, so its width is unknown.
+        """
+        app_state: AppState = state.app_state
+        dims = await probe_embedder_dims(
+            provider=data.provider,
+            model=data.model_id,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        )
+        return ApiResponse(
+            data=EmbedderProbeResponse(
+                dims=dims,
+                index_support=index_support_for(dims),
+                vector_ceiling=HNSW_VECTOR_MAX_DIMENSIONS,
+                halfvec_ceiling=HNSW_HALFVEC_MAX_DIMENSIONS,
+            )
+        )

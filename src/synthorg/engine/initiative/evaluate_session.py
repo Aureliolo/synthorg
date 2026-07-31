@@ -247,7 +247,6 @@ class InitiativeEvaluator:
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr(str(lead.id)),
-            task_id=f"evaluate:{lead.id}",
             # Lead-run session, not a registered system prompt class.
             purpose=None,
             call_category=LLMCallCategory.SYSTEM,

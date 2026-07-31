@@ -118,12 +118,32 @@ export async function mockApiRoutes(page: Page) {
           persistence: true,
           message_bus: true,
           providers: true,
-          backup: true,
+          backup: { state: 'wired', detail: null },
           memory: { backend: 'sqlvector', detail: null, state: 'durable' },
+          // Every subsystem the roll-up dereferences has to be present:
+          // it reads `.state` off each one, so an omitted key is not a
+          // missing card but an uncaught TypeError in the app shell, on
+          // every route.
+          cost_recording: { state: 'ok', detail: null, dropped_records: 0 },
           telemetry: 'disabled',
           version: '0.6.4',
           uptime_seconds: 0,
         },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
+  // Pending-restart notice. Mounted by the settings page, which reads
+  // ``pending.length``; the catch-all's ``data: []`` has no ``pending``, so
+  // the section's error boundary swallows the whole page rather than the
+  // banner.
+  await page.route('**/api/v1/meta/restart', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: { pending: [], supervised: false },
         error: null,
         error_detail: null,
       },

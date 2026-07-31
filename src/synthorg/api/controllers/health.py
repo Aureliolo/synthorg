@@ -18,10 +18,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg import __version__
 from synthorg._core.features import require_service
+from synthorg.api.controllers._backup_health import (
+    BackupHealth,
+    resolve_backup_health,
+)
+from synthorg.api.controllers._cost_recording_health import (
+    CostRecordingHealth,
+    resolve_cost_recording_health,
+)
 from synthorg.api.controllers._health_probes import (
     TelemetryStatus,
     memory_readiness,
-    probe_backup,
     probe_persistence,
     probe_service,
     resolve_memory_state,
@@ -119,11 +126,11 @@ class ReadinessStatus(BaseModel):
             status). ``None`` when no provider health tracker is
             wired (dev stacks without provider configuration).
         telemetry: Project telemetry delivery state.
-        backup: Backup service wired (``False`` when it was attempted and
-            could not be built, ``None`` when it was never attempted).
-            Deliberately excluded from the ``status`` roll-up: a process with
-            no backup coverage still serves traffic correctly, so flipping
-            readiness would have a supervisor restart a healthy deployment.
+        backup: Backup coverage for this boot, and the cause when there is
+            none. Deliberately excluded from the ``status`` roll-up: a
+            process with no backup coverage still serves traffic correctly,
+            so flipping readiness would have a supervisor restart a healthy
+            deployment into the same condition.
         version: Application version.
         uptime_seconds: Seconds since startup.
     """
@@ -147,9 +154,11 @@ class ReadinessStatus(BaseModel):
     memory: MemoryHealth = Field(
         description="Agent-memory substrate state",
     )
-    backup: bool | None = Field(
-        default=None,
-        description="Backup service wired (None if backups were not attempted)",
+    backup: BackupHealth = Field(
+        description="Backup coverage for this boot",
+    )
+    cost_recording: CostRecordingHealth = Field(
+        description="Whether LLM spend is currently being recorded",
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
@@ -187,7 +196,8 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         # Read from the slice rather than left unknown: unlike the probed
         # components, this is a boot-time fact the failed fan-out did not
         # touch, so it stays reportable.
-        backup=probe_backup(app_state),
+        backup=resolve_backup_health(app_state),
+        cost_recording=resolve_cost_recording_health(),
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -358,7 +368,8 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         providers=providers_ok,
         telemetry=telemetry_status,
         memory=memory_health,
-        backup=probe_backup(app_state),
+        backup=resolve_backup_health(app_state),
+        cost_recording=resolve_cost_recording_health(),
         version=__version__,
         uptime_seconds=uptime,
     )

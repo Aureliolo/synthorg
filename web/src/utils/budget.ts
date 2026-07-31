@@ -7,18 +7,13 @@
 
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { computeSpendTrend } from '@/utils/dashboard'
-import { formatCurrency, formatDateOnly } from '@/utils/format'
-import type { MetricCardProps } from '@/components/ui/metric-card'
+import { formatDateOnly } from '@/utils/format'
 import type {
   ActivityItem,
-  ForecastResponse,
-  OverviewMetrics,
   TrendDataPoint,
 } from '@/api/types/analytics'
 import type {
   BudgetAlertConfig,
-  BudgetConfig,
   CostRecord,
 } from '@/api/types/budget'
 
@@ -32,6 +27,22 @@ export type BreakdownDimension = typeof BREAKDOWN_DIMENSION_VALUES[number]
 
 /** Bucket key for cost records carrying no prompt purpose. */
 const UNATTRIBUTED_PROMPT_CLASS = 'unattributed'
+
+/**
+ * Bucket key for subsystem work owned by no agent.
+ *
+ * Bucketed rather than dropped: a breakdown that silently omits rows stops
+ * summing to the headline total, which is how subsystem spend went missing
+ * in the first place.
+ */
+const UNATTRIBUTED_AGENT = 'unattributed'
+
+/**
+ * What the unattributed bucket is called on screen. The bucket keys above are
+ * internal join keys that no name map contains, so a row keyed by one would
+ * otherwise render the key itself to the operator.
+ */
+const UNATTRIBUTED_LABEL = 'Unattributed'
 
 /** Severity ordering: normal < amber < red < critical. */
 export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
@@ -68,9 +79,6 @@ export interface CategoryRatio {
   readonly uncategorized: CategoryBucket
 }
 
-/** Subset of MetricCardProps used to drive budget metric cards. Omits className since it's not needed for data-driven card generation. */
-export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
-
 // ── Constants ──────────────────────────────────────────────
 
 const log = createLogger('budget-utils')
@@ -103,6 +111,30 @@ const CFO_EVENT_TYPES = new Set(['budget.record_added', 'budget.alert'])
  * Returns rows sorted by totalCost descending. Agent display names are
  * looked up from `agentNameMap`, falling back to the raw agent_id.
  */
+interface AgentCostGroup {
+  cost: number
+  tasks: Set<string>
+}
+
+function groupCostByAgent(
+  records: readonly CostRecord[],
+): Map<string, AgentCostGroup> {
+  const groups = new Map<string, AgentCostGroup>()
+  for (const r of records) {
+    const agentId = r.agent_id ?? UNATTRIBUTED_AGENT
+    let group = groups.get(agentId)
+    if (!group) {
+      group = { cost: 0, tasks: new Set() }
+      groups.set(agentId, group)
+    }
+    group.cost += r.cost
+    // Only real tasks count towards the per-task average; subsystem work
+    // has none, so counting it would divide by a task that never existed.
+    if (r.task_id !== null) group.tasks.add(r.task_id)
+  }
+  return groups
+}
+
 export function computeAgentSpending(
   records: readonly CostRecord[],
   budgetTotal: number,
@@ -110,23 +142,16 @@ export function computeAgentSpending(
 ): AgentSpendingRow[] {
   if (records.length === 0) return []
 
-  const groups = new Map<string, { cost: number; tasks: Set<string> }>()
-  for (const r of records) {
-    let group = groups.get(r.agent_id)
-    if (!group) {
-      group = { cost: 0, tasks: new Set() }
-      groups.set(r.agent_id, group)
-    }
-    group.cost += r.cost
-    group.tasks.add(r.task_id)
-  }
-
+  const groups = groupCostByAgent(records)
   const rows: AgentSpendingRow[] = []
   for (const [agentId, group] of groups) {
     const taskCount = group.tasks.size
     rows.push({
       agentId,
-      agentName: agentNameMap.get(agentId) ?? agentId,
+      agentName:
+        agentId === UNATTRIBUTED_AGENT
+          ? UNATTRIBUTED_LABEL
+          : (agentNameMap.get(agentId) ?? agentId),
       totalCost: group.cost,
       budgetPercent: budgetTotal > 0 ? (group.cost / budgetTotal) * 100 : 0,
       taskCount,
@@ -144,20 +169,22 @@ interface DimensionResolver {
 
 const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
   agent: {
-    key: (r) => r.agent_id,
-    label: (key, agentNameMap) => agentNameMap.get(key) ?? key,
+    key: (r) => r.agent_id ?? UNATTRIBUTED_AGENT,
+    label: (key, agentNameMap) =>
+      key === UNATTRIBUTED_AGENT ? UNATTRIBUTED_LABEL : (agentNameMap.get(key) ?? key),
   },
   provider: {
     key: (r) => r.provider,
     label: (key) => key,
   },
   department: {
-    key: (r, agentDeptMap) => agentDeptMap.get(r.agent_id) ?? 'Unknown',
+    key: (r, agentDeptMap) =>
+      r.agent_id === null ? 'Unknown' : (agentDeptMap.get(r.agent_id) ?? 'Unknown'),
     label: (key) => key,
   },
   prompt_class: {
     key: (r) => r.prompt_class_id ?? UNATTRIBUTED_PROMPT_CLASS,
-    label: (key) => key,
+    label: (key) => (key === UNATTRIBUTED_PROMPT_CLASS ? UNATTRIBUTED_LABEL : key),
   },
 }
 
@@ -357,93 +384,6 @@ export function filterCfoEvents(
   activities: readonly ActivityItem[],
 ): ActivityItem[] {
   return activities.filter((a) => CFO_EVENT_TYPES.has(a.action_type))
-}
-
-interface BudgetCardContext {
-  readonly overview: OverviewMetrics
-  readonly budgetConfig: BudgetConfig | null
-  readonly forecast: ForecastResponse | null
-  readonly currency: string | undefined
-}
-
-function _buildSpendCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const { overview, currency } = ctx
-  const totalMonthly = ctx.budgetConfig?.total_monthly ?? 0
-  const hasBudget = totalMonthly > 0
-  return {
-    label: 'SPEND THIS PERIOD',
-    value: formatCurrency(overview.total_cost, currency),
-    sparklineData: overview.cost_7d_trend.map((p) => p.value),
-    change: computeSpendTrend(overview.cost_7d_trend),
-    ...(hasBudget && {
-      progress: { current: overview.total_cost, total: totalMonthly },
-      subText: `of ${formatCurrency(totalMonthly, currency)} budget`,
-    }),
-  }
-}
-
-function _buildRemainingCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const { overview, currency } = ctx
-  const remainingPct = Math.round(Math.max(0, 100 - overview.budget_used_percent))
-  return {
-    label: 'BUDGET REMAINING',
-    value: formatCurrency(overview.budget_remaining, currency),
-    subText: `${remainingPct}% of budget`,
-  }
-}
-
-function _buildAvgDayCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  return {
-    label: 'AVG DAILY SPEND',
-    value: formatCurrency(ctx.forecast?.avg_daily_spend ?? 0, ctx.currency),
-  }
-}
-
-/**
- * Pick the sub-text line for the "days until exhausted" card. When the
- * forecast knows the exhaustion horizon we render its calendar date;
- * otherwise we fall back to the next budget-reset countdown.
- */
-function _daysLeftSubText(ctx: BudgetCardContext): string | undefined {
-  const days = ctx.forecast?.days_until_exhausted
-  if (days != null) {
-    return computeExhaustionDate(days) ?? undefined
-  }
-  if (ctx.budgetConfig === null) return undefined
-  return `Resets in ${daysUntilBudgetReset(ctx.budgetConfig.reset_day)} days`
-}
-
-function _buildDaysLeftCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const days = ctx.forecast?.days_until_exhausted
-  return {
-    label: 'DAYS UNTIL EXHAUSTED',
-    value: days != null ? String(days) : 'N/A',
-    subText: _daysLeftSubText(ctx),
-  }
-}
-
-/**
- * Compute metric card data for the Budget page header.
- *
- * Returns an array of 4 card definitions matching the MetricCard props shape.
- */
-export function computeBudgetMetricCards(
-  overview: OverviewMetrics,
-  budgetConfig: BudgetConfig | null,
-  forecast: ForecastResponse | null,
-): BudgetMetricCardData[] {
-  const ctx: BudgetCardContext = {
-    overview,
-    budgetConfig,
-    forecast,
-    currency: overview.currency,
-  }
-  return [
-    _buildSpendCard(ctx),
-    _buildRemainingCard(ctx),
-    _buildAvgDayCard(ctx),
-    _buildDaysLeftCard(ctx),
-  ]
 }
 
 // ── Pack-Apply Budget Preview ─────────────────────────────

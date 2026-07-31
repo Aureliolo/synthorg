@@ -16,7 +16,6 @@ from synthorg.api.controllers._memory_health import (
     resolve_memory_health,
 )
 from synthorg.api.state import AppState
-from synthorg.backup.state import BackupStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_HEALTH_CHECK
@@ -91,33 +90,6 @@ async def probe_persistence(app_state: AppState) -> bool | None:
             API_HEALTH_CHECK,
             component="persistence",
             error="persistence expected but no backend is connected",
-        )
-        return False
-    return None
-
-
-def probe_backup(app_state: AppState) -> bool | None:
-    """Report whether the backup service is wired, without probing it.
-
-    Synchronous and outside the probe fan-out because there is nothing to
-    call: the question is whether construction succeeded at boot, which the
-    slice already records. Mirrors :func:`probe_persistence`'s
-    expected-but-absent distinction so a service that failed to build reads
-    as ``False`` rather than being indistinguishable from a deliberately
-    backup-less run.
-
-    Returns:
-        ``True`` when wired, ``False`` when attempted and absent, ``None``
-        when backups were never attempted for this boot.
-    """
-    slice_ = app_state.slice(BackupStateSlice)
-    if slice_.service is not None:
-        return True
-    if slice_.expected:
-        logger.warning(
-            API_HEALTH_CHECK,
-            component="backup",
-            error="backup service expected but was never wired",
         )
         return False
     return None

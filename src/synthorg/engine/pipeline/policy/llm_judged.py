@@ -16,7 +16,6 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import RoutingVerdict
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.prompt_safety import (
@@ -117,7 +116,6 @@ class LlmJudgedRoutingPolicy:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
                 task_id=str(task.id),
                 # Per-task pipeline routing, not a system prompt class.
                 purpose=None,

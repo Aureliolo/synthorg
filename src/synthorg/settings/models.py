@@ -348,6 +348,24 @@ class SettingValue(BaseModel):
     )
 
 
+class PendingRestartSetting(BaseModel):
+    """A restart-required setting written since the process last booted.
+
+    Attributes:
+        namespace: Setting namespace.
+        key: Setting key within the namespace.
+        description: Human-readable description of what the setting does.
+        updated_at: ISO 8601 timestamp of the write that is not in effect yet.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    namespace: SettingNamespace = Field(description="Setting namespace")
+    key: NotBlankStr = Field(description="Setting key within namespace")
+    description: NotBlankStr = Field(description="What the setting does")
+    updated_at: NotBlankStr = Field(description="ISO 8601 timestamp of the write")
+
+
 class SettingEntry(BaseModel):
     """Combined view of a setting definition and its resolved value.
 

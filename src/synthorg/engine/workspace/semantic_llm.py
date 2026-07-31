@@ -17,7 +17,6 @@ from synthorg.budget.call_category import LLMCallCategory
 # evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
 from synthorg.engine.workspace.models import (
     MergeConflict,
@@ -242,8 +241,6 @@ class LlmSemanticAnalyzer:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=NotBlankStr(f"system:workspace:{workspace.workspace_id}"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

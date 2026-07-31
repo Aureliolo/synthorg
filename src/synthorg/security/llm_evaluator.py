@@ -36,7 +36,6 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.config.schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TOOL_ARGUMENTS,
     untrusted_content_directive,
@@ -249,24 +248,15 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
             ``SecurityVerdict`` (from error policy) on timeout/failure.
         """
         messages = self._build_messages(context)
-        # Per-task task_id when the calling context carries one so
-        # cost rollups split per evaluated task instead of collapsing
-        # every security evaluation into one synthetic bucket.  Falls
-        # back to the synthetic id for callers that don't set
-        # ``context.task_id`` (rare -- most paths attribute through).
-        scope_task_id = (
-            context.task_id
-            if context.task_id is not None
-            else NotBlankStr("system:security:llm_evaluator")
-        )
-        scope_agent_id = (
-            context.agent_id if context.agent_id is not None else NotBlankStr("system")
-        )
+        # Attribute through to the evaluated task and agent when the calling
+        # context carries them, so cost rollups split per evaluated task. A
+        # caller that sets neither leaves both unset: the evaluation still
+        # belongs to no task, and prompt_class_id says what it was.
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=scope_agent_id,
-                task_id=scope_task_id,
+                agent_id=context.agent_id,
+                task_id=context.task_id,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

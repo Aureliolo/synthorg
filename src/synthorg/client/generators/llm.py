@@ -122,15 +122,8 @@ class LLMGenerator:
             response cannot be parsed into valid requirements.
         """
         messages = self._build_prompt(context)
-        # Per-project task_id so cost rollups attribute each
-        # requirement-generation batch to the project being simulated
-        # rather than collapsing every client-sim run into one bucket.
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
-            agent_id=NotBlankStr("system"),
-            task_id=NotBlankStr(
-                f"system:client:requirement_generator:{context.project_id}"
-            ),
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
             project_id=context.project_id,

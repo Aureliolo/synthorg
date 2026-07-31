@@ -15,11 +15,9 @@ The scope is async-safe: Python :mod:`contextvars` propagate per
 """
 
 import asyncio
-import math
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from datetime import UTC, datetime
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -34,6 +32,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 # when downstream tooling evaluates type hints. The chokepoint depends on
 # the record/aggregate Protocol surface, never the concrete ``CostTracker``.
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -42,8 +41,14 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_COST_FAILED,
     PROVIDER_COST_RECORDED,
+    PROVIDER_COST_RECOVERED,
     PROVIDER_COST_SKIPPED,
     PROVIDER_PROMPT_PURPOSE_INVOKED,
+)
+from synthorg.providers._cost_record_builder import (
+    build_cost_record,
+    build_cost_record_from_usage,
+    is_zero_usage,
 )
 from synthorg.providers.models import (
     CompletionResponse,
@@ -72,8 +77,14 @@ class CostRecordingContext(BaseModel):
     )
 
     cost_tracker: CostTrackerProtocol = Field(description="CostTracker reference")
-    agent_id: NotBlankStr = Field(description="Agent attribution")
-    task_id: NotBlankStr = Field(description="Task attribution")
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning agent; None for work no agent owns",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning task; None for work that is not a task",
+    )
     project_id: NotBlankStr | None = Field(
         default=None,
         description="Optional project attribution",
@@ -85,6 +96,10 @@ class CostRecordingContext(BaseModel):
     call_category: LLMCallCategory = Field(description="LLM call category")
     currency: CurrencyCode = Field(
         description="ISO 4217 currency for emitted CostRecord",
+    )
+    clock: Clock = Field(
+        default_factory=SystemClock,
+        description="Time source the emitted CostRecord is stamped from",
     )
 
     @field_validator("cost_tracker", mode="before")
@@ -122,6 +137,19 @@ class CostRecordingContext(BaseModel):
 # leaked tasks if the tracker hangs indefinitely.
 _COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
 
+# Dropping one cost record is a blip worth a WARNING; dropping them in a run
+# is a standing fault that under-reports the budget for as long as it lasts,
+# and some causes never resolve on their own (a tracker whose configured
+# currency disagrees with the record's rejects every write, deterministically).
+# Without a streak count those are indistinguishable, so a permanent fault
+# reads as a series of unrelated blips and nothing ever raises its voice.
+COST_FAILURE_ESCALATION_STREAK: Final[int] = 3
+
+# Module-level rather than per-context: the question an operator needs
+# answered is whether cost recording as a whole is failing, and a per-call
+# context is gone before the second failure happens.
+_consecutive_cost_failures: int = 0
+
 
 # Strong references to in-flight background record tasks live on the
 # active :class:`CostTracker` (one per :class:`AppState`, fresh per
@@ -133,6 +161,50 @@ _cost_context: ContextVar[CostRecordingContext | None] = ContextVar(
     "synthorg_cost_recording_context",
     default=None,
 )
+
+
+def consecutive_cost_failures() -> int:
+    """How many cost records have failed to land back to back.
+
+    Returns:
+        The current failure streak; ``0`` once a record lands.
+    """
+    return _consecutive_cost_failures
+
+
+def _note_cost_failure(**fields: object) -> None:
+    """Record one failed cost write, escalating once it becomes a pattern.
+
+    A single dropped record is best-effort noise. A run of them means the
+    budget is under-reporting continuously, which is the failure this whole
+    path exists to prevent, so past the streak threshold it stops being a
+    WARNING nobody reads and becomes an ERROR.
+    """
+    global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
+    _consecutive_cost_failures += 1
+    if _consecutive_cost_failures >= COST_FAILURE_ESCALATION_STREAK:
+        logger.error(
+            PROVIDER_COST_FAILED,
+            consecutive_failures=_consecutive_cost_failures,
+            **fields,
+        )
+        return
+    logger.warning(
+        PROVIDER_COST_FAILED,
+        consecutive_failures=_consecutive_cost_failures,
+        **fields,
+    )
+
+
+def _note_cost_success() -> None:
+    """Clear the failure streak, announcing recovery only if there was one."""
+    global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
+    if _consecutive_cost_failures >= COST_FAILURE_ESCALATION_STREAK:
+        logger.info(
+            PROVIDER_COST_RECOVERED,
+            dropped_records=_consecutive_cost_failures,
+        )
+    _consecutive_cost_failures = 0
 
 
 def current_cost_context() -> CostRecordingContext | None:
@@ -166,12 +238,13 @@ def _bound_cost_context(value: CostRecordingContext | None) -> Iterator[None]:
 async def cost_recording_scope(
     *,
     cost_tracker: CostTrackerProtocol | None,
-    agent_id: NotBlankStr,
-    task_id: NotBlankStr,
+    agent_id: NotBlankStr | None = None,
+    task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
     purpose: PromptPurposeId | None = None,
     call_category: LLMCallCategory,
     currency: CurrencyCode | None = None,
+    clock: Clock | None = None,
 ) -> AsyncIterator[None]:
     """Open a cost-recording scope for the current asyncio task.
 
@@ -190,8 +263,11 @@ async def cost_recording_scope(
             the scope a no-op (suppresses recording for the duration
             of the block, including nested calls under a wired outer
             scope).
-        agent_id: Agent attribution for the emitted record.
-        task_id: Task attribution for the emitted record.
+        agent_id: Owning agent, or ``None`` for work no agent owns.
+        task_id: Owning task, or ``None`` for work that is not a task.
+            ``task_id`` is a foreign key into ``tasks``, so subsystem work
+            leaves both unset rather than inventing an id the table cannot
+            resolve; ``purpose`` is what identifies such a call.
         project_id: Optional project attribution.
         purpose: Optional prompt-purpose attribution stamped on the
             emitted record's ``prompt_class_id`` so spend can be sliced by
@@ -202,6 +278,10 @@ async def cost_recording_scope(
             when ``cost_tracker`` is provided; when ``None`` the
             tracker's ``budget_config.currency`` (or
             :data:`DEFAULT_CURRENCY`) is used.
+        clock: Time source the emitted record is stamped from. ``None``
+            takes the system clock; a test injects a ``FakeClock`` so the
+            recorded timestamp is a value it chose rather than whenever the
+            assertion happened to run.
     """
     if purpose is not None:
         # Coerce up front so the trackerless path shares the tracked path's
@@ -232,6 +312,7 @@ async def cost_recording_scope(
         prompt_class_id=purpose,
         call_category=call_category,
         currency=resolved_currency,
+        **({"clock": clock} if clock is not None else {}),
     )
     with _bound_cost_context(ctx):
         yield
@@ -258,131 +339,6 @@ def resolve_currency(cost_tracker: CostTrackerProtocol) -> CurrencyCode:
     return CurrencyCode(DEFAULT_CURRENCY)
 
 
-def _is_zero_usage(usage: TokenUsage) -> bool:
-    """True when a response has zero cost AND zero tokens.
-
-    Returns:
-        ``True`` when the cost and both token counts of *usage* are all
-        exactly zero; ``False`` otherwise.
-    """
-    return usage.cost == 0.0 and usage.input_tokens == 0 and usage.output_tokens == 0
-
-
-def _extract_provider_metadata(
-    metadata: Mapping[str, object] | None,
-) -> tuple[float | None, bool | None, int | None, str | None]:
-    """Extract typed ``_synthorg_*`` metadata fields from a response.
-
-    Returns a tuple of (latency_ms, cache_hit, retry_count, retry_reason)
-    with each value coerced to its expected type or ``None`` when absent
-    or mistyped.  Mirrors the extraction in
-    :func:`synthorg.engine.loop_helpers.make_turn_record`.
-
-    Returns:
-        A ``(latency_ms, cache_hit, retry_count, retry_reason)`` tuple,
-        each field coerced to its typed value or ``None`` when absent or
-        of unexpected type.
-    """
-    md = metadata or {}
-    latency_raw = md.get("_synthorg_latency_ms")
-    cache_raw = md.get("_synthorg_cache_hit")
-    retry_count_raw = md.get("_synthorg_retry_count")
-    retry_reason_raw = md.get("_synthorg_retry_reason")
-
-    # Reject NaN/Inf and ``bool`` at the boundary so a misbehaving
-    # driver can't poison the recorded numeric fields -- ``bool`` is
-    # an ``int`` subclass so ``isinstance(True, int)`` is True; an
-    # explicit ``not isinstance(..., bool)`` guard keeps booleans
-    # from being silently coerced to ``1.0`` / ``1``.  ``CostRecord``
-    # carries ``allow_inf_nan=False`` and would raise on validation,
-    # which the chokepoint would swallow as
-    # "cost_record_construction_failed" -- filtering here turns a
-    # corrupt field into a missing one instead of a dropped record.
-    if (
-        isinstance(latency_raw, (int, float))
-        and not isinstance(latency_raw, bool)
-        and math.isfinite(latency_raw)
-    ):
-        latency_ms: float | None = float(latency_raw)
-    else:
-        latency_ms = None
-    cache_hit = cache_raw if isinstance(cache_raw, bool) else None
-    if isinstance(retry_count_raw, int) and not isinstance(retry_count_raw, bool):
-        retry_count: int | None = retry_count_raw
-    else:
-        retry_count = None
-    retry_reason = retry_reason_raw if isinstance(retry_reason_raw, str) else None
-    return latency_ms, cache_hit, retry_count, retry_reason
-
-
-# FinishReason values that represent a non-successful terminal outcome
-# from the provider.  ``ERROR`` is the only enum member that signals an
-# unsuccessful completion the chokepoint can observe; ``STOP``,
-# ``MAX_TOKENS``, ``TOOL_USE``, and ``CONTENT_FILTER`` are all legitimate
-# terminal reasons whose cost should still record as success.
-_NON_SUCCESS_FINISH_REASONS: Final[frozenset[str]] = frozenset({"error"})
-
-
-def _is_successful_finish(finish_reason: object) -> bool:
-    """Derive ``CostRecord.success`` from the provider's finish reason.
-
-    The chokepoint only fires after ``provider.complete()`` returns
-    without raising, so most calls land here as successes.  A response
-    that returns normally but carries ``FinishReason.ERROR`` indicates
-    a model-side failure (refusal, content-filter trip, internal error
-    surfaced as an error finish) -- record the cost (we still paid for
-    the tokens) but mark the record as ``success=False`` so analytics
-    can break out failed-but-billed calls.
-
-    Returns:
-        ``True`` when the finish reason is absent or any value other than
-        ``ERROR``; ``False`` for an ``ERROR`` finish.
-    """
-    if finish_reason is None:
-        return True
-    value = getattr(finish_reason, "value", finish_reason)
-    return str(value) not in _NON_SUCCESS_FINISH_REASONS
-
-
-def _build_cost_record(
-    ctx: CostRecordingContext,
-    response: CompletionResponse,
-    *,
-    model: str,
-    provider: str,
-) -> CostRecord:
-    """Construct a CostRecord from the active context + response.
-
-    Returns:
-        A ``CostRecord`` populated from the active context, the response
-        usage/cost, and the extracted provider metadata.
-    """
-    latency_ms, cache_hit, retry_count, retry_reason = _extract_provider_metadata(
-        response.provider_metadata,
-    )
-    usage = response.usage
-    return CostRecord(
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        project_id=ctx.project_id,
-        prompt_class_id=ctx.prompt_class_id,
-        provider=NotBlankStr(provider),
-        model=NotBlankStr(model),
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cost=usage.cost,
-        currency=ctx.currency,
-        timestamp=datetime.now(UTC),
-        call_category=ctx.call_category,
-        latency_ms=latency_ms,
-        cache_hit=cache_hit,
-        retry_count=retry_count,
-        retry_reason=retry_reason,
-        finish_reason=response.finish_reason,
-        success=_is_successful_finish(response.finish_reason),
-    )
-
-
 async def _skip_build_and_submit(
     ctx: CostRecordingContext,
     usage: TokenUsage,
@@ -395,14 +351,16 @@ async def _skip_build_and_submit(
 
     Shared by the completion and streaming emitters. A zero-cost AND
     zero-token call is skipped (free-tier no-op). A build failure is
-    logged at WARNING and swallowed -- the provider call's user-visible
-    result must not depend on recording success. Otherwise the record is
+    logged and swallowed -- the provider call's user-visible result must
+    not depend on recording success -- at WARNING while it looks like a
+    blip, escalating to ERROR once ``COST_FAILURE_ESCALATION_STREAK``
+    consecutive failures make it a pattern. Otherwise the record is
     submitted on a tracked background task so a slow tracker cannot add
     user-visible latency; the task is bounded and owned by the
     per-instance tracker (GC-safe, xdist-isolated). ``MemoryError`` /
     ``RecursionError`` propagate.
     """
-    if _is_zero_usage(usage):
+    if is_zero_usage(usage):
         logger.debug(
             PROVIDER_COST_SKIPPED,
             agent_id=ctx.agent_id,
@@ -417,8 +375,7 @@ async def _skip_build_and_submit(
         record = build()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -468,48 +425,7 @@ async def emit_cost_record_from_context(
         response.usage,
         model=model,
         provider=provider,
-        build=lambda: _build_cost_record(ctx, response, model=model, provider=provider),
-    )
-
-
-def _build_cost_record_from_usage(
-    ctx: CostRecordingContext,
-    usage: TokenUsage,
-    *,
-    model: str,
-    provider: str,
-    finish_reason: FinishReason,
-    call_category: LLMCallCategory | None = None,
-) -> CostRecord:
-    """Construct a CostRecord from a bare usage record.
-
-    Used by the streaming path (terminal ``USAGE`` chunk) and the
-    image-generation path (per-image cost, zero tokens). ``call_category``
-    overrides ``ctx.call_category`` so a non-token modality is categorised
-    on the record regardless of the ambient scope.
-
-    Returns:
-        A ``CostRecord`` populated from the active context + usage.
-    """
-    return CostRecord(
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        project_id=ctx.project_id,
-        prompt_class_id=ctx.prompt_class_id,
-        provider=NotBlankStr(provider),
-        model=NotBlankStr(model),
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        cost=usage.cost,
-        currency=ctx.currency,
-        timestamp=datetime.now(UTC),
-        call_category=call_category if call_category is not None else ctx.call_category,
-        latency_ms=None,
-        cache_hit=None,
-        retry_count=None,
-        retry_reason=None,
-        finish_reason=finish_reason,
-        success=_is_successful_finish(finish_reason),
+        build=lambda: build_cost_record(ctx, response, model=model, provider=provider),
     )
 
 
@@ -536,7 +452,7 @@ async def emit_cost_record_from_usage(
         usage,
         model=model,
         provider=provider,
-        build=lambda: _build_cost_record_from_usage(
+        build=lambda: build_cost_record_from_usage(
             ctx,
             usage,
             model=model,
@@ -574,8 +490,7 @@ async def _record_cost_in_background(
             timeout=_COST_RECORD_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -591,8 +506,7 @@ async def _record_cost_in_background(
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -602,6 +516,7 @@ async def _record_cost_in_background(
             reason="cost_tracker_record_failed",
         )
         return
+    _note_cost_success()
 
     # Only log success after the tracker has actually accepted the
     # record -- emitting at ``create_task`` time would produce a
@@ -624,7 +539,9 @@ async def _record_cost_in_background(
 
 
 __all__ = [
+    "COST_FAILURE_ESCALATION_STREAK",
     "CostRecordingContext",
+    "consecutive_cost_failures",
     "cost_recording_scope",
     "current_cost_context",
     "emit_cost_record_from_context",

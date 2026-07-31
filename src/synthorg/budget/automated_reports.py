@@ -178,7 +178,10 @@ class AutomatedReportService:
             start=start,
             end=end,
         )
-        task_ids = {r.task_id for r in records}
+        # Unowned subsystem spend carries no task_id. Counting it would fold
+        # every such call into one phantom task that was neither assigned nor
+        # completed, inflating both totals.
+        task_ids = {r.task_id for r in records if r.task_id is not None}
         return TaskCompletionReport(
             total_assigned=len(task_ids),
             total_completed=len(task_ids),
@@ -401,8 +404,12 @@ def _build_performance_report(
     # input BEFORE accumulating so the per-agent ``total_cost`` cannot
     # silently blend two currencies under one label.
     assert_currencies_match(r.currency for r in cost_records)
+    # Agent-owned spend only: subsystem work has no agent to attribute a
+    # performance snapshot to.
     cost_by_agent: dict[str, float] = defaultdict(float)
     for r in cost_records:
+        if r.agent_id is None:
+            continue
         cost_by_agent[r.agent_id] += r.cost
     risk_by_agent: dict[str, list[float]] = defaultdict(list)
     for rr in risk_records:

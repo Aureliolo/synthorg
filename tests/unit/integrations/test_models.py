@@ -1,5 +1,7 @@
 """Unit tests for integration domain models."""
 
+import math
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,6 +12,7 @@ from synthorg.integrations.config import IntegrationsConfig
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     OAuthState,
@@ -117,6 +120,33 @@ class TestConnectionModel:
         assert len(conn.secret_refs) == 1
         assert "secret_refs" not in conn.model_dump()
         assert "secret_refs" not in conn.model_dump(mode="json")
+
+
+@pytest.mark.unit
+class TestConnectionHealthModel:
+    """A verdict has to be a number a reader can get back out again."""
+
+    @pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda v: ConnectionHealth(latency_ms=v),
+            lambda v: ConnectionHealth(retry_after_seconds=v),
+        ],
+        ids=["latency_ms", "retry_after_seconds"],
+    )
+    def test_a_non_finite_measurement_is_refused(
+        self,
+        build: Callable[[float], ConnectionHealth],
+        value: float,
+    ) -> None:
+        # The columns behind these carry a matching upper bound, because a
+        # non-finite value that reached one would make the whole connection
+        # row unreadable rather than merely reporting a strange number. An
+        # infinite retry_after would additionally park the connection: it is
+        # honoured as a floor on the recheck interval.
+        with pytest.raises(ValidationError):
+            build(value)
 
 
 @pytest.mark.unit

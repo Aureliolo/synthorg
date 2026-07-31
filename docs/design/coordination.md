@@ -159,6 +159,35 @@ when an agent waits for human approval; see
 [Approval Timeout Policy](security.md#approval-timeout-policy) for the
 agent-driven parking mechanism.
 
+### Operator-Triggered Restart
+
+Some settings are read once at boot and are invisible to the live settings
+dispatcher, so saving one leaves it saved but not in effect. Making the
+operator leave the product to apply their own change is the failure this
+closes: `POST /meta/restart` asks the process to restart itself, and
+`GET /meta/restart` reports what a restart would apply.
+
+Three properties make it safe rather than merely convenient:
+
+- **It reuses this protocol, it does not bypass it.** The endpoint raises
+  `SIGTERM` against its own PID, so the cooperative drain above runs exactly
+  as it does for a `docker stop`. Exiting outright would skip every stop hook
+  and lose whatever they flush.
+- **It refuses when nothing would bring the process back.** A process with no
+  supervisor that stops itself is simply gone, so the endpoint returns 409
+  unless `api.restart_supervised` says something will restart it. That setting
+  is announced by the deployment (the compose file the CLI generates sets it
+  beside its own `restart:` policy), never inferred, and defaults to false so
+  an unknown deployment refuses rather than strands itself.
+- **Pending state is derived, never remembered.** The status endpoint reads
+  persisted setting writes newer than this process's boot time, so the notice
+  survives a reload, reads the same for every operator, and clears itself when
+  the process actually comes back rather than needing something to clear it.
+
+Reading the pending set needs only read access, because the notice belongs on
+pages several roles can open; performing the restart is CEO/SYSTEM and rate
+limited.
+
 ### Strategy 1: Cooperative with Timeout (Default / MVP)
 
 The engine sets a shutdown event, stops accepting new tasks, and gives in-flight

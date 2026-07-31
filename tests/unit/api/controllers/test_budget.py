@@ -136,7 +136,10 @@ class TestPromptClassBreakdownEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         ids = [row["prompt_class_id"] for row in body["data"]["rows"]]
-        assert ids == ["system:cos:chat", "system:memory:rerank"]
+        # A call wrapping no system prompt gets its own bucket rather than
+        # being dropped, so the breakdown still sums to the headline total.
+        assert ids == [None, "system:cos:chat", "system:memory:rerank"]
+        assert body["data"]["rows"][0]["total_cost"] == pytest.approx(0.99)
 
     async def test_breakdown_requires_read_access(
         self, async_test_client: LoopAsyncClient

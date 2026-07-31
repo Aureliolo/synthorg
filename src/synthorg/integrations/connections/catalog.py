@@ -35,6 +35,7 @@ from synthorg.integrations.connections.models import (
     ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
+    WebhookIngestState,
 )
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
@@ -365,12 +366,21 @@ class ConnectionCatalog(
         *,
         status: ConnectionStatus,
         checked_at: datetime,
+        detail: str | None = None,
+        latency_ms: float | None = None,
+        webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE,
+        retry_after_seconds: float | None = None,
     ) -> Connection:
         """Update a connection's health status.
 
+        The whole verdict is persisted, not just the headline: a reader that
+        serves this snapshot instead of re-probing (the aggregate-health
+        endpoint) must be able to say why a connection is failing, not merely
+        that it is.
+
         Returns:
             The updated ``Connection`` row with the new health snapshot
-            (status + check timestamp) persisted.
+            persisted.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -382,6 +392,10 @@ class ConnectionCatalog(
                     "health": ConnectionHealth(
                         status=status,
                         last_check_at=checked_at,
+                        detail=detail,
+                        latency_ms=latency_ms,
+                        webhook_ingest=webhook_ingest,
+                        retry_after_seconds=retry_after_seconds,
                     ),
                     "updated_at": datetime.now(UTC),
                 },

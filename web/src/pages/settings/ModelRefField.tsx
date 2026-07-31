@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import type { EmbedderProbeResponse } from '@/api/types/system'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 import type { SelectOptionGroup } from '@/components/ui/select-field'
 import { useProvidersStore } from '@/stores/providers'
@@ -11,6 +12,7 @@ import {
 } from '@/utils/builtin-embedder'
 import { decodeModelRef, encodeModelRef } from '@/utils/model-ref'
 import type { ProviderConfig } from '@/api/types/providers'
+import { useEmbedderProbe } from './useEmbedderProbe'
 
 /**
  * The one MODEL_REF setting whose binding no provider serves. Without it here
@@ -19,6 +21,18 @@ import type { ProviderConfig } from '@/api/types/providers'
  * it again afterwards.
  */
 const EMBEDDER_SETTING_KEY = 'memory/embedder_model'
+
+// Says that a wait is expected rather than leaving a spinner to read as a
+// hang: a model pulled moments ago has to be loaded before it can answer,
+// which took 16 seconds locally against a fraction of a second once warm.
+const PROBING_HINT =
+  'Measuring the vector width... a model that was just pulled has to load first.'
+
+// The measurement failing is not the same as a model being unusable, and the
+// commonest cause is the one the operator can simply retry past.
+const PROBE_FAILED_HINT =
+  'Could not measure the vector width: the model did not answer in time. ' +
+  'Select it again to retry; a first load can outlast the probe deadline.'
 
 const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
   {
@@ -34,6 +48,67 @@ const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
     ],
   },
 ]
+
+/**
+ * What a measured width means for the store, in the operator's terms.
+ *
+ * States the mechanical consequence and stops: which embedder to run is the
+ * operator's choice, and the memory design is explicit that nothing ranks or
+ * recommends one for them.
+ *
+ * @returns The sentence to show under the picker.
+ */
+function widthVerdict(probe: EmbedderProbeResponse): string {
+  const width = `${probe.dims} dimensions`
+  if (probe.index_support === 'indexed') {
+    return `${width}: indexed, so recall stays fast as memory grows.`
+  }
+  if (probe.index_support === 'indexed_half_precision') {
+    return (
+      `${width}: indexed at half precision, because full precision indexes ` +
+      `stop at ${probe.vector_ceiling}. Slightly approximate, still fast.`
+    )
+  }
+  if (probe.index_support === 'exact_scan') {
+    return (
+      `${width}: too wide to index (the ceiling is ${probe.halfvec_ceiling}), ` +
+      'so every search reads every stored memory. Correct, but slower the ' +
+      'more the organisation remembers.'
+    )
+  }
+  return `${width}: wider than this store can hold at all.`
+}
+
+/**
+ * Help text for the current state of the binding.
+ *
+ * The unbound case earns its own sentence because the generic stale-value note
+ * says only that the value is unavailable, which reads as a model that went
+ * away. A bare model id is a different fault: the model may well be there, but
+ * the reference names no provider, so nothing can resolve it and the value is
+ * refused at write time. An operator told "unavailable" would go looking for a
+ * missing model.
+ *
+ * @returns The hint to render, or `undefined` when the binding needs no note.
+ */
+function fieldHint({
+  isEmbedder,
+  provider,
+  modelId,
+}: {
+  isEmbedder: boolean
+  provider: string
+  modelId: string
+}): string | undefined {
+  if (modelId !== '' && provider === '') {
+    return (
+      `Stored as "${modelId}" with no provider, so nothing can resolve it and ` +
+      'memory stays off. Pick the model under the provider that serves it.'
+    )
+  }
+  if (isEmbedder && isBuiltinEmbedderProvider(provider)) return BUILTIN_EMBEDDER_HINT
+  return undefined
+}
 
 interface ModelRefFieldProps {
   value: string
@@ -71,22 +146,38 @@ export function ModelRefField({
 
   const { provider, modelId } = useMemo(() => decodeModelRef(value), [value])
   const isEmbedder = settingKey === EMBEDDER_SETTING_KEY
+  const { probe, error: probeError, probing, start } = useEmbedderProbe(
+    PROBE_FAILED_HINT,
+    value,
+  )
+
+  const handleChange = useCallback(
+    (nextProvider: string, nextModelId: string) => {
+      const next = encodeModelRef(nextProvider, nextModelId)
+      onChange(next)
+      const measurable = isEmbedder && !isBuiltinEmbedderProvider(nextProvider)
+      start(next, measurable ? { provider: nextProvider, modelId: nextModelId } : null)
+    },
+    [onChange, isEmbedder, start],
+  )
 
   return (
     <AgentModelPicker
       currentProvider={provider}
       currentModelId={modelId}
       providers={providerMap}
-      onChange={(nextProvider, nextModelId) =>
-        onChange(encodeModelRef(nextProvider, nextModelId))
-      }
+      onChange={handleChange}
       disabled={disabled}
       hideLabel
+      kind={isEmbedder ? 'embedding' : 'chat'}
       extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}
       hint={
-        isEmbedder && isBuiltinEmbedderProvider(provider)
-          ? BUILTIN_EMBEDDER_HINT
-          : undefined
+        probing
+          ? PROBING_HINT
+          : (probeError
+              ?? (probe !== null
+                    ? widthVerdict(probe)
+                    : fieldHint({ isEmbedder, provider, modelId })))
       }
     />
   )

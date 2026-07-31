@@ -40,8 +40,6 @@ _SYSTEM_PROMPT = (
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
-# Framework-overhead attribution for the compaction summary call.
-_SUMMARY_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system")
 
 # Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
 # directly-constructed summariser matches the wired path, which sources
@@ -145,8 +143,6 @@ class LLMSummarizer:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_SUMMARY_AGENT_ID,
-                task_id=NotBlankStr(f"compaction:{execution_id}"),
                 # Context-budget compaction is not a registered prompt class.
                 purpose=None,
                 call_category=LLMCallCategory.SYSTEM,

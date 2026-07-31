@@ -16,6 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
+from datetime import datetime
 from typing import Final, cast
 
 from synthorg.api.state_bridge_config import BridgeConfigState
@@ -78,6 +79,7 @@ class AppState(AppStateSliceMixin):
     config: RootConfig
     clock: Clock
     startup_time: float
+    boot_at: datetime
     bridge_config: BridgeConfigState
     per_op_limits: PerOpLimitsState
     request_locks: RequestLockRegistry
@@ -90,6 +92,7 @@ class AppState(AppStateSliceMixin):
         config: RootConfig,
         clock: Clock | None = None,
         startup_time: float | None = None,
+        boot_at: datetime | None = None,
     ) -> None:
         """Build the composition root with its identity, owners, and slices.
 
@@ -97,6 +100,7 @@ class AppState(AppStateSliceMixin):
             config: The resolved root configuration.
             clock: Clock seam (``SystemClock`` default; tests inject ``FakeClock``).
             startup_time: Monotonic uptime baseline (defaults to ``clock.monotonic()``).
+            boot_at: Wall-clock boot instant (defaults to ``clock.now()``).
         """
         self.config = config
         # Clock seam: controllers/services read time via ``app_state.clock``
@@ -105,6 +109,11 @@ class AppState(AppStateSliceMixin):
         self.startup_time = (
             startup_time if startup_time is not None else self.clock.monotonic()
         )
+        # Separate from ``startup_time`` because the two answer different
+        # questions and neither derives cleanly from the other: monotonic time
+        # measures uptime but cannot be compared against a persisted
+        # timestamp, which is what "written since this process booted" needs.
+        self.boot_at = boot_at if boot_at is not None else self.clock.now()
         # Background-task sets for the objective / brownfield entry paths and
         # the fire-and-forget plan-review reply.
         self._objective_background_tasks: set[asyncio.Task[None]] = set()

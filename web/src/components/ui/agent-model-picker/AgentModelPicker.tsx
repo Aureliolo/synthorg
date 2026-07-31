@@ -26,7 +26,18 @@ export interface AgentModelPickerProps {
   extraGroups?: readonly SelectOptionGroup[] | undefined
   /** Help text under the control, e.g. a warning about the current choice. */
   hint?: string | undefined
+  /**
+   * Which half of the catalogue to offer. Defaults to `chat`.
+   *
+   * An embedding model returns vectors and cannot hold a conversation; a chat
+   * model cannot produce an embedding. Listing the whole catalogue either way
+   * offers every operator a set of choices that cannot work in the slot they
+   * are filling, and the failure only surfaces at dispatch.
+   */
+  kind?: ModelKind | undefined
 }
+
+export type ModelKind = 'chat' | 'embedding'
 
 const OTHER_FAMILY = 'Other'
 const TOKENS_PER_K = 1000
@@ -93,11 +104,13 @@ function modelOption(providerName: string, model: ProviderModelConfig): SelectOp
  */
 function buildModelGroups(
   providers: Readonly<Record<string, ProviderConfig>>,
+  kind: ModelKind,
 ): SelectOptionGroup[] {
   const groups: SelectOptionGroup[] = []
   for (const [providerName, config] of Object.entries(providers)) {
     const byFamily = new Map<string, SelectOption[]>()
     for (const model of config.models) {
+      if (model.metadata.supports_embeddings !== (kind === 'embedding')) continue
       const family = model.metadata.family ?? OTHER_FAMILY
       const bucket = byFamily.get(family) ?? []
       bucket.push(modelOption(providerName, model))
@@ -125,17 +138,27 @@ export function AgentModelPicker({
   hideLabel,
   extraGroups,
   hint,
+  kind = 'chat',
 }: AgentModelPickerProps) {
-  const providerGroups = useMemo(() => buildModelGroups(providers), [providers])
+  const providerGroups = useMemo(
+    () => buildModelGroups(providers, kind),
+    [providers, kind],
+  )
   const groups = useMemo(
     () => [...providerGroups, ...(extraGroups ?? [])],
     [providerGroups, extraGroups],
   )
   const hasModels = groups.some((g) => g.options.length > 0)
+  // A model with no provider falls through as its bare id rather than as the
+  // empty string, because the two are not the same thing and collapsing them
+  // rendered a stored-but-unbindable value identically to nothing stored: the
+  // row was badged MODIFIED while the control read "Select model...". Passed
+  // on, it lands in SelectField's stale-value path, which shows the value and
+  // says it cannot be used.
   const currentValue =
     currentProvider && currentModelId
       ? encodeModelValue(currentProvider, currentModelId)
-      : ''
+      : currentModelId
 
   return (
     <SelectField

@@ -340,7 +340,6 @@ class SupervisorRouter:
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
-            task_id=NotBlankStr("system:memory:retrieval_route"),
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
@@ -423,7 +422,6 @@ class SupervisorRouter:
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=query.agent_id,
-            task_id=NotBlankStr("system:memory:retrieval_retry"),
             purpose=self.retry_metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):

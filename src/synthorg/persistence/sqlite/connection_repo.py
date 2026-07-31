@@ -26,6 +26,7 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
     SecretRef,
+    WebhookIngestState,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.connection import (
@@ -50,7 +51,9 @@ logger = get_logger(__name__)
 _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
-    "health_status, last_health_check_at, metadata_json, "
+    "health_status, last_health_check_at, health_detail, "
+    "health_latency_ms, health_webhook_ingest, "
+    "health_retry_after_seconds, metadata_json, "
     "webhook_receipt_retention_days, sensitive, allowed_repos_json, "
     "created_at, updated_at"
 )
@@ -73,6 +76,10 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
         health_check_enabled,
         health_status,
         last_health_check_at,
+        health_detail,
+        health_latency_ms,
+        health_webhook_ingest,
+        health_retry_after_seconds,
         metadata_json,
         webhook_receipt_retention_days,
         sensitive,
@@ -107,6 +114,16 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
             last_check_at=(
                 coerce_row_timestamp(last_health_check_at)
                 if last_health_check_at
+                else None
+            ),
+            detail=health_detail,
+            latency_ms=(
+                float(health_latency_ms) if health_latency_ms is not None else None
+            ),
+            webhook_ingest=WebhookIngestState(health_webhook_ingest),
+            retry_after_seconds=(
+                float(health_retry_after_seconds)
+                if health_retry_after_seconds is not None
                 else None
             ),
         ),
@@ -172,10 +189,15 @@ class SQLiteConnectionRepository:
                         name, connection_type, auth_method, base_url,
                         secret_refs_json, rate_limit_rpm, rate_limit_concurrent,
                         health_check_enabled, health_status,
-                        last_health_check_at, metadata_json,
+                        last_health_check_at, health_detail,
+                        health_latency_ms, health_webhook_ingest,
+                        health_retry_after_seconds, metadata_json,
                         webhook_receipt_retention_days, sensitive,
                         allowed_repos_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?
+                    )
                     ON CONFLICT(name) DO UPDATE SET
                         connection_type = excluded.connection_type,
                         auth_method = excluded.auth_method,
@@ -186,6 +208,11 @@ class SQLiteConnectionRepository:
                         health_check_enabled = excluded.health_check_enabled,
                         health_status = excluded.health_status,
                         last_health_check_at = excluded.last_health_check_at,
+                        health_detail = excluded.health_detail,
+                        health_latency_ms = excluded.health_latency_ms,
+                        health_webhook_ingest = excluded.health_webhook_ingest,
+                        health_retry_after_seconds =
+                            excluded.health_retry_after_seconds,
                         metadata_json = excluded.metadata_json,
                         webhook_receipt_retention_days =
                             excluded.webhook_receipt_retention_days,
@@ -204,6 +231,10 @@ class SQLiteConnectionRepository:
                         1 if connection.health_check_enabled else 0,
                         connection.health.status.value,
                         last_health_check_at_iso,
+                        connection.health.detail,
+                        connection.health.latency_ms,
+                        connection.health.webhook_ingest.value,
+                        connection.health.retry_after_seconds,
                         metadata_json,
                         connection.webhook_receipt_retention_days,
                         1 if connection.sensitive else 0,

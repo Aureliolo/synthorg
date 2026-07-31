@@ -109,6 +109,33 @@ export const WithToolCallingDowngraded: Story = {
   },
 }
 
+export const ChatKind: Story = {
+  args: {
+    kind: 'chat',
+    providers: providersWith([
+      model('example-large-001', { family: 'example-large', supports_tools: true }),
+      // Offered by the same provider and deliberately absent from this story's
+      // list: an embedding model cannot hold a conversation.
+      model('example-embed-001', { family: 'example-embed', supports_embeddings: true }),
+    ]),
+  },
+}
+
+export const EmbeddingKind: Story = {
+  args: {
+    kind: 'embedding',
+    providers: providersWith([
+      model('example-embed-001', {
+        alias: 'embed',
+        family: 'example-embed',
+        supports_embeddings: true,
+      }),
+      model('example-embed-002', { family: 'example-embed', supports_embeddings: true }),
+      model('example-large-001', { family: 'example-large', supports_tools: true }),
+    ]),
+  },
+}
+
 export const NoModels: Story = { args: { providers: {} } }
 export const Disabled: Story = {
   args: {
