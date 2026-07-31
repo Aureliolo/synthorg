@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -55,15 +56,31 @@ function seedProviders(): void {
   useProvidersStore.setState({ providers: [provider], listLoading: false })
 }
 
+/**
+ * Host the field the way the settings page does: controlled, so a selection
+ * arrives back through `value`. Pinning `value` while accepting `onChange`
+ * would model a parent that drops every edit, which no caller does and which
+ * hides whether the field reads its own value at all.
+ */
+function EmbedderFieldHost({ initial = '' }: { initial?: string }) {
+  const [value, setValue] = useState(initial)
+  return (
+    <>
+      <ModelRefField
+        value={value}
+        onChange={setValue}
+        settingKey="memory/embedder_model"
+      />
+      <button type="button" onClick={() => setValue(initial)}>
+        Discard
+      </button>
+    </>
+  )
+}
+
 function renderEmbedderField() {
   seedProviders()
-  return render(
-    <ModelRefField
-      value=""
-      onChange={() => undefined}
-      settingKey="memory/embedder_model"
-    />,
-  )
+  return render(<EmbedderFieldHost />)
 }
 
 describe('ModelRefField embedder width', () => {
@@ -117,5 +134,26 @@ describe('ModelRefField embedder width', () => {
       expect(screen.getByText(/too wide to index/)).toBeInTheDocument()
     })
     expect(screen.getByText(/every search reads every stored memory/)).toBeInTheDocument()
+  })
+
+  it('drops the verdict when the value is reset out from under it', async () => {
+    // Discarding edits resets the row to its persisted value without going
+    // through the picker. A width measured on the model being discarded says
+    // nothing about the one that comes back.
+    renderEmbedderField()
+
+    await userEvent.selectOptions(
+      await screen.findByRole('combobox'),
+      JSON.stringify({ provider: 'example-provider', modelId: 'example-embed-001' }),
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/1024 dimensions: indexed/)).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/1024 dimensions: indexed/)).toBeNull()
+    })
   })
 })

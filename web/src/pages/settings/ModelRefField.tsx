@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createLogger } from '@/lib/logger'
-import { sanitizeForLog } from '@/utils/logging'
-import { probeEmbedder } from '@/api/endpoints/memory'
+import { useCallback, useEffect, useMemo } from 'react'
 import type { EmbedderProbeResponse } from '@/api/types/system'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 import type { SelectOptionGroup } from '@/components/ui/select-field'
@@ -15,8 +12,7 @@ import {
 } from '@/utils/builtin-embedder'
 import { decodeModelRef, encodeModelRef } from '@/utils/model-ref'
 import type { ProviderConfig } from '@/api/types/providers'
-
-const log = createLogger('settings')
+import { useEmbedderProbe } from './useEmbedderProbe'
 
 /**
  * The one MODEL_REF setting whose binding no provider serves. Without it here
@@ -150,80 +146,19 @@ export function ModelRefField({
 
   const { provider, modelId } = useMemo(() => decodeModelRef(value), [value])
   const isEmbedder = settingKey === EMBEDDER_SETTING_KEY
-  const [probe, setProbe] = useState<EmbedderProbeResponse | null>(null)
-  const [probeError, setProbeError] = useState<string | null>(null)
-  const [probing, setProbing] = useState(false)
-  const inFlightRef = useRef<AbortController | null>(null)
-  // The last value this field set itself, so the reset below can tell an
-  // operator's own selection from one imposed on it from outside.
-  const ownedValueRef = useRef<string | null>(null)
-
-  // Abandon a probe the operator has already moved on from. Without this,
-  // changing selection twice leaves both calls running, and against a local
-  // model they contend over the same cold load -- which is how three clicks
-  // turned a 16-second first load into three timed-out probes.
-  useEffect(() => () => inFlightRef.current?.abort(), [])
-
-  // A verdict describes the model it was measured on, so it cannot outlive a
-  // value that changed without going through handleChange. Discarding edits
-  // resets the row to the persisted value, which would otherwise leave the
-  // previous model's width, or its failure hint, sitting under the new one.
-  //
-  // Skipped for the selection handleChange itself just made: that path routes
-  // its own new value back through `value`, so an unguarded reset would abort
-  // the probe it started one render earlier.
-  useEffect(() => {
-    if (ownedValueRef.current === value) return
-    inFlightRef.current?.abort()
-    inFlightRef.current = null
-    setProbe(null)
-    setProbeError(null)
-    setProbing(false)
-  }, [value])
+  const { probe, error: probeError, probing, start } = useEmbedderProbe(
+    PROBE_FAILED_HINT,
+    value,
+  )
 
   const handleChange = useCallback(
     (nextProvider: string, nextModelId: string) => {
       const next = encodeModelRef(nextProvider, nextModelId)
-      ownedValueRef.current = next
       onChange(next)
-      inFlightRef.current?.abort()
-      setProbeError(null)
-      // Cleared before branching, not inside the probe path: the aborted
-      // call's own chain deliberately leaves this alone (a later selection
-      // owns the flag by then), so an early return that skipped it would
-      // leave the field measuring a probe that is never coming back.
-      setProbing(false)
-      if (!isEmbedder || isBuiltinEmbedderProvider(nextProvider)) {
-        setProbe(null)
-        return
-      }
-      // Measured here, on the operator's own selection, because the width is
-      // a property of the model that only the model can answer -- and because
-      // learning it after the next restart is how a perfectly good choice
-      // turns out to have disabled the index.
-      const controller = new AbortController()
-      inFlightRef.current = controller
-      setProbing(true)
-      probeEmbedder(nextProvider, nextModelId, controller.signal)
-        .then((result) => {
-          if (!controller.signal.aborted) setProbe(result)
-        })
-        .catch((err: unknown) => {
-          // Superseded by a later selection: not a failure, and reporting one
-          // would contradict the answer still on its way.
-          if (controller.signal.aborted) return
-          // Logged as well as shown: the hint tells this one operator their
-          // probe failed, which says nothing about every probe failing after
-          // a network-policy change.
-          log.error('Embedder probe failed', { provider: sanitizeForLog(nextProvider) }, err)
-          setProbe(null)
-          setProbeError(PROBE_FAILED_HINT)
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setProbing(false)
-        })
+      const measurable = isEmbedder && !isBuiltinEmbedderProvider(nextProvider)
+      start(next, measurable ? { provider: nextProvider, modelId: nextModelId } : null)
     },
-    [onChange, isEmbedder],
+    [onChange, isEmbedder, start],
   )
 
   return (

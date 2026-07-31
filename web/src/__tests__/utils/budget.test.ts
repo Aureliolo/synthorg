@@ -4,7 +4,6 @@ import type { BudgetAlertConfig, BudgetConfig, CostRecord } from '@/api/types/bu
 import {
   aggregateWeekly,
   computeAgentSpending,
-  computeBudgetMetricCards,
   computeCategoryBreakdown,
   computeCostBreakdown,
   computeExhaustionDate,
@@ -12,6 +11,7 @@ import {
   filterCfoEvents,
   getThresholdZone,
 } from '@/utils/budget'
+import { computeBudgetMetricCards } from '@/utils/budget-cards'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 // ── Helpers ────────────────────────────────────────────────

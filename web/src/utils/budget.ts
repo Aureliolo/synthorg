@@ -7,18 +7,13 @@
 
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { computeSpendTrend } from '@/utils/dashboard'
-import { formatCurrency, formatDateOnly } from '@/utils/format'
-import type { MetricCardProps } from '@/components/ui/metric-card'
+import { formatDateOnly } from '@/utils/format'
 import type {
   ActivityItem,
-  ForecastResponse,
-  OverviewMetrics,
   TrendDataPoint,
 } from '@/api/types/analytics'
 import type {
   BudgetAlertConfig,
-  BudgetConfig,
   CostRecord,
 } from '@/api/types/budget'
 
@@ -83,9 +78,6 @@ export interface CategoryRatio {
   readonly embedding: CategoryBucket
   readonly uncategorized: CategoryBucket
 }
-
-/** Subset of MetricCardProps used to drive budget metric cards. Omits className since it's not needed for data-driven card generation. */
-export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -392,93 +384,6 @@ export function filterCfoEvents(
   activities: readonly ActivityItem[],
 ): ActivityItem[] {
   return activities.filter((a) => CFO_EVENT_TYPES.has(a.action_type))
-}
-
-interface BudgetCardContext {
-  readonly overview: OverviewMetrics
-  readonly budgetConfig: BudgetConfig | null
-  readonly forecast: ForecastResponse | null
-  readonly currency: string | undefined
-}
-
-function _buildSpendCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const { overview, currency } = ctx
-  const totalMonthly = ctx.budgetConfig?.total_monthly ?? 0
-  const hasBudget = totalMonthly > 0
-  return {
-    label: 'SPEND THIS PERIOD',
-    value: formatCurrency(overview.total_cost, currency),
-    sparklineData: overview.cost_7d_trend.map((p) => p.value),
-    change: computeSpendTrend(overview.cost_7d_trend),
-    ...(hasBudget && {
-      progress: { current: overview.total_cost, total: totalMonthly },
-      subText: `of ${formatCurrency(totalMonthly, currency)} budget`,
-    }),
-  }
-}
-
-function _buildRemainingCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const { overview, currency } = ctx
-  const remainingPct = Math.round(Math.max(0, 100 - overview.budget_used_percent))
-  return {
-    label: 'BUDGET REMAINING',
-    value: formatCurrency(overview.budget_remaining, currency),
-    subText: `${remainingPct}% of budget`,
-  }
-}
-
-function _buildAvgDayCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  return {
-    label: 'AVG DAILY SPEND',
-    value: formatCurrency(ctx.forecast?.avg_daily_spend ?? 0, ctx.currency),
-  }
-}
-
-/**
- * Pick the sub-text line for the "days until exhausted" card. When the
- * forecast knows the exhaustion horizon we render its calendar date;
- * otherwise we fall back to the next budget-reset countdown.
- */
-function _daysLeftSubText(ctx: BudgetCardContext): string | undefined {
-  const days = ctx.forecast?.days_until_exhausted
-  if (days != null) {
-    return computeExhaustionDate(days) ?? undefined
-  }
-  if (ctx.budgetConfig === null) return undefined
-  return `Resets in ${daysUntilBudgetReset(ctx.budgetConfig.reset_day)} days`
-}
-
-function _buildDaysLeftCard(ctx: BudgetCardContext): BudgetMetricCardData {
-  const days = ctx.forecast?.days_until_exhausted
-  return {
-    label: 'DAYS UNTIL EXHAUSTED',
-    value: days != null ? String(days) : 'N/A',
-    subText: _daysLeftSubText(ctx),
-  }
-}
-
-/**
- * Compute metric card data for the Budget page header.
- *
- * Returns an array of 4 card definitions matching the MetricCard props shape.
- */
-export function computeBudgetMetricCards(
-  overview: OverviewMetrics,
-  budgetConfig: BudgetConfig | null,
-  forecast: ForecastResponse | null,
-): BudgetMetricCardData[] {
-  const ctx: BudgetCardContext = {
-    overview,
-    budgetConfig,
-    forecast,
-    currency: overview.currency,
-  }
-  return [
-    _buildSpendCard(ctx),
-    _buildRemainingCard(ctx),
-    _buildAvgDayCard(ctx),
-    _buildDaysLeftCard(ctx),
-  ]
 }
 
 // ── Pack-Apply Budget Preview ─────────────────────────────
