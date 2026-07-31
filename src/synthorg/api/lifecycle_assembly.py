@@ -165,27 +165,12 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
         await migrate_embedded_provider_keys(app_state)
 
-    async def _wire_evolution_outcomes() -> None:
-        from synthorg.api.lifecycle_helpers.evolution_outcomes_wiring import (  # noqa: PLC0415
-            wire_evolution_outcomes,
+    async def _reconcile_subsystems() -> None:
+        from synthorg.api.subsystems.runtime import (  # noqa: PLC0415
+            reconcile_subsystems,
         )
 
-        await wire_evolution_outcomes(app_state)
-
-    async def _wire_memory_backend() -> None:
-        from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
-            wire_memory_backend,
-        )
-        from synthorg.api.lifecycle_helpers.org_memory_wiring import (  # noqa: PLC0415
-            wire_org_memory_backend,
-        )
-
-        await wire_memory_backend(app_state)
-        # The org layer wires here rather than with the other features
-        # because runtime services read it while assembling an agent's
-        # recall and its Knowledge-Architect tools. Wired after them it
-        # is still None at the only moment anything asks for it.
-        await wire_org_memory_backend(app_state)
+        await reconcile_subsystems(app_state, trigger="boot")
 
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)
@@ -238,16 +223,16 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
         _reload_provider_registry,
-        # Build the durable evolution-outcome store BEFORE runtime services
-        # so the engine evolution loop reads it as its outcome sink, and
-        # before signals wiring so the aggregator shares the same store.
-        _wire_evolution_outcomes,
-        # Agent and org memory must exist BEFORE runtime services: the
-        # engine reads MemoryStateSlice eagerly at construction, so a
-        # backend wired any later never reaches an agent.
-        _wire_memory_backend,
+        # Memory, org memory and the evolution-outcome store must exist
+        # BEFORE runtime services: the engine reads their slices eagerly at
+        # construction, so anything wired later never reaches an agent.
+        _reconcile_subsystems,
         _install_runtime_services,
         _wire_features,
+        # Runtime services bring up the work pipeline, which several
+        # subsystems wait on. Running the same pass again costs nothing when
+        # nothing moved, and is the whole reason a second call is safe.
+        _reconcile_subsystems,
         _wire_brownfield_intake,
     ]
 
