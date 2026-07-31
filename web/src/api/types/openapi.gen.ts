@@ -114,6 +114,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/admin/memory/embedder/probe": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ProbeEmbedder */
+        readonly post: operations["ApiV1AdminMemoryEmbedderProbeProbeEmbedder"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/admin/memory/fine-tune": {
         readonly parameters: {
             readonly query?: never;
@@ -6963,6 +6980,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[EmbedderProbeResponse] */
+        readonly ApiResponse_EmbedderProbeResponse_: {
+            readonly data: components["schemas"]["EmbedderProbeResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[EntityResponse] */
         readonly ApiResponse_EntityResponse_: {
             readonly data: components["schemas"]["EntityResponse"] | null;
@@ -10805,6 +10830,23 @@ export type components = {
          * @enum {string}
          */
         readonly EfficiencyRating: "efficient" | "normal" | "inefficient";
+        /** EmbedderProbeRequest */
+        readonly EmbedderProbeRequest: {
+            /** @description Embedding model identifier */
+            readonly model_id: string;
+            /** @description Embedding provider name */
+            readonly provider: string;
+        };
+        /** EmbedderProbeResponse */
+        readonly EmbedderProbeResponse: {
+            /** @description Measured embedding vector width */
+            readonly dims: number;
+            /** @description Widest half-precision vector an HNSW index accepts */
+            readonly halfvec_ceiling: number;
+            readonly index_support: components["schemas"]["IndexSupport"];
+            /** @description Widest full-precision vector an HNSW index accepts */
+            readonly vector_ceiling: number;
+        };
         /** EntityFieldInput */
         readonly EntityFieldInput: {
             /**
@@ -11834,6 +11876,27 @@ export type components = {
              */
             readonly title: string;
         };
+        /**
+         * IndexSupport
+         * @description What a vector store can do with a given embedding width.
+         *
+         *     A statement about the store, not a judgement of the model: the same
+         *     embedder is indexable against one backend and not another. Named so a
+         *     surface can report the mechanical consequence of a width without
+         *     ranking, recommending, or choosing an embedder on the operator's behalf.
+         *
+         *     Attributes:
+         *         INDEXED: An HNSW index covers this width at full precision.
+         *         INDEXED_HALF_PRECISION: Indexed, but only by storing half-precision
+         *             components. Approximate recall is kept; exactness is traded for
+         *             it, which is worth saying out loud.
+         *         EXACT_SCAN: Stored and searchable, with no index. Results stay
+         *             correct; every query reads the whole corpus, so latency grows
+         *             with it.
+         *         UNSTORABLE: Beyond what the store holds at all.
+         * @enum {string}
+         */
+        readonly IndexSupport: "indexed" | "indexed_half_precision" | "exact_scan" | "unstorable";
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
             /** @description Name of the connection to initiate the OAuth flow for. */
@@ -19676,6 +19739,37 @@ export interface operations {
             };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1AdminMemoryEmbedderProbeProbeEmbedder: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmbedderProbeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_EmbedderProbeResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

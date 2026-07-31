@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { probeEmbedder } from '@/api/endpoints/memory'
+import type { EmbedderProbeResponse } from '@/api/types/system'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 import type { SelectOptionGroup } from '@/components/ui/select-field'
 import { useProvidersStore } from '@/stores/providers'
@@ -34,6 +36,36 @@ const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
     ],
   },
 ]
+
+/**
+ * What a measured width means for the store, in the operator's terms.
+ *
+ * States the mechanical consequence and stops: which embedder to run is the
+ * operator's choice, and the memory design is explicit that nothing ranks or
+ * recommends one for them.
+ *
+ * @returns The sentence to show under the picker.
+ */
+function widthVerdict(probe: EmbedderProbeResponse): string {
+  const width = `${probe.dims} dimensions`
+  if (probe.index_support === 'indexed') {
+    return `${width}: indexed, so recall stays fast as memory grows.`
+  }
+  if (probe.index_support === 'indexed_half_precision') {
+    return (
+      `${width}: indexed at half precision, because full precision indexes ` +
+      `stop at ${probe.vector_ceiling}. Slightly approximate, still fast.`
+    )
+  }
+  if (probe.index_support === 'exact_scan') {
+    return (
+      `${width}: too wide to index (the ceiling is ${probe.halfvec_ceiling}), ` +
+      'so every search reads every stored memory. Correct, but slower the ' +
+      'more the organisation remembers.'
+    )
+  }
+  return `${width}: wider than this store can hold at all.`
+}
 
 /**
  * Help text for the current state of the binding.
@@ -102,20 +134,51 @@ export function ModelRefField({
 
   const { provider, modelId } = useMemo(() => decodeModelRef(value), [value])
   const isEmbedder = settingKey === EMBEDDER_SETTING_KEY
+  const [probe, setProbe] = useState<EmbedderProbeResponse | null>(null)
+  const [probing, setProbing] = useState(false)
+
+  const handleChange = useCallback(
+    (nextProvider: string, nextModelId: string) => {
+      onChange(encodeModelRef(nextProvider, nextModelId))
+      if (!isEmbedder || isBuiltinEmbedderProvider(nextProvider)) {
+        setProbe(null)
+        return
+      }
+      // Measured here, on the operator's own selection, because the width is
+      // a property of the model that only the model can answer -- and because
+      // learning it after the next restart is how a perfectly good choice
+      // turns out to have disabled the index.
+      setProbing(true)
+      probeEmbedder(nextProvider, nextModelId)
+        .then(setProbe)
+        .catch(() => {
+          // A binding whose width cannot be measured is reported by the
+          // endpoint's own error toast; leaving the verdict blank is honest
+          // here, where inventing one would be worse than saying nothing.
+          setProbe(null)
+        })
+        .finally(() => setProbing(false))
+    },
+    [onChange, isEmbedder],
+  )
 
   return (
     <AgentModelPicker
       currentProvider={provider}
       currentModelId={modelId}
       providers={providerMap}
-      onChange={(nextProvider, nextModelId) =>
-        onChange(encodeModelRef(nextProvider, nextModelId))
-      }
+      onChange={handleChange}
       disabled={disabled}
       hideLabel
       kind={isEmbedder ? 'embedding' : 'chat'}
       extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}
-      hint={fieldHint({ isEmbedder, provider, modelId })}
+      hint={
+        probing
+          ? 'Measuring the vector width...'
+          : (probe !== null
+              ? widthVerdict(probe)
+              : fieldHint({ isEmbedder, provider, modelId }))
+      }
     />
   )
 }

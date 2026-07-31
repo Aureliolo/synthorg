@@ -508,6 +508,14 @@ export const HUMAN_ROLE_VALUES = [
 ] as const
 export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
 
+export const INDEX_SUPPORT_VALUES = [
+    'indexed',
+    'indexed_half_precision',
+    'exact_scan',
+    'unstorable',
+] as const
+export type IndexSupport = (typeof INDEX_SUPPORT_VALUES)[number]
+
 export const INTENT_ROUTING_REASON_VALUES = [
     'classified',
     'explicit_override',
