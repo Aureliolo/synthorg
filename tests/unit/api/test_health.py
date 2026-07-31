@@ -511,12 +511,13 @@ class TestResolveTelemetryStatus:
 
 @pytest.mark.unit
 class TestReadinessProviders:
-    """``/readyz`` reports 503 when any provider is in DOWN state.
+    """Provider reachability is reported, never gated on.
 
-    DEGRADED and UNKNOWN providers stay reachable; only DOWN providers
-    flip the gate. Wired through ``ProviderHealthTracker.are_all_reachable``.
-    Asserts the gate outcome only; the ``providers`` component value is an
-    authenticated ``/health`` concern.
+    Every replica reaches the same third-party endpoint, so draining on a
+    provider outage drains all of them at once and takes down the dashboard
+    an operator would repoint the provider from. Asserts the gate outcome
+    only; the ``providers`` component value is an authenticated ``/health``
+    concern.
     """
 
     async def test_empty_tracker_reports_ready(self) -> None:
@@ -528,7 +529,7 @@ class TestReadinessProviders:
             assert response.status_code == 200
             assert response.json()["data"]["status"] == "ok"
 
-    async def test_down_provider_flips_readiness_to_503(self) -> None:
+    async def test_down_provider_leaves_readiness_ok(self) -> None:
         tracker = ProviderHealthTracker()
         # 6 failures, 0 successes => 100% error rate => DOWN (>=50%).
         now = datetime.now(UTC)
@@ -542,12 +543,16 @@ class TestReadinessProviders:
                     error_message=f"simulated failure {i}",
                 ),
             )
+        # The signal still exists; it just does not gate. A deployment whose
+        # only provider is unreachable still serves the dashboard, which is
+        # where an operator goes to repoint it.
+        assert await tracker.are_all_reachable() is False
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
             response = await client.get("/api/v1/readyz")
-            assert response.status_code == 503
-            assert response.json()["data"]["status"] == "unavailable"
+            assert response.status_code == 200
+            assert response.json()["data"]["status"] == "ok"
 
     async def test_degraded_provider_stays_reachable(self) -> None:
         tracker = ProviderHealthTracker()
