@@ -42,8 +42,8 @@ INSERT INTO cost_records_new (
 )
 SELECT
     rowid,
-    CASE WHEN agent_id LIKE 'system%' THEN NULL ELSE agent_id END,
-    CASE WHEN task_id LIKE 'system:%' THEN NULL ELSE task_id END,
+    CASE WHEN agent_id LIKE 'system%' THEN NULL ELSE agent_id END AS agent_id,
+    CASE WHEN task_id LIKE 'system:%' THEN NULL ELSE task_id END AS task_id,
     provider,
     model,
     input_tokens,

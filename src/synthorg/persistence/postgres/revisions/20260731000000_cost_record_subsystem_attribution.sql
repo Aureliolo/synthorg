@@ -20,5 +20,7 @@ ALTER TABLE cost_records ALTER COLUMN task_id DROP NOT NULL;
 -- never have been committed here (the foreign key rejected it), but a
 -- synthetic agent_id on an otherwise-valid row could, and leaving it would
 -- keep 'system' showing up in the dashboard as though it were an agent.
-UPDATE cost_records SET agent_id = NULL WHERE agent_id LIKE 'system%';
-UPDATE cost_records SET task_id = NULL WHERE task_id LIKE 'system:%';
+UPDATE cost_records SET agent_id = NULL
+WHERE agent_id LIKE 'system%';
+UPDATE cost_records SET task_id = NULL
+WHERE task_id LIKE 'system:%';

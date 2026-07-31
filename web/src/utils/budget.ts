@@ -33,6 +33,15 @@ export type BreakdownDimension = typeof BREAKDOWN_DIMENSION_VALUES[number]
 /** Bucket key for cost records carrying no prompt purpose. */
 const UNATTRIBUTED_PROMPT_CLASS = 'unattributed'
 
+/**
+ * Bucket key for subsystem work owned by no agent.
+ *
+ * Bucketed rather than dropped: a breakdown that silently omits rows stops
+ * summing to the headline total, which is how subsystem spend went missing
+ * in the first place.
+ */
+const UNATTRIBUTED_AGENT = 'unattributed'
+
 /** Severity ordering: normal < amber < red < critical. */
 export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
 
@@ -103,6 +112,30 @@ const CFO_EVENT_TYPES = new Set(['budget.record_added', 'budget.alert'])
  * Returns rows sorted by totalCost descending. Agent display names are
  * looked up from `agentNameMap`, falling back to the raw agent_id.
  */
+interface AgentCostGroup {
+  cost: number
+  tasks: Set<string>
+}
+
+function groupCostByAgent(
+  records: readonly CostRecord[],
+): Map<string, AgentCostGroup> {
+  const groups = new Map<string, AgentCostGroup>()
+  for (const r of records) {
+    const agentId = r.agent_id ?? UNATTRIBUTED_AGENT
+    let group = groups.get(agentId)
+    if (!group) {
+      group = { cost: 0, tasks: new Set() }
+      groups.set(agentId, group)
+    }
+    group.cost += r.cost
+    // Only real tasks count towards the per-task average; subsystem work
+    // has none, so counting it would divide by a task that never existed.
+    if (r.task_id !== null) group.tasks.add(r.task_id)
+  }
+  return groups
+}
+
 export function computeAgentSpending(
   records: readonly CostRecord[],
   budgetTotal: number,
@@ -110,17 +143,7 @@ export function computeAgentSpending(
 ): AgentSpendingRow[] {
   if (records.length === 0) return []
 
-  const groups = new Map<string, { cost: number; tasks: Set<string> }>()
-  for (const r of records) {
-    let group = groups.get(r.agent_id)
-    if (!group) {
-      group = { cost: 0, tasks: new Set() }
-      groups.set(r.agent_id, group)
-    }
-    group.cost += r.cost
-    group.tasks.add(r.task_id)
-  }
-
+  const groups = groupCostByAgent(records)
   const rows: AgentSpendingRow[] = []
   for (const [agentId, group] of groups) {
     const taskCount = group.tasks.size
@@ -144,7 +167,7 @@ interface DimensionResolver {
 
 const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
   agent: {
-    key: (r) => r.agent_id,
+    key: (r) => r.agent_id ?? UNATTRIBUTED_AGENT,
     label: (key, agentNameMap) => agentNameMap.get(key) ?? key,
   },
   provider: {
@@ -152,7 +175,8 @@ const DIMENSION_RESOLVERS: Record<BreakdownDimension, DimensionResolver> = {
     label: (key) => key,
   },
   department: {
-    key: (r, agentDeptMap) => agentDeptMap.get(r.agent_id) ?? 'Unknown',
+    key: (r, agentDeptMap) =>
+      r.agent_id === null ? 'Unknown' : (agentDeptMap.get(r.agent_id) ?? 'Unknown'),
     label: (key) => key,
   },
   prompt_class: {
