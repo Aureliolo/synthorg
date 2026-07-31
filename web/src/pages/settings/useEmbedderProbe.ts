@@ -12,6 +12,15 @@ interface ProbeState {
   readonly probe: EmbedderProbeResponse | null
   readonly error: string | null
   readonly probing: boolean
+  /**
+   * The request this outcome is waiting on, when it is still waiting.
+   *
+   * Carried so "still measuring" can be read from the request itself. An
+   * abort settles nothing -- neither continuation runs -- so a `probing`
+   * flag alone would stay true forever, and the field would show the
+   * measuring hint permanently if that value ever came back on screen.
+   */
+  readonly signal: AbortSignal | null
 }
 
 /** What the field should show about the current value's width. */
@@ -39,7 +48,11 @@ function _verdictFor(
   value: string,
 ): Omit<EmbedderProbe, 'start'> {
   if (state === null || state.forValue !== value) return _NO_VERDICT
-  return { probe: state.probe, error: state.error, probing: state.probing }
+  return {
+    probe: state.probe,
+    error: state.error,
+    probing: state.probing && state.signal?.aborted !== true,
+  }
 }
 
 /**
@@ -87,7 +100,13 @@ export function useEmbedderProbe(failedHint: string, value: string): EmbedderPro
       inFlightRef.current?.abort()
       if (target === null) {
         inFlightRef.current = null
-        setState({ forValue: nextValue, probe: null, error: null, probing: false })
+        setState({
+          forValue: nextValue,
+          probe: null,
+          error: null,
+          probing: false,
+          signal: null,
+        })
         return
       }
       // Measured on the operator's own selection, because the width is a
@@ -96,11 +115,23 @@ export function useEmbedderProbe(failedHint: string, value: string): EmbedderPro
       // turns out to have disabled the index.
       const controller = new AbortController()
       inFlightRef.current = controller
-      setState({ forValue: nextValue, probe: null, error: null, probing: true })
+      setState({
+        forValue: nextValue,
+        probe: null,
+        error: null,
+        probing: true,
+        signal: controller.signal,
+      })
       probeEmbedder(target.provider, target.modelId, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return
-          setState({ forValue: nextValue, probe: result, error: null, probing: false })
+          setState({
+            forValue: nextValue,
+            probe: result,
+            error: null,
+            probing: false,
+            signal: null,
+          })
         })
         .catch((err: unknown) => {
           // Superseded by a later selection: not a failure, and reporting one
@@ -110,7 +141,13 @@ export function useEmbedderProbe(failedHint: string, value: string): EmbedderPro
           // probe failed, which says nothing about every probe failing after
           // a network-policy change.
           log.error('Embedder probe failed', { provider: sanitizeForLog(target.provider) }, err)
-          setState({ forValue: nextValue, probe: null, error: failedHint, probing: false })
+          setState({
+            forValue: nextValue,
+            probe: null,
+            error: failedHint,
+            probing: false,
+            signal: null,
+          })
         })
     },
     [failedHint],

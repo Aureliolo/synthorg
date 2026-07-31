@@ -54,8 +54,18 @@ WHERE agent_id LIKE 'system%';
 -- captured, no latency was measured, and nothing is claimed about ingest.
 ALTER TABLE connections ADD COLUMN health_detail TEXT;
 
+-- The upper bound rejects both Infinity and NaN: Postgres orders NaN above
+-- every number, so `>= 0` admits it while `< 'Infinity'` does not. It has to
+-- be rejected here because ConnectionHealth sets allow_inf_nan=False, so a
+-- non-finite value that reached the column would make the row unreadable.
 ALTER TABLE connections ADD COLUMN health_latency_ms DOUBLE PRECISION
-CHECK (health_latency_ms IS NULL OR health_latency_ms >= 0);
+CHECK (
+    health_latency_ms IS NULL
+    OR (
+        health_latency_ms >= 0
+        AND health_latency_ms < 'Infinity'::DOUBLE PRECISION
+    )
+);
 
 ALTER TABLE connections ADD COLUMN health_webhook_ingest TEXT
 NOT NULL DEFAULT 'not_applicable'
@@ -67,5 +77,14 @@ CHECK (
 -- Storing it lets the recheck interval honour that answer instead of probing
 -- again on our own schedule, which cannot succeed and spends a request to be
 -- refused a second time.
+-- Finite for the same reason, and one more: this value is a floor on the
+-- recheck interval, so an infinite one would retire the connection from
+-- probing for good on the say-so of the endpoint that refused it.
 ALTER TABLE connections ADD COLUMN health_retry_after_seconds DOUBLE PRECISION
-CHECK (health_retry_after_seconds IS NULL OR health_retry_after_seconds > 0);
+CHECK (
+    health_retry_after_seconds IS NULL
+    OR (
+        health_retry_after_seconds > 0
+        AND health_retry_after_seconds < 'Infinity'::DOUBLE PRECISION
+    )
+);

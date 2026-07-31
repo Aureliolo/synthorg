@@ -7,7 +7,7 @@ the call belongs to and how the record is submitted.
 
 import math
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Final, TypedDict
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -160,7 +160,7 @@ def _scope_fields(
         output_tokens=usage.output_tokens,
         cost=usage.cost,
         currency=ctx.currency,
-        timestamp=datetime.now(UTC),
+        timestamp=ctx.clock.now(),
     )
 
 

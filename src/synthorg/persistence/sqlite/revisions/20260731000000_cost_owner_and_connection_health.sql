@@ -96,8 +96,15 @@ ON cost_records (prompt_class_id, timestamp DESC);
 -- captured, no latency was measured, and nothing is claimed about ingest.
 ALTER TABLE connections ADD COLUMN health_detail TEXT;
 
+-- 9e999 is the literal spelling of Infinity here, so the upper bound rejects
+-- one. It has to be rejected because ConnectionHealth sets
+-- allow_inf_nan=False, and a non-finite value that reached the column would
+-- make the row unreadable.
 ALTER TABLE connections ADD COLUMN health_latency_ms REAL
-CHECK (health_latency_ms IS NULL OR health_latency_ms >= 0);
+CHECK (
+    health_latency_ms IS NULL
+    OR (health_latency_ms >= 0 AND health_latency_ms < 9e999)
+);
 
 ALTER TABLE connections ADD COLUMN health_webhook_ingest TEXT
 NOT NULL DEFAULT 'not_applicable'
@@ -109,5 +116,11 @@ CHECK (
 -- Storing it lets the recheck interval honour that answer instead of probing
 -- again on our own schedule, which cannot succeed and spends a request to be
 -- refused a second time.
+-- Finite for the same reason, and one more: this value is a floor on the
+-- recheck interval, so an infinite one would retire the connection from
+-- probing for good on the say-so of the endpoint that refused it.
 ALTER TABLE connections ADD COLUMN health_retry_after_seconds REAL
-CHECK (health_retry_after_seconds IS NULL OR health_retry_after_seconds > 0);
+CHECK (
+    health_retry_after_seconds IS NULL
+    OR (health_retry_after_seconds > 0 AND health_retry_after_seconds < 9e999)
+);

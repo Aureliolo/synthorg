@@ -1290,13 +1290,25 @@ CREATE TABLE connections (
     last_health_check_at TIMESTAMPTZ,
     health_detail TEXT,
     health_latency_ms DOUBLE PRECISION
-    CHECK (health_latency_ms IS NULL OR health_latency_ms >= 0),
+    CHECK (
+        health_latency_ms IS NULL
+        OR (
+            health_latency_ms >= 0
+            AND health_latency_ms < 'Infinity'::DOUBLE PRECISION
+        )
+    ),
     health_webhook_ingest TEXT NOT NULL DEFAULT 'not_applicable'
     CHECK (
         health_webhook_ingest IN ('not_applicable', 'ready', 'unconfigured')
     ),
     health_retry_after_seconds DOUBLE PRECISION
-    CHECK (health_retry_after_seconds IS NULL OR health_retry_after_seconds > 0),
+    CHECK (
+        health_retry_after_seconds IS NULL
+        OR (
+            health_retry_after_seconds > 0
+            AND health_retry_after_seconds < 'Infinity'::DOUBLE PRECISION
+        )
+    ),
     metadata_json JSONB NOT NULL DEFAULT '{}',
     webhook_receipt_retention_days INTEGER
     CHECK (

@@ -32,6 +32,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 # when downstream tooling evaluates type hints. The chokepoint depends on
 # the record/aggregate Protocol surface, never the concrete ``CostTracker``.
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -95,6 +96,10 @@ class CostRecordingContext(BaseModel):
     call_category: LLMCallCategory = Field(description="LLM call category")
     currency: CurrencyCode = Field(
         description="ISO 4217 currency for emitted CostRecord",
+    )
+    clock: Clock = Field(
+        default_factory=SystemClock,
+        description="Time source the emitted CostRecord is stamped from",
     )
 
     @field_validator("cost_tracker", mode="before")
@@ -239,6 +244,7 @@ async def cost_recording_scope(
     purpose: PromptPurposeId | None = None,
     call_category: LLMCallCategory,
     currency: CurrencyCode | None = None,
+    clock: Clock | None = None,
 ) -> AsyncIterator[None]:
     """Open a cost-recording scope for the current asyncio task.
 
@@ -272,6 +278,10 @@ async def cost_recording_scope(
             when ``cost_tracker`` is provided; when ``None`` the
             tracker's ``budget_config.currency`` (or
             :data:`DEFAULT_CURRENCY`) is used.
+        clock: Time source the emitted record is stamped from. ``None``
+            takes the system clock; a test injects a ``FakeClock`` so the
+            recorded timestamp is a value it chose rather than whenever the
+            assertion happened to run.
     """
     if purpose is not None:
         # Coerce up front so the trackerless path shares the tracked path's
@@ -302,6 +312,7 @@ async def cost_recording_scope(
         prompt_class_id=purpose,
         call_category=call_category,
         currency=resolved_currency,
+        **({"clock": clock} if clock is not None else {}),
     )
     with _bound_cost_context(ctx):
         yield
