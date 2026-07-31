@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_roles
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.auth.roles import HumanRole
@@ -179,7 +180,10 @@ class MemoryEmbedderController(Controller):
                 raise
         return ApiResponse(data=result)
 
-    @post("/embedder/probe")
+    @post(
+        "/embedder/probe",
+        guards=[per_op_rate_limit_from_policy("memory.embedder_probe", key="user")],
+    )
     async def probe_embedder(
         self,
         state: State,

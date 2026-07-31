@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import NamedTuple
 
-from synthorg.budget._aggregation import group_by_agent, sum_cost
+from synthorg.budget._aggregation import group_by_owner, sum_cost
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.spending_summary import AgentSpending
@@ -128,9 +128,11 @@ def _build_agent_spendings(
     Returns:
         List of ``AgentSpending``.
     """
-    by_agent = group_by_agent(filtered)
+    by_agent = group_by_owner(filtered)
     result: list[AgentSpending] = []
-    for aid in sorted(by_agent):
+    # Unowned work sorts first; None and a string are not comparable, so the
+    # ordering needs an explicit key once the id is nullable.
+    for aid in sorted(by_agent, key=lambda a: (a is not None, a or "")):
         agg = _aggregate(by_agent[aid], agent_id=aid)
         result.append(
             AgentSpending(

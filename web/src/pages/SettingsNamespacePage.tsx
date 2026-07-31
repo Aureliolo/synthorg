@@ -37,7 +37,7 @@ function resolveNamespace(value: string | undefined): SettingNamespace | null {
 
 function SettingsBackHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-section-gap">
       <div className="flex items-center gap-4">
         <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
           <Link to={ROUTES.SETTINGS}>

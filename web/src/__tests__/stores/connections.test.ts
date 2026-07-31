@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 // consistent with users.test.ts / agents.test.ts / etc.
 import { listIntegrationHealth } from '@/api/endpoints/integration-health'
 import type { Connection, HealthReport } from '@/api/types/integrations'
+import { buildHealth } from '@/mocks/handlers/connections'
 import { useConnectionsStore } from '@/stores/connections'
 import {
   apiError,
@@ -44,7 +45,7 @@ const sampleConnection: Connection = {
   auth_method: 'bearer_token',
   base_url: 'https://api.github.com',
   health_check_enabled: true,
-  health: { status: 'healthy', last_check_at: '2026-04-12T08:00:00Z' },
+  health: buildHealth('healthy', '2026-04-12T08:00:00Z'),
   metadata: {},
   rate_limiter: null,
   secret_refs: [],

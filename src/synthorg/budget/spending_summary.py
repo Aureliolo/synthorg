@@ -120,10 +120,16 @@ class AgentSpending(_SpendingTotals):
     """Spending aggregation for a single agent.
 
     Attributes:
-        agent_id: Agent identifier.
+        agent_id: Agent identifier, or ``None`` for work no agent owns
+            (subsystem calls such as embedding or consolidation). The
+            unowned bucket is reported rather than dropped, so the
+            breakdown still sums to the headline total.
     """
 
-    agent_id: NotBlankStr = Field(description="Agent identifier")
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Agent identifier, or None for work no agent owns.",
+    )
 
 
 class DepartmentSpending(_SpendingTotals):
@@ -191,7 +197,10 @@ class SpendingSummary(BaseModel):
         """
         ids = [a.agent_id for a in self.by_agent]
         if len(ids) != len(set(ids)):
-            dupes = sorted(i for i, c in Counter(ids).items() if c > 1)
+            dupes = sorted(
+                (i for i, c in Counter(ids).items() if c > 1),
+                key=lambda i: (i is not None, i or ""),
+            )
             msg = f"Duplicate agent_id values in by_agent: {dupes}"
             raise ValueError(msg)
         return self

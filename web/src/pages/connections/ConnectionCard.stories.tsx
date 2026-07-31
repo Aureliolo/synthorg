@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import type { Connection, HealthReport } from '@/api/types/integrations'
+import { buildHealth } from '@/mocks/handlers/connections'
 import { ConnectionCard } from './ConnectionCard'
 
 const baseConnection: Connection = {
@@ -10,7 +11,7 @@ const baseConnection: Connection = {
   auth_method: 'bearer_token',
   base_url: 'https://api.github.com',
   health_check_enabled: true,
-  health: { status: 'healthy', last_check_at: '2026-04-12T08:00:00Z' },
+  health: buildHealth('healthy', '2026-04-12T08:00:00Z'),
   metadata: {},
   rate_limiter: null,
   secret_refs: [],
@@ -92,7 +93,7 @@ export const Unknown: Story = {
   args: {
     connection: {
       ...baseConnection,
-      health: { status: 'unknown', last_check_at: null },
+      health: buildHealth('unknown', null),
     },
     report: null,
     checking: false,

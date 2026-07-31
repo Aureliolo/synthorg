@@ -178,7 +178,10 @@ class AutomatedReportService:
             start=start,
             end=end,
         )
-        task_ids = {r.task_id for r in records}
+        # Unowned subsystem spend carries no task_id. Counting it would fold
+        # every such call into one phantom task that was neither assigned nor
+        # completed, inflating both totals.
+        task_ids = {r.task_id for r in records if r.task_id is not None}
         return TaskCompletionReport(
             total_assigned=len(task_ids),
             total_completed=len(task_ids),

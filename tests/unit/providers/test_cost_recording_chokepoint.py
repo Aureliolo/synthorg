@@ -11,7 +11,7 @@ exercised through the chokepoint via the same minimal stub harness.
 
 import asyncio
 import contextvars
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import override
 
 import pytest
@@ -27,6 +27,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
+from synthorg.providers import cost_recording
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
@@ -719,3 +720,52 @@ class TestCostScopeCrossContextTeardown:
                 assert current_cost_context() is None
             # The outer wired context is restored, not cleared to None.
             assert current_cost_context() is outer_ctx
+
+
+@pytest.mark.unit
+class TestCostFailureEscalation:
+    """A standing cost-recording fault must stop reading as routine noise.
+
+    Dropping one record is best-effort behaviour working as designed.
+    Dropping them in a run means the budget under-reports for as long as it
+    lasts, and some causes never resolve on their own, so the streak has to
+    be visible rather than spread across identical WARNING lines.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_streak(self) -> Iterator[None]:
+        cost_recording._consecutive_cost_failures = 0
+        yield
+        cost_recording._consecutive_cost_failures = 0
+
+    def test_first_failures_stay_warnings(self) -> None:
+        with capture_logs() as logs:
+            cost_recording._note_cost_failure(reason="test")
+            cost_recording._note_cost_failure(reason="test")
+        assert [entry["log_level"] for entry in logs] == ["warning", "warning"]
+        assert cost_recording.consecutive_cost_failures() == 2
+
+    def test_streak_escalates_to_error_and_carries_the_count(self) -> None:
+        with capture_logs() as logs:
+            for _ in range(3):
+                cost_recording._note_cost_failure(reason="test")
+        assert logs[-1]["log_level"] == "error"
+        assert logs[-1]["consecutive_failures"] == 3
+        assert cost_recording.consecutive_cost_failures() == 3
+
+    def test_a_landed_record_clears_the_streak(self) -> None:
+        for _ in range(3):
+            cost_recording._note_cost_failure(reason="test")
+        with capture_logs() as logs:
+            cost_recording._note_cost_success()
+        assert cost_recording.consecutive_cost_failures() == 0
+        # Recovery is announced only because the fault had been escalated;
+        # otherwise every successful record would log.
+        assert logs[-1]["dropped_records"] == 3
+
+    def test_recovery_is_silent_when_nothing_was_escalated(self) -> None:
+        cost_recording._note_cost_failure(reason="test")
+        with capture_logs() as logs:
+            cost_recording._note_cost_success()
+        assert logs == []
+        assert cost_recording.consecutive_cost_failures() == 0

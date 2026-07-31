@@ -34,11 +34,11 @@ def group_by_agent(
     bugs that would skew aggregations downstream.
 
     Records with no owning agent (subsystem work such as embedding or
-    consolidation) have no bucket here by construction: this is a
-    breakdown across agents, and inventing a bucket for them is what
-    put synthetic ids in the column in the first place. Their spend is
-    still in any total taken over ``records``, and is sliced by
-    ``prompt_class_id`` on the purpose-attribution surface.
+    consolidation) have no bucket here by construction. This grouping
+    feeds per-agent tuning: the optimizer reads it to recommend a cheaper
+    model for a specific agent, and there is no such recommendation to
+    make about work no agent performs. Use :func:`group_by_owner` for a
+    reporting breakdown, which must account for every record.
 
     Returns:
         Mapping from ``str`` to ``list[CostRecord]``.
@@ -47,6 +47,25 @@ def group_by_agent(
     for record in records:
         if record.agent_id is None:
             continue
+        bucket[record.agent_id].append(record)
+    return dict(bucket)
+
+
+def group_by_owner(
+    records: Sequence[CostRecord],
+) -> dict[str | None, list[CostRecord]]:
+    """Group records by owning agent, keeping unowned work in its own bucket.
+
+    The reporting counterpart to :func:`group_by_agent`. A breakdown that
+    silently omits rows stops summing to the headline total, which is how
+    subsystem spend went missing in the first place, so work no agent owns
+    is reported under a ``None`` key rather than dropped.
+
+    Returns:
+        Mapping from ``str | None`` to ``list[CostRecord]``.
+    """
+    bucket: dict[str | None, list[CostRecord]] = defaultdict(list)
+    for record in records:
         bucket[record.agent_id].append(record)
     return dict(bucket)
 

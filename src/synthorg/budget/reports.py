@@ -241,7 +241,8 @@ def _build_task_spendings(
         Tuple of ``TaskSpending``.
     """
     # Subsystem work owns no task, so it has no bucket in a per-task
-    # breakdown; its spend is sliced by prompt purpose instead.
+    # breakdown. Its spend is still reported: by purpose on the prompt-class
+    # surface, and by kind on the call-category one.
     by_task: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
         if r.task_id is None:
@@ -360,12 +361,16 @@ def _build_top_agents(
     Returns:
         Tuple of ``tuple[str, float]``.
     """
+    # A leaderboard of agents lists agents. The unowned bucket is real spend
+    # and is reported in the breakdown it belongs to, but it names no agent
+    # and would otherwise head this ranking as a nameless entry.
+    named_agents = [a for a in summary.by_agent if a.agent_id is not None]
     sorted_agents = sorted(
-        summary.by_agent,
+        named_agents,
         key=lambda a: a.total_cost,
         reverse=True,
     )
-    return tuple((a.agent_id, a.total_cost) for a in sorted_agents[:top_n])
+    return tuple((str(a.agent_id), a.total_cost) for a in sorted_agents[:top_n])
 
 
 def _build_top_tasks(

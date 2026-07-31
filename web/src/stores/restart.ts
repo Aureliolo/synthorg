@@ -49,6 +49,7 @@ export interface RestartState {
  */
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let deadlineTimer: ReturnType<typeof setTimeout> | null = null
+let delayTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearTimers(): void {
   if (pollTimer !== null) {
@@ -58,6 +59,10 @@ function clearTimers(): void {
   if (deadlineTimer !== null) {
     clearTimeout(deadlineTimer)
     deadlineTimer = null
+  }
+  if (delayTimer !== null) {
+    clearTimeout(delayTimer)
+    delayTimer = null
   }
 }
 
@@ -122,9 +127,12 @@ export const useRestartStore = create<RestartState>((set) => ({
       // The backend answers before signalling itself, so waiting out its own
       // stated delay keeps the first probe from hitting the process that is
       // about to exit and reading it as "already back".
-      await new Promise((resolve) =>
-        setTimeout(resolve, accepted.delay_seconds * 1000),
-      )
+      // Tracked like the other two: an untracked handle is one `clearTimers`
+      // cannot cancel, so a reset mid-restart would leave it running past the
+      // test that created it.
+      await new Promise((resolve) => {
+        delayTimer = setTimeout(resolve, accepted.delay_seconds * 1000)
+      })
       const back = await waitForBackend()
       set({ restarting: false })
       if (!back) {

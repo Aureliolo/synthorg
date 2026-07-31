@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import type { Connection } from '@/api/types/integrations'
-import { connectionsList } from '@/mocks/handlers/connections'
+import { buildHealth, connectionsList } from '@/mocks/handlers/connections'
 import { OauthAppCard } from './OauthAppCard'
 
 const baseConnection: Connection = {
@@ -11,7 +11,7 @@ const baseConnection: Connection = {
   auth_method: 'oauth2',
   base_url: null,
   health_check_enabled: false,
-  health: { status: 'unknown', last_check_at: null },
+  health: buildHealth('unknown', null),
   metadata: {},
   rate_limiter: null,
   secret_refs: [],

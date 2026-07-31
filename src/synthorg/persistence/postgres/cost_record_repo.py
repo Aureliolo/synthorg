@@ -125,7 +125,12 @@ class PostgresCostRecordRepository:
         )
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
+        # ``agent_id IS NULL`` is ordered explicitly because the two backends
+        # disagree on where a NULL sorts by default (SQLite first, Postgres
+        # last). With agent_id nullable, leaving it implicit would give the
+        # same query a different page order per backend.
+        sql += " ORDER BY timestamp DESC, (agent_id IS NULL) ASC,"
+        sql += " agent_id ASC, rowid ASC"
         sql += " LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 

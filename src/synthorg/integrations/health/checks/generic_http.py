@@ -104,11 +104,11 @@ class _AuthResolution(NamedTuple):
 class GenericHttpHealthCheck:
     """Health check against the connection's base URL.
 
-    The default probe is a HEAD, falling back to GET if the server
-    answers 405 or 501. A vendor preset overrides that shape when its
-    endpoint needs one to answer at all: ``health_params`` forces a
-    parameterised GET, ``health_body`` a POST carrying that JSON. A
-    vendor-bound connection may therefore never send a HEAD.
+    An unbound connection gets a HEAD, falling back to GET if the server
+    answers 405 or 501. A vendor-bound one always gets a plain GET against
+    the preset's free metadata endpoint, and never a payload: a probe must
+    not buy anything to prove a credential works. See ``_issue_probe`` for
+    the shape and ``probe_verdict`` for how a vendor's rejection is read.
 
     The configured ``base_url`` is validated against a
     :class:`NetworkPolicy` before any request is issued, so an operator
@@ -297,10 +297,11 @@ class GenericHttpHealthCheck:
         )
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Probe ``base_url`` in whichever shape the vendor preset declares.
+        """Probe the connection's endpoint without buying anything.
 
-        A HEAD with a GET fallback by default; a parameterised GET or a
-        POST with a JSON body where the preset says the endpoint needs one.
+        A HEAD with a GET fallback when no vendor preset is bound; a plain
+        GET against the preset's free metadata endpoint when one is, so a
+        metered API is never billed to answer a health check.
 
         Returns:
             A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,

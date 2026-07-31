@@ -260,6 +260,10 @@ class CostTrackerSummaryMixin(ABC):
         """
         dept_map: dict[str, list[AgentSpending]] = defaultdict(list)
         for agent_spend in agent_spendings:
+            # Work no agent owns sits in no department either; there is
+            # nothing to resolve it to.
+            if agent_spend.agent_id is None:
+                continue
             dept = self._resolve_department(agent_spend.agent_id)
             if dept is not None:
                 dept_map[dept].append(agent_spend)

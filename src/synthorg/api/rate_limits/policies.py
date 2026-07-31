@@ -198,6 +198,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "meta.ingest_events": (60, 60),
     "meta.trigger_cycle": (1, 60),
     # memory
+    # Every probe is one real, billed embedding call against the operator's
+    # own quota, so it is metered like the provider connection test it
+    # mirrors rather than left to the dashboard's single-in-flight guard,
+    # which a scripted client does not go through.
+    "memory.embedder_probe": (20, 60),
     "memory.checkpoint_delete": (20, 60),
     "memory.checkpoint_deploy": (2, 3600),
     "memory.checkpoint_rollback": (2, 3600),

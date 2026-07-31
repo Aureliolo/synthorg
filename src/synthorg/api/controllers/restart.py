@@ -24,7 +24,7 @@ from litestar.status_codes import HTTP_202_ACCEPTED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_roles
+from synthorg.api.guards import require_read_access, require_roles
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
@@ -142,9 +142,13 @@ class RestartController(Controller):
     # ``admin`` here would split that tag across two unrelated trees. The
     # admin restriction is enforced by the role guard below, not by a label.
     tags = ("meta",)
-    guards = [require_roles(HumanRole.CEO, HumanRole.SYSTEM)]  # noqa: RUF012
 
-    @get("")
+    # Guards are per-operation, not class-wide: reading whether a restart is
+    # pending and performing one are different privileges. The banner that
+    # consumes the GET renders on Settings pages several roles can open, so a
+    # class-wide admin guard would hand most operators a permanent error where
+    # a notice belongs. Restarting stays CEO/SYSTEM.
+    @get("", guards=[require_read_access])
     async def status(self, state: State) -> ApiResponse[RestartStatusResponse]:
         """Report the settings a restart would apply, and whether it can run.
 
@@ -178,6 +182,7 @@ class RestartController(Controller):
         "",
         status_code=HTTP_202_ACCEPTED,
         guards=[
+            require_roles(HumanRole.CEO, HumanRole.SYSTEM),
             per_op_rate_limit_from_policy("admin.restart", key="user"),
         ],
     )

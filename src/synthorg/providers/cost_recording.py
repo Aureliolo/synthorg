@@ -40,6 +40,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_COST_FAILED,
     PROVIDER_COST_RECORDED,
+    PROVIDER_COST_RECOVERED,
     PROVIDER_COST_SKIPPED,
     PROVIDER_PROMPT_PURPOSE_INVOKED,
 )
@@ -131,6 +132,19 @@ class CostRecordingContext(BaseModel):
 # leaked tasks if the tracker hangs indefinitely.
 _COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
 
+# Dropping one cost record is a blip worth a WARNING; dropping them in a run
+# is a standing fault that under-reports the budget for as long as it lasts,
+# and some causes never resolve on their own (a tracker whose configured
+# currency disagrees with the record's rejects every write, deterministically).
+# Without a streak count those are indistinguishable, so a permanent fault
+# reads as a series of unrelated blips and nothing ever raises its voice.
+_COST_FAILURE_ESCALATION_STREAK: Final[int] = 3
+
+# Module-level rather than per-context: the question an operator needs
+# answered is whether cost recording as a whole is failing, and a per-call
+# context is gone before the second failure happens.
+_consecutive_cost_failures: int = 0
+
 
 # Strong references to in-flight background record tasks live on the
 # active :class:`CostTracker` (one per :class:`AppState`, fresh per
@@ -142,6 +156,50 @@ _cost_context: ContextVar[CostRecordingContext | None] = ContextVar(
     "synthorg_cost_recording_context",
     default=None,
 )
+
+
+def consecutive_cost_failures() -> int:
+    """How many cost records have failed to land back to back.
+
+    Returns:
+        The current failure streak; ``0`` once a record lands.
+    """
+    return _consecutive_cost_failures
+
+
+def _note_cost_failure(**fields: object) -> None:
+    """Record one failed cost write, escalating once it becomes a pattern.
+
+    A single dropped record is best-effort noise. A run of them means the
+    budget is under-reporting continuously, which is the failure this whole
+    path exists to prevent, so past the streak threshold it stops being a
+    WARNING nobody reads and becomes an ERROR.
+    """
+    global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
+    _consecutive_cost_failures += 1
+    if _consecutive_cost_failures >= _COST_FAILURE_ESCALATION_STREAK:
+        logger.error(
+            PROVIDER_COST_FAILED,
+            consecutive_failures=_consecutive_cost_failures,
+            **fields,
+        )
+        return
+    logger.warning(
+        PROVIDER_COST_FAILED,
+        consecutive_failures=_consecutive_cost_failures,
+        **fields,
+    )
+
+
+def _note_cost_success() -> None:
+    """Clear the failure streak, announcing recovery only if there was one."""
+    global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
+    if _consecutive_cost_failures >= _COST_FAILURE_ESCALATION_STREAK:
+        logger.info(
+            PROVIDER_COST_RECOVERED,
+            dropped_records=_consecutive_cost_failures,
+        )
+    _consecutive_cost_failures = 0
 
 
 def current_cost_context() -> CostRecordingContext | None:
@@ -304,8 +362,7 @@ async def _skip_build_and_submit(
         record = build()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -420,8 +477,7 @@ async def _record_cost_in_background(
             timeout=_COST_RECORD_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -437,8 +493,7 @@ async def _record_cost_in_background(
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            PROVIDER_COST_FAILED,
+        _note_cost_failure(
             agent_id=ctx.agent_id,
             task_id=ctx.task_id,
             provider=provider,
@@ -448,6 +503,7 @@ async def _record_cost_in_background(
             reason="cost_tracker_record_failed",
         )
         return
+    _note_cost_success()
 
     # Only log success after the tracker has actually accepted the
     # record -- emitting at ``create_task`` time would produce a
@@ -471,6 +527,7 @@ async def _record_cost_in_background(
 
 __all__ = [
     "CostRecordingContext",
+    "consecutive_cost_failures",
     "cost_recording_scope",
     "current_cost_context",
     "emit_cost_record_from_context",

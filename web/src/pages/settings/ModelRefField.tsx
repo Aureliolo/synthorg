@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { probeEmbedder } from '@/api/endpoints/memory'
 import type { EmbedderProbeResponse } from '@/api/types/system'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
@@ -13,6 +15,8 @@ import {
 } from '@/utils/builtin-embedder'
 import { decodeModelRef, encodeModelRef } from '@/utils/model-ref'
 import type { ProviderConfig } from '@/api/types/providers'
+
+const log = createLogger('settings')
 
 /**
  * The one MODEL_REF setting whose binding no provider serves. Without it here
@@ -162,6 +166,11 @@ export function ModelRefField({
       onChange(encodeModelRef(nextProvider, nextModelId))
       inFlightRef.current?.abort()
       setProbeError(null)
+      // Cleared before branching, not inside the probe path: the aborted
+      // call's own chain deliberately leaves this alone (a later selection
+      // owns the flag by then), so an early return that skipped it would
+      // leave the field measuring a probe that is never coming back.
+      setProbing(false)
       if (!isEmbedder || isBuiltinEmbedderProvider(nextProvider)) {
         setProbe(null)
         return
@@ -177,10 +186,14 @@ export function ModelRefField({
         .then((result) => {
           if (!controller.signal.aborted) setProbe(result)
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           // Superseded by a later selection: not a failure, and reporting one
           // would contradict the answer still on its way.
           if (controller.signal.aborted) return
+          // Logged as well as shown: the hint tells this one operator their
+          // probe failed, which says nothing about every probe failing after
+          // a network-policy change.
+          log.error('Embedder probe failed', { provider: sanitizeForLog(nextProvider) }, err)
           setProbe(null)
           setProbeError(PROBE_FAILED_HINT)
         })

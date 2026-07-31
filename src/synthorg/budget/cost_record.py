@@ -50,11 +50,11 @@ class CostRecord(BaseModel):
             Both are real entity references: ``task_id`` is a foreign key
             into ``tasks``, so a subsystem call that belongs to no task
             leaves it unset rather than inventing an id. What such a call
-            IS gets recorded in ``prompt_class_id``, which every LLM
-            chokepoint already supplies.
+            IS gets recorded in ``prompt_class_id`` when it wraps a system
+            prompt, and in ``call_category`` when it does not: an embedding
+            call has no prompt to classify.
         prompt_class_id: Prompt-class identifier for purpose attribution
-            (``None`` when the call carries no system prompt purpose).
-            The sole owner for subsystem-issued work.
+            (``None`` when the call wraps no system prompt).
         provider: LLM provider name.
         model: Model identifier.
         input_tokens: Input token count.

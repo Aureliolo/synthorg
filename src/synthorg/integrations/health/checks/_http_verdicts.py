@@ -95,6 +95,16 @@ def _vendor_error_report(
     # credential without buying a request, so the honest report is that the
     # probe could not tell. Calling it unhealthy would cry wolf on a working
     # connection; calling it healthy would hide a revoked key.
+    #
+    # Logged like its siblings so a connection sitting at Unknown for days is
+    # greppable: the report reaches the dashboard, but without an event there
+    # is nothing to search when someone asks why.
+    logger.info(
+        HEALTH_CHECK_PASSED,
+        connection_name=connection.name,
+        status_code=resp.status_code,
+        verdict="indeterminate",
+    )
     return HealthReport(
         connection_name=connection.name,
         status=ConnectionStatus.UNKNOWN,

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import type { McpCatalogEntry } from '@/api/types/integrations'
-import { connectionsList } from '@/mocks/handlers/connections'
+import { buildHealth, connectionsList } from '@/mocks/handlers/connections'
 import { mcpCatalogHandlers } from '@/mocks/handlers/mcp-catalog'
 import { useConnectionsStore } from '@/stores/connections'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
@@ -46,7 +46,7 @@ const meta = {
             auth_method: 'api_key',
             base_url: null,
             health_check_enabled: true,
-            health: { status: 'healthy', last_check_at: null },
+            health: buildHealth('healthy', null),
             metadata: {},
             rate_limiter: null,
             secret_refs: [],
