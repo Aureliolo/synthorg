@@ -123,6 +123,10 @@ services:
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
+      # Paired with `restart: unless-stopped` below: it is that policy, and
+      # only that policy, which makes the dashboard's restart control safe to
+      # offer. Drop one and drop the other.
+      SYNTHORG_API_RESTART_SUPERVISED: "true"
     # Image sets USER 65532 in the Dockerfile; no compose override
     # needed.
     security_opt:

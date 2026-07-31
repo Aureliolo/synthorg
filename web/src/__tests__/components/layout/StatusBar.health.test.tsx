@@ -46,7 +46,7 @@ function healthBody(overrides: Partial<HealthStatus> = {}) {
     providers: true,
     telemetry: 'disabled',
     memory: DURABLE_MEMORY,
-    backup: true,
+    backup: { state: 'wired', detail: null },
     version: '0.0.0-test',
     uptime_seconds: 1,
     ...overrides,

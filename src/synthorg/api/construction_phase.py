@@ -56,6 +56,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService
+from synthorg.backup.state import BackupStateSlice
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
@@ -567,6 +568,12 @@ def build_construction_services(
         # their defaults: it would target a database nothing is using, and for
         # Postgres it has no connection details to target at all.
         boot_backend=persistence,
+        # Recorded here rather than left in the log so ``/health`` can name the
+        # fault instead of only its absence.
+        on_unavailable=lambda reason: app_state.wire(
+            BackupStateSlice,
+            unavailable_reason=reason,
+        ),
     )
     # ``_build_settings_dispatcher`` wires the timeout-check subscriber onto the
     # scheduler, so the scheduler must exist before the dispatcher is built.

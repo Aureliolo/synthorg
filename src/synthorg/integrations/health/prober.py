@@ -14,6 +14,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
+    Connection,
+    ConnectionStatus,
     ConnectionType,
 )
 from synthorg.integrations.errors import IntegrationLifecycleConflictError
@@ -44,6 +46,8 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 300
+_DEFAULT_HEALTHY_RECHECK_SECONDS: Final[int] = 21_600
+_DEFAULT_DEGRADED_RECHECK_SECONDS: Final[int] = 1_800
 _DEFAULT_UNHEALTHY_THRESHOLD: Final[int] = 3
 
 _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] = (
@@ -156,6 +160,9 @@ class HealthProberService(ProbeExecutionMixin):
         catalog: ConnectionCatalog,
         *,
         interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
+        healthy_recheck_seconds: int = _DEFAULT_HEALTHY_RECHECK_SECONDS,
+        degraded_recheck_seconds: int = _DEFAULT_DEGRADED_RECHECK_SECONDS,
+        unhealthy_recheck_seconds: int = _DEFAULT_INTERVAL_SECONDS,
         unhealthy_threshold: int = _DEFAULT_UNHEALTHY_THRESHOLD,
         degraded_threshold: int = 1,
         clock: Clock | None = None,
@@ -194,6 +201,9 @@ class HealthProberService(ProbeExecutionMixin):
             raise ValueError(msg)
         self._catalog = catalog
         self._interval = interval_seconds
+        self._healthy_recheck = healthy_recheck_seconds
+        self._degraded_recheck = degraded_recheck_seconds
+        self._unhealthy_recheck = unhealthy_recheck_seconds
         self._unhealthy_threshold = unhealthy_threshold
         self._degraded_threshold = degraded_threshold
         self._clock: Clock = clock if clock is not None else SystemClock()
@@ -302,10 +312,44 @@ class HealthProberService(ProbeExecutionMixin):
                 )
             await self._clock.sleep(self._interval)
 
+    def _recheck_interval(self, status: ConnectionStatus) -> int:
+        """How long this connection's last verdict stays good for.
+
+        Driven by the outcome rather than the clock alone: a connection that
+        answered correctly is unlikely to have changed, while one that failed
+        is what the operator is watching, so the two deserve very different
+        cadences. The gap is deliberately wide because a probe can cost real
+        money -- a metered search API bills per call, and re-proving a working
+        credential every few minutes spends quota to change nothing.
+
+        Returns:
+            Seconds this status is trusted before the connection is due again.
+        """
+        if status is ConnectionStatus.HEALTHY:
+            return self._healthy_recheck
+        if status is ConnectionStatus.UNHEALTHY:
+            return self._unhealthy_recheck
+        return self._degraded_recheck
+
+    def _is_due(self, conn: Connection) -> bool:
+        """Whether this connection's last verdict has expired.
+
+        Returns:
+            ``True`` when it has never been checked, or when its interval for
+            the status it last reported has elapsed.
+        """
+        last = conn.health.last_check_at
+        if last is None:
+            return True
+        elapsed = (self._clock.now() - last).total_seconds()
+        return elapsed >= self._recheck_interval(conn.health.status)
+
     async def _probe_all(self) -> None:
-        """Probe all connections with health checks enabled."""
+        """Probe every enabled connection whose last verdict has expired."""
         connections = await self._catalog.list_all()
-        eligible = [c for c in connections if c.health_check_enabled]
+        eligible = [
+            c for c in connections if c.health_check_enabled and self._is_due(c)
+        ]
         if not eligible:
             return
 

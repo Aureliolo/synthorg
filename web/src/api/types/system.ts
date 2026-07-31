@@ -3,11 +3,13 @@
 export type {
   AutonomyLevelRequest,
   AutonomyLevelResponse,
+  BackupHealth,
   LivenessStatus,
   MemoryHealth,
   ReadinessProbe,
   ReadinessStatus,
   ReadinessStatus as HealthStatus,
+  RestartResponse,
 } from './dtos.gen'
 
-export type { MemoryState } from './enum-values.gen'
+export type { BackupState, MemoryState } from './enum-values.gen'

@@ -921,6 +921,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="restart_supervised",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether something restarts this process after it exits (a"
+            " container restart policy, systemd, a supervisor). The"
+            " in-app restart control refuses while this is false,"
+            " because there the only way to apply a restart-required"
+            " setting would be to shut the deployment down and leave it"
+            " down. The shipped compose file sets it, every service"
+            " carrying restart: unless-stopped; a bare local run should"
+            " not. Read per request, so correcting it needs no restart"
+            " of its own."
+        ),
+        group="Lifecycle",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="approval_urgency_critical_seconds",
         type=SettingType.FLOAT,
         default="3600.0",

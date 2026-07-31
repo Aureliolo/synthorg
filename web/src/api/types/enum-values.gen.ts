@@ -117,6 +117,13 @@ export const BACKUP_COMPONENT_VALUES = [
 ] as const
 export type BackupComponent = (typeof BACKUP_COMPONENT_VALUES)[number]
 
+export const BACKUP_STATE_VALUES = [
+    'wired',
+    'absent',
+    'unattempted',
+] as const
+export type BackupState = (typeof BACKUP_STATE_VALUES)[number]
+
 export const BACKUP_TRIGGER_VALUES = [
     'scheduled',
     'manual',

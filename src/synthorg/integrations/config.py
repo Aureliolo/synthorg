@@ -245,7 +245,17 @@ class IntegrationHealthConfig(BaseModel):
     """Health monitoring configuration.
 
     Attributes:
-        check_interval_seconds: Background probe interval.
+        check_interval_seconds: How often the loop wakes to look for work.
+            Not how often any one connection is probed -- that is decided
+            per connection by its last outcome, below.
+        healthy_recheck_seconds: How long a healthy connection is trusted
+            before it is probed again. Long on purpose: a probe against a
+            metered third-party API is not free, and re-proving a working
+            connection every few minutes buys nothing.
+        degraded_recheck_seconds: Recheck interval once a connection has
+            started failing but has not been written off.
+        unhealthy_recheck_seconds: Recheck interval for a failed
+            connection, where the operator is waiting to see it recover.
         unhealthy_threshold: Consecutive failures before ``unhealthy``.
         degraded_threshold: Consecutive failures before ``degraded``.
     """
@@ -253,6 +263,9 @@ class IntegrationHealthConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     check_interval_seconds: int = Field(default=300, gt=0)
+    healthy_recheck_seconds: int = Field(default=21_600, gt=0)
+    degraded_recheck_seconds: int = Field(default=1_800, gt=0)
+    unhealthy_recheck_seconds: int = Field(default=300, gt=0)
     unhealthy_threshold: int = Field(default=3, ge=1)
     degraded_threshold: int = Field(default=1, ge=1)
 

@@ -69,6 +69,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "admin.backup_create": (5, 3600),
     "admin.backup_delete": (10, 3600),
     "admin.backup_restore": (3, 3600),
+    "admin.restart": (5, 3600),
     # agents
     "agents.autonomy_change": (10, 60),
     "agents.create": (10, 60),

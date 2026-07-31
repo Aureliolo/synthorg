@@ -3115,6 +3115,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/restart": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Restart */
+        readonly post: operations["ApiV1MetaRestartRestart"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/rules": {
         readonly parameters: {
             readonly query?: never;
@@ -7402,6 +7419,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[RestartResponse] */
+        readonly ApiResponse_RestartResponse_: {
+            readonly data: components["schemas"]["RestartResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
@@ -8435,6 +8460,15 @@ export type components = {
          * @enum {string}
          */
         readonly BackupComponent: "persistence" | "memory" | "config";
+        /**
+         * BackupHealth
+         * @description Backup coverage for this boot
+         */
+        readonly BackupHealth: {
+            /** @description Operator-facing remedy, when action is needed */
+            readonly detail: string | null;
+            readonly state: components["schemas"]["BackupState"];
+        };
         /** BackupInfo */
         readonly BackupInfo: {
             readonly backup_id: string;
@@ -8454,6 +8488,21 @@ export type components = {
             readonly timestamp: string;
             readonly trigger: components["schemas"]["BackupTrigger"];
         };
+        /**
+         * BackupState
+         * @description Whether this boot has backup coverage.
+         *
+         *     Attributes:
+         *         WIRED: A backup service was built, so recovery points are taken on
+         *             the configured schedule.
+         *         ABSENT: Construction was attempted and failed. No recovery point is
+         *             being taken and every ``backup.*`` setting is inert for the
+         *             lifetime of the process.
+         *         UNATTEMPTED: Backups were never attempted for this boot, which is
+         *             not a verdict about them at all.
+         * @enum {string}
+         */
+        readonly BackupState: "wired" | "absent" | "unattempted";
         /**
          * BackupTrigger
          * @description What initiated the backup.
@@ -15462,8 +15511,7 @@ export type components = {
         };
         /** ReadinessStatus */
         readonly ReadinessStatus: {
-            /** @description Backup service wired (None if backups were not attempted) */
-            readonly backup: boolean | null;
+            readonly backup: components["schemas"]["BackupHealth"];
             readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;
@@ -15932,6 +15980,18 @@ export type components = {
              * @enum {string}
              */
             readonly status: "allowed" | "denied";
+        };
+        /** RestartRequest */
+        readonly RestartRequest: {
+            /** @description Must be true to proceed */
+            readonly confirm: boolean;
+        };
+        /** RestartResponse */
+        readonly RestartResponse: {
+            /** @description Seconds until this process signals itself to shut down */
+            readonly delay_seconds: number;
+            /** @description Whether a restart was scheduled */
+            readonly restarting: boolean;
         };
         /** RestoreRequest */
         readonly RestoreRequest: {
@@ -26035,6 +26095,37 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaRestartRestart: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RestartRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_RestartResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

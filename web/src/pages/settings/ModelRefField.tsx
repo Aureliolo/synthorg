@@ -35,6 +35,37 @@ const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
   },
 ]
 
+/**
+ * Help text for the current state of the binding.
+ *
+ * The unbound case earns its own sentence because the generic stale-value note
+ * says only that the value is unavailable, which reads as a model that went
+ * away. A bare model id is a different fault: the model may well be there, but
+ * the reference names no provider, so nothing can resolve it and the value is
+ * refused at write time. An operator told "unavailable" would go looking for a
+ * missing model.
+ *
+ * @returns The hint to render, or `undefined` when the binding needs no note.
+ */
+function fieldHint({
+  isEmbedder,
+  provider,
+  modelId,
+}: {
+  isEmbedder: boolean
+  provider: string
+  modelId: string
+}): string | undefined {
+  if (modelId !== '' && provider === '') {
+    return (
+      `Stored as "${modelId}" with no provider, so nothing can resolve it and ` +
+      'memory stays off. Pick the model under the provider that serves it.'
+    )
+  }
+  if (isEmbedder && isBuiltinEmbedderProvider(provider)) return BUILTIN_EMBEDDER_HINT
+  return undefined
+}
+
 interface ModelRefFieldProps {
   value: string
   onChange: (value: string) => void
@@ -82,12 +113,9 @@ export function ModelRefField({
       }
       disabled={disabled}
       hideLabel
+      kind={isEmbedder ? 'embedding' : 'chat'}
       extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}
-      hint={
-        isEmbedder && isBuiltinEmbedderProvider(provider)
-          ? BUILTIN_EMBEDDER_HINT
-          : undefined
-      }
+      hint={fieldHint({ isEmbedder, provider, modelId })}
     />
   )
 }

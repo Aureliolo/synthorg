@@ -374,6 +374,9 @@ def auto_wire_integrations(
         bundle.health_prober_service = HealthProberService(
             catalog=bundle.connection_catalog,
             interval_seconds=health_cfg.check_interval_seconds,
+            healthy_recheck_seconds=health_cfg.healthy_recheck_seconds,
+            degraded_recheck_seconds=health_cfg.degraded_recheck_seconds,
+            unhealthy_recheck_seconds=health_cfg.unhealthy_recheck_seconds,
             unhealthy_threshold=health_cfg.unhealthy_threshold,
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="health_prober_service")

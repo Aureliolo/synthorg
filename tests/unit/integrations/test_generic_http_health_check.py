@@ -255,13 +255,24 @@ class TestAuthenticatedProbe:
 class TestVendorPresetProbe:
     """A preset names the header its API accepts and the query it needs."""
 
-    async def test_probe_sends_the_vendor_header_and_query(
+    async def test_probe_sends_the_vendor_header_and_buys_nothing(
         self,
         respx_mock: object,
     ) -> None:
+        # The probe carries the credential and no query. Sending one would be
+        # a billable search on every probe of every cycle, which is what this
+        # replaced.
         preset = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
         route = respx_mock.get(preset.base_url).mock(  # type: ignore[attr-defined]
-            return_value=httpx.Response(200),
+            return_value=httpx.Response(
+                422,
+                json={
+                    "error": {
+                        "code": "VALIDATION",
+                        "meta": {"errors": [{"loc": ["query", "q"]}]},
+                    }
+                },
+            ),
         )
         catalog = mock_of[ConnectionCatalog]()
         catalog.get_credentials.return_value = {"token": "key-123"}
@@ -272,13 +283,37 @@ class TestVendorPresetProbe:
         ):
             report = await check.check(_vendor_connection(HttpVendor.BRAVE.value))
 
+        # The rejection IS the pass: it proves the request reached the handler
+        # with the credential accepted, and the vendor does not bill an error.
         assert report.status is ConnectionStatus.HEALTHY
         request = route.calls.last.request
-        # The generic X-API-Key guess would be rejected however valid the key,
-        # and a search endpoint with no query is a 4xx regardless.
+        # The generic X-API-Key guess would be rejected however valid the key.
         assert request.headers["X-Subscription-Token"] == "key-123"
         assert "X-API-Key" not in request.headers
-        assert request.url.params["q"] == "ping"
+        assert "q" not in request.url.params
+
+    async def test_a_rejected_credential_is_still_caught(
+        self,
+        respx_mock: object,
+    ) -> None:
+        # Spending nothing is worthless if it also stops noticing a dead key.
+        preset = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
+        respx_mock.get(preset.base_url).mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(
+                422,
+                json={"error": {"code": "SUBSCRIPTION_TOKEN_INVALID"}},
+            ),
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {"token": "bad-key"}
+        check = GenericHttpHealthCheck(catalog=catalog)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_vendor_connection(HttpVendor.BRAVE.value))
+
+        assert report.status is ConnectionStatus.UNHEALTHY
 
     async def test_a_rate_limit_reports_its_retry_after(
         self,
@@ -301,39 +336,40 @@ class TestVendorPresetProbe:
         assert report.status is ConnectionStatus.UNHEALTHY
         assert "42" in (report.error_detail or "")
 
-    @pytest.mark.parametrize(
-        ("base", "path", "expected"),
-        [
-            ("https://api.example.test", "v1/ping", "https://api.example.test/v1/ping"),
-            (
-                "https://api.example.test/",
-                "/v1/ping",
-                "https://api.example.test/v1/ping",
-            ),
-            ("https://api.example.test", "", "https://api.example.test"),
-        ],
-        ids=["joins", "collapses-double-slash", "empty-path-probes-base"],
-    )
-    def test_probe_target_joins_base_and_path(
-        self, base: str, path: str, expected: str
-    ) -> None:
-        # No shipped preset sets health_path today, so nothing else exercises
-        # the join; the first vendor that needs one would find it untested.
+    def test_probe_target_prefers_a_free_metadata_endpoint(self) -> None:
+        # A vendor that publishes a way to read its own key state is probed
+        # there instead of at the endpoint that sells things.
         preset = HttpVendorPreset(
             id=NotBlankStr("probe-vendor"),
             label=NotBlankStr("Probe Vendor"),
-            base_url=NotBlankStr(base),
+            base_url=NotBlankStr("https://api.example.test/search"),
             auth_header=NotBlankStr("X-Key"),
-            health_path=path,
+            health_url="https://api.example.test/usage",
         )
-        conn = _make_connection(base)
+        conn = _make_connection("https://api.example.test/search")
         with patch(
             "synthorg.integrations.health.checks.generic_http.resolve_vendor",
             return_value=preset,
         ):
             target = _probe_target(conn)
 
-        assert target.url == expected
+        assert target.url == "https://api.example.test/usage"
+
+    def test_probe_target_falls_back_to_the_connection_url(self) -> None:
+        preset = HttpVendorPreset(
+            id=NotBlankStr("probe-vendor"),
+            label=NotBlankStr("Probe Vendor"),
+            base_url=NotBlankStr("https://api.example.test/search"),
+            auth_header=NotBlankStr("X-Key"),
+        )
+        conn = _make_connection("https://api.example.test/search")
+        with patch(
+            "synthorg.integrations.health.checks.generic_http.resolve_vendor",
+            return_value=preset,
+        ):
+            target = _probe_target(conn)
+
+        assert target.url == "https://api.example.test/search"
 
 
 class TestSecretLeakScrubbing:

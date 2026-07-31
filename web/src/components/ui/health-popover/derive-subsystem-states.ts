@@ -1,7 +1,7 @@
 /** Derives every subsystem state, and the two roll-ups, from health + WS state. */
 
 import { renderedSnapshot } from '@/stores/health'
-import type { MemoryHealth, MemoryState } from '@/api/types/system'
+import type { BackupState, MemoryHealth, MemoryState } from '@/api/types/system'
 import type { HealthSnapshot, LoadState } from '@/stores/health'
 import type { SubsystemState } from './health-popover.utils'
 
@@ -31,6 +31,8 @@ export interface DerivedSubsystemStates {
    * out of the readiness verdict too.
    */
   readonly backupState: SubsystemState
+  /** Why there is no coverage, when the backend says so. */
+  readonly backupDetail: string | undefined
   /**
    * Roll-up across every subsystem including the WebSocket.
    *
@@ -111,13 +113,13 @@ function _probeState(value: boolean | null): SubsystemState {
  * lost is a recovery capability. The backend keeps this out of its readiness
  * roll-up so a supervisor cannot restart a healthy deployment over it, and
  * reading it as `down` here would announce an outage the operator can see is
- * not happening. `null` means backups were never attempted for this boot, which
- * is not a verdict at all.
+ * not happening. `unattempted` means backups were never tried for this boot,
+ * which is not a verdict at all.
  */
-function _backupState(wired: boolean | null): SubsystemState {
-  if (wired === true) return 'ok'
-  if (wired === false) return 'degraded'
-  return 'unknown'
+const _BACKUP_STATES: Record<BackupState, SubsystemState> = {
+  wired: 'ok',
+  absent: 'degraded',
+  unattempted: 'unknown',
 }
 
 function _memoryDetailFor(memory: MemoryHealth): string | undefined {
@@ -136,6 +138,7 @@ type BackendStates = Pick<
   | 'memoryDetail'
   | 'memoryBackendState'
   | 'backupState'
+  | 'backupDetail'
 >
 
 /**
@@ -159,7 +162,8 @@ function _settledStates(snapshot: HealthSnapshot): BackendStates {
     memoryState: _MEMORY_STATES[health.memory.state],
     memoryDetail: _memoryDetailFor(health.memory),
     memoryBackendState: health.memory.state,
-    backupState: _backupState(health.backup),
+    backupState: _BACKUP_STATES[health.backup.state],
+    backupDetail: health.backup.detail ?? undefined,
   }
 }
 
@@ -187,6 +191,7 @@ function _backendStatesOf(
     memoryDetail: undefined,
     memoryBackendState: null,
     backupState: pending,
+    backupDetail: undefined,
   }
 }
 

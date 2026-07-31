@@ -118,7 +118,7 @@ export async function mockApiRoutes(page: Page) {
           persistence: true,
           message_bus: true,
           providers: true,
-          backup: true,
+          backup: { state: 'wired', detail: null },
           memory: { backend: 'sqlvector', detail: null, state: 'durable' },
           telemetry: 'disabled',
           version: '0.6.4',

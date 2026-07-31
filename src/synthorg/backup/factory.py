@@ -21,6 +21,7 @@ they are dispatched under, and it is the connection details that the Postgres
 handler actually needs.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, assert_never
 
@@ -174,6 +175,7 @@ def build_backup_service(
     resolved_config_path: Path | None = None,
     config_resolver: ConfigResolverProtocol | None = None,
     boot_backend: PersistenceBackend | None = None,
+    on_unavailable: Callable[[str], None] | None = None,
 ) -> BackupService | None:
     """Create backup service from config.
 
@@ -198,6 +200,14 @@ def build_backup_service(
             default) at prune time instead of only the static config.
         boot_backend: The persistence backend assembled at boot, whose kind and
             connection details outrank ``config.persistence``.
+        on_unavailable: Called with the redacted failure description when
+            construction fails. The reason exists only inside this handler,
+            and a caller that wants to report it has no other way to learn
+            it: the return is ``None`` either way. Passed as a callback
+            rather than returned alongside the service so the signature
+            stays ``BackupService | None``, which is the shape the
+            settings-to-startup trace gate matches to detect a
+            factory-gated ghost.
 
     Returns:
         Configured backup service, or ``None`` if handler construction
@@ -226,11 +236,14 @@ def build_backup_service(
         # coverage at all and no ``backup.*`` setting has a live consumer, for
         # the whole process lifetime. That is a standing operational condition,
         # not a transient hiccup, and ``/health`` reports it via
-        # ``BackupStateSlice`` staying unwired.
+        # ``BackupStateSlice``.
+        description = safe_error_description(exc)
         logger.error(
             BACKUP_SERVICE_UNAVAILABLE,
             component="backup_service",
             error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            error=description,
         )
+        if on_unavailable is not None:
+            on_unavailable(description)
         return None

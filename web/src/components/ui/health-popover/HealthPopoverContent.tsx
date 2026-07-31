@@ -255,6 +255,7 @@ function HealthSubsystemGrid({
         label="Backups"
         description="Scheduled snapshots of the database, memory, and config. Absent means no recovery point is being taken and every backup setting is inert."
         state={states.backupState}
+        detail={states.backupDetail}
         action={
           needsAttention(states.backupState) ? (
             <HealthRemediationLink

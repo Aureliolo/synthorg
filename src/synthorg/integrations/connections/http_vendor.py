@@ -38,6 +38,20 @@ METADATA_KEY_VENDOR: Final[str] = "vendor"
 _KEY_PLACEHOLDER: Final[str] = "{key}"
 
 
+class ProbeVerdict(StrEnum):
+    """What a health probe established about the credential.
+
+    Kept separate from the connection's health status because a probe that
+    could not determine anything is not the same as one that found a fault,
+    and folding the two would report every vendor whose error contract is
+    unverified as broken.
+    """
+
+    AUTH_OK = "auth_ok"
+    AUTH_FAILED = "auth_failed"
+    INDETERMINATE = "indeterminate"
+
+
 class HttpVendor(StrEnum):
     """A generic-HTTP service with a code-defined request contract."""
 
@@ -61,15 +75,18 @@ class HttpVendorPreset(BaseModel):
         auth_header: Header the API key travels in.
         auth_template: Value template for that header; ``{key}`` is replaced
             with the resolved key (e.g. ``"Bearer {key}"``).
-        health_path: Path probed to prove the credential works. Empty probes
-            ``base_url`` itself.
-        health_params: Query parameters the health probe must send. A search
-            API rejects a bare request as malformed, which would read as an
-            unhealthy connection even with a valid key.
-        health_body: JSON body the health probe must POST. Set for a vendor
-            whose endpoint answers only POST, where a GET (however well
-            formed) returns 405 and every valid credential would read as
-            unhealthy. Mutually exclusive with ``health_params``.
+        health_url: Absolute URL to probe instead of ``base_url``. Set only
+            for a vendor with a genuinely free metadata endpoint, where a
+            ``2xx`` proves the credential without buying anything.
+        auth_cleared_statuses: Error statuses this vendor is *known* to
+            return once the credential has been accepted and only the
+            request shape was rejected. Empty unless verified against the
+            live API, because treating a guessed status as proof would
+            report a revoked key as healthy.
+        auth_failure_markers: Case-insensitive substrings that appear in
+            this vendor's error body when the CREDENTIAL was rejected
+            rather than the request. Checked before
+            ``auth_cleared_statuses``, since both arrive as the same status.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -79,31 +96,30 @@ class HttpVendorPreset(BaseModel):
     base_url: NotBlankStr
     auth_header: NotBlankStr
     auth_template: NotBlankStr = "{key}"
-    health_path: str = ""
-    health_params: dict[str, str] = Field(default_factory=dict)
-    health_body: dict[str, str] = Field(default_factory=dict)
+    health_url: str = ""
+    auth_cleared_statuses: frozenset[int] = Field(default_factory=frozenset)
+    auth_failure_markers: tuple[str, ...] = ()
 
-    @model_validator(mode="after")
-    def _one_probe_shape(self) -> HttpVendorPreset:
-        """Reject a preset that describes two different probes.
+    def probe_verdict(self, status: int, body: str) -> ProbeVerdict:
+        """Judge a probe response without having bought anything.
 
-        The probe issues one request, so params and a body cannot both
-        apply; declaring both would silently drop one and leave the preset
-        reading as though it had been honoured.
+        A metered API bills successful calls, so the probe deliberately sends
+        a request the endpoint must reject. The rejection is the evidence: it
+        proves the request reached the handler with the credential accepted,
+        and the vendor does not charge for an error.
 
         Returns:
-            The validated preset.
-
-        Raises:
-            ValueError: If both a query and a body are declared.
+            ``AUTH_OK`` when the credential demonstrably cleared,
+            ``AUTH_FAILED`` when it was demonstrably rejected, and
+            ``INDETERMINATE`` when this vendor's contract does not say --
+            which is reported as unknown rather than guessed either way.
         """
-        if self.health_params and self.health_body:
-            msg = (
-                f"vendor {self.id!r} declares both health_params and "
-                f"health_body; the probe sends one request, not two"
-            )
-            raise ValueError(msg)
-        return self
+        lowered = body.lower()
+        if any(marker.lower() in lowered for marker in self.auth_failure_markers):
+            return ProbeVerdict.AUTH_FAILED
+        if status in self.auth_cleared_statuses:
+            return ProbeVerdict.AUTH_OK
+        return ProbeVerdict.INDETERMINATE
 
     @model_validator(mode="after")
     def _template_consumes_the_key(self) -> HttpVendorPreset:
@@ -142,10 +158,17 @@ _BRAVE: Final = HttpVendorPreset(
     label=NotBlankStr("Brave Search"),
     base_url=NotBlankStr("https://api.search.brave.com/res/v1/web/search"),
     auth_header=NotBlankStr("X-Subscription-Token"),
-    # A search endpoint with no query is a 4xx, so the probe sends the
-    # smallest well-formed search rather than reporting a working key
-    # as unhealthy.
-    health_params={"q": "ping", "count": "1"},
+    # The probe sends NO query. Brave documents that "only successful
+    # requests (non-error responses) are counted against your quota and
+    # billed", and a search with no ``q`` is a 422, so this costs nothing.
+    # Verified against the live API: a valid token yields
+    # ``VALIDATION`` naming ``["query", "q"]`` (the request was rejected,
+    # the credential was not), a wrong token yields
+    # ``SUBSCRIPTION_TOKEN_INVALID``, and a missing one names the header.
+    # The two failures are the markers below; the 422 that remains is proof
+    # the credential cleared.
+    auth_cleared_statuses=frozenset({422}),
+    auth_failure_markers=("SUBSCRIPTION_TOKEN_INVALID", "x-subscription-token"),
 )
 
 _TAVILY: Final = HttpVendorPreset(
@@ -154,9 +177,11 @@ _TAVILY: Final = HttpVendorPreset(
     base_url=NotBlankStr("https://api.tavily.com/search"),
     auth_header=NotBlankStr("Authorization"),
     auth_template=NotBlankStr("Bearer {key}"),
-    # The endpoint answers POST only, so a query-string probe returns 405
-    # and would report every valid credential as unhealthy.
-    health_body={"query": "ping"},
+    # Tavily publishes a metadata endpoint reporting key and plan usage, so
+    # the credential can be proven by reading rather than by searching. A
+    # 2xx here is the whole verdict, which is why no error contract is
+    # declared below.
+    health_url="https://api.tavily.com/usage",
 )
 
 _EXA: Final = HttpVendorPreset(
@@ -164,7 +189,12 @@ _EXA: Final = HttpVendorPreset(
     label=NotBlankStr("Exa"),
     base_url=NotBlankStr("https://api.exa.ai/search"),
     auth_header=NotBlankStr("x-api-key"),
-    health_body={"query": "ping"},
+    # No free endpoint and no verified error contract, so nothing is claimed:
+    # the probe sends no query (buying nothing), and only Exa's documented
+    # 401 for a bad key is treated as a verdict. Anything else reports
+    # unknown rather than guessing, because a guess here either bills for
+    # every probe or reports a revoked key as healthy. Fill in
+    # ``auth_cleared_statuses`` once observed against the live API.
 )
 
 

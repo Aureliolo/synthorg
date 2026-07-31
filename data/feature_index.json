@@ -24,6 +24,7 @@
         "LivenessController",
         "ReadinessController",
         "HealthController",
+        "RestartController",
         "CapabilitiesController",
         "AuthBootstrapController",
         "AuthSessionController",
@@ -117,7 +118,8 @@
       "settings_namespace": "backup",
       "state_slice_fields": [
         "service",
-        "expected"
+        "expected",
+        "unavailable_reason"
       ]
     },
     {
@@ -1478,6 +1480,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-30T22:27:45.075358Z",
+  "generated_at": "2026-07-31T07:41:23.758124Z",
   "schema_version": 1
 }

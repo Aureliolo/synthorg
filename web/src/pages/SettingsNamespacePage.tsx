@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router'
 import { ArrowLeft, Settings } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -15,10 +15,14 @@ import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { ROUTES } from '@/router/routes'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
+import { RestartBanner } from './settings/RestartBanner'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap } from './settings/utils'
-import { filterNamespaceEntries } from './settings/settings-page-helpers'
+import {
+  countRestartRequired,
+  filterNamespaceEntries,
+} from './settings/settings-page-helpers'
 
 // The filter lives in the URL so a surface that diagnoses a setting can link
 // straight to its row: the health dialog's memory card points here carrying the
@@ -120,10 +124,22 @@ export default function SettingsNamespacePage() {
   const [searchQuery, setSearchQuery] = useSearchParamState(SEARCH_PARAM)
   const advancedMode = useDashboardPrefs((s) => s.settingsAdvancedMode)
 
-  const { dirtyValues, handleValueChange, handleDiscard, handleSave } = useSettingsDirtyState(
-    entries,
-    updateSetting,
-  )
+  const {
+    dirtyValues,
+    handleValueChange,
+    handleDiscard,
+    handleSave: baseSave,
+  } = useSettingsDirtyState(entries, updateSetting)
+  const [restartCount, setRestartCount] = useState(0)
+  // Counted before the save, because saving clears the dirty map that says
+  // which keys were touched. Mirrors the root settings page, which is where
+  // this notice used to live exclusively: a namespace page could save a
+  // restart-required setting and say nothing at all about it.
+  const handleSave = useCallback(async () => {
+    const pending = countRestartRequired(dirtyValues.keys(), entries)
+    await baseSave()
+    if (pending > 0) setRestartCount(pending)
+  }, [baseSave, dirtyValues, entries])
   const ns = resolveNamespace(namespace)
 
   const filteredEntries = useMemo(
@@ -150,6 +166,8 @@ export default function SettingsNamespacePage() {
       <SettingsBackHeader title={`${displayName} Settings`}>
         <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
       </SettingsBackHeader>
+
+      <RestartBanner count={restartCount} onDismiss={() => setRestartCount(0)} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load settings namespace" description={error} />

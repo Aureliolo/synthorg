@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
-import type { MemoryHealth } from '@/api/types/system'
+import type { BackupHealth, MemoryHealth } from '@/api/types/system'
 
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 
@@ -9,7 +9,7 @@ function okLoadState(
   memory: MemoryHealth,
   status: 'ok' | 'unavailable' = 'ok',
   providers: boolean | null = true,
-  backup: boolean | null = true,
+  backup: BackupHealth = { state: 'wired', detail: null },
 ): LoadState {
   return {
     state: 'ok',
@@ -63,7 +63,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
           providers: null,
           telemetry: 'disabled',
           memory: { state: 'durable', backend: 'sqlvector', detail: null },
-          backup: null,
+          backup: { state: 'unattempted', detail: null },
           version: '0.6.4',
           uptime_seconds: 1,
         },
