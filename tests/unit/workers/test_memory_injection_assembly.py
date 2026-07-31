@@ -15,6 +15,7 @@ import pytest
 
 import synthorg.api.lifecycle_assembly
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.config.schema import RootConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.wiki_export import WikiExporter
@@ -155,32 +156,30 @@ class TestWikiExporterAssembly:
 
 
 class TestOrgMemoryWiringOrder:
-    """The org backend must exist before runtime services read it.
+    """Both memory backends must exist before runtime services read them.
 
-    ``wire_org_memory_backend`` used to run inside ``_wire_features``,
-    which is ordered after ``_install_runtime_services``. Every consumer
-    that asks for the org layer does so while assembling an agent, so it
-    read ``None`` and the whole layer stayed unreachable for the life of
-    the process.
+    Every consumer of the org layer asks for it while assembling an agent,
+    and the engine reads the memory slice eagerly at construction. A
+    backend wired after runtime services install is read as ``None`` there
+    and stays unreachable for the life of the process, however healthy it
+    looks afterwards.
     """
 
-    def test_org_wiring_precedes_runtime_services(self) -> None:
+    def test_reconcile_precedes_runtime_services(self) -> None:
         source = Path(inspect.getfile(synthorg.api.lifecycle_assembly)).read_text(
             encoding="utf-8"
         )
         hooks = source.split("startup = [", 1)[1].split("]", 1)[0]
 
-        memory_at = hooks.index("_wire_memory_backend")
+        reconcile_at = hooks.index("_reconcile_subsystems")
         runtime_at = hooks.index("_install_runtime_services")
 
-        assert memory_at < runtime_at
+        assert reconcile_at < runtime_at
 
-    def test_org_backend_is_wired_by_the_memory_hook(self) -> None:
-        source = Path(inspect.getfile(synthorg.api.lifecycle_assembly)).read_text(
-            encoding="utf-8"
-        )
-        hook = source.split("async def _wire_memory_backend", 1)[1].split(
-            "async def ", 1
-        )[0]
+    def test_both_memory_backends_are_declared(self) -> None:
+        # Declared, so the pass that runs before runtime services brings
+        # them up. Asserting the declaration rather than a call inside a
+        # named hook keeps this tied to what actually decides the order.
+        declared = {spec.name for spec in SUBSYSTEMS}
 
-        assert "wire_org_memory_backend" in hook
+        assert {"memory_backend", "org_memory_backend"} <= declared
