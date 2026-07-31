@@ -179,15 +179,17 @@ class CallAnalyticsService:
         """Aggregate cost + latency + quality per prompt class.
 
         Records with no ``prompt_class_id`` (per-task / agent-execution calls
-        that carry no registered system prompt purpose) are excluded; the
-        breakdown is the by-purpose view.
+        that carry no registered system prompt purpose) group into a single
+        ``None`` row rather than being dropped, so the breakdown still sums to
+        the headline total.
 
         Args:
             start: Inclusive lower bound on timestamp.
             end: Exclusive upper bound on timestamp.
 
         Returns:
-            One row per prompt class, sorted by ``prompt_class_id``.
+            One row per prompt class, sorted by ``prompt_class_id`` with the
+            no-prompt-class row first.
         """
         records = await collect_all_records(self._tracker, start=start, end=end)
         breakdown = _build_prompt_class_breakdown(records)

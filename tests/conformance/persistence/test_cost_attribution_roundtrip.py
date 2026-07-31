@@ -70,8 +70,16 @@ class TestCostAttributionRoundTrip:
         breakdown = await service.get_prompt_class_breakdown()
 
         ids = [row.prompt_class_id for row in breakdown.rows]
-        # The unattributed record is excluded; rows sort by prompt_class_id value.
-        assert ids == [PromptPurposeId.COS_CHAT, PromptPurposeId.MEMORY_RERANK]
+        # The unattributed record keeps its own row so the breakdown still sums
+        # to the headline total; it sorts ahead of every registered id.
+        assert ids == [
+            None,
+            PromptPurposeId.COS_CHAT,
+            PromptPurposeId.MEMORY_RERANK,
+        ]
+        unattributed = breakdown.rows[0]
+        assert unattributed.total_cost == pytest.approx(0.10)
+        assert unattributed.call_count == 1
 
         by_id = {row.prompt_class_id: row for row in breakdown.rows}
         rerank = by_id[PromptPurposeId.MEMORY_RERANK]

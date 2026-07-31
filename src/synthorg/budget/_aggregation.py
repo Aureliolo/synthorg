@@ -45,9 +45,13 @@ def group_by_agent(
     """
     bucket: dict[str, list[CostRecord]] = defaultdict(list)
     for record in records:
-        if record.agent_id is None:
+        # Bound once: this runs per record over the whole window, and a
+        # model attribute read costs enough that fetching it for the null
+        # test and again for the key is measurable at that width.
+        agent_id = record.agent_id
+        if agent_id is None:
             continue
-        bucket[record.agent_id].append(record)
+        bucket[agent_id].append(record)
     return dict(bucket)
 
 

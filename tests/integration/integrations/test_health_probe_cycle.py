@@ -15,6 +15,7 @@ and generic HTTP.
 
 from datetime import UTC, datetime
 from types import MappingProxyType
+from typing import Final
 
 import pytest
 from typeguard import suppress_type_checks
@@ -25,6 +26,7 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
     HealthReport,
+    WebhookIngestState,
 )
 from synthorg.integrations.health import prober as prober_mod
 from synthorg.integrations.health.prober import (
@@ -32,6 +34,13 @@ from synthorg.integrations.health.prober import (
     HealthProberService,
     get_health_checker,
 )
+from tests._shared import FakeClock
+
+# A verdict stays trusted for its recheck interval, so a test driving
+# successive cycles has to outlive one. Short enough to read, and the
+# advance clears it outright rather than landing on the boundary.
+_RECHECK_SECONDS: Final[int] = 60
+_PAST_RECHECK_SECONDS: Final[int] = 61
 
 
 class _FakeCatalog:
@@ -53,11 +62,27 @@ class _FakeCatalog:
         *,
         status: ConnectionStatus,
         checked_at: datetime,
+        detail: str | None = None,
+        latency_ms: float | None = None,
+        webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE,
+        retry_after_seconds: float | None = None,
     ) -> None:
+        # Mirrors ConnectionCatalog.update_health in full: the prober records
+        # through a broad-except, so a signature that drops a keyword turns
+        # every probe into a swallowed TypeError and zero recorded updates.
         self.updates.append((name, status))
         conn = self._connections[name]
         self._connections[name] = conn.model_copy(
-            update={"health": ConnectionHealth(status=status, last_check_at=checked_at)}
+            update={
+                "health": ConnectionHealth(
+                    status=status,
+                    last_check_at=checked_at,
+                    detail=detail,
+                    latency_ms=latency_ms,
+                    webhook_ingest=webhook_ingest,
+                    retry_after_seconds=retry_after_seconds,
+                )
+            }
         )
 
 
@@ -128,6 +153,7 @@ class TestHealthProberCycle:
     ) -> None:
         conn = _make_connection("probe-1")
         catalog = _FakeCatalog((conn,))
+        clock = FakeClock()
         # _FakeCatalog is duck-typed to the catalog surface the prober uses;
         # the WARN-level checker rejects it against the concrete
         # ConnectionCatalog, so suppress the structural check at construction.
@@ -136,6 +162,10 @@ class TestHealthProberCycle:
                 catalog=catalog,  # type: ignore[arg-type]
                 degraded_threshold=1,
                 unhealthy_threshold=2,
+                healthy_recheck_seconds=_RECHECK_SECONDS,
+                degraded_recheck_seconds=_RECHECK_SECONDS,
+                unhealthy_recheck_seconds=_RECHECK_SECONDS,
+                clock=clock,
             )
         checker = _ScriptedChecker(
             {
@@ -148,10 +178,15 @@ class TestHealthProberCycle:
         )
         monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
 
+        # Each cycle writes a fresh verdict, so the escalation ladder is only
+        # reachable by letting each one expire; probing sooner is the very
+        # thing the recheck policy suppresses.
         # First probe: one failure -> DEGRADED.
         await svc._probe_all()
+        clock.advance(_PAST_RECHECK_SECONDS)
         # Second probe: second failure -> UNHEALTHY.
         await svc._probe_all()
+        clock.advance(_PAST_RECHECK_SECONDS)
         # Third probe: healthy -> back to HEALTHY, counter reset.
         await svc._probe_all()
 
@@ -192,17 +227,27 @@ class TestHealthProberCycle:
         """
         conn = _make_connection("probe-unknown")
         catalog = _FakeCatalog((conn,))
+        clock = FakeClock()
         with suppress_type_checks():
             svc = HealthProberService(
                 catalog=catalog,  # type: ignore[arg-type]
                 degraded_threshold=1,
                 unhealthy_threshold=2,
+                healthy_recheck_seconds=_RECHECK_SECONDS,
+                degraded_recheck_seconds=_RECHECK_SECONDS,
+                unhealthy_recheck_seconds=_RECHECK_SECONDS,
+                clock=clock,
             )
         checker = _ScriptedChecker({"probe-unknown": [ConnectionStatus.UNKNOWN] * 3})
         monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
         await svc._probe_all()
+        clock.advance(_PAST_RECHECK_SECONDS)
         await svc._probe_all()
+        clock.advance(_PAST_RECHECK_SECONDS)
         await svc._probe_all()
         statuses = [status for _, status in catalog.updates]
+        # Three cycles actually ran, so non-escalation is proved rather than
+        # inferred from a prober that never probed.
+        assert len(statuses) == 3
         assert ConnectionStatus.DEGRADED not in statuses
         assert ConnectionStatus.UNHEALTHY not in statuses
