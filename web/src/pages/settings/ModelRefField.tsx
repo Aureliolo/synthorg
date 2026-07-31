@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { probeEmbedder } from '@/api/endpoints/memory'
 import type { EmbedderProbeResponse } from '@/api/types/system'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
@@ -21,6 +21,18 @@ import type { ProviderConfig } from '@/api/types/providers'
  * it again afterwards.
  */
 const EMBEDDER_SETTING_KEY = 'memory/embedder_model'
+
+// Says that a wait is expected rather than leaving a spinner to read as a
+// hang: a model pulled moments ago has to be loaded before it can answer,
+// which took 16 seconds locally against a fraction of a second once warm.
+const PROBING_HINT =
+  'Measuring the vector width... a model that was just pulled has to load first.'
+
+// The measurement failing is not the same as a model being unusable, and the
+// commonest cause is the one the operator can simply retry past.
+const PROBE_FAILED_HINT =
+  'Could not measure the vector width: the model did not answer in time. ' +
+  'Select it again to retry; a first load can outlast the probe deadline.'
 
 const BUILTIN_EMBEDDER_GROUP: readonly SelectOptionGroup[] = [
   {
@@ -135,11 +147,21 @@ export function ModelRefField({
   const { provider, modelId } = useMemo(() => decodeModelRef(value), [value])
   const isEmbedder = settingKey === EMBEDDER_SETTING_KEY
   const [probe, setProbe] = useState<EmbedderProbeResponse | null>(null)
+  const [probeError, setProbeError] = useState<string | null>(null)
   const [probing, setProbing] = useState(false)
+  const inFlightRef = useRef<AbortController | null>(null)
+
+  // Abandon a probe the operator has already moved on from. Without this,
+  // changing selection twice leaves both calls running, and against a local
+  // model they contend over the same cold load -- which is how three clicks
+  // turned a 16-second first load into three timed-out probes.
+  useEffect(() => () => inFlightRef.current?.abort(), [])
 
   const handleChange = useCallback(
     (nextProvider: string, nextModelId: string) => {
       onChange(encodeModelRef(nextProvider, nextModelId))
+      inFlightRef.current?.abort()
+      setProbeError(null)
       if (!isEmbedder || isBuiltinEmbedderProvider(nextProvider)) {
         setProbe(null)
         return
@@ -148,16 +170,23 @@ export function ModelRefField({
       // a property of the model that only the model can answer -- and because
       // learning it after the next restart is how a perfectly good choice
       // turns out to have disabled the index.
+      const controller = new AbortController()
+      inFlightRef.current = controller
       setProbing(true)
-      probeEmbedder(nextProvider, nextModelId)
-        .then(setProbe)
-        .catch(() => {
-          // A binding whose width cannot be measured is reported by the
-          // endpoint's own error toast; leaving the verdict blank is honest
-          // here, where inventing one would be worse than saying nothing.
-          setProbe(null)
+      probeEmbedder(nextProvider, nextModelId, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) setProbe(result)
         })
-        .finally(() => setProbing(false))
+        .catch(() => {
+          // Superseded by a later selection: not a failure, and reporting one
+          // would contradict the answer still on its way.
+          if (controller.signal.aborted) return
+          setProbe(null)
+          setProbeError(PROBE_FAILED_HINT)
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setProbing(false)
+        })
     },
     [onChange, isEmbedder],
   )
@@ -174,10 +203,11 @@ export function ModelRefField({
       extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}
       hint={
         probing
-          ? 'Measuring the vector width...'
-          : (probe !== null
-              ? widthVerdict(probe)
-              : fieldHint({ isEmbedder, provider, modelId }))
+          ? PROBING_HINT
+          : (probeError
+              ?? (probe !== null
+                    ? widthVerdict(probe)
+                    : fieldHint({ isEmbedder, provider, modelId })))
       }
     />
   )

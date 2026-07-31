@@ -18,10 +18,12 @@ import type { EmbedderProbeResponse } from '../types/system'
 export async function probeEmbedder(
   provider: string,
   modelId: string,
+  signal?: AbortSignal,
 ): Promise<EmbedderProbeResponse> {
   const response = await apiClient.post<ApiResponse<EmbedderProbeResponse>>(
     '/admin/memory/embedder/probe',
     { provider, model_id: modelId },
+    signal ? { signal } : {},
   )
   return unwrap(response)
 }

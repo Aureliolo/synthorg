@@ -7,7 +7,8 @@ import { useProvidersStore } from '@/stores/providers'
 import { successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { probeEmbedder } from '@/api/endpoints/memory'
-import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
+import type { ProviderModelConfig } from '@/api/types/providers'
+import type { ProviderWithName } from '@/utils/providers'
 
 /**
  * An embedder's vector width decides whether recall can be indexed at all,
@@ -16,36 +17,41 @@ import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
  * revealing that it disabled the index.
  */
 
-function model(
-  id: string,
-  overrides: Partial<ProviderModelConfig['metadata']> = {},
-): ProviderModelConfig {
+function model(id: string, supportsEmbeddings: boolean): ProviderModelConfig {
   return {
     id,
     alias: null,
+    cost_per_1k_input: 0,
+    cost_per_1k_output: 0,
+    cost_per_image: null,
     max_context: 8192,
-    stale: null,
+    estimated_latency_ms: null,
+    local_params: null,
     metadata: {
-      family: 'test-family',
       supports_tools: false,
-      supports_vision: false,
-      supports_embeddings: false,
-      supports_image_generation: false,
       tool_calls_verified: null,
-      metadata_source: 'preset',
-      ...overrides,
+      supports_vision: false,
+      supports_reasoning: false,
+      supports_embeddings: supportsEmbeddings,
+      supports_image_generation: false,
+      supports_prompt_caching: false,
+      max_output_tokens: null,
+      parameter_count: null,
+      cost_tier: null,
+      family: 'test-family',
+      generation: null,
+      release_date: null,
+      metadata_source: 'unknown',
     },
-  } as ProviderModelConfig
+    stale: null,
+  }
 }
 
 function seedProviders(): void {
   const provider = {
     name: 'example-provider',
-    models: [
-      model('example-chat-001'),
-      model('example-embed-001', { supports_embeddings: true }),
-    ],
-  } as ProviderConfig
+    models: [model('example-chat-001', false), model('example-embed-001', true)],
+  } as unknown as ProviderWithName
   useProvidersStore.setState({ providers: [provider], listLoading: false })
 }
 
@@ -67,7 +73,7 @@ describe('ModelRefField embedder width', () => {
     renderEmbedderField()
 
     const options = await screen.findAllByRole('option')
-    const labels = options.map((o) => o.textContent ?? '')
+    const labels = options.map((o) => o.textContent)
     expect(labels.some((l) => l.includes('example-embed-001'))).toBe(true)
     expect(labels.some((l) => l.includes('example-chat-001'))).toBe(false)
   })
