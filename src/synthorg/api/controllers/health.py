@@ -3,9 +3,11 @@
 * ``/healthz`` (liveness): always 200 while the event loop is
   turning; no dependency probes. Kubernetes-style supervisors use
   this to decide whether to restart the process.
-* ``/readyz`` (readiness): 200 only when persistence + message
-  bus are both healthy; otherwise 503. Used to gate traffic / block
-  rollouts until dependencies are up.
+* ``/readyz`` (readiness): 200 only when the dependencies this process
+  owns (persistence, message bus, a wired memory substrate) are
+  healthy; otherwise 503. Used to gate traffic / block rollouts until
+  dependencies are up. Reachability of a third-party LLM provider is
+  reported, never gated on.
 """
 
 import asyncio
@@ -125,6 +127,11 @@ class ReadinessStatus(BaseModel):
         providers: All tracked LLM providers reachable (no ``DOWN``
             status). ``None`` when no provider health tracker is
             wired (dev stacks without provider configuration).
+            Excluded from the ``status`` roll-up on the same grounds as
+            ``backup``: every replica reaches the same third-party
+            endpoint, so gating readiness on it would drain them all at
+            once and take down the dashboard an operator repoints a
+            broken provider from.
         telemetry: Project telemetry delivery state.
         backup: Backup coverage for this boot, and the cause when there is
             none. Deliberately excluded from the ``status`` roll-up: a
@@ -343,7 +350,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     # report healthy. Unconfigured (None) is treated as not blocking
     # -- dev stacks without a bus still report ready.
     configured_checks = [
-        v for v in (persistence_ok, bus_ok, providers_ok, memory_ready) if v is not None
+        v for v in (persistence_ok, bus_ok, memory_ready) if v is not None
     ]
     ready = bool(configured_checks) and all(configured_checks)
     outcome = (
