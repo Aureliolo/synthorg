@@ -372,6 +372,20 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_strategy_context]
 
+    # Held in the closure rather than on the subsystems slice: the scheduler
+    # imports the reconcile entry point, which reads that slice, so parking
+    # it there would close an import cycle.
+    from synthorg.api.subsystems.resync import (  # noqa: PLC0415
+        SubsystemResyncScheduler,
+    )
+
+    resync_scheduler = SubsystemResyncScheduler(
+        app_state,
+        interval_seconds=effective_config.api.subsystem_resync_interval_seconds,
+    )
+    startup = [*startup, resync_scheduler.start]
+    shutdown = [resync_scheduler.stop, *shutdown]
+
     async def _start_construction_dispatcher() -> None:
         # Bring up the construction-phase dispatcher's HTTP-bearing sinks under
         # their lifecycle locks, but ONLY if it is still the live dispatcher.

@@ -332,6 +332,12 @@ class ApiConfig(BaseModel):
             key="readiness_probe_timeout_seconds",
             parse=parse_float,
         ),
+        MirrorField(
+            field="subsystem_resync_interval_seconds",
+            namespace=SettingNamespace.API,
+            key="subsystem_resync_interval_seconds",
+            parse=parse_float,
+        ),
     )
 
     cors: CorsConfig = Field(
@@ -388,6 +394,16 @@ class ApiConfig(BaseModel):
             " probe returns an unavailable (503) verdict within this"
             " budget instead of stalling the probe; kept just under the"
             " typical k8s 5s readinessProbe timeout."
+        ),
+    )
+    subsystem_resync_interval_seconds: float = Field(
+        default=60.0,
+        gt=0.0,
+        description=(
+            "Cadence of the subsystem reconcile sweep. Every other trigger"
+            " is an optimisation; this one is the guarantee, so a dependency"
+            " that arrives with nothing to announce it is still picked up"
+            " within this window."
         ),
     )
 

@@ -171,6 +171,25 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="subsystem_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Cadence of the subsystem reconcile sweep. Every other trigger is"
+            " an optimisation; this one is the guarantee, so a dependency that"
+            " arrives with nothing to announce it (a local model server coming"
+            " back up) is still picked up within this window. Read per cycle,"
+            " so a change applies without a restart."
+        ),
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+    )
+)
+
 # ── TLS (bootstrap-only) ────────────────────────────────────────
 
 _r.register(
