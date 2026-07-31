@@ -71,6 +71,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   )
 
   const refresh = useCallback(() => void fetchHealth(), [fetchHealth])
+  const dismiss = useCallback(() => setOpen(false), [])
 
   const fetchedAtLabel = buildFetchedAtLabel(loadState, nowMs)
 
@@ -94,6 +95,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
             states={states}
             fetchedAtLabel={fetchedAtLabel}
             onRefresh={refresh}
+            onDismiss={dismiss}
           />
         </Dialog.Popup>
       </Dialog.Portal>

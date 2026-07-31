@@ -1,6 +1,5 @@
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { HealthStatusIcon } from './HealthStatusIcon'
 import { STATE_META, type SubsystemState } from './health-popover.utils'
 
@@ -13,11 +12,16 @@ export interface HealthStatusRowProps {
   /** Extra classes on the card, e.g. a grid column span. */
   className?: string | undefined
   /**
-   * Optional recovery action (e.g. "Retry now"). Rendered as a small
-   * button inside the card footer; only surfaced when the subsystem is
-   * in a terminal failure state.
+   * Optional recovery affordance rendered in the card footer.
+   *
+   * A node rather than a config object because the two kinds differ in element:
+   * a retry is a button, a remediation is a link to the page that fixes it, and
+   * only the call site knows which. The call site also decides when to pass one,
+   * because which states are fixable is per-subsystem knowledge: gating that
+   * here on `down` hid every remediation an operator could act on, since an
+   * unwired memory backend and an absent backup schedule both read `degraded`.
    */
-  action?: { label: string; onClick: () => void } | undefined
+  action?: ReactNode
 }
 
 export function HealthStatusRow({
@@ -53,17 +57,7 @@ export function HealthStatusRow({
           <span className="text-compact text-muted-foreground">{detail}</span>
         )}
       </div>
-      {action && state === 'down' && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={action.onClick}
-          className="mt-1 self-start"
-        >
-          {action.label}
-        </Button>
-      )}
+      {action !== undefined && <div className="mt-1 self-start">{action}</div>}
     </div>
   )
 }

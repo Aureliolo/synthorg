@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { Database, Wifi } from 'lucide-react'
+import { MemoryRouter, Link } from 'react-router'
+import { Brain, Database, Wifi } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { HealthStatusRow } from './HealthStatusRow'
 
 const meta = {
@@ -12,9 +14,11 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div className="w-80">
-        <Story />
-      </div>
+      <MemoryRouter>
+        <div className="w-80">
+          <Story />
+        </div>
+      </MemoryRouter>
     ),
   ],
 } satisfies Meta<typeof HealthStatusRow>
@@ -45,10 +49,29 @@ export const Down: Story = {
     label: 'Persistence',
     description: 'Configured persistence backend. Writes and queries round-trip.',
     state: 'down',
-    action: {
-      label: 'Retry now',
-      onClick: () => undefined,
-    },
+    action: (
+      <Button type="button" variant="outline" size="sm" onClick={() => undefined}>
+        Retry now
+      </Button>
+    ),
+  },
+}
+
+// A degraded card carrying its remedy. The state a card is most likely to sit
+// in is also the one an operator can act on, so it has to render the action.
+export const DegradedWithRemediation: Story = {
+  args: {
+    icon: Brain,
+    label: 'Memory',
+    description:
+      'Org, agent, and project recall injected into working agents. Durable requires an embedding model.',
+    state: 'degraded',
+    detail: 'no embedding model chosen',
+    action: (
+      <Button variant="outline" size="sm" asChild>
+        <Link to="/settings/memory?q=embedder_model">Choose an embedding model</Link>
+      </Button>
+    ),
   },
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router'
 import { ArrowLeft, Settings } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
+import { useSearchParamState } from '@/hooks/use-search-param-state'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
@@ -18,6 +19,11 @@ import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap } from './settings/utils'
 import { filterNamespaceEntries } from './settings/settings-page-helpers'
+
+// The filter lives in the URL so a surface that diagnoses a setting can link
+// straight to its row: the health dialog's memory card points here carrying the
+// embedder key, and the filter both narrows the list and highlights the match.
+const SEARCH_PARAM = 'q'
 
 function isSettingNamespace(value: string | undefined): value is SettingNamespace {
   return value !== undefined && (NAMESPACE_ORDER as readonly string[]).includes(value)
@@ -111,7 +117,7 @@ export default function SettingsNamespacePage() {
     useSettingsData()
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
 
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useSearchParamState(SEARCH_PARAM)
   const advancedMode = useDashboardPrefs((s) => s.settingsAdvancedMode)
 
   const { dirtyValues, handleValueChange, handleDiscard, handleSave } = useSettingsDirtyState(

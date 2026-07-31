@@ -14,6 +14,16 @@ export interface DerivedSubsystemStates {
   readonly memoryState: SubsystemState
   readonly memoryDetail: string | undefined
   /**
+   * The backend's own memory state, carried beside the surface mapping.
+   *
+   * `memoryState` collapses `off` into `degraded` on purpose, but the two part
+   * company on what the operator does next: `off` means no embedding model was
+   * ever chosen, which is theirs to fix, while every other unhealthy state is a
+   * wired backend misbehaving, where naming the embedder would misdirect. Null
+   * until a snapshot settles.
+   */
+  readonly memoryBackendState: MemoryState | null
+  /**
    * Whether a backup service is wired for this boot.
    *
    * Absent reads `degraded`, never `down`: the deployment serves correctly and
@@ -124,6 +134,7 @@ type BackendStates = Pick<
   | 'providersState'
   | 'memoryState'
   | 'memoryDetail'
+  | 'memoryBackendState'
   | 'backupState'
 >
 
@@ -147,6 +158,7 @@ function _settledStates(snapshot: HealthSnapshot): BackendStates {
     providersState: _probeState(health.providers),
     memoryState: _MEMORY_STATES[health.memory.state],
     memoryDetail: _memoryDetailFor(health.memory),
+    memoryBackendState: health.memory.state,
     backupState: _backupState(health.backup),
   }
 }
@@ -173,6 +185,7 @@ function _backendStatesOf(
     providersState: pending,
     memoryState: pending,
     memoryDetail: undefined,
+    memoryBackendState: null,
     backupState: pending,
   }
 }
