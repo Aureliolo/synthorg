@@ -145,6 +145,7 @@ class _StubFallbackChecker:
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> tuple[UngroundedClaim, ...]:
         return (
             UngroundedClaim(

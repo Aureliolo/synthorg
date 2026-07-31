@@ -27,6 +27,7 @@ const BASE_PAYLOAD = {
   telemetry: 'disabled' as const,
   memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   backup: { state: 'wired' as const, detail: null },
+  cost_recording: { state: 'ok' as const, dropped_records: 0, detail: null },
   version: '0.6.4',
   uptime_seconds: 847_200,
 }

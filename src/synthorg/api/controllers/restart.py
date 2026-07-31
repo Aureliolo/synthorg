@@ -8,7 +8,8 @@ supported setting effectively unreachable through the interface that offers it.
 
 Restarting is exiting: this process shuts down and something outside it starts
 a new one. That "something" is the container restart policy the shipped compose
-file sets on every service. Where nothing is watching, exiting would take the
+file sets on every long-running service. Where nothing is watching, exiting
+would take the
 deployment down and leave it down, so the endpoint refuses rather than trusting
 the caller to know which kind of deployment they are on.
 """

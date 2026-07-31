@@ -369,6 +369,7 @@ class ConnectionCatalog(
         detail: str | None = None,
         latency_ms: float | None = None,
         webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE,
+        retry_after_seconds: float | None = None,
     ) -> Connection:
         """Update a connection's health status.
 
@@ -394,6 +395,7 @@ class ConnectionCatalog(
                         detail=detail,
                         latency_ms=latency_ms,
                         webhook_ingest=webhook_ingest,
+                        retry_after_seconds=retry_after_seconds,
                     ),
                     "updated_at": datetime.now(UTC),
                 },

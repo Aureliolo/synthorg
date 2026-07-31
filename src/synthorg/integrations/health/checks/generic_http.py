@@ -19,6 +19,7 @@ from synthorg.integrations.connections.models import (
 )
 from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.integrations.health.checks._http_verdicts import (
+    ProbeResponse,
     deadline_report,
     network_report,
     report_response,
@@ -64,11 +65,40 @@ def _probe_target(connection: Connection) -> _ProbeTarget:
     return _ProbeTarget(preset.health_url or base, preset)
 
 
+async def _send_bounded(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+) -> ProbeResponse:
+    """Issue one request, reading at most ``_MAX_PROBE_BODY_BYTES`` of body.
+
+    Streamed rather than buffered because the endpoint is operator-supplied
+    and re-probed on a loop: a host that answers with an unbounded body would
+    otherwise be free to grow the API process's memory. A verdict never needs
+    more than an error message, so the cap costs nothing real.
+
+    Returns:
+        The bounded response to judge.
+    """
+    async with client.stream(method, url, headers=headers) as resp:
+        body = bytearray()
+        async for chunk in resp.aiter_bytes():
+            body.extend(chunk)
+            if len(body) >= _MAX_PROBE_BODY_BYTES:
+                break
+        return ProbeResponse(
+            status_code=resp.status_code,
+            text=bytes(body[:_MAX_PROBE_BODY_BYTES]).decode("utf-8", errors="replace"),
+            headers=dict(resp.headers),
+        )
+
+
 async def _issue_probe(
     client: httpx.AsyncClient,
     target: _ProbeTarget,
     headers: dict[str, str],
-) -> httpx.Response:
+) -> ProbeResponse:
     """Send the probe, carrying the credential and nothing else.
 
     A vendor-bound endpoint gets a GET: it is the method whose rejection was
@@ -79,14 +109,17 @@ async def _issue_probe(
         The response to judge.
     """
     if target.preset is not None:
-        return await client.get(target.url, headers=headers)
-    resp = await client.head(target.url, headers=headers)
+        return await _send_bounded(client, "GET", target.url, headers)
+    resp = await _send_bounded(client, "HEAD", target.url, headers)
     if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
-        return await client.get(target.url, headers=headers)
+        return await _send_bounded(client, "GET", target.url, headers)
     return resp
 
 
 _TIMEOUT: Final[float] = 10.0
+# Enough to carry any vendor error message the verdict logic reads, and far
+# short of anything that would matter if a probed host answered with a flood.
+_MAX_PROBE_BODY_BYTES: Final[int] = 64 * 1024
 _METHOD_NOT_ALLOWED: Final[int] = 405
 _NOT_IMPLEMENTED: Final[int] = 501
 

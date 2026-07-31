@@ -327,6 +327,12 @@ export const COORDINATION_TOPOLOGY_VALUES = [
 ] as const
 export type CoordinationTopology = (typeof COORDINATION_TOPOLOGY_VALUES)[number]
 
+export const COST_RECORDING_STATE_VALUES = [
+    'ok',
+    'degraded',
+] as const
+export type CostRecordingState = (typeof COST_RECORDING_STATE_VALUES)[number]
+
 export const CREATIVITY_LEVEL_VALUES = [
     'low',
     'medium',

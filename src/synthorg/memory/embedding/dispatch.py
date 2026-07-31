@@ -100,13 +100,39 @@ def is_retryable_embedding_error(exc: Exception) -> bool:
     return isinstance(exc, RETRYABLE_EMBEDDING_ERRORS)
 
 
+def _embedding_retry_after(exc: Exception) -> float | None:
+    """Return the provider's own ``Retry-After`` hint, when it gave one.
+
+    Read by attribute rather than by exception class: the driver surfaces
+    whatever error type the provider raised, and no single class covers them.
+    A hint that cannot be read leaves the computed backoff in place, which is
+    the safe default: retrying sooner than a rate limit allows just spends
+    another request to be refused again.
+
+    Returns:
+        The advertised delay in seconds, or ``None`` when there is none.
+    """
+    raw: object = getattr(exc, "retry_after", None)
+    if raw is None:
+        headers = getattr(getattr(exc, "response", None), "headers", None)
+        raw = headers.get("retry-after") if headers is not None else None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)  # type: ignore[arg-type]
+    except TypeError, ValueError:
+        return None
+    return seconds if seconds > 0 else None
+
+
 def embedding_retry_handler(
     event: str = MEMORY_EMBEDDING_RETRIED,
 ) -> GeneralRetryHandler:
     """Build the retry handler both embedding call sites share.
 
     Returns:
-        A handler retrying only transient provider faults.
+        A handler retrying only transient provider faults, honouring a
+        provider-advertised retry delay over its own computed backoff.
     """
     return GeneralRetryHandler(
         retryable=is_retryable_embedding_error,
@@ -114,6 +140,7 @@ def embedding_retry_handler(
         base=RETRY_BASE_SECONDS,
         cap=RETRY_CAP_SECONDS,
         event=event,
+        delay_override=_embedding_retry_after,
     )
 
 

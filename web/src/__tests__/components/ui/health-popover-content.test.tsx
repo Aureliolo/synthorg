@@ -19,6 +19,8 @@ import type { LoadState } from '@/stores/health'
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 
 const HEALTHY_STATES: DerivedSubsystemStates = {
+  costRecordingState: 'ok',
+  costRecordingDetail: undefined,
   apiState: 'ok',
   wsState: 'ok',
   persistenceState: 'ok',
@@ -44,6 +46,7 @@ const LOAD_STATE: LoadState = {
     telemetry: 'disabled',
     memory: { state: 'durable', backend: 'sqlvector', detail: null },
     backup: { state: 'wired', detail: null },
+    cost_recording: { state: 'ok', dropped_records: 0, detail: null },
     version: '0.0.0-test',
     uptime_seconds: 1,
   },

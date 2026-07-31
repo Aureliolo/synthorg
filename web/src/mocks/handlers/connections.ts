@@ -142,6 +142,7 @@ export function buildHealth(
     detail: null,
     latency_ms: null,
     webhook_ingest: 'not_applicable',
+    retry_after_seconds: null,
     ...overrides,
   }
 }
@@ -291,6 +292,7 @@ export const connectionsList = [
         checked_at: NOW,
         consecutive_failures: conn.health.status === 'unhealthy' ? 4 : 0,
         webhook_ingest: 'not_applicable',
+        retry_after_seconds: null,
       }),
     )
   }),
@@ -372,6 +374,7 @@ export const connectionsHandlers = [
         checked_at: NOW,
         consecutive_failures: 0,
         webhook_ingest: 'not_applicable',
+        retry_after_seconds: null,
       }),
     ),
   ),

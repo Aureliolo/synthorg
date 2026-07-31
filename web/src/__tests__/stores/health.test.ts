@@ -21,6 +21,7 @@ function body(overrides: Partial<HealthStatus> = {}) {
     telemetry: 'disabled',
     memory: { state: 'durable', backend: 'sqlvector', detail: null },
     backup: { state: 'wired', detail: null },
+    cost_recording: { state: 'ok', dropped_records: 0, detail: null },
     version: '0.0.0-test',
     uptime_seconds: 1,
     ...overrides,

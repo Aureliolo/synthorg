@@ -138,7 +138,7 @@ _COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
 # currency disagrees with the record's rejects every write, deterministically).
 # Without a streak count those are indistinguishable, so a permanent fault
 # reads as a series of unrelated blips and nothing ever raises its voice.
-_COST_FAILURE_ESCALATION_STREAK: Final[int] = 3
+COST_FAILURE_ESCALATION_STREAK: Final[int] = 3
 
 # Module-level rather than per-context: the question an operator needs
 # answered is whether cost recording as a whole is failing, and a per-call
@@ -177,7 +177,7 @@ def _note_cost_failure(**fields: object) -> None:
     """
     global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
     _consecutive_cost_failures += 1
-    if _consecutive_cost_failures >= _COST_FAILURE_ESCALATION_STREAK:
+    if _consecutive_cost_failures >= COST_FAILURE_ESCALATION_STREAK:
         logger.error(
             PROVIDER_COST_FAILED,
             consecutive_failures=_consecutive_cost_failures,
@@ -194,7 +194,7 @@ def _note_cost_failure(**fields: object) -> None:
 def _note_cost_success() -> None:
     """Clear the failure streak, announcing recovery only if there was one."""
     global _consecutive_cost_failures  # noqa: PLW0603 -- module-level streak
-    if _consecutive_cost_failures >= _COST_FAILURE_ESCALATION_STREAK:
+    if _consecutive_cost_failures >= COST_FAILURE_ESCALATION_STREAK:
         logger.info(
             PROVIDER_COST_RECOVERED,
             dropped_records=_consecutive_cost_failures,
@@ -526,6 +526,7 @@ async def _record_cost_in_background(
 
 
 __all__ = [
+    "COST_FAILURE_ESCALATION_STREAK",
     "CostRecordingContext",
     "consecutive_cost_failures",
     "cost_recording_scope",

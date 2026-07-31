@@ -1295,6 +1295,8 @@ CREATE TABLE connections (
     CHECK (
         health_webhook_ingest IN ('not_applicable', 'ready', 'unconfigured')
     ),
+    health_retry_after_seconds DOUBLE PRECISION
+    CHECK (health_retry_after_seconds IS NULL OR health_retry_after_seconds > 0),
     metadata_json JSONB NOT NULL DEFAULT '{}',
     webhook_receipt_retention_days INTEGER
     CHECK (

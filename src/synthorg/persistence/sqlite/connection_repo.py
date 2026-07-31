@@ -52,7 +52,8 @@ _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
     "health_status, last_health_check_at, health_detail, "
-    "health_latency_ms, health_webhook_ingest, metadata_json, "
+    "health_latency_ms, health_webhook_ingest, "
+    "health_retry_after_seconds, metadata_json, "
     "webhook_receipt_retention_days, sensitive, allowed_repos_json, "
     "created_at, updated_at"
 )
@@ -78,6 +79,7 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
         health_detail,
         health_latency_ms,
         health_webhook_ingest,
+        health_retry_after_seconds,
         metadata_json,
         webhook_receipt_retention_days,
         sensitive,
@@ -119,6 +121,11 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
                 float(health_latency_ms) if health_latency_ms is not None else None
             ),
             webhook_ingest=WebhookIngestState(health_webhook_ingest),
+            retry_after_seconds=(
+                float(health_retry_after_seconds)
+                if health_retry_after_seconds is not None
+                else None
+            ),
         ),
         metadata=metadata,
         webhook_receipt_retention_days=(
@@ -184,11 +191,12 @@ class SQLiteConnectionRepository:
                         health_check_enabled, health_status,
                         last_health_check_at, health_detail,
                         health_latency_ms, health_webhook_ingest,
-                        metadata_json,
+                        health_retry_after_seconds, metadata_json,
                         webhook_receipt_retention_days, sensitive,
                         allowed_repos_json, created_at, updated_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?
                     )
                     ON CONFLICT(name) DO UPDATE SET
                         connection_type = excluded.connection_type,
@@ -203,6 +211,8 @@ class SQLiteConnectionRepository:
                         health_detail = excluded.health_detail,
                         health_latency_ms = excluded.health_latency_ms,
                         health_webhook_ingest = excluded.health_webhook_ingest,
+                        health_retry_after_seconds =
+                            excluded.health_retry_after_seconds,
                         metadata_json = excluded.metadata_json,
                         webhook_receipt_retention_days =
                             excluded.webhook_receipt_retention_days,
@@ -224,6 +234,7 @@ class SQLiteConnectionRepository:
                         connection.health.detail,
                         connection.health.latency_ms,
                         connection.health.webhook_ingest.value,
+                        connection.health.retry_after_seconds,
                         metadata_json,
                         connection.webhook_receipt_retention_days,
                         1 if connection.sensitive else 0,

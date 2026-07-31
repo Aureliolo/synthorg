@@ -147,6 +147,10 @@ class ConnectionHealth(BaseModel):
             enough to measure one.
         webhook_ingest: Whether inbound deliveries could be authenticated at
             the time of the last check.
+        retry_after_seconds: How long the upstream asked to be left alone for
+            when it last refused with a rate limit. Honoured as a floor on the
+            recheck interval, so a throttled connection is not re-probed on a
+            schedule the provider has already said it will reject.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -156,6 +160,7 @@ class ConnectionHealth(BaseModel):
     detail: str | None = None
     latency_ms: float | None = Field(default=None, ge=0.0)
     webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE
+    retry_after_seconds: float | None = Field(default=None, gt=0.0)
 
 
 class Connection(BaseModel):
@@ -446,6 +451,7 @@ class HealthReport(BaseModel):
     )
     consecutive_failures: int = Field(default=0, ge=0)
     webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE
+    retry_after_seconds: float | None = Field(default=None, gt=0.0)
 
 
 class CatalogEntry(BaseModel):

@@ -22,6 +22,10 @@ from synthorg.api.controllers._backup_health import (
     BackupHealth,
     resolve_backup_health,
 )
+from synthorg.api.controllers._cost_recording_health import (
+    CostRecordingHealth,
+    resolve_cost_recording_health,
+)
 from synthorg.api.controllers._health_probes import (
     TelemetryStatus,
     memory_readiness,
@@ -153,6 +157,9 @@ class ReadinessStatus(BaseModel):
     backup: BackupHealth = Field(
         description="Backup coverage for this boot",
     )
+    cost_recording: CostRecordingHealth = Field(
+        description="Whether LLM spend is currently being recorded",
+    )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
 
@@ -190,6 +197,7 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         # components, this is a boot-time fact the failed fan-out did not
         # touch, so it stays reportable.
         backup=resolve_backup_health(app_state),
+        cost_recording=resolve_cost_recording_health(),
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -361,6 +369,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         telemetry=telemetry_status,
         memory=memory_health,
         backup=resolve_backup_health(app_state),
+        cost_recording=resolve_cost_recording_health(),
         version=__version__,
         uptime_seconds=uptime,
     )

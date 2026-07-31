@@ -7,6 +7,7 @@ import {
   Clock,
   Database,
   Plug,
+  Receipt,
   RefreshCw,
   Tag,
   Waves,
@@ -261,6 +262,22 @@ function HealthSubsystemGrid({
             <HealthRemediationLink
               to={ROUTES.ADMIN_BACKUPS}
               label="Configure backups"
+              onDismiss={onDismiss}
+            />
+          ) : undefined
+        }
+      />
+      <HealthStatusRow
+        icon={Receipt}
+        label="Cost recording"
+        description="Whether LLM spend is reaching the budget. Degraded means calls are still billed but not counted, so totals read low."
+        state={states.costRecordingState}
+        detail={states.costRecordingDetail}
+        action={
+          needsAttention(states.costRecordingState) ? (
+            <HealthRemediationLink
+              to={ROUTES.BUDGET}
+              label="Open budget"
               onDismiss={onDismiss}
             />
           ) : undefined

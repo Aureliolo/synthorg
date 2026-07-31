@@ -10,12 +10,16 @@ the mixin in isolation.
 
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.http_vendor import METADATA_KEY_VENDOR
-from synthorg.integrations.connections.models import Connection, ConnectionType
+from synthorg.integrations.connections.models import (
+    Connection,
+    ConnectionHealth,
+    ConnectionType,
+)
 from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 from synthorg.integrations.errors import (
     InvalidConnectionEndpointError,
@@ -56,6 +60,15 @@ _UNSET = _UnsetType()
 """Sentinel value to distinguish 'not provided' from None."""
 
 
+# Changing any of these changes what a probe would actually test, so the
+# verdict recorded against the old settings stops being evidence about the
+# new ones. It is not merely stale: it can be confidently wrong, reporting
+# HEALTHY for an endpoint the connection no longer points at.
+_PROBE_DEFINING_FIELDS: Final[frozenset[str]] = frozenset(
+    {"base_url", "auth_method", "metadata", "connection_type"}
+)
+
+
 def materialise_update(
     existing: Connection,
     candidate: dict[str, object],
@@ -65,6 +78,11 @@ def materialise_update(
     An idempotent PATCH must not bump ``updated_at`` or emit a phantom
     ``CONNECTION_UPDATED`` audit row, so a candidate matching the persisted
     row in every field is reported as no change at all rather than saved.
+
+    An edit that redefines the probe also clears the stored verdict, so the
+    next read measures the connection under its new settings rather than
+    serving an answer that describes different ones. Readers trust a healthy
+    verdict for hours, so a kept one would outlast the edit by a long way.
 
     Returns:
         The updated row, or ``None`` when nothing actually changed.
@@ -76,6 +94,8 @@ def materialise_update(
     }
     if not real_updates:
         return None
+    if _PROBE_DEFINING_FIELDS & real_updates.keys():
+        real_updates["health"] = ConnectionHealth()
     real_updates["updated_at"] = datetime.now(UTC)
     # ``model_copy(update=...)`` skips ``@model_validator``s, so any nested
     # mutable container we pass in (here ``metadata``) would leak shared

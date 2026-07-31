@@ -55,3 +55,10 @@ NOT NULL DEFAULT 'not_applicable'
 CHECK (
     health_webhook_ingest IN ('not_applicable', 'ready', 'unconfigured')
 );
+
+-- A provider that refused with a rate limit already said how long to wait.
+-- Storing it lets the recheck interval honour that answer instead of probing
+-- again on our own schedule, which cannot succeed and spends a request to be
+-- refused a second time.
+ALTER TABLE connections ADD COLUMN health_retry_after_seconds DOUBLE PRECISION
+CHECK (health_retry_after_seconds IS NULL OR health_retry_after_seconds > 0);

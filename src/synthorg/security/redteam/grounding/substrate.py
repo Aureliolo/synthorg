@@ -74,8 +74,6 @@ from synthorg.security.redteam.routing import SUBSTRATE_DROP_FLOOR
 
 logger = get_logger(__name__)
 
-"""Synthetic attribution id for the checker's extraction / entailment calls."""
-
 _DEFAULT_SEARCH_LIMIT: Final[int] = 5
 """Default top-k chunks retrieved per claim for entailment."""
 

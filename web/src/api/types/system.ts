@@ -4,6 +4,7 @@ export type {
   AutonomyLevelRequest,
   AutonomyLevelResponse,
   BackupHealth,
+  CostRecordingHealth,
   EmbedderProbeResponse,
   LivenessStatus,
   MemoryHealth,
@@ -15,4 +16,4 @@ export type {
   RestartStatusResponse,
 } from './dtos.gen'
 
-export type { BackupState, MemoryState } from './enum-values.gen'
+export type { BackupState, CostRecordingState, MemoryState } from './enum-values.gen'

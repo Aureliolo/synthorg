@@ -32,6 +32,11 @@ async def collect_pending_restart(
     yet, and the process coming back empties the answer without anything
     having to clear a flag.
 
+    That "read once at boot" holds because a ``restart_required`` definition
+    is deliberately excluded from the live settings dispatcher, which
+    ``scripts/check_setting_restart_required_justified.py`` enforces per key.
+    This module cannot prove it alone, so the guarantee is worth naming.
+
     Args:
         repository: Settings repository to scan.
         registry: Definition registry deciding which keys need a restart.

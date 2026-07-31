@@ -930,8 +930,8 @@ _r.register(
             " in-app restart control refuses while this is false,"
             " because there the only way to apply a restart-required"
             " setting would be to shut the deployment down and leave it"
-            " down. The shipped compose file sets it, every service"
-            " carrying restart: unless-stopped; a bare local run should"
+            " down. The shipped compose file sets it, every long-running"
+            " service carrying restart: unless-stopped; a bare local run should"
             " not. Read per request, so correcting it needs no restart"
             " of its own."
         ),

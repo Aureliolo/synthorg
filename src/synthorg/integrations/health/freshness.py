@@ -64,12 +64,19 @@ def is_probe_due(
     if last is None:
         return True
     elapsed = (now - last).total_seconds()
-    return elapsed >= recheck_interval_seconds(
+    interval: float = recheck_interval_seconds(
         connection.health.status,
         healthy_seconds=healthy_seconds,
         degraded_seconds=degraded_seconds,
         unhealthy_seconds=unhealthy_seconds,
     )
+    # An upstream that answered with a rate limit has already said how long to
+    # wait. Probing sooner cannot succeed, and spends a request to be refused
+    # again, so its answer is a floor on our own interval rather than advice.
+    retry_after = connection.health.retry_after_seconds
+    if retry_after is not None:
+        interval = max(interval, retry_after)
+    return elapsed >= interval
 
 
 __all__ = ["is_probe_due", "recheck_interval_seconds"]

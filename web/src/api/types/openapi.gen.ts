@@ -9534,6 +9534,7 @@ export type components = {
              */
             readonly last_check_at: string | null;
             readonly latency_ms: number | null;
+            readonly retry_after_seconds: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
             readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
@@ -9850,6 +9851,32 @@ export type components = {
              */
             readonly timestamp: string;
         };
+        /**
+         * CostRecordingHealth
+         * @description Whether LLM spend is currently being recorded
+         */
+        readonly CostRecordingHealth: {
+            /** @description Operator-facing explanation, when action is needed */
+            readonly detail: string | null;
+            /**
+             * @description Consecutive failed cost writes
+             * @default 0
+             */
+            readonly dropped_records: number;
+            readonly state: components["schemas"]["CostRecordingState"];
+        };
+        /**
+         * CostRecordingState
+         * @description Whether spend is currently being recorded.
+         *
+         *     Attributes:
+         *         OK: Records are landing, or have failed too few times in a row to
+         *             distinguish a blip from a fault.
+         *         DEGRADED: Enough records have failed back to back that the budget is
+         *             under-reporting for as long as it lasts.
+         * @enum {string}
+         */
+        readonly CostRecordingState: "ok" | "degraded";
         /** CostRecordListResponse */
         readonly CostRecordListResponse: {
             /**
@@ -11821,6 +11848,7 @@ export type components = {
             readonly consecutive_failures: number;
             readonly error_detail: string | null;
             readonly latency_ms: number | null;
+            readonly retry_after_seconds: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
             readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
@@ -15597,6 +15625,7 @@ export type components = {
         /** ReadinessStatus */
         readonly ReadinessStatus: {
             readonly backup: components["schemas"]["BackupHealth"];
+            readonly cost_recording: components["schemas"]["CostRecordingHealth"];
             readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;

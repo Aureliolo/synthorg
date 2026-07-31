@@ -6,8 +6,9 @@ cleared; a rate limit proves nothing either way), while issuing it is
 transport mechanics.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, NamedTuple
 
 import httpx
 
@@ -34,9 +35,42 @@ UNAUTHORIZED: Final[int] = 401
 FORBIDDEN: Final[int] = 403
 
 
+def _retry_after_seconds(raw: str) -> float | None:
+    """Read a ``Retry-After`` delay, ignoring the HTTP-date form.
+
+    Only the delta-seconds form is honoured. The date form would need the
+    server's clock to agree with ours to mean anything, and a probe deferred
+    on a wrong clock is worse than one deferred on the default interval.
+
+    Returns:
+        The delay in seconds, or ``None`` when the header says nothing usable.
+    """
+    try:
+        seconds = float(raw.strip())
+    except ValueError:
+        return None
+    return seconds if seconds > 0 else None
+
+
+class ProbeResponse(NamedTuple):
+    """A probe response reduced to what a verdict needs.
+
+    The body is bounded at the point it is read rather than handed over as a
+    live :class:`httpx.Response`. A ``generic_http`` connection points
+    wherever the operator says, the prober re-reads every one of them on a
+    loop, and the verdict logic needs at most an error message, so buffering
+    an arbitrarily large body into the API process would be a standing
+    resource-exhaustion surface for no gain.
+    """
+
+    status_code: int
+    text: str
+    headers: Mapping[str, str]
+
+
 def _vendor_error_report(
     connection: Connection,
-    resp: httpx.Response,
+    resp: ProbeResponse,
     elapsed: float,
     preset: HttpVendorPreset,
 ) -> HealthReport | None:
@@ -119,7 +153,7 @@ def _vendor_error_report(
 
 def report_response(
     connection: Connection,
-    resp: httpx.Response,
+    resp: ProbeResponse,
     elapsed: float,
     preset: HttpVendorPreset | None = None,
 ) -> HealthReport:
@@ -170,6 +204,7 @@ def report_response(
     return HealthReport(
         connection_name=connection.name,
         status=ConnectionStatus.UNHEALTHY,
+        retry_after_seconds=_retry_after_seconds(retry_after) if rate_limited else None,
         latency_ms=elapsed,
         error_detail=detail,
         checked_at=datetime.now(UTC),

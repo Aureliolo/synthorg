@@ -278,6 +278,7 @@ export type CoordinationPhaseResponse = components['schemas']['CoordinationPhase
 export type CoordinationResultResponse = components['schemas']['CoordinationResultResponse']
 export type CostRecord = components['schemas']['CostRecord']
 export type CostRecordListResponse = components['schemas']['CostRecordListResponse']
+export type CostRecordingHealth = components['schemas']['CostRecordingHealth']
 export type CreateAgentOrgRequest = components['schemas']['CreateAgentOrgRequest']
 export type CreateApiKeyRequest = components['schemas']['CreateApiKeyRequest']
 export type CreateApprovalRequest = components['schemas']['CreateApprovalRequest']
