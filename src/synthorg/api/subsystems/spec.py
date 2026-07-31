@@ -78,10 +78,17 @@ class SubsystemPhase(StrEnum):
     ``WAITING`` and ``DISABLED`` are ordinary resting states, not errors: the
     first means a dependency has not arrived yet and the subsystem will come
     up when it does, the second means an operator turned it off.
+
+    ``BLOCKED`` is the honest answer to a case the declarations cannot model:
+    every declared dependency is present, activation ran, and the subsystem
+    declined anyway on a condition of its own (memory with no embedding model
+    chosen). Reporting that as ``WAITING`` would name no dependency and leave
+    an operator with nowhere to look; the subsystem logs the reason.
     """
 
     ACTIVE = "active"
     WAITING = "waiting"
+    BLOCKED = "blocked"
     DISABLED = "disabled"
     FAILED = "failed"
 

@@ -237,7 +237,7 @@ class TestReconcile:
         assert second.activated == ("broken",)
         assert second.failed == ()
 
-    async def test_activation_that_declines_is_not_reported_active(self) -> None:
+    async def test_activation_that_declines_reports_blocked_not_waiting(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
 
         async def _decline(_state: AppState) -> None:
@@ -254,4 +254,37 @@ class TestReconcile:
         report = await reconciler.reconcile(_app_state(), trigger="boot")
 
         assert report.activated == ()
-        assert report.statuses[0].phase is SubsystemPhase.WAITING
+        # Every declared dependency is present, so "waiting" would name
+        # nothing and send an operator looking for a missing dependency that
+        # does not exist. The subsystem declined on a condition of its own
+        # (memory with no embedding model chosen) and logged why.
+        assert report.statuses[0].phase is SubsystemPhase.BLOCKED
+        assert report.statuses[0].waiting_on == ()
+
+    async def test_a_blocked_subsystem_recovers_without_intervention(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        allow = {"now": False}
+
+        async def _decline_until_allowed(_state: AppState) -> None:
+            if allow["now"]:
+                world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline_until_allowed,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+
+        first = await reconciler.reconcile(state, trigger="boot")
+        assert first.statuses[0].phase is SubsystemPhase.BLOCKED
+
+        # The operator configures the embedder. Nothing announces it, which
+        # is exactly why the sweep keeps asking.
+        allow["now"] = True
+        later = await reconciler.reconcile(state, trigger="resync")
+
+        assert later.activated == ("memory",)
+        assert later.statuses[0].phase is SubsystemPhase.ACTIVE

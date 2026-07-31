@@ -102,6 +102,7 @@ class _Bookkeeping:
 
     fingerprints: dict[str, tuple[bool, ...]] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
+    declined: set[str] = field(default_factory=set)
 
 
 class SubsystemReconciler:
@@ -253,7 +254,12 @@ class SubsystemReconciler:
             # Activation returned without installing its capability. Its own
             # internal gate declined for a reason the declaration does not
             # model, so leave it alone and let the next pass try again.
+            # Recorded rather than dropped: with every declared dependency
+            # present there is nothing to name, and reporting that as waiting
+            # would leave an operator with nowhere to look.
+            self._book.declined.add(spec.name)
             return _Outcome.NONE
+        self._book.declined.discard(spec.name)
         self._book.fingerprints[spec.name] = capability_fingerprint(
             spec.requires, self._capabilities, app_state
         )
@@ -347,8 +353,11 @@ class SubsystemReconciler:
             return SubsystemStatus(
                 name=spec.name, phase=SubsystemPhase.FAILED, detail=failure
             )
+        missing = missing_capabilities(spec, self._capabilities, app_state)
+        if not missing and spec.name in self._book.declined:
+            return SubsystemStatus(name=spec.name, phase=SubsystemPhase.BLOCKED)
         return SubsystemStatus(
             name=spec.name,
             phase=SubsystemPhase.WAITING,
-            waiting_on=missing_capabilities(spec, self._capabilities, app_state),
+            waiting_on=missing,
         )

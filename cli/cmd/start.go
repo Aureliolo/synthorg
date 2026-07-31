@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -402,22 +403,56 @@ func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string
 		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
 		return nil
 	}
-	sp := out.StartSpinner("Waiting for backend to become healthy...")
+	sp := out.StartSpinner("Waiting for backend to start...")
+	// Liveness, not readiness. `start` promises the backend is up and
+	// serving; it does not promise every optional dependency answered.
+	// Gating on /readyz meant an LLM provider the operator had not started
+	// yet failed the whole command, and the dashboard they would fix it
+	// from was running the entire time.
 	// localhost is correct: the CLI polls the docker-compose backend
 	// it just started on the same host, via the published port.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", state.BackendPort)
 	tun := GetGlobalOpts(ctx).Tunables
 	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
-		sp.Error("Health check failed")
+		sp.Error("Backend did not start")
 		reportStartFailure(ctx, info, safeDir, errOut)
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
-		return fmt.Errorf("health check did not pass: %w", err)
+		return fmt.Errorf("backend did not start: %w", err)
 	}
-	sp.Success("Backend healthy")
+	sp.Success("Backend started")
+	warnIfDependenciesDegraded(ctx, state, out)
 	if state.PersistenceBackend == "postgres" {
 		out.Step("Postgres migrations checked/applied during backend startup")
 	}
 	return nil
+}
+
+// warnIfDependenciesDegraded reports a backend that is serving but has a
+// dependency still unresolved, without failing the command.
+//
+// The readiness body is deliberately topology-free, so this can only say
+// that something is degraded, not which thing. Naming it needs the
+// authenticated detail endpoint; pointing at the dashboard is what the CLI
+// can honestly do with an unauthenticated probe.
+func warnIfDependenciesDegraded(ctx context.Context, state config.State, out *ui.UI) {
+	readyURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
+	if err != nil {
+		return
+	}
+	resp, err := health.HTTPClient().Do(req)
+	if err != nil {
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusOK {
+		return
+	}
+	out.Warn("Backend is serving, but a dependency is not ready yet.")
+	out.HintNextStep(
+		"Subsystems waiting on a missing dependency come up on their own once " +
+			"it appears; open the dashboard or run 'synthorg doctor' to see which.",
+	)
 }
 
 // registryOverrideEnvVars lists every env var that, if set, overrides
