@@ -601,6 +601,34 @@ func TestGenerateHardeningPresent(t *testing.T) {
 	}
 }
 
+// The dashboard refuses to restart the process unless the backend announces
+// that something will bring it back. Generating a supervised stack without
+// that announcement leaves the restart control permanently returning 409, so
+// the two must ship together or not at all.
+func TestGenerateAnnouncesRestartSupervision(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "internal",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	if !strings.Contains(yaml, "restart: unless-stopped") {
+		t.Fatal("backend is not supervised; the supervision claim below would be a lie")
+	}
+	assertContains(t, yaml, `SYNTHORG_API_RESTART_SUPERVISED: "true"`)
+}
+
 func TestParamsFromState(t *testing.T) {
 	t.Parallel()
 	s := config.State{

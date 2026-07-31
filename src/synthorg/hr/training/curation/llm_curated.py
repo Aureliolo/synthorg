@@ -151,9 +151,6 @@ class LLMCurated:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                task_id=NotBlankStr(
-                    f"system:hr:training_curation:{content_type.value}"
-                ),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

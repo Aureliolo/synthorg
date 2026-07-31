@@ -143,7 +143,6 @@ class LLMSummarizer:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                task_id=NotBlankStr(f"compaction:{execution_id}"),
                 # Context-budget compaction is not a registered prompt class.
                 purpose=None,
                 call_category=LLMCallCategory.SYSTEM,

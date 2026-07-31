@@ -289,7 +289,7 @@ class TestCheckAlerts:
 class TestPromptClassBreakdown:
     """Per-prompt-class cost/latency/quality breakdown."""
 
-    async def test_groups_by_prompt_class_and_skips_unattributed(self) -> None:
+    async def test_groups_by_prompt_class_and_buckets_promptless(self) -> None:
         records = (
             _record(
                 prompt_class_id="system:cos:chat",
@@ -314,9 +314,12 @@ class TestPromptClassBreakdown:
         breakdown = await service.get_prompt_class_breakdown()
 
         ids = [row.prompt_class_id for row in breakdown.rows]
-        assert ids == ["system:cos:chat", "system:memory:rerank"]
+        assert ids == [None, "system:cos:chat", "system:memory:rerank"]
+        # The promptless row is a real bucket, so the breakdown still accounts
+        # for every record's cost rather than quietly shedding one.
+        assert breakdown.rows[0].total_cost == pytest.approx(0.99)
 
-        chat = breakdown.rows[0]
+        chat = breakdown.rows[1]
         assert chat.call_count == 2
         assert chat.total_cost == pytest.approx(0.05)
         assert chat.currency == "EUR"

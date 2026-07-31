@@ -143,6 +143,9 @@ class ProbeExecutionMixin:
                 name,
                 status=new_status,
                 checked_at=now,
+                detail=report.error_detail,
+                latency_ms=report.latency_ms,
+                webhook_ingest=report.webhook_ingest,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

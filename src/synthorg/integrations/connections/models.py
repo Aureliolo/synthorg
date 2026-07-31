@@ -108,6 +108,21 @@ class SecretRef(BaseModel):
     key_version: int = Field(default=1, ge=1)
 
 
+class WebhookIngestState(StrEnum):
+    """Whether inbound webhook deliveries to a connection can be authenticated.
+
+    Deliberately separate from :class:`ConnectionStatus`, which reports the
+    outbound probe. A signing secret is optional by design (a connection used
+    only outbound never needs one), so an absent secret must not read as an
+    outbound outage; equally, when the secret *is* the thing standing between a
+    sender and ingest, every delivery 401s and nothing but a server log says so.
+    """
+
+    NOT_APPLICABLE = "not_applicable"
+    READY = "ready"
+    UNCONFIGURED = "unconfigured"
+
+
 class ConnectionHealth(BaseModel):
     """Last-known health snapshot for a connection.
 
@@ -116,15 +131,31 @@ class ConnectionHealth(BaseModel):
     top-level ``Connection`` field because it is configuration (whether
     to probe), not an observation.
 
+    The snapshot carries the whole verdict, not just its headline. A reader
+    serving this instead of running a fresh probe (the aggregate-health
+    endpoint does, so opening the Connections page does not re-probe every
+    connection) would otherwise hand back a thinner answer than a live check:
+    a failure with no reason, and a webhook state of "claims nothing" for a
+    connection that in fact has an inbound path.
+
     Attributes:
         status: Last-known health status.
         last_check_at: Timestamp of the most recent check.
+        detail: Human-readable reason the last check reported, when it had
+            one. ``None`` for a clean result.
+        latency_ms: Round-trip time the last check measured, when it got far
+            enough to measure one.
+        webhook_ingest: Whether inbound deliveries could be authenticated at
+            the time of the last check.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     status: ConnectionStatus = ConnectionStatus.UNKNOWN
     last_check_at: AwareDatetime | None = None
+    detail: str | None = None
+    latency_ms: float | None = Field(default=None, ge=0.0)
+    webhook_ingest: WebhookIngestState = WebhookIngestState.NOT_APPLICABLE
 
 
 class Connection(BaseModel):
@@ -385,21 +416,6 @@ class WebhookReceipt(BaseModel):
     processed_at: AwareDatetime | None = None
     payload_json: str = ""
     error: str | None = None
-
-
-class WebhookIngestState(StrEnum):
-    """Whether inbound webhook deliveries to a connection can be authenticated.
-
-    Deliberately separate from :class:`ConnectionStatus`, which reports the
-    outbound probe. A signing secret is optional by design (a connection used
-    only outbound never needs one), so an absent secret must not read as an
-    outbound outage; equally, when the secret *is* the thing standing between a
-    sender and ingest, every delivery 401s and nothing but a server log says so.
-    """
-
-    NOT_APPLICABLE = "not_applicable"
-    READY = "ready"
-    UNCONFIGURED = "unconfigured"
 
 
 class HealthReport(BaseModel):

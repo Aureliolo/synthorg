@@ -1290,6 +1290,13 @@ CREATE TABLE connections (
         health_status IN ('healthy', 'degraded', 'unhealthy', 'unknown')
     ),
     last_health_check_at TEXT,
+    health_detail TEXT,
+    health_latency_ms REAL
+    CHECK (health_latency_ms IS NULL OR health_latency_ms >= 0),
+    health_webhook_ingest TEXT NOT NULL DEFAULT 'not_applicable'
+    CHECK (
+        health_webhook_ingest IN ('not_applicable', 'ready', 'unconfigured')
+    ),
     metadata_json TEXT NOT NULL DEFAULT '{}',
     webhook_receipt_retention_days INTEGER
     CHECK (

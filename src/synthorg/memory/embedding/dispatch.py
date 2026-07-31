@@ -163,7 +163,8 @@ async def record_embedding_cost(
                 # Embedding is issued by the memory subsystem for the whole
                 # company, so it is charged to no agent and no task rather
                 # than to whichever agent happened to trigger the recall.
-                # What it was for is carried by prompt_class_id.
+                # It also has no prompt class, because there is no system
+                # prompt: ``call_category`` is what carries its purpose.
                 provider=NotBlankStr(provider),
                 model=NotBlankStr(model),
                 input_tokens=int(prompt_tokens),

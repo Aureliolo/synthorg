@@ -176,6 +176,11 @@ mandatory_rules:
     header: Cost Attribution Purpose
     gate: scripts/check_cost_scope_purpose.py
 
+  - id: claude-md::no-synthetic-cost-owner
+    file: CLAUDE.md
+    header: No Synthetic Cost Owner
+    gate: scripts/check_no_synthetic_cost_owner.py
+
   - id: claude-md::prompt-class-metadata
     file: CLAUDE.md
     header: Prompt-Class Metadata

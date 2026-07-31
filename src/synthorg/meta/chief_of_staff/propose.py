@@ -501,7 +501,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=responder.agent_id or NotBlankStr("system"),
+                agent_id=responder.agent_id,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

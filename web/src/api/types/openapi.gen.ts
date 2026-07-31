@@ -9527,12 +9527,15 @@ export type components = {
         };
         /** ConnectionHealth */
         readonly ConnectionHealth: {
+            readonly detail: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_check_at: string | null;
+            readonly latency_ms: number | null;
             readonly status: components["schemas"]["ConnectionStatus"];
+            readonly webhook_ingest: components["schemas"]["WebhookIngestState"];
         };
         /**
          * ConnectionStatus
@@ -15222,8 +15225,8 @@ export type components = {
             readonly output_tokens: number;
             /** @description 95th-percentile latency in ms, or None. */
             readonly p95_latency_ms: number | null;
-            /** @description Registered prompt purpose id. */
-            readonly prompt_class_id: string;
+            /** @description Registered prompt purpose id, or None when the call wraps no system prompt. */
+            readonly prompt_class_id: string | null;
             /** @description Fraction of calls with at least one retry. */
             readonly retry_rate: number;
             /** @description Success fraction over success-reporting calls, or None. */

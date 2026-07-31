@@ -52,6 +52,10 @@ services:
       SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_TELEMETRY_ENABLED: "false"
       SYNTHORG_LOG_LEVEL: "debug"
+      # Paired with `restart: unless-stopped` below: it is that policy, and
+      # only that policy, which makes the dashboard's restart control safe to
+      # offer. Drop one and drop the other.
+      SYNTHORG_API_RESTART_SUPERVISED: "true"
       SYNTHORG_JWT_SECRET: "test-secret-value"
       SYNTHORG_SETTINGS_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       # HMAC signing key for opaque pagination cursor tokens. The

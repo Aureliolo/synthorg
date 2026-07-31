@@ -93,15 +93,32 @@ class AnalyticsAggregation(BaseModel):
         return self
 
 
+def prompt_class_sort_key(prompt_class_id: str | None) -> tuple[bool, str]:
+    """Order prompt-class ids with the no-prompt-class bucket first.
+
+    ``None`` and a string are not mutually comparable, so the natural sort
+    the rows contract relies on needs an explicit key once the id is
+    nullable.
+
+    Returns:
+        A sort key placing ``None`` ahead of every registered id.
+    """
+    return (prompt_class_id is not None, prompt_class_id or "")
+
+
 class PromptClassBreakdownRow(BaseModel):
     """Cost + latency + quality metrics for one prompt class.
 
     One row aggregates every cost record tagged with a single
     ``prompt_class_id`` (a registered ``PromptPurposeId``), so the operator
     dashboard can slice spend, latency, and reliability by prompt purpose.
+    A ``None`` id is the bucket for calls that have no prompt class at all
+    (an embedding call has no system prompt); it is a real row rather than
+    a dropped one, so the breakdown still sums to the headline total.
 
     Attributes:
-        prompt_class_id: The ``PromptPurposeId`` value the records carry.
+        prompt_class_id: The ``PromptPurposeId`` value the records carry,
+            or ``None`` for calls that wrap no system prompt.
         tier: The design tier the purpose is pinned to, or ``None`` when the
             id is not in the tier policy.
         total_cost: Sum of cost across the class's records.
@@ -119,7 +136,11 @@ class PromptClassBreakdownRow(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    prompt_class_id: NotBlankStr = Field(description="Registered prompt purpose id.")
+    prompt_class_id: NotBlankStr | None = Field(
+        default=None,
+        description="Registered prompt purpose id, or None when the call "
+        "wraps no system prompt.",
+    )
     tier: TierName | None = Field(
         default=None,
         description="Design tier the purpose is pinned to, or None.",
@@ -165,7 +186,8 @@ class PromptClassBreakdown(BaseModel):
 
     Attributes:
         rows: One :class:`PromptClassBreakdownRow` per prompt class with at
-            least one matching record, sorted by ``prompt_class_id``.
+            least one matching record, sorted by ``prompt_class_id`` with the
+            no-prompt-class row first.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -189,7 +211,7 @@ class PromptClassBreakdown(BaseModel):
             ValueError: If rows are not strictly sorted by ``prompt_class_id``.
         """
         ids = [row.prompt_class_id for row in self.rows]
-        if ids != sorted(ids):
+        if ids != sorted(ids, key=prompt_class_sort_key):
             msg = "PromptClassBreakdown rows must be sorted by prompt_class_id"
             raise ValueError(msg)
         if len(ids) != len(set(ids)):

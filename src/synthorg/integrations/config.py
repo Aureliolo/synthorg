@@ -262,12 +262,47 @@ class IntegrationHealthConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="healthy_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_healthy_recheck_seconds",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="degraded_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_degraded_recheck_seconds",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="unhealthy_recheck_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="health_unhealthy_recheck_seconds",
+            parse=parse_int,
+        ),
+    )
+
     check_interval_seconds: int = Field(default=300, gt=0)
-    healthy_recheck_seconds: int = Field(default=21_600, gt=0)
-    degraded_recheck_seconds: int = Field(default=1_800, gt=0)
-    unhealthy_recheck_seconds: int = Field(default=300, gt=0)
+    # Bounds mirror the INTEGRATIONS.health_*_recheck_seconds setting
+    # definitions so the typed config and the settings registry agree on the
+    # accepted range.
+    healthy_recheck_seconds: int = Field(default=21_600, ge=60, le=604_800)
+    degraded_recheck_seconds: int = Field(default=1_800, ge=30, le=604_800)
+    unhealthy_recheck_seconds: int = Field(default=300, ge=30, le=604_800)
     unhealthy_threshold: int = Field(default=3, ge=1)
     degraded_threshold: int = Field(default=1, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> Self:

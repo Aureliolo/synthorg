@@ -32,6 +32,11 @@ const COLUMNS: readonly string[] = [
   'Success',
 ]
 
+// A call with no system prompt (an embedding) still costs money, so it gets a
+// row rather than being dropped: the table has to sum to the headline total.
+const PROMPTLESS_KEY = 'no-prompt-class'
+const PROMPTLESS_LABEL = 'No prompt class'
+
 function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }) {
   const ordered = [...rows].sort((a, b) => b.total_cost - a.total_cost)
   return (
@@ -52,9 +57,11 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
         </thead>
         <tbody>
           {ordered.map((row) => (
-            <tr key={row.prompt_class_id} className="border-t border-border">
+            <tr key={row.prompt_class_id ?? PROMPTLESS_KEY} className="border-t border-border">
               <td className="py-2 pr-4 font-mono text-xs text-foreground">
-                {row.prompt_class_id}
+                {row.prompt_class_id ?? (
+                  <span className="italic text-muted-foreground">{PROMPTLESS_LABEL}</span>
+                )}
               </td>
               <td className="py-2 pr-4 text-right text-muted-foreground">
                 {row.tier ?? '--'}

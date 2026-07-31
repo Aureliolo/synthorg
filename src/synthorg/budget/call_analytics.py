@@ -16,6 +16,7 @@ from synthorg.budget.call_analytics_models import (
     AnalyticsAggregation,
     PromptClassBreakdown,
     PromptClassBreakdownRow,
+    prompt_class_sort_key,
 )
 from synthorg.budget.category_analytics import (
     OrchestrationRatio,
@@ -259,6 +260,11 @@ class CallAnalyticsService:
             return
         admitted: list[_AdmittedAlert] = []
         for row in breakdown.rows:
+            if row.prompt_class_id is None:
+                # The no-prompt-class row aggregates every promptless call in
+                # the window, so a breach on it names no purpose an operator
+                # could act on. It stays in the breakdown and out of alerting.
+                continue
             breach = self._row_breach(row, alerts)
             if breach is None:
                 continue
@@ -422,13 +428,16 @@ def _finish_reason_counts(
     return tuple(sorted(reason_counts.items()))
 
 
-def _tier_for(prompt_class_id: str) -> TierName | None:
+def _tier_for(prompt_class_id: str | None) -> TierName | None:
     """Return the design tier for a purpose id, or None when unmapped.
 
     Returns:
-        The tier label, or ``None`` when ``prompt_class_id`` is not a registered
-        ``PromptPurposeId`` (a historical id left by a renamed/removed purpose).
+        The tier label, or ``None`` when ``prompt_class_id`` is absent or is
+        not a registered ``PromptPurposeId`` (a historical id left by a
+        renamed/removed purpose).
     """
+    if prompt_class_id is None:
+        return None
     try:
         purpose = PromptPurposeId(prompt_class_id)
     except ValueError:
@@ -445,7 +454,7 @@ def _tier_for(prompt_class_id: str) -> TierName | None:
 
 
 def _build_breakdown_row(
-    prompt_class_id: str,
+    prompt_class_id: str | None,
     records: list[CostRecord],
 ) -> PromptClassBreakdownRow:
     """Aggregate one prompt class's records into a breakdown row.
@@ -489,7 +498,9 @@ def _build_breakdown_row(
     latencies = [r.latency_ms for r in records if r.latency_ms is not None]
 
     return PromptClassBreakdownRow(
-        prompt_class_id=NotBlankStr(prompt_class_id),
+        prompt_class_id=(
+            NotBlankStr(prompt_class_id) if prompt_class_id is not None else None
+        ),
         tier=_tier_for(prompt_class_id),
         total_cost=math.fsum(r.cost for r in records),
         currency=currency if currency is not None else DEFAULT_CURRENCY,
@@ -509,18 +520,23 @@ def _build_prompt_class_breakdown(
 ) -> PromptClassBreakdown:
     """Group records by prompt class and build one row per class.
 
-    Records with no ``prompt_class_id`` are skipped (they carry no purpose).
+    Records with no ``prompt_class_id`` group into a single ``None`` row
+    rather than being dropped: an embedding call wraps no system prompt, and
+    a breakdown that silently omits it stops summing to the headline total,
+    which is how subsystem spend went missing in the first place.
 
     Returns:
-        A :class:`PromptClassBreakdown` with rows sorted by id.
+        A :class:`PromptClassBreakdown` with rows sorted by id, the
+        no-prompt-class row first.
     """
-    by_class: dict[str, list[CostRecord]] = defaultdict(list)
+    by_class: dict[str | None, list[CostRecord]] = defaultdict(list)
     for record in records:
-        if record.prompt_class_id is not None:
-            by_class[record.prompt_class_id].append(record)
+        by_class[record.prompt_class_id].append(record)
     rows = tuple(
         _build_breakdown_row(prompt_class_id, group)
-        for prompt_class_id, group in sorted(by_class.items())
+        for prompt_class_id, group in sorted(
+            by_class.items(), key=lambda item: prompt_class_sort_key(item[0])
+        )
     )
     return PromptClassBreakdown(rows=rows)
 

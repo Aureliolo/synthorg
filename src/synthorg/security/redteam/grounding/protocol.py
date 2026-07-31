@@ -29,6 +29,7 @@ class GroundingChecker(Protocol):
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
         project_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> tuple[UngroundedClaim, ...]:
         """Return zero or more :class:`UngroundedClaim` entries.
 
@@ -42,6 +43,10 @@ class GroundingChecker(Protocol):
                 to it (project plus global sources); ``None`` searches
                 global sources only. The heuristic implementation ignores
                 it.
+            task_id: Task the reviewed deliverable was produced for, which
+                owns the spend of any LLM call the check makes. ``None``
+                records the spend with no owner. Implementations that make
+                no LLM call ignore it.
 
         Returns:
             Tuple of claims that failed grounding. Empty tuple when

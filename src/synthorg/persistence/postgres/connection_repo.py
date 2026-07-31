@@ -23,6 +23,7 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
     SecretRef,
+    WebhookIngestState,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.connection import (
@@ -36,6 +37,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
     normalize_utc,
+    safe_float,
     safe_int,
     validate_pagination_args,
 )
@@ -47,7 +49,8 @@ logger = get_logger(__name__)
 _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
-    "health_status, last_health_check_at, metadata_json, "
+    "health_status, last_health_check_at, health_detail, "
+    "health_latency_ms, health_webhook_ingest, metadata_json, "
     "webhook_receipt_retention_days, sensitive, allowed_repos_json, "
     "created_at, updated_at"
 )
@@ -92,6 +95,11 @@ def _row_to_connection(row: DictRow) -> Connection:
                 coerce_row_timestamp(last_health_check_at)
                 if last_health_check_at
                 else None
+            ),
+            detail=row.get("health_detail"),
+            latency_ms=safe_float(row.get("health_latency_ms"), default=None),
+            webhook_ingest=WebhookIngestState(
+                row.get("health_webhook_ingest") or WebhookIngestState.NOT_APPLICABLE
             ),
         ),
         metadata=metadata,
@@ -144,6 +152,9 @@ class PostgresConnectionRepository:
                 if connection.health.last_check_at is not None
                 else None
             ),
+            connection.health.detail,
+            connection.health.latency_ms,
+            connection.health.webhook_ingest.value,
             Jsonb(connection.metadata),
             connection.webhook_receipt_retention_days,
             connection.sensitive,
@@ -159,12 +170,14 @@ class PostgresConnectionRepository:
                         name, connection_type, auth_method, base_url,
                         secret_refs_json, rate_limit_rpm, rate_limit_concurrent,
                         health_check_enabled, health_status,
-                        last_health_check_at, metadata_json,
+                        last_health_check_at, health_detail,
+                        health_latency_ms, health_webhook_ingest,
+                        metadata_json,
                         webhook_receipt_retention_days, sensitive,
                         allowed_repos_json, created_at, updated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s
+                        %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (name) DO UPDATE SET
                         connection_type = EXCLUDED.connection_type,
@@ -176,6 +189,9 @@ class PostgresConnectionRepository:
                         health_check_enabled = EXCLUDED.health_check_enabled,
                         health_status = EXCLUDED.health_status,
                         last_health_check_at = EXCLUDED.last_health_check_at,
+                        health_detail = EXCLUDED.health_detail,
+                        health_latency_ms = EXCLUDED.health_latency_ms,
+                        health_webhook_ingest = EXCLUDED.health_webhook_ingest,
                         metadata_json = EXCLUDED.metadata_json,
                         webhook_receipt_retention_days =
                             EXCLUDED.webhook_receipt_retention_days,

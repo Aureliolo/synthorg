@@ -15,7 +15,6 @@ from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     Connection,
-    ConnectionStatus,
     ConnectionType,
 )
 from synthorg.integrations.errors import IntegrationLifecycleConflictError
@@ -35,6 +34,7 @@ from synthorg.integrations.health.checks.tunnel import (
     TunnelHealthCheck,
     TunnelStatusLookup,
 )
+from synthorg.integrations.health.freshness import is_probe_due
 from synthorg.integrations.health.protocol import ConnectionHealthCheck
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -312,25 +312,6 @@ class HealthProberService(ProbeExecutionMixin):
                 )
             await self._clock.sleep(self._interval)
 
-    def _recheck_interval(self, status: ConnectionStatus) -> int:
-        """How long this connection's last verdict stays good for.
-
-        Driven by the outcome rather than the clock alone: a connection that
-        answered correctly is unlikely to have changed, while one that failed
-        is what the operator is watching, so the two deserve very different
-        cadences. The gap is deliberately wide because a probe can cost real
-        money -- a metered search API bills per call, and re-proving a working
-        credential every few minutes spends quota to change nothing.
-
-        Returns:
-            Seconds this status is trusted before the connection is due again.
-        """
-        if status is ConnectionStatus.HEALTHY:
-            return self._healthy_recheck
-        if status is ConnectionStatus.UNHEALTHY:
-            return self._unhealthy_recheck
-        return self._degraded_recheck
-
     def _is_due(self, conn: Connection) -> bool:
         """Whether this connection's last verdict has expired.
 
@@ -338,11 +319,13 @@ class HealthProberService(ProbeExecutionMixin):
             ``True`` when it has never been checked, or when its interval for
             the status it last reported has elapsed.
         """
-        last = conn.health.last_check_at
-        if last is None:
-            return True
-        elapsed = (self._clock.now() - last).total_seconds()
-        return elapsed >= self._recheck_interval(conn.health.status)
+        return is_probe_due(
+            conn,
+            now=self._clock.now(),
+            healthy_seconds=self._healthy_recheck,
+            degraded_seconds=self._degraded_recheck,
+            unhealthy_seconds=self._unhealthy_recheck,
+        )
 
     async def _probe_all(self) -> None:
         """Probe every enabled connection whose last verdict has expired."""

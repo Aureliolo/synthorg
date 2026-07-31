@@ -1482,6 +1482,98 @@ class TestControllerHttpLayer:
         assert len(body["data"]) == 1
         assert body["data"][0]["name"] == "c1"
 
+    async def test_fresh_verdict_is_served_without_probing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The Connections view polls this endpoint on a timer. Probing every
+        # connection on every request bills a metered upstream API to re-learn
+        # what the last verdict already said, so a verdict inside its recheck
+        # interval must be served from storage.
+        from datetime import UTC, datetime
+
+        from synthorg.integrations.connections.models import (
+            ConnectionHealth,
+            ConnectionStatus,
+            WebhookIngestState,
+        )
+
+        probed: list[str] = []
+
+        async def _record_probe(_catalog: object, name: str) -> object:
+            probed.append(name)
+            pytest.fail("a fresh connection must not be probed")
+
+        fresh = _make_conn().model_copy(
+            update={
+                "health": ConnectionHealth(
+                    status=ConnectionStatus.HEALTHY,
+                    last_check_at=datetime.now(UTC),
+                    detail=None,
+                    latency_ms=12.5,
+                    webhook_ingest=WebhookIngestState.READY,
+                ),
+            }
+        )
+        catalog = MagicMock()
+        catalog.list_all = AsyncMock(return_value=(fresh,))
+        client = self._build_client(catalog)
+        from synthorg.api.controllers import integration_health as controller_mod
+
+        monkeypatch.setattr(controller_mod, "check_connection_health", _record_probe)
+        async with client as http:
+            resp = await http.get("/api/v1/integrations/health/")
+
+        assert resp.status_code == 200
+        assert probed == []
+        report = resp.json()["data"][0]
+        # The cached verdict is the whole verdict, not just its headline:
+        # serving a thinner report than a live probe would be its own defect.
+        assert report["status"] == "healthy"
+        assert report["latency_ms"] == 12.5
+        assert report["webhook_ingest"] == "ready"
+
+    async def test_expired_verdict_is_reprobed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        from synthorg.integrations.connections.models import (
+            ConnectionHealth,
+            ConnectionStatus,
+            HealthReport,
+        )
+
+        probed: list[str] = []
+
+        async def _record_probe(_catalog: object, name: str) -> HealthReport:
+            probed.append(name)
+            return HealthReport(
+                connection_name=NotBlankStr(name),
+                status=ConnectionStatus.HEALTHY,
+            )
+
+        stale = _make_conn().model_copy(
+            update={
+                "health": ConnectionHealth(
+                    status=ConnectionStatus.HEALTHY,
+                    last_check_at=datetime.now(UTC) - timedelta(days=2),
+                ),
+            }
+        )
+        catalog = MagicMock()
+        catalog.list_all = AsyncMock(return_value=(stale,))
+        client = self._build_client(catalog)
+        from synthorg.api.controllers import integration_health as controller_mod
+
+        monkeypatch.setattr(controller_mod, "check_connection_health", _record_probe)
+        async with client as http:
+            resp = await http.get("/api/v1/integrations/health/")
+
+        assert resp.status_code == 200
+        assert probed == ["c1"]
+
     async def test_unknown_connection_returns_404(self) -> None:
         from synthorg.integrations.errors import ConnectionNotFoundError
 

@@ -161,9 +161,6 @@ class LlmTierRecommender:
                 self._model_id,
                 system=system_prompt,
                 user=user_prompt,
-                task_id=NotBlankStr(
-                    f"system:providers:tier_classification:{provider_name}"
-                ),
                 purpose=self.metadata.prompt_class_id,
                 cost_tracker=self._cost_tracker,
             )
