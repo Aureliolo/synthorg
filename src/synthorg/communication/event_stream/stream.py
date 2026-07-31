@@ -242,6 +242,15 @@ class EventStreamHub:
         """Update the SSE replay per-session depth (delegates to the ledger)."""
         self._ledger.set_history_per_session(value)
 
+    def set_max_queue_size(self, value: int) -> None:
+        """Update the per-subscriber queue bound for subscribers not yet made.
+
+        A subscriber already streaming keeps the queue it was given: an
+        ``asyncio.Queue`` cannot be rebounded, and swapping one underneath a
+        live consumer would drop whatever it had buffered.
+        """
+        self._max_queue_size = value
+
     async def _run_prune(self, idle_ttl_fallback: float) -> None:
         """Run one idle-subscriber sweep, re-resolving the TTL first.
 

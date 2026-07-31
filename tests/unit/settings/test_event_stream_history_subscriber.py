@@ -59,6 +59,7 @@ class TestProtocol:
             {
                 ("communication", "event_stream_history_max_sessions"),
                 ("communication", "event_stream_history_per_session"),
+                ("communication", "event_stream_max_queue_size"),
             }
         )
 
@@ -80,6 +81,16 @@ class TestApply:
             "communication", "event_stream_history_per_session"
         )
         hub.set_history_per_session.assert_called_once_with(8)
+        hub.set_history_max_sessions.assert_not_called()
+
+    async def test_max_queue_size_routes_to_hub(self) -> None:
+        hub = mock_of[EventStreamHub]()
+        sub = _make_subscriber(hub=hub, int_return=512)
+        await sub.on_settings_changed("communication", "event_stream_max_queue_size")
+        # Applies to subscribers opened after this; one already streaming
+        # keeps its queue, which is why the hub only stores the bound.
+        hub.set_max_queue_size.assert_called_once_with(512)
+        hub.set_history_per_session.assert_not_called()
         hub.set_history_max_sessions.assert_not_called()
 
     async def test_no_hub_is_silent_noop(self) -> None:

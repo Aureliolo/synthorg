@@ -26,6 +26,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         (_NAMESPACE, "event_stream_history_max_sessions"),
         (_NAMESPACE, "event_stream_history_per_session"),
+        (_NAMESPACE, "event_stream_max_queue_size"),
     }
 )
 
@@ -74,6 +75,8 @@ class EventStreamHistorySettingsSubscriber:
             value = await config_resolver_of(self._app_state).get_int(namespace, key)
             if key == "event_stream_history_max_sessions":
                 hub.set_history_max_sessions(value)
+            elif key == "event_stream_max_queue_size":
+                hub.set_max_queue_size(value)
             else:
                 hub.set_history_per_session(value)
         except Exception as exc:
