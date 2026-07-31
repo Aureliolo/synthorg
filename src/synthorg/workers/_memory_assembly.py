@@ -39,9 +39,6 @@ from synthorg.providers.structured_text import complete_text
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
-# A retrieval retry call is a system-owned completion with no per-task
-# attribution, so its cost records key on a fixed synthetic task id.
-_RETRIEVAL_RETRY_TASK_ID: NotBlankStr = NotBlankStr("system:memory:retrieval_retry")
 
 # The reformulation and sufficiency prompts are self-contained (they
 # carry their own instructions and format), so the system message only
@@ -90,7 +87,6 @@ def _retrieval_completion_fn(
             model,
             system=_RETRIEVAL_SYSTEM_PROMPT,
             user=prompt,
-            task_id=_RETRIEVAL_RETRY_TASK_ID,
             purpose=PromptPurposeId.MEMORY_RETRIEVAL_RETRY,
             cost_tracker=cost_tracker,
         )

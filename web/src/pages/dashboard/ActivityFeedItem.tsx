@@ -5,6 +5,7 @@ import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { cn } from '@/lib/utils'
 import { DOT_COLOR_CLASSES, getRunOutcomeColor } from '@/utils/approvals'
 import { formatRelativeTime } from '@/utils/format'
+import { ROUTES } from '@/router/routes'
 import type { ActivityEventType } from '@/api/types/agents'
 import type { ActivityItem } from '@/api/types/analytics'
 import type { WsEventType } from '@/api/types/websocket'
@@ -121,7 +122,7 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
         )}
         {activity.task_id && (
           <Link
-            to={`/tasks/${activity.task_id}`}
+            to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(activity.task_id))}
             className="text-xs text-accent hover:underline"
           >
             {activity.task_id}

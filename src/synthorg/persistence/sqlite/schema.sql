@@ -108,8 +108,13 @@ CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 -- ── Cost records ──────────────────────────────────────────────
 CREATE TABLE cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL REFERENCES tasks (id),
+    -- Nullable because subsystem work (embedding, reranking, consolidation,
+    -- safety classification) belongs to no agent and no task. task_id is a
+    -- real foreign key, so inventing an id for those calls made every one of
+    -- their inserts fail the constraint and lose the spend; what the call was
+    -- for is carried by prompt_class_id instead.
+    agent_id TEXT,
+    task_id TEXT REFERENCES tasks (id),
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,

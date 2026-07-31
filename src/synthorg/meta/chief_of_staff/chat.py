@@ -331,8 +331,6 @@ class ChiefOfStaffChat:
         async with (
             cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=NotBlankStr("system:cos:chat"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ),
@@ -479,8 +477,6 @@ class ChiefOfStaffChat:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=NotBlankStr("system:cos:chat"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

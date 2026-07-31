@@ -35,7 +35,6 @@ from synthorg.config.schema import (
 )
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
@@ -248,31 +247,6 @@ def _cheapest_probe_model_id(models: tuple[ProviderModelConfig, ...]) -> str:
     chat_models = [m for m in models if "embed" not in m.id.lower()]
     candidates = chat_models or list(models)
     return min(candidates, key=lambda m: _estimated_param_billions(m.id)).id
-
-
-def _safe_task_id_segment(value: str) -> str:
-    """Strip control / whitespace / colon characters from a task-id segment.
-
-    The probe ``task_id`` is built from a user-supplied provider name
-    embedded in a colon-delimited template
-    (``system:providers:test_connection:{name}``). ``NotBlankStr``
-    rejects empty input but permits control characters (newlines, NUL,
-    vertical tab, ...) AND colons, both of which would corrupt
-    downstream log parsers and task-id segment splitters that rely on
-    ``:`` as the canonical separator. Unicode is preserved -- only the
-    C0/C1 control range, ASCII delete, whitespace, and ``:`` itself
-    get replaced with ``_``. Returns ``"_"`` if every character was
-    filtered (preserves ``NotBlankStr``).
-
-    Returns:
-        The sanitised segment with control/whitespace/colon characters
-        replaced by ``_`` (``"_"`` if every character was filtered).
-    """
-    cleaned = "".join(
-        ch if ch.isprintable() and not ch.isspace() and ch != ":" else "_"
-        for ch in value
-    )
-    return cleaned or "_"
 
 
 class ProviderManagementService(
@@ -780,17 +754,11 @@ class ProviderManagementService(
         # cost-recording chokepoint so the spend appears in the same
         # accounting surface as production calls. ``cost_tracker=None``
         # (legacy bootstrap rigs) makes the scope a no-op.
-        # ``_safe_task_id_segment(name)`` strips control characters so
-        # a crafted provider name (newlines, NUL, etc.) cannot inject
-        # log lines or distort downstream task-id parsers; the
-        # provider-side ``provider`` field on the CostRecord still
-        # carries the raw name for forensic accuracy.
+        # A connection probe belongs to no task, so it names none. The
+        # record's own ``provider`` field carries the raw name, which is
+        # also why nothing here has to sanitise it into an id template.
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
-            agent_id=NotBlankStr("system"),
-            task_id=NotBlankStr(
-                f"system:providers:test_connection:{_safe_task_id_segment(name)}",
-            ),
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):

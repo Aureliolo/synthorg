@@ -9799,8 +9799,8 @@ export type components = {
         readonly CostRecord: {
             /** @description Accuracy-effort ratio for the task this call belongs to (populated at task completion when quality signals are available) */
             readonly accuracy_effort_ratio: number | null;
-            /** @description Agent identifier */
-            readonly agent_id: string;
+            /** @description Owning agent; None for work no agent owns */
+            readonly agent_id: string | null;
             /** @description Whether the provider served this call from cache */
             readonly cache_hit: boolean | null;
             /**
@@ -9839,8 +9839,8 @@ export type components = {
             readonly retry_reason: string | null;
             /** @description Whether the call completed without error or content filter */
             readonly success: boolean | null;
-            /** @description Task identifier */
-            readonly task_id: string;
+            /** @description Owning task; None for work that is not a task */
+            readonly task_id: string | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info

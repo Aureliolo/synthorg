@@ -132,8 +132,6 @@ class AgentIntake:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=NotBlankStr(f"system:intake:{request.request_id}"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

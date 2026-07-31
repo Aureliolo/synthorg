@@ -127,7 +127,6 @@ class LLMGenerator:
         # rather than collapsing every client-sim run into one bucket.
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
-            agent_id=NotBlankStr("system"),
             task_id=NotBlankStr(
                 f"system:client:requirement_generator:{context.project_id}"
             ),

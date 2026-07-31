@@ -17,7 +17,6 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
     parse_tool_call_response,
@@ -190,7 +189,6 @@ class LlmDecompositionStrategy:
             try:
                 async with cost_recording_scope(
                     cost_tracker=self._cost_tracker,
-                    agent_id=NotBlankStr("system"),
                     task_id=str(task.id),
                     # Per-task decomposition, not a system prompt class.
                     purpose=None,

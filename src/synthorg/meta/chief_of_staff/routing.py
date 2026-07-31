@@ -78,8 +78,6 @@ from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
-_ROUTING_AGENT_ID: NotBlankStr = NotBlankStr("system")
-_ROUTING_TASK_ID: NotBlankStr = NotBlankStr("system:cos:routing")
 
 # Static keyword -> role map for ``KeywordRoleRouter``. Scanned in order;
 # the first group with any keyword present in the latest human message
@@ -377,8 +375,6 @@ class LlmConcernRouter:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_ROUTING_AGENT_ID,
-                task_id=_ROUTING_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

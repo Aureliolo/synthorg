@@ -29,10 +29,6 @@ DETERMINISTIC_TEMPERATURE: Final[float] = 0.0
 """Sampling temperature for every structured-output call: deterministic
 output is a precondition for byte-identical cassette replay."""
 
-SYSTEM_SPEND_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system")
-"""Attribution agent id for system-category subsystem spend (research,
-knowledge synthesis); the spend is a SYSTEM activity, not an agent's."""
-
 _JSON_OBJECT_START_RE: Final[re.Pattern[str]] = re.compile(r"\{", re.DOTALL)
 """Locates candidate JSON-object starts in a response body."""
 
@@ -72,8 +68,8 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
     *,
     system: str,
     user: str,
-    agent_id: NotBlankStr = SYSTEM_SPEND_AGENT_ID,
-    task_id: NotBlankStr,
+    agent_id: NotBlankStr | None = None,
+    task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
     purpose: PromptPurposeId | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
@@ -92,8 +88,8 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
         model: Model identifier to serve the request.
         system: System prompt (carries untrusted-content directives).
         user: User prompt (carries the wrapped untrusted payload).
-        agent_id: Attribution agent id for the emitted record.
-        task_id: Task attribution for the emitted record.
+        agent_id: Owning agent, or ``None`` for work no agent owns.
+        task_id: Owning task, or ``None`` for work that is not a task.
         project_id: Optional project attribution for the emitted record.
         purpose: Optional prompt-purpose attribution for the emitted
             record, so subsystem spend can be sliced by prompt purpose.

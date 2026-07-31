@@ -17,7 +17,6 @@ from synthorg.budget.call_category import LLMCallCategory
 # globals.
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -166,8 +165,6 @@ class SuccessMemoryProposer:
             ]
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=NotBlankStr("system:procedural:success_proposer"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

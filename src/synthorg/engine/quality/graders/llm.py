@@ -346,7 +346,6 @@ class LLMRubricGrader:
                 # the task_id already encodes the evaluator identity
                 # for cross-reference.
                 agent_id=evaluator_agent_id,
-                task_id=NotBlankStr(f"system:verification:{evaluator_agent_id}"),
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

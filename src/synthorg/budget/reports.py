@@ -240,8 +240,12 @@ def _build_task_spendings(
     Returns:
         Tuple of ``TaskSpending``.
     """
+    # Subsystem work owns no task, so it has no bucket in a per-task
+    # breakdown; its spend is sliced by prompt purpose instead.
     by_task: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
+        if r.task_id is None:
+            continue
         by_task[r.task_id].append(r)
 
     spendings: list[TaskSpending] = []

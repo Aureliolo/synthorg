@@ -33,9 +33,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
-_PROPOSE_TASK_ID: NotBlankStr = NotBlankStr("system:steering:propose")
-_SYSTEM_AGENT_ID: NotBlankStr = NotBlankStr("system")
-
 logger = get_logger(__name__)
 
 _PROPOSER_TEMPERATURE: Final[float] = 0.1
@@ -136,8 +133,6 @@ class LLMSupersessionProposer:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_SYSTEM_AGENT_ID,
-                task_id=_PROPOSE_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

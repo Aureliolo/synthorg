@@ -56,9 +56,6 @@ from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
-_VOICE_AGENT_ID: NotBlankStr = NotBlankStr("system")
-_VOICE_TASK_ID: NotBlankStr = NotBlankStr("system:cos:multi_voice")
-
 
 class ChimeIn(BaseModel):
     """One specialist's attributed chime-in on an answer.
@@ -304,8 +301,6 @@ class LlmMultiVoiceRouter:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=_VOICE_AGENT_ID,
-                task_id=_VOICE_TASK_ID,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

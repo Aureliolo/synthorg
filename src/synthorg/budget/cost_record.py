@@ -45,10 +45,16 @@ class CostRecord(BaseModel):
     each API call; existing records are never updated.
 
     Attributes:
-        agent_id: Agent identifier (string reference).
-        task_id: Task identifier (string reference).
+        agent_id: Owning agent, or ``None`` for work no agent owns.
+        task_id: Owning task, or ``None`` for work that is not a task.
+            Both are real entity references: ``task_id`` is a foreign key
+            into ``tasks``, so a subsystem call that belongs to no task
+            leaves it unset rather than inventing an id. What such a call
+            IS gets recorded in ``prompt_class_id``, which every LLM
+            chokepoint already supplies.
         prompt_class_id: Prompt-class identifier for purpose attribution
             (``None`` when the call carries no system prompt purpose).
+            The sole owner for subsystem-issued work.
         provider: LLM provider name.
         model: Model identifier.
         input_tokens: Input token count.
@@ -80,8 +86,14 @@ class CostRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    agent_id: NotBlankStr = Field(description="Agent identifier")
-    task_id: NotBlankStr = Field(description="Task identifier")
+    agent_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning agent; None for work no agent owns",
+    )
+    task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning task; None for work that is not a task",
+    )
     project_id: NotBlankStr | None = Field(
         default=None,
         description="Project this cost belongs to",

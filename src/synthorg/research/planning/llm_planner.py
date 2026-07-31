@@ -12,7 +12,6 @@ from pydantic import ValidationError
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -90,7 +89,6 @@ class LlmQueryPlanner:
             system=_SYSTEM_PROMPT,
             user=user,
             cost_tracker=self._cost_tracker,
-            task_id=NotBlankStr(f"system:research:planning:{brief.brief_id}"),
             project_id=brief.project_id,
             purpose=self.metadata.prompt_class_id,
         )

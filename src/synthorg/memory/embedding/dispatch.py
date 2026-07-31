@@ -64,13 +64,6 @@ RETRY_CAP_SECONDS: Final[float] = 8.0
 #: long as the provider cared to keep the socket open.
 DEFAULT_EMBED_TIMEOUT_SECONDS: Final[float] = 60.0
 
-# Cost attribution needs an owner. Embedding is issued by the memory
-# subsystem on behalf of the whole company rather than by any one agent
-# or task, so it is attributed to the subsystem instead of being charged
-# to whichever agent happened to trigger the recall.
-SYSTEM_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:memory")
-SYSTEM_TASK_ID: Final[NotBlankStr] = NotBlankStr("system:memory:embedding")
-
 # LiteLLM's own transient exception types. A deterministic fault
 # (auth, bad request, model-not-found, content policy) is NOT here: it
 # repeats identically, so retrying it only burns the backoff budget on
@@ -167,8 +160,10 @@ async def record_embedding_cost(
     try:
         await cost_tracker.record(
             CostRecord(
-                agent_id=SYSTEM_AGENT_ID,
-                task_id=SYSTEM_TASK_ID,
+                # Embedding is issued by the memory subsystem for the whole
+                # company, so it is charged to no agent and no task rather
+                # than to whichever agent happened to trigger the recall.
+                # What it was for is carried by prompt_class_id.
                 provider=NotBlankStr(provider),
                 model=NotBlankStr(model),
                 input_tokens=int(prompt_tokens),
@@ -197,8 +192,6 @@ __all__ = [
     "RETRY_BASE_SECONDS",
     "RETRY_CAP_SECONDS",
     "RETRY_MAX_ATTEMPTS",
-    "SYSTEM_AGENT_ID",
-    "SYSTEM_TASK_ID",
     "embedding_retry_handler",
     "format_model_ref",
     "is_retryable_embedding_error",

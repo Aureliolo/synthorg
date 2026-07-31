@@ -387,7 +387,6 @@ class LlmCalibrationSampler:
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=record.agent_id,
-            task_id=NotBlankStr(f"system:hr:calibration:{record.id}"),
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
             # Pin the scope to the same currency the

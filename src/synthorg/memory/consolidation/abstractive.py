@@ -144,12 +144,12 @@ class AbstractiveSummarizer:
                     content=wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, content),
                 ),
             ]
-            attribution_agent: NotBlankStr = agent_id or NotBlankStr("system")
-            attribution_task: NotBlankStr = NotBlankStr("system:memory:abstractive")
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=attribution_agent,
-                task_id=attribution_task,
+                # Summarising on an agent's behalf keeps that agent as the
+                # owner; with no caller it belongs to no agent. Either way
+                # it is not a task, so task_id stays unset.
+                agent_id=agent_id,
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):

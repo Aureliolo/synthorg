@@ -74,7 +74,6 @@ from synthorg.security.redteam.routing import SUBSTRATE_DROP_FLOOR
 
 logger = get_logger(__name__)
 
-_GROUNDING_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:red_team:grounding")
 """Synthetic attribution id for the checker's extraction / entailment calls."""
 
 _DEFAULT_SEARCH_LIMIT: Final[int] = 5
@@ -521,7 +520,6 @@ class KnowledgeSubstrateGroundingChecker:
         """
         async with cost_recording_scope(
             cost_tracker=context.cost_tracker,
-            agent_id=_GROUNDING_AGENT_ID,
             task_id=execution_id,
             purpose=purpose,
             call_category=LLMCallCategory.SYSTEM,

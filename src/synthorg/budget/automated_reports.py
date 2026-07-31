@@ -401,8 +401,12 @@ def _build_performance_report(
     # input BEFORE accumulating so the per-agent ``total_cost`` cannot
     # silently blend two currencies under one label.
     assert_currencies_match(r.currency for r in cost_records)
+    # Agent-owned spend only: subsystem work has no agent to attribute a
+    # performance snapshot to.
     cost_by_agent: dict[str, float] = defaultdict(float)
     for r in cost_records:
+        if r.agent_id is None:
+            continue
         cost_by_agent[r.agent_id] += r.cost
     risk_by_agent: dict[str, list[float]] = defaultdict(list)
     for rr in risk_records:

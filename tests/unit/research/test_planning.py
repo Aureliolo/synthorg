@@ -123,7 +123,10 @@ async def test_planner_opens_system_cost_scope() -> None:
     ctx = provider.captured
     assert ctx is not None
     assert ctx.call_category is LLMCallCategory.SYSTEM
-    assert ctx.task_id == "system:research:planning:b1"
+    # Planning a brief is not a task, so it claims no task id: naming one
+    # pointed at a row that does not exist and the foreign key dropped the
+    # record. The real owner was always the project, which is carried here.
+    assert ctx.task_id is None
     assert ctx.project_id == "proj-1"
     assert ctx.prompt_class_id is PromptPurposeId.RESEARCH_PLANNING
 
