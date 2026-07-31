@@ -22,22 +22,54 @@ class CapabilityId(StrEnum):
     sequence, and can name the missing dependency when one is absent.
     """
 
+    # Ambient preconditions: established during construction, before any
+    # subsystem runs. Nothing declares them, so they never block ordering;
+    # they are here because a subsystem still needs to name what it waits on.
     PERSISTENCE = "persistence"
     SETTINGS_RESOLVER = "settings_resolver"
+    SETTINGS_SERVICE = "settings_service"
     PROVIDER_REGISTRY = "provider_registry"
     DEFAULT_PROVIDER = "default_provider"
     COST_TRACKER = "cost_tracker"
     APPROVAL_STORE = "approval_store"
     MESSAGE_BUS = "message_bus"
     AGENT_REGISTRY = "agent_registry"
+    WORK_PIPELINE = "work_pipeline"
+    TASK_ENGINE = "task_engine"
+    WORKSPACE_SERVICE = "workspace_service"
+
+    # Owned by a declared subsystem.
     MEMORY_BACKEND = "memory_backend"
     ORG_MEMORY_BACKEND = "org_memory_backend"
     EVOLUTION_OUTCOMES = "evolution_outcomes"
-    RUNTIME_SERVICES = "runtime_services"
-    WORK_PIPELINE = "work_pipeline"
-    TASK_ENGINE = "task_engine"
+    DOCS_ENGINE = "docs_engine"
+    RESEARCH_ENGINE = "research_engine"
     KNOWLEDGE_ENGINE = "knowledge_engine"
-    WORKSPACE_SERVICE = "workspace_service"
+    PROJECT_BRAIN = "project_brain"
+    CHARTER_ENGINE = "charter_engine"
+    TOOLSMITH = "toolsmith"
+    MODEL_REFRESH = "model_refresh"
+    OPERATOR_CONSOLE = "operator_console"
+    CONVERSATIONAL_ACTOR = "conversational_actor"
+    CHIEF_OF_STAFF_CHAT = "chief_of_staff_chat"
+    CHIEF_OF_STAFF_PROPOSER = "chief_of_staff_proposer"
+    GROUP_CHAT = "group_chat"
+    SIGNALS_SERVICE = "signals_service"
+    CUSTOM_RULES = "custom_rules"
+    SELF_IMPROVEMENT = "self_improvement"
+    ANALYTICS_SERVICE = "analytics_service"
+    REPORTS_SERVICE = "reports_service"
+    EXPERIMENT_SERVICE = "experiment_service"
+    AB_TEST_REPO = "ab_test_repo"
+    ALERT_REPO = "alert_repo"
+    ORG_INFLECTION_MONITOR = "org_inflection_monitor"
+    SPRINT_SERVICE = "sprint_service"
+    RISK_OVERRIDE_SERVICE = "risk_override_service"
+    DELIVERABLE_RECEIPTS = "deliverable_receipts"
+    TOOL_CALL_FEEDBACK = "tool_call_feedback"
+    ROLE_VERSION_SERVICE = "role_version_service"
+    BUDGET_VERSIONS_SERVICE = "budget_versions_service"
+    SETTINGS_READ_SERVICE = "settings_read_service"
 
 
 class SubsystemPhase(StrEnum):
