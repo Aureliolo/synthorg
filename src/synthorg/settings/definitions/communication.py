@@ -232,13 +232,13 @@ _r.register(
         default="256",
         description=(
             "Maximum events buffered per subscriber queue before backpressure"
-            " kicks in. Resolved at construction (env > code default) and passed"
-            " as the EventStreamHub's max_queue_size; restart-required because"
-            " per-subscriber asyncio.Queue maxsize is fixed at construction."
+            " kicks in. Applies to subscribers opened after the change; one"
+            " already streaming keeps the queue it was given, because an"
+            " asyncio.Queue cannot be rebounded and replacing it would drop"
+            " whatever that consumer had buffered."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=16,
         max_value=10000,
     )
