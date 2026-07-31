@@ -1066,6 +1066,15 @@ export const STRATEGIC_OUTPUT_MODE_VALUES = [
 ] as const
 export type StrategicOutputMode = (typeof STRATEGIC_OUTPUT_MODE_VALUES)[number]
 
+export const SUBSYSTEM_PHASE_VALUES = [
+    'active',
+    'waiting',
+    'blocked',
+    'disabled',
+    'failed',
+] as const
+export type SubsystemPhase = (typeof SUBSYSTEM_PHASE_VALUES)[number]
+
 export const SUPERSEDE_MODE_VALUES = [
     'none',
     'explicit',
