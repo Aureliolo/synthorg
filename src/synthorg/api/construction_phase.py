@@ -411,6 +411,7 @@ def build_construction_services(
         clock=boot_clock,
         config=effective_config,
         startup_time=boot_clock.monotonic(),
+        boot_at=boot_clock.now(),
     )
     # Compose every feature's (empty) state slice up front so the
     # construction-phase wiring below has a slice to ``model_copy`` from. The

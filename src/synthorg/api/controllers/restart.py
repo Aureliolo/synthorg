@@ -18,7 +18,7 @@ import os
 import signal
 from typing import Final
 
-from litestar import Controller, post
+from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_202_ACCEPTED
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,6 +34,7 @@ from synthorg.observability.events.api import (
     API_APP_RESTART_REFUSED,
     API_APP_RESTART_REQUESTED,
 )
+from synthorg.settings.models import PendingRestartSetting
 
 logger = get_logger(__name__)
 
@@ -84,6 +85,43 @@ class RestartResponse(BaseModel):
     )
 
 
+class RestartStatusResponse(BaseModel):
+    """Whether a restart is owed, and whether this process can perform it.
+
+    Attributes:
+        pending: Restart-required settings saved since this process booted,
+            and therefore saved but not yet in effect.
+        supervised: Whether something outside would start this process again
+            if it exited, which decides whether the in-app control is offered.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    pending: tuple[PendingRestartSetting, ...] = Field(
+        description="Settings saved but not in effect until a restart",
+    )
+    supervised: bool = Field(
+        description="Whether this process can restart itself",
+    )
+
+
+async def _restart_supervised(app_state: AppState) -> bool:
+    """Read whether something outside would start this process again.
+
+    Args:
+        app_state: Application state.
+
+    Returns:
+        The resolved ``api.restart_supervised`` value.
+    """
+    # Deferred for the cold-import reason ``settings.feature_gate``
+    # documents: the resolver pulls a heavy subgraph that a controller
+    # import would drag into module-import time.
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    return await config_resolver_of(app_state).get_bool("api", "restart_supervised")
+
+
 def _signal_self() -> None:
     """Ask this process to shut down the way its supervisor would.
 
@@ -105,6 +143,36 @@ class RestartController(Controller):
     # admin restriction is enforced by the role guard below, not by a label.
     tags = ("meta",)
     guards = [require_roles(HumanRole.CEO, HumanRole.SYSTEM)]  # noqa: RUF012
+
+    @get("")
+    async def status(self, state: State) -> ApiResponse[RestartStatusResponse]:
+        """Report the settings a restart would apply, and whether it can run.
+
+        Derived from persisted writes rather than remembered by whoever saved
+        them: the dashboard reads this on mount, so the notice survives a
+        reload, is the same for every operator looking at the deployment, and
+        clears itself when the process actually comes back.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            The pending settings and whether this process can restart itself.
+        """
+        app_state: AppState = state.app_state
+        # Deferred for the cold-import reason ``settings.feature_gate``
+        # documents.
+        from synthorg.settings.state import settings_service_of  # noqa: PLC0415
+
+        pending = await settings_service_of(app_state).pending_restart(
+            since=app_state.boot_at,
+        )
+        return ApiResponse(
+            data=RestartStatusResponse(
+                pending=pending,
+                supervised=await _restart_supervised(app_state),
+            )
+        )
 
     @post(
         "",
@@ -135,16 +203,7 @@ class RestartController(Controller):
             msg = "confirm must be true to restart"
             raise ValidationError(msg)
         app_state: AppState = state.app_state
-        # Deferred for the cold-import reason ``settings.feature_gate``
-        # documents: the resolver pulls a heavy subgraph that a controller
-        # import would drag into module-import time.
-        from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
-
-        supervised = await config_resolver_of(app_state).get_bool(
-            "api",
-            "restart_supervised",
-        )
-        if not supervised:
+        if not await _restart_supervised(app_state):
             logger.warning(API_APP_RESTART_REFUSED, reason="unsupervised")
             raise ConflictError(_UNSUPERVISED_MESSAGE)
         logger.info(API_APP_RESTART_REQUESTED, delay_seconds=_SIGNAL_DELAY_SECONDS)

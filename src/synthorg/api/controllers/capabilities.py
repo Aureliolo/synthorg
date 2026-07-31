@@ -56,10 +56,6 @@ class CapabilitiesResponse(BaseModel):
             (``effective_config.integrations.enabled``) is on; when
             False the connections / oauth / webhooks / mcp catalog
             surfaces are not registered at all.
-        restart: Something outside this process will start it again if
-            it exits, so an in-app restart is a restart rather than a
-            shutdown. False for a bare run, where offering the control
-            would present an action that can only be refused.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -72,7 +68,6 @@ class CapabilitiesResponse(BaseModel):
     a2a: bool
     telemetry: bool
     integrations: bool
-    restart: bool
 
 
 class CapabilitiesController(Controller):
@@ -129,15 +124,6 @@ class CapabilitiesController(Controller):
         )
         a2a_wired = app_state.slice(A2aStateSlice).peer_registry is not None
         simulation_runtime = has_simulation_runtime(app_state)
-        # Deferred for the cold-import reason ``settings.feature_gate``
-        # documents: the resolver drags a heavy subgraph into module-import
-        # time if imported at the top of a controller.
-        from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
-
-        restart_supervised = await config_resolver_of(app_state).get_bool(
-            "api",
-            "restart_supervised",
-        )
         return ApiResponse(
             data=CapabilitiesResponse(
                 simulations=simulation_runtime,
@@ -149,7 +135,6 @@ class CapabilitiesController(Controller):
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
-                restart=restart_supervised,
             ),
         )
 

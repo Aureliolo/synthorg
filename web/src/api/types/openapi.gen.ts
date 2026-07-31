@@ -3139,7 +3139,8 @@ export type paths = {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /** Status */
+        readonly get: operations["ApiV1MetaRestartStatus"];
         readonly put?: never;
         /** Restart */
         readonly post: operations["ApiV1MetaRestartRestart"];
@@ -7452,6 +7453,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[RestartStatusResponse] */
+        readonly ApiResponse_RestartStatusResponse_: {
+            readonly data: components["schemas"]["RestartStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
@@ -8891,7 +8900,6 @@ export type components = {
             readonly integrations: boolean;
             readonly ontology: boolean;
             readonly requests: boolean;
-            readonly restart: boolean;
             readonly simulations: boolean;
             readonly telemetry: boolean;
             readonly tunnel: boolean;
@@ -14233,6 +14241,16 @@ export type components = {
             readonly target_name: string;
             readonly target_role: string | null;
         };
+        /** PendingRestartSetting */
+        readonly PendingRestartSetting: {
+            /** @description What the setting does */
+            readonly description: string;
+            /** @description Setting key within namespace */
+            readonly key: string;
+            readonly namespace: components["schemas"]["SettingNamespace"];
+            /** @description ISO 8601 timestamp of the write */
+            readonly updated_at: string;
+        };
         /** PendingSecretCapture */
         readonly PendingSecretCapture: {
             readonly connection_type: string;
@@ -16056,6 +16074,13 @@ export type components = {
             readonly delay_seconds: number;
             /** @description Whether a restart was scheduled */
             readonly restarting: boolean;
+        };
+        /** RestartStatusResponse */
+        readonly RestartStatusResponse: {
+            /** @description Settings saved but not in effect until a restart */
+            readonly pending: readonly components["schemas"]["PendingRestartSetting"][];
+            /** @description Whether this process can restart itself */
+            readonly supervised: boolean;
         };
         /** RestoreRequest */
         readonly RestoreRequest: {
@@ -26188,6 +26213,31 @@ export interface operations {
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaRestartStatus: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_RestartStatusResponse_"];
+                };
+            };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];

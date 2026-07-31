@@ -34,7 +34,6 @@ class TestCapabilitiesController:
             "a2a",
             "telemetry",
             "integrations",
-            "restart",
         }
         assert set(data.keys()) == expected_flags
         for key in expected_flags:

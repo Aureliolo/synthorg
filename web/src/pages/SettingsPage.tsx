@@ -207,10 +207,10 @@ function SettingsHeader({ ctrl }: { ctrl: SettingsPageController }) {
 }
 
 function SettingsBanners({ ctrl }: { ctrl: SettingsPageController }) {
-  const { data, advanced, ui } = ctrl
+  const { data, advanced } = ctrl
   return (
     <>
-      <RestartBanner count={ui.restartBannerCount} onDismiss={() => ui.setRestartBannerCount(0)} />
+      <RestartBanner />
       {Boolean(data.error) && (
         <ErrorBanner severity="error" title="Could not load settings" description={data.error} />
       )}

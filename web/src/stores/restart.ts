@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getLiveness } from '@/api/endpoints/health'
-import { restartBackend } from '@/api/endpoints/restart'
+import { getRestartStatus, restartBackend } from '@/api/endpoints/restart'
+import type { PendingRestartSetting } from '@/api/types/system'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
@@ -20,8 +21,22 @@ const POLL_INTERVAL_MS = 1000
 const POLL_TIMEOUT_MS = 60_000
 
 export interface RestartState {
+  /**
+   * Settings saved but not in effect until the process restarts.
+   *
+   * Read from the backend, never accumulated here: whether a restart is owed
+   * is a fact about the running process, so a reload, a second tab, or a
+   * different operator all get the same answer, and it empties itself when
+   * the process comes back rather than needing something to clear it.
+   */
+  pending: readonly PendingRestartSetting[]
+  /** Whether the process runs under something that would start it again. */
+  supervised: boolean
+  /** Why the status could not be read, so a failure is not silence. */
+  error: string | null
   /** True from the moment the backend accepts until it answers again. */
   restarting: boolean
+  refresh: () => Promise<void>
   restart: () => Promise<boolean>
 }
 
@@ -78,7 +93,27 @@ function waitForBackend(): Promise<boolean> {
 }
 
 export const useRestartStore = create<RestartState>((set) => ({
+  pending: [],
+  supervised: false,
+  error: null,
   restarting: false,
+
+  refresh: async () => {
+    try {
+      const status = await getRestartStatus()
+      set({
+        pending: status.pending,
+        supervised: status.supervised,
+        error: null,
+      })
+    } catch (err) {
+      // A read, so no toast (per the store conventions); the banner renders
+      // the error instead, because silently showing no notice would read as
+      // "nothing pending" when the truth is "could not tell".
+      log.error('restart status read failed:', getErrorMessage(err))
+      set({ error: getErrorMessage(err) })
+    }
+  },
 
   restart: async () => {
     set({ restarting: true })
@@ -129,5 +164,10 @@ export const useRestartStore = create<RestartState>((set) => ({
  */
 export function resetRestartStore(): void {
   clearTimers()
-  useRestartStore.setState({ restarting: false })
+  useRestartStore.setState({
+    pending: [],
+    supervised: false,
+    error: null,
+    restarting: false,
+  })
 }

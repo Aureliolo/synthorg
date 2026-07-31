@@ -25,7 +25,6 @@ const ALL_FALSE: Capabilities = {
   a2a: false,
   telemetry: false,
   integrations: false,
-  restart: false,
 }
 
 /**

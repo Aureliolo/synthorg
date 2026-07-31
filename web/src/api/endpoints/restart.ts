@@ -1,6 +1,19 @@
 import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
-import type { RestartResponse } from '../types/system'
+import type { RestartResponse, RestartStatusResponse } from '../types/system'
+
+/**
+ * Read which saved settings are waiting on a restart, and whether one can run.
+ *
+ * The backend derives this from writes it has not read yet, so the answer
+ * survives a reload, is the same for every operator, and empties itself once
+ * the process comes back.
+ */
+export async function getRestartStatus(): Promise<RestartStatusResponse> {
+  const response =
+    await apiClient.get<ApiResponse<RestartStatusResponse>>('/meta/restart')
+  return unwrap(response)
+}
 
 /**
  * Restart the backend so a `restart_required` setting takes effect.

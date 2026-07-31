@@ -7,12 +7,12 @@ import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
+import { useRestartStore } from '@/stores/restart'
 import { NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { buildControllerDisabledMap, saveSettingsBatch } from './utils'
 import {
   buildCodeEntries,
   computeChangedKeys,
-  countRestartRequired,
   filterByNamespace,
   isRedactedSensitiveValue,
   snapshotEntries,
@@ -40,8 +40,6 @@ interface SettingsUiState {
   setCodeDirty: (value: boolean) => void
   showCodeDiscardWarning: boolean
   setShowCodeDiscardWarning: (value: boolean) => void
-  restartBannerCount: number
-  setRestartBannerCount: (value: number) => void
   activeNamespace: SettingNamespace | null
   setActiveNamespace: (value: SettingNamespace | null) => void
 }
@@ -51,7 +49,6 @@ function useSettingsUiState(): SettingsUiState {
   const [viewMode, setViewMode] = useState<ViewMode>('gui')
   const [codeDirty, setCodeDirty] = useState(false)
   const [showCodeDiscardWarning, setShowCodeDiscardWarning] = useState(false)
-  const [restartBannerCount, setRestartBannerCount] = useState(0)
   const [activeNamespace, setActiveNamespace] = useState<SettingNamespace | null>(null)
   return {
     searchQuery,
@@ -62,8 +59,6 @@ function useSettingsUiState(): SettingsUiState {
     setCodeDirty,
     showCodeDiscardWarning,
     setShowCodeDiscardWarning,
-    restartBannerCount,
-    setRestartBannerCount,
     activeNamespace,
     setActiveNamespace,
   }
@@ -183,9 +178,7 @@ export interface SettingsPageController {
 
 interface CodeSaveDeps {
   updateSetting: ReturnType<typeof useSettingsData>['updateSetting']
-  entries: SettingEntry[]
   setDirtyValues: ReturnType<typeof useSettingsDirtyState>['setDirtyValues']
-  setRestartBannerCount: (value: number) => void
 }
 
 /** Persist a batch of code-editor changes, prune saved drafts, surface restarts. */
@@ -206,8 +199,7 @@ async function runCodeSave(changes: Map<string, string>, deps: CodeSaveDeps): Pr
     }
     return next
   })
-  const restartCount = countRestartRequired(sanitized.keys(), deps.entries, failedKeys)
-  if (restartCount > 0) deps.setRestartBannerCount(restartCount)
+  await useRestartStore.getState().refresh()
   return failedKeys
 }
 
@@ -222,13 +214,13 @@ export function useSettingsPageController(): SettingsPageController {
   const { dirtyValues, setDirtyValues, handleValueChange, handleDiscard, handleSave: baseSave } =
     useSettingsDirtyState(data.entries, data.updateSetting)
   const advanced = useAdvancedMode(data.entries, setDirtyValues)
-  const { setRestartBannerCount } = ui
 
+  // Re-read rather than count locally: the backend decides what a restart
+  // would apply, from the writes it has not read yet.
   const handleSave = useCallback(async () => {
-    const restartCount = countRestartRequired(dirtyValues.keys(), data.entries)
     await baseSave()
-    if (restartCount > 0) setRestartBannerCount(restartCount)
-  }, [baseSave, dirtyValues, data.entries, setRestartBannerCount])
+    await useRestartStore.getState().refresh()
+  }, [baseSave])
 
   useSettingsKeyboard({
     onSave: () => void handleSave(),
@@ -257,11 +249,9 @@ export function useSettingsPageController(): SettingsPageController {
     (changes: Map<string, string>): Promise<Set<string>> =>
       runCodeSave(changes, {
         updateSetting: data.updateSetting,
-        entries: data.entries,
         setDirtyValues,
-        setRestartBannerCount,
       }),
-    [data.updateSetting, data.entries, setDirtyValues, setRestartBannerCount],
+    [data.updateSetting, setDirtyValues],
   )
 
   const codeEntries = useMemo(
