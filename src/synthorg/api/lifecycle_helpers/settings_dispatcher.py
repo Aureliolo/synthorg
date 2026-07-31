@@ -31,6 +31,7 @@ from synthorg.settings.subscribers import (
     EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
+    GlobalRateLimitSettingsSubscriber,
     KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
@@ -84,6 +85,10 @@ def _build_settings_dispatcher(
         app_state=app_state,
         settings_service=settings_service,
     )
+    global_rl_sub = GlobalRateLimitSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
     api_bridge_sub = ApiBridgeSettingsSubscriber(
         app_state=app_state,
         settings_service=settings_service,
@@ -118,6 +123,7 @@ def _build_settings_dispatcher(
         provider_sub,
         observability_sub,
         per_op_rl_sub,
+        global_rl_sub,
         api_bridge_sub,
         workers_bridge_sub,
         memory_bridge_sub,
