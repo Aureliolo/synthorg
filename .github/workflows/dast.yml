@@ -26,7 +26,7 @@ env:
 jobs:
   zap-scan:
     name: ZAP API Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The ZAP scan self-caps (-T 20 wall-time, maxScanDurationInMins=30);
     # 45 covers the worst-case scan plus the apko base build + compose
     # bring-up, while still reaping a hung Docker pull / ZAP-container
@@ -240,7 +240,7 @@ jobs:
       && github.event_name == 'schedule'
       && needs.zap-scan.result != 'success'
       && needs.zap-scan.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

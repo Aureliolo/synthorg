@@ -23,7 +23,7 @@ jobs:
   # ── Path filter: detect which domains changed ──
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -99,7 +99,7 @@ jobs:
     # the entire gate suite on every push (release-please bot PRs excepted,
     # which only bump versions). Enforced by check_local_ci_parity.py.
     if: needs.changes.outputs.is_release_please != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
       contents: read
@@ -200,7 +200,7 @@ jobs:
     name: Runtime Stats Freshness Gate
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -243,7 +243,7 @@ jobs:
     name: Doc Drift Gate
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -267,7 +267,7 @@ jobs:
     name: Prompt-Drift Regression Gate
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -325,7 +325,7 @@ jobs:
     name: Schema Validation
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The Postgres drift arm pulls postgres:18-alpine via testcontainers
     # (cold on this runner, since no start-postgres precedes it), applies
     # every revision, then runs pg_dump -- far heavier than the git-state
@@ -479,7 +479,7 @@ jobs:
     name: Type Check
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -508,7 +508,7 @@ jobs:
     name: OpenAPI Liveness
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -535,7 +535,7 @@ jobs:
     name: Test Unit (shard ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Healthy wall-clock per shard is ~2-3 min (114-120s observed on the
     # un-stuck shards). Two in-pytest timeouts bound a shard so a stuck
     # or slow run FAILS (named) rather than being reaped as "cancelled":
@@ -723,7 +723,7 @@ jobs:
     name: Test Integration (shard ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # ``--session-timeout 1650`` (27.5 min) is the in-suite watchdog; the
     # job ceiling sits above it with enough headroom for cold-runner
     # Postgres image pulls so a slow start cannot pre-empt the named
@@ -883,7 +883,7 @@ jobs:
     name: Test E2E
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -1009,7 +1009,7 @@ jobs:
     name: Test Conformance (SQLite)
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -1118,7 +1118,7 @@ jobs:
     name: Test Coverage Aggregate
     needs: [changes, test-unit, test-integration, test-e2e, test-conformance-sqlite]
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       # Required so `download-artifact` uses the REST API rather than the
@@ -1360,7 +1360,7 @@ jobs:
     name: Python Security Audit
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1397,7 +1397,7 @@ jobs:
     name: Dockerfile Lint
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1436,7 +1436,7 @@ jobs:
     # on this artefact, and a skipped dependency would skip them too. Cheap
     # (one export_openapi.py invocation).
     if: needs.changes.outputs.is_release_please != 'true' # always-run (feeds always-run dashboard gates)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1462,7 +1462,7 @@ jobs:
     name: Dashboard Lint
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1494,7 +1494,7 @@ jobs:
     name: Dashboard Type Check
     needs: [changes, export-openapi]
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       # See the coverage-aggregate job: `actions: read` keeps a re-run of
@@ -1540,7 +1540,7 @@ jobs:
     name: Dashboard Test (shard ${{ matrix.shard }}/4)
     needs: [changes, export-openapi]
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Sharded 4 ways with vitest ``--shard`` so each runner executes a
     # quarter of the unit suite in parallel. This replaced the earlier
     # 15 -> 30 minute single-runner re-baseline (the affected vitest
@@ -1612,7 +1612,7 @@ jobs:
     # `github.event_name == 'merge_group'` bypass here: it would run the build
     # on dashboard-irrelevant queue entries.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       # See the coverage-aggregate job: `actions: read` keeps a re-run of
@@ -1662,7 +1662,7 @@ jobs:
     name: Dashboard Security Audit
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1699,7 +1699,7 @@ jobs:
     # See dashboard-build: the `dashboard` flag is the correct merge_group
     # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -1745,7 +1745,7 @@ jobs:
     # See dashboard-build: the `dashboard` flag is the correct merge_group
     # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -1825,7 +1825,7 @@ jobs:
       !github.event.repository.fork
       && github.ref == 'refs/heads/main'
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The audit retries every ruleset read; the per-call budget below
     # (GH_RETRY_ATTEMPTS) caps audit runtime regardless of ruleset count, but
     # this job also runs a yq install with its own ~5-minute curl retry budget,
@@ -1883,7 +1883,7 @@ jobs:
     name: CI Pass
     if: always()
     needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:

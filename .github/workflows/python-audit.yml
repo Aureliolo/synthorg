@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   pip-audit:
     name: pip-audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # pip-audit queries the PyPI / OSV advisory DB; 10 reaps a hung
     # request instead of the 6-hour default (and keeps a transient OSV
     # outage from looking like a stuck job).
@@ -56,7 +56,7 @@ jobs:
       && github.event_name == 'schedule'
       && needs.pip-audit.result != 'success'
       && needs.pip-audit.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

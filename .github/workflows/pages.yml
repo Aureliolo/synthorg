@@ -28,7 +28,7 @@ jobs:
   build:
     if: github.ref == 'refs/heads/main'
     name: Build Site
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -219,7 +219,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Deploy
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write

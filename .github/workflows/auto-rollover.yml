@@ -33,7 +33,7 @@ jobs:
       !github.event.repository.fork
       && !startsWith(github.event.head_commit.message, 'chore(main): release')
       && !startsWith(github.event.head_commit.message, 'chore: auto-rollover')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Headroom for the gh_with_retry.sh ladder (~1m45s worst case) on top of
     # checkout + App-token mint, so the transient-exhaustion fail-closed path
     # is reachable rather than the job being killed mid-retry.
@@ -324,7 +324,7 @@ jobs:
     if: >-
       always()
       && needs.rollover.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

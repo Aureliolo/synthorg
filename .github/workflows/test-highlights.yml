@@ -46,7 +46,7 @@ jobs:
     # collaborator except the owner. Keeps the Mistral free-tier quota
     # under a single, auditable trigger surface.
     if: github.actor == github.repository_owner
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

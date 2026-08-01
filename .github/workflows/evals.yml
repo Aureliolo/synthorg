@@ -24,7 +24,7 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'run-evals')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -73,7 +73,7 @@ jobs:
     # status on every PR run that did not carry the ``run-evals``
     # label, polluting the rollup with a fake failure).
     if: always() && needs.agent-evals.result == 'failure' && github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

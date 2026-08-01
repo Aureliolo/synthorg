@@ -24,7 +24,7 @@ jobs:
     # to mint signed commits + bypass GITHUB_TOKEN's anti-recursion rule.
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Bound total wall time. The retry-wrapped gh calls below (LICENSE
     # read, PR-body read, head-SHA read, and the four required-status
     # POSTs) each carry the gh_with_retry.sh ladder (~1m45s worst case);
@@ -88,7 +88,7 @@ jobs:
           BRANCH: release-please--branches--main--components--synthorg
         run: |
           set -euo pipefail
-          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")  # GNU date (ubuntu-latest)
+          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")  # GNU date (ubuntu-24.04)
           echo "Updating Change Date to: $new_date"
 
           # Read LICENSE content + its blob sha from the single source the
@@ -310,7 +310,7 @@ jobs:
 
           # Randomised heredoc delimiter: the model output derives from
           # untrusted commit subjects, so a fixed marker could be smuggled in
-          # to truncate the output value. openssl ships on ubuntu-latest.
+          # to truncate the output value. openssl ships on ubuntu-24.04.
           DELIM="HIGHLIGHTS_RESPONSE_$(openssl rand -hex 12)"
           {
             printf 'response<<%s\n' "$DELIM"
@@ -437,7 +437,7 @@ jobs:
       always()
       && !github.event.repository.fork
       && needs.release-please.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

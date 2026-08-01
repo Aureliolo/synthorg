@@ -41,7 +41,7 @@ jobs:
       !github.event.repository.fork
       && !startsWith(github.event.head_commit.message, 'chore(main): release')
       && !startsWith(github.event.head_commit.message, 'chore: auto-rollover')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: release
     permissions:
@@ -303,7 +303,7 @@ jobs:
       always()
       && !github.event.repository.fork
       && needs.dev-release.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

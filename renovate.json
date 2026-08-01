@@ -170,6 +170,17 @@
     },
     {
       "customType": "regex",
+      "description": "GitHub-hosted runner labels. `ubuntu-latest` is a rolling alias: GitHub repoints it at the next LTS on its own schedule, so a runner-image migration would land as an unreviewable change mid-flight on every job at once. Every other input in this tree is pinned (action SHAs, Dockerfile digests, Node, the binary tool versions above), and the runner was the only one left floating. Pinning the label makes the bump arrive as a PR like everything else; the `actions-runner-images` releases feed is what dates each image, and the value is the label GitHub accepts in `runs-on`, not the release tag, so `versioning: loose` rather than semver.",
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
+      "matchStrings": [
+        "runs-on:\\s+(?<currentValue>ubuntu-\\d+\\.\\d+(?:-arm)?)"
+      ],
+      "depNameTemplate": "actions/runner-images",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
       "description": "DHI postgres+nats image pins in docker/compose.yml. The runtime compose.yml is generated from cli/internal/compose/compose.yml.tmpl using Go template variables ({{.PostgresImageTag}}, {{.NATSImageTag}}, {{.PostgresDigest}}, {{.NATSDigest}}) driven by state.go's Default*Image{Tag,Digest} constants, so the template file holds no literals to match and does not need scanning. docker/compose.yml is the static dev/DAST compose file whose literal `image:` lines must stay in lockstep with state.go (enforced by cli/internal/verify/compose_sync_test.go). Renovate's docker-compose manager is disabled on docker/compose.yml (see packageRules above) so the state.go customManager (below) was previously the only update path, leaving docker/compose.yml hand-mirrored. This manager closes that gap: the same (depName, currentValue, currentDigest) tuple Renovate resolves for state.go now also rewrites docker/compose.yml in the same PR.",
       "managerFilePatterns": ["/docker/compose\\.yml$/"],
       "matchStrings": [

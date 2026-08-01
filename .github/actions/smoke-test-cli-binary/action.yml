@@ -20,7 +20,7 @@ inputs:
       Path to the compiled `synthorg` binary on disk. The binary must
       be executable on the runner (smoke must run from a job whose
       `goos`/`goarch` match the runner -- e.g. linux/amd64 on
-      ubuntu-latest). Cross-compiled darwin/windows binaries cannot
+      ubuntu-24.04). Cross-compiled darwin/windows binaries cannot
       be smoked from Linux runners.
     required: true
   expected-version:

@@ -22,7 +22,7 @@ description: >-
       login + tag application). NO `id-token: write` and NO
       `attestations: write` -- the retag flow neither signs nor
       attests; both already happened in main-run.
-    - Run on `runs-on: ubuntu-latest` (Docker buildx is available by
+    - Run on `runs-on: ubuntu-24.04` (Docker buildx is available by
       default; no extra setup needed).
     - The main-push run for the same SHA must have completed
       successfully and pushed `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short>`

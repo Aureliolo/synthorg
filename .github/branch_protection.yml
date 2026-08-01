@@ -67,8 +67,20 @@ rulesets:
           # sentinel jobs, so no other app holding checks:write can satisfy a
           # required context by reusing its name. The live ruleset must carry
           # the same integration_id or audit_branch_protection.sh reports drift.
+          #
+          # Every context here is the sentinel rollup of a workflow that carries
+          # NO top-level `paths:` filter. That is load-bearing, not incidental:
+          # a required context on a path-filtered workflow never reports on a PR
+          # that misses the paths, and GitHub treats a never-reported required
+          # context as unsatisfied, so such a PR is blocked permanently rather
+          # than passed. Path scoping belongs on a `changes` job INSIDE the
+          # workflow, where the rollup still reports.
           required_status_checks:
             - context: "CI Pass"
+              integration_id: 15368
+            - context: "CLI Pass"
+              integration_id: 15368
+            - context: "Docker Pass"
               integration_id: 15368
             - context: "CodSpeed Python Pass"
               integration_id: 15368
@@ -88,11 +100,16 @@ rulesets:
     rules:
       - type: pull_request
         parameters:
+          # Stays at 1: a second approver is unsatisfiable on a single-maintainer
+          # repo, and a rule that cannot be met is a rule that gets bypassed.
           required_approving_review_count: 1
           dismiss_stale_reviews_on_push: true
           required_reviewers: []
-          require_code_owner_review: false
-          require_last_push_approval: false
+          require_code_owner_review: true
+          # A commit pushed after the approval does not inherit it. Without
+          # this, an approved PR can be force-pushed to unrelated content and
+          # merged on the strength of a review of what it used to be.
+          require_last_push_approval: true
           required_review_thread_resolution: false
           allowed_merge_methods:
             - merge

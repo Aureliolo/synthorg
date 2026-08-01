@@ -33,7 +33,7 @@ concurrency:
 jobs:
   lychee-external:
     name: lychee-external
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -95,7 +95,7 @@ jobs:
       always()
       && github.event_name == 'schedule'
       && needs.lychee-external.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

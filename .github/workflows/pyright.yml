@@ -21,7 +21,7 @@ permissions: {}
 jobs:
   pyright:
     name: pyright (advisory)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     continue-on-error: true

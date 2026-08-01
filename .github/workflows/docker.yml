@@ -4,29 +4,14 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # No `paths:` filter, deliberately. `Docker Pass` is a required status
+  # check, and a required context on a path-filtered workflow never reports
+  # on a PR that misses the paths -- which blocks that PR permanently rather
+  # than passing it. Path scoping lives one level in, on the `changes` job
+  # below, so the workflow always dispatches and always reports while the
+  # heavy build jobs stay scoped. Same shape ci.yml uses for dashboard-build.
   pull_request:
     branches: [main]
-    paths:
-      - "docker/**"
-      - "web/**"
-      - "src/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".dockerignore"
-      - ".github/workflows/docker.yml"
-      - ".github/actions/build-apko-base/**"
-      - ".github/actions/build-scan-image/**"
-      - ".github/actions/cis-scan/**"
-      - ".github/actions/publish-apko-base/**"
-      - ".github/actions/publish-image/**"
-      - ".github/actions/publish-image-loaded/**"
-      - ".github/actions/setup-apko/**"
-      - ".github/actions/setup-melange/**"
-      - ".github/actions/setup-python-uv/**"
-      - "scripts/cis-scan.sh"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "scripts/export_openapi.py"
   workflow_dispatch:
 
 permissions: {}
@@ -69,7 +54,7 @@ jobs:
   changes:
     name: Detect Docker Changes
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -165,13 +150,14 @@ jobs:
   # Extract app version from pyproject.toml (single source of truth)
   version:
     name: Extract Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
     outputs:
       app_version: ${{ steps.version.outputs.app_version }}
       deployment_env: ${{ steps.deployment-env.outputs.deployment_env }}
+      arches: ${{ steps.arches.outputs.arches }}
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -226,12 +212,31 @@ jobs:
           echo "deployment_env=${ENV_TAG}" >> "$GITHUB_OUTPUT"
           echo "Deployment env (baked into backend image): ${ENV_TAG}"
 
+      # Which architectures the multi-arch app images build, as a JSON array
+      # the build matrices expand. A PR builds amd64 only: nothing is
+      # published from a PR, so the second arch would buy a scan of bytes
+      # that are then discarded, and the arm64 leg is the slower of the two
+      # to schedule. Everything that actually publishes builds both, because
+      # the published manifest list must carry both.
+      - name: Resolve build architectures
+        id: arches
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            ARCHES='["amd64"]'
+          else
+            ARCHES='["amd64","arm64"]'
+          fi
+          echo "arches=${ARCHES}" >> "$GITHUB_OUTPUT"
+          echo "Build architectures: ${ARCHES}"
+
   # =========================================================================
   # Compose file validation -- catches syntax errors early
   # =========================================================================
   validate-compose:
     name: Validate Compose Files
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -278,7 +283,7 @@ jobs:
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.backend == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -312,7 +317,7 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-backend-base.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: image-push
     permissions:
@@ -346,7 +351,7 @@ jobs:
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -375,7 +380,7 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-sandbox-base.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: image-push
     permissions:
@@ -409,7 +414,7 @@ jobs:
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.sidecar == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -438,7 +443,7 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-sidecar-base.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: image-push
     permissions:
@@ -472,7 +477,7 @@ jobs:
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.fine-tune == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -501,7 +506,7 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-fine-tune-base.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: image-push
     permissions:
@@ -533,7 +538,7 @@ jobs:
   # Application images -- thin Dockerfile wrappers over apko bases
   # =========================================================================
   build-backend:
-    name: Build Backend
+    name: Build Backend (${{ matrix.arch }})
     needs: [version, build-backend-base, build-backend-base-publish]
     # On PR events publish is always skipped (guarded to main), so the
     # app build falls back to the locally-loaded scan artifact. On any
@@ -548,12 +553,24 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-backend-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-backend-base-publish.result == 'success')
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # One job per architecture, each on a runner native to it. Nothing
+    # emulates: `ubuntu-24.04-arm` is a real arm64 machine, free for public
+    # repositories. Previously both arches were built in one amd64 job with
+    # arm64 under QEMU, which is what made this job 18.7 min on main.
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    # Halved from 60: the ceiling covered an emulated arm64 leg compiling
+    # native wheels, and each job now builds one architecture natively.
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      # An arm64 failure must not cancel a healthy amd64 build; the publish
+      # job requires both, so a half-matrix simply does not publish.
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.version.outputs.arches) }}
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -565,6 +582,7 @@ jobs:
         uses: ./.github/actions/build-scan-image
         with:
           image-name: backend
+          platform: ${{ matrix.arch }}
           display-name: Backend
           dockerfile: docker/backend/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
@@ -622,10 +640,17 @@ jobs:
       # from the image's own HEALTHCHECK start period -- so a cold
       # boot that grows into the health budget's headroom fails here
       # rather than on a user's first `synthorg start`.
+      #
+      # Now runs on BOTH architectures. It could not before: the arm64
+      # image only ever existed as QEMU-emulated bytes on an amd64 runner,
+      # where booting a full backend under emulation is far too slow to
+      # gate on, so arm64 images shipped having never been started. Each
+      # arch now builds on its own native hardware, so each can be booted
+      # on it for the price of the amd64 smoke alone.
       - name: Smoke-test backend image
         uses: ./.github/actions/smoke-test-backend-image
         with:
-          image: ${{ steps.build_scan.outputs.ref_amd64 }}
+          image: ${{ steps.build_scan.outputs.ref }}
 
   build-backend-publish:
     name: Publish Backend
@@ -634,7 +659,7 @@ jobs:
       !cancelled() &&
       needs.build-backend.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: image-push
     permissions:
@@ -670,7 +695,7 @@ jobs:
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       (needs.changes.result == 'skipped' || needs.changes.outputs.web == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -802,7 +827,7 @@ jobs:
       needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-web-assets.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       actions: read
@@ -924,7 +949,7 @@ jobs:
       !cancelled() &&
       needs.build-web.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Hands off to publish-image-loaded, whose login / push / cosign /
     # attest / syft-SBOM steps each carry a bounded retry ladder. The job
     # timeout must clear the SUM of those ladders (~36m composed worst
@@ -978,7 +1003,7 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox:
-    name: Build Sandbox
+    name: Build Sandbox (${{ matrix.arch }})
     needs: [version, build-sandbox-base, build-sandbox-base-publish]
     if: >-
       !cancelled() &&
@@ -986,12 +1011,17 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sandbox-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Native per-arch runners; see build-backend for the full rationale.
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.version.outputs.arches) }}
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -1002,6 +1032,7 @@ jobs:
         uses: ./.github/actions/build-scan-image
         with:
           image-name: sandbox
+          platform: ${{ matrix.arch }}
           display-name: Sandbox
           dockerfile: docker/sandbox/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
@@ -1020,7 +1051,7 @@ jobs:
       !cancelled() &&
       needs.build-sandbox.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: image-push
     permissions:
@@ -1047,7 +1078,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar:
-    name: Build Sidecar
+    name: Build Sidecar (${{ matrix.arch }})
     needs: [version, build-sidecar-base, build-sidecar-base-publish]
     if: >-
       !cancelled() &&
@@ -1055,12 +1086,19 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sidecar-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sidecar-base-publish.result == 'success')
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Native per-arch runners; see build-backend for the full rationale. This
+    # image compiles a Go binary inside its Dockerfile, so it paid the
+    # emulation tax on every instruction of that compile.
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.version.outputs.arches) }}
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -1071,6 +1109,7 @@ jobs:
         uses: ./.github/actions/build-scan-image
         with:
           image-name: sidecar
+          platform: ${{ matrix.arch }}
           display-name: Sidecar
           dockerfile: docker/sidecar/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
@@ -1089,7 +1128,7 @@ jobs:
       !cancelled() &&
       needs.build-sidecar.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: image-push
     permissions:
@@ -1135,7 +1174,7 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-fine-tune-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1169,7 +1208,11 @@ jobs:
           base-image-tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           extra-build-args: |
             FINE_TUNE_EXTRA=${{ matrix.extra }}
-          enable-arm64: "false"
+          # amd64 only, on every event: the torch / CUDA wheels these images
+          # bundle publish no arm64 build, so there is nothing to compile for
+          # the second architecture. The matrix dimension here is the gpu/cpu
+          # variant, not the arch.
+          platform: amd64
           cache-scope: fine-tune-${{ matrix.variant }}
           free-disk-space: "true"
           trivy-version: ${{ env.TRIVY_VERSION }}
@@ -1192,7 +1235,7 @@ jobs:
       (needs.build-fine-tune.result == 'success' ||
         needs.build-fine-tune.result == 'failure') &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1283,7 +1326,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') &&
       !cancelled() &&
       needs.version.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Every retag job shares publish-image-retag, whose GHCR-login
     # (~8m45s worst case), digest-resolve, tag-apply and syft-SBOM
     # (~15m30s worst case) steps each carry their own bounded retry
@@ -1318,7 +1361,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') &&
       !cancelled() &&
       needs.version.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
     # retry budget (~32m composed worst case).
     timeout-minutes: 35
@@ -1347,7 +1390,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') &&
       !cancelled() &&
       needs.version.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
     # retry budget (~32m composed worst case).
     timeout-minutes: 35
@@ -1376,7 +1419,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') &&
       !cancelled() &&
       needs.version.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # See retag-backend: sized above the summed publish-image-retag
     # retry budget (~32m composed worst case).
     timeout-minutes: 35
@@ -1414,7 +1457,7 @@ jobs:
       startsWith(github.ref, 'refs/tags/v') &&
       !cancelled() &&
       needs.version.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Highest of the retag family: alone among them this job runs the
     # `Free disk space` reclaim (the GPU image is the only one large
     # enough to fill a stock runner), stacking that on top of the summed
@@ -1571,7 +1614,7 @@ jobs:
             needs.retag-sidecar.result != 'skipped' ||
             needs.retag-fine-tune.result != 'skipped'))
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     # `contents: read` covers checkout for the helper script, and
     # `packages: read` is what the workflow `GITHUB_TOKEN` needs to
@@ -1660,7 +1703,7 @@ jobs:
       needs.retag-sidecar.result == 'success' &&
       needs.retag-fine-tune.result == 'success' &&
       needs.verify-signatures.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Uses `release-tags` (v*-only, no privileged secrets), not `release`
     # (main-only, holds the `synthorg-repo-bot` App credentials). This
@@ -1837,3 +1880,56 @@ jobs:
           # Uses awk to delete only this section (up to the next ## heading), not to EOF.
           CLEANED=$(echo "$EXISTING" | awk '/^## Container Images$/{skip=1; next} /^## /{skip=0} !skip')
           gh release edit "$TAG" --notes "${CLEANED}${IMAGES}"
+
+  # ── Gate: all required checks passed ──
+  # The required `Docker Pass` context. Nearly every job here is conditional
+  # on the event (PR builds but never publishes; main-push publishes; tag-push
+  # only retags), so `skipped` MUST count as passing or the gate would fail
+  # every run for the jobs that correctly sat out. Only a real `failure` or a
+  # `cancelled` is a failure.
+  docker-pass:
+    name: Docker Pass
+    if: always()
+    needs: [changes, version, validate-compose, build-backend-base, build-backend-base-publish, build-sandbox-base, build-sandbox-base-publish, build-sidecar-base, build-sidecar-base-publish, build-fine-tune-base, build-fine-tune-base-publish, build-backend, build-backend-publish, build-web-assets, build-web, build-web-publish, build-sandbox, build-sandbox-publish, build-sidecar, build-sidecar-publish, build-fine-tune, build-fine-tune-publish, retag-backend, retag-web, retag-sandbox, retag-sidecar, retag-fine-tune, verify-signatures, update-release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          RESULTS: >-
+            ${{ needs.changes.result }}
+            ${{ needs.version.result }}
+            ${{ needs.validate-compose.result }}
+            ${{ needs.build-backend-base.result }}
+            ${{ needs.build-backend-base-publish.result }}
+            ${{ needs.build-sandbox-base.result }}
+            ${{ needs.build-sandbox-base-publish.result }}
+            ${{ needs.build-sidecar-base.result }}
+            ${{ needs.build-sidecar-base-publish.result }}
+            ${{ needs.build-fine-tune-base.result }}
+            ${{ needs.build-fine-tune-base-publish.result }}
+            ${{ needs.build-backend.result }}
+            ${{ needs.build-backend-publish.result }}
+            ${{ needs.build-web-assets.result }}
+            ${{ needs.build-web.result }}
+            ${{ needs.build-web-publish.result }}
+            ${{ needs.build-sandbox.result }}
+            ${{ needs.build-sandbox-publish.result }}
+            ${{ needs.build-sidecar.result }}
+            ${{ needs.build-sidecar-publish.result }}
+            ${{ needs.build-fine-tune.result }}
+            ${{ needs.build-fine-tune-publish.result }}
+            ${{ needs.retag-backend.result }}
+            ${{ needs.retag-web.result }}
+            ${{ needs.retag-sandbox.result }}
+            ${{ needs.retag-sidecar.result }}
+            ${{ needs.retag-fine-tune.result }}
+            ${{ needs.verify-signatures.result }}
+            ${{ needs.update-release.result }}
+        run: |
+          if echo "$RESULTS" | grep -qE "failure|cancelled"; then
+            echo "Docker failed. Job results: $RESULTS"
+            exit 1
+          fi
+          echo "All Docker checks passed (some skipped by event or path scope)."

@@ -37,7 +37,7 @@ jobs:
       github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_repository.full_name == github.repository
       && startsWith(github.event.workflow_run.head_branch, 'v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cap total wall time. The transient-resilience retries below (sibling
     # poll, release-view loop, and the two gh_retry budgets in the publish
     # step) can sum to several minutes under a sustained API outage; without
@@ -1041,7 +1041,7 @@ jobs:
     if: >-
       always()
       && needs.publish.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

@@ -58,7 +58,7 @@ jobs:
         && github.event.pull_request.user.login != 'dependabot[bot]'
         && github.event.pull_request.user.login != 'renovate[bot]'
         && github.event.pull_request.user.login != 'synthorg-repo-bot[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
       # The read path never writes back; the write path lives in
@@ -222,7 +222,7 @@ jobs:
         && github.event.comment.user.login != 'renovate[bot]'
         && github.event.comment.user.login != 'synthorg-repo-bot[bot]'
         && github.event.comment.user.login != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     # release env scopes RELEASE_BOT_APP_* secrets to refs/heads/main.
     # issue_comment events have github.ref == refs/heads/main, so the

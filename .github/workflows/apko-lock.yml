@@ -26,7 +26,7 @@ env:
 jobs:
   update-lockfiles:
     name: apko lock
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Environment `apko-lock` carries a `main`-only branch allowlist so
     # the schedule + dispatch entrypoints are gated on the deployment
@@ -263,7 +263,7 @@ jobs:
       && github.event_name == 'schedule'
       && needs.update-lockfiles.result != 'success'
       && needs.update-lockfiles.result != 'skipped'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)

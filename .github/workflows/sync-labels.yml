@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   sync:
     name: sync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Bound the per-label gh_with_retry.sh ladders (~1m45s worst case
     # each): a healthy run upserts every label in well under a minute, so
     # 10 reaps a genuinely stuck label API rather than hanging on the

@@ -27,7 +27,7 @@ description: >-
   Caller responsibilities:
     - `packages: write`, `id-token: write`, `attestations: write`
       permissions on the calling job.
-    - Run on a `runs-on: ubuntu-latest` runner.
+    - Run on a `runs-on: ubuntu-24.04` runner.
     - Have already loaded the per-arch images into the local Docker
       daemon under `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short-sha>-amd64`
       (and `-arm64` when `enable-arm64: "true"`).
