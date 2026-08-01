@@ -108,8 +108,17 @@ class TestDisabling:
 
 def _client_with_live_limits(
     limits: LiveRateLimits | None,
+    baked_cap: int = 10_000,
 ) -> AbstractContextManager[TestClient[Litestar]]:
     """Build a one-route app whose limiter reads *limits* per request.
+
+    Args:
+        limits: The live config to install, or ``None`` for the state
+            before the boot snapshot lands.
+        baked_cap: What Litestar builds the middleware with. The default
+            sits far above every live cap under test, so a passing
+            assertion can only come from the per-request read; a test of
+            the fallback lowers it so the baked cap is reachable.
 
     Returns:
         A context manager yielding the configured test client.
@@ -120,9 +129,7 @@ def _client_with_live_limits(
         return "ok"
 
     config = LiveRateLimitConfig(
-        # Deliberately far above every live cap under test, so a passing
-        # assertion can only come from the per-request read.
-        rate_limit=("minute", 10_000),
+        rate_limit=("minute", baked_cap),
         tier=RateLimitTier.UNAUTH,
     )
     app_state = AppState(config=RootConfig(company_name="test"))
@@ -179,6 +186,10 @@ class TestLiveDispatch:
 
     def test_no_snapshot_falls_back_to_the_built_cap(self) -> None:
         # Before the boot snapshot lands there is no live config. Serving
-        # under Litestar's own cap beats serving under none at all.
-        with _client_with_live_limits(None) as client:
-            assert client.get("/probe").status_code == 200
+        # under Litestar's own cap beats serving under none at all, so the
+        # baked cap is lowered until it bites: a single 200 would pass just
+        # as well against a fallback that skipped limiting altogether.
+        with _client_with_live_limits(None, baked_cap=2) as client:
+            for _ in range(2):
+                assert client.get("/probe").status_code == 200
+            assert client.get("/probe").status_code == 429

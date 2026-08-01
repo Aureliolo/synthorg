@@ -43,7 +43,8 @@ attestations against the pinned digests) before bringing the stack
 up detached, then waits for the backend's /api/v1/healthz to report
 it is serving. Success means the backend is up, not that every
 optional dependency answered: /api/v1/readyz may still return 503,
-in which case start prints which subsystems are waiting and exits 0
+in which case start warns that a dependency is not ready, points at
+the dashboard or 'synthorg doctor' to find out which, and exits 0
 anyway, because the dashboard that fixes them is already running.
 Pass --no-pull to skip the pull when iterating locally, --no-detach
 to stream logs in the foreground, or --dry-run to print the docker

@@ -115,8 +115,9 @@ without throttling a first run over a large pre-existing volume.
 {{- /*
 SYNTHORG_HOST/SYNTHORG_PORT/UVICORN_HOST/UVICORN_PORT are baked into the
 backend image ENV (docker/backend/Dockerfile); setting them here would only
-duplicate the defaults. An operator overriding them still does so via
-env_file / shell env, which docker-compose forwards into the container.
+duplicate the defaults. Compose forwards no arbitrary shell variable, so an
+operator overriding one declares an env_file or adds an explicit passthrough
+entry to this block.
 */}}
 {{- if postgresEnabled}}
       SYNTHORG_DATABASE_URL: {{yamlStr pgDSN}}
