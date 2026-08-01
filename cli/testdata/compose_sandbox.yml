@@ -39,10 +39,13 @@ services:
       SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
       SYNTHORG_MEMORY_BACKEND: "sqlvector"
       SYNTHORG_BUS_BACKEND: "internal"
-      SYNTHORG_LOG_DIR: "/data/logs"
       SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_TELEMETRY_ENABLED: "false"
       SYNTHORG_LOG_LEVEL: "info"
+      # data-init creates and chowns the default only. A path outside the
+      # synthorg-data volume needs a mount of its own, writable by uid 65532,
+      # or the logs live and die with the container.
+      SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_API_SERVER_HOST: "0.0.0.0"
       SYNTHORG_API_SERVER_PORT: "3001"
       SYNTHORG_API_API_PREFIX: "${SYNTHORG_API_API_PREFIX:-/api/v1}"

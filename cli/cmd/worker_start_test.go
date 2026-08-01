@@ -276,6 +276,12 @@ func TestRunWorkerStartForwardsThroughTheEnvironment(t *testing.T) {
 		return nil
 	}
 
+	// Set on the parent, not built into the child env: the exec forwards the
+	// bare name, so the operator's value only crosses the boundary if it is
+	// inherited. Without this the documented precedence stops at the
+	// container wall and the registered default silently wins inside it.
+	t.Setenv(config.EnvWorkerHTTPTimeoutSeconds, "45")
+
 	var buf bytes.Buffer
 	cmd := newWorkerStartTestCmd(&buf)
 	for flag, value := range map[string]string{
@@ -304,6 +310,7 @@ func TestRunWorkerStartForwardsThroughTheEnvironment(t *testing.T) {
 		config.EnvNATSURL + "=nats://user:secret@nats:4222",
 		config.EnvNATSStreamPrefix + "=" + config.DefaultTunables().DefaultNATSStreamPrefix,
 		config.EnvWorkers + "=6",
+		config.EnvWorkerHTTPTimeoutSeconds + "=45",
 	} {
 		if !slices.Contains(gotEnv, want) {
 			t.Errorf("child environment missing %q", want)

@@ -47,7 +47,7 @@ the reconciler can order by it and report on it.
 flowchart LR
     T[trigger] --> P[one pass]
     P --> E{enabled?}
-    E -- no --> D[deactivate]
+    E -- no --> D[deactivate consumers, then it]
     E -- yes --> M{deps present?}
     M -- no --> D
     M -- yes --> C{drifted?}
@@ -131,6 +131,34 @@ case: it does not replace a running instance, but it does put the key in the
 settings subscriber's watched set, so a subsystem waiting on a value (the
 Chief-of-Staff features, each blank until an operator names a model) comes up
 on the write rather than on the next restart.
+
+A setting the resolver cannot serve is not a change. Its snapshot records "no
+reading" rather than a value, and the comparison skips those positions; the
+first successful read afterwards becomes the baseline. Without that, one
+transient resolver error compares unequal to the successful read it followed
+and tears down every `rebuild_on_change` subsystem at once.
+
+## Teardown runs in reverse
+
+Activation order is providers first. Teardown is its mirror: before a
+subsystem goes down, everything reading through it goes down first. Taking the
+provider first leaves its consumers live over an instance that has gone away,
+and a request served in that window reads through a disconnected collaborator
+(the knowledge engine answering out of a memory backend that has just been
+replaced).
+
+Which consumers follow depends on why the provider is going:
+
+- **Going for good** (switched off, or its own requirement vanished): every
+  live consumer follows, transitively. Their requirement is about to be unmet.
+- **Coming back on this pass** (a rebuild): only the consumers that captured
+  the instance, meaning `rebuild_on_change=True`. One that reads the slice per
+  call picks the replacement up on its next read and has nothing to rebuild.
+
+A consumer taken down as part of a rebuild is re-activated later in the same
+pass, so `ReconcileReport.deactivated` names only what is still down at the
+end: a rebuild reports as `activated`, and reporting it as an outage would
+send an operator looking for a subsystem that is up.
 
 ## Phases
 

@@ -314,20 +314,25 @@ class LiveRateLimits(BaseModel):
     time_unit: RateLimitWindowUnit = "minute"
 
     @model_validator(mode="after")
-    def _floor_covers_both_tiers(self) -> LiveRateLimits:
-        """Keep the floor at or above both user-gated caps.
+    def _floor_covers_every_tier(self) -> LiveRateLimits:
+        """Keep the floor at or above every inner cap.
 
-        The floor wraps both tiers in the middleware stack, so a lower one
-        silently caps whichever budget it undercuts. Checked on every swap,
-        because a live edit is exactly where the pair can drift apart.
+        The floor is app-wide middleware, so it wraps every tier including
+        the route-level credential throttle, and a lower one silently caps
+        whichever budget it undercuts. Checked on every swap, because a live
+        edit is exactly where the set can drift apart.
 
         Returns:
             The validated config.
 
         Raises:
-            ValueError: When the floor sits below either tier.
+            ValueError: When the floor sits below any tier.
         """
-        highest = max(self.unauth_max_requests, self.auth_max_requests)
+        highest = max(
+            self.unauth_max_requests,
+            self.auth_max_requests,
+            self.auth_endpoint_max_requests,
+        )
         if self.floor_max_requests < highest:
             msg = (
                 f"floor_max_requests={self.floor_max_requests} is below "

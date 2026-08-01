@@ -166,32 +166,82 @@ def unbacked(
     """
     failures: list[tuple[ComposeSetSetting, str]] = []
     for record in records:
-        if _sets_env_var(sources[_WORKER_SOURCE_REL], record.env_var):
+        if _forwards_env_var(sources[_WORKER_SOURCE_REL], record.env_var):
             continue
         failures.extend(
             (record, rel)
             for rel in _BACKEND_SOURCE_RELS
-            if not _sets_env_var(sources[rel], record.env_var)
+            if not _assigns_env_var(sources[rel], record.env_var)
         )
     return sorted(failures, key=lambda pair: (pair[0].setting_key, pair[1]))
 
 
-def _sets_env_var(source: str, env_var: str) -> bool:
-    """Report whether *source* sets exactly *env_var*.
+def _assigns_env_var(source: str, env_var: str) -> bool:
+    """Report whether a compose file assigns *env_var* in a service.
 
-    Matched on whole tokens. A plain substring test passes a setting whose
-    variable is a strict prefix of one that IS set, so ``SYNTHORG_API_SSL``
-    would read as backed on the strength of ``SYNTHORG_API_SSL_CERT_FILE``
-    and the gate would approve a value no launcher ever passes.
+    The name has to open a mapping entry or a ``- KEY=value`` list item.
+    Merely appearing somewhere in the file is not passing it: these templates
+    carry prose about variables they deliberately do NOT set (the ones baked
+    into the image ENV, the ones an operator supplies through an env_file),
+    and a mention in that prose would back the label the gate exists to check.
 
     Args:
-        source: The launcher text to search.
+        source: The compose text to search, comments already stripped.
+        env_var: The variable that must be assigned.
+
+    Returns:
+        ``True`` when the variable opens an assignment.
+    """
+    pattern = rf"^\s*(?:-\s+)?{re.escape(env_var)}\s*[:=]"
+    return re.search(pattern, source, flags=re.MULTILINE) is not None
+
+
+def _forwards_env_var(source: str, env_var: str) -> bool:
+    """Report whether the worker launcher passes *env_var* to the child.
+
+    A whole-token match rather than an assignment: the launcher forwards a
+    variable by name (``docker exec -e NAME``) precisely so the value stays
+    out of argv, and the name reaches this function as a resolved constant
+    on a line of its own. Whole-token because a plain substring test passes a
+    setting whose variable is a strict prefix of one that IS forwarded, so
+    ``SYNTHORG_API_SSL`` would read as backed on the strength of
+    ``SYNTHORG_API_SSL_CERT_FILE``.
+
+    Args:
+        source: The launcher text to search, comments already stripped.
         env_var: The variable that must appear.
 
     Returns:
         ``True`` when the variable appears as its own token.
     """
     return re.search(rf"(?<!\w){re.escape(env_var)}(?!\w)", source) is not None
+
+
+def _strip_comments(rel: str, source: str) -> str:
+    """Return *source* with its comments removed.
+
+    Args:
+        rel: Repository-relative path, which decides the comment syntax.
+        source: The file text.
+
+    Returns:
+        The text with comment spans replaced by blank space, so line
+        structure and therefore the assignment anchors survive.
+    """
+    if rel.endswith(".go"):
+        spans = (r"//[^\n]*", r"/\*.*?\*/")
+    else:
+        # Go template comments first: they wrap `/* */` prose that a bare
+        # `#` rule would leave behind.
+        spans = (r"\{\{-?\s*/\*.*?\*/\s*-?\}\}", r"#[^\n]*")
+    for span in spans:
+        source = re.sub(
+            span,
+            lambda match: re.sub(r"[^\n]", " ", match.group()),
+            source,
+            flags=re.DOTALL,
+        )
+    return source
 
 
 def _read_sources(repo_root: Path) -> dict[str, str]:
@@ -207,10 +257,11 @@ def _read_sources(repo_root: Path) -> dict[str, str]:
     sources: dict[str, str] = {}
     for rel in (*_BACKEND_SOURCE_RELS, _WORKER_SOURCE_REL, _GO_CONSTANTS_REL):
         try:
-            sources[rel] = (repo_root / rel).read_text(encoding="utf-8")
+            text = (repo_root / rel).read_text(encoding="utf-8")
         except OSError as exc:
             msg = f"{rel}: could not read env-var source: {exc}"
             raise ValueError(msg) from exc
+        sources[rel] = _strip_comments(rel, text)
     constants = _go_env_constants(sources.pop(_GO_CONSTANTS_REL))
     sources[_WORKER_SOURCE_REL] = _resolve_go_constants(
         sources[_WORKER_SOURCE_REL], constants

@@ -4,8 +4,8 @@ These settings describe the socket uvicorn already opened and the middleware
 Litestar already mounted, so the process cannot change them about itself; the
 deployment supplies them and the registry entry exists for ``/settings``
 discoverability only. ``compose_set=True`` makes ``SettingsService.set()``
-reject mutation, and the read path collapses the chain to env > YAML > default
-(the DB row is never consulted).
+reject mutation, and the read path collapses the chain to env > default (the
+DB row is never consulted).
 """
 
 import os
@@ -30,12 +30,11 @@ class _FakeConfig(BaseModel):
 class _RepoMustNotBeReadError(RuntimeError):
     """Sentinel raised by the test repo if compose_set misroutes a get.
 
-    A bootstrap-only entry must NEVER consult the persistence layer at
-    read time (env > YAML > default short-circuit applies).  The fixture
-    wires this exception into ``repo.get`` so any future regression that
-    accidentally hits the repository for a compose-set key
-    surfaces immediately as a test failure rather than a silent default
-    fallback.
+    A compose-set entry must NEVER consult the persistence layer at read
+    time (the env > default short-circuit applies).  The fixture wires this
+    exception into ``repo.get`` so any future regression that accidentally
+    hits the repository for a compose-set key surfaces immediately as a test
+    failure rather than a silent default fallback.
     """
 
 
@@ -66,7 +65,7 @@ def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
 # middleware at app construction.  The matrix locks ``compose_set=True`` on
 # each entry so ``SettingsService.set()`` rejects a write rather than storing
 # a value the running process will never read.
-_BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
+_COMPOSE_SET_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("api", "api_prefix", "/api/v1"),
     ("api", "server_host", "127.0.0.1"),
     ("api", "server_port", "3001"),
@@ -83,10 +82,10 @@ _BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
 
 @pytest.mark.parametrize(
     ("namespace", "key", "expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-def test_bootstrap_only_entry_carries_compose_set(
+def test_compose_set_entry_carries_compose_set(
     namespace: str,
     key: str,
     expected_default: str,
@@ -100,31 +99,31 @@ def test_bootstrap_only_entry_carries_compose_set(
 
 @pytest.mark.parametrize(
     ("namespace", "key", "_expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-async def test_bootstrap_only_entry_set_rejects(
+async def test_compose_set_entry_set_rejects(
     namespace: str,
     key: str,
     _expected_default: str,
     service: SettingsService,
 ) -> None:
-    """``service.set()`` must raise ``SettingReadOnlyError`` on bootstrap entries."""
+    """``service.set()`` must raise ``SettingReadOnlyError`` on these."""
     with pytest.raises(SettingReadOnlyError):
         await service.set(namespace, key, "ignored")
 
 
 @pytest.mark.parametrize(
     ("namespace", "key", "expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-async def test_bootstrap_only_entry_default_resolves(
+async def test_compose_set_entry_default_resolves(
     namespace: str,
     key: str,
     expected_default: str,
     service: SettingsService,
 ) -> None:
-    """With no env/YAML override, the entry resolves to its documented default."""
+    """With no env override, the entry resolves to its documented default."""
     result = await service.get(namespace, key)
     assert result.value == expected_default

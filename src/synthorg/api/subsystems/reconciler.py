@@ -18,8 +18,10 @@ so a dependency absent at boot is not a verdict: the next pass picks it up.
 """
 
 import asyncio
+import threading
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.graph import (
@@ -27,6 +29,7 @@ from synthorg.api.subsystems.graph import (
     is_active,
     missing_capabilities,
     order_subsystems,
+    settings_drift,
     settings_fingerprint,
 )
 from synthorg.api.subsystems.spec import (
@@ -48,6 +51,12 @@ from synthorg.observability.events.subsystem import (
 )
 
 logger = get_logger(__name__)
+
+# How long to yield before re-checking a pass held by another event loop.
+# Only reached when two loops share one AppState, so this trades a little
+# latency in a case that does not arise in the running product for never
+# blocking a loop on a lock it cannot await.
+_CROSS_LOOP_RETRY_SECONDS: Final[float] = 0.01
 
 
 class _Outcome(StrEnum):
@@ -132,13 +141,13 @@ class _Bookkeeping:
     """Cross-pass memory the level-triggered comparison itself cannot hold."""
 
     fingerprints: dict[str, tuple[tuple[bool, int], ...]] = field(default_factory=dict)
-    settings: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    settings: dict[str, tuple[str | None, ...]] = field(default_factory=dict)
     generations: dict[CapabilityId, int] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
     declined: set[str] = field(default_factory=set)
-    attempted: dict[str, tuple[tuple[tuple[bool, int], ...], tuple[str, ...]]] = field(
-        default_factory=dict
-    )
+    attempted: dict[
+        str, tuple[tuple[tuple[bool, int], ...], tuple[str | None, ...]]
+    ] = field(default_factory=dict)
 
 
 class SubsystemReconciler:
@@ -167,10 +176,20 @@ class SubsystemReconciler:
         self._capabilities = {cap.id: cap for cap in capabilities}
         self._specs = order_subsystems(specs, self._capabilities)
         self._book = _Bookkeeping()
+        # Scoped to one pass, which the guard below serialises. Teardown can
+        # happen during a provider's turn rather than the subsystem's own, so
+        # the pass cannot reconstruct it from what each turn returned.
+        self._torn_down: list[str] = []
         # Created on first use, not here: an event loop may not exist yet at
         # construction, and binding a lock to the wrong loop is unrecoverable.
         self._lock: asyncio.Lock | None = None
         self._lock_loop: asyncio.AbstractEventLoop | None = None
+        # The asyncio lock only serialises callers sharing its loop, and this
+        # reconciler is cached on an AppState that outlives one. This gate is
+        # loop-independent, so a second loop cannot start a pass while another
+        # is inside one; without it the per-loop lock is replaced and both run.
+        self._pass_guard = threading.Lock()
+        self._pass_in_flight = False
 
     async def reconcile(
         self,
@@ -194,10 +213,38 @@ class SubsystemReconciler:
         Returns:
             The per-subsystem observation for this pass.
         """
-        async with self._lock_for_current_loop():
-            return await self._pass(
-                app_state, trigger=trigger, retry_declined=retry_declined
-            )
+        while True:
+            async with self._lock_for_current_loop():
+                if self._claim_pass():
+                    try:
+                        return await self._pass(
+                            app_state, trigger=trigger, retry_declined=retry_declined
+                        )
+                    finally:
+                        self._release_pass()
+            # Another loop holds the pass. Its lock is not one this loop may
+            # await, and blocking on the guard would freeze this loop until
+            # the other finished, so yield and re-check. Contention needs two
+            # loops sharing one AppState, which is why this is a retry rather
+            # than something the hot path pays for.
+            await asyncio.sleep(_CROSS_LOOP_RETRY_SECONDS)
+
+    def _claim_pass(self) -> bool:
+        """Take the loop-independent pass claim, if it is free.
+
+        Returns:
+            ``True`` when this caller now owns the pass.
+        """
+        with self._pass_guard:
+            if self._pass_in_flight:
+                return False
+            self._pass_in_flight = True
+            return True
+
+    def _release_pass(self) -> None:
+        """Give the pass claim back."""
+        with self._pass_guard:
+            self._pass_in_flight = False
 
     def _lock_for_current_loop(self) -> asyncio.Lock:
         """Return the pass lock, rebuilt if the running loop changed.
@@ -250,20 +297,26 @@ class SubsystemReconciler:
             The per-subsystem observation for this pass.
         """
         logger.debug(SUBSYSTEM_RECONCILE_STARTED, trigger=trigger)
+        self._torn_down.clear()
         activated: list[str] = []
-        deactivated: list[str] = []
         for spec in self._specs:
             outcome = await self._converge(
                 spec, app_state, retry_declined=retry_declined
             )
             if outcome is _Outcome.ACTIVATED:
                 activated.append(spec.name)
-            elif outcome is _Outcome.DEACTIVATED:
-                deactivated.append(spec.name)
+        # Read from what teardown actually did rather than from this loop: a
+        # subsystem taken down as a consumer of something being rebuilt is
+        # torn down during its provider's turn, not its own. Anything back up
+        # by the end was a rebuild, and reporting it as taken down would read
+        # as an outage.
+        back_up = set(activated)
         report = ReconcileReport(
             statuses=self.statuses(app_state),
             activated=tuple(activated),
-            deactivated=tuple(deactivated),
+            deactivated=tuple(
+                name for name in dict.fromkeys(self._torn_down) if name not in back_up
+            ),
         )
         logger.info(
             SUBSYSTEM_RECONCILE_COMPLETED,
@@ -294,15 +347,19 @@ class SubsystemReconciler:
         """
         active = is_active(spec, self._capabilities, app_state)
         if not self._enabled(spec, app_state):
-            return await self._deactivate(spec, app_state) if active else _Outcome.NONE
+            if not active:
+                return _Outcome.NONE
+            return await self._take_down(spec, app_state, returning=False)
         missing = missing_capabilities(spec, self._capabilities, app_state)
         if missing:
             # A subsystem whose dependency went away after it captured it is
             # holding a reference to something no longer there; leaving it up
             # would serve from a dead collaborator.
-            return await self._deactivate(spec, app_state) if active else _Outcome.NONE
+            if not active:
+                return _Outcome.NONE
+            return await self._take_down(spec, app_state, returning=False)
         if active and spec.rebuild_on_change and await self._drifted(spec, app_state):
-            await self._deactivate(spec, app_state)
+            await self._take_down(spec, app_state, returning=True)
             active = is_active(spec, self._capabilities, app_state)
         if active:
             return _Outcome.NONE
@@ -325,6 +382,10 @@ class SubsystemReconciler:
         undeclared condition that made it BLOCKED in the first place, which is
         why the periodic sweep attempts unconditionally.
 
+        The stored snapshot is refreshed with whatever this pass could read,
+        so a setting the resolver could not serve at the decline is compared
+        against its first actual reading rather than staying unknown.
+
         Args:
             spec: The subsystem being evaluated.
             app_state: Application state the checks read.
@@ -341,7 +402,11 @@ class SubsystemReconciler:
         )
         if current != capabilities:
             return True
-        return await settings_fingerprint(spec.settings, app_state) != settings
+        drift = settings_drift(
+            settings, await settings_fingerprint(spec.settings, app_state)
+        )
+        self._book.attempted[spec.name] = (capabilities, drift.retained)
+        return drift.drifted
 
     async def _activate(self, spec: SubsystemSpec, app_state: AppState) -> _Outcome:
         """Run a subsystem's activation and record the result.
@@ -425,6 +490,62 @@ class SubsystemReconciler:
             await settings_fingerprint(spec.settings, app_state),
         )
 
+    async def _take_down(
+        self, spec: SubsystemSpec, app_state: AppState, *, returning: bool
+    ) -> _Outcome:
+        """Take a subsystem down, after everything reading through it.
+
+        Deactivating a provider first leaves its consumers live over an
+        instance that has gone away, and an in-flight request served in that
+        window reads through a disconnected collaborator. Teardown therefore
+        runs in reverse dependency order, the mirror of activation.
+
+        Args:
+            spec: The subsystem to take down.
+            app_state: Application state the teardown reads.
+            returning: Whether this pass will attempt to bring it back. A
+                consumer follows a returning provider down only when it
+                captured the instance, and follows one that is going for good
+                unconditionally: its requirement is about to be unmet.
+
+        Returns:
+            What *spec* itself did.
+        """
+        for consumer in reversed(self._followers(spec, app_state, returning=returning)):
+            await self._deactivate(consumer, app_state)
+        return await self._deactivate(spec, app_state)
+
+    def _followers(
+        self, spec: SubsystemSpec, app_state: AppState, *, returning: bool
+    ) -> list[SubsystemSpec]:
+        """Return the live subsystems that must go down with *spec*.
+
+        Walked forward over the ordered specs, which is enough for the
+        transitive case: a provider always precedes its consumers, so a
+        consumer that joins the set does so before anything requiring it is
+        considered.
+
+        Args:
+            spec: The subsystem being taken down.
+            app_state: Application state the liveness checks read.
+            returning: Whether *spec* is coming back on this pass.
+
+        Returns:
+            The followers, in activation order.
+        """
+        going: set[CapabilityId] = {spec.provides}
+        followers: list[SubsystemSpec] = []
+        for candidate in self._specs:
+            if going.isdisjoint(candidate.requires):
+                continue
+            if returning and not candidate.rebuild_on_change:
+                continue
+            if not is_active(candidate, self._capabilities, app_state):
+                continue
+            followers.append(candidate)
+            going.add(candidate.provides)
+        return followers
+
     async def _deactivate(self, spec: SubsystemSpec, app_state: AppState) -> _Outcome:
         """Take a subsystem down when it declares how.
 
@@ -460,11 +581,17 @@ class SubsystemReconciler:
         self._book.attempted.pop(spec.name, None)
         self._book.failures.pop(spec.name, None)
         self._book.declined.discard(spec.name)
+        self._torn_down.append(spec.name)
         logger.info(SUBSYSTEM_DEACTIVATED, subsystem=spec.name)
         return _Outcome.DEACTIVATED
 
     async def _drifted(self, spec: SubsystemSpec, app_state: AppState) -> bool:
         """Report whether a requirement or declared setting changed.
+
+        A setting this pass could not read is not evidence of a change, so it
+        is skipped and the last actual reading is kept: a rebuild tears the
+        subsystem down, and a resolver hiccup must not be able to do that to
+        every subsystem that captured a setting at once.
 
         Args:
             spec: The subsystem to check.
@@ -485,7 +612,11 @@ class SubsystemReconciler:
         previous_settings = self._book.settings.get(spec.name)
         if previous_settings is None:
             return False
-        return await settings_fingerprint(spec.settings, app_state) != previous_settings
+        drift = settings_drift(
+            previous_settings, await settings_fingerprint(spec.settings, app_state)
+        )
+        self._book.settings[spec.name] = drift.retained
+        return drift.drifted
 
     def _enabled(self, spec: SubsystemSpec, app_state: AppState) -> bool:
         """Report whether an operator has this subsystem switched on.

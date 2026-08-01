@@ -22,13 +22,16 @@ logger = get_logger(__name__)
 
 _API_NS: Final[str] = "api"
 _FLOOR_KEY: Final[str] = "rate_limit_floor_max_requests"
-# The floor middleware wraps both inner tiers, so a per-request budget above
-# the floor can never be reached: the floor rejects first. The registered
-# default stands in for an unset key so a first write is checked against what
-# is actually in force rather than against nothing.
+# The floor middleware is applied app-wide, so it wraps every inner tier and a
+# per-request budget above it can never be reached: the floor rejects first.
+# The credential-endpoint tier is route middleware on /auth/*, which the floor
+# still sits in front of, so it belongs here too. The registered default stands
+# in for an unset key so a first write is checked against what is actually in
+# force rather than against nothing.
 _TIER_KEYS: Final[tuple[str, ...]] = (
     "rate_limit_unauth_max_requests",
     "rate_limit_auth_max_requests",
+    "rate_limit_auth_endpoint_max_requests",
 )
 # Membership only. Kept separate from the defaults, which are read from the
 # registry: a copy here would enforce yesterday's number the moment someone
@@ -79,7 +82,7 @@ async def _enforce_rate_limit_floor(
             continue
         msg = (
             f"api.{tier_key} of {cap} exceeds api.{_FLOOR_KEY} of {floor}; the"
-            " floor wraps both tiers, so the larger budget could never be"
+            " floor wraps every tier, so the larger budget could never be"
             " reached. Raise the floor in the same write, or lower the tier."
         )
         logger.warning(

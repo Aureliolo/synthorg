@@ -38,7 +38,8 @@ class SettingReadOnlyError(SettingValidationError):
 
     Inherits from :class:`SettingValidationError` so the existing HTTP 422
     error mapping in the API controllers picks it up without changes.
-    The deployment fixed these when the container was created, so
+    The value is fixed for the life of the process that read it at start,
+    whether that is a container, a worker, or a local run, so
     ``SettingsService.set()`` and related mutations reject rather than
     store a value the running process will never read -- the registry
     entry exists for discoverability only.
