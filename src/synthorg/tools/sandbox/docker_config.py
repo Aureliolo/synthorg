@@ -98,9 +98,9 @@ class DockerSandboxConfig(BaseModel):
             " ghcr.io/aureliolo/synthorg-sandbox:v<release>."
             " ConfigResolver writes the resolved value into the"
             " sandbox image-resolution cache once at startup; this"
-            " field's default_factory reads from that cache, so"
-            " runtime DB overrides require a restart"
-            " (read_only_post_init=True on the registered setting)."
+            " field's default_factory reads from that cache. The"
+            " registered setting is compose-set: the container was"
+            " created against the resolved image."
         ),
     )
     network: Literal["none", "bridge", "host"] = Field(

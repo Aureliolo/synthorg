@@ -28,7 +28,7 @@ The lint detects two ghost-service patterns in lifecycle/app wiring, then matche
 
 When debugging a Pattern A flag, search the ghost class's source for `ConfigResolver.get_*("<flagged_ns>", "<flagged_key>")` calls and verify whether the consumer should migrate to a real unconditionally-started service or whether the gating service should be wired at boot.
 
-`read_only_post_init=True` settings are skipped by design (registry entry exists for `/settings` UI introspection; mutation is rejected at runtime, no live consumer required).
+`compose_set=True` settings are skipped by design (the registry entry exists for `/settings` introspection; the deployment supplies the value and a write is rejected, so no live consumer is required).
 
 ## Suppression marker
 

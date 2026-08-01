@@ -24,7 +24,7 @@ import contextlib
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.config import EmbedderOverrideConfig
+from synthorg.memory.config import CompanyMemoryConfig, EmbedderOverrideConfig
 from synthorg.memory.consolidation.cycle_scheduler import AgentIdSupplier
 from synthorg.memory.embedder_port import TextEmbedder
 from synthorg.memory.protocol import MemoryBackend
@@ -34,6 +34,8 @@ from synthorg.observability.events.consolidation import (
     SCHEDULER_START_FAILED,
 )
 from synthorg.observability.events.memory import (
+    MEMORY_BACKEND_SETTINGS_READ_FAILED,
+    MEMORY_BACKEND_UNWIRED,
     MEMORY_BACKEND_WIRE_FAILED,
     MEMORY_BACKEND_WIRE_SKIPPED,
     MEMORY_BACKEND_WIRED,
@@ -68,7 +70,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
         logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="persistence_not_connected")
         return
 
-    memory_config = app_state.config.memory
+    memory_config = await _resolved_memory_config(app_state)
     embedder = None
     if memory_config.backend != IN_MEMORY_BACKEND:
         embedder = await _build_embedder(app_state)
@@ -118,12 +120,86 @@ async def wire_memory_backend(app_state: AppState) -> None:
         durable=memory_config.backend != IN_MEMORY_BACKEND,
         dense_search=backend.supports_dense_search,
     )
-    await _wire_consolidation_scheduler(app_state, backend)
+    await _wire_consolidation_scheduler(app_state, backend, memory_config)
+
+
+async def _resolved_memory_config(app_state: AppState) -> CompanyMemoryConfig:
+    """Return the memory config with the operator's current choices applied.
+
+    The boot config mirrors ``memory.backend`` from the environment only, so
+    reading it alone would ignore a value written through the dashboard and
+    make a change that the reconciler correctly rebuilt for produce the same
+    backend again.
+
+    Returns:
+        The boot config, with backend and consolidation interval replaced by
+        the resolved values when the resolver can supply them.
+    """
+    from synthorg.memory.enums import ConsolidationInterval  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    config = app_state.config.memory
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return config
+    try:
+        backend = await resolver.get_str("memory", "backend")
+        interval = ConsolidationInterval(
+            await resolver.get_str("memory", "consolidation_interval")
+        )
+    except Exception as exc:  # noqa: BLE001 -- reported, then the boot config decides
+        reraise_critical(exc)
+        logger.warning(
+            MEMORY_BACKEND_SETTINGS_READ_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return config
+    return config.model_copy(
+        update={
+            "backend": backend,
+            "consolidation": config.consolidation.model_copy(
+                update={"interval": interval}
+            ),
+        }
+    )
+
+
+async def unwire_memory_backend(app_state: AppState) -> None:
+    """Take the memory backend down so the next pass can rebuild it.
+
+    Runs when an operator changes the embedder, the backend kind or the
+    consolidation interval: every one of those is baked in at connect time, so
+    the running instance has to go before a new one can take its place.
+
+    Teardown is best-effort per step. A backend that refuses to disconnect
+    must not leave the slice pointing at it, because the next pass would then
+    read memory as up and never rebuild.
+    """
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+    slice_ = app_state.slice(MemoryStateSlice)
+    scheduler = slice_.consolidation_scheduler
+    backend = slice_.backend
+    app_state.wire(
+        MemoryStateSlice,
+        backend=None,
+        embedder_ref=None,
+        consolidation_scheduler=None,
+    )
+    if scheduler is not None:
+        with contextlib.suppress(Exception):
+            await scheduler.stop()
+    if backend is not None:
+        with contextlib.suppress(Exception):
+            await backend.disconnect()
+    logger.info(MEMORY_BACKEND_UNWIRED)
 
 
 async def _wire_consolidation_scheduler(
     app_state: AppState,
     backend: MemoryBackend,
+    memory_config: CompanyMemoryConfig,
 ) -> None:
     """Start the periodic consolidation and retention driver.
 
@@ -149,7 +225,7 @@ async def _wire_consolidation_scheduler(
     # Optional on both the service and the scheduler: without it the
     # kill switch reads its registered default rather than failing boot.
     resolver = app_state.slice(SettingsStateSlice).config_resolver
-    consolidation = app_state.config.memory.consolidation
+    consolidation = memory_config.consolidation
     interval = interval_seconds_for(consolidation.interval)
     if interval is None:
         logger.info(SCHEDULER_DISABLED, interval=consolidation.interval.value)

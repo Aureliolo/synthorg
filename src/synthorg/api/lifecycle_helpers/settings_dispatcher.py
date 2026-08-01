@@ -25,12 +25,12 @@ from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
-    CosCharterModelSettingsSubscriber,
-    DirectMcpActorSettingsSubscriber,
+    CompressionSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
     EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
+    FlightRecorderSettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
     GlobalRateLimitSettingsSubscriber,
     InMemoryBoundsSettingsSubscriber,
@@ -40,7 +40,6 @@ from synthorg.settings.subscribers import (
     NotificationsBridgeSettingsSubscriber,
     ObservabilityBridgeSettingsSubscriber,
     ObservabilitySettingsSubscriber,
-    OperatorConsoleSettingsSubscriber,
     OutputStyleSettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
@@ -49,6 +48,8 @@ from synthorg.settings.subscribers import (
     SecurityBridgeSettingsSubscriber,
     SecurityTimeoutSettingsSubscriber,
     SimulationsSettingsSubscriber,
+    SubsystemReconcileSettingsSubscriber,
+    TelemetrySettingsSubscriber,
     ToolsBridgeSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
     WsAuthLimitsSettingsSubscriber,
@@ -153,6 +154,15 @@ def _build_settings_dispatcher(
             config=config,
             settings_service=settings_service,
         ),
+        # Ahead of the runtime reload, and load-bearing: both watch the
+        # memory keys, and the reload captures the memory backend by value.
+        # Reloading first would rebuild the engine against the instance the
+        # reconciler is about to disconnect, leaving every agent reading
+        # through a dead backend with nothing left to trigger another pass.
+        SubsystemReconcileSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
         RuntimeReloadSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
@@ -185,6 +195,18 @@ def _build_settings_dispatcher(
             app_state=app_state,
             settings_service=settings_service,
         ),
+        FlightRecorderSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        CompressionSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        TelemetrySettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
         A2AClientSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
@@ -196,18 +218,6 @@ def _build_settings_dispatcher(
         research_sub,
         knowledge_sub,
         simulations_sub,
-        CosCharterModelSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        DirectMcpActorSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        OperatorConsoleSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
         OutputStyleSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,

@@ -6,6 +6,7 @@ from synthorg.engine.flight_recording.service import (
 )
 from synthorg.engine.flight_recording.sink import (
     FlightRecorderSink,
+    LiveFlightRecorderSink,
     NoOpFlightRecorderSink,
     PersistenceFlightRecorderSink,
     build_flight_recorder_sink,
@@ -15,6 +16,7 @@ from synthorg.engine.flight_recording.sink import (
 __all__ = [
     "FlightRecorderService",
     "FlightRecorderSink",
+    "LiveFlightRecorderSink",
     "NoOpFlightRecorderSink",
     "PersistenceFlightRecorderSink",
     "ReplaySeekView",

@@ -35,6 +35,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         (_NAMESPACE, "rate_limit_floor_max_requests"),
         (_NAMESPACE, "rate_limit_unauth_max_requests"),
         (_NAMESPACE, "rate_limit_auth_max_requests"),
+        (_NAMESPACE, "rate_limit_auth_endpoint_max_requests"),
         (_NAMESPACE, "rate_limit_time_unit"),
     }
 )
@@ -89,6 +90,9 @@ class GlobalRateLimitSettingsSubscriber:
                     "rate_limit_unauth_max_requests"
                 ),
                 auth_max_requests=await self._read_int("rate_limit_auth_max_requests"),
+                auth_endpoint_max_requests=await self._read_int(
+                    "rate_limit_auth_endpoint_max_requests"
+                ),
                 time_unit=await self._read_unit(),
             )
         except Exception as exc:

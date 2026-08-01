@@ -22,8 +22,7 @@ function makeSetting(key: string, description: string): SettingEntry {
       group: 'Embedding',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -81,10 +80,9 @@ function renderNamespace(entry: string) {
 }
 
 describe('SettingsNamespacePage URL-backed filter', () => {
-  // The page renders RestartBanner, which fetches restart status in a mount
-  // effect. Asserting synchronously returns before that settles, so the
-  // store's set() lands after the test, outside act() and past the
-  // active-handle gate.
+  // The page hydrates its settings in a mount effect. Asserting
+  // synchronously returns before that settles, so the store's set() lands
+  // after the test, outside act() and past the active-handle gate.
   it('seeds the filter from the URL so a deep link lands on one row', async () => {
     renderNamespace('/settings/memory?q=embedder_model')
 

@@ -18,7 +18,6 @@ from synthorg.communication.errors import (
 )
 from synthorg.communication.message import Message
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import compare_ci
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -34,7 +33,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_DISPATCHER_STOPPED,
     SETTINGS_SUBSCRIBER_ERROR,
     SETTINGS_SUBSCRIBER_NOTIFIED,
-    SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
 )
 from synthorg.settings.dispatcher_config import DispatcherConfigReader
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -51,7 +49,6 @@ class _ChangeMetadata(NamedTuple):
 
     namespace: str
     key: str
-    restart_required: bool
 
 
 class SettingsChangeDispatcher:
@@ -61,12 +58,12 @@ class SettingsChangeDispatcher:
     begins polling for change notifications published by
     :class:`~synthorg.settings.service.SettingsService`.
 
-    Each incoming message is matched against subscribers'
-    ``watched_keys``.  For settings with ``restart_required=True``,
-    a WARNING is logged and subscribers are **not** called.  For all
-    other settings, matching subscribers' ``on_settings_changed``
-    is invoked.  Errors in individual subscribers are logged and
-    swallowed -- the poll loop is never interrupted.
+    Each incoming message is matched against subscribers' ``watched_keys``
+    and every match's ``on_settings_changed`` is invoked. There is no
+    "changed but not applied" case to filter for: a compose-set setting is
+    rejected on the write side, so it never publishes a change. Errors in
+    individual subscribers are logged and swallowed -- the poll loop is
+    never interrupted.
 
     Args:
         message_bus: The message bus to poll.
@@ -627,15 +624,7 @@ class SettingsChangeDispatcher:
         if meta is None:
             return
 
-        namespace, key, restart_required = meta
-
-        if restart_required:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
-                namespace=namespace,
-                key=key,
-            )
-            return
+        namespace, key = meta
 
         for subscriber in self._subscribers:
             try:
@@ -667,10 +656,7 @@ def _extract_metadata(
 
     Returns:
         A :class:`_ChangeMetadata` or ``None`` if the ``namespace`` or
-        ``key`` metadata fields are missing.  The ``restart_required``
-        field defaults to ``True`` when absent -- fail-safe to prevent
-        accidental hot-reload of restart-required settings on metadata
-        corruption.
+        ``key`` metadata fields are missing.
     """
     extra = dict(message.metadata.extra)
     namespace = extra.get("namespace")
@@ -684,9 +670,4 @@ def _extract_metadata(
             sender=message.sender,
         )
         return None
-    # restart_required is encoded as str(bool) by SettingsService._publish_change.
-    # Default to True (fail-safe): missing/corrupted metadata prevents hot-reload
-    # rather than accidentally allowing it for restart-required settings.
-    restart_raw = extra.get("restart_required", "True")
-    restart_required = not compare_ci(str(restart_raw), "false")
-    return _ChangeMetadata(namespace, key, restart_required)
+    return _ChangeMetadata(namespace, key)

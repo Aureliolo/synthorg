@@ -24,16 +24,11 @@ _r.register(
         description=(
             "Send anonymous product telemetry to the project's telemetry"
             " backend. Token is embedded at build time; operators only"
-            " toggle this flag."
+            " toggle this flag. Opting out takes effect at once: the"
+            " collector stays resident and stops sending."
         ),
         group="General",
         level=SettingLevel.BASIC,
         env_var_override="SYNTHORG_TELEMETRY_ENABLED",
-        # The collector is constructed at app construction time
-        # (before SettingsService exists), so a DB edit cannot reach
-        # it without a process restart. Mark this explicitly so the
-        # /settings UI surfaces the restart-required affordance and
-        # operators don't expect runtime hot-flips.
-        restart_required=True,
     )
 )

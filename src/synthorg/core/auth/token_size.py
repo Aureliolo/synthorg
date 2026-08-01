@@ -3,15 +3,10 @@
 Every URL-safe secret minted across the auth surface (WebSocket
 tickets, password-reset tokens, refresh tokens, OAuth state tokens)
 shares the same entropy budget so an operator cannot accidentally
-weaken one path while hardening another.  The shared budget resolves
-through the standard precedence chain at process startup: the
-:data:`security.auth_token_bytes` setting is ``restart_required=True``
-**and** ``read_only_post_init=True``: operators cannot change it
-through the /settings API at runtime; updates require an env / YAML
-change followed by a process restart.  This is enforced because
-changing token byte length mid-run would silently invalidate existing
-tokens (a 32-byte token decoded under a 64-byte expectation fails
-verification).
+weaken one path while hardening another.  The budget governs how the
+next token is minted, not how an existing one is read: nothing
+validates a token's length, so widening it takes effect immediately
+and tokens already issued keep working until they expire.
 
 This module lives in ``core`` so any layer that mints auth-surface
 secrets (the API auth helpers, the integrations OAuth flows) can read

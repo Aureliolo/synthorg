@@ -1412,6 +1412,23 @@ class TestBuildMiddleware:
         # break get_authenticated_user_id() in those layers.
         assert isinstance(mw[3], AuthContextMiddleware)
 
+    def test_tiers_are_mounted_even_when_the_flag_starts_false(
+        self,
+        root_config: RootConfig,
+    ) -> None:
+        # ``api.rate_limiter_enabled`` applies while the system runs, so the
+        # stack has to carry the tiers whatever the process started with.
+        # Mounting conditionally would make the setting live in the
+        # disable direction only: an operator who booted with it off could
+        # turn it back on, see the write accepted, and have no middleware in
+        # the stack to enforce it.
+        from synthorg.api.middleware_factory import _build_middleware
+
+        disabled = root_config.api.model_copy(update={"rate_limiter_enabled": False})
+        assert len(_build_middleware(disabled)) == len(
+            _build_middleware(root_config.api)
+        )
+
     def test_three_rate_limiters_have_distinct_stores(
         self,
         root_config: RootConfig,

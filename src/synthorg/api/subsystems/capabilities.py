@@ -14,6 +14,8 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.deliverable_receipts.state_slice import DeliverableReceiptStateSlice
 from synthorg.docs_engine.state import DocsStateSlice
+from synthorg.engine.cockpit.state import CockpitStateSlice
+from synthorg.engine.pipeline.models import PipelineAttachments
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import HrStateSlice
@@ -31,6 +33,74 @@ from synthorg.providers.tool_call_feedback.state import ToolCallFeedbackStateSli
 from synthorg.research.state import ResearchStateSlice
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import SettingsStateSlice
+
+# Stands in before the pipeline exists, so the four attachment probes stay
+# total without each repeating the same None check.
+_NOTHING_ATTACHED = PipelineAttachments(
+    narrator=False,
+    refinement_router=False,
+    plan_review_gate=False,
+    plan_review_panel=False,
+)
+
+
+def _attachments(app_state: AppState) -> PipelineAttachments | None:
+    """Read the work pipeline's late-bound attachments.
+
+    Args:
+        app_state: Application state carrying the engine slice.
+
+    Returns:
+        The attachments, or ``None`` before the pipeline is built.
+    """
+    pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    return pipeline.attachments if pipeline is not None else None
+
+
+def _analytics_collector_configured() -> bool:
+    """Report whether the cross-deployment analytics collector role is up.
+
+    The only capability with no slice to read: the collector is module-global
+    controller config, so its own "already configured" predicate is the
+    observable.
+
+    Returns:
+        ``True`` once the collector role is configured.
+    """
+    from synthorg.api.controllers.meta_analytics import (  # noqa: PLC0415
+        is_analytics_collector_configured,
+    )
+
+    return is_analytics_collector_configured()
+
+
+def _strategy_context_bound() -> bool:
+    """Report whether the ambient strategic-context provider is bound.
+
+    Process-global rather than sliced, because strategic context is
+    organisation-wide policy the synchronous prompt path reads.
+
+    Returns:
+        ``True`` once a refreshed provider is bound.
+    """
+    from synthorg.engine.strategy.strategic_context_provider import (  # noqa: PLC0415
+        current_strategic_context,
+    )
+
+    return current_strategic_context() is not None
+
+
+def _has_plan_dispatcher(app_state: AppState) -> bool:
+    """Report whether the proposer's plan dispatcher is attached.
+
+    Args:
+        app_state: Application state carrying the meta slice.
+
+    Returns:
+        ``True`` when a proposer exists and carries a dispatcher.
+    """
+    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
+    return proposer is not None and proposer.has_plan_dispatcher
 
 
 def _has_default_provider(app_state: AppState) -> bool:
@@ -224,5 +294,82 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.SETTINGS_READ_SERVICE,
         present=lambda s: s.slice(SettingsStateSlice).settings_read_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.PROJECT_ROLLUP_SERVICE,
+        present=lambda s: s.slice(EngineStateSlice).project_rollup_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.KANBAN_BOARD,
+        present=lambda s: s.slice(EngineStateSlice).kanban_board_service is not None,
+    ),
+    # The four below read the pipeline's own attachment record rather than a
+    # separate marker, so what the reconciler calls live is exactly what the
+    # ``attach_*`` seam installed.
+    Capability(
+        id=CapabilityId.RUN_NARRATOR,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).narrator,
+    ),
+    Capability(
+        id=CapabilityId.REFINEMENT_ROUTER,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).refinement_router,
+    ),
+    Capability(
+        id=CapabilityId.PLAN_REVIEW_GATE,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).plan_review_gate,
+    ),
+    Capability(
+        id=CapabilityId.PLAN_REVIEW_PANEL,
+        present=lambda s: (_attachments(s) or _NOTHING_ATTACHED).plan_review_panel,
+    ),
+    Capability(
+        id=CapabilityId.CONVERSATIONAL_PLAN_DISPATCHER,
+        present=_has_plan_dispatcher,
+    ),
+    Capability(
+        id=CapabilityId.STEERING_SERVICE,
+        present=lambda s: s.slice(CockpitStateSlice).steering_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.FINE_TUNE_ORCHESTRATOR,
+        present=lambda s: s.slice(MemoryStateSlice).fine_tune_orchestrator is not None,
+    ),
+    Capability(
+        id=CapabilityId.TEAM_SERVICE,
+        present=lambda s: s.slice(OrganizationStateSlice).team_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.COMPANY_READ_SERVICE,
+        present=lambda s: (
+            s.slice(OrganizationStateSlice).company_read_service is not None
+        ),
+    ),
+    Capability(
+        id=CapabilityId.PLAN_ITEM_REPLY_SERVICE,
+        present=lambda s: s.slice(EngineStateSlice).plan_item_reply_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.ANALYTICS_COLLECTOR,
+        present=lambda _s: _analytics_collector_configured(),
+    ),
+    Capability(
+        id=CapabilityId.EVAL_LOOP,
+        present=lambda s: s.slice(HrStateSlice).eval_loop_coordinator is not None,
+    ),
+    Capability(
+        id=CapabilityId.PRUNING_SERVICE,
+        present=lambda s: s.slice(HrStateSlice).pruning_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.SCALING_SERVICE,
+        present=lambda s: s.slice(HrStateSlice).scaling_service is not None,
+    ),
+    Capability(
+        id=CapabilityId.QUOTA_POLLER,
+        present=lambda s: s.slice(BudgetStateSlice).quota_poller is not None,
+    ),
+    Capability(
+        id=CapabilityId.STRATEGY_CONTEXT,
+        present=lambda _s: _strategy_context_bound(),
     ),
 )

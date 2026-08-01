@@ -356,13 +356,16 @@ type doctorIssuePattern struct {
 var doctorIssuePatterns = []doctorIssuePattern{
 	{allSubstrings: []string{"compose.yml"}, anySubstring: []string{"not found", "invalid"}, kind: doctorIssueComposeFix, category: "compose"},
 	{anySubstring: []string{"port conflict"}, kind: doctorIssueUnfixable, category: "compose"},
-	// Ahead of the container rules: a serving backend with an unresolved
-	// dependency is not a container to restart, and the substring match
-	// below would otherwise claim anything carrying "unhealthy".
-	{anySubstring: []string{"dependency not ready"}, kind: doctorIssueUnfixable, category: "health"},
+	// Ahead of the container rules, because the containers row claims
+	// anything carrying "unhealthy" and every backend-health message does:
+	// "backend unhealthy (HTTP 500)" filed under containers would be
+	// offered as a restart that cannot fix it, and would vanish entirely
+	// from `doctor --checks=health --fix`. The "(HTTP" is load-bearing: a
+	// container named `backend` in the unhealthy state produces the string
+	// "backend unhealthy" exactly, and that one IS a restart candidate.
+	{anySubstring: []string{"dependency not ready", "backend unreachable", "backend unhealthy (HTTP"}, kind: doctorIssueUnfixable, category: "health"},
 	{anySubstring: []string{"unhealthy", "exited"}, kind: doctorIssueRestart, category: "containers"},
 	{anySubstring: []string{"still starting", "no containers"}, kind: doctorIssueUnfixable, category: "containers"},
-	{anySubstring: []string{"backend unreachable", "backend unhealthy"}, kind: doctorIssueUnfixable, category: "health"},
 	{anySubstring: []string{": available", ": missing", "digest"}, kind: doctorIssueUnfixable, category: "images"},
 }
 

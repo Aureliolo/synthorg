@@ -58,8 +58,19 @@ function validateChanges(
       error: `Cannot remove settings via code editor. Use GUI to reset. Removed: ${removed.join(', ')}`,
     }
   }
-  const { changes, unknownKeys, envKeys } = buildChanges(parsed, original, entryLookup)
+  const { changes, unknownKeys, envKeys, composeSetKeys } = buildChanges(
+    parsed,
+    original,
+    entryLookup,
+  )
   if (unknownKeys.length > 0) return { error: `Unknown setting(s): ${unknownKeys.join(', ')}` }
+  if (composeSetKeys.length > 0) {
+    return {
+      error:
+        'Fixed by the deployment at container start, so it cannot be changed here. ' +
+        `Edit the compose file and recreate the container: ${composeSetKeys.join(', ')}`,
+    }
+  }
   if (envKeys.length > 0) return { error: `Cannot edit env-sourced setting(s): ${envKeys.join(', ')}` }
   return { changes }
 }

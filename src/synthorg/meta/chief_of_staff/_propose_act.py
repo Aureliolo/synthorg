@@ -122,6 +122,20 @@ class ProposeActMixin:
         """
         self._plan_dispatcher = dispatcher
 
+    @property
+    def has_plan_dispatcher(self) -> bool:
+        """Report whether the plan dispatcher is attached.
+
+        The counterpart to :meth:`attach_plan_dispatcher`. Attaching one
+        mutates the proposer and installs nothing else observable, so this
+        is what lets the reconciler read liveness off the proposer rather
+        than off a record of what it attached.
+
+        Returns:
+            ``True`` once a dispatcher is attached.
+        """
+        return self._plan_dispatcher is not None
+
     async def _act_on_decision(
         self,
         conversation: Conversation,

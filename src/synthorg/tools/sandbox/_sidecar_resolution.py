@@ -9,7 +9,7 @@ settings) from the per-container-launch read sites in
 hardcoded module constants.
 
 Unlike the sibling image-resolution cache (``tools.{sandbox,sidecar}_image``
-are ``read_only_post_init`` and seeded once), these settings are hot-reloadable:
+are compose-set and seeded once), these settings are live:
 ``_apply_tools_bridge_config_snapshot`` seeds the cache at startup and
 ``ToolsBridgeSettingsSubscriber`` re-seeds it on every operator change, so the
 next container launch reads the new value with no restart.

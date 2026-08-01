@@ -1,5 +1,5 @@
 ---
-description: "Add a settings knob end to end: definition, precedence category, hot-reload wiring, restart-required justification, and dashboard visibility"
+description: "Add a settings knob end to end: definition, precedence category, live-apply wiring or a compose-set declaration, and dashboard visibility"
 argument-hint: "<namespace>.<key> [one-line purpose]"
 allowed-tools:
   - Bash
@@ -81,25 +81,25 @@ Points that bite:
 - Numeric bounds (`min_value` / `max_value`) must be finite and ordered, and
   `enum_values` is required when `type` is `ENUM`.
 
-## Phase 3: Make it hot-reloadable, or justify why not
+## Phase 3: Make it live, or make it compose-set
 
-This is the phase most likely to fail the push. A setting flagged
-`restart_required=True` (or `read_only_post_init=True`, which implies it) is
-**invisible to the settings dispatcher**, so `check_setting_restart_required_justified`
-demands that each one be justified: either a per-line
-`# lint-allow: restart-required -- <reason>` marker on the `register(...)` block,
-or an existing row in `scripts/setting_restart_required_baseline.txt` (which you
-must not edit; it is PreToolUse-blocked).
-
-Prefer making it hot-reloadable. A per-request or per-tick knob always can be:
+A setting is one or the other; there is no third state and no restart control
+to fall back on. Default to live, and pick the seam the consumer allows:
 
 - read it per call through the resolver, or
 - take it from a bridge snapshot, or
-- add a `set_*()` setter plus a subscriber.
+- add a `set_*()` setter plus a subscriber, or
+- add the key to `RuntimeReloadSettingsSubscriber` when the value is baked into
+  something `build_runtime_services` rebuilds, or
+- add it to a `SubsystemSpec.settings` tuple when a reconciled subsystem bakes
+  it in at activation.
 
-A helper function that wraps `register(...)` is **invisible to the gate**, which
-reads the `register(...)` call site. If the namespace uses a `_flag(...)`-style
-helper, the marker has to sit where the gate can see it.
+`compose_set=True` is only for what the running process genuinely cannot change
+about itself (the socket it already bound, an image the CLI verified, a trust
+anchor resolved before the settings backend exists). It also obliges you to add
+the env var to `cli/internal/compose/compose.yml.tmpl` in the same change:
+`check_setting_compose_backed` fails a compose-set key the deployment does not
+actually pass, so the flag cannot mean "not wired up".
 
 If the setting weakens security when written, it additionally needs the
 confirm-and-reason guardrail in `settings/write_governance.py`.
@@ -136,7 +136,7 @@ Run only the gates this change can affect, scoped rather than whole-tree:
 
 ```bash
 uv run python scripts/check_settings_namespace_complete.py
-uv run python scripts/check_setting_restart_required_justified.py
+uv run python scripts/check_setting_compose_backed.py
 uv run python scripts/check_setting_to_startup_trace.py
 uv run python scripts/check_no_magic_numbers.py --files <edited files>
 uv run python scripts/check_frozen_model_extra_forbid.py --files <edited files>
@@ -157,7 +157,7 @@ is exactly the shape a second pass catches.
 - [ ] Precedence category chosen deliberately, Cat-1 unless there is a reason
 - [ ] Plan accepted before the definition was registered
 - [ ] Definition registered, with a `description` an operator can act on
-- [ ] Hot-reloadable, or `restart_required` carries a per-line justification
+- [ ] Applies live, or `compose_set` with the env var added to the compose template
 - [ ] Consumer reachable from boot, reading through `ConfigResolver`
 - [ ] The literal it replaces is gone
 - [ ] The five gates above pass

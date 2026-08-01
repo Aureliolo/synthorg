@@ -170,10 +170,10 @@ def test_env_var_override_takes_precedence_over_auto_derived(
     assert resolved.source == SettingSource.ENVIRONMENT
 
 
-def test_read_only_post_init_resolves_identically(
+def test_compose_set_resolves_identically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``read_only_post_init=True`` does not change pre-init behaviour.
+    """``compose_set=True`` does not change pre-init behaviour.
 
     The flag is enforced post-init by SettingsService; the bootstrap
     resolver applies env > default uniformly.

@@ -30,10 +30,6 @@ FEATURE: FeatureModule = FeatureManifest(
     mcp_handlers=(),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=(
-        "CosCharterModelSettingsSubscriber",
-        "DirectMcpActorSettingsSubscriber",
-        "OperatorConsoleSettingsSubscriber",
-    ),
+    ghost_wired_symbols=(),
     depends_on=(),
 )

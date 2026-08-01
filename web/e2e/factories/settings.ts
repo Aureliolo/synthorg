@@ -7,7 +7,7 @@ export interface MockSettingValue {
   key: string
   value: unknown
   source: 'default' | 'yaml' | 'env' | 'db'
-  restart_required: boolean
+  compose_set: boolean
 }
 
 export function makeSetting(
@@ -18,7 +18,7 @@ export function makeSetting(
     key: 'rate_limit_per_minute',
     value: 60,
     source: 'default',
-    restart_required: false,
+    compose_set: false,
     ...overrides,
   }
 }

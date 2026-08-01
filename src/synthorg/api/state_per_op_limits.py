@@ -80,8 +80,7 @@ class PerOpLimitsState:
         ``api.per_op_rate_limit_enabled`` or
         ``api.per_op_rate_limit_overrides``.  The store itself is not
         rebuilt -- only the config object swaps, so already-queued
-        timestamps remain in place and a ``backend`` flip still needs
-        a restart (it is marked ``restart_required=True``).
+        timestamps remain in place.
         """
         old_enabled = (
             self._rate_limit_config.enabled

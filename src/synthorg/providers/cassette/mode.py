@@ -1,10 +1,9 @@
 """Cassette mode + configuration.
 
-Resolved once at the boot site (Configuration Precedence Cat-2: env >
-code default, ``read_only_post_init``, ``restart_required``) and passed
-into :meth:`ProviderRegistry.from_config`. Switching mode mid-process
-is intentionally impossible: a half-recorded / half-replayed run is
-worse than a clear restart.
+Resolved once at the boot site (env > code default) and passed into
+:meth:`ProviderRegistry.from_config`. Compose-set on purpose: switching
+mode mid-process would leave a half-recorded / half-replayed run, which
+is worse than recreating the container against the mode you want.
 """
 
 from enum import StrEnum

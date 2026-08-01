@@ -46,7 +46,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -80,7 +79,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=60.0,
     )
 )
@@ -99,7 +97,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1.0,
     )
 )
@@ -123,7 +120,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -144,7 +140,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -165,7 +160,6 @@ _r.register(
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -188,7 +182,6 @@ _r.register(
         ),
         group="Scaling",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -390,7 +383,6 @@ _r.register(
         ),
         group="Health",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1,
         max_value=365,
     )
@@ -410,7 +402,6 @@ _r.register(
         ),
         group="Health",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1,
         max_value=1000,
     )

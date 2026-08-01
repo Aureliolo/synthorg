@@ -131,7 +131,10 @@ function NamespaceHeader({ displayName, icon, count, isOpen, forceOpen, onToggle
         <span>{displayName}</span>
         <span className="ml-1 text-xs text-text-muted">({count})</span>
         <ChevronDown
-          className={cn('ml-auto size-4 text-text-muted transition-transform duration-200', isOpen && 'rotate-180')}
+          className={cn(
+            'ml-auto size-4 text-text-muted transition-transform duration-[var(--so-transition-medium)]',
+            isOpen && 'rotate-180',
+          )}
           aria-hidden
         />
       </button>
@@ -140,53 +143,54 @@ function NamespaceHeader({ displayName, icon, count, isOpen, forceOpen, onToggle
 }
 
 /**
- * A setting that genuinely cannot be changed from the dashboard: it is sourced
- * from the environment / YAML at process start and a write is rejected
- * (`read_only_post_init`). A merely `restart_required` setting is NOT included:
- * it is DB-writable and stays inline with its restart badge, only its effect
- * waits for a restart.
+ * A setting the deployment fixed when the container was created, so a
+ * dashboard write is rejected. Every other setting applies immediately.
  */
-function isStartupOnly(entry: SettingEntry): boolean {
-  return entry.definition.read_only_post_init
+function isComposeSet(entry: SettingEntry): boolean {
+  return entry.definition.compose_set
 }
 
-/** Split entries into live-editable groups and the read-only startup remainder. */
+/** Split entries into live-editable groups and the compose-set remainder. */
 function partitionByRuntime(
   entries: SettingEntry[],
-): { groups: Map<string, SettingEntry[]>; startup: SettingEntry[] } {
-  const startup: SettingEntry[] = []
+): { groups: Map<string, SettingEntry[]>; composeSet: SettingEntry[] } {
+  const composeSet: SettingEntry[] = []
   const live: SettingEntry[] = []
   for (const entry of entries) {
-    if (isStartupOnly(entry)) startup.push(entry)
+    if (isComposeSet(entry)) composeSet.push(entry)
     else live.push(entry)
   }
-  return { groups: groupByGroup(live), startup }
+  return { groups: groupByGroup(live), composeSet }
 }
 
 /**
- * Collapsed disclosure for genuinely read-only (env / YAML) settings.
+ * Collapsed disclosure for the settings the deployment fixes.
  *
- * Settings flagged `read_only_post_init` are baked in from env / YAML at
- * process start and a dashboard write is rejected, so rendering them inline
- * among live-editable knobs (with an enabled-looking input) is misleading. They
- * are grouped here, collapsed by default and marked read-only, so operators can
- * still inspect the baked-in value without mistaking it for something editable.
- * (`restart_required`-only settings are DB-writable and stay inline with their
- * restart badge; they are deliberately not moved here.)
+ * A `compose_set` setting was decided when the container was created and a
+ * dashboard write is rejected, so rendering it inline among live-editable
+ * knobs (with an enabled-looking input) is misleading. They are grouped here,
+ * collapsed by default and marked read-only, so operators can still inspect
+ * the value without mistaking it for something editable.
  */
-function AdvancedStartupOnly({ entries, rows }: { entries: SettingEntry[]; rows: RowRenderProps }) {
+function ComposeSetDisclosure({ entries, rows }: { entries: SettingEntry[]; rows: RowRenderProps }) {
+  const [open, setOpen] = useState(false)
+  // Entries reaching this point already passed the search filter, so a live
+  // query means every row below it is a hit; leaving it collapsed would
+  // hide the matches the operator is looking at.
+  const searching = Boolean(rows.highlightQuery)
   if (entries.length === 0) return null
   // Reuse the shared disclosure primitive (chevron trigger + aria wiring +
   // per-instance id) rather than hand-rolling a second toggle here.
   return (
     <Collapsible
       className="mt-3"
-      defaultOpen={false}
+      open={searching || open}
+      onOpenChange={setOpen}
       title={
         <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-          Advanced · startup-only
+          Set by the deployment
           <span className="ml-2 font-normal normal-case">
-            read-only · set via env / YAML before launch
+            read-only · change in the compose file and recreate the container
           </span>
         </span>
       }
@@ -206,16 +210,16 @@ export function NamespaceSection(props: NamespaceSectionProps) {
   const [collapsed, setCollapsed] = useState(false)
   const isOpen = Boolean(hideHeader) || Boolean(forceOpen) || !collapsed
   const anim = useAnimationPreset()
-  // Live-editable settings render inline (grouped); startup-only settings move
+  // Live-editable settings render inline (grouped); compose-set settings move
   // to a collapsed "Advanced" disclosure so they are not mistaken for editable.
-  const { groups, startup: startupEntries } = partitionByRuntime(entries)
+  const { groups, composeSet } = partitionByRuntime(entries)
   const sectionSlug = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}`
   const contentId = `${sectionSlug}-content`
   const rows: RowRenderProps = props
   const inner = (
     <>
       <NamespaceGroups groups={groups} hideHeader={hideHeader} anim={anim} rows={rows} />
-      <AdvancedStartupOnly entries={startupEntries} rows={rows} />
+      <ComposeSetDisclosure entries={composeSet} rows={rows} />
       <NamespaceFooter footerAction={footerAction} />
     </>
   )

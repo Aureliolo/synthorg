@@ -46,7 +46,6 @@ _r.register(
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -66,7 +65,6 @@ _r.register(
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -85,7 +83,6 @@ _r.register(
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -106,7 +103,6 @@ _r.register(
         ),
         group="Intake",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -127,7 +123,6 @@ _r.register(
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -147,7 +142,6 @@ _r.register(
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -168,7 +162,6 @@ _r.register(
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -190,7 +183,6 @@ _r.register(
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 

@@ -8,12 +8,13 @@ re-parse per request; this subscriber wires the cache field back to ``None`` so
 the next read reloads the fresh value, keeping the effective-config view in step
 with the live overlay (the running services already read each value live).
 
-The restart-bound security switch ``self_improvement.code_modification_enabled``
-is deliberately NOT watched: it requires a redeploy, the dispatcher skips
-restart-required changes, and excluding it keeps the no-live-enable invariant
-explicit. ``chief_of_staff.direct_mcp_enabled`` IS watched (it hot-reloads via
-:class:`DirectMcpActorSettingsSubscriber`, which rebuilds the actor through the
-fail-closed governance gate), so its cached-config invalidation belongs here.
+``self_improvement.code_modification_enabled`` is deliberately NOT watched.
+It is not that the value cannot change while the system runs; it is that
+nothing here should make it take effect faster than the load path, which
+re-reads the credentials on every parse and forces the flag back off when
+they are absent. ``chief_of_staff.direct_mcp_enabled`` IS watched, because
+the actor it gates is rebuilt by the subsystem reconciler behind the same
+fail-closed governance gate, so the cached config has to move with it.
 """
 
 from synthorg.api.state import AppState

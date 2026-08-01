@@ -155,6 +155,63 @@ class TestOrdering:
         with pytest.raises(SubsystemGraphInvalidError, match="cycle"):
             SubsystemReconciler((first, second), _all_capabilities(world))
 
+    def test_rebuild_without_a_teardown_is_refused(self) -> None:
+        # A rebuild is deactivate-then-activate. With no teardown the
+        # subsystem still reads active, the pass leaves it alone, and the
+        # declaration promises a replacement that never happens. Refused at
+        # the declaration itself, so it fails where it was written rather
+        # than in whichever build first orders it.
+        world = _World()
+        with pytest.raises(ValueError, match="deactivate"):
+            SubsystemSpec(
+                name="memory",
+                provides=CapabilityId.MEMORY_BACKEND,
+                activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+                settings=("memory.backend",),
+                rebuild_on_change=True,
+            )
+
+    def test_a_consumer_of_a_tearable_capability_needs_its_own_teardown(self) -> None:
+        # The owner can take MEMORY_BACKEND away while the process runs, so a
+        # consumer that captured it and cannot be taken down would keep
+        # serving from a disconnected collaborator and still read active.
+        world = _World()
+        owner = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        consumer = SubsystemSpec(
+            name="docs",
+            provides=CapabilityId.DOCS_ENGINE,
+            requires=(CapabilityId.MEMORY_BACKEND,),
+            activate=_installs(world, "docs", CapabilityId.DOCS_ENGINE),
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="no deactivate"):
+            SubsystemReconciler((owner, consumer), _all_capabilities(world))
+
+    def test_a_consumer_of_a_tearable_capability_needs_a_rebuild(self) -> None:
+        # A teardown alone is not enough: a replacement that arrives without
+        # a rebuild leaves the consumer holding the instance that was
+        # replaced.
+        world = _World()
+        owner = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        consumer = SubsystemSpec(
+            name="docs",
+            provides=CapabilityId.DOCS_ENGINE,
+            requires=(CapabilityId.MEMORY_BACKEND,),
+            activate=_installs(world, "docs", CapabilityId.DOCS_ENGINE),
+            deactivate=_removes(world, "docs", CapabilityId.DOCS_ENGINE),
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="no rebuild_on_change"):
+            SubsystemReconciler((owner, consumer), _all_capabilities(world))
+
     def test_two_owners_of_one_capability_are_refused(self) -> None:
         world = _World()
         specs = tuple(

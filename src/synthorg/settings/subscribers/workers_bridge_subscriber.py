@@ -2,10 +2,9 @@
 
 Hot-swaps ``app_state.bridge_config.workers`` when an operator edits
 a watched ``workers.*`` setting whose value lives on
-:class:`~synthorg.settings.bridge_configs.WorkersBridgeConfig`. The
-dispatcher already filters out ``restart_required=True`` keys before
-invoking subscribers; the three dispatcher retry knobs are mutable
-(Cat-1), so they hot-reload onto the next snapshot read.
+:class:`~synthorg.settings.bridge_configs.WorkersBridgeConfig`. The three
+dispatcher retry knobs are read from the snapshot per attempt, so an edit
+applies on the next one.
 """
 
 from synthorg.api.state import AppState

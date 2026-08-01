@@ -5,7 +5,7 @@ Covers:
 - Hardcoded-None ghost detection (with + without conditional start).
 - Factory-gated ghost detection (with + without registered default-disabled flag).
 - Setting matching via gating namespace + class-file containment.
-- Suppression markers and ``read_only_post_init=True`` skipping.
+- Suppression markers and ``compose_set=True`` skipping.
 - Negative cases (settings in non-ghost namespaces).
 - Scope-aware binding (same name, different class).
 """
@@ -285,8 +285,8 @@ def test_setting_matched_via_class_file_containment(tmp_path: Path) -> None:
     assert "security.audit_enabled" not in flagged_keys
 
 
-def test_read_only_post_init_setting_skipped(tmp_path: Path) -> None:
-    """``read_only_post_init=True`` settings are skipped even when in ghost ns."""
+def test_compose_set_setting_skipped(tmp_path: Path) -> None:
+    """``compose_set=True`` settings are skipped even when in ghost ns."""
     repo = _make_fake_repo(
         tmp_path,
         api_files={
@@ -321,7 +321,7 @@ def test_read_only_post_init_setting_skipped(tmp_path: Path) -> None:
                     "auth_token_bytes",
                     setting_type="INTEGER",
                     default='"32"',
-                    read_only_post_init=True,
+                    compose_set=True,
                 ),
                 _setting_registration(
                     "SECURITY",

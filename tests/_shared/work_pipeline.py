@@ -11,6 +11,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    PipelineAttachments,
     RoutingVerdict,
     WorkItem,
     WorkPhaseResult,
@@ -100,7 +101,7 @@ class StubWorkPipeline:
             raise self.continue_error
         return make_pipeline_result(work_item)
 
-    def attach_narrator(self, narrator: RunNarrator) -> None:
+    def attach_narrator(self, narrator: RunNarrator | None) -> None:
         self.narrator = narrator
 
     def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
@@ -111,3 +112,17 @@ class StubWorkPipeline:
 
     def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
         self.plan_review_panel = panel
+
+    @property
+    def attachments(self) -> PipelineAttachments:
+        """Report which collaborators the double has been handed.
+
+        Returns:
+            The attachment record the subsystem reconciler reads liveness from.
+        """
+        return PipelineAttachments(
+            narrator=self.narrator is not None,
+            refinement_router=self.refinement_router is not None,
+            plan_review_gate=self.plan_review_gate is not None,
+            plan_review_panel=self.plan_review_panel is not None,
+        )

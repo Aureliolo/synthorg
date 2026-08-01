@@ -14,8 +14,8 @@ operator edit takes effect on the next batch / POST without a restart.
 ``audit_chain_signing_timeout_seconds`` is pushed onto every live
 :class:`AuditChainSink` via ``_apply_audit_chain_signing_timeout`` so it too
 applies without a restart. The per-preset RFC 3161 TSA endpoints are baked
-into their clients at ``configure_logging`` and stay ``restart_required``
-(not watched here).
+into their clients at ``configure_logging`` and are compose-set (not
+watched here).
 """
 
 from synthorg.api.state import AppState
@@ -45,9 +45,8 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 # The ``tsa_endpoint_*`` keys are deliberately NOT watched: the timestamp
 # authority URL is baked into each ``TsaClient`` at ``configure_logging``
 # with trust-root validation and has no live setter, and swapping the
-# timestamping authority mid audit-chain is security-sensitive. Those keys
-# stay ``restart_required`` (so the dispatcher never delivers them anyway);
-# watching them here would only be dead entries.
+# timestamping authority mid audit-chain is security-sensitive. They are
+# compose-set, so a write is rejected and nothing is ever delivered here.
 
 # Surface a typo/rename in the watched set at import time, not on the
 # next operator hot-reload (mirrors MemoryBridgeSettingsSubscriber).

@@ -57,7 +57,7 @@ class SettingRecord:
     key: str
     setting_key: str
     default: str | None
-    read_only_post_init: bool
+    compose_set: bool
     source_file: str
     source_line: int
     has_suppression: bool

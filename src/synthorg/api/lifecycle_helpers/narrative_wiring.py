@@ -2,9 +2,10 @@
 """Startup wiring for documentary mode (the post-run run narrator).
 
 Kept out of :mod:`feature_wiring` so that module stays under its
-size-budget tier. The narrator reads the docs engine and project brain
-(both wired earlier in ``wire_features_on_startup``) and attaches to the
-already-built work pipeline; it is best-effort and idempotent.
+size-budget tier. The narrator reads the docs engine and project brain, so
+the ``run_narrator`` subsystem names both in its ``requires`` and the
+reconciler orders it after them; it attaches to the already-built work
+pipeline and is best-effort and idempotent.
 """
 
 from synthorg.api.state import AppState
@@ -133,3 +134,21 @@ def _attach_narrator(
         return
     work_pipeline_of(app_state).attach_narrator(narrator)
     logger.info(API_APP_STARTUP, service="chief_of_staff_narrator", note="wired")
+
+
+async def unwire_run_narrator(app_state: AppState) -> None:
+    """Detach the narrator so the next pass rebuilds it.
+
+    It captured the docs service and the project brain at construction, so
+    once either is replaced the narrator is reading a run through services
+    nothing else uses. Detaching is also what the reconciler reads as the
+    subsystem being down, since liveness comes from the pipeline's own
+    attachment record.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    if pipeline is None:
+        return
+    pipeline.attach_narrator(None)
+    logger.info(API_APP_STARTUP, service="chief_of_staff_narrator", note="unwired")

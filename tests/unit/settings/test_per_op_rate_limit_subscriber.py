@@ -140,9 +140,9 @@ class TestRateLimitRebuild:
         assert swapped.overrides["agents.create"] == (3, 90)
 
     async def test_existing_backend_is_preserved_on_swap(self) -> None:
-        # Backend is restart_required so the subscriber never reads it
-        # from the DB, but it must carry over from the existing config
-        # so the swap does not accidentally drop a non-default backend.
+        # The backend is compose-set so the subscriber never reads it from
+        # the DB, but it must carry over from the existing config so the
+        # swap does not accidentally drop a non-default backend.
         existing = PerOpRateLimitConfig(enabled=True)
         sub, app_state = _make_subscriber(
             {

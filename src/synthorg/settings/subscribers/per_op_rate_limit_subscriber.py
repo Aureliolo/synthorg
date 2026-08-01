@@ -6,11 +6,6 @@ subscriber rebuilds the corresponding ``PerOpRateLimitConfig`` /
 ``PerOpConcurrencyConfig`` from the current database values and swaps
 it into :class:`AppState` so the next request sees the new policy
 without a process restart.
-
-Only the ``enabled`` and ``overrides`` keys are watched -- the
-``backend`` key is ``restart_required=True`` (filtered by the
-dispatcher) because the store is constructed once at startup and
-switching backends is not a hot-reload concern.
 """
 
 import json

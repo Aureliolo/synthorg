@@ -5,8 +5,9 @@ A change to a watched ``observability.*`` key re-resolves the
 ``app_state.bridge_config``, and live-applies the HTTP batch knobs onto every
 installed ``HttpBatchHandler``. A change to
 ``audit_chain_signing_timeout_seconds`` additionally pushes the new timeout
-onto every live ``AuditChainSink``. The per-preset TSA endpoints stay
-``restart_required`` and are deliberately not watched. Tests assert the swap,
+onto every live ``AuditChainSink``. The per-preset TSA endpoints are
+compose-set trust anchors and are deliberately not watched. Tests assert the
+swap,
 the conditional signing-timeout apply, the resolver-failure retention, and the
 unexpected-pair no-op.
 """

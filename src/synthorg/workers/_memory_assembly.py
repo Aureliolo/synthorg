@@ -18,6 +18,7 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.injection_factory import build_memory_injection_strategy
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.reformulation import (
     LLMQueryReformulator,
@@ -35,6 +36,8 @@ from synthorg.memory.shared_store import OrgSharedKnowledgeStore
 from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -223,7 +226,36 @@ def build_memory_injection_strategy_or_none(
     )
 
 
+async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryConfig:
+    """Return the procedural-memory config with the operator's current values.
+
+    The proposer bakes the sampling parameters and the skill-file directory in
+    at construction, and the boot config mirrors the directory from the
+    environment only, so reading it alone would ignore a dashboard edit.
+
+    Args:
+        app_state: Application state carrying the boot config + resolver.
+
+    Returns:
+        The boot config with the resolved values applied.
+    """
+    namespace = SettingNamespace.MEMORY.value
+    resolver = config_resolver_of(app_state)
+    return app_state.config.memory.procedural.model_copy(
+        update={
+            "temperature": await resolver.get_float(
+                namespace, "procedural_temperature"
+            ),
+            "max_tokens": await resolver.get_int(namespace, "procedural_max_tokens"),
+            "skill_md_directory": await resolver.get_str(
+                namespace, "procedural_skill_md_directory"
+            ),
+        }
+    )
+
+
 __all__ = [
     "build_memory_injection_strategy_or_none",
+    "resolved_procedural_config",
     "wiki_exporter_or_none",
 ]

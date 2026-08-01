@@ -11,7 +11,7 @@ from collections import Counter
 
 from litestar import Controller, get
 from litestar.datastructures import State
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
@@ -46,6 +46,28 @@ class SubsystemReport(BaseModel):
         default=None,
         description="Failure description, when failed",
     )
+
+    @model_validator(mode="after")
+    def _validate_payload_matches_phase(self) -> SubsystemReport:
+        """Reject a report whose payload contradicts its phase.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: When ``waiting_on`` is populated on anything but
+                ``waiting``, or ``detail`` on anything but ``failed``. This
+                is what an operator reads to find out why something is off,
+                so a field left over from a previous phase is worse than an
+                empty one.
+        """
+        if self.waiting_on and self.phase is not SubsystemPhase.WAITING:
+            msg = f"waiting_on is only valid on waiting, got {self.phase.value}"
+            raise ValueError(msg)
+        if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
+            msg = f"detail is only valid on failed, got {self.phase.value}"
+            raise ValueError(msg)
+        return self
 
 
 class SubsystemsResponse(BaseModel):

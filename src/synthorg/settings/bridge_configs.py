@@ -2,12 +2,10 @@
 
 Each class here is the return type of a ``ConfigResolver.get_<ns>_bridge_config``
 helper.  They hold the fields wired through from :mod:`synthorg.settings.definitions`
-for operator-tunable timeouts, limits, and resource parameters that previously
-lived as hardcoded module constants.
+for operator-tunable timeouts, limits, and resource parameters.
 
-The models are pure data holders: every field has a default that matches the
-historical hardcoded value so a consumer can construct one from defaults for
-tests without an active settings service.
+The models are pure data holders: every field carries a default, so a consumer
+can construct one for tests without an active settings service.
 """
 
 import re

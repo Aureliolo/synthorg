@@ -81,6 +81,19 @@ async def wire_project_brain(app_state: AppState) -> None:
     await _replay_project_brain_index(app_state, runtime)
 
 
+async def unwire_project_brain(app_state: AppState) -> None:
+    """Drop the project brain so the next pass rebuilds it.
+
+    The brain service holds the memory backend by value and indexes through
+    it, so a replaced backend leaves it writing into an instance nothing else
+    reads. Rebuilding replays the index gap against the new one.
+    """
+    from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+
+    app_state.swap_slice(ProjectBrainStateSlice())
+    logger.info(API_APP_STARTUP, service="project_brain", note="unwired")
+
+
 async def _replay_project_brain_index(
     app_state: AppState,
     runtime: ProjectBrainRuntime,

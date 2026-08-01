@@ -17,17 +17,18 @@ from synthorg.settings import definitions as _settings_definitions  # noqa: F401
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
 def service() -> SettingsService:
-    repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=None)
-    repo.get_namespace = AsyncMock(return_value=())
-    repo.list_items = AsyncMock(return_value=())
-    repo.save = AsyncMock(return_value=True)
+    repo = mock_of[SettingsRepository]()
+    repo.get.return_value = None
+    repo.get_namespace.return_value = ()
+    repo.list_items.return_value = ()
+    repo.save.return_value = True
     return SettingsService(
         repository=repo,
         registry=get_registry(),
@@ -38,8 +39,7 @@ def test_decomposition_model_registered_mutable() -> None:
     defn = get_registry().get("coordination", "decomposition_model")
     assert defn is not None
     assert defn.default == ""
-    assert defn.read_only_post_init is False
-    assert defn.restart_required is False
+    assert defn.compose_set is False
 
 
 def test_routing_policy_defaults_to_llm_judged() -> None:

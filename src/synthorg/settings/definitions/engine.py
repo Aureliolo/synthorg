@@ -194,9 +194,6 @@ _r.register(
 # ── Mid-task clarification ──────────────────────────────────────
 
 _r.register(
-    # lint-allow: restart-required -- the clarification tool is added to every
-    # agent toolset at boot; a change applies on the next runtime-services
-    # rebuild, not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="clarification_enabled",
@@ -207,21 +204,17 @@ _r.register(
             " request_clarification tool, parking its context and moving the"
             " task to AWAITING_INPUT until the human answers, then resuming with"
             " the answer injected. Off by default (agents proceed on their own"
-            " judgement); when on, the tool is added to every agent toolset at"
-            " boot, so a change applies on the next runtime-services rebuild."
+            " judgement); when on, the tool is added to every agent toolset,"
+            " which applies on the next runtime rebuild the change triggers."
         ),
         group="Clarification",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
 # ── Scoping + decision gate ─────────────────────────────────────
 
 _r.register(
-    # lint-allow: restart-required -- the decision tool is added to every agent
-    # toolset at boot; a change applies on the next runtime-services rebuild,
-    # not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="scoping_enabled",
@@ -233,12 +226,11 @@ _r.register(
             " clarification), and on the human's answer records a DECISION"
             " entry in the project brain and resumes with the choice injected."
             " Off by default (agents decide on their own); when on, the tool is"
-            " added to every agent toolset at boot, so a change applies on the"
-            " next runtime-services rebuild."
+            " added to every agent toolset, which applies on the next runtime"
+            " rebuild the change triggers."
         ),
         group="Scoping",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -397,12 +389,11 @@ _r.register(
             " When enabled, its before_agent / after_agent hooks fire at"
             " the execution boundary; the live effect is authority-"
             " deference defence (a justification header is injected when"
-            " authority cues are detected in the conversation). Baked in"
-            " at process startup."
+            " authority cues are detected in the conversation). Applies on"
+            " the next runtime rebuild, which the change itself triggers."
         ),
         group="Safety",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 

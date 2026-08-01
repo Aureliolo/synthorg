@@ -95,7 +95,7 @@ def setting_registration(
     *,
     setting_type: str = "BOOLEAN",
     default: str | None = '"false"',
-    read_only_post_init: bool = False,
+    compose_set: bool = False,
     setting_key: str | None = None,
     extra_kwargs: str = "",
 ) -> str:
@@ -109,9 +109,8 @@ def setting_registration(
         parts.append(f"        default={default},")
     parts.append('        description="...",')
     parts.append('        group="General",')
-    if read_only_post_init:
-        parts.append("        restart_required=True,")
-        parts.append("        read_only_post_init=True,")
+    if compose_set:
+        parts.append("        compose_set=True,")
     if setting_key is not None:
         parts.append(f'        setting_key="{setting_key}",')
     if extra_kwargs:

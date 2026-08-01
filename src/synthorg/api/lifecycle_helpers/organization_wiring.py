@@ -30,24 +30,6 @@ from synthorg.settings.state import SettingsStateSlice
 logger = get_logger(__name__)
 
 
-async def wire_organization_read_services(
-    app_state: AppState,
-    persistence: PersistenceBackend | None,
-) -> None:
-    """Wire the company-read + role-version MCP facades once their deps exist.
-
-    Company reads need the settings-composed config resolver + org-mutation
-    service; version history additionally needs a connected persistence
-    backend. Role-version reads are entirely durable, so they wire only when
-    persistence is connected.
-    """
-    connected = persistence is not None and getattr(persistence, "is_connected", False)
-    await _wire_company_read_service(app_state, persistence, connected=connected)
-    await _wire_team_service(app_state)
-    if connected and persistence is not None:
-        await _wire_role_version_service(app_state, persistence)
-
-
 async def _wire_team_service(app_state: AppState) -> None:
     """Wire the settings-backed ``TeamService`` once settings exist.
 
@@ -142,4 +124,8 @@ async def _wire_role_version_service(
         )
 
 
-__all__ = ["wire_organization_read_services"]
+__all__ = [
+    "_wire_company_read_service",
+    "_wire_role_version_service",
+    "_wire_team_service",
+]

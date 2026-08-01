@@ -26,11 +26,7 @@ _FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS: Final = _cfg._ERROR_BACKOFF
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _settings_message(
-    namespace: str,
-    key: str,
-    restart_required: bool = False,
-) -> Message:
+def _settings_message(namespace: str, key: str) -> Message:
     """Build a #settings channel message matching SettingsService format."""
     return Message(
         timestamp=datetime.now(UTC),
@@ -43,7 +39,6 @@ def _settings_message(
             extra=(
                 ("namespace", namespace),
                 ("key", key),
-                ("restart_required", str(restart_required)),
             ),
         ),
     )
@@ -317,7 +312,7 @@ async def _wait_for_queue_drain(
 
     Used when no subscriber is expected to be called -- we wait for the
     dispatcher to consume the message from the queue, then give it a
-    tick to finish the dispatch decision (skip/restart_required).
+    tick to finish the dispatch decision.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
@@ -413,27 +408,36 @@ class TestDispatchRouting:
         finally:
             await d.stop()
 
-    async def test_skips_restart_required_settings(
+    async def test_dispatches_memory_settings(
         self,
         started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         memory_sub: _FakeSubscriber,
     ) -> None:
-        msg = _settings_message("memory", "backend", restart_required=True)
-        bus.enqueue(_envelope(msg))
-        await _wait_for_queue_drain(bus)
-        assert len(memory_sub.calls) == 0
-
-    async def test_dispatches_non_restart_required_memory_settings(
-        self,
-        started_dispatcher: SettingsChangeDispatcher,
-        bus: _FakeBus,
-        memory_sub: _FakeSubscriber,
-    ) -> None:
-        msg = _settings_message("memory", "default_level", restart_required=False)
+        msg = _settings_message("memory", "default_level")
         bus.enqueue(_envelope(msg))
         await _wait_for_subscriber(memory_sub)
         assert ("memory", "default_level") in memory_sub.calls
+
+    async def test_dispatches_the_memory_backend_swap(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        """A rebuild-on-change key is delivered like any other.
+
+        The subsystem reconciler rebuilds the memory backend on a
+        ``memory.backend`` write, which it can only do if the change reaches
+        the subscriber at all: nothing filters a key out of dispatch.
+        """
+        sub = _FakeSubscriber("memory", frozenset({("memory", "backend")}))
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=(sub,))
+        await d.start()
+        try:
+            bus.enqueue(_envelope(_settings_message("memory", "backend")))
+            await _wait_for_subscriber(sub)
+            assert ("memory", "backend") in sub.calls
+        finally:
+            await d.stop()
 
 
 # ── Error Isolation Tests ────────────────────────────────────────
@@ -531,34 +535,36 @@ class TestMetadataExtraction:
         await _wait_for_queue_drain(bus)
         assert len(provider_sub.calls) == 0
 
-    async def test_restart_required_defaults_to_true_when_absent(
+    async def test_namespace_and_key_are_the_whole_contract(
         self,
         bus: _FakeBus,
     ) -> None:
-        """Missing restart_required metadata defaults to True (fail-safe)."""
+        """An unrecognised extra field never suppresses dispatch.
+
+        Metadata carries only the changed key's coordinates; anything else a
+        publisher attaches is ignored rather than treated as a veto.
+        """
         sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
         d = SettingsChangeDispatcher(
             message_bus=bus,
             subscribers=(sub,),
         )
-        # Message with namespace and key but NO restart_required field
         msg = Message(
             timestamp=datetime.now(UTC),
             sender="system",
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
             channel="#settings",
-            parts=(TextPart(text="no restart flag"),),
+            parts=(TextPart(text="extra field"),),
             metadata=MessageMetadata(
-                extra=(("namespace", "ns"), ("key", "k")),
+                extra=(("namespace", "ns"), ("key", "k"), ("unknown", "True")),
             ),
         )
         await d.start()
         try:
             bus.enqueue(_envelope(msg))
-            await _wait_for_queue_drain(bus)
-            # Fail-safe: missing restart_required treated as True → not dispatched
-            assert len(sub.calls) == 0
+            await _wait_for_subscriber(sub)
+            assert ("ns", "k") in sub.calls
         finally:
             await d.stop()
 

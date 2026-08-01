@@ -356,7 +356,7 @@ back-compatibility but is not the runtime gate.
 
 The generative-RAG `ask` surface is governed by the `knowledge` settings
 namespace (Cat-1, runtime-readable over the settings API so the wizard and
-dashboard can toggle it), all hot (`restart_required=False`): `synthesis_enabled`
+dashboard can toggle it), all live: `synthesis_enabled`
 (bool, default true; live-gated at the `ask` entrypoint), `synthesis_model`
 (`MODEL_REF`, default blank; carries provider+model, must be set for `ask` to
 answer; blank leaves `ask` unwired and a non-empty value must bind both

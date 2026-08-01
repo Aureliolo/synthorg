@@ -61,13 +61,13 @@ class TestSettingsServiceConfigMutator:
             await mutator.set(path=".key_only", value="x")
         set_mock.assert_not_awaited()
 
-    async def test_read_only_post_init_surfaces_as_denied(self) -> None:
+    async def test_compose_set_surfaces_as_denied(self) -> None:
         """SettingReadOnlyError becomes RollbackMutationDeniedError."""
         service, set_mock = _make_service()
-        set_mock.side_effect = SettingReadOnlyError("post-init readonly")
+        set_mock.side_effect = SettingReadOnlyError("set by the deployment")
         mutator = SettingsServiceConfigMutator(settings_service=service)
 
-        with pytest.raises(RollbackMutationDeniedError, match="post-init-readonly"):
+        with pytest.raises(RollbackMutationDeniedError, match="set by the deployment"):
             await mutator.set(path="api.server_host", value="0.0.0.0")  # noqa: S104
 
     async def test_unknown_setting_surfaces_as_denied(self) -> None:
