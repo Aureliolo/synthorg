@@ -23,6 +23,9 @@ from synthorg.api.subsystems.spec import (
     SubsystemSpec,
 )
 from synthorg.config.schema import RootConfig
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import SettingsStateSlice
+from tests._shared import mock_of
 
 
 class _World:
@@ -510,9 +513,9 @@ class TestReconcile:
         first = await reconciler.reconcile(state, trigger="boot")
         assert first.statuses[0].phase is SubsystemPhase.BLOCKED
 
-        # The operator configures the embedder. Nothing announces it, which
-        # is exactly why the sweep keeps asking, and why it is the one caller
-        # that asks unconditionally.
+        # The operator configures the embedder. Nothing announces it, and the
+        # subsystem declares nothing that moved, which is exactly why the
+        # sweep asks again without needing a reason.
         allow["now"] = True
         later = await reconciler.reconcile(state, trigger="resync", retry_declined=True)
 
@@ -546,9 +549,13 @@ class TestDeclinedRetry:
         state = _app_state()
 
         await reconciler.reconcile(state, trigger="boot")
-        await reconciler.reconcile(state, trigger="settings_write")
+        for _ in range(5):
+            await reconciler.reconcile(state, trigger="settings_write")
         await reconciler.reconcile(state, trigger="provider_mutation")
 
+        # Re-running wiring that read the same inputs declines the same way.
+        # Every trigger paying for that turns a burst of unrelated writes into
+        # a burst of full re-wiring.
         assert attempts == [1]
 
     async def test_a_requirement_arriving_re_runs_the_decline(self) -> None:
@@ -581,6 +588,76 @@ class TestDeclinedRetry:
         await reconciler.reconcile(state, trigger="settings_write")
         assert attempts == [1]
 
+    async def test_a_rebuilt_dependency_re_runs_it_on_an_event_trigger(self) -> None:
+        world = _World()
+        attempts: list[int] = []
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        owner = SubsystemSpec(
+            name="persistence",
+            provides=CapabilityId.PERSISTENCE,
+            activate=_installs(world, "persistence", CapabilityId.PERSISTENCE),
+            deactivate=_removes(world, "persistence", CapabilityId.PERSISTENCE),
+        )
+        consumer = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((owner, consumer), _all_capabilities(world))
+        state = _app_state()
+
+        await reconciler.reconcile(state, trigger="boot")
+        await reconciler.reconcile(state, trigger="settings_write")
+
+        # The owner goes and comes back, so the consumer would be reading a
+        # different instance than the one it declined over. Availability alone
+        # cannot see that; the generation counter can.
+        world.present.discard(CapabilityId.PERSISTENCE)
+        await reconciler.reconcile(state, trigger="settings_write")
+
+        assert attempts == [1, 1]
+
+    async def test_a_declared_setting_changing_re_runs_it(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        attempts: list[int] = []
+        values = {"memory.backend": "inmemory"}
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+            settings=("memory.backend",),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        await reconciler.reconcile(state, trigger="settings_write")
+        # The operator changes the value the subsystem was waiting on, so the
+        # attempt is worth making again on that same write rather than at the
+        # next sweep.
+        values["memory.backend"] = "sqlvector"
+        await reconciler.reconcile(state, trigger="settings_write")
+
+        assert attempts == [1, 1]
+
     async def test_the_sweep_re_runs_a_decline_with_nothing_changed(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
         attempts: list[int] = []
@@ -600,9 +677,9 @@ class TestDeclinedRetry:
         await reconciler.reconcile(state, trigger="boot")
         await reconciler.reconcile(state, trigger="resync", retry_declined=True)
 
-        # The condition that declined is one the declaration cannot model, so
-        # nothing it could compare against would ever move. Only a caller that
-        # knows time has passed can recover it.
+        # Nothing declared moved, and the sweep tries anyway: a decline over a
+        # condition the declaration does not model would otherwise be
+        # permanent.
         assert attempts == [1, 1]
 
     async def test_a_teardown_restores_the_next_attempt(self) -> None:

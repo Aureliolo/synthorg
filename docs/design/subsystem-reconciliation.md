@@ -66,10 +66,22 @@ idea of "up" cannot drift from what activation installed.
 **Activation is idempotent.** The pass runs again on every trigger; a
 subsystem already up costs one probe.
 
+**A declined activation costs one probe too.** A subsystem that ran its
+activation and installed nothing has no capability to guard on, so without
+something else the next trigger re-runs the whole wiring to reach the same
+refusal. Every requirement and declared setting is snapshotted at the decline
+and compared on the next pass: unchanged inputs, no second attempt. An operator
+naming the model a subsystem was waiting for moves the snapshot and is picked up
+on that same write. Measured on a wired app, this is the difference between a
+pass costing 140 ms and one costing single-digit milliseconds.
+
 **A trigger is a hint, never an instruction.** Boot, a settings write and the
-periodic resync all call the same `reconcile()`. Nothing branches on which one
-fired, so a missed trigger costs latency and never correctness. The periodic
-sweep is the guarantee; everything else is an optimisation.
+periodic resync all call the same `reconcile()`. A missed trigger costs latency
+and never correctness. The one thing the sweep does differently is ask for
+`retry_declined=True`: what a snapshot cannot see is the undeclared condition
+that made a subsystem `blocked` in the first place, so somebody has to attempt
+unconditionally, and the sweep is the caller that knows time has passed. The
+periodic sweep is the guarantee; everything else is an optimisation.
 
 **Order is derived, never written down.** `order_subsystems` topologically
 sorts the declarations, rejecting a cycle or two owners of one capability at
@@ -134,7 +146,9 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 
 `waiting` and `disabled` are resting states, not errors. `blocked` exists
 because reporting that case as `waiting` would name no dependency and leave an
-operator with nowhere to look.
+operator with nowhere to look. It is also the phase the retry snapshot is for:
+a `blocked` subsystem is re-attempted when something it declares moves, and
+otherwise on the next sweep.
 
 ## Why not the alternatives
 
