@@ -396,7 +396,7 @@ class MCPClient:
             MCPToolInfo(
                 name=t.name,
                 description=t.description or "",
-                input_schema=(copy.deepcopy(t.inputSchema) if t.inputSchema else {}),
+                input_schema=(copy.deepcopy(t.input_schema) if t.input_schema else {}),
                 server_name=self._config.name,
             )
             for t in result.tools
@@ -481,10 +481,10 @@ class MCPClient:
                 )
                 return MCPRawResult(
                     content=tuple(result.content),
-                    is_error=result.isError or False,
+                    is_error=result.is_error or False,
                     structured_content=(
-                        copy.deepcopy(result.structuredContent)
-                        if result.structuredContent is not None
+                        copy.deepcopy(result.structured_content)
+                        if result.structured_content is not None
                         else None
                     ),
                 )
@@ -690,7 +690,7 @@ class MCPClient:
                 headers=dict(self._config.headers) if self._config.headers else None,
             ),
         )
-        read_stream, write_stream, _ = await stack.enter_async_context(
+        read_stream, write_stream = await stack.enter_async_context(
             streamable_http_client(
                 url=self._config.url,
                 http_client=http_client,

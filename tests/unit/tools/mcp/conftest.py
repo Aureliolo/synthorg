@@ -53,7 +53,7 @@ def _make_mock_mcp_tool(
     tool = MagicMock()
     tool.name = name
     tool.description = description
-    tool.inputSchema = input_schema or {
+    tool.input_schema = input_schema or {
         "type": "object",
         "properties": {"input": {"type": "string"}},
     }
@@ -81,8 +81,8 @@ def _make_mock_call_tool_result(
     result.content = content or [
         TextContent(type="text", text="result text"),
     ]
-    result.isError = is_error
-    result.structuredContent = structured_content
+    result.is_error = is_error
+    result.structured_content = structured_content
     return result
 
 
