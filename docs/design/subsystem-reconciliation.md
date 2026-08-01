@@ -84,6 +84,15 @@ that made a subsystem `blocked` in the first place, so somebody has to attempt
 unconditionally, and the sweep is the caller that knows time has passed. The
 periodic sweep is the guarantee; everything else is an optimisation.
 
+**One pass at a time, whichever loop asks.** The reconciler is cached on an
+application state that outlives a single event loop, and an `asyncio.Lock`
+only serialises callers sharing the loop it bound to, so the claim on a pass
+is a plain lock rather than an async one. A caller that finds a pass already
+running does not wait on it: it hands its trigger to the pass in flight, which
+repeats once it finishes, and gets back the current observation rather than one
+it produced. That keeps a second loop from blocking on a lock it cannot await,
+and the hand-off is what stops the trigger being dropped instead.
+
 **Order is derived, never written down.** `order_subsystems` topologically
 sorts the declarations, rejecting a cycle or two owners of one capability at
 construction, so a bad declaration fails the build rather than quietly never

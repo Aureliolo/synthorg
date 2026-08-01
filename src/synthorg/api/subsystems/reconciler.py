@@ -19,19 +19,17 @@ so a dependency absent at boot is not a verdict: the next pass picks it up.
 
 import asyncio
 import threading
-from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.bookkeeping import ReconcileBook
 from synthorg.api.subsystems.graph import (
-    capability_fingerprint,
     is_active,
     missing_capabilities,
     order_subsystems,
-    settings_drift,
-    settings_fingerprint,
 )
+from synthorg.api.subsystems.report import ReconcileReport, SubsystemStatus
 from synthorg.api.subsystems.spec import (
     Capability,
     CapabilityId,
@@ -47,16 +45,15 @@ from synthorg.observability.events.subsystem import (
     SUBSYSTEM_DEACTIVATED,
     SUBSYSTEM_DEACTIVATION_FAILED,
     SUBSYSTEM_RECONCILE_COMPLETED,
+    SUBSYSTEM_RECONCILE_DEFERRED,
     SUBSYSTEM_RECONCILE_STARTED,
 )
 
 logger = get_logger(__name__)
 
-# How long to yield before re-checking a pass held by another event loop.
-# Only reached when two loops share one AppState, so this trades a little
-# latency in a case that does not arise in the running product for never
-# blocking a loop on a lock it cannot await.
-_CROSS_LOOP_RETRY_SECONDS: Final[float] = 0.01
+# Labels the repeat a deferred trigger earned, so the logs tell it apart from
+# the pass whose caller is waiting on it.
+_FOLLOW_UP_TRIGGER: Final[str] = "follow_up"
 
 
 class _Outcome(StrEnum):
@@ -65,89 +62,6 @@ class _Outcome(StrEnum):
     NONE = "none"
     ACTIVATED = "activated"
     DEACTIVATED = "deactivated"
-
-
-@dataclass(frozen=True, slots=True)
-class SubsystemStatus:
-    """What the last reconcile pass observed about one subsystem.
-
-    Attributes:
-        name: The subsystem's stable identifier.
-        phase: Its resting state after the pass.
-        waiting_on: Unmet requirements, populated for ``WAITING`` and for
-            ``DEGRADED``, which is up with a requirement gone. Names every
-            missing capability, not just the first.
-        detail: Redacted failure description, populated only for ``FAILED``.
-    """
-
-    name: str
-    phase: SubsystemPhase
-    waiting_on: tuple[CapabilityId, ...] = ()
-    detail: str | None = None
-
-    def __post_init__(self) -> None:
-        """Refuse a status whose payload contradicts its phase.
-
-        Raises:
-            ValueError: When ``waiting_on`` is populated on a phase that names
-                no unmet requirement, or ``detail`` on anything but
-                ``FAILED``. An operator reads this to find out why something
-                is off, so a stale field from a previous phase is worse than
-                none. ``DEGRADED`` carries it for the same reason ``WAITING``
-                does: it is up, but the requirement it names is gone.
-        """
-        names_unmet = {SubsystemPhase.WAITING, SubsystemPhase.DEGRADED}
-        if self.waiting_on and self.phase not in names_unmet:
-            msg = (
-                "waiting_on is only valid on WAITING or DEGRADED, got "
-                f"{self.phase.value}"
-            )
-            raise ValueError(msg)
-        if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
-            msg = f"detail is only valid on FAILED, got {self.phase.value}"
-            raise ValueError(msg)
-
-
-@dataclass(frozen=True, slots=True)
-class ReconcileReport:
-    """The outcome of one pass.
-
-    Attributes:
-        statuses: Per-subsystem observation, in activation order.
-        activated: Names brought up during this pass.
-        deactivated: Names taken down during this pass.
-    """
-
-    statuses: tuple[SubsystemStatus, ...]
-    activated: tuple[str, ...] = ()
-    deactivated: tuple[str, ...] = ()
-
-    @property
-    def failed(self) -> tuple[str, ...]:
-        """Names whose activation raised on this pass.
-
-        Returns:
-            The failing subsystem names, in activation order.
-        """
-        return tuple(
-            status.name
-            for status in self.statuses
-            if status.phase is SubsystemPhase.FAILED
-        )
-
-
-@dataclass(slots=True)
-class _Bookkeeping:
-    """Cross-pass memory the level-triggered comparison itself cannot hold."""
-
-    fingerprints: dict[str, tuple[tuple[bool, int], ...]] = field(default_factory=dict)
-    settings: dict[str, tuple[str | None, ...]] = field(default_factory=dict)
-    generations: dict[CapabilityId, int] = field(default_factory=dict)
-    failures: dict[str, str] = field(default_factory=dict)
-    declined: set[str] = field(default_factory=set)
-    attempted: dict[
-        str, tuple[tuple[tuple[bool, int], ...], tuple[str | None, ...]]
-    ] = field(default_factory=dict)
 
 
 class SubsystemReconciler:
@@ -175,7 +89,7 @@ class SubsystemReconciler:
         """
         self._capabilities = {cap.id: cap for cap in capabilities}
         self._specs = order_subsystems(specs, self._capabilities)
-        self._book = _Bookkeeping()
+        self._book = ReconcileBook(capabilities=self._capabilities)
         # Scoped to one pass, which the guard below serialises. Teardown can
         # happen during a provider's turn rather than the subsystem's own, so
         # the pass cannot reconstruct it from what each turn returned.
@@ -190,6 +104,9 @@ class SubsystemReconciler:
         # is inside one; without it the per-loop lock is replaced and both run.
         self._pass_guard = threading.Lock()
         self._pass_in_flight = False
+        # A trigger that arrived while a pass was running, and its
+        # retry_declined, or None for none pending.
+        self._follow_up: bool | None = None
 
     async def reconcile(
         self,
@@ -199,6 +116,13 @@ class SubsystemReconciler:
         retry_declined: bool = False,
     ) -> ReconcileReport:
         """Run one pass over every subsystem.
+
+        A pass already running on another event loop is not waited on: this
+        loop cannot await that loop's lock, and blocking on the guard would
+        freeze it. The trigger is handed to the pass in flight instead, which
+        repeats once it finishes, so the state this call was reacting to is
+        still converged, by the pass that is already there. The report handed
+        back is the current observation rather than one this call produced.
 
         Args:
             app_state: Application state the checks and wiring read.
@@ -211,40 +135,70 @@ class SubsystemReconciler:
                 undeclared condition recoverable.
 
         Returns:
-            The per-subsystem observation for this pass.
+            The per-subsystem observation.
         """
-        while True:
-            async with self._lock_for_current_loop():
-                if self._claim_pass():
-                    try:
-                        return await self._pass(
-                            app_state, trigger=trigger, retry_declined=retry_declined
-                        )
-                    finally:
-                        self._release_pass()
-            # Another loop holds the pass. Its lock is not one this loop may
-            # await, and blocking on the guard would freeze this loop until
-            # the other finished, so yield and re-check. Contention needs two
-            # loops sharing one AppState, which is why this is a retry rather
-            # than something the hot path pays for.
-            await asyncio.sleep(_CROSS_LOOP_RETRY_SECONDS)
+        async with self._lock_for_current_loop():
+            if not self._claim_pass(retry_declined=retry_declined):
+                logger.debug(SUBSYSTEM_RECONCILE_DEFERRED, trigger=trigger)
+                return ReconcileReport(statuses=self.statuses(app_state))
+            holding = True
+            try:
+                report = await self._pass(
+                    app_state, trigger=trigger, retry_declined=retry_declined
+                )
+                again = self._continue_or_release()
+                while again is not None:
+                    report = await self._pass(
+                        app_state, trigger=_FOLLOW_UP_TRIGGER, retry_declined=again
+                    )
+                    again = self._continue_or_release()
+                holding = False
+            finally:
+                if holding:
+                    self._release_pass()
+            return report
 
-    def _claim_pass(self) -> bool:
-        """Take the loop-independent pass claim, if it is free.
+    def _claim_pass(self, *, retry_declined: bool) -> bool:
+        """Take the loop-independent pass claim, or queue a follow-up.
+
+        Args:
+            retry_declined: What this caller asked for, carried onto the
+                follow-up when the claim is taken. A sweep deferred behind an
+                event trigger must still retry the declines it was for.
 
         Returns:
             ``True`` when this caller now owns the pass.
         """
         with self._pass_guard:
             if self._pass_in_flight:
+                self._follow_up = retry_declined or bool(self._follow_up)
                 return False
             self._pass_in_flight = True
             return True
 
+    def _continue_or_release(self) -> bool | None:
+        """Take a queued follow-up, or give the pass claim back.
+
+        One decision under one lock: releasing first would let a trigger
+        arriving in between be queued for an owner that has already gone,
+        which is the dropped signal this whole hand-off exists to prevent.
+
+        Returns:
+            The follow-up's ``retry_declined``, or ``None`` when none is
+            queued and the claim has been released.
+        """
+        with self._pass_guard:
+            if self._follow_up is None:
+                self._pass_in_flight = False
+                return None
+            requested, self._follow_up = self._follow_up, None
+            return requested
+
     def _release_pass(self) -> None:
-        """Give the pass claim back."""
+        """Give the pass claim back after a pass raised."""
         with self._pass_guard:
             self._pass_in_flight = False
+            self._follow_up = None
 
     def _lock_for_current_loop(self) -> asyncio.Lock:
         """Return the pass lock, rebuilt if the running loop changed.
@@ -358,55 +312,21 @@ class SubsystemReconciler:
             if not active:
                 return _Outcome.NONE
             return await self._take_down(spec, app_state, returning=False)
-        if active and spec.rebuild_on_change and await self._drifted(spec, app_state):
+        if (
+            active
+            and spec.rebuild_on_change
+            and await self._book.drifted(spec, app_state)
+        ):
             await self._take_down(spec, app_state, returning=True)
             active = is_active(spec, self._capabilities, app_state)
         if active:
             return _Outcome.NONE
-        if not retry_declined and not await self._attempt_worthwhile(spec, app_state):
+        worthwhile = retry_declined or await self._book.attempt_worthwhile(
+            spec, app_state
+        )
+        if not worthwhile:
             return _Outcome.NONE
         return await self._activate(spec, app_state)
-
-    async def _attempt_worthwhile(
-        self, spec: SubsystemSpec, app_state: AppState
-    ) -> bool:
-        """Report whether activating is worth trying again.
-
-        An activation that declined is a function of what it read, so repeating
-        it against the same readings declines again. Every requirement and
-        every declared setting is snapshotted at the decline, and a pass whose
-        snapshot matches skips the attempt rather than paying for it: an
-        operator naming the model a subsystem was waiting for moves the
-        snapshot and is picked up on that same write, while a burst of
-        unrelated triggers costs nothing. What the snapshot cannot see is the
-        undeclared condition that made it BLOCKED in the first place, which is
-        why the periodic sweep attempts unconditionally.
-
-        The stored snapshot is refreshed with whatever this pass could read,
-        so a setting the resolver could not serve at the decline is compared
-        against its first actual reading rather than staying unknown.
-
-        Args:
-            spec: The subsystem being evaluated.
-            app_state: Application state the checks read.
-
-        Returns:
-            ``True`` when nothing has been tried yet, or the inputs moved.
-        """
-        previous = self._book.attempted.get(spec.name)
-        if previous is None:
-            return True
-        capabilities, settings = previous
-        current = capability_fingerprint(
-            spec.requires, self._capabilities, app_state, self._book.generations
-        )
-        if current != capabilities:
-            return True
-        drift = settings_drift(
-            settings, await settings_fingerprint(spec.settings, app_state)
-        )
-        self._book.attempted[spec.name] = (capabilities, drift.retained)
-        return drift.drifted
 
     async def _activate(self, spec: SubsystemSpec, app_state: AppState) -> _Outcome:
         """Run a subsystem's activation and record the result.
@@ -431,7 +351,7 @@ class SubsystemReconciler:
             reraise_critical(exc)
             detail = safe_error_description(exc)
             self._book.failures[spec.name] = detail
-            await self._record_attempt(spec, app_state)
+            await self._book.record_attempt(spec, app_state)
             logger.error(
                 SUBSYSTEM_ACTIVATION_FAILED,
                 subsystem=spec.name,
@@ -453,42 +373,11 @@ class SubsystemReconciler:
             if spec.name not in self._book.declined:
                 logger.warning(SUBSYSTEM_ACTIVATION_DECLINED, subsystem=spec.name)
             self._book.declined.add(spec.name)
-            await self._record_attempt(spec, app_state)
+            await self._book.record_attempt(spec, app_state)
             return _Outcome.NONE
-        self._book.declined.discard(spec.name)
-        self._book.attempted.pop(spec.name, None)
-        # Bumped before the consumers' snapshots are taken (they activate
-        # later in the same ordered pass), so a consumer records the
-        # generation of the instance it actually captured.
-        self._book.generations[spec.provides] = (
-            self._book.generations.get(spec.provides, 0) + 1
-        )
-        self._book.fingerprints[spec.name] = capability_fingerprint(
-            spec.requires, self._capabilities, app_state, self._book.generations
-        )
-        self._book.settings[spec.name] = await settings_fingerprint(
-            spec.settings, app_state
-        )
+        await self._book.record_activation(spec, app_state)
         logger.info(SUBSYSTEM_ACTIVATED, subsystem=spec.name)
         return _Outcome.ACTIVATED
-
-    async def _record_attempt(self, spec: SubsystemSpec, app_state: AppState) -> None:
-        """Snapshot what an unsuccessful activation read, for the next pass.
-
-        Taken after the attempt rather than before, so a subsystem that got
-        partway and installed something is compared against the state it
-        actually left behind.
-
-        Args:
-            spec: The subsystem whose activation did not take.
-            app_state: Application state the checks read.
-        """
-        self._book.attempted[spec.name] = (
-            capability_fingerprint(
-                spec.requires, self._capabilities, app_state, self._book.generations
-            ),
-            await settings_fingerprint(spec.settings, app_state),
-        )
 
     async def _take_down(
         self, spec: SubsystemSpec, app_state: AppState, *, returning: bool
@@ -571,52 +460,10 @@ class SubsystemReconciler:
                 error=detail,
             )
             return _Outcome.NONE
-        self._book.fingerprints.pop(spec.name, None)
-        self._book.settings.pop(spec.name, None)
-        # A teardown is a fresh start: everything remembered describes an
-        # instance that no longer exists. Keeping the snapshot would skip the
-        # activation a rebuild exists to perform, and keeping the failure or
-        # the decline would report the previous instance's verdict instead of
-        # the requirement that is actually missing.
-        self._book.attempted.pop(spec.name, None)
-        self._book.failures.pop(spec.name, None)
-        self._book.declined.discard(spec.name)
+        self._book.forget(spec)
         self._torn_down.append(spec.name)
         logger.info(SUBSYSTEM_DEACTIVATED, subsystem=spec.name)
         return _Outcome.DEACTIVATED
-
-    async def _drifted(self, spec: SubsystemSpec, app_state: AppState) -> bool:
-        """Report whether a requirement or declared setting changed.
-
-        A setting this pass could not read is not evidence of a change, so it
-        is skipped and the last actual reading is kept: a rebuild tears the
-        subsystem down, and a resolver hiccup must not be able to do that to
-        every subsystem that captured a setting at once.
-
-        Args:
-            spec: The subsystem to check.
-            app_state: Application state the checks read.
-
-        Returns:
-            ``True`` when the current snapshot differs from the one taken when
-            this subsystem last came up.
-        """
-        previous = self._book.fingerprints.get(spec.name)
-        if previous is None:
-            return False
-        current = capability_fingerprint(
-            spec.requires, self._capabilities, app_state, self._book.generations
-        )
-        if current != previous:
-            return True
-        previous_settings = self._book.settings.get(spec.name)
-        if previous_settings is None:
-            return False
-        drift = settings_drift(
-            previous_settings, await settings_fingerprint(spec.settings, app_state)
-        )
-        self._book.settings[spec.name] = drift.retained
-        return drift.drifted
 
     def _enabled(self, spec: SubsystemSpec, app_state: AppState) -> bool:
         """Report whether an operator has this subsystem switched on.

@@ -565,21 +565,21 @@ class TestPassSerialisation:
     serialises nothing across them, so the gate has to be loop-independent.
     """
 
-    def test_two_event_loops_cannot_hold_a_pass_at_once(self) -> None:
-        world = _World(CapabilityId.PERSISTENCE)
+    def _reconciler_that_takes_its_time(
+        self, world: _World, seen: list[int], overlaps: list[int]
+    ) -> SubsystemReconciler:
+        """Build a reconciler whose one activation is slow enough to collide."""
         guard = threading.Lock()
         inside = 0
-        overlaps: list[int] = []
-        attempts: list[int] = []
 
         async def _slow_decline(_state: AppState) -> None:
             nonlocal inside
             with guard:
                 inside += 1
-                attempts.append(1)
+                seen.append(1)
                 if inside > 1:
                     overlaps.append(inside)
-            # Long enough that a second loop starting a pass lands inside
+            # Long enough that a second loop asking for a pass lands inside
             # this window rather than after it.
             await asyncio.sleep(0.05)
             with guard:
@@ -591,7 +591,13 @@ class TestPassSerialisation:
             requires=(CapabilityId.PERSISTENCE,),
             activate=_slow_decline,
         )
-        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        return SubsystemReconciler((spec,), _all_capabilities(world))
+
+    def test_two_event_loops_cannot_hold_a_pass_at_once(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        seen: list[int] = []
+        overlaps: list[int] = []
+        reconciler = self._reconciler_that_takes_its_time(world, seen, overlaps)
         state = _app_state()
 
         def _pass_on_its_own_loop() -> None:
@@ -610,8 +616,43 @@ class TestPassSerialisation:
 
         assert [thread.is_alive() for thread in threads] == [False] * 4
         assert overlaps == []
-        # Every loop got its pass rather than being starved by the retry.
-        assert len(attempts) == 4
+        assert seen
+
+    def test_a_trigger_that_arrives_mid_pass_is_not_dropped(self) -> None:
+        # A deferred caller does not wait, so the pass in flight has to carry
+        # its trigger: without the hand-off the sweep that arrived while a
+        # pass was running would simply never be reconciled. Its
+        # retry_declined has to survive too, or the deferred sweep becomes an
+        # event trigger and skips the declines it exists to re-attempt.
+        world = _World(CapabilityId.PERSISTENCE)
+        seen: list[int] = []
+        reconciler = self._reconciler_that_takes_its_time(world, seen, [])
+        state = _app_state()
+        deferred = threading.Event()
+
+        def _hold_a_pass() -> None:
+            asyncio.run(reconciler.reconcile(state, trigger="holder"))
+
+        holder = threading.Thread(target=_hold_a_pass, daemon=True)
+        holder.start()
+
+        def _defer() -> None:
+            asyncio.run(
+                reconciler.reconcile(state, trigger="resync", retry_declined=True)
+            )
+            deferred.set()
+
+        # Started while the holder is inside its slow activation, so this one
+        # is the deferred caller.
+        follower = threading.Thread(target=_defer, daemon=True)
+        follower.start()
+        follower.join(timeout=10)
+        holder.join(timeout=10)
+
+        assert deferred.is_set()
+        # Two attempts: the holder's, and the one the deferred sweep earned by
+        # having its retry_declined carried onto the repeat.
+        assert len(seen) == 2
 
 
 @pytest.mark.unit
