@@ -844,10 +844,26 @@ class TestVerifyPair:
             gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
         )
         monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
+        monkeypatch.setattr(gate, "provenance_present", lambda *_a, **_k: True)
         pair = gate.ImageTag(image="backend", tag="dev")
         digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
         assert digest == "sha256:deadbeef"
         assert err is None
+
+    def test_missing_provenance_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A signed image without provenance fails; L3 is enforced, not assumed."""
+        monkeypatch.setattr(
+            gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
+        )
+        monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
+        monkeypatch.setattr(gate, "provenance_present", lambda *_a, **_k: False)
+        pair = gate.ImageTag(image="backend", tag="dev")
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
+        assert digest is None
+        assert err is not None
+        assert "no SLSA provenance attestation" in err
 
 
 @pytest.mark.unit
