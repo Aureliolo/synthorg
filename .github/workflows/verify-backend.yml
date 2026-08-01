@@ -1860,7 +1860,10 @@ jobs:
           YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
         run: |
           set -euo pipefail
-          curl -sSfL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+          # 60s of retries, not 300: this job's timeout is 5 minutes, so a
+          # 300s download budget could consume the whole of it and leave
+          # nothing for the version check and the spec-change script below.
+          curl -sSfL --connect-timeout 15 --retry 5 --retry-all-errors --retry-max-time 60 \
             "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
             -o /tmp/yq
           echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict

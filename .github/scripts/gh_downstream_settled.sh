@@ -16,15 +16,23 @@
 # therefore needs `actions: read` -- without it `gh run list` fails, every tag
 # reads as unreadable, and cleanup silently stops deleting anything.
 #
+# Only callers that check the repository out can use this. release-finalize.yml
+# inlines the same logic instead, because its privileged publish job runs with
+# no checkout by design; keep the two in step.
+#
 # Usage: bash .github/scripts/gh_downstream_settled.sh <tag>
 set -uo pipefail
 
 tag="${1:?tag argument is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
-in_flight="$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$tag" \
-  --limit 100 --json status \
-  --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null)" || exit 1
+# Compared via the REST API's `total_count`, which is exact however many runs a
+# tag has accumulated. A listing call capped at N would stop at the newest N and
+# could report a tag settled while an in-flight run sat past the cut.
+total="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${tag}&per_page=1" \
+  --jq '.total_count' 2>/dev/null)" || exit 1
+completed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${tag}&status=completed&per_page=1" \
+  --jq '.total_count' 2>/dev/null)" || exit 1
 
-[ -n "$in_flight" ] || exit 1
-[ "$in_flight" = 0 ]
+[ -n "$total" ] && [ -n "$completed" ] || exit 1
+[ "$total" = "$completed" ]

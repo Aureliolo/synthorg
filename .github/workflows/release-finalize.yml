@@ -860,10 +860,32 @@ jobs:
           # obsolete, not that its `tags: v*` workflows have stopped. A dev
           # build minted shortly before the stable finalized can still have
           # build-images.yml attaching assets, and deleting the ref mid-run
-          # 404s its checkout. Shared with release-dev.yml's rolling prune so
-          # the two cleanup paths cannot drift apart.
+          # 404s its checkout.
+          #
+          # Inlined rather than sourced from `.github/scripts/`, for the same
+          # reason `gh_retry` above is: this privileged publish job runs with
+          # NO actions/checkout by design, so there is no working tree to
+          # source from, and granting checkout to a contents:write job would
+          # be a security downgrade. Sourcing it here returned 127, which the
+          # guards below read as "still in flight" -- silently retaining every
+          # candidate while the step still reported success. Keep this in step
+          # with .github/scripts/gh_downstream_settled.sh, which release-dev.yml
+          # uses because that job does check out.
+          #
+          # `total_count` is exact however many runs a tag accumulated; a
+          # listing call capped at N could report a tag settled while an
+          # in-flight run sat past the cut.
+          #
+          # `local` is declared separately from each assignment on purpose:
+          # `local x="$(cmd)"` takes `local`'s own exit status, so `|| return`
+          # would never fire and a failed lookup would read as settled.
           downstream_settled() {
-            bash .github/scripts/gh_downstream_settled.sh "$1"
+            local total completed
+            total="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=$1&per_page=1" \
+              --jq '.total_count' 2>/dev/null)" || return 1
+            completed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=$1&status=completed&per_page=1" \
+              --jq '.total_count' 2>/dev/null)" || return 1
+            [ -n "$total" ] && [ -n "$completed" ] && [ "$total" = "$completed" ]
           }
 
           # 1. Delete superseded dev releases (draft, pre-release, or published)

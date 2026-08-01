@@ -275,7 +275,10 @@ jobs:
           # their actions/checkout into a 404 on a ref that was valid when
           # they started. gh_downstream_settled.sh asks the API instead, and
           # release-finalize.yml's sweep shares it so the two cannot drift.
-          gh release list --limit 50 --json tagName,isPrerelease,createdAt \
+          # A high limit rather than 50: the filter keeps the newest 5 and
+          # deletes the rest, so anything past the listing cut was never a
+          # deletion candidate and the oldest dev tags accumulated forever.
+          gh release list --limit 1000 --json tagName,isPrerelease,createdAt \
             --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
           | while read -r tag; do
               if ! bash .github/scripts/gh_downstream_settled.sh "$tag"; then
