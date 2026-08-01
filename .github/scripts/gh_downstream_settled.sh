@@ -35,4 +35,11 @@ completed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${tag}&statu
   --jq '.total_count' 2>/dev/null)" || exit 1
 
 [ -n "$total" ] && [ -n "$completed" ] || exit 1
+
+# Zero runs is NOT settled. `total == completed` alone is true at 0 == 0, which
+# reads a tag whose `tags: v*` workflows have not dispatched yet as finished --
+# the one moment deleting the ref is most likely to 404 a checkout that is about
+# to start. Requiring evidence of at least one run makes the check fail closed.
+[ "$total" -ge 1 ] || exit 1
+
 [ "$total" = "$completed" ]

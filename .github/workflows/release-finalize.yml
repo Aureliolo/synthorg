@@ -879,13 +879,20 @@ jobs:
           # `local` is declared separately from each assignment on purpose:
           # `local x="$(cmd)"` takes `local`'s own exit status, so `|| return`
           # would never fire and a failed lookup would read as settled.
+          #
+          # Zero runs is NOT settled: `total == completed` alone is true at
+          # 0 == 0, which reads a tag whose workflows have not dispatched yet
+          # as finished -- the one moment deleting the ref is most likely to
+          # 404 a checkout about to start. `-ge 1` makes it fail closed.
           downstream_settled() {
             local total completed
             total="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=$1&per_page=1" \
               --jq '.total_count' 2>/dev/null)" || return 1
             completed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=$1&status=completed&per_page=1" \
               --jq '.total_count' 2>/dev/null)" || return 1
-            [ -n "$total" ] && [ -n "$completed" ] && [ "$total" = "$completed" ]
+            [ -n "$total" ] && [ -n "$completed" ] || return 1
+            [ "$total" -ge 1 ] || return 1
+            [ "$total" = "$completed" ]
           }
 
           # 1. Delete superseded dev releases (draft, pre-release, or published)

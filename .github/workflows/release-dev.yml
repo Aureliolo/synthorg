@@ -267,6 +267,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           # Keep the 5 most recent dev pre-releases, delete the rest.
           #
           # Revision distance is a proxy for "downstream is done", not proof
@@ -274,20 +275,41 @@ jobs:
           # deleting a tag whose `tags: v*` workflows are still running races
           # their actions/checkout into a 404 on a ref that was valid when
           # they started. gh_downstream_settled.sh asks the API instead, and
-          # release-finalize.yml's sweep shares it so the two cannot drift.
+          # release-finalize.yml's sweep applies the same rule so the two
+          # cannot drift.
           # A high limit rather than 50: the filter keeps the newest 5 and
           # deletes the rest, so anything past the listing cut was never a
           # deletion candidate and the oldest dev tags accumulated forever.
-          gh release list --limit 1000 --json tagName,isPrerelease,createdAt \
-            --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
-          | while read -r tag; do
-              if ! bash .github/scripts/gh_downstream_settled.sh "$tag"; then
-                echo "Keeping $tag: downstream runs still in flight or unreadable"
-                continue
-              fi
-              echo "Deleting old dev release: $tag"
-              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- deletes only dev tags whose downstream runs the shared check has confirmed complete; never the just-minted tag
-            done
+          #
+          # Captured to a variable rather than piped into the loop: a pipeline
+          # would run the loop in a subshell, so the failure list below would
+          # be discarded, and a failed `gh release list` would be masked by the
+          # loop's own success.
+          CANDIDATES="$(gh release list --limit 1000 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName')"
+
+          failures=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            if ! bash .github/scripts/gh_downstream_settled.sh "$tag"; then
+              echo "Keeping $tag: downstream runs still in flight or unreadable"
+              continue
+            fi
+            echo "Deleting old dev release: $tag"
+            # Failures collected rather than suppressed, so a delete that keeps
+            # failing reaches report-failure instead of recurring in silence.
+            # One bad tag must not abort the sweep, hence collect-then-fail
+            # (the same shape release-finalize.yml's sweep uses).
+            if ! gh release delete "$tag" --yes --cleanup-tag; then  # lint-allow: workflow-tag-lifecycle -- deletes only dev tags whose downstream runs the shared check has confirmed complete; never the just-minted tag
+              echo "::warning::Failed to delete dev release $tag"
+              failures+=("$tag")
+            fi
+          done <<< "$CANDIDATES"
+
+          if [ ${#failures[@]} -ne 0 ]; then
+            echo "::error::Dev pre-release cleanup failed for: ${failures[*]}"
+            exit 1
+          fi
 
       # Regression guard. The dev tag was created near the top of this
       # job; if anything in the run between then and now
