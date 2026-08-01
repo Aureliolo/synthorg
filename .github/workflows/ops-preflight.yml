@@ -1,0 +1,101 @@
+name: Ops - Preflight
+
+# Detect missing repository setup (environments, labels, branch protection,
+# GitHub App installation) and surface it as a single tracking issue. Runs
+# in parallel with the rest of CI on every push and pull request, plus
+# manual dispatch. Hybrid blocking: warns on PR / non-main pushes, fails
+# the job on push to main so upstream stays loud about drift.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-preflight-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # Cross-repo ref to the local checkout-retry composite. GHA
+      # pre-fetches cross-repo composites via its action-resolver
+      # (different code path from the in-step git-fetch that's been
+      # flaking); the composite internally retries actions/checkout
+      # 3x with backoff. Pinned to the SHA on this branch that added
+      # the composite, since the repo policy requires sha_pinning and
+      # the allowlist permits Aureliolo/synthorg/.github/actions/*.
+      # Post-merge this SHA needs to be updated to a main-reachable
+      # SHA (the squash-merged commit) so the ref survives branch
+      # deletion.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Run preflight checks
+        id: check
+        uses: ./.github/actions/ci-preflight-check
+        with:
+          gh-token: ${{ github.token }}
+
+      # Skip the issue-write paths on pull_request runs whose head
+      # branch lives in a forked repository. GitHub silently downgrades
+      # GITHUB_TOKEN to read-only for those runs regardless of what
+      # the workflow declares under `permissions:`, so any write API
+      # call would 403. Posting the tracking issue is also unhelpful
+      # in that context: the audit ran in upstream's repo, not the
+      # fork, and upstream is already configured. The fork's own runs
+      # (when the fork user pushes to their own fork) have full write
+      # perms and post normally.
+      - name: Open / update tracking issue
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          title: "CI setup incomplete -- please configure the following"
+          labels: "automation:ci-preflight,type:ci,prio:high"
+          body: ${{ steps.check.outputs.body }}
+          pin: 'true'
+          gh-token: ${{ github.token }}
+
+      - name: Close tracking issue when all checks pass
+        if: >-
+          steps.check.outputs.gaps-found == 'false'
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: ./.github/actions/post-tracking-issue
+        with:
+          mode: close
+          title: "CI setup incomplete -- please configure the following"
+          body: "Preflight passed at `${{ github.sha }}`. Closing -- this issue will reopen automatically if a check regresses."
+          gh-token: ${{ github.token }}
+
+      - name: Fail on push to main when gaps remain
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && github.event_name == 'push'
+          && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          echo "::error::CI setup gaps detected on a push to main. See the open tracking issue for the checklist."
+          exit 1
+
+      - name: Warn on non-main when gaps remain
+        if: >-
+          steps.check.outputs.gaps-found == 'true'
+          && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+        shell: bash
+        run: |
+          echo "::warning::CI setup gaps detected. See the open tracking issue for the checklist. (Non-blocking on this trigger; this job blocks on push to main.)"

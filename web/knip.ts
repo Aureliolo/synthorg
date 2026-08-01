@@ -42,7 +42,7 @@ const config: KnipConfig = {
   //
   // A failure here surfaces at pre-push before CI, which is the intended
   // ordering, not a coverage gap: `npm run lint:knip` also runs whole-dashboard
-  // and unconditionally in the ci.yml `dashboard-lint` job. The Gates job SKIPs
+  // and unconditionally in the verify-backend.yml `dashboard-lint` job. The Gates job SKIPs
   // the `web-checks` hook only because it has no node toolchain, a mapping
   // `check_local_ci_parity.py` records in `_COVERED_ELSEWHERE` and enforces.
   compilers: {

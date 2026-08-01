@@ -7,7 +7,7 @@ description: |
     - missing version embedding (when `expected-version` is set)
 
   This composite action is the single source of truth for the CLI
-  smoke test. It runs at build time in `cli.yml` (every PR / push) so
+  smoke test. It runs at build time in `verify-cli.yml` (every PR / push) so
   a broken binary fails the originating PR with a red ❌ on the
   commit row, and is reused by GoReleaser-archive verification at
   release time. Build-time invocation is the primary gate; release-
@@ -20,7 +20,7 @@ inputs:
       Path to the compiled `synthorg` binary on disk. The binary must
       be executable on the runner (smoke must run from a job whose
       `goos`/`goarch` match the runner -- e.g. linux/amd64 on
-      ubuntu-latest). Cross-compiled darwin/windows binaries cannot
+      ubuntu-24.04). Cross-compiled darwin/windows binaries cannot
       be smoked from Linux runners.
     required: true
   expected-version:

@@ -94,7 +94,7 @@ from tests._typeguard_checker import register_typeguard_checker_extensions
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
 register_typeguard_checker_extensions()
-# The CodSpeed benchmark job (.github/workflows/codspeed.yml) sets
+# The CodSpeed benchmark job (.github/workflows/perf-benchmarks.yml) sets
 # SYNTHORG_BENCH_NO_TYPEGUARD and overrides ``--typeguard-packages=`` so the
 # perf suite measures the real production code path. typeguard is a test-only
 # instrument that never runs in production; leaving it active makes CodSpeed

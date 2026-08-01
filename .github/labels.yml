@@ -5,8 +5,8 @@
 # labels (type:*, prio:*, spec:*, scope:*) are managed via the GitHub UI
 # and are not synced from here.
 #
-# Synced by .github/workflows/sync-labels.yml via manual workflow_dispatch
-# only. Run it from Actions -> Sync Labels -> Run workflow whenever this
+# Synced by .github/workflows/maint-labels.yml via manual workflow_dispatch
+# only. Run it from Actions -> Maint - Labels -> Run workflow whenever this
 # file changes. Forks should also run it once after creation to bootstrap
 # the label set.
 #

@@ -26,11 +26,9 @@ rulesets:
       ref_name:
         include: ["~ALL"]
         # No carve-outs: every ref under this ruleset must satisfy the
-        # required_signatures rule below. The cla-signatures branch
-        # used to need an exclusion because contributor-assistant
-        # committed with GITHUB_TOKEN; cla.yml's cla-sign job now
-        # mints commits via the App token + Git Data API, producing
-        # GitHub-verified signatures, so the carve-out is gone.
+        # required_signatures rule below. repo-cla.yml's cla-sign job
+        # mints commits via the App token + Git Data API, so even the
+        # cla-signatures branch carries GitHub-verified signatures.
         exclude: []
     rules:
       - type: code_quality
@@ -67,8 +65,17 @@ rulesets:
           # sentinel jobs, so no other app holding checks:write can satisfy a
           # required context by reusing its name. The live ruleset must carry
           # the same integration_id or audit_branch_protection.sh reports drift.
+          #
+          # Every context here is the rollup of a workflow with NO top-level
+          # `paths:` OR `paths-ignore:` filter, which is load-bearing: GitHub
+          # treats a never-reported required context as unsatisfied, blocking
+          # the PR permanently. Enforced by check_ci_rollup_complete.py.
           required_status_checks:
             - context: "CI Pass"
+              integration_id: 15368
+            - context: "CLI Pass"
+              integration_id: 15368
+            - context: "Docker Pass"
               integration_id: 15368
             - context: "CodSpeed Python Pass"
               integration_id: 15368
@@ -88,11 +95,28 @@ rulesets:
     rules:
       - type: pull_request
         parameters:
+          # Stays at 1: a second approver is unsatisfiable on a solo repo.
+          #
+          # In fact NO approval count is satisfiable here, and that is
+          # deliberate rather than an oversight. `.github/CODEOWNERS` names
+          # only @Aureliolo, `require_code_owner_review` therefore demands an
+          # approval from the same account that authors every PR, and GitHub
+          # does not let an author approve their own PR;
+          # `require_last_push_approval` closes the same door from the other
+          # side. Every merge consequently runs through the repo owner's admin
+          # bypass (`gh pr merge --squash --admin`), which GitHub records in
+          # the audit log.
+          #
+          # Keeping the rules armed rather than relaxing them is the point: if
+          # a second maintainer ever joins, review becomes enforced the moment
+          # they land in CODEOWNERS, with no ruleset change to remember. The
+          # bypass actor itself is not specified here because the audit script
+          # strips `bypass_actors` on both sides (see the header).
           required_approving_review_count: 1
           dismiss_stale_reviews_on_push: true
           required_reviewers: []
-          require_code_owner_review: false
-          require_last_push_approval: false
+          require_code_owner_review: true
+          require_last_push_approval: true
           required_review_thread_resolution: false
           allowed_merge_methods:
             - merge

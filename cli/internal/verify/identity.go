@@ -17,18 +17,29 @@ const (
 	// ExpectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	ExpectedIssuer = "https://token.actions.githubusercontent.com"
 
-	// ExpectedSANRegex matches the docker.yml workflow identity from the
-	// SynthOrg repo on version tags or the main branch. Only accepts
-	// signatures from the docker workflow -- not from arbitrary workflows
-	// or feature branches.
+	// ExpectedSANRegex matches the image-publishing workflow identity from
+	// the SynthOrg repo on version tags or the main branch. Only accepts
+	// signatures from that workflow -- not from arbitrary workflows or
+	// feature branches.
+	//
+	// Both build-images.yml and its former name docker.yml are accepted:
+	// keyless signing derives the SAN from the workflow file path, so an
+	// image keeps the name in force when it was published. Dropping the
+	// old name would strand every image published before the rename, which
+	// a pinned tag can still install today.
+	//
+	// Accepting the retired name costs nothing: the ref alternation admits
+	// only heads/main and version tags, so minting a certificate under the
+	// old path would require restoring that file on the default branch,
+	// which already implies write access.
 	//
 	// This identity is cryptographically bound to the default registry
-	// + repo prefix: signatures produced by Aureliolo/synthorg's docker
+	// + repo prefix: signatures produced by Aureliolo/synthorg's publishing
 	// workflow carry this SAN and cover images pushed to ghcr.io under
 	// aureliolo/synthorg-*. Overriding RegistryHost/ImageRepoPrefix makes
 	// verification impossible (no matching SAN), which is why custom
 	// registry deployments run with signature verification disabled.
-	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/docker\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
+	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(build-images|docker)\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
 )
 
 // Tunable registry + timeout values. Populated by Configure at program

@@ -356,7 +356,7 @@ func verifyProvenanceBundle(bundleJSON json.RawMessage, digest string, sev *veri
 	}
 
 	// Verify the bundle cryptographically: check the signature, certificate
-	// identity (must be our docker.yml workflow), and artifact digest.
+	// identity (must be our image-publishing workflow), and artifact digest.
 	result, err := sev.Verify(b, verify.NewPolicy(
 		verify.WithArtifactDigest(digestAlgo, digestHex),
 		verify.WithCertificateIdentity(certID),

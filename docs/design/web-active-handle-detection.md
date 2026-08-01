@@ -140,7 +140,7 @@ When `CI=true`, the main-process reporter writes
 ```
 
 The CI workflow uploads this file via `actions/upload-artifact`
-(`.github/workflows/ci.yml` -> Dashboard Test). The artifact is
+(`.github/workflows/verify-backend.yml` -> Dashboard Test). The artifact is
 retained for 30 days. Downstream dashboards / drift charts can be
 wired against the same schema without re-instrumenting tests.
 

@@ -24,8 +24,8 @@
 # and blocking the BUSL -> Apache-2.0 conversion.
 #
 # CI installs golangci-lint via the official GitHub Action
-# (.github/workflows/cli.yml uses golangci/golangci-lint-action) and lychee via
-# this script (`scripts/install_cli_tools.sh lychee` in .github/workflows/lychee.yml)
+# (.github/workflows/verify-cli.yml uses golangci/golangci-lint-action) and lychee via
+# this script (`scripts/install_cli_tools.sh lychee` in .github/workflows/verify-links.yml)
 # so the local pre-push hook and the CI run use the byte-identical binary.
 # Renovate tracks the pinned versions via the "go install binary versions" and
 # "Binary tool version env vars" custom regex managers in renovate.json.
@@ -88,7 +88,7 @@ install_golangci_lint() {
 
   # The `go install ...@vX.Y.Z` literal below is the single source of truth --
   # Renovate's regex manager (see renovate.json) bumps the version here, and
-  # .github/workflows/cli.yml mirrors it via golangci/golangci-lint-action.
+  # .github/workflows/verify-cli.yml mirrors it via golangci/golangci-lint-action.
   local golangci_lint_version
   golangci_lint_version=$(
     grep -oE 'golangci-lint@v[0-9]+\.[0-9]+\.[0-9]+' "$0" \

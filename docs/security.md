@@ -257,7 +257,56 @@ shell, no package manager, minimal attack surface. The build uses a 2-stage Dock
 
 Base images are declared in `docker/*/apko.yaml` with relaxed package specs
 (e.g. `python-3.14`). Exact patch versions are resolved and pinned by
-`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/apko-lock.yml`.
+`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/maint-apko-lock.yml`.
+
+### SLSA Build L3
+
+Every published image and CLI archive carries build provenance from
+`actions/attest-build-provenance`, generated on GitHub-hosted runners with an
+ephemeral, isolated build environment and a signed, non-falsifiable provenance
+document. That much is [SLSA](https://slsa.dev/spec/v1.0/levels) Build Level 2.
+
+Level 3 additionally requires the build definition to be isolated from whoever
+asks for the build, so a compromised caller cannot alter what gets built while
+still producing valid provenance. On GitHub Actions that isolation is a
+**trusted reusable workflow**: attestations generated inline in a
+directly-triggered workflow reach L2 only. Every signing and attesting step
+therefore lives in a reusable workflow, invoked through `workflow_call`:
+
+| Reusable workflow | Signs and attests |
+|---|---|
+| `.github/workflows/reusable-publish-apko-base.yml` | apko base images |
+| `.github/workflows/reusable-publish-image.yml` | backend, sandbox, sidecar, fine-tune |
+| `.github/workflows/reusable-publish-image-loaded.yml` | web |
+| `.github/workflows/reusable-release-cli.yml` | CLI archives and checksums |
+
+The caller jobs in `build-images.yml` and `verify-cli.yml` pass inputs and
+grant token scopes; they run no signing step of their own. Moving one back
+inline would silently drop that artifact to L2, so the split is load-bearing
+rather than tidiness.
+
+The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
+as the `verify-signatures` gate after every publish and requires **both** a
+cosign signature and a provenance attestation for each pushed digest; an image
+whose attestation step silently failed fails the gate rather than shipping. A
+signature only proves who pushed the bytes, so signature-only verification
+would leave the L3 claim unchecked.
+
+Verify a published image yourself:
+
+```bash
+gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@sha256:<digest> \
+  -R Aureliolo/synthorg
+```
+
+To hold the build to the isolated definition rather than merely to this
+repository, pin the signer workflow:
+
+```bash
+gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@sha256:<digest> \
+  -R Aureliolo/synthorg \
+  --signer-workflow Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml
+```
 
 ### CIS Docker Benchmark
 
@@ -275,7 +324,7 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 ### Artifact Provenance
 
 - All base images **pinned by SHA-256 digest** (no mutable tags)
-- **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/apko-lock.yml`
+- **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/maint-apko-lock.yml`
 - **Renovate** auto-updates base-image digests weekly (Saturday mornings) for every Dockerfile (backend, sandbox, sidecar, fine-tune, desktop); the `dockerfile` manager plus `docker:pinDigests` scans them all
 - **cosign keyless signing** on every pushed image (Sigstore OIDC-bound)
 - **Buildx SPDX SBOMs** (SLSA L1) auto-generated and pushed to GHCR as registry attestations (inspect via `docker buildx imagetools inspect`). Standalone CycloneDX JSON SBOMs are generated separately by Syft. See [Software Bill of Materials](#software-bill-of-materials-sbom) below.

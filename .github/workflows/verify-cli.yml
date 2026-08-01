@@ -1,0 +1,587 @@
+name: Verify - CLI
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# CARDINAL RULE: correctness gates must never be conditioned on which
+# files changed. This workflow deliberately carries NO top-level ``paths:``
+# filter -- the Go lint / test / vuln correctness jobs run on every PR and
+# push. Only the build / perf jobs (cli-build, cli-bench, cli-fuzz) remain
+# path-scoped via the ``cli-changes`` gate, each justified inline.
+# check_local_ci_parity.py enforces this across verify-backend.yml AND verify-cli.yml.
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cli-changes:
+    name: Detect CLI Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.filter.outputs.cli || startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      # fetch-depth: 0. See verify-backend.yml Detect Changes for full rationale:
+      # paths-filter on push: events races on shallow checkouts.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: "0"
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          filters: |
+            cli:
+              - 'cli/**'
+
+  # ── Lint ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push,
+  # not just CLI changes -- a changed-file filter could silently drop it.
+  cli-lint:
+    name: CLI Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: go vet
+        working-directory: cli
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # renovate: datasource=github-releases depName=golangci/golangci-lint
+          version: v2.12.2
+          working-directory: cli
+
+  # ── Test (multi-platform) ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
+  cli-test:
+    name: CLI Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: Run tests with race detector and coverage
+        working-directory: cli
+        shell: bash
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload coverage
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cli-coverage
+          path: cli/coverage.out
+
+  # ── Build (compile check for all targets) ──
+  # BUILD job (cardinal-rule exemption): 6-platform cross-compile + smoke.
+  # Skipping it on non-CLI PRs cannot hide a correctness defect (cli-lint /
+  # cli-test above run unconditionally). Allowlisted in check_local_ci_parity.py.
+  # Not on tags: cli-release's GoReleaser compiles the identical six targets,
+  # and this job's binaries are discarded.
+  cli-build:
+    name: CLI Build
+    needs: cli-changes
+    if: needs.cli-changes.outputs.changed == 'true' && !startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: Build
+        id: build
+        working-directory: cli
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          # On the linux/amd64 cell, build to a real path so the
+          # smoke step below can execute it. All other matrix cells
+          # cross-compile to /dev/null -- they are compile-only
+          # checks; their binaries cannot be executed on this Linux
+          # runner.
+          if [ "${GOOS}" = "linux" ] && [ "${GOARCH}" = "amd64" ]; then
+            mkdir -p /tmp/cli-smoke
+            go build -ldflags="-s -w" -o /tmp/cli-smoke/synthorg ./main.go
+            echo "binary=/tmp/cli-smoke/synthorg" >> "$GITHUB_OUTPUT"
+          else
+            go build -ldflags="-s -w" -o /dev/null ./main.go
+          fi
+
+      # Smoke-test only the linux/amd64 matrix cell -- it is the
+      # only goos/goarch combination the runner can execute (cross-
+      # compiled darwin / windows binaries cannot run on Linux).
+      # The matrix gate is the ONLY scoping within this job; the smoke
+      # runs on every event that reaches cli-build (PR, push to main,
+      # workflow_dispatch). Catches `unknown flag`, crashes on startup,
+      # missing cgo deps, etc.
+      #
+      # Why every event, not just PRs:
+      #   - PR path: fails the originating PR with a red ❌ on the
+      #     commit row.
+      #   - push to main: catches regressions in commits that did
+      #     NOT come through PR CI -- auto-rollover empty commits,
+      #     release-please bumps, hotfixes pushed via the CLI, etc.
+      #     Without smoke here, those commits would let cli-release
+      #     ship a broken binary straight to a release.
+      #   - workflow_dispatch: protects ad-hoc rebuilds.
+      #
+      # Tag pushes do NOT reach here: this job is skipped on `refs/tags/v*`
+      # because cli-release's GoReleaser recompiles the same six targets.
+      # The `cli-tag-smoke` job below carries the tag path's smoke instead,
+      # and gates cli-release on it. release-finalize.yml does not re-test,
+      # so between the two of them this workflow is the source-of-truth gate
+      # on every event.
+      - name: Smoke-test CLI binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: ./.github/actions/smoke-test-cli-binary
+        with:
+          binary-path: ${{ steps.build.outputs.binary }}
+
+  # ── Tag-push smoke (the release path's binary gate) ──
+  # cli-build is skipped on `refs/tags/v*`, which took its smoke step with
+  # it and left the release path with no binary gate at all: GoReleaser would
+  # compile, sign, attest and publish an archive nothing had ever executed.
+  # This job restores that gate for the one platform the runner can execute,
+  # and cli-release needs it, so a binary that cannot start blocks the
+  # release rather than shipping in it.
+  cli-tag-smoke:
+    name: CLI Tag Smoke
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # This job runs only on a tag, and it gates the release, so the
+          # cache stays off for the same reason cli-build disables it there:
+          # a poisoned cache could turn a broken binary's smoke green.
+          # zizmor: ignore[cache-poisoning]
+          cache: false
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: Build linux/amd64
+        id: build
+        working-directory: cli
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cli-tag-smoke
+          go build -ldflags="-s -w" -o /tmp/cli-tag-smoke/synthorg ./main.go
+          echo "binary=/tmp/cli-tag-smoke/synthorg" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test CLI binary
+        uses: ./.github/actions/smoke-test-cli-binary
+        with:
+          binary-path: ${{ steps.build.outputs.binary }}
+
+  # ── Bench regression (in-CI A/B compare) ──
+  # PERF job (cardinal-rule exemption): HEAD-vs-merge-base benchmark A/B;
+  # skipping it on non-CLI PRs cannot hide a correctness defect. Allowlisted
+  # in check_local_ci_parity.py.
+  cli-bench:
+    name: CLI Bench Regression
+    needs: cli-changes
+    if: needs.cli-changes.outputs.changed == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Full history so merge-base lookup against origin/main
+          # resolves regardless of how far the PR diverged. A shallow
+          # clone (e.g. ``--depth=50``) would silently fail to find
+          # the merge-base for long-lived branches.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: Run CLI bench A/B (HEAD vs merge-base)
+        env:
+          BENCH_COUNT: 10
+          THRESHOLD_PCT: 15
+        run: bash scripts/check_cli_bench_regression.sh
+
+  # ── Vulnerability check ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
+  cli-vuln:
+    name: CLI Vulnerability Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      # ``go install`` is a separate network fetch (govulncheck and its
+      # transitive deps, NOT cli's module graph), so the cli prefetch
+      # above does not cover it. Inline-retry with the same posture as
+      # ``go-mod-download-retry`` for transient proxy.golang.org / GCS
+      # blips that don't trigger Go's ``direct`` fallback.
+      - name: Install govulncheck (with retry)
+        shell: bash
+        env:
+          MAX_ATTEMPTS: "8"
+          BASE_DELAY: "15"
+          MAX_DELAY: "120"
+        run: |
+          set -euo pipefail
+          attempt=0
+          delay="$BASE_DELAY"
+          while :; do
+            attempt=$((attempt + 1))
+            if go install golang.org/x/vuln/cmd/govulncheck@v1.3.0; then
+              if [ "$attempt" -gt 1 ]; then
+                echo "::notice::go install govulncheck succeeded on attempt $attempt"
+              fi
+              exit 0
+            fi
+            rc=$?
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::go install govulncheck failed after $attempt attempts" >&2
+              exit "$rc"
+            fi
+            echo "::warning::go install govulncheck transient failure (attempt $attempt/$MAX_ATTEMPTS), retrying in ${delay}s" >&2
+            sleep "$delay"
+            delay=$((delay * 2))
+            if [ "$delay" -gt "$MAX_DELAY" ]; then
+              delay="$MAX_DELAY"
+            fi
+          done
+
+      - name: Run govulncheck
+        working-directory: cli
+        run: govulncheck ./...
+
+  # ── License Scan (Go module closure) ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
+  # Runs the opt-in go-licenses transitive scan that the fast pre-push gate
+  # (check_license_compat.py without --scan-go-modules) deliberately skips for
+  # speed/offline reasons; here the Go toolchain + network are available.
+  cli-license:
+    name: CLI License Scan
+    runs-on: ubuntu-24.04
+    # 30m headroom: the go-licenses install retry ladder (up to 8 attempts,
+    # 120s max backoff) plus the 600s python-side go-licenses timeout can
+    # exceed 15m on a cold runner with a slow module proxy.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+      - uses: ./.github/actions/setup-python-uv
+
+      # ``go install`` is a separate network fetch (go-licenses + its deps,
+      # NOT cli's module graph), so the cli prefetch above does not cover it.
+      # Inline-retry mirrors the govulncheck step's posture for transient
+      # proxy.golang.org / GCS blips.
+      - name: Install go-licenses (with retry)
+        shell: bash
+        env:
+          MAX_ATTEMPTS: "8"
+          BASE_DELAY: "15"
+          MAX_DELAY: "120"
+        run: |
+          set -euo pipefail
+          attempt=0
+          delay="$BASE_DELAY"
+          while :; do
+            attempt=$((attempt + 1))
+            if bash scripts/install_cli_tools.sh go-licenses; then
+              if [ "$attempt" -gt 1 ]; then
+                echo "::notice::install go-licenses succeeded on attempt $attempt"
+              fi
+              break
+            fi
+            rc=$?
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::install go-licenses failed after $attempt attempts" >&2
+              exit "$rc"
+            fi
+            echo "::warning::install go-licenses transient failure (attempt $attempt/$MAX_ATTEMPTS), retrying in ${delay}s" >&2
+            sleep "$delay"
+            delay=$((delay * 2))
+            if [ "$delay" -gt "$MAX_DELAY" ]; then
+              delay="$MAX_DELAY"
+            fi
+          done
+          # Put the go-licenses binary (installed under GOPATH/bin) on PATH for
+          # the scan step via the persistent $GITHUB_PATH rather than a per-step
+          # inline subshell PATH export.
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run go-licenses transitive scan
+        run: uv run python scripts/check_license_compat.py --scan-go-modules
+
+  # ── Fuzz (main only -- too slow for PRs) ──
+  # PERF/SLOW job (cardinal-rule exemption): 45-min fuzzing, main-push only
+  # (never a PR gate). Allowlisted in check_local_ci_parity.py.
+  cli-fuzz:
+    name: CLI Fuzz
+    needs: cli-changes
+    if: needs.cli-changes.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - ./internal/compose/
+          - ./internal/selfupdate/
+          - ./internal/config/
+          - ./internal/docker/
+          - ./internal/verify/
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: cli/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      # Two steps: discovery and execution are split so compile errors
+      # in fuzz targets fail the matrix cell loudly. The prior single
+      # step had a job-level `continue-on-error: true` that silenced
+      # both fuzzer-found crashes (intentional, advisory only) AND
+      # `go test -list` compile failures (unintentional, real bugs).
+      # Discovery runs without continue-on-error; execution keeps it.
+      - name: List fuzz targets
+        id: fuzz_list
+        working-directory: cli
+        env:
+          PKG: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          # go test -list exits non-zero on compile errors; let that
+          # propagate so broken packages aren't silently skipped.
+          LIST_OUTPUT=$(go test -list 'Fuzz.*' "$PKG" 2>&1) || {
+            echo "::error::go test -list failed for $PKG (compile error?)"
+            echo "$LIST_OUTPUT"
+            exit 1
+          }
+          FUZZ_TARGETS=$(echo "$LIST_OUTPUT" | grep '^Fuzz' || true)
+          # Multi-line GITHUB_OUTPUT requires a heredoc-style delimiter;
+          # see https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
+          {
+            echo "targets<<TARGETS_EOF"
+            echo "$FUZZ_TARGETS"
+            echo "TARGETS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run fuzz tests (30s per target)
+        id: fuzz_run
+        if: steps.fuzz_list.outputs.targets != ''
+        continue-on-error: true
+        working-directory: cli
+        env:
+          # Pass via env (not direct ${{ }} interpolation) so multi-line
+          # values survive without GitHub Actions expression-syntax
+          # escaping pitfalls.
+          FUZZ_TARGETS: ${{ steps.fuzz_list.outputs.targets }}
+          PKG: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          # Run each Fuzz* function in the package for 30s. go test
+          # -fuzz only supports one fuzz target at a time, so iterate.
+          while IFS= read -r target; do
+            [ -z "$target" ] && continue
+            echo "::group::Fuzzing $target"
+            go test -fuzz="^${target}$" -fuzztime=30s "$PKG"
+            echo "::endgroup::"
+          done <<< "$FUZZ_TARGETS"
+
+      - name: Report fuzz outcome
+        if: always()
+        env:
+          FUZZ_OUTCOME: ${{ steps.fuzz_run.outcome }}
+        run: |
+          if [ "$FUZZ_OUTCOME" = "failure" ]; then
+            echo "::warning::Fuzz target reported failures"
+          fi
+
+  # ── Gate: all CLI checks must pass ──
+  cli-pass:
+    name: CLI Pass
+    if: always()
+    needs: [cli-changes, cli-lint, cli-test, cli-build, cli-bench, cli-vuln, cli-fuzz, cli-license]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          RESULTS: >-
+            ${{ needs.cli-changes.result }}
+            ${{ needs.cli-lint.result }}
+            ${{ needs.cli-test.result }}
+            ${{ needs.cli-build.result }}
+            ${{ needs.cli-bench.result }}
+            ${{ needs.cli-vuln.result }}
+            ${{ needs.cli-fuzz.result }}
+            ${{ needs.cli-license.result }}
+        run: |
+          if echo "$RESULTS" | grep -qE "failure|cancelled"; then
+            echo "CLI checks failed. Job results: $RESULTS"
+            exit 1
+          fi
+          # cli-fuzz uses step-level continue-on-error, so fuzz findings
+          # don't fail the job -- only infra failures (checkout, setup-go)
+          # propagate here. Fuzz warnings are emitted by the per-matrix
+          # "Report fuzz outcome" step.
+          echo "All CLI checks passed (some may have been skipped due to path filters)"
+
+  # ── Release (GoReleaser + provenance, only on version tags) ──
+  # No `cli-build` in needs: it is skipped on tags, and a skipped dependency
+  # would park this job forever. `cli-tag-smoke` carries the binary gate on
+  # this path instead, and runs on exactly the same `refs/tags/v*` condition,
+  # so it is always present here rather than skipped.
+  cli-release:
+    name: CLI Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [cli-lint, cli-test, cli-vuln, cli-tag-smoke]
+    # Permissions are granted HERE as well as in the called workflow: a called
+    # workflow inherits the caller's token scopes and may narrow them, never
+    # widen them, so omitting these would leave it unable to attest or upload.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/reusable-release-cli.yml

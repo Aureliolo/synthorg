@@ -13,32 +13,37 @@ The preflight is non-blocking on pull requests and feature branches; it only fai
 
 CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
 
-Bootstrap once: **Actions -> Sync Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
+Bootstrap once: **Actions** -> **`Maint - Labels`** -> **Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
 
 After this, the `Missing labels` section of the preflight tracking issue should clear on the next preflight run.
 
 ## 2. Create the GitHub environments
 
-CI uses six GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open.
+CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits the first six unconditionally, so create every one of those even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open. `lighthouse` is not audited, but `perf-web-vitals.yml` runs against it and `Lighthouse Pass` is a required check, so create it too.
 
 Create at **Settings -> Environments -> New environment**:
 
 | Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
-| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `finalize-release.yml` | Yes |
-| `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
-| `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
-| `cloudflare-preview` | `pages-preview.yml` | Yes |
-| `image-push` | `docker.yml` image push paths | Yes |
-| `github-pages` | `pages.yml` push to main | Yes |
+| `release` | `release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, `release-finalize.yml` | Yes |
+| `release-tags` | `verify-cli.yml`, `build-images.yml` (tag pushes) | Yes |
+| `apko-lock` | `maint-apko-lock.yml` (scheduled lockfile updates) | Yes |
+| `cloudflare-preview` | `build-docs-preview.yml` | Yes |
+| `image-push` | `build-images.yml` image push paths | Yes |
+| `github-pages` | `build-docs.yml` push to main | Yes |
+| `lighthouse` | `perf-web-vitals.yml` (holds `LHCI_GITHUB_APP_TOKEN`) | No |
 
 For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs. See [`docs/reference/github-environments.md`](../reference/github-environments.md) for the full branch-policy matrix.
 
-Workflow consumers of each environment fall into two camps: required for any release activity (`release`, `release-tags`, `image-push`, `apko-lock`, `github-pages`), and optional capabilities you can leave un-credentialed if your fork does not need them (`cloudflare-preview` for PR docs previews, `apko-lock` if you skip scheduled Wolfi lock updates). The environment must still exist for the preflight to pass; the secrets inside can be empty until you actually use the workflow.
+The six audited environments must all exist for CI Preflight to pass, whether or not your fork uses the corresponding workflow. What varies is whether they need credentials, and most do not: `release` holds the release-bot App secrets and `apko-lock` holds a copy of them, `cloudflare-preview` holds the Cloudflare deploy secrets, and the rest carry none. `release-tags` is a structural ref gate with no privileged secrets at all, `image-push` publishes with the ambient `github.token`, and `github-pages` deploys over OIDC rather than a stored secret. Create all six; populate secrets only for the capabilities you actually use.
+
+`lighthouse` sits outside that set: preflight does not audit it, so omitting it keeps the tracking issue closed, but `perf-web-vitals.yml` runs against it and `Lighthouse Pass` is a required check, so create it before you expect that check to report.
+
+`cloudflare-preview` and `lighthouse` carry no deployment branch policy, because they run on `pull_request` events whose `github.ref` (`refs/pull/<N>/merge`) no branch-type policy can match. Their workflow-level fork gates are the real control. See [`docs/reference/github-environments.md`](../reference/github-environments.md).
 
 ## 3. Create the release-bot GitHub App
 
-The release pipeline (`release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, and `finalize-release.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
+The release pipeline (`release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, and `release-finalize.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `maint-apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
 
 Steps:
 
@@ -77,7 +82,7 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 ### Optional: GHCR image cleanup
 
-`ghcr-cleanup.yml` prunes old dev and PR container images from your fork's GHCR namespace (releases are always kept). It ships **disabled**, in dry-run. To enable real deletions on your fork:
+`maint-ghcr.yml` prunes old dev and PR container images from your fork's GHCR namespace (releases are always kept). It ships **disabled**, in dry-run. To enable real deletions on your fork:
 
 - Set the repository **variable** `GHCR_CLEANUP_ENABLED=true` (Settings -> Secrets and variables -> Actions -> Variables). While unset, the cleanup runs in dry-run and deletes nothing.
 - Optionally add a repository **secret** `GHCR_CLEANUP_TOKEN`: a classic PAT with `write:packages` + `delete:packages` scopes, giving the cleanup an explicit deletion identity. When absent, deletion falls back to the auto-provided `${{ github.token }}`. Both are repository-scoped, not environment-scoped.

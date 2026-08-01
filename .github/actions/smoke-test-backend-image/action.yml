@@ -14,7 +14,7 @@ description: |
       whole stack down with it
 
   This composite action is the single source of truth for the
-  backend image smoke test. It runs at build time in `docker.yml`
+  backend image smoke test. It runs at build time in `build-images.yml`
   on every event that builds the backend image (PR, push to main,
   v* tag pushes, workflow_dispatch) so a broken image fails the
   originating commit with a red ❌ on the commit row, never the

@@ -1,6 +1,6 @@
 """Generate the framework comparison Markdown page from YAML data.
 
-Used by CI (pages.yml, pages-preview.yml) to generate:
+Used by CI (build-docs.yml, build-docs-preview.yml) to generate:
 - ``docs/reference/comparison.md`` -- Markdown comparison tables
 
 The same YAML data (``data/competitors.yaml``) is also consumed

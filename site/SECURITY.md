@@ -8,7 +8,7 @@ response header is live in production.
 
 - **PR preview** -> Cloudflare Pages. Honours `public/_headers`, so the full
   response-header set below is live on previews.
-- **Production (synthorg.io)** -> GitHub Pages (`.github/workflows/pages.yml`,
+- **Production (synthorg.io)** -> GitHub Pages (`.github/workflows/build-docs.yml`,
   `actions/deploy-pages`). GitHub Pages does NOT support a `_headers` file and
   cannot send custom response headers.
 

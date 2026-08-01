@@ -8,11 +8,13 @@ The gate's job is to catch the SECOND occurrence of the category; the audit's jo
 
 ## Gate inventory
 
-This table is the single source of truth for every custom `scripts/check_*.py` gate: the stages it runs at, the tree it scopes to, whether it re-scans its whole scope or only the changed files, whether it is baseline-driven, and the audit verdict. If an entry below disappears or a new `check_*.py` script lands, update this table in the same PR (the meta-gate `check_convention_gate_inventory.py` enforces this for the canonical doc set).
+This table is the single source of truth for every custom `scripts/check_*.py` gate: the stages it runs at, the tree it scopes to, whether it re-scans its whole scope or only the changed files, whether it is baseline-driven, and the audit verdict. If an entry below disappears or a new `check_*.py` script lands, update this table in the same PR.
+
+That update is a convention, not an enforced one. `check_convention_gate_inventory.py` reconciles CLAUDE.md's `(MANDATORY)` paragraphs against `scripts/convention_gate_map.yaml`; it never reads this table and never enumerates `scripts/check_*.py`, so a new gate that skips its row here fails nothing. Two gates were added without a row before that gap was noticed.
 
 **Column semantics:**
 
-- **Stages**: `commit+push` (pre-commit *and* pre-push), `push` (pre-push only), `PreToolUse` / `PostToolUse` (Claude Code + OpenCode agent-time hooks, no repo-stage counterpart), `CI` (runs only in a dedicated CI job). Every `commit+push` / `push` gate ALSO runs in CI via the de-conditioned `Gates` job in `ci.yml`, which executes `pre-commit run --all-files` at *both* the pre-commit and pre-push stages; the exceptions are the SKIP-listed gates that have a dedicated CI job (see *CI parity* below). Agent-time hooks are excluded from CI parity by design.
+- **Stages**: `commit+push` (pre-commit *and* pre-push), `push` (pre-push only), `PreToolUse` / `PostToolUse` (Claude Code + OpenCode agent-time hooks, no repo-stage counterpart), `CI` (runs only in a dedicated CI job). Every `commit+push` / `push` gate ALSO runs in CI via the de-conditioned `Gates` job in `verify-backend.yml`, which executes `pre-commit run --all-files` at *both* the pre-commit and pre-push stages; the exceptions are the SKIP-listed gates that have a dedicated CI job (see *CI parity* below). Agent-time hooks are excluded from CI parity by design.
 - **Scan**: `full` (re-scans its entire scope on every fire, `pass_filenames: false`; a violation anywhere in scope is caught regardless of which file the commit touched), `staged` (only the changed files pre-commit passes), `affected` (the affected-module set computed from the diff). `full` is the safe default for a correctness gate.
 - **Changed-file?**: whether the gate's *findings* are limited to changed files. `no` for every `full`-scan gate (the audit's target posture). This is the gate-level analogue of the CI cardinal rule.
 - **Baseline**: the offender-ledger file, or `none` for zero-tolerance gates.
@@ -26,6 +28,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
@@ -57,10 +60,10 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_gateway_explicit_binding.py` | push | `api/gateway/` | full | no | none | add |
 | `check_frozen_model_extra_forbid.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | add |
-| `check_image_signatures.py` | CI (`docker.yml`) | published image digests | n/a | n/a | none | keep |
+| `check_image_signatures.py` | CI (`build-images.yml`) | published image digests | n/a | n/a | none | keep |
 | `check_license_compat.py` | push | `pyproject.toml` + `uv.lock` + `cli/go.{mod,sum}` + `web/package-lock.json` + `NOTICE` | full | no | none | add |
 | `check_list_pagination.py` | commit+push | `persistence/` | full | no | `list_pagination_baseline.txt` | keep |
-| `check_local_ci_parity.py` | commit+push | `.pre-commit-config.yaml` + `ci.yml` | full | no | none | **add** (keystone) |
+| `check_local_ci_parity.py` | commit+push | `.pre-commit-config.yaml` + `verify-backend.yml` | full | no | none | **add** (keystone) |
 | `check_logger_exception_str_exc.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_long_running_loops_have_kill_switch.py` | push | `src/synthorg/` | full | no | `long_running_loops_kill_switch_baseline.txt` | keep |
 | `check_mcp_admin_tool_guardrails.py` | push | `meta/mcp/` | full | no | none | keep |
@@ -99,15 +102,16 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_stdlib_logging.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_stubs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_synthorg_any_override.py` | commit+push | `pyproject.toml` | full | no | none | keep |
-| `check_openapi_liveness.py` | CI (`ci.yml`) | exported OpenAPI schema | n/a | n/a | none | keep |
+| `check_openapi_liveness.py` | CI (`verify-backend.yml`) | exported OpenAPI schema | n/a | n/a | none | keep |
 | `check_orphan_fixtures.py` | push | `tests/` | full | no | none | harden |
 | `check_output_boundaries_guarded.py` | push | the output-style boundary files | full | no | none | add |
 | `check_otlp_span_redaction.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |
-| `check_pin_golden_fresh.py` | CI (`ci.yml :: pin-drift-regression`) | live pins vs `pin_golden.json` | full | no | none | add |
+| `check_pin_golden_fresh.py` | CI (`verify-backend.yml :: pin-drift-regression`) | live pins vs `pin_golden.json` | full | no | none | add |
 | `check_prompt_class_metadata.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
+| `check_pyright_baseline.py` | CI (`verify-backend.yml :: type-check-pyright`) | pyright report over the whole tree | full | no | `pyright_finding_baseline.json` | add |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_runtime_reachability.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
@@ -127,16 +131,16 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->105<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->107<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
-The de-conditioned `Gates` job in `.github/workflows/ci.yml` runs `uv run pre-commit run --all-files` at **both** the pre-commit and pre-push stages on every PR, so the whole `commit+push` / `push` gate set above has a machine-checked CI backstop: a `--no-verify` push can no longer land a violation CI never catches. `check_local_ci_parity.py` (the keystone gate of this audit) enforces that every parity-stage hook id either runs in that job or is explicitly accounted for in one of two maps:
+The de-conditioned `Gates` job in `.github/workflows/verify-backend.yml` runs `uv run pre-commit run --all-files` at **both** the pre-commit and pre-push stages on every PR, so the whole `commit+push` / `push` gate set above has a machine-checked CI backstop: a `--no-verify` push can no longer land a violation CI never catches. `check_local_ci_parity.py` (the keystone gate of this audit) enforces that every parity-stage hook id either runs in that job or is explicitly accounted for in one of two maps:
 
-- **`_COVERED_ELSEWHERE`**: gates the `Gates` job SKIPs because a dedicated CI job already runs them with a richer toolchain. `mypy` to `type-check`, `pytest-unit` to `test-unit`, `go-vet` / `go-test` / `golangci-lint` to `cli.yml`, `web-checks` to `dashboard-*`, `lychee` to `lychee.yml`, `hadolint-docker` to `dockerfile-lint`, `gitleaks` to `secret-scan`, `zizmor` to `zizmor`, `vale` / `caddy-validate` to their own steps in the `Gates` job, and the two migration git-state gates (`check-single-migration-per-pr`, `check-no-modify-migration`) to `schema-validate` (the only job with `fetch-depth: 0` + the base ref / `origin/main` those gates need).
+- **`_COVERED_ELSEWHERE`**: gates the `Gates` job SKIPs because a dedicated CI job already runs them with a richer toolchain. `mypy` to `type-check`, `pytest-unit` to `test-unit`, `go-vet` / `go-test` / `golangci-lint` to `verify-cli.yml`, `web-checks` to `dashboard-*`, `lychee` to `verify-links.yml`, `hadolint-docker` to `dockerfile-lint`, `gitleaks` to `secret-scan`, `zizmor` to `zizmor`, `vale` / `caddy-validate` to their own steps in the `Gates` job, and the two migration git-state gates (`check-single-migration-per-pr`, `check-no-modify-migration`) to `schema-validate` (the only job with `fetch-depth: 0` + the base ref / `origin/main` those gates need).
 - **`_LOCAL_ONLY`**: the one git-state check meaningful only on the pushing developer's clone, never in an ephemeral CI runner: `check-push-rebased` (branch-freshness; CI checks out a fixed merge SHA where "behind main" is meaningless, and GitHub branch protection's "require branches up to date" is the server-side equivalent).
 
-The same gate also asserts the **cardinal rule**: no CI *correctness* job (in `ci.yml` or `cli.yml`) may be conditioned on a changed-file filter. Path scoping survives only on pure build/perf jobs (codspeed, lighthouse, docker build, dashboard-build, `cli-build` / `cli-bench` / `cli-fuzz`), each carrying an explicit justification comment; a `dorny/paths-filter` race on a shallow checkout must never be able to silently drop a correctness gate.
+The same gate also asserts the **cardinal rule**: no CI *correctness* job (in `verify-backend.yml` or `verify-cli.yml`) may be conditioned on a changed-file filter. Path scoping survives only on pure build/perf jobs (codspeed, lighthouse, docker build, dashboard-build, `cli-build` / `cli-bench` / `cli-fuzz`), each carrying an explicit justification comment; a `dorny/paths-filter` race on a shallow checkout must never be able to silently drop a correctness gate.
 
 ### Whole-tree lint / type
 
@@ -224,8 +228,8 @@ One `SessionEnd` hook in `.claude/settings.json` runs `scripts/run_affected_mypy
 Three third-party linters run as pre-push hooks on Markdown to enforce style + link integrity without needing custom `check_*.py` scripts. They are listed here for completeness alongside the custom gates above:
 
 - `markdownlint` (`igorshubovych/markdownlint-cli`): Markdown formatting rules (list indent, heading levels, fenced-code language tags, blanks-around-lists). Config in `.markdownlint.json`; version pinned in `.pre-commit-config.yaml`. Runs on README + every CLAUDE.md tier + `docs/**/*.md` at every installed stage (no explicit `stages:`), so docs are linted at commit time AND on every push.
-- `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, at pre-push stage and as the `.github/workflows/lychee.yml` PR/push gate, both `--offline`: internal links only (relative + `file://`), so a third-party host's downtime or expired certificate can never block a push or a merge. External (remote) links are checked weekly by `.github/workflows/lychee-external.yml`, which files a tracking issue via the `post-tracking-issue` composite action instead of blocking. Binary installed via `bash scripts/install_cli_tools.sh lychee`.
-- `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage, and as a dedicated step in the `ci.yml` `Gates` job. Binary installed once per machine via `bash scripts/install_cli_tools.sh vale`; the gitignored `.vale/styles/Google/` style package is then materialised lazily by `scripts/vale-prepush.sh` (the pre-push wrapper) on the first push in each worktree, so additional worktrees need no extra setup step.
+- `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, at pre-push stage and as the `.github/workflows/verify-links.yml` PR/push gate, both `--offline`: internal links only (relative + `file://`), so a third-party host's downtime or expired certificate can never block a push or a merge. External (remote) links are checked weekly by `.github/workflows/maint-link-rot.yml`, which files a tracking issue via the `post-tracking-issue` composite action instead of blocking. Binary installed via `bash scripts/install_cli_tools.sh lychee`.
+- `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage, and as a dedicated step in the `verify-backend.yml` `Gates` job. Binary installed once per machine via `bash scripts/install_cli_tools.sh vale`; the gitignored `.vale/styles/Google/` style package is then materialised lazily by `scripts/vale-prepush.sh` (the pre-push wrapper) on the first push in each worktree, so additional worktrees need no extra setup step.
 
 ## Ruff-enforced docstring completeness (DOC201 / DOC202 / DOC501)
 
@@ -284,3 +288,23 @@ Adding an entry therefore means regenerating the baseline, which `check_baseline
 `scripts/check_convention_gate_inventory.py` enforces that every MANDATORY paragraph in the canonical doc set has either a registered gate or an explicit `exempt: { reason }` entry in `scripts/convention_gate_map.yaml`. Adding a new MANDATORY without updating the YAML fails pre-push.
 
 See [conventions.md §17](conventions.md) for the registration procedure detail.
+
+## GitHub Actions hardening coverage
+
+Control-by-control mapping against GitHub's *Security hardening for GitHub Actions* guide and OpenSSF's Actions guidance. Each row names where the control is enforced, so a regression fails a gate rather than relying on review.
+
+| Control | Status | Enforced by |
+|---|---|---|
+| Pin third-party actions to a full commit SHA | Met | Renovate `github-actions` manager; OpenSSF Scorecard `Pinned-Dependencies` (135/135 third-party, 71/71 GitHub-owned) |
+| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 33 workflows, per-job grants; Scorecard `Token-Permissions` 10/10 |
+| Never persist credentials in the workspace | Met | `persist-credentials: false` on every checkout; zizmor `artipacked` |
+| No untrusted checkout under `pull_request_target` | Met | One use (`repo-cla.yml`), checks out `ref: main`; zizmor `dangerous-triggers` with a scoped ignore |
+| No script injection from event data | Met | Event fields routed through `env:`; zizmor `template-injection` |
+| Cache never influences a release artifact | Met | `verify-cli.yml` disables the Go cache on tag refs; `cli-release` sets `cache: false`; zizmor `cache-poisoning` |
+| Every job bounded by `timeout-minutes` | Met | `check_ci_workflow_resilience.py` invariant 1 |
+| Required checks cannot silently stop gating | Met | `check_ci_rollup_complete.py` |
+| Runner images pinned, not rolling | Met | `check_ci_workflow_resilience.py` invariant 9 |
+| Base images resolved by digest | Met | `check_ci_workflow_resilience.py` invariant 8 |
+| Artefacts signed and provenance-attested | Met | `scripts/check_image_signatures.py` (signature **and** SLSA provenance) |
+| Self-hosted runners | Not applicable | GitHub-hosted only |
+| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh` (post-merge drift) and the `branch-protection-spec` PR check |

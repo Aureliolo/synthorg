@@ -21,9 +21,16 @@ import (
 const (
 	// expectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	expectedIssuer = "https://token.actions.githubusercontent.com"
-	// expectedSANRegex matches the CLI release workflow identity for this repo.
-	// Only accepts signatures from the cli.yml workflow on semver tag pushes.
-	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
+	// expectedSANRegex matches the CLI release workflow identity for this
+	// repo, on semver tag pushes only.
+	//
+	// Both verify-cli.yml and its former name cli.yml are accepted: keyless
+	// signing derives the SAN from the workflow file path, so a release
+	// bundle keeps the name in force when it was cut. Dropping the old name
+	// would make every already-published release unverifiable, stranding
+	// anyone updating from one. The tag-only ref anchor means admitting the
+	// retired name grants nothing a default-branch writer lacks.
+	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(verify-cli|cli)\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
 )
 
 // tufFetchTimeout bounds the TUF metadata fetch for the trusted root. Set

@@ -3,7 +3,6 @@
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 
@@ -25,7 +24,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
+_GATE = _load_gate()
 
 
 # ── _effective_stages ───────────────────────────────────────────
@@ -150,7 +149,7 @@ def _write_ci(root: Path, skip: str, *, both_stages: bool = True) -> None:
             "      - name: pre-push stage\n"
             "        run: uv run pre-commit run --all-files --hook-stage pre-push\n"
         )
-    (wf_dir / "ci.yml").write_text(
+    (wf_dir / "verify-backend.yml").write_text(
         "jobs:\n"
         "  gates:\n"
         "    env:\n"
@@ -198,12 +197,12 @@ def test_parity_flags_missing_pre_push_stage(
 def _write_cardinal_workflows(root: Path, ci_job_if: str) -> None:
     wf_dir = root / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
-    (wf_dir / "ci.yml").write_text(
+    (wf_dir / "verify-backend.yml").write_text(
         "jobs:\n  my-correctness-job:\n    if: " + ci_job_if + "\n",
         encoding="utf-8",
     )
-    # cli.yml must exist (the gate iterates both); keep it clean.
-    (wf_dir / "cli.yml").write_text("jobs: {}\n", encoding="utf-8")
+    # verify-cli.yml must exist (the gate iterates both); keep it clean.
+    (wf_dir / "verify-cli.yml").write_text("jobs: {}\n", encoding="utf-8")
 
 
 def test_cardinal_flags_correctness_job_on_changed_file(tmp_path: Path) -> None:
@@ -222,7 +221,7 @@ def test_cardinal_clean_when_only_event_guard(tmp_path: Path) -> None:
 def _write_ci_job_with_step_if(root: Path, job_name: str, step_if: str) -> None:
     wf_dir = root / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
-    (wf_dir / "ci.yml").write_text(
+    (wf_dir / "verify-backend.yml").write_text(
         f"jobs:\n  {job_name}:\n"
         "    if: needs.changes.outputs.is_release_please != 'true'\n"
         "    steps:\n"
@@ -231,7 +230,7 @@ def _write_ci_job_with_step_if(root: Path, job_name: str, step_if: str) -> None:
         "        run: echo hi\n",
         encoding="utf-8",
     )
-    (wf_dir / "cli.yml").write_text("jobs: {}\n", encoding="utf-8")
+    (wf_dir / "verify-cli.yml").write_text("jobs: {}\n", encoding="utf-8")
 
 
 def test_cardinal_flags_step_level_changed_file_condition(tmp_path: Path) -> None:

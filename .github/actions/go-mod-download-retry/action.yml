@@ -20,7 +20,7 @@ description: |
   scoped to network errors only: if prefetch succeeds, the real
   command runs once against an on-disk cache.
 
-  Retry posture matches ``cla.yml::gh_api_retry`` and the docker.yml
+  Retry posture matches ``repo-cla.yml::gh_api_retry`` and the build-images.yml
   cosign sign retry: 8 attempts, 15s base delay doubling to a 120s
   cap (15+30+60+120*5 = ~10 min budget).  Same defaults as
   ``actions/setup-go``'s internal retry, kept independent so the

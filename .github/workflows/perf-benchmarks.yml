@@ -1,0 +1,344 @@
+name: Perf - Benchmarks
+
+# Continuous performance regression detection across the Python backend and
+# the React 19 dashboard, consolidated into a SINGLE workflow per CodSpeed's
+# Sharded Benchmarks contract:
+# https://codspeed.io/docs/features/sharded-benchmarks
+#
+# CodSpeed aggregates benchmark uploads from multiple jobs into ONE PR
+# report ONLY when those jobs share a workflow run id. Splitting Python and
+# Web into two separate workflows (the prior layout) caused the second-
+# completing workflow's results to overwrite the first's CodSpeed PR
+# comment, with the missing benchmarks marked "unknown cause" -- the
+# regression scenario this consolidated layout prevents. Sharing one workflow run also
+# requires a SINGLE auth method across all bench jobs (OIDC here, declared
+# via id-token: write on each shard).
+#
+# Why no top-level paths: filter:
+#   codspeed-python-pass / codspeed-web-pass are REQUIRED status checks on
+#   main (see .github/branch_protection.yml). A workflow-level paths:
+#   filter would prevent the workflow from starting on PRs that touch
+#   neither surface, leaving the required checks absent / pending and
+#   blocking unrelated merges. Same architecture as perf-web-vitals.yml: the
+#   workflow ALWAYS runs on pull_request / push to main; the changes gate
+#   detects which surfaces were touched and skips the heavy bench job(s)
+#   accordingly. Each pass-job aggregates its own shard so the required
+#   contexts always report.
+#
+# Mode rationale: CPU Simulation (cachegrind / valgrind), instruction-count
+# variance under 1% across runners. Walltime would need Macro Runners
+# (CodSpeed's bare-metal pool) to match that variance, which we have
+# explicitly scoped out to keep the gate free-tier.
+#
+# Python rides the memory instrument alongside simulation (mode:
+# simulation,memory): as of CodSpeed runner 4.17 memtrack runs sudo-less
+# via file capabilities on standard GitHub-hosted runners, and the Python
+# benchmarks touch large enough, deterministic allocations for heap
+# regressions to surface next to CPU in the same report at no extra job
+# (pytest-codspeed 5.0.3 >= 4.3.0).
+#
+# Web runs simulation only. Every dashboard benchmark is a sub-kilobyte
+# pure helper (locale, format, csrf, sanitize, pagination), where memtrack
+# measures a few hundred bytes dominated by V8 allocator internals (Intl
+# temporaries, exception objects on fall-through paths). That figure shifts
+# with the CI runner's CPU vendor on identical source, so the memory
+# instrument produced phantom regressions there with no real signal; the
+# deterministic simulation instruction count (variance under 1% across
+# runners) is the trustworthy guard for these micro helpers
+# (@codspeed/vitest-plugin 5.6.0 >= 5.2.0).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # The required `CodSpeed Python Pass` / `CodSpeed Web Pass` contexts must
+  # report on the merge-queue ref so a dropped pull_request dispatch on a PR
+  # head can never permanently block a merge. See verify-backend.yml and
+  # docs/reference/claude-reference.md (Merge queue).
+  merge_group:
+  # workflow_dispatch lets CodSpeed back-test historical commits to seed
+  # the dashboard with baseline data after first install.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      # fetch-depth: 0. See verify-backend.yml Detect Changes for full rationale:
+      # paths-filter on push: events races on shallow checkouts.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: "0"
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          # base/ref make the diff correct on `merge_group` (empty/falsy on
+          # push / pull_request, so default detection is preserved there). See
+          # verify-backend.yml Detect Changes for the full rationale.
+          base: ${{ github.event.merge_group.base_sha }}
+          ref: ${{ github.event.merge_group.head_sha }}
+          filters: |
+            python:
+              - 'src/synthorg/**'
+              - 'tests/benchmarks/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/actions/setup-python-uv/**'
+              - '.github/workflows/perf-benchmarks.yml'
+            web:
+              - 'web/**'
+              - 'docs/openapi/openapi.json'
+              - '.github/workflows/perf-benchmarks.yml'
+
+  # ── Shard 1: Python backend benchmarks ──
+  codspeed-python:
+    name: CodSpeed Python benchmarks
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-24.04
+    # 30 (was 15) so the worst case of the 3-attempt CodSpeed ladder below
+    # (a transient OIDC/upload failure forcing up to three benchmark runs)
+    # still completes within the job budget. Each attempt now runs two
+    # instruments (simulation + memory) over the same serial suite; both are
+    # fast relative to cachegrind, so the budget holds. Steady state runs
+    # once; the extra runs only occur during an actual CodSpeed outage.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # OIDC-based auth to CodSpeed (no CODSPEED_TOKEN secret required).
+      # Sharded Benchmarks REQUIRES the same auth method on every shard;
+      # codspeed-web below uses the same id-token: write declaration.
+      id-token: write
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      # CodSpeed authenticates via OIDC (id-token: write) and uploads to
+      # codspeed.io. Both phases can hit a transient 503 (the same
+      # getIDToken() / upstream-upload failure class that took down the
+      # Codecov step), and this is a REQUIRED check, so an unguarded blip
+      # blocks PR merges. The 3-attempt ladder rides it out: intermediate
+      # attempts carry continue-on-error so the run advances to the retry;
+      # the final attempt has none, so a persistent CodSpeed outage fails
+      # the check loud. The benchmark re-runs only when an attempt actually
+      # fails -- the steady-state path runs the suite once.
+      #
+      # The env / with block (typeguard suppression, serial -n0,
+      # simulation+memory mode) is identical across attempts; see the
+      # inline rationale on attempt 1.
+      - name: Run CodSpeed Python benchmarks (attempt 1/3)
+        id: codspeed-py-1
+        continue-on-error: true
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        env:
+          # Measure the real production code path, not test-harness overhead:
+          # typeguard is a test-only instrument (never runs in production). This
+          # flag makes tests/conftest.py skip its install_import_hook; the empty
+          # --typeguard-packages= below disables the redundant plugin install.
+          # Both are required -- either one left active re-instruments synthorg.
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
+        with:
+          mode: simulation,memory
+          # Allocator time is the dominant source of run-to-run variance in
+          # simulation mode, and it measures the allocator rather than our
+          # code. Excluding it narrows the noise band that has repeatedly
+          # produced phantom regressions. Scoped to simulation results only,
+          # so the `memory` instrument's allocation counts are untouched.
+          exclude-allocations: "true"
+          # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
+          # pytest-codspeed must run serial for deterministic measurements.
+          # --typeguard-packages= overrides the addopts default so the typeguard
+          # plugin instruments nothing (see SYNTHORG_BENCH_NO_TYPEGUARD above).
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
+      - name: Backoff before CodSpeed Python attempt 2
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Python attempt 1 failed; waiting 20s before retry"
+          sleep 20
+      - name: Run CodSpeed Python benchmarks (attempt 2/3)
+        id: codspeed-py-2
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        env:
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
+        with:
+          mode: simulation,memory
+          exclude-allocations: "true"
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
+      - name: Backoff before CodSpeed Python attempt 3
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Python attempt 2 failed; waiting 60s before final retry"
+          sleep 60
+      - name: Run CodSpeed Python benchmarks (attempt 3/3)
+        if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        env:
+          SYNTHORG_BENCH_NO_TYPEGUARD: "1"
+        with:
+          mode: simulation,memory
+          exclude-allocations: "true"
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
+
+  # ── Shard 2: React dashboard benchmarks ──
+  codspeed-web:
+    name: CodSpeed Web benchmarks
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    # 30: headroom for the 3-attempt CodSpeed ladder below. Web runs a
+    # single instrument (simulation only, see the mode-rationale comment
+    # above), so this is budgeted generously relative to the codspeed-python
+    # job, which runs two instruments per attempt.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.1
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        # The composite retries on registry blips and verifies + repairs any
+        # native binding npm's optional-dep race (npm/cli#4828) drops.
+        # --fetch-retries adds npm's own exponential backoff on top.
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: web
+          npm-ci-args: --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+
+      # 3-attempt OIDC/upload retry ladder, same rationale as the
+      # codspeed-python job above. Required check; rides out a transient
+      # CodSpeed 503, fails loud on a persistent one.
+      - name: Run CodSpeed Web benchmarks (attempt 1/3)
+        id: codspeed-web-1
+        continue-on-error: true
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        with:
+          mode: simulation
+          exclude-allocations: "true"
+          run: npm --prefix web run bench
+      - name: Backoff before CodSpeed Web attempt 2
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Web attempt 1 failed; waiting 20s before retry"
+          sleep 20
+      - name: Run CodSpeed Web benchmarks (attempt 2/3)
+        id: codspeed-web-2
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
+        continue-on-error: true
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        with:
+          mode: simulation
+          exclude-allocations: "true"
+          run: npm --prefix web run bench
+      - name: Backoff before CodSpeed Web attempt 3
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
+        run: |
+          echo "::warning::CodSpeed Web attempt 2 failed; waiting 60s before final retry"
+          sleep 60
+      - name: Run CodSpeed Web benchmarks (attempt 3/3)
+        if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
+        uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+        with:
+          mode: simulation
+          exclude-allocations: "true"
+          run: npm --prefix web run bench
+
+  # ── Branch-protection-friendly aggregators ──
+  # Two pass-jobs (one per shard) instead of one combined "CodSpeed Pass"
+  # so per-suite skip semantics survive: a PR that touches only Python
+  # still needs CodSpeed Python Pass green and CodSpeed Web Pass green via
+  # the no-change short-circuit, and vice versa. Renaming would require a
+  # parallel Settings -> Rules edit; preserving the exact context strings
+  # ("CodSpeed Python Pass", "CodSpeed Web Pass") keeps the live ruleset
+  # green without any out-of-band edit.
+
+  codspeed-python-pass:
+    name: CodSpeed Python Pass
+    if: always()
+    needs: [changes, codspeed-python]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BENCH_RESULT: ${{ needs.codspeed-python.result }}
+          PYTHON_CHANGED: ${{ needs.changes.outputs.python }}
+        run: |
+          # When no Python files changed, the bench job is skipped on
+          # purpose; report success so the required status is present
+          # on PRs that don't touch the backend.
+          if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
+            echo "Path-detection job failed: $CHANGES_RESULT"
+            exit 1
+          fi
+          if [[ "$PYTHON_CHANGED" != "true" ]]; then
+            echo "No Python-relevant changes detected -- bench skipped, gate passes."
+            exit 0
+          fi
+          if [[ "$BENCH_RESULT" == "failure" || "$BENCH_RESULT" == "cancelled" ]]; then
+            echo "CodSpeed Python checks failed. Job result: $BENCH_RESULT"
+            exit 1
+          fi
+          echo "CodSpeed Python checks passed (result: $BENCH_RESULT)"
+
+  codspeed-web-pass:
+    name: CodSpeed Web Pass
+    if: always()
+    needs: [changes, codspeed-web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BENCH_RESULT: ${{ needs.codspeed-web.result }}
+          WEB_CHANGED: ${{ needs.changes.outputs.web }}
+        run: |
+          if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
+            echo "Path-detection job failed: $CHANGES_RESULT"
+            exit 1
+          fi
+          if [[ "$WEB_CHANGED" != "true" ]]; then
+            echo "No web-relevant changes detected -- bench skipped, gate passes."
+            exit 0
+          fi
+          if [[ "$BENCH_RESULT" == "failure" || "$BENCH_RESULT" == "cancelled" ]]; then
+            echo "CodSpeed Web checks failed. Job result: $BENCH_RESULT"
+            exit 1
+          fi
+          echo "CodSpeed Web checks passed (result: $BENCH_RESULT)"

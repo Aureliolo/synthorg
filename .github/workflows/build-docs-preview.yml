@@ -1,0 +1,574 @@
+name: Build - Docs Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "data/**"
+      - "docs/**"
+      - "site/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/synthorg/**"
+      - "scripts/**"
+      - "cli/scripts/install.sh"
+      - "cli/scripts/install.ps1"
+      - ".github/actions/**"
+      # ``perf-web-vitals.yml``'s ``site`` filter watches the LHCI toolchain
+      # (``web/package.json`` / ``web/package-lock.json``) so a
+      # toolchain-only bump revalidates the marketing-site Lighthouse
+      # score. Mirror those paths here so the same bump also redeploys
+      # the preview the audit runs against; otherwise ``lighthouse-site``
+      # times out polling for a banner SHA that was never deployed.
+      - "web/package.json"
+      - "web/package-lock.json"
+      - ".github/workflows/build-docs-preview.yml"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to build and deploy a preview for (use for dependency update PRs)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: "pages-preview-${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    name: Resolve PR metadata
+    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_INPUT: ${{ github.event.inputs.pr_number }}
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          PR_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${PR_EVENT_NUMBER:-$PR_INPUT}"
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::PR number must be a positive integer, got: '$PR_NUMBER'"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" \
+              --json headRefOid,state,isCrossRepository)
+            if [ -z "$PR_JSON" ]; then
+              echo "::error::Failed to fetch metadata for PR #$PR_NUMBER"
+              exit 1
+            fi
+            HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+            PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+            IS_CROSS_REPO=$(echo "$PR_JSON" | jq -r '.isCrossRepository')
+
+            if [ "$PR_STATE" != "OPEN" ]; then
+              echo "::error::PR #$PR_NUMBER is $PR_STATE, not OPEN; cannot deploy preview"
+              exit 1
+            fi
+            SAME_REPO=$( [ "$IS_CROSS_REPO" = "false" ] && echo "true" || echo "false" )
+          else
+            HEAD_SHA="$PR_EVENT_HEAD_SHA"
+            SAME_REPO=$( [ "$PR_EVENT_HEAD_REPO" = "$GH_REPOSITORY" ] && echo "true" || echo "false" )
+          fi
+
+          if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" = "null" ]; then
+            echo "::error::Failed to resolve HEAD SHA for PR #$PR_NUMBER"
+            exit 1
+          fi
+
+          {
+            echo "pr_number=$PR_NUMBER"
+            echo "head_sha=$HEAD_SHA"
+            echo "same_repo=$SAME_REPO"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build Preview
+    needs: metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Untrusted PR code executes in this job (the zensical / Astro builds run
+    # repository scripts from the PR head). It is deliberately isolated:
+    # ``contents: read`` is the only granted scope and no step references a
+    # repository secret, so a malicious PR build cannot exfiltrate a
+    # privileged token. PR-metadata resolution (which needs a ``gh`` token)
+    # lives in the separate ``metadata`` job; the deploy job consumes the
+    # built artifact and never re-runs PR code.
+    permissions:
+      contents: read
+    steps:
+      # zizmor: ignore[untrusted-checkout]; intentional: preview builds require
+      # PR code. Mitigated: no secrets in this job, contents:read only,
+      # persist-credentials:false. Deploy job uses artifacts, not checkout.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          persist-credentials: false
+          ref: ${{ needs.metadata.outputs.head_sha }}
+
+      # --- Zensical (documentation at /docs) ---
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.6"
+          allow-prereleases: true
+
+      - name: Install uv
+        uses: ./.github/actions/install-uv
+
+      # D2 binary, required by d2_fence.py at build time.
+      # D2 does not publish checksums or signatures in its releases;
+      # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
+      # D2 is a docs-only diagramming tool (not a security scanner).
+      # Version managed by Renovate (regex manager in renovate.json).
+      - name: Install D2
+        env:
+          # renovate: datasource=github-releases depName=terrastruct/d2
+          D2_VERSION: v0.7.1
+        run: |
+          curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o d2.tar.gz
+          tar -xzf d2.tar.gz
+          sudo mv "d2-${D2_VERSION}/bin/d2" /usr/local/bin/d2
+          rm -rf d2.tar.gz "d2-${D2_VERSION}"
+          d2 --version
+
+      - name: Install docs dependencies
+        run: uv sync --group docs --no-dev
+
+      - name: Export OpenAPI schema
+        run: uv run python scripts/export_openapi.py
+
+      - name: Generate comparison page
+        run: uv run python scripts/generate_comparison.py
+
+      - name: Build docs
+        # DEFERRED(zensical/backlog#72): restore the ``--strict`` docs
+        # build once zensical implements the flag (tracked upstream at
+        # https://github.com/zensical/backlog/issues/72).
+        # SYNTHORG_VERSION intentionally omitted; previews show "dev" banner
+        #
+        # Retry up to 3 times with a 15-second backoff.  The D2 plugin
+        # and zensical both occasionally race a transient GitHub raw
+        # content fetch (D2 icons) or a pypi index lookup on first
+        # build; the retry keeps PR previews from going red on
+        # network blips. Any deterministic failure still fails after
+        # the third attempt, preserving the signal.
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
+            if uv run zensical build; then
+              exit 0
+            fi
+            # Only log the retry + scrub state + sleep when another
+            # attempt will actually follow; on the final iteration the
+            # loop falls through to the error line below so the job
+            # does not waste time on cleanup it cannot use.
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "::warning::zensical build failed (attempt ${attempt}/${max_attempts}); retrying after 15s"
+              # Scrub partial build state so the retry does not inherit a
+              # half-written ``_site/`` or a stale D2 icon cache, since a
+              # genuinely deterministic failure would otherwise be masked
+              # by the first attempt's successful intermediate files.
+              rm -rf _site .d2-cache
+              sleep 15
+            fi
+          done
+          echo "::error::zensical build failed after ${max_attempts} attempts"
+          exit 1
+
+      - name: Patch sitemap with static OpenAPI artifacts
+        run: uv run python scripts/patch_sitemap.py
+
+      # --- Astro (landing page at /) ---
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.18.1"
+
+      # The composite retries npm ci on a transient registry blip
+      # (superseding the prior nick-fields/retry wrapper) and verifies +
+      # repairs any native binding npm's optional-dep race (npm/cli#4828)
+      # drops before the build runs. site/ ships rolldown / esbuild /
+      # tailwind-oxide / lightningcss / rollup bindings, so it is exposed.
+      - name: Install Astro dependencies
+        uses: ./.github/actions/install-js-deps
+        with:
+          working-directory: site
+
+      - name: Audit Astro dependencies
+        working-directory: site
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build Astro
+        working-directory: site
+        env:
+          PUBLIC_RECAPTCHA_SITE_KEY: ${{ vars.PUBLIC_RECAPTCHA_SITE_KEY }}
+        run: npm run build
+
+      # --- Copy install scripts into /get/ ---
+      - name: Copy CLI install scripts into Astro output
+        run: |
+          mkdir -p site/dist/get
+          cp cli/scripts/install.sh site/dist/get/install.sh
+          cp cli/scripts/install.ps1 site/dist/get/install.ps1
+
+      # --- Merge outputs ---
+      - name: Merge Astro + Zensical into final output
+        run: |
+          # Guard against Astro accidentally producing a docs/ route
+          if [ -d "site/dist/docs" ]; then
+            echo "::error::Astro output contains 'docs/' directory which would overwrite Zensical output"
+            exit 1
+          fi
+          # Astro output goes to root (use /. to avoid glob edge cases)
+          cp -r site/dist/. _site/
+          # Zensical output is already at _site/docs/ from the build step
+
+      # --- Inject preview banner ---
+      - name: Inject preview banner
+        env:
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
+        run: |
+          python3 << 'PYEOF'
+          import os, pathlib, re, hashlib, base64
+          from datetime import datetime, timezone
+
+          pr_number = os.environ["PR_NUMBER"]
+          short_sha = os.environ["HEAD_SHA"][:7]
+          # Truncate to milliseconds; Safari rejects microsecond-precision ISO timestamps
+          build_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+          # The site ships a strict CSP (style-src/script-src 'self' + hashes, no
+          # 'unsafe-inline'), so the banner cannot use inline style= or an inline
+          # <script>. Deliver the styling as a <style> element and the clock as a
+          # <script> element, then add each element's sha256 to the page CSP below
+          # (element hashes need no 'unsafe-hashes').
+          banner_css = (
+              ".preview-banner{background:linear-gradient(90deg,#f59e0b,#d97706);"
+              "color:#000;text-align:center;padding:10px 16px;font-weight:600;"
+              "font-size:14px;position:sticky;top:0;z-index:9999;"
+              "box-shadow:0 2px 4px rgba(0,0,0,0.15)}"
+              ".preview-banner code{background:rgba(0,0,0,0.1);padding:2px 6px;"
+              "border-radius:3px;font-size:12px}"
+          )
+          banner_js = (
+              "(function(){"
+              f"var t=new Date('{build_iso}').getTime();"
+              "function u(){"
+              "var d=Math.floor((Date.now()-t)/1e3),"
+              "s=d<60?d+'s ago':d<3600?Math.floor(d/60)+'m ago':"
+              "d<86400?Math.floor(d/3600)+'h ago':Math.floor(d/86400)+'d ago';"
+              "document.getElementById('preview-age').textContent=s}"
+              "u();setInterval(u,30000)"
+              "})()"
+          )
+          banner = (
+              f"<style>{banner_css}</style>"
+              '<div class="preview-banner">'
+              f"Development Preview &middot; PR #{pr_number}"
+              f" &middot; <code>{short_sha}</code>"
+              ' &middot; built <span id="preview-age"></span>'
+              "</div>"
+              f"<script>{banner_js}</script>"
+          )
+
+          def csp_hash(s):
+              digest = hashlib.sha256(s.encode("utf-8")).digest()
+              return "'sha256-" + base64.b64encode(digest).decode("ascii") + "'"
+
+          style_hash = csp_hash(banner_css)
+          script_hash = csp_hash(banner_js)
+
+          def add_csp_hashes(text):
+              # Permit exactly the banner's <style>/<script> elements by adding
+              # their hashes to the page CSP. Scoped to the CSP <meta> tag only,
+              # so a docs page that merely mentions "script-src"/"style-src" in
+              # its body (or has no CSP meta at all) is never mutated; such pages
+              # load the elements anyway (no CSP to satisfy).
+              def patch_meta(m):
+                  tag = m.group(0)
+                  if "content-security-policy" not in tag.lower():
+                      return tag
+                  tag = re.sub(r"(script-src )", lambda mm: mm.group(1) + script_hash + " ", tag, count=1)
+                  tag = re.sub(r"(style-src )", lambda mm: mm.group(1) + style_hash + " ", tag, count=1)
+                  return tag
+              return re.sub(r"<meta\b[^>]*>", patch_meta, text)
+
+          count = 0
+          for f in pathlib.Path("_site").rglob("*.html"):
+              text = f.read_text(encoding="utf-8")
+              updated = re.sub(r"(<body[^>]*>)", lambda m: m.group(1) + banner, text, count=1)
+              if updated != text:
+                  updated = add_csp_hashes(updated)
+                  f.write_text(updated, encoding="utf-8")
+                  count += 1
+          print(f"Injected preview banner into {count} HTML files")
+          PYEOF
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preview-site
+          path: _site
+          retention-days: 5
+
+  deploy-preview:
+    name: Deploy Preview
+    needs: [metadata, build]
+    if: needs.metadata.outputs.same_repo == 'true'
+    runs-on: ubuntu-24.04
+    environment: cloudflare-preview
+    timeout-minutes: 5
+    permissions:
+      # `actions: read` is what the API download path below needs; without
+      # it the download falls back to the runtime token, which only sees the
+      # current run ATTEMPT, so re-running this job alone would 404 on the
+      # artifact the build job uploaded in attempt 1.
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout CI tooling (wrangler lockfile from main)
+        uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/package.json
+            .github/package-lock.json
+          sparse-checkout-cone-mode: false
+
+      # Upstream, not the ./.github/actions/download-artifact ladder: the
+      # sparse checkout above pulls only the wrangler lockfile from main, so
+      # no local composite action is on disk here (same reason the npm ci
+      # below is inlined rather than using install-js-deps).
+      - name: Download preview artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: preview-site
+          path: _site
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.18.1"
+
+      # Inline npm ci (not the install-js-deps composite): this job uses a
+      # sparse checkout of only .github/package.json + lockfile from main, so
+      # the local composite action is not on disk. wrangler deploys a static
+      # _site here and never runs esbuild's bundler, so the native-binding
+      # guard would add nothing anyway.
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
+        run: |
+          npm ci --ignore-scripts --prefix .github
+          npx --prefix .github wrangler pages deploy _site \
+            --project-name=synthorg-pr-preview \
+            --branch="pr-${PR_NUMBER}" \
+            --commit-hash="${HEAD_SHA}" \
+            --commit-message="PR #${PR_NUMBER} preview" \
+            --commit-dirty=true
+
+      - name: Comment preview URL
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PREVIEW_URL: "https://pr-${{ needs.metadata.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
+        with:
+          script: |
+            const url = process.env.PREVIEW_URL;
+            const headSha = process.env.HEAD_SHA;
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const marker = '<!-- synthorg-pr-preview -->';
+            const body = [
+              marker,
+              '## Preview Deployment',
+              '',
+              `**URL:** ${url}`,
+              '',
+              `Built from commit \`${headSha.substring(0, 7)}\``,
+            ].join('\n');
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                per_page: 100,
+              }
+            );
+            const existing = comments.find(
+              c => c.user?.login === 'github-actions[bot]' && c.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+  cleanup-preview:
+    name: Cleanup Preview
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    environment: cloudflare-preview
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Delete preview comment
+        continue-on-error: true  # Don't block deployment cleanup if comment deletion fails
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- synthorg-pr-preview -->';
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                per_page: 100,
+              }
+            );
+            const existing = comments.find(
+              c => c.user?.login === 'github-actions[bot]' && c.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+              });
+              console.log(`Deleted preview comment ${existing.id}`);
+            } else {
+              console.log('No preview comment found');
+            }
+
+      - name: Delete branch deployments
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="pr-${PR_NUMBER}"
+          API_BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments"
+
+          # Paginate through all deployments for this branch
+          # Note: Cloudflare prevents deleting the most recent deployment per project; that one will remain
+          # Cloudflare Pages API rejects per_page=100 with page param; explicitly use documented default page size (25)
+          echo "Fetching deployments for branch ${BRANCH}..."
+          PER_PAGE=25
+          PAGE=1
+          DEPLOYMENTS=""
+          while :; do
+            CURL_EXIT=0
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+              "${API_BASE}?per_page=${PER_PAGE}&page=${PAGE}" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || CURL_EXIT=$?
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            # Fix: detect curl transport failures (DNS, timeout, connection refused → HTTP code 000)
+            if [ "$CURL_EXIT" -ne 0 ] || [ "$HTTP_CODE" = "000" ]; then
+              echo "::error::Failed to reach Cloudflare API (curl exit code ${CURL_EXIT}, HTTP ${HTTP_CODE})"
+              exit 1
+            fi
+
+            # exit 1: if we can't list deployments, the token/account is likely misconfigured; that warrants attention
+            if [ "$HTTP_CODE" -ge 400 ]; then
+              echo "::error::Failed to list deployments (HTTP ${HTTP_CODE})"
+              echo "$BODY" | jq -r '.errors[]?.message // empty' 2>/dev/null || echo "$BODY" | head -c 500
+              exit 1
+            fi
+
+            # Validate response structure before filtering
+            if ! echo "$BODY" | jq -e '.result' > /dev/null 2>&1; then
+              echo "::warning::Unexpected API response structure; .result field missing"
+              echo "$BODY" | head -c 500
+              exit 0
+            fi
+
+            # Wrangler direct-upload deployments store branch in deployment_trigger.metadata.branch
+            PAGE_IDS=$(echo "$BODY" | jq -r \
+              --arg branch "$BRANCH" \
+              '.result[] | select(.deployment_trigger.metadata.branch == $branch) | .id')
+            if [ -n "$PAGE_IDS" ]; then
+              DEPLOYMENTS="${DEPLOYMENTS}${DEPLOYMENTS:+$'\n'}${PAGE_IDS}"
+            fi
+
+            PAGE_COUNT=$(echo "$BODY" | jq -r '.result | length')
+            [ "$PAGE_COUNT" -lt "$PER_PAGE" ] && break
+            PAGE=$((PAGE + 1))
+          done
+
+          if [ -z "$DEPLOYMENTS" ]; then
+            echo "No deployments found for branch ${BRANCH}"
+            echo "Available branches:"
+            echo "$BODY" | jq -r '[.result[].deployment_trigger.metadata.branch // "null"] | unique[]' 2>/dev/null || true
+            exit 0
+          fi
+
+          COUNT=0
+          for DEPLOY_ID in $DEPLOYMENTS; do
+            echo "Deleting deployment ${DEPLOY_ID}..."
+            DEL_CURL_EXIT=0
+            DEL_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+              --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+              "${API_BASE}/${DEPLOY_ID}?force=true" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || DEL_CURL_EXIT=$?
+            DEL_CODE=$(echo "$DEL_RESPONSE" | tail -1)
+
+            if [ "$DEL_CURL_EXIT" -ne 0 ] || [ "$DEL_CODE" = "000" ]; then
+              echo "::warning::Failed to reach Cloudflare API for deletion of ${DEPLOY_ID} (curl transport error)"
+            elif [ "$DEL_CODE" -ge 400 ]; then
+              echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${DEL_CODE}); may be the most recent deployment (Cloudflare restriction)"
+            else
+              COUNT=$((COUNT + 1))
+            fi
+          done
+          echo "Deleted ${COUNT} preview deployments for ${BRANCH}"

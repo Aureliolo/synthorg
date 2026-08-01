@@ -2,6 +2,7 @@
 """Tests for scripts/check_image_signatures.py."""
 
 import importlib.util
+import json
 import urllib.error
 from pathlib import Path
 from types import ModuleType
@@ -844,10 +845,26 @@ class TestVerifyPair:
             gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
         )
         monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
+        monkeypatch.setattr(gate, "provenance_present", lambda *_a, **_k: True)
         pair = gate.ImageTag(image="backend", tag="dev")
         digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
         assert digest == "sha256:deadbeef"
         assert err is None
+
+    def test_missing_provenance_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A signed image without provenance fails; L3 is enforced, not assumed."""
+        monkeypatch.setattr(
+            gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
+        )
+        monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
+        monkeypatch.setattr(gate, "provenance_present", lambda *_a, **_k: False)
+        pair = gate.ImageTag(image="backend", tag="dev")
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
+        assert digest is None
+        assert err is not None
+        assert "no SLSA provenance attestation" in err
 
 
 @pytest.mark.unit
@@ -906,3 +923,141 @@ class TestAuthHeaderForRepo:
         assert returned_err is not None
         assert "URLError" in returned_err
         assert "dns failure" in returned_err
+
+
+def _index(*predicates: str | None) -> bytes:
+    """Build a referrer index whose children carry the given predicate types."""
+    children: list[dict[str, object]] = []
+    for predicate in predicates:
+        child: dict[str, object] = {"digest": "sha256:" + "c" * 64}
+        if predicate is not None:
+            child["annotations"] = {gate._PREDICATE_ANNOTATION: predicate}
+        children.append(child)
+    return json.dumps({"manifests": children}).encode("utf-8")
+
+
+@pytest.mark.unit
+class TestProvenancePresent:
+    """provenance_present is what makes the SLSA Build L3 claim enforced.
+
+    A false positive would leave the claim asserted rather than enforced, so
+    the predicate match must be exact: the referrer index also holds the
+    cosign signature, and can hold other attestation types.
+    """
+
+    _DIGEST = "sha256:" + "a" * 64
+    _REPO = "aureliolo/synthorg-backend"
+
+    def _fake(
+        self, monkeypatch: pytest.MonkeyPatch, status: int, body: bytes
+    ) -> list[str]:
+        urls: list[str] = []
+
+        def fake_request(
+            _method: str, url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            urls.append(url)
+            return status, {}, body
+
+        monkeypatch.setattr(gate, "_request_with_retry", fake_request)
+        return urls
+
+    def test_rejects_non_sha256_digest_without_calling_out(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        urls = self._fake(monkeypatch, gate.HTTP_OK, _index(gate.PROVENANCE_PREDICATE))
+        assert gate.provenance_present(self._REPO, "md5:deadbeef", {}) is False
+        assert urls == []
+
+    def test_true_when_a_child_carries_the_slsa_predicate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._fake(monkeypatch, gate.HTTP_OK, _index(gate.PROVENANCE_PREDICATE))
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is True
+
+    def test_reads_the_referrer_tag_for_the_digest_under_test(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Binding is structural: the index is addressed by the digest, so a
+        # child cannot vouch for some other image.
+        urls = self._fake(monkeypatch, gate.HTTP_OK, _index(gate.PROVENANCE_PREDICATE))
+        gate.provenance_present(self._REPO, self._DIGEST, {})
+        assert urls[0].endswith("/manifests/sha256-" + "a" * 64)
+
+    def test_false_when_only_the_signature_child_is_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A real index always carries the cosign signature, which has no
+        # predicate annotation at all.
+        self._fake(monkeypatch, gate.HTTP_OK, _index(None))
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    def test_false_when_only_an_unrelated_attestation_is_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An SBOM attestation publishes into the same referrer index; it must
+        # not satisfy a provenance check.
+        self._fake(monkeypatch, gate.HTTP_OK, _index("https://spdx.dev/Document"))
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    def test_true_when_provenance_sits_alongside_other_children(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._fake(
+            monkeypatch,
+            gate.HTTP_OK,
+            _index(None, "https://spdx.dev/Document", gate.PROVENANCE_PREDICATE),
+        )
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is True
+
+    def test_false_on_404(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._fake(monkeypatch, gate.HTTP_NOT_FOUND, b"")
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    @pytest.mark.parametrize("status", [500, 502, 503, 429, 401])
+    def test_raises_on_a_persisted_registry_error(
+        self, monkeypatch: pytest.MonkeyPatch, status: int
+    ) -> None:
+        # A registry outage is not evidence that provenance is missing, and
+        # reporting it as such would fail a correctly attested release.
+        self._fake(monkeypatch, status, b"")
+        with pytest.raises(urllib.error.URLError):
+            gate.provenance_present(self._REPO, self._DIGEST, {})
+
+    def test_false_on_malformed_json(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._fake(monkeypatch, gate.HTTP_OK, b"not-json")
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    @pytest.mark.parametrize("body", [b"[1,2,3]", b'"a string"', b"42", b"null"])
+    def test_false_on_non_object_json(
+        self, monkeypatch: pytest.MonkeyPatch, body: bytes
+    ) -> None:
+        # A syntactically valid but wrong-shaped body used to raise
+        # AttributeError, which escaped _verify_pair and killed the whole run
+        # rather than failing this one pair.
+        self._fake(monkeypatch, gate.HTTP_OK, body)
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    @pytest.mark.parametrize(
+        "payload",
+        [b"{}", b'{"manifests": null}', b'{"manifests": "nope"}', b'{"manifests": []}'],
+    )
+    def test_false_when_manifests_is_absent_or_not_a_list(
+        self, monkeypatch: pytest.MonkeyPatch, payload: bytes
+    ) -> None:
+        self._fake(monkeypatch, gate.HTTP_OK, payload)
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    def test_skips_children_that_are_not_objects(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = json.dumps({"manifests": ["nope", 7, None]}).encode("utf-8")
+        self._fake(monkeypatch, gate.HTTP_OK, body)
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False
+
+    def test_skips_children_whose_annotations_are_not_objects(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = json.dumps({"manifests": [{"annotations": "nope"}]}).encode("utf-8")
+        self._fake(monkeypatch, gate.HTTP_OK, body)
+        assert gate.provenance_present(self._REPO, self._DIGEST, {}) is False

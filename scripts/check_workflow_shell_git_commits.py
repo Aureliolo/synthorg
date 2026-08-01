@@ -11,7 +11,7 @@ GitHub-signed commit, regardless of which token it uses:
    GitHub under ``github-actions[bot]`` -- but those pushes are
    suppressed from firing downstream workflow events (GitHub's
    anti-recursion rule). This is the exact failure mode
-   ``auto-rollover.yml`` was designed to avoid.
+   ``release-rollover.yml`` was designed to avoid.
 2. Locally-built commits + push with **any non-GITHUB_TOKEN credential**
    (PAT, App installation token, resurrected ``RELEASE_PLEASE_TOKEN``)
    produce **unsigned** commits. GitHub can only attach a bot signature
@@ -31,7 +31,7 @@ somewhere" -- that whitelist was the original shape but it is unsound:
 the token mint buys API-path signing, not local-git-push signing, so
 the presence of a mint does not sanitise a local-git write. Workflows
 that need to write to the repo must invoke the Git Data API directly
-(see ``auto-rollover.yml`` / ``graduate.yml`` / ``dev-release.yml`` for
+(see ``release-rollover.yml`` / ``release-graduate.yml`` / ``release-dev.yml`` for
 reference implementations).
 
 Baseline
@@ -96,13 +96,23 @@ _SHELL_COMMENT_RE = re.compile(r"(?m)^\s*#[^\n]*$")
 # readable without a literal 2.
 _BASELINE_ENTRY_LEN = 2
 
+# Workflows the steering message points a reader at. Each must actually
+# create commits through the API, or the advice sends them somewhere that
+# does not demonstrate it: release-dev.yml was cited here but only creates
+# TAG refs (POST /git/refs), never a commit.
+_REFERENCE_IMPLEMENTATIONS = (
+    "release-rollover.yml",
+    "release-graduate.yml",
+    "repo-cla.yml",
+)
+_COMMIT_API_CALL = "git/commits"
+
 _STEERING_MESSAGE = (
     "Shell `git commit` + `git push` inside a workflow NEVER produces a "
     "GitHub-signed commit -- GitHub can only attach a bot signature when "
     "the commit is created through the Git Data API (POST /git/commits). "
     "Route writes through the API with an App installation token. "
-    "Reference implementations: auto-rollover.yml, graduate.yml, "
-    "dev-release.yml."
+    f"Reference implementations: {', '.join(_REFERENCE_IMPLEMENTATIONS)}."
 )
 
 _FORCE_REFRESH_FLAG = "--force"
@@ -340,6 +350,31 @@ def _scan_and_compare(
     ]
 
 
+def steering_reference_problems() -> list[str]:
+    """Every workflow the steering message cites must back up the advice.
+
+    The message is the only thing a reader gets when the gate fires, so a
+    rename or a refactor that leaves it pointing at a workflow which no longer
+    creates commits through the API turns the fix instruction into a dead end.
+    """
+    problems: list[str] = []
+    for name in _REFERENCE_IMPLEMENTATIONS:
+        path = _WORKFLOWS_ROOT / name
+        if not path.exists():
+            problems.append(
+                f"steering message cites {name}, which does not exist "
+                "(renamed or deleted?). Update _REFERENCE_IMPLEMENTATIONS."
+            )
+            continue
+        if _COMMIT_API_CALL not in path.read_text(encoding="utf-8"):
+            problems.append(
+                f"steering message cites {name} as a reference for creating "
+                f"commits through the API, but it makes no '{_COMMIT_API_CALL}' "
+                "call. Cite a workflow that demonstrates the fix."
+            )
+    return problems
+
+
 def _report(violations: list[str]) -> int:
     """Print violations and the steering message."""
     if not violations:
@@ -353,7 +388,7 @@ def _report(violations: list[str]) -> int:
 def cmd_scan_all() -> int:
     """Scan every workflow file against the baseline."""
     baseline = _load_baseline()
-    violations: list[str] = []
+    violations = steering_reference_problems()
     for path in _iter_workflow_files():
         violations.extend(_scan_and_compare(path, baseline))
     return _report(violations)
@@ -362,7 +397,7 @@ def cmd_scan_all() -> int:
 def cmd_scan_paths(paths: Iterable[str]) -> int:
     """Scan the provided files only -- pre-commit entry point."""
     baseline = _load_baseline()
-    violations: list[str] = []
+    violations = steering_reference_problems()
     for p in paths:
         path = Path(p).resolve()
         if not path.exists() or path.suffix not in (".yml", ".yaml"):

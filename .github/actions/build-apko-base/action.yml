@@ -91,6 +91,9 @@ runs:
         name: ${{ inputs.image-name }}-base-image
         path: ${{ inputs.image-name }}-base.tar
         retention-days: 2
+        # Every downstream image builds FROM this tarball; an empty upload
+        # must fail here rather than as a `docker load` error later.
+        if-no-files-found: error
 
     - name: Install Trivy
       shell: bash

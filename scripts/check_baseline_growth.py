@@ -58,17 +58,25 @@ def _is_baseline_path(path: str) -> bool:
     return _BASELINE_BASENAME_RE.fullmatch(basename) is not None
 
 
-def _count_json_entries(text: str) -> int:
-    """Count entries in a JSON baseline; raise ``InvalidBaselineError`` on parse failure.
+def _count_json_entries(text: str) -> tuple[int, int]:
+    """Return ``(key_count, finding_count)``; raise ``InvalidBaselineError`` on parse failure.
 
     A corrupt baseline must block the commit, never silently pass. The previous
     sentinel return of -1 was less-than every non-negative ``head_count``, which
     let malformed baselines slip through the ``staged > head`` comparison.
 
     For dict payloads, prefer the ``locations`` key (the canonical shape used
-    by gate baselines). When ``locations`` is missing or non-collection, fall
-    back to counting top-level keys so a flat-dict baseline format still
-    surfaces growth instead of silently returning 0.
+    by gate baselines).
+
+    Both metrics are always reported, because a single number cannot express
+    both regression shapes at once. A ``{name: count}`` payload hides a rule
+    going from 5 findings to 500 behind an unchanged key set, so its values
+    matter; every other mapping is one key per suppression, so its keys do.
+    Returning whichever one suited the payload let a shape change trade the
+    units against each other: ``{"a": 100}`` measured 100 findings, while
+    ``{"a": 150, "b": 0}`` fell back to 2 keys, and ``2 > 100`` is false, so a
+    50-finding regression scored as shrinkage. Reporting the pair keeps each
+    unit comparable against its own counterpart.
     """
     try:
         payload = json.loads(text)
@@ -77,14 +85,17 @@ def _count_json_entries(text: str) -> int:
         raise InvalidBaselineError(msg) from exc
     if isinstance(payload, dict):
         locations = payload.get("locations")
-        if isinstance(locations, dict):
-            return len(locations)
-        if isinstance(locations, list):
-            return len(locations)
-        return len(payload)
+        if isinstance(locations, dict | list):
+            return len(locations), len(locations)
+        if payload and all(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 0
+            for value in payload.values()
+        ):
+            return len(payload), sum(payload.values())
+        return len(payload), len(payload)
     if isinstance(payload, list):
-        return len(payload)
-    return 0
+        return len(payload), len(payload)
+    return 0, 0
 
 
 def _count_text_entries(text: str) -> int:
@@ -96,11 +107,15 @@ def _count_text_entries(text: str) -> int:
     )
 
 
-def _staged_entries(text: str, suffix: str) -> int:
-    """Count the entries in a baseline file's content."""
+def _staged_entries(text: str, suffix: str) -> tuple[int, int]:
+    """Return ``(key_count, finding_count)`` for a baseline file's content.
+
+    A line-oriented baseline is one entry per line, so both metrics coincide.
+    """
     if suffix == ".json":
         return _count_json_entries(text)
-    return _count_text_entries(text)
+    count = _count_text_entries(text)
+    return count, count
 
 
 def _read_head(path: str) -> str | None:
@@ -170,10 +185,14 @@ def _read_staged(path: str) -> str | None:
 
 def _inspect_path(
     path: str,
-    grown: list[tuple[str, int, int]],
+    grown: list[tuple[str, tuple[int, int], tuple[int, int]]],
     invalid: list[tuple[str, str]],
 ) -> None:
-    """Compare one staged baseline against HEAD; record growth or parse failure."""
+    """Compare one staged baseline against HEAD; record growth or parse failure.
+
+    Growth in EITHER metric is growth. Requiring both to rise would let a
+    payload shape change surrender one unit to buy slack in the other.
+    """
     suffix = _classify(path)
     staged_text = _read_staged(path)
     if staged_text is None:
@@ -184,7 +203,7 @@ def _inspect_path(
         invalid.append((path, str(exc)))
         return
     head_text = _read_head(path)
-    head_count = 0
+    head_count = (0, 0)
     if head_text is not None:
         try:
             head_count = _staged_entries(head_text, suffix)
@@ -195,8 +214,10 @@ def _inspect_path(
                 "over-strict for this file until HEAD is repaired.",
                 file=sys.stderr,
             )
-            head_count = 0
-    if staged_count > head_count:
+            head_count = (0, 0)
+    if any(
+        staged > head for staged, head in zip(staged_count, head_count, strict=True)
+    ):
         grown.append((path, head_count, staged_count))
 
 
@@ -207,7 +228,7 @@ def main(argv: list[str]) -> int:
     paths = [p for p in argv[1:] if _is_baseline_path(p)]
     if not paths:
         return EXIT_OK
-    grown: list[tuple[str, int, int]] = []
+    grown: list[tuple[str, tuple[int, int], tuple[int, int]]] = []
     invalid: list[tuple[str, str]] = []
     for path in paths:
         _inspect_path(path, grown, invalid)
@@ -227,8 +248,11 @@ def main(argv: list[str]) -> int:
         file=sys.stderr,
     )
     for path, head_count, staged_count in grown:
+        head_keys, head_findings = head_count
+        staged_keys, staged_findings = staged_count
         print(
-            f"  {path}: {head_count} -> {staged_count} (+{staged_count - head_count})",
+            f"  {path}: {head_keys} -> {staged_keys} key(s), "
+            f"{head_findings} -> {staged_findings} finding(s)",
             file=sys.stderr,
         )
     print(

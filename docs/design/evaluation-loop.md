@@ -78,4 +78,4 @@ uv run python -m pytest tests/evals/ -n 8 --eval-timeout=300
 
 The ``n1_prefix_replay`` utility replays the first N-1 turns of a recorded trace and lets the agent generate only the final turn for regression testing.
 
-CI: ``evals.yml`` runs nightly and on the ``run-evals`` label.
+CI: ``perf-agent-evals.yml`` runs nightly and on the ``run-evals`` label.

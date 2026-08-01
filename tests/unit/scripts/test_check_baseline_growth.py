@@ -93,17 +93,17 @@ def test_count_json_entries_locations_dict() -> None:
     text = json.dumps(
         {"description": "x", "locations": {"a": 1, "b": 2, "c": 3}},
     )
-    assert _MODULE._count_json_entries(text) == 3
+    assert _MODULE._count_json_entries(text) == (3, 3)
 
 
 def test_count_json_entries_locations_list() -> None:
     text = json.dumps({"locations": ["a", "b"]})
-    assert _MODULE._count_json_entries(text) == 2
+    assert _MODULE._count_json_entries(text) == (2, 2)
 
 
 def test_count_json_entries_top_level_list() -> None:
     text = json.dumps([1, 2, 3, 4])
-    assert _MODULE._count_json_entries(text) == 4
+    assert _MODULE._count_json_entries(text) == (4, 4)
 
 
 def test_count_json_entries_invalid_raises() -> None:
@@ -119,10 +119,32 @@ def test_count_json_entries_no_locations_dict_falls_back_to_top_level_keys() -> 
     never detected. Counting top-level keys instead lets the gate catch
     additions even on unconventional baseline shapes.
     """
-    assert _MODULE._count_json_entries(json.dumps({"foo": "bar"})) == 1
-    assert (
-        _MODULE._count_json_entries(json.dumps({"a": 1, "b": 2, "c": 3, "d": 4})) == 4
-    )
+    assert _MODULE._count_json_entries(json.dumps({"foo": "bar"})) == (1, 1)
+    assert _MODULE._count_json_entries(json.dumps({"a": [1], "b": {"c": 2}})) == (2, 2)
+
+
+def test_count_json_entries_sums_a_rule_count_baseline() -> None:
+    """A ``{rule: count}`` payload reports its values alongside its keys.
+
+    Counting keys alone left the pyright baseline's ratchet almost ornamental:
+    the likeliest regression is one rule's count rising, which leaves the key
+    set identical and so scored as no growth at all.
+    """
+    small = json.dumps({"reportArgumentType": 5, "reportOptionalMemberAccess": 2})
+    large = json.dumps({"reportArgumentType": 500, "reportOptionalMemberAccess": 200})
+    assert _MODULE._count_json_entries(small) == (2, 7)
+    assert _MODULE._count_json_entries(large) == (2, 700)
+
+
+def test_count_json_entries_counts_a_zero_valued_entry_as_a_key() -> None:
+    """A zero-valued entry moves the key count even though the sum stands still."""
+    assert _MODULE._count_json_entries(json.dumps({"a": 1})) == (1, 1)
+    assert _MODULE._count_json_entries(json.dumps({"a": 1, "b": 0})) == (2, 1)
+
+
+def test_count_json_entries_does_not_sum_booleans() -> None:
+    """``bool`` is an ``int`` subclass; a flag mapping is one key per entry."""
+    assert _MODULE._count_json_entries(json.dumps({"a": True, "b": True})) == (2, 2)
 
 
 # ── classification ──────────────────────────────────────────────
@@ -181,6 +203,33 @@ def test_main_detects_growth(
     assert "fake_baseline.txt" in captured.err
     assert "1 -> 3" in captured.err
     assert "ALLOW_BASELINE_GROWTH=1" in captured.err
+
+
+def test_main_detects_growth_when_a_zero_entry_changes_the_payload_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A rule rising 100 -> 150 is growth even when a zero-valued key joins it.
+
+    Exercises the staged-versus-HEAD comparison rather than the counter alone:
+    measuring one unit per payload let the added ``"b": 0`` swap the staged
+    side onto the key-count unit, where ``2 > 100`` is false and a 50-finding
+    regression passed the gate.
+    """
+    monkeypatch.delenv("ALLOW_BASELINE_GROWTH", raising=False)
+    with (
+        patch.object(
+            _MODULE, "_read_staged", return_value=json.dumps({"a": 150, "b": 0})
+        ),
+        patch.object(_MODULE, "_read_head", return_value=json.dumps({"a": 100})),
+    ):
+        rc: int = _MODULE.main(
+            ["check_baseline_growth.py", "scripts/_shape_shift_baseline.json"],
+        )
+    assert rc == _MODULE.EXIT_GROWTH_DETECTED
+    captured = capsys.readouterr()
+    assert "_shape_shift_baseline.json" in captured.err
+    assert "100 -> 150 finding(s)" in captured.err
 
 
 def test_main_allows_shrink(monkeypatch: pytest.MonkeyPatch) -> None:

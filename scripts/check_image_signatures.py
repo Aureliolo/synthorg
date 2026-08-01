@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-r"""Verify cosign signatures for SynthOrg container images on GHCR.
+r"""Verify cosign signatures and SLSA provenance for SynthOrg images on GHCR.
 
 Run as a workflow gate after all publish jobs finish: for every
 ``(image, tag)`` pair pushed by the workflow, resolve the tag to its
-manifest digest, then confirm a cosign signature artifact (referrer
-index entry, surfaced on GHCR as the ``sha256-<hex>`` referrer tag)
-exists for that digest. Fails loudly if any tag is unsigned or any
-two tags of the same image diverge to different digests.
+manifest digest, then confirm both a cosign signature artifact and a
+SLSA provenance attestation (both published into the ``sha256-<hex>``
+referrer tag) exist for that digest. Fails loudly if any tag is
+unsigned, unattested, or if two tags of the same image diverge to
+different digests.
 
-Designed to catch the failure mode where two concurrent ``docker.yml``
+Provenance is checked, not just the signature: a signature proves who
+pushed the bytes, provenance proves how they were built, and the project
+claims SLSA Build L3 on the strength of the latter. Checking only the
+signature would leave that claim asserted rather than enforced.
+
+Designed to catch the failure mode where two concurrent ``build-images.yml``
 runs (e.g. main-push + tag-push for a release SHA) race on shared
 per-arch tags and end up signing different manifest list digests --
 leaving the user-facing tag (``synthorg-sandbox:0.7.6-dev.9``)
@@ -58,6 +64,11 @@ SIG_ACCEPT: Final[str] = "application/vnd.oci.image.index.v1+json"
 HTTP_TIMEOUT_SECONDS: Final[int] = 30
 HTTP_OK: Final[int] = 200
 HTTP_NOT_FOUND: Final[int] = 404
+
+# `attest-build-provenance` publishes a sigstore bundle referrer carrying the
+# predicate type in this annotation.
+PROVENANCE_PREDICATE: Final[str] = "https://slsa.dev/provenance/v1"
+_PREDICATE_ANNOTATION: Final[str] = "dev.sigstore.bundle.predicateType"
 USAGE_EXIT_CODE: Final[int] = 2
 FAILURE_EXIT_CODE: Final[int] = 1
 
@@ -165,7 +176,7 @@ def _validate_repo_prefix(repo_prefix: str) -> None:
     """
     if not _REPO_PREFIX_RE.match(repo_prefix):
         msg = (
-            f"error: --repo-prefix {repo_prefix!r} must match the OCI repo grammar "
+            f"::error::--repo-prefix {repo_prefix!r} must match the OCI repo grammar "
             "(lowercase, '.', '_', '-', '/'), and end with '-' (e.g. "
             "'aureliolo/synthorg-')"
         )
@@ -181,14 +192,14 @@ def _validate_image_tag(pair: ImageTag) -> None:
     """
     if not _IMAGE_NAME_RE.match(pair.image):
         msg = (
-            f"error: image name {pair.image!r} must match OCI name grammar "
+            f"::error::image name {pair.image!r} must match OCI name grammar "
             "(lowercase alphanumerics with '.', '_', '-')"
         )
         print(msg, file=sys.stderr)
         raise SystemExit(USAGE_EXIT_CODE)
     if not _TAG_RE.match(pair.tag):
         msg = (
-            f"error: tag {pair.tag!r} must match OCI tag grammar "
+            f"::error::tag {pair.tag!r} must match OCI tag grammar "
             "(1-128 chars from [A-Za-z0-9_.-], not starting with '.' or '-')"
         )
         print(msg, file=sys.stderr)
@@ -209,7 +220,7 @@ def parse_image_tag_groups(args: list[str]) -> list[ImageTag]:
                 continue
             if ":" not in entry:
                 print(
-                    f"error: --image-tags entry {entry!r} must be in 'image:tag' form",
+                    f"::error::--image-tags entry {entry!r} must be in 'image:tag' form",
                     file=sys.stderr,
                 )
                 raise SystemExit(USAGE_EXIT_CODE)
@@ -218,7 +229,7 @@ def parse_image_tag_groups(args: list[str]) -> list[ImageTag]:
             tag = tag.strip()
             if not image or not tag:
                 print(
-                    f"error: --image-tags entry {entry!r} has empty image or tag",
+                    f"::error::--image-tags entry {entry!r} has empty image or tag",
                     file=sys.stderr,
                 )
                 raise SystemExit(USAGE_EXIT_CODE)
@@ -533,6 +544,82 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def provenance_present(
+    repo_path: str,
+    digest: str,
+    auth_header: dict[str, str],
+) -> bool:
+    """Return True if a SLSA provenance attestation refers to this digest.
+
+    A signature proves who pushed the bytes; provenance proves how they were
+    built. The project claims SLSA Build L3 on the strength of
+    ``attest-build-provenance``, so verifying the signature alone would leave
+    that claim asserted rather than enforced -- an image whose attestation
+    step silently failed would still pass.
+
+    GHCR does not serve these through the OCI Referrers API; both cosign and
+    ``attest-build-provenance`` publish into the same ``sha256-<hex>`` tag
+    that ``signature_present`` HEADs. That tag is an index whose children are
+    the sigstore bundles, so provenance is one GET further: fetch the index
+    and look for a child annotated with the SLSA predicate type.
+
+    Carries the same propagation budget as ``signature_present``, and needs it
+    more: signing and attestation are SEPARATE writes into that one tag, so
+    the index can already exist, and answer 200, while the attestation child
+    has not landed. A single GET would read that partial index as "never
+    attested" and fail a release that was in fact attested correctly.
+
+    Raises:
+        urllib.error.URLError: a network-level failure, or a non-404 registry
+            error, that persisted across every attempt.
+    """
+    if not digest.startswith("sha256:"):
+        return False
+    sig_tag = "sha256-" + digest.removeprefix("sha256:")
+    safe_repo = urllib.parse.quote(repo_path, safe="/")
+    safe_sig_tag = urllib.parse.quote(sig_tag, safe="")
+    url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
+    headers = {"Accept": SIG_ACCEPT, **auth_header}
+    for attempt in range(1, SIG_PROPAGATION_ATTEMPTS + 1):
+        status, _, body = _request_with_retry("GET", url, headers)
+        # `_request_with_retry` hands back a lingering 5xx rather than raising,
+        # so the caller decides. Reporting one as "no provenance" would fail a
+        # release that is correctly attested, so only a 404 means absent.
+        if status >= HTTP_SERVER_ERROR_MIN or status not in (
+            HTTP_OK,
+            HTTP_NOT_FOUND,
+        ):
+            msg = f"registry error HTTP {status} on provenance check for {url}"
+            raise urllib.error.URLError(msg)
+        if status == HTTP_OK and _has_provenance_child(body):
+            return True
+        if attempt < SIG_PROPAGATION_ATTEMPTS:
+            time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
+    return False
+
+
+def _has_provenance_child(body: bytes) -> bool:
+    """Return True if the referrer index carries a SLSA provenance child."""
+    try:
+        index = json.loads(body)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(index, dict):
+        return False
+    manifests = index.get("manifests")
+    if not isinstance(manifests, list):
+        return False
+    for child in manifests:
+        if not isinstance(child, dict):
+            continue
+        annotations = child.get("annotations")
+        if not isinstance(annotations, dict):
+            continue
+        if annotations.get(_PREDICATE_ANNOTATION) == PROVENANCE_PREDICATE:
+            return True
+    return False
+
+
 def _verify_pair(
     pair: ImageTag,
     repo_prefix: str,
@@ -562,6 +649,11 @@ def _verify_pair(
             return None, (
                 f"no cosign signature artifact for {digest} "
                 f"(referrer tag sha256-{sig_hex} returned non-200)"
+            )
+        if not provenance_present(repo_path, digest, auth_header):
+            return None, (
+                f"no SLSA provenance attestation for {digest} "
+                f"(no referrer with predicateType {PROVENANCE_PREDICATE})"
             )
     except _NetworkExceptions as exc:
         return None, f"network error ({type(exc).__name__}: {exc!r})"
@@ -597,9 +689,9 @@ def _auth_header_for_repo(
 
 
 def _print_failures(failures: list[str]) -> None:
-    """Render the failure block to stderr."""
+    """Render the failure block to stderr as a Checks-tab annotation."""
     print(file=sys.stderr)
-    print("Signature verification FAILED:", file=sys.stderr)
+    print("::error::Signature verification FAILED:", file=sys.stderr)
     for line in failures:
         print(f"  - {line}", file=sys.stderr)
 
@@ -610,7 +702,7 @@ def main() -> int:
     _validate_repo_prefix(args.repo_prefix)
     pairs = parse_image_tag_groups(args.image_tags)
     if not pairs:
-        print("error: no --image-tags pairs provided", file=sys.stderr)
+        print("::error::no --image-tags pairs provided", file=sys.stderr)
         return USAGE_EXIT_CODE
     for pair in pairs:
         _validate_image_tag(pair)
@@ -637,7 +729,10 @@ def main() -> int:
             continue
         assert digest is not None  # noqa: S101 -- err is None, so digest is set
         pair_to_digest[pair] = digest
-        print(f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} (signed)")
+        print(
+            f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} "
+            "(signed + SLSA provenance)"
+        )
 
     failures.extend(_check_per_image_convergence(pair_to_digest))
 

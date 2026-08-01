@@ -20,7 +20,7 @@ ci:
   #     too slow / toolchain-heavy for the cloud runner.
   #     lychee is also a Rust binary not bundled with pre-commit-uv;
   #     operators install it via `bash scripts/install_cli_tools.sh`,
-  #     and CI runs it via .github/workflows/lychee.yml. vale follows
+  #     and CI runs it via .github/workflows/verify-links.yml. vale follows
   #     the same binary-install shape (operators install the binary
   #     once per machine via `bash scripts/install_cli_tools.sh vale`),
   #     but the gitignored `.vale/styles/Google/` package is populated
@@ -35,7 +35,7 @@ ci:
   #     dual-backend-test-parity / schema-drift / no-magic-numbers /
   #     convention-gate-inventory / mcp-admin-guardrail:
   #     scoped gates that need ``uv`` + repo source -- redundant given
-  #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
+  #     the `Lint` + `Forbidden literals gate` jobs in verify-backend.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
@@ -48,7 +48,7 @@ ci:
   # regression unchecked. ``no-review-origin-in-code`` and
   # ``no-migration-framing`` run at ``stages: [pre-push]`` (the
   # local-only pre-push hook surface) so pre-commit.ci does not pick
-  # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
+  # them up; their CI counterpart is the ``Lint`` job in ``verify-backend.yml``
   # which runs the same scripts on every PR.
   skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -538,12 +538,12 @@ repos:
         args: ["--config", "lychee.toml", "--no-progress", "--offline"]
         language: system
         # Top-level README, every CLAUDE.md tier, and every Markdown
-        # under docs/. The CI gate .github/workflows/lychee.yml mirrors
+        # under docs/. The CI gate .github/workflows/verify-links.yml mirrors
         # this glob set. ``--offline`` validates internal links only
         # (relative + file://) and skips network probes, so the hook is
         # near-instant and a third-party host can never block a push.
         # External links are checked weekly by
-        # .github/workflows/lychee-external.yml (files a tracking issue,
+        # .github/workflows/maint-link-rot.yml (files a tracking issue,
         # never blocks). Pre-push stage matches the other prose gates.
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
         pass_filenames: true
@@ -719,11 +719,26 @@ repos:
         entry: uv run python scripts/check_local_ci_parity.py
         language: system
         # Trigger on this config (hooks added/removed/restaged), either CI
-        # workflow the gate polices -- ci.yml (all-files SKIP list / job
-        # conditions) and cli.yml (cardinal-rule job conditions) -- or the
+        # workflow the gate polices -- verify-backend.yml (all-files SKIP list / job
+        # conditions) and verify-cli.yml (cardinal-rule job conditions) -- or the
         # gate script itself, so a change that breaks parity or re-introduces
         # a changed-file-conditioned correctness job cannot bypass the check.
-        files: ^(\.pre-commit-config\.yaml|\.github/workflows/(ci|cli)\.yml|scripts/check_local_ci_parity\.py)$
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/verify-(backend|cli)\.yml|scripts/check_local_ci_parity\.py)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: ci-rollup-complete
+        name: sentinel rollups cover every job (CI Pass / CLI Pass / Docker Pass)
+        entry: uv run python scripts/check_ci_rollup_complete.py
+        language: system
+        # Every workflow, because the gate's verdict depends on all of them:
+        # it collects produced contexts across the whole directory, so a job
+        # renamed anywhere can strand a required context. Plus the ruleset
+        # spec whose contexts it cross-checks, the gate itself, and this file
+        # -- naming the three rollup workflows alone both missed the perf
+        # workflows the gate already polices and let a change that narrowed or
+        # deleted this very hook land without ever selecting it.
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/.*\.ya?ml|\.github/branch_protection\.yml|scripts/check_ci_rollup_complete\.py)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

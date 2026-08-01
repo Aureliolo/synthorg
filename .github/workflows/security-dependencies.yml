@@ -1,0 +1,191 @@
+name: Security - Dependencies
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-24.04
+    # The dependency-review action is a single GitHub dependency-graph API
+    # call; 10 reaps a hung request instead of riding the 6-hour default
+    # on this PR-blocking check.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          retry-on-snapshot-warnings: true
+          # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 -- MIT per classifiers, scancode misdetects
+          # Python-2.0.1: editorconfig 0.17.1 (via jsbeautifier via litestar[standard])
+          # MIT-0: cffi 2.0.0 -- permissive (MIT variant, no attribution required)
+          # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0, aiodocker 0.26.0,
+          #   pycparser 3.0, sse-starlette 3.3.2 -- MIT per classifiers, scancode misdetects
+          # LGPL-*: @img/sharp-libvips-* (Astro image optimization, build-time only)
+          # BlueOak-1.0.0: lru-cache, sax (Astro transitive deps, permissive)
+          # LicenseRef-scancode-protobuf: protobuf 5.29.6 (BSD-3-Clause AND scancode-protobuf, permissive)
+          # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License -- permissive)
+          # Null: numpy, posthog -- license metadata missing
+          #   from lockfile but all are permissive (Apache-2.0 / BSD-3-Clause / MIT)
+          # LicenseRef-scancode-google-patent-license-golang: golang.org/x/* packages
+          #   (BSD-3-Clause AND google-patent-grant, standard Go stdlib-adjacent, permissive)
+          # CC-BY-3.0, CC-BY-4.0: Creative Commons Attribution -- permissive, requires
+          #   attribution only. Common in Go struct-tag and documentation-related packages.
+          # OFL-1.1: SIL Open Font License -- standard font license used by
+          #   @fontsource-variable/geist (Geist font). Permissive, requires
+          #   attribution and no selling fonts standalone.
+          allow-licenses: >-
+            MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
+            ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
+            CC0-1.0, CC-BY-3.0, CC-BY-4.0,
+            Python-2.0, Python-2.0.1,
+            LicenseRef-scancode-free-unknown, LicenseRef-scancode-protobuf,
+            LicenseRef-scancode-google-patent-license-golang,
+            ZPL-2.1,
+            LGPL-2.0-only, LGPL-2.0-or-later, LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later,
+            BlueOak-1.0.0,
+            OFL-1.1
+          # Packages with null/missing SPDX license metadata in lockfile.
+          # Verified manually: numpy (BSD-3-Clause),
+          # posthog (MIT), aiohttp (Apache-2.0),
+          # cyclonedx-python-lib (Apache-2.0), fsspec (BSD-3-Clause),
+          # griffelib (ISC), grpcio (Apache-2.0).
+          #
+          # sharp platform binaries use compound AND licenses (e.g.
+          # "Apache-2.0 AND LGPL-3.0-or-later") -- all constituents are
+          # in the allowlist but the action doesn't split AND expressions.
+          # CI-only transitive dep via wrangler, no licensing impact.
+          #
+          # charset-normalizer (LGPL-2.0-or-later AND LGPL-2.1-only AND
+          # MIT AND MPL-1.1): compound AND license. All constituents are
+          # permissive. Actual license is MIT. The action cannot split
+          # compound AND expressions.
+          #
+          # wrapt (BSD-2-Clause AND BSD-3-Clause AND Python-2.0 AND Ruby):
+          # compound AND license from vendored code metadata. Actual
+          # license is BSD-2-Clause. The "Ruby" component is from vendored
+          # code scan metadata, not a separate licensing concern.
+          #
+          # json-schema-typed (BSD-2-Clause AND JSON): transitive dep via
+          # shadcn/radix. The "JSON" license has a non-standard "Good, not
+          # Evil" clause. Dev-only type definition package, not bundled in
+          # production output. The action cannot split compound AND licenses.
+          #
+          # victory-vendor (ISC AND JSON AND MIT): transitive dep via recharts.
+          # GitHub's license scanner falsely detects "JSON" license. Actual
+          # package.json declares "MIT AND ISC". Manual audit of all 13
+          # vendored LICENSE files confirms ISC + BSD-3-Clause only, no JSON
+          # license text present. Same false-positive pattern as json-schema-typed.
+          #
+          # Fine-tune optional dep group (torch, sentence-transformers) and
+          # transitive CUDA/NVIDIA deps. Optional -- only installed via
+          # synthorg[fine-tune-gpu] (default) or synthorg[fine-tune-cpu]. License
+          # metadata missing from PyPI for NVIDIA CUDA packages (proprietary,
+          # freely redistributable). torch is BSD-style. scikit-learn has compound
+          # BSD-3-Clause AND scancode tag.
+          #
+          # pytest-codspeed: MIT upstream
+          # (https://github.com/CodSpeedHQ/pytest-codspeed/blob/main/LICENSE)
+          # but PyPI metadata is null. Verified manually. Test-only dependency
+          # used by the Python perf-regression suite under tests/benchmarks/.
+          #
+          # pillow: SPDX detector reports `MIT-CMU` (the historic MIT/X
+          # Consortium License variant), which is functionally identical to
+          # MIT in permissiveness but not in the action's allow-licenses
+          # list. pillow's upstream LICENSE.txt is the canonical PIL/Pillow
+          # text -- attribution-only, no copyleft. Required by
+          # synthorg.tools.browser._ssim_differ via scikit-image. Bumped
+          # 12.0.0 -> 12.2.0 to clear CVE-2026-25990 / 40192 / 42308-11.
+          #
+          # Newly added in #1679 (deps bump after litellm override-dependencies):
+          # hypothesis (MPL-2.0), litellm (MIT), openai (Apache-2.0),
+          # pyngrok (MIT), tokenizers (Apache-2.0), typer (MIT). All have null
+          # SPDX metadata on PyPI but their upstream LICENSE files declare the
+          # licenses listed; manually verified against each project's repo.
+          #
+          # codespell (GPL-2.0) and yamllint (GPL family): dev-time linters
+          # invoked only via pre-commit / pre-push hooks. Neither is imported
+          # by runtime synthorg code nor bundled into Docker images, so the
+          # GPL terms do not propagate to distributed artefacts. Exempting
+          # them here keeps the BUSL-1.1 / Apache-2.0 distribution clean
+          # while still allowing the modularity-gate quality tooling to run
+          # locally and in CI.
+          #
+          # grimp and import-linter: the import-layering tooling
+          # (``lint-imports`` + the architecture drift gate), declared in
+          # the dev dependency-groups, never imported by runtime synthorg
+          # code nor bundled into Docker images. Both are David Seddon
+          # projects licensed BSD-2-Clause upstream (verified against each
+          # package's installed LICENSE + ``OSI Approved :: BSD License``
+          # classifier). grimp reports a compound
+          # ``BSD-2-Clause AND BSD-2-Clause-Views AND BSD-3-Clause`` because
+          # scancode detects vendored BSD variants, and the action cannot
+          # split AND expressions; import-linter ships no SPDX field so the
+          # action reports it as unknown. Both are permissive.
+          # PURLs are intentionally version-less: a package's license does not
+          # change across patch/minor bumps, so pinning a version only made the
+          # exemption silently fall off the moment the lockfile advanced (the
+          # license safety net then evaluated the new version's null/unknown
+          # SPDX and could fail). A version-less PURL exempts the package
+          # regardless of version, which is the action's documented form and
+          # removes the recurring drift.
+          allow-dependencies-licenses: >-
+            pkg:pypi/codespell,
+            pkg:pypi/yamllint,
+            pkg:pypi/numpy,
+            pkg:pypi/posthog,
+            pkg:pypi/aiohttp,
+            pkg:pypi/cyclonedx-python-lib,
+            pkg:pypi/fsspec,
+            pkg:pypi/griffelib,
+            pkg:pypi/grpcio,
+            pkg:pypi/charset-normalizer,
+            pkg:pypi/wrapt,
+            pkg:pypi/pytest-codspeed,
+            pkg:pypi/hypothesis,
+            pkg:pypi/litellm,
+            pkg:pypi/openai,
+            pkg:pypi/pyngrok,
+            pkg:pypi/tokenizers,
+            pkg:pypi/typer,
+            pkg:npm/@img/sharp-wasm32,
+            pkg:npm/@img/sharp-win32-ia32,
+            pkg:npm/@img/sharp-win32-x64,
+            pkg:npm/json-schema-typed,
+            pkg:npm/victory-vendor,
+            pkg:pypi/scikit-learn,
+            pkg:pypi/torch,
+            pkg:pypi/cuda-bindings,
+            pkg:pypi/cuda-pathfinder,
+            pkg:pypi/cuda-toolkit,
+            pkg:pypi/nvidia-cublas,
+            pkg:pypi/nvidia-cuda-cupti,
+            pkg:pypi/nvidia-cuda-nvrtc,
+            pkg:pypi/nvidia-cuda-runtime,
+            pkg:pypi/nvidia-cudnn-cu13,
+            pkg:pypi/nvidia-cufft,
+            pkg:pypi/nvidia-cufile,
+            pkg:pypi/nvidia-curand,
+            pkg:pypi/nvidia-cusolver,
+            pkg:pypi/nvidia-cusparse,
+            pkg:pypi/nvidia-cusparselt-cu13,
+            pkg:pypi/nvidia-nccl-cu13,
+            pkg:pypi/nvidia-nvjitlink,
+            pkg:pypi/nvidia-nvshmem-cu13,
+            pkg:pypi/nvidia-nvtx,
+            pkg:pypi/pillow,
+            pkg:pypi/grimp,
+            pkg:pypi/import-linter
+          comment-summary-in-pr: always

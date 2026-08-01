@@ -84,7 +84,7 @@ def _job(
     ``permissions=None`` to exercise invariant 5's permission half. ``minutes``
     sets the budget invariant 6 measures a pull ladder against.
     """
-    head = "jobs:\n  a:\n    runs-on: ubuntu-latest\n"
+    head = "jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
     if timeout:
         head += f"    timeout-minutes: {minutes}\n"
     if permissions is not None:
@@ -1018,10 +1018,67 @@ class TestScanFileEdgeCases:
     def test_non_dict_job_value_skipped(self, tmp_path: Path) -> None:
         content = (
             "jobs:\n  broken: null\n"
-            "  ok:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n"
+            "  ok:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
             "    steps: []\n"
         )
         assert _scan(tmp_path, content) == []
+
+
+class TestRunnerPinned:
+    """Invariant 9: no job floats on a rolling runner alias."""
+
+    @staticmethod
+    def _one_job(runs_on: str) -> str:
+        return (
+            f"jobs:\n  a:\n    runs-on: {runs_on}\n"
+            "    timeout-minutes: 5\n    steps: []\n"
+        )
+
+    @pytest.mark.parametrize(
+        "alias", ["ubuntu-latest", "windows-latest", "macos-latest"]
+    )
+    def test_rolling_alias_is_flagged(self, tmp_path: Path, alias: str) -> None:
+        violations = _scan(tmp_path, self._one_job(alias))
+        assert len(violations) == 1
+        assert alias in violations[0]
+
+    def test_pinned_image_is_clean(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, self._one_job("ubuntu-24.04")) == []
+
+    def test_pinned_arm_image_is_clean(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, self._one_job("ubuntu-24.04-arm")) == []
+
+    def test_runs_on_expression_is_not_flagged(self, tmp_path: Path) -> None:
+        # The per-arch matrix picks its runner with a ternary. It names no
+        # rolling alias, and a regex-based Renovate manager cannot see it
+        # either, which is part of why this is a gate rather than a manager.
+        expression = (
+            "${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}"
+        )
+        assert _scan(tmp_path, self._one_job(expression)) == []
+
+    def test_label_list_is_inspected(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, self._one_job("[self-hosted, ubuntu-latest]"))
+        assert len(violations) == 1
+
+    def test_exempt_job_may_keep_the_alias(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rel = _MODULE._relative_path(tmp_path / "wf.yml")  # type: ignore[attr-defined]
+        monkeypatch.setitem(
+            _MODULE._ROLLING_RUNNER_EXEMPT,  # type: ignore[attr-defined]
+            f"{rel}::a",
+            "test exemption",
+        )
+        assert _scan(tmp_path, self._one_job("ubuntu-latest")) == []
+
+    def test_real_cli_test_matrix_is_the_only_exemption(self) -> None:
+        # The exemption exists so the cross-platform matrix can prove the CLI
+        # builds on whatever GitHub ships as latest. Anything else creeping in
+        # would silently reopen the rolling-runner gap.
+        assert set(_MODULE._ROLLING_RUNNER_EXEMPT) == {  # type: ignore[attr-defined]
+            ".github/workflows/verify-cli.yml::cli-test"
+        }
 
 
 class TestMain:

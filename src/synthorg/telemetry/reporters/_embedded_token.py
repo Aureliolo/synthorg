@@ -13,7 +13,7 @@ Operators do NOT configure this token. They flip
 is missing it.
 
 Build pipeline reference: ``scripts/embed_logfire_token.py`` and
-``.github/workflows/release.yml``.
+``.github/workflows/release-cut.yml``.
 """
 
 from typing import Final

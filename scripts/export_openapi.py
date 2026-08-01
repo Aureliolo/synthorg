@@ -1,6 +1,6 @@
 """Export the Litestar OpenAPI schema and generate a standalone Scalar UI page.
 
-Used by CI (pages.yml, pages-preview.yml) to generate:
+Used by CI (build-docs.yml, build-docs-preview.yml) to generate:
 - ``docs/openapi/openapi.json`` -- raw OpenAPI schema
 - ``docs/openapi/reference.html`` -- standalone Scalar UI page
 

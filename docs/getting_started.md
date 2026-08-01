@@ -42,7 +42,7 @@ Install `golangci-lint` and `lychee` once per machine:
 bash scripts/install_cli_tools.sh
 ```
 
-The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/cli.yml`) and the pinned `lychee` version that matches CI (`.github/workflows/lychee.yml`). Re-run only after bumping a pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience. The `lychee` binary lands in `~/.local/bin/`; if that directory is not already on `PATH`, the script will print the export line you need to add to `~/.bashrc` / `~/.zshrc`.
+The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/verify-cli.yml`) and the pinned `lychee` version that matches CI (`.github/workflows/verify-links.yml`). Re-run only after bumping a pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience. The `lychee` binary lands in `~/.local/bin/`; if that directory is not already on `PATH`, the script will print the export line you need to add to `~/.bashrc` / `~/.zshrc`.
 
 To run the link-checker locally:
 
@@ -184,7 +184,7 @@ Recommended extensions:
 - **Ruff** (`charliermarsh.ruff`): linting and formatting
 - **Pylance** (`ms-python.vscode-pylance`): type checking and IntelliSense
 
-Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy runs in CI as the authoritative check.
+Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy is the authoritative check, enforced on every push. Pyright also runs in CI as a second opinion, gated on a shrink-only per-rule baseline (`scripts/pyright_finding_baseline.json`) because its narrowing and overload analysis disagrees with mypy in places.
 
 Set the Python interpreter to the project virtual environment:
 

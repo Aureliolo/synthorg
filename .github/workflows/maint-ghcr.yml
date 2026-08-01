@@ -1,0 +1,273 @@
+name: Maint - GHCR
+
+# Prune dev and non-release container versions from GHCR. Official
+# release images (latest, X.Y, X.Y.Z) and every signature / attestation
+# / multi-arch child they reference are NEVER touched: each pass both
+# targets only the reapable tag classes AND carries a belt-and-braces
+# `exclude-tags` regex that protects the release tags regardless.
+#
+# GHCR permanently refuses to delete a public version past 5000 downloads, and
+# the action treats any 400 as fatal, so one such version reds the leg forever.
+# The count is not in the REST API, so the offender can only be named after the
+# first refusal: `report-failure` below extracts it and puts the
+# protect_ghcr_undeletable_version.py repair command in the tracking issue.
+#
+# Three passes below: dev builds, PR/scan images, orphans. Each carries its
+# own regex and rationale.
+#
+# Runs weekly on its own schedule (and on manual dispatch for the one-time
+# backfill of the historical ~61k versions), fully decoupled from the
+# release path: a prune blip never touches a release run. The prune is
+# idempotent, so a transient GHCR 401 that reds a leg simply self-heals on
+# the next weekly run -- worst case a week's stale dev/PR versions linger.
+
+on:
+  schedule:
+    # Weekly, Mondays 04:00 UTC. Off-peak; housekeeping only.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Log what would be deleted without deleting (recommended first)."
+        type: boolean
+        default: true
+
+permissions: {}
+
+# One global mutex across BOTH triggers (scheduled weekly run and manual
+# workflow_dispatch): two cleanup runs must never delete against the same
+# packages at once. The trade-off -- a scheduled cleanup queueing behind a
+# long manual backfill -- is acceptable because the cleanup is off the
+# release-critical path. cancel-in-progress is false so a queued run is
+# never dropped.
+concurrency:
+  group: ghcr-cleanup
+  cancel-in-progress: false
+
+jobs:
+  # Resolve the effective dry-run flag once, since the schedule trigger
+  # carries no inputs. A manual dispatch honours its own checkbox; the
+  # weekly run deletes only when the repository variable
+  # GHCR_CLEANUP_ENABLED is set to "true", and otherwise stays dry-run.
+  config:
+    name: Resolve dry-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      dry-run: ${{ steps.resolve.outputs.dry-run }}
+    steps:
+      - name: Resolve dry-run
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
+          CLEANUP_ENABLED: ${{ vars.GHCR_CLEANUP_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            value="$DISPATCH_DRY_RUN"
+          elif [ "$CLEANUP_ENABLED" = "true" ]; then
+            value="false"
+          else
+            value="true"
+          fi
+          echo "dry-run=${value}" >> "$GITHUB_OUTPUT"
+
+  cleanup:
+    name: Prune ${{ matrix.package }}
+    needs: config
+    runs-on: ubuntu-24.04
+    # GitHub throttles version deletions (the action backs off on each
+    # 429), so a package's drain rate is capped regardless of work left.
+    # At 30 min a large package (thousands of versions) is cut off
+    # mid-delete and must finish over many runs. 120 min lets one pass
+    # clear ~6-7k versions, draining the big packages in a single run
+    # during the historical backfill; steady-state runs finish in
+    # minutes well under the cap.
+    timeout-minutes: 120
+    permissions:
+      packages: write
+    strategy:
+      # One failing package must not abort the other nine.
+      fail-fast: false
+      # Ten deletion-heavy jobs in parallel, each fanning out ~10
+      # concurrent registry reads plus version deletions, trip GitHub's
+      # account-wide secondary rate limit (HTTP 429) -- which the PAT's
+      # primary budget does not raise. Running one package at a time
+      # holds concurrent load to a single job's fan-out; the action
+      # still parallelises reads within the job, and the cleanup is off
+      # the release-critical path, so the longer wall-clock is free.
+      max-parallel: 1
+      matrix:
+        package:
+          - synthorg-backend
+          - synthorg-web
+          - synthorg-sandbox
+          - synthorg-sidecar
+          - synthorg-fine-tune-cpu
+          - synthorg-fine-tune-gpu
+          - synthorg-backend-base
+          - synthorg-sandbox-base
+          - synthorg-sidecar-base
+          - synthorg-fine-tune-base
+    steps:
+      # On a live run (dry-run: false) with no dedicated PAT, deletions
+      # fall back to the default GITHUB_TOKEN. Surface which identity is
+      # doing the deleting so a live run is never silently attributed.
+      - name: Warn when deleting with the default token
+        if: ${{ needs.config.outputs.dry-run == 'false' }}
+        env:
+          CLEANUP_PAT: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+        run: |
+          if [ -z "$CLEANUP_PAT" ]; then
+            echo "::warning::GHCR_CLEANUP_TOKEN is not set; live deletions run with the default GITHUB_TOKEN. Provision a classic PAT (write:packages + delete:packages) for an explicit deletion identity."
+          fi
+
+      # Pass 1 -- dev builds: keep the newest 5 dev manifests, delete the
+      # rest. `keep-n-tagged` is scoped to the `delete-tags` dev subset,
+      # so releases are outside its reach; deleting an old multi-arch dev
+      # manifest also removes its platform children.
+      # GHCR throws a spurious 401 ("Bad credentials") on a fraction of
+      # delete calls under concurrent delete/read load; the cleanup action
+      # treats a 401 as fatal and aborts the leg. That is tolerated here:
+      # the prune is idempotent and reruns next week, so a transient blip
+      # just leaves a week's stale versions and self-heals.
+      - name: Prune old dev builds (keep newest 5)
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
+          keep-n-tagged: 5
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|keep-[A-Za-z0-9._-]+)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
+
+      # Pass 2 -- PR / scan short-sha images older than 7 days. The dev
+      # version regex and floating `dev` are excluded so a recent dev
+      # manifest (which also carries a sha-<short> tag) is never reaped
+      # through its sha tag; only genuine PR/scan images match.
+      # Same transient-401 tolerance as pass 1; see that step's comment.
+      - name: Prune PR/scan images older than 7 days
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
+          older-than: 7 days
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[A-Za-z0-9._-]+)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
+
+      # Pass 3 -- reap every orphan with no live parent. Two distinct
+      # classes, both needed:
+      #   - delete-orphaned-images: cosign / attestation OCI referrers
+      #     whose subject was deleted, plus children of an index deleted
+      #     earlier in THIS run.
+      #   - delete-untagged: dangling untagged manifests (per-build SLSA
+      #     attestation / SBOM / platform blobs) whose parent index was
+      #     deleted in a PAST run. delete-orphaned-images does NOT catch
+      #     these (they are not subject-bearing referrers and their parent
+      #     is long gone), so without delete-untagged they accumulate
+      #     forever -- the dominant share of stored versions.
+      # `initFilterSet` strips every LIVE image's children/referrers from
+      # the candidate set first, so delete-untagged only ever sees truly
+      # dangling manifests; `validate` then asserts no surviving multi-arch
+      # image lost a platform child. exclude-tags still protects every
+      # release / kept-dev tag (delete-untagged only touches untagged).
+      # Same transient-401 tolerance as pass 1; see that step's comment.
+      - name: Prune orphaned signatures and untagged manifests
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-orphaned-images: true
+          delete-untagged: true
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[A-Za-z0-9._-]+)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
+
+  report-failure:
+    name: Open / update tracking issue on failed prune
+    needs: [config, cleanup]
+    # Scheduled only: a manual dispatch is watched by whoever triggered it.
+    #
+    # `cancelled` reports too. It was excluded as "just the 120-minute
+    # backfill cap", but that cap is reachable only from a dispatch, which
+    # this job already ignores. On the weekly schedule a cancellation is a
+    # hang, a stall or a timeout, and excluding it meant a prune that never
+    # finished alerted nobody, week after week, since nothing else watches
+    # this workflow.
+    #
+    # `config` is checked too. It gates `cleanup`, so a `config` failure
+    # skips `cleanup`, leaving its result neither `failure` nor `cancelled`
+    # and skipping this job as well -- the one weekly run that most needs a
+    # tracking issue would open none.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && (
+        needs.config.result != 'success'
+        || needs.cleanup.result == 'failure'
+        || needs.cleanup.result == 'cancelled'
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read   # checkout, for the post-tracking-issue composite
+      actions: read    # read this run's job logs to extract the refused digest
+      issues: write    # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Extract refused versions
+        id: refused
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+        run: bash scripts/extract_ghcr_refused_versions.sh
+
+      - name: Compose body
+        id: body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REFUSED: ${{ steps.refused.outputs.report }}
+        run: |
+          set -euo pipefail
+          # Randomised delimiter, matching release-cut.yml's Highlights step.
+          # `$REFUSED` is assembled from GHCR job logs, so a log line equal to
+          # a fixed marker would close the heredoc early and let everything
+          # after it be read as further `key=value` lines in $GITHUB_OUTPUT --
+          # i.e. log content smuggling extra step outputs.
+          DELIM="TRACKING_ISSUE_BODY_$(openssl rand -hex 12)"
+          {
+            printf 'body<<%s\n' "$DELIM"
+            cat <<EOF
+          The weekly GHCR prune failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          Run: ${RUN_URL}
+
+          ${REFUSED}
+          EOF
+            printf '%s\n' "$DELIM"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'GHCR prune failing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

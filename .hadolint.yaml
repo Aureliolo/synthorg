@@ -1,5 +1,5 @@
 # Dockerfile lint policy. Pinned alongside the hadolint-action version in
-# .github/workflows/ci.yml and the hadolint-docker rev in
+# .github/workflows/verify-backend.yml and the hadolint-docker rev in
 # .pre-commit-config.yaml.
 
 # DL3026 rejects any FROM / COPY --from / mount-from outside this list, so a

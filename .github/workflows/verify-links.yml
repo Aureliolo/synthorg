@@ -1,0 +1,98 @@
+name: Verify - Links
+
+# Internal-link gate for README, every CLAUDE.md tier, and every
+# Markdown under docs/. Runs lychee ``--offline``: relative and
+# ``file://`` links are validated and a broken one fails the run; no
+# network probe is made, so a third-party host's downtime or expired
+# certificate can never block a merge. External (remote) links are
+# checked separately by ``.github/workflows/maint-link-rot.yml``,
+# which files a tracking issue instead of blocking. Config:
+# ``lychee.toml`` (shared with the local pre-push hook).
+#
+# Binary install: ``scripts/install_cli_tools.sh lychee`` is the single
+# source of truth (this job and the pre-push hook use the byte-identical
+# binary). Version is pinned by the Renovate marker on ``LYCHEE_VERSION``
+# in that script.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/verify-links.yml"
+      - "lychee.toml"
+      - "scripts/install_cli_tools.sh"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/verify-links.yml"
+      - "lychee.toml"
+      - "scripts/install_cli_tools.sh"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lychee:
+    name: lychee
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install lychee
+        shell: bash
+        # ``runner.temp`` is only available at step-level env; job-level
+        # env limits context to github/inputs/matrix/needs/secrets/strategy/vars
+        # (actionlint enforces this). Same install dir is reused by the
+        # following PATH step.
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: bash scripts/install_cli_tools.sh lychee
+
+      - name: Add lychee to PATH
+        shell: bash
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: echo "${LYCHEE_INSTALL_DIR}" >> "${GITHUB_PATH}"
+
+      - name: Run lychee
+        shell: bash
+        run: |
+          set -o pipefail
+          # lychee accepts glob patterns natively (it handles ** without
+          # needing bash globstar). ``--offline`` validates relative and
+          # ``file://`` links only and skips every network probe, so the
+          # gate cannot fail on a third-party host. Markdown output is
+          # appended to the GitHub job summary so the report shows up in
+          # the run UI; the same content also lands in the step log via
+          # tee.
+          lychee \
+            --offline \
+            --config lychee.toml \
+            --no-progress \
+            --format markdown \
+            './README.md' \
+            './CLAUDE.md' \
+            './cli/CLAUDE.md' \
+            './web/CLAUDE.md' \
+            './docs/**/*.md' \
+            | tee -a "${GITHUB_STEP_SUMMARY}"
