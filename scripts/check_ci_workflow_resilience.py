@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces nine invariants across the CI definitions so the resilience
+Enforces ten invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -133,6 +133,30 @@ hardening they carry cannot silently regress:
    regardless. Bumping stays a deliberate edit; this stops the alias
    returning. ``_ROLLING_RUNNER_EXEMPT`` carries the one matrix whose
    purpose is running on whatever GitHub ships as latest.
+
+10. **A scheduled workflow routes BOTH failure and non-completion to a
+    tracking issue.** Nothing watches a cron run: no reviewer waits on it
+    and no PR turns red, so whatever it fails to report is simply not
+    known. Two distinct outcomes therefore need a sink. A job that FAILS
+    is the obvious one. A job that never finished -- cancelled, or reaped
+    at ``timeout-minutes`` -- is the one that gets missed, because it
+    looks like nothing happened, and the last real result ages silently
+    while the schedule appears to still be running.
+
+    Routing both does NOT mean routing them together. A stalled run
+    measured nothing, so filing it under a title that asserts a finding
+    ("External link rot", "Agent eval regression") reports something
+    never observed. One job admitting both, or two jobs with separate
+    titles, both satisfy this; the titles are not compared.
+
+    Admission is read from the ``if:`` text of each job that reaches the
+    ``post-tracking-issue`` composite, recognising the two idioms in use:
+    an ``== '<result>'`` equality, and the ``!= 'success' && !=
+    'skipped'`` complement (which admits failure and cancellation both,
+    unless it also excludes ``!= 'failure'``). An expression written some
+    other way is not understood and must adopt one of these -- the gate
+    fails closed rather than guessing at an expression grammar it only
+    partly models.
 
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
@@ -270,6 +294,138 @@ _EXCLUDED: Final[dict[str, str]] = {
 }
 
 _TIMEOUT_KEY: Final[str] = "timeout-minutes"
+
+_TRACKING_ISSUE_ACTION: Final[str] = ".github/actions/post-tracking-issue"
+_SCHEDULE_KEY: Final[str] = "schedule"
+_IF_KEY: Final[str] = "if"
+# PyYAML parses YAML 1.1, where a bare `on:` key is the boolean True rather
+# than the string "on". Reading data["on"] therefore misses every real
+# workflow file, and a trigger check written that way passes everything
+# forever while looking correct.
+_ON_KEYS: Final[tuple[object, ...]] = ("on", True)
+
+_RESULT_FAILURE: Final[str] = "failure"
+_RESULT_SUCCESS: Final[str] = "success"
+_RESULT_SKIPPED: Final[str] = "skipped"
+_RESULT_CANCELLED: Final[str] = "cancelled"
+
+
+def _result_comparisons(condition: str) -> tuple[set[str], set[str]]:
+    """Return the ``needs.*.result`` literals compared by equality / inequality.
+
+    Args:
+        condition: The raw ``if:`` expression text of a job.
+
+    Returns:
+        ``(equals, not_equals)``, the result literals the expression compares
+        with ``==`` and with ``!=`` respectively.
+    """
+    equals = set(re.findall(r"\.result\s*==\s*'([a-z_]+)'", condition))
+    not_equals = set(re.findall(r"\.result\s*!=\s*'([a-z_]+)'", condition))
+    return equals, not_equals
+
+
+def _admits(condition: str) -> tuple[bool, bool]:
+    """Return whether a notifier condition admits failure and non-completion.
+
+    Only the two idioms the repository uses are modelled: an explicit
+    ``== '<result>'``, and the ``!= 'success' && != 'skipped'`` complement.
+    Anything else reads as admitting neither, so an unrecognised expression
+    fails the gate rather than being credited with coverage it may not have.
+
+    Args:
+        condition: The raw ``if:`` expression text of a notifier job.
+
+    Returns:
+        ``(admits_failure, admits_stall)``.
+    """
+    equals, not_equals = _result_comparisons(condition)
+    # The complement idiom: everything that is not a clean pass and not a
+    # deliberate skip. It covers both outcomes unless it explicitly carves
+    # one back out, which is how a stall-only sink is written.
+    complement = _RESULT_SUCCESS in not_equals and _RESULT_SKIPPED in not_equals
+    admits_failure = _RESULT_FAILURE in equals or (
+        complement and _RESULT_FAILURE not in not_equals
+    )
+    admits_stall = _RESULT_CANCELLED in equals or (
+        complement and _RESULT_CANCELLED not in not_equals
+    )
+    return admits_failure, admits_stall
+
+
+def _is_notifier_job(job: dict[str, object]) -> bool:
+    """Return whether a job reaches the ``post-tracking-issue`` composite."""
+    return any(
+        _TRACKING_ISSUE_ACTION in str(step.get("uses", "")) for step in _job_steps(job)
+    )
+
+
+def _has_schedule_trigger(data: dict[str, object]) -> bool:
+    """Return whether the workflow declares a ``schedule:`` trigger."""
+    for key in _ON_KEYS:
+        triggers = data.get(key)  # type: ignore[arg-type]
+        if isinstance(triggers, dict) and _SCHEDULE_KEY in triggers:
+            return True
+        if isinstance(triggers, list) and _SCHEDULE_KEY in triggers:
+            return True
+    return False
+
+
+def _check_schedule_notifiers(
+    data: dict[str, object], jobs: dict[str, object]
+) -> list[str]:
+    """Check invariant 10 for one workflow file.
+
+    Args:
+        data: The parsed workflow mapping.
+        jobs: The workflow's ``jobs`` mapping.
+
+    Returns:
+        Violation messages, empty when the workflow is compliant or carries
+        no ``schedule:`` trigger.
+    """
+    if not _has_schedule_trigger(data):
+        return []
+    notifiers = {
+        str(name): job
+        for name, job in jobs.items()
+        if isinstance(job, dict) and _is_notifier_job(job)
+    }
+    if not notifiers:
+        return [
+            (
+                f"scheduled workflow has no {_TRACKING_ISSUE_ACTION} job;"
+                " a cron run nobody watches must be able to report failure"
+                " and non-completion somewhere"
+            )
+        ]
+    covers_failure = False
+    covers_stall = False
+    for job in notifiers.values():
+        admits_failure, admits_stall = _admits(str(job.get(_IF_KEY, "")))
+        covers_failure = covers_failure or admits_failure
+        covers_stall = covers_stall or admits_stall
+    missing = [
+        label
+        for label, covered in (
+            ("failure", covers_failure),
+            ("non-completion (cancelled / timed out)", covers_stall),
+        )
+        if not covered
+    ]
+    if not missing:
+        return []
+    names = ", ".join(sorted(notifiers))
+    return [
+        (
+            "scheduled workflow routes no tracking issue for"
+            f" {' and '.join(missing)} (notifier jobs: {names});"
+            " a run ending that way reports to nobody. Admit it in an"
+            " existing notifier, or add one with its own title -- a stalled"
+            " run measured nothing, so it must not be filed under a title"
+            " asserting a finding"
+        )
+    ]
 
 
 def _iter_workflow_files() -> Iterable[Path]:
@@ -1283,6 +1439,7 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
         violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
         violations.extend(_check_runner_pinned(name, rel_path, job))
+    violations.extend(_check_schedule_notifiers(data, jobs))
     return violations
 
 
@@ -1383,7 +1540,9 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             " wrapped action through its wrapper rather than upstream,"
             " give every artifact-consuming job both `actions: read` and an"
             " explicit github-token, consume every resilient-pull local-tag"
-            " from a `run:` step, and digest-pin every Dockerfile reference."
+            " from a `run:` step, digest-pin every Dockerfile reference, and"
+            " route both failure and non-completion of a scheduled workflow"
+            " to a tracking issue."
             " To exclude an action deliberately,"
             " add it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
             " with a reason.",

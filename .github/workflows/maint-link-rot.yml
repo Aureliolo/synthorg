@@ -137,3 +137,68 @@ jobs:
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
           gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished check
+    needs: lychee-external
+    # A run that never finished is a different fact from link rot and gets
+    # its own sink rather than widening the one above: a cancellation or
+    # the 15-minute timeout filed as "External link rot" would assert
+    # broken links that were never observed.
+    #
+    # It still needs somewhere to go. Nothing else watches this workflow,
+    # so without this job a check that stops completing reports to nobody,
+    # week after week, while the last real result ages silently.
+    #
+    # Stated as the complement of the three settled outcomes rather than
+    # `== 'cancelled'`, so a result GitHub adds later still lands here
+    # instead of falling through both sinks unnoticed.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.lychee-external.result != 'success'
+      && needs.lychee-external.result != 'failure'
+      && needs.lychee-external.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT: ${{ needs.lychee-external.result }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          The weekly external link check did not finish at $(date -u +%Y-%m-%dT%H:%M:%SZ);
+          the lychee job ended as \`${RESULT}\`.
+
+          Run: ${RUN_URL}
+
+          This is NOT a report of broken links: none were observed, because
+          the check never completed. Treat it as the link check going dark.
+          Common causes are the 15-minute job timeout being reached (a slow
+          or black-holing host in the link set) and a manual cancellation.
+          If it is the timeout, raise \`timeout-minutes\` on the lychee job
+          or exclude the offending host in \`lychee.toml\`.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Link check not completing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

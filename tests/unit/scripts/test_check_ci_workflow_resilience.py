@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all eight invariants:
+Covers all ten invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -33,12 +33,19 @@ Covers all eight invariants:
 * Every ``docker/**/Dockerfile`` reference BuildKit resolves itself carries
   a digest, which is what makes the buildx docker.io mirror safe. Build
   stages and ``${...}`` build args are exempt.
+* No job floats on a rolling runner alias, with the one documented matrix
+  exemption.
+* A scheduled workflow routes BOTH failure and non-completion to a tracking
+  issue, via one notifier or two. The bare ``on:`` key is asserted to parse
+  as the YAML-1.1 boolean, because a trigger check that missed it would
+  pass every real workflow forever while looking correct.
 """
 
 import importlib.util
 from pathlib import Path
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.unit
 
@@ -1079,6 +1086,126 @@ class TestRunnerPinned:
         assert set(_MODULE._ROLLING_RUNNER_EXEMPT) == {  # type: ignore[attr-defined]
             ".github/workflows/verify-cli.yml::cli-test"
         }
+
+
+def _scheduled(notifiers: str, *, on_key: str = "on") -> str:
+    """Build a scheduled workflow with a worker job plus ``notifiers``.
+
+    ``on_key`` exists so the YAML-1.1 boolean-key path can be exercised
+    against the quoted spelling as well as the bare one.
+    """
+    return (
+        f"{on_key}:\n"
+        "  schedule:\n"
+        "    - cron: 0 7 * * 1\n"
+        "jobs:\n"
+        "  worker:\n"
+        "    runs-on: ubuntu-24.04\n"
+        "    timeout-minutes: 15\n"
+        "    steps:\n"
+        "      - run: true\n" + notifiers
+    )
+
+
+def _notifier(name: str, condition: str) -> str:
+    """A job reaching the tracking-issue composite under ``condition``."""
+    return (
+        f"  {name}:\n"
+        "    needs: worker\n"
+        f"    if: {condition}\n"
+        "    runs-on: ubuntu-24.04\n"
+        "    timeout-minutes: 5\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@abc\n"
+        "      - uses: ./.github/actions/post-tracking-issue\n"
+    )
+
+
+_FAILURE_ONLY = "always() && needs.worker.result == 'failure'"
+_STALL_ONLY = (
+    "always() && needs.worker.result != 'success'"
+    " && needs.worker.result != 'failure'"
+    " && needs.worker.result != 'skipped'"
+)
+_BOTH = (
+    "always() && needs.worker.result != 'success' && needs.worker.result != 'skipped'"
+)
+
+
+class TestScheduleNotifiers:
+    """Invariant 10: a cron run reports both failure and non-completion."""
+
+    def test_failure_only_notifier_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _scheduled(_notifier("r", _FAILURE_ONLY)))
+        assert len(violations) == 1
+        assert "non-completion" in violations[0]
+
+    def test_stall_only_notifier_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _scheduled(_notifier("r", _STALL_ONLY)))
+        assert len(violations) == 1
+        assert "failure" in violations[0]
+
+    def test_complement_form_covers_both(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _scheduled(_notifier("r", _BOTH))) == []
+
+    def test_two_jobs_split_the_coverage(self, tmp_path: Path) -> None:
+        # The shape this gate exists to permit: a stalled run measured
+        # nothing, so it gets its own sink rather than being filed under a
+        # title that asserts a finding.
+        content = _scheduled(
+            _notifier("report_failure", _FAILURE_ONLY)
+            + _notifier("report_stalled", _STALL_ONLY)
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_no_notifier_at_all_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _scheduled(""))
+        assert len(violations) == 1
+        assert "no .github/actions/post-tracking-issue job" in violations[0]
+
+    def test_unscheduled_workflow_needs_no_notifier(self, tmp_path: Path) -> None:
+        content = (
+            "on:\n  workflow_dispatch:\njobs:\n  worker:\n"
+            "    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
+            "    steps:\n      - run: true\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_bare_on_key_is_read_as_a_trigger(self, tmp_path: Path) -> None:
+        # PyYAML parses YAML 1.1, so a bare `on:` key arrives as the boolean
+        # True. Reading only data["on"] would match no real workflow and the
+        # invariant would pass everything forever while looking correct.
+        assert True in yaml.safe_load(_scheduled(""))
+        violations = _scan(tmp_path, _scheduled(""))
+        assert len(violations) == 1
+
+    def test_quoted_on_key_is_read_as_a_trigger(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _scheduled("", on_key='"on"'))
+        assert len(violations) == 1
+
+    def test_unrecognised_expression_fails_closed(self, tmp_path: Path) -> None:
+        # `failure()` admits failure in GitHub's semantics, but this gate
+        # models two idioms only. Crediting an expression it cannot read
+        # would hand out coverage on trust.
+        violations = _scan(tmp_path, _scheduled(_notifier("r", "failure()")))
+        assert len(violations) == 1
+        assert "failure" in violations[0]
+        assert "non-completion" in violations[0]
+
+    def test_a_non_notifier_job_does_not_count(self, tmp_path: Path) -> None:
+        # A job that merely runs on failure but files nothing is not a sink.
+        content = _scheduled(
+            "  bystander:\n"
+            "    needs: worker\n"
+            f"    if: {_BOTH}\n"
+            "    runs-on: ubuntu-24.04\n"
+            "    timeout-minutes: 5\n"
+            "    steps:\n"
+            "      - run: echo noted\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "no .github/actions/post-tracking-issue job" in violations[0]
 
 
 class TestMain:
