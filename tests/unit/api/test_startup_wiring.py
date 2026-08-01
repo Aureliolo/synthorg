@@ -26,6 +26,7 @@ from synthorg.api.lifecycle_builder import (
 )
 from synthorg.api.lifecycle_helpers import narrative_wiring
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
+    ConversationalApprovalsUnsupportedError,
     _guard_conversational_persistence,
 )
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
@@ -480,7 +481,7 @@ class TestFeatureWiringProposerDegradation:
 
         async def _refuse(*_args: object, **_kwargs: object) -> None:
             msg = "proposer boom"
-            raise ServiceUnavailableError(msg)
+            raise ConversationalApprovalsUnsupportedError(msg)
 
         async def _si_config(
             *_args: object, **_kwargs: object
@@ -499,6 +500,38 @@ class TestFeatureWiringProposerDegradation:
             await subsystem_registry._activate_chief_of_staff_proposer(app_state)
 
         assert app_state.slice(MetaStateSlice).chief_of_staff_proposer is None
+
+    async def test_a_missing_collaborator_is_not_contained(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The bare 503 base is what ``require_service`` raises for an absent
+        # collaborator, which is a wiring fault rather than the guard's
+        # deliberate refusal. Containing it too would leave the subsystem
+        # reading BLOCKED with nothing naming what is actually broken.
+        from synthorg.api.subsystems import registry as subsystem_registry
+
+        async def _fault(*_args: object, **_kwargs: object) -> None:
+            msg = "provider registry is not wired"
+            raise ServiceUnavailableError(msg)
+
+        async def _si_config(
+            *_args: object, **_kwargs: object
+        ) -> SelfImprovementConfig:
+            return SelfImprovementConfig()
+
+        monkeypatch.setattr(
+            "synthorg.api.lifecycle_helpers.conversational_wiring."
+            "wire_chief_of_staff_proposer",
+            _fault,
+        )
+        monkeypatch.setattr(subsystem_registry, "_si_config", _si_config)
+
+        app_state = _make_state()
+        with (
+            suppress_type_checks(),
+            pytest.raises(ServiceUnavailableError, match="not wired"),
+        ):
+            await subsystem_registry._activate_chief_of_staff_proposer(app_state)
 
 
 class _NoFineTuneBackend(FakePersistenceBackend):
