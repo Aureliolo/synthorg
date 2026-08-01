@@ -188,11 +188,15 @@ async def unwire_memory_backend(app_state: AppState) -> None:
         consolidation_scheduler=None,
     )
     if scheduler is not None:
-        with contextlib.suppress(Exception):
+        try:
             await scheduler.stop()
+        except Exception as exc:  # noqa: BLE001 -- best-effort teardown step
+            reraise_critical(exc)
     if backend is not None:
-        with contextlib.suppress(Exception):
+        try:
             await backend.disconnect()
+        except Exception as exc:  # noqa: BLE001 -- best-effort teardown step
+            reraise_critical(exc)
     logger.info(MEMORY_BACKEND_UNWIRED)
 
 

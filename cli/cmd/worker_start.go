@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -92,9 +93,12 @@ func resolveWorkerStartFlags(cmd *cobra.Command, opts *GlobalOpts) workerStartPl
 	if !cmd.Flags().Changed("stream-prefix") {
 		streamPrefix = opts.Tunables.DefaultNATSStreamPrefix
 	}
-	container := workerStartContainer
-	if container == "" {
-		container = defaultWorkerContainer
+	// Same reused-process hazard as --nats-url above: an earlier explicit
+	// --container leaves the bound global set, so a later invocation that
+	// omits the flag would silently exec into the previous container.
+	container := defaultWorkerContainer
+	if cmd.Flags().Changed("container") && workerStartContainer != "" {
+		container = workerStartContainer
 	}
 	return workerStartPlan{
 		natsURL:      natsURL,
@@ -122,19 +126,25 @@ func validateWorkerStartPlan(plan workerStartPlan) error {
 			plan.streamPrefix,
 		)
 	}
-	return validateContainerName(workerStartContainer)
+	// The resolved value, not the bound global: the global is empty on an
+	// omitted flag and stale on a reused process, so validating it lets the
+	// value that actually reaches docker through unchecked.
+	if plan.container == "" {
+		return errors.New("resolved container name is empty")
+	}
+	return validateContainerName(plan.container)
 }
 
 // workerExecArgs builds the docker exec argv for a validated plan.
 //
-// Every value travels in the docker process environment rather than in
-// argv: `-e KEY=value` pairs or an explicit `--nats-url <value>` would
-// expose `nats://user:pass@host` (and the stream prefix and worker count)
-// to anyone reading the docker process list, even though the log output
-// is redacted. `docker exec -e KEY <container>` forwards the variable
-// from the parent environment without putting its value on the command
-// line. The `--` stops docker's own flag parsing so the container name
-// can only ever be read as the CONTAINER positional.
+// The NATS URL and stream prefix travel in the docker process environment
+// rather than in argv: `-e KEY=value` pairs or an explicit
+// `--nats-url <value>` would expose `nats://user:pass@host` to anyone
+// reading the docker process list, even though the log output is redacted.
+// `docker exec -e KEY <container>` forwards the variable from the parent
+// environment without putting its value on the command line. The `--` stops
+// docker's own flag parsing so the container name can only ever be read as
+// the CONTAINER positional.
 func workerExecArgs(plan workerStartPlan) []string {
 	return []string{
 		"exec",

@@ -55,6 +55,7 @@ class CompressionSettingsSubscriber:
         """Resolve the new threshold and apply it to the live config.
 
         Raises:
+            TypeError: When the resolved threshold is not an ``int``.
             ValueError: When the resolved threshold is not positive.
             Exception: Re-raised after logging so the dispatcher records the
                 failure with subscriber context. The previous threshold stays
