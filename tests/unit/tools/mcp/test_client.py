@@ -207,12 +207,12 @@ class TestMCPClientListTools:
         tool1 = MagicMock()
         tool1.name = "allowed-tool"
         tool1.description = "allowed"
-        tool1.inputSchema = {}
+        tool1.input_schema = {}
 
         tool2 = MagicMock()
         tool2.name = "blocked-tool"
         tool2.description = "blocked"
-        tool2.inputSchema = {}
+        tool2.input_schema = {}
 
         mock_result = MagicMock()
         mock_result.tools = [tool1, tool2]
@@ -236,12 +236,12 @@ class TestMCPClientListTools:
         tool1 = MagicMock()
         tool1.name = "allowed-tool"
         tool1.description = "allowed"
-        tool1.inputSchema = {}
+        tool1.input_schema = {}
 
         tool2 = MagicMock()
         tool2.name = "blocked-tool"
         tool2.description = "blocked"
-        tool2.inputSchema = {}
+        tool2.input_schema = {}
 
         mock_result = MagicMock()
         mock_result.tools = [tool1, tool2]
@@ -474,7 +474,6 @@ class TestMCPClientHTTPTransport:
         mock_http_client = AsyncMock(spec=httpx.AsyncClient)
         mock_read_stream = AsyncMock()
         mock_write_stream = AsyncMock()
-        mock_session_id_cb = AsyncMock()
 
         with (
             patch(
@@ -497,7 +496,6 @@ class TestMCPClientHTTPTransport:
                 return_value=(
                     mock_read_stream,
                     mock_write_stream,
-                    mock_session_id_cb,
                 ),
             )
             mock_cm.__aexit__ = AsyncMock(return_value=False)
@@ -559,7 +557,7 @@ class TestMCPClientHTTPTransport:
 
             mock_cm = AsyncMock()
             mock_cm.__aenter__ = AsyncMock(
-                return_value=(AsyncMock(), AsyncMock(), AsyncMock()),
+                return_value=(AsyncMock(), AsyncMock()),
             )
             mock_cm.__aexit__ = AsyncMock(return_value=False)
             mock_http.return_value = mock_cm

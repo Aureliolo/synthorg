@@ -31,13 +31,13 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
 
     Mapping rules:
         - TextContent blocks: concatenate into content string.
-        - ImageContent: ``"[image: {mimeType}]"`` placeholder +
+        - ImageContent: ``"[image: {mime_type}]"`` placeholder +
           base64 in ``metadata["attachments"]``.
-        - AudioContent: ``"[audio: {mimeType}]"`` placeholder +
+        - AudioContent: ``"[audio: {mime_type}]"`` placeholder +
           base64 in ``metadata["attachments"]``.
         - EmbeddedResource: ``"[resource: {uri}]"`` placeholder.
-        - structuredContent: ``metadata["structured_content"]``.
-        - isError: maps 1:1 to ``is_error``.
+        - structured_content: ``metadata["structured_content"]``.
+        - is_error: maps 1:1 to ``is_error``.
 
     Args:
         raw: Raw MCP result to map.
@@ -52,20 +52,20 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
         if isinstance(block, TextContent):
             parts.append(block.text)
         elif isinstance(block, ImageContent):
-            parts.append(f"[image: {block.mimeType}]")
+            parts.append(f"[image: {block.mime_type}]")
             attachments.append(
                 {
                     "type": "image",
-                    "mimeType": block.mimeType,
+                    "mime_type": block.mime_type,
                     "data": block.data,
                 },
             )
         elif isinstance(block, AudioContent):
-            parts.append(f"[audio: {block.mimeType}]")
+            parts.append(f"[audio: {block.mime_type}]")
             attachments.append(
                 {
                     "type": "audio",
-                    "mimeType": block.mimeType,
+                    "mime_type": block.mime_type,
                     "data": block.data,
                 },
             )

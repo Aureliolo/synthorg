@@ -56,7 +56,7 @@ class TestImageContentMapping:
                 ImageContent(
                     type="image",
                     data="base64data",
-                    mimeType="image/png",
+                    mime_type="image/png",
                 ),
             ),
         )
@@ -65,7 +65,7 @@ class TestImageContentMapping:
         attachments = cast(list[JsonDict], result.metadata["attachments"])
         assert len(attachments) == 1
         assert attachments[0]["type"] == "image"
-        assert attachments[0]["mimeType"] == "image/png"
+        assert attachments[0]["mime_type"] == "image/png"
         assert attachments[0]["data"] == "base64data"
 
 
@@ -78,7 +78,7 @@ class TestAudioContentMapping:
                 AudioContent(
                     type="audio",
                     data="audiodata",
-                    mimeType="audio/mp3",
+                    mime_type="audio/mp3",
                 ),
             ),
         )
@@ -87,7 +87,7 @@ class TestAudioContentMapping:
         attachments = cast(list[JsonDict], result.metadata["attachments"])
         assert len(attachments) == 1
         assert attachments[0]["type"] == "audio"
-        assert attachments[0]["mimeType"] == "audio/mp3"
+        assert attachments[0]["mime_type"] == "audio/mp3"
         assert attachments[0]["data"] == "audiodata"
 
 
@@ -96,7 +96,7 @@ class TestEmbeddedResourceMapping:
 
     def test_resource_placeholder(self) -> None:
         resource = TextResourceContents(
-            uri="file:///test.txt",  # type: ignore[arg-type]
+            uri="file:///test.txt",
             text="file content",
         )
         raw = MCPRawResult(
@@ -185,7 +185,7 @@ class TestMixedContent:
                 ImageContent(
                     type="image",
                     data="imgdata",
-                    mimeType="image/jpeg",
+                    mime_type="image/jpeg",
                 ),
                 TextContent(type="text", text="footer"),
             ),
@@ -203,12 +203,12 @@ class TestMixedContent:
                 ImageContent(
                     type="image",
                     data="img",
-                    mimeType="image/png",
+                    mime_type="image/png",
                 ),
                 AudioContent(
                     type="audio",
                     data="aud",
-                    mimeType="audio/wav",
+                    mime_type="audio/wav",
                 ),
             ),
         )
