@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-r"""Verify cosign signatures for SynthOrg container images on GHCR.
+r"""Verify cosign signatures and SLSA provenance for SynthOrg images on GHCR.
 
 Run as a workflow gate after all publish jobs finish: for every
 ``(image, tag)`` pair pushed by the workflow, resolve the tag to its
-manifest digest, then confirm a cosign signature artifact (referrer
-index entry, surfaced on GHCR as the ``sha256-<hex>`` referrer tag)
-exists for that digest. Fails loudly if any tag is unsigned or any
-two tags of the same image diverge to different digests.
+manifest digest, then confirm both a cosign signature artifact and a
+SLSA provenance attestation (both published into the ``sha256-<hex>``
+referrer tag) exist for that digest. Fails loudly if any tag is
+unsigned, unattested, or if two tags of the same image diverge to
+different digests.
 
-Designed to catch the failure mode where two concurrent ``docker.yml``
+Provenance is checked, not just the signature: a signature proves who
+pushed the bytes, provenance proves how they were built, and the project
+claims SLSA Build L3 on the strength of the latter. Checking only the
+signature would leave that claim asserted rather than enforced.
+
+Designed to catch the failure mode where two concurrent ``build-images.yml``
 runs (e.g. main-push + tag-push for a release SHA) race on shared
 per-arch tags and end up signing different manifest list digests --
 leaving the user-facing tag (``synthorg-sandbox:0.7.6-dev.9``)
@@ -58,6 +64,11 @@ SIG_ACCEPT: Final[str] = "application/vnd.oci.image.index.v1+json"
 HTTP_TIMEOUT_SECONDS: Final[int] = 30
 HTTP_OK: Final[int] = 200
 HTTP_NOT_FOUND: Final[int] = 404
+
+# `attest-build-provenance` publishes a sigstore bundle referrer carrying the
+# predicate type in this annotation.
+PROVENANCE_PREDICATE: Final[str] = "https://slsa.dev/provenance/v1"
+_PREDICATE_ANNOTATION: Final[str] = "dev.sigstore.bundle.predicateType"
 USAGE_EXIT_CODE: Final[int] = 2
 FAILURE_EXIT_CODE: Final[int] = 1
 
@@ -533,6 +544,57 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def provenance_present(
+    repo_path: str,
+    digest: str,
+    auth_header: dict[str, str],
+) -> bool:
+    """Return True if a SLSA provenance attestation refers to this digest.
+
+    A signature proves who pushed the bytes; provenance proves how they were
+    built. The project claims SLSA Build L3 on the strength of
+    ``attest-build-provenance``, so verifying the signature alone would leave
+    that claim asserted rather than enforced -- an image whose attestation
+    step silently failed would still pass.
+
+    GHCR does not serve these through the OCI Referrers API; both cosign and
+    ``attest-build-provenance`` publish into the same ``sha256-<hex>`` tag
+    that ``signature_present`` HEADs. That tag is an index whose children are
+    the sigstore bundles, so provenance is one GET further: fetch the index
+    and look for a child annotated with the SLSA predicate type.
+
+    Raises:
+        urllib.error.URLError: a network-level failure, or a non-404 registry
+            error, that persisted across every attempt.
+    """
+    if not digest.startswith("sha256:"):
+        return False
+    sig_tag = "sha256-" + digest.removeprefix("sha256:")
+    safe_repo = urllib.parse.quote(repo_path, safe="/")
+    safe_sig_tag = urllib.parse.quote(sig_tag, safe="")
+    url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
+    headers = {"Accept": SIG_ACCEPT, **auth_header}
+    status, _, body = _request_with_retry("GET", url, headers)
+    if status != HTTP_OK:
+        return False
+    try:
+        index = json.loads(body)
+    except json.JSONDecodeError:
+        return False
+    manifests = index.get("manifests")
+    if not isinstance(manifests, list):
+        return False
+    for child in manifests:
+        if not isinstance(child, dict):
+            continue
+        annotations = child.get("annotations")
+        if not isinstance(annotations, dict):
+            continue
+        if annotations.get(_PREDICATE_ANNOTATION) == PROVENANCE_PREDICATE:
+            return True
+    return False
+
+
 def _verify_pair(
     pair: ImageTag,
     repo_prefix: str,
@@ -562,6 +624,11 @@ def _verify_pair(
             return None, (
                 f"no cosign signature artifact for {digest} "
                 f"(referrer tag sha256-{sig_hex} returned non-200)"
+            )
+        if not provenance_present(repo_path, digest, auth_header):
+            return None, (
+                f"no SLSA provenance attestation for {digest} "
+                f"(no referrer with predicateType {PROVENANCE_PREDICATE})"
             )
     except _NetworkExceptions as exc:
         return None, f"network error ({type(exc).__name__}: {exc!r})"
@@ -637,7 +704,10 @@ def main() -> int:
             continue
         assert digest is not None  # noqa: S101 -- err is None, so digest is set
         pair_to_digest[pair] = digest
-        print(f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} (signed)")
+        print(
+            f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} "
+            "(signed + SLSA provenance)"
+        )
 
     failures.extend(_check_per_image_convergence(pair_to_digest))
 

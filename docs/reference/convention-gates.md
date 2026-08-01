@@ -284,3 +284,23 @@ Adding an entry therefore means regenerating the baseline, which `check_baseline
 `scripts/check_convention_gate_inventory.py` enforces that every MANDATORY paragraph in the canonical doc set has either a registered gate or an explicit `exempt: { reason }` entry in `scripts/convention_gate_map.yaml`. Adding a new MANDATORY without updating the YAML fails pre-push.
 
 See [conventions.md §17](conventions.md) for the registration procedure detail.
+
+## GitHub Actions hardening coverage
+
+Control-by-control mapping against GitHub's *Security hardening for GitHub Actions* guide and OpenSSF's Actions guidance. Each row names where the control is enforced, so a regression fails a gate rather than relying on review.
+
+| Control | Status | Enforced by |
+|---|---|---|
+| Pin third-party actions to a full commit SHA | Met | Renovate `github-actions` manager; OpenSSF Scorecard `Pinned-Dependencies` (135/135 third-party, 71/71 GitHub-owned) |
+| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 29 workflows, per-job grants; Scorecard `Token-Permissions` 10/10 |
+| Never persist credentials in the workspace | Met | `persist-credentials: false` on every checkout; zizmor `artipacked` |
+| No untrusted checkout under `pull_request_target` | Met | One use (`repo-cla.yml`), checks out `ref: main`; zizmor `dangerous-triggers` with a scoped ignore |
+| No script injection from event data | Met | Event fields routed through `env:`; zizmor `template-injection` |
+| Cache never influences a release artifact | Met | `verify-cli.yml` disables the Go cache on tag refs; `cli-release` sets `cache: false`; zizmor `cache-poisoning` |
+| Every job bounded by `timeout-minutes` | Met | `check_ci_workflow_resilience.py` invariant 1 |
+| Required checks cannot silently stop gating | Met | `check_ci_rollup_complete.py` |
+| Runner images pinned, not rolling | Met | `ubuntu-24.04` tree-wide; Renovate `actions/runner-images` custom manager |
+| Base images resolved by digest | Met | `check_ci_workflow_resilience.py` invariant 8 |
+| Artefacts signed and provenance-attested | Met | `scripts/check_image_signatures.py` (signature **and** SLSA provenance) |
+| Self-hosted runners | Not applicable | GitHub-hosted only |
+| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh` (post-merge drift) and the `branch-protection-spec` PR check |

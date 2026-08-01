@@ -259,6 +259,27 @@ Base images are declared in `docker/*/apko.yaml` with relaxed package specs
 (e.g. `python-3.14`). Exact patch versions are resolved and pinned by
 `docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/maint-apko-lock.yml`.
 
+### SLSA Build L3
+
+Every published image and CLI archive carries build provenance from
+`actions/attest-build-provenance`, generated on GitHub-hosted runners with an
+ephemeral, isolated build environment and a signed, non-falsifiable provenance
+document. That is [SLSA](https://slsa.dev/spec/v1.0/levels) Build Level 3.
+
+The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
+as the `verify-signatures` gate after every publish and requires **both** a
+cosign signature and a provenance attestation for each pushed digest; an image
+whose attestation step silently failed fails the gate rather than shipping. A
+signature only proves who pushed the bytes, so signature-only verification
+would leave the L3 claim unchecked.
+
+Verify a published image yourself:
+
+```bash
+gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@sha256:<digest> \
+  -R Aureliolo/synthorg
+```
+
 ### CIS Docker Benchmark
 
 Both backend and web containers enforce CIS v1.6.0 controls in `compose.yml`:
