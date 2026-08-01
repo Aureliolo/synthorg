@@ -658,6 +658,76 @@ class TestDeclinedRetry:
 
         assert attempts == [1, 1]
 
+    async def test_an_unreadable_setting_does_not_read_as_a_change(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        attempts: list[int] = []
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        async def _get_str(namespace: str, key: str) -> str:
+            msg = f"settings backend is down for {namespace}.{key}"
+            raise ConnectionError(msg)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+            settings=("memory.backend",),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        await reconciler.reconcile(state, trigger="settings_write")
+        await reconciler.reconcile(state, trigger="settings_write")
+
+        # An unreadable key snapshots the same way every pass. Were it to
+        # snapshot as something new each time, a resolver outage would present
+        # as drift and re-run the whole wiring tree on every trigger.
+        assert attempts == [1]
+
+    async def test_a_raising_probe_reads_as_absence_and_names_the_capability(
+        self,
+    ) -> None:
+        world = _World()
+
+        def _explode(_state: AppState) -> bool:
+            msg = "probe read a slice that is not there"
+            raise AttributeError(msg)
+
+        capabilities = tuple(
+            Capability(id=cap_id, present=_explode)
+            if cap_id is CapabilityId.PERSISTENCE
+            else _capability(world, cap_id)
+            for cap_id in CapabilityId
+        )
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        reconciler = SubsystemReconciler((spec,), capabilities)
+        state = _app_state()
+
+        report = await reconciler.reconcile(state, trigger="boot")
+
+        # The pass survives the fault rather than aborting every other
+        # subsystem over it, and the requirement it could not read is named:
+        # waiting with an empty waiting_on would leave an operator nowhere to
+        # look. Not activated, because a probe that cannot answer is not a
+        # licence to wire against the dependency it was asked about.
+        (status,) = report.statuses
+        assert status.phase is SubsystemPhase.WAITING
+        assert status.waiting_on == (CapabilityId.PERSISTENCE,)
+        assert world.activations == []
+
     async def test_the_sweep_re_runs_a_decline_with_nothing_changed(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
         attempts: list[int] = []
