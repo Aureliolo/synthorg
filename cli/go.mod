@@ -9,16 +9,16 @@ require (
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/gofrs/flock v0.13.0
-	github.com/google/go-containerregistry v0.21.7
+	github.com/google/go-containerregistry v0.21.8
 	github.com/klauspost/compress v1.19.1
 	github.com/mattn/go-isatty v0.0.24
 	github.com/mattn/go-runewidth v0.0.27
 	github.com/sigstore/protobuf-specs v0.5.1
-	github.com/sigstore/sigstore-go v1.2.2
+	github.com/sigstore/sigstore-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
-	go.yaml.in/yaml/v3 v3.0.4
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/term v0.45.0
 )
 
@@ -51,7 +51,7 @@ require (
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.0 // indirect
 	github.com/go-openapi/loads v0.25.0 // indirect
-	github.com/go-openapi/runtime v0.32.6 // indirect
+	github.com/go-openapi/runtime v0.33.0 // indirect
 	github.com/go-openapi/runtime/server-middleware v0.32.6 // indirect
 	github.com/go-openapi/spec v0.22.9 // indirect
 	github.com/go-openapi/strfmt v0.27.0 // indirect

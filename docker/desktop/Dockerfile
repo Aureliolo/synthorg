@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25@sha256:0adf442eae370b6087e08edc7c50b552d80ddf261576f4ebd6421006b2461f12
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # =============================================================================
 # SynthOrg Desktop -- headless virtual-desktop sandbox image
 # =============================================================================
@@ -50,7 +50,7 @@ USER 10001
 # depends on is present on PATH. Xvfb is only started on first tool use, so
 # the check verifies the binaries rather than a running display.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD command -v Xvfb && command -v xdotool && command -v scrot || exit 1
+    CMD ["/bin/sh", "-c", "command -v Xvfb && command -v xdotool && command -v scrot || exit 1"]
 
 # Keep-alive entrypoint: the sandbox lifecycle drives work via `docker exec`
 # (the desktop tool's executor brings Xvfb up idempotently on first use).
