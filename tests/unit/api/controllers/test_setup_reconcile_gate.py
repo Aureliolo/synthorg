@@ -13,7 +13,7 @@ import pytest
 
 from synthorg.api.controllers.setup._runtime_wiring import _reconcile_post_setup
 from synthorg.api.subsystems.errors import SubsystemActivationError
-from synthorg.api.subsystems.reconciler import ReconcileReport, SubsystemStatus
+from synthorg.api.subsystems.report import ReconcileReport, SubsystemStatus
 from synthorg.api.subsystems.runtime import reconcile_subsystems
 from synthorg.api.subsystems.spec import CapabilityId, SubsystemPhase
 from tests._shared import make_app_state

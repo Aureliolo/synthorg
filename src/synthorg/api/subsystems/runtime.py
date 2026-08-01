@@ -8,8 +8,9 @@ periodic resync are the same call with a different label.
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.capabilities import CAPABILITIES
-from synthorg.api.subsystems.reconciler import ReconcileReport, SubsystemReconciler
+from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.api.subsystems.registry import SUBSYSTEMS
+from synthorg.api.subsystems.report import ReconcileReport
 from synthorg.api.subsystems.state import SubsystemsStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
