@@ -45,8 +45,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          run_id=$(gh run list --workflow CI --branch main --status completed \
-            --limit 1 --json databaseId --jq '.[0].databaseId')
+          # By filename, not display name: the display name is prose and has
+          # already been rewritten once (ci.yml -> verify-backend.yml,
+          # "CI" -> "Verify - Backend"), which would silently return no runs
+          # and leave this reporting "nothing to measure" forever.
+          run_id=$(gh run list --workflow verify-backend.yml --branch main \
+            --status completed --limit 1 --json databaseId --jq '.[0].databaseId')
           # `--jq .[0].databaseId` on an empty list prints the string "null",
           # not nothing, so an empty-string test alone would send that
           # straight into `actions/runs/null/jobs`.
