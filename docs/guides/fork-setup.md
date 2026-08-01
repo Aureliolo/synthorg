@@ -13,7 +13,7 @@ The preflight is non-blocking on pull requests and feature branches; it only fai
 
 CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
 
-Bootstrap once: **Actions -> Maint - Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
+Bootstrap once: **Actions** -> **`Maint - Labels`** -> **Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
 
 After this, the `Missing labels` section of the preflight tracking issue should clear on the next preflight run.
 
