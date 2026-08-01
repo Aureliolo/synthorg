@@ -163,7 +163,7 @@ def build_litestar(  # noqa: PLR0913
             floor_max_requests=api_config.rate_limit.floor_max_requests,
             unauth_max_requests=api_config.rate_limit.unauth_max_requests,
             auth_max_requests=api_config.rate_limit.auth_max_requests,
-            time_unit=api_config.rate_limit.time_unit.value,  # type: ignore[arg-type]
+            time_unit=api_config.rate_limit.time_unit.value,
         )
     )
 

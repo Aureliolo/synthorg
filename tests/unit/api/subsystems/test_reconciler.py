@@ -74,12 +74,12 @@ class TestOrdering:
             name="consumer",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "consumer", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "consumer", CapabilityId.MEMORY_BACKEND),
         )
         provider = SubsystemSpec(
             name="provider",
             provides=CapabilityId.PERSISTENCE,
-            activate=_installs(world, "provider", CapabilityId.PERSISTENCE),  # type: ignore[arg-type]
+            activate=_installs(world, "provider", CapabilityId.PERSISTENCE),
         )
         # Declared consumer-first on purpose: order must come from the
         # dependency edges, not from how the table happens to be written.
@@ -93,13 +93,13 @@ class TestOrdering:
             name="first",
             provides=CapabilityId.PERSISTENCE,
             requires=(CapabilityId.MEMORY_BACKEND,),
-            activate=_installs(world, "first", CapabilityId.PERSISTENCE),  # type: ignore[arg-type]
+            activate=_installs(world, "first", CapabilityId.PERSISTENCE),
         )
         second = SubsystemSpec(
             name="second",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "second", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "second", CapabilityId.MEMORY_BACKEND),
         )
         with pytest.raises(SubsystemGraphInvalidError, match="cycle"):
             SubsystemReconciler((first, second), _all_capabilities(world))
@@ -110,7 +110,7 @@ class TestOrdering:
             SubsystemSpec(
                 name=name,
                 provides=CapabilityId.MEMORY_BACKEND,
-                activate=_installs(world, name, CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+                activate=_installs(world, name, CapabilityId.MEMORY_BACKEND),
             )
             for name in ("one", "two")
         )
@@ -128,7 +128,7 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -148,7 +148,7 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -171,7 +171,7 @@ class TestReconcile:
             name="docs",
             provides=CapabilityId.KNOWLEDGE_ENGINE,
             requires=(CapabilityId.PERSISTENCE, CapabilityId.MEMORY_BACKEND),
-            activate=_installs(world, "docs", CapabilityId.KNOWLEDGE_ENGINE),  # type: ignore[arg-type]
+            activate=_installs(world, "docs", CapabilityId.KNOWLEDGE_ENGINE),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
 
@@ -190,8 +190,8 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
-            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -217,7 +217,7 @@ class TestReconcile:
         healthy = SubsystemSpec(
             name="healthy",
             provides=CapabilityId.ORG_MEMORY_BACKEND,
-            activate=_installs(world, "healthy", CapabilityId.ORG_MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "healthy", CapabilityId.ORG_MEMORY_BACKEND),
         )
         broken = SubsystemSpec(
             name="broken",
