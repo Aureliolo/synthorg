@@ -406,7 +406,11 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
         currently_off = current is None or not compare_ci(current, "true")
         return currently_off and compare_ci(new, "true")
     if key == _ENGINE_ORACLE_MIN_STAKES_KEY:
-        current_stakes = Stakes(current) if current is not None else Stakes.LOW
+        # A stored or env-overridden value can be malformed too, and raising
+        # here would fail the write with a parse error instead of judging the
+        # transition. The lowest floor is the safe reading: it makes any real
+        # raise compare as a weakening rather than skipping the check.
+        current_stakes = _as_stakes(current) or Stakes.LOW
         try:
             new_stakes = Stakes(new)
         except ValueError:
@@ -417,13 +421,20 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     return False
 
 
-def _retention_days(value: str) -> int | None:
-    """Return a retention window in days, or ``None`` when unparseable."""
+def _as_stakes(value: str | None) -> Stakes | None:
+    """Return *value* as a stakes level, or ``None`` when it does not parse.
+
+    Args:
+        value: The stored or incoming stakes string.
+
+    Returns:
+        The parsed level, or ``None``.
+    """
+    if value is None:
+        return None
     try:
-        return int(value)
+        return Stakes(value)
     except ValueError:
-        # A malformed value is rejected downstream by the type validator; do not
-        # treat an unparseable window as a weakening transition.
         return None
 
 
@@ -432,8 +443,8 @@ def _is_integrations_weakening(key: str, *, current: str | None, new: str) -> bo
     if key != _WEBHOOK_RETENTION_KEY:
         return False
     effective_current = current if current is not None else _RETENTION_NEVER_SWEEP
-    new_days = _retention_days(new)
-    current_days = _retention_days(effective_current)
+    new_days = _as_int(new)
+    current_days = _as_int(effective_current)
     if new_days is None or current_days is None:
         return False
     if new_days == 0:
