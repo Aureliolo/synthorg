@@ -211,6 +211,29 @@ class TestCli:
         assert main([str(report), "--out", str(out), "--repo-root", str(root)]) == 1
         assert not out.exists()
 
+    def test_a_refused_merge_leaves_an_existing_file_intact(
+        self, tmp_path: Path
+    ) -> None:
+        # A truncating write would empty the file here, and pytest-split
+        # reads an empty one as "no timings" and goes back to partitioning
+        # by count with nothing failing to say so.
+        root = _tree(tmp_path, "tests/unit/a/test_one.py")
+        out = tmp_path / "durations.json"
+        out.write_text('{"kept": 1.0}\n', encoding="utf-8")
+        report = _write(tmp_path, "junit.xml", "not xml at all")
+        assert main([str(report), "--out", str(out), "--repo-root", str(root)]) == 1
+        assert json.loads(out.read_text(encoding="utf-8")) == {"kept": 1.0}
+
+    def test_no_staging_file_survives_a_successful_write(self, tmp_path: Path) -> None:
+        root = _tree(tmp_path, "tests/unit/a/test_one.py")
+        report = _write(
+            tmp_path, "junit.xml", _report(("tests.unit.a.test_one", "test_a", "1.0"))
+        )
+        out = tmp_path / "durations.json"
+        assert main([str(report), "--out", str(out), "--repo-root", str(root)]) == 0
+        leftovers = [p.name for p in tmp_path.iterdir() if p.name.startswith(".")]
+        assert leftovers == []
+
 
 def test_the_tracked_unit_durations_are_readable() -> None:
     """The committed file parses and carries real timings."""

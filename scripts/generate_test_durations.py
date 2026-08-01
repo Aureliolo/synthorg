@@ -29,6 +29,7 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Final
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -172,6 +173,30 @@ def merge_reports(paths: list[Path], repo_root: Path) -> MergedDurations:
     return merged
 
 
+def _write_atomically(destination: Path, payload: str) -> None:
+    """Replace *destination* with *payload*, or leave it untouched.
+
+    A plain write truncates first, so an interrupted run leaves a half-written
+    or empty durations file. pytest-split reads that as "no timings" and
+    silently partitions by test count again, which is the failure this file
+    exists to prevent and the one nothing would report.
+
+    Args:
+        destination: The file to replace.
+        payload: Its new contents.
+    """
+    with NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        delete=False,
+    ) as handle:
+        handle.write(payload)
+        staged = Path(handle.name)
+    staged.replace(destination)
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -190,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    args.out.write_text(json.dumps(merged.durations, indent=2) + "\n", encoding="utf-8")
+    _write_atomically(args.out, json.dumps(merged.durations, indent=2) + "\n")
     total = sum(merged.durations.values())
     print(
         f"OK: {len(merged.durations)} timed tests, {total:.0f}s total, "

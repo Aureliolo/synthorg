@@ -47,7 +47,10 @@ jobs:
 
           run_id=$(gh run list --workflow CI --branch main --status completed \
             --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -z "$run_id" ]; then
+          # `--jq .[0].databaseId` on an empty list prints the string "null",
+          # not nothing, so an empty-string test alone would send that
+          # straight into `actions/runs/null/jobs`.
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
             echo "no completed CI run on main; nothing to measure"
             echo "drifted=false" >> "$GITHUB_OUTPUT"
             exit 0
