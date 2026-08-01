@@ -23,7 +23,7 @@ claim in its docstring stays true.
 
 import importlib.util
 from pathlib import Path
-from typing import Any
+from types import ModuleType
 
 import pytest
 
@@ -33,7 +33,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_ci_rollup_complete.py"
 
 
-def _load_script_module() -> Any:
+def _load_script_module() -> ModuleType:
     """Import the script as a module so private helpers are callable."""
     spec = importlib.util.spec_from_file_location(
         "_check_ci_rollup_complete",
