@@ -2,10 +2,10 @@
 """The declared subsystems.
 
 One entry per subsystem whose activation depends on something that can be
-absent at boot and arrive later. Activation is the existing wiring function
-unchanged; what is new is ``requires``, the check that used to be buried in
-the function body, hoisted where the reconciler can order by it and report
-on it.
+absent at boot and arrive later. ``activate`` is the wiring function itself;
+``requires`` states the dependency check where the reconciler can order by it
+and report on it, rather than leaving it buried in the function body where
+only that one call site can act on it.
 
 Collaborators are read from live state at activation rather than captured
 when the table is built. A value captured once is the same mistake as a

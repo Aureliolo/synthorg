@@ -386,6 +386,7 @@
       "settings_namespace": "coordination",
       "state_slice_fields": [
         "metrics_store",
+        "baseline_store",
         "coordination_service",
         "ceremony_policy_service"
       ]
@@ -1358,6 +1359,24 @@
       ]
     },
     {
+      "controllers": [
+        "SubsystemsController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/api/subsystems",
+      "ghost_wired_symbols": [
+        "SubsystemReconciler",
+        "SubsystemResyncScheduler"
+      ],
+      "mcp_tool_names": [],
+      "name": "subsystems",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "reconciler"
+      ]
+    },
+    {
       "controllers": [],
       "depends_on": [],
       "directory": "src/synthorg/telemetry",
@@ -1481,6 +1500,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-31T19:42:15.196171Z",
+  "generated_at": "2026-08-01T11:41:40.266457Z",
   "schema_version": 1
 }

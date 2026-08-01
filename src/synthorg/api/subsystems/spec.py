@@ -116,9 +116,10 @@ class Capability:
 class SubsystemSpec:
     """One subsystem, declared rather than sequenced.
 
-    ``activate`` is the existing wiring function unchanged. What is new is
-    ``requires``: the check that used to be buried inside the function body,
-    hoisted where the reconciler can read it, order by it, and report on it.
+    ``activate`` is the wiring function itself. ``requires`` states the
+    dependency check where the reconciler can read it, order by it and report
+    on it, rather than inside the function body where only that one call site
+    can act on it.
 
     Attributes:
         name: Stable operator-facing identifier, also the status-surface key.
