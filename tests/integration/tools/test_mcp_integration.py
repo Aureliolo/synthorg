@@ -46,7 +46,7 @@ class TestMCPBridgeFullPipeline:
         mock_tool = MagicMock()
         mock_tool.name = "search"
         mock_tool.description = "Search documents"
-        mock_tool.inputSchema = {
+        mock_tool.input_schema = {
             "type": "object",
             "properties": {"query": {"type": "string"}},
         }
@@ -56,8 +56,8 @@ class TestMCPBridgeFullPipeline:
         call_result.content = [
             TextContent(type="text", text="Found 3 results"),
         ]
-        call_result.isError = False
-        call_result.structuredContent = None
+        call_result.is_error = False
+        call_result.structured_content = None
 
         client = _make_connected_client(
             config,
@@ -96,14 +96,14 @@ class TestMCPBridgeFullPipeline:
         mock_tool = MagicMock()
         mock_tool.name = "lookup"
         mock_tool.description = "Lookup"
-        mock_tool.inputSchema = {}
+        mock_tool.input_schema = {}
 
         call_result = MagicMock()
         call_result.content = [
             TextContent(type="text", text="cached result"),
         ]
-        call_result.isError = False
-        call_result.structuredContent = None
+        call_result.is_error = False
+        call_result.structured_content = None
 
         client = _make_connected_client(
             config,
@@ -129,8 +129,8 @@ class TestMCPBridgeFullPipeline:
         new_result.content = [
             TextContent(type="text", text="new result"),
         ]
-        new_result.isError = False
-        new_result.structuredContent = None
+        new_result.is_error = False
+        new_result.structured_content = None
         client._session.call_tool = AsyncMock(  # type: ignore[method-assign, union-attr]
             return_value=new_result,
         )
@@ -150,14 +150,14 @@ class TestMCPBridgeFullPipeline:
         mock_tool = MagicMock()
         mock_tool.name = "failing"
         mock_tool.description = "Might fail"
-        mock_tool.inputSchema = {}
+        mock_tool.input_schema = {}
 
         call_result = MagicMock()
         call_result.content = [
             TextContent(type="text", text="Permission denied"),
         ]
-        call_result.isError = True
-        call_result.structuredContent = None
+        call_result.is_error = True
+        call_result.structured_content = None
 
         client = _make_connected_client(
             config,
@@ -188,19 +188,19 @@ class TestMCPBridgeFullPipeline:
         tool_allowed = MagicMock()
         tool_allowed.name = "allowed"
         tool_allowed.description = "Allowed tool"
-        tool_allowed.inputSchema = {}
+        tool_allowed.input_schema = {}
 
         tool_blocked = MagicMock()
         tool_blocked.name = "blocked"
         tool_blocked.description = "Blocked tool"
-        tool_blocked.inputSchema = {}
+        tool_blocked.input_schema = {}
 
         call_result = MagicMock()
         call_result.content = [
             TextContent(type="text", text="ok"),
         ]
-        call_result.isError = False
-        call_result.structuredContent = None
+        call_result.is_error = False
+        call_result.structured_content = None
 
         client = _make_connected_client(
             config,

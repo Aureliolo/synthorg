@@ -113,7 +113,7 @@ class TestEmbeddedResourceMapping:
 
 
 class TestStructuredContent:
-    """structuredContent maps to metadata."""
+    """structured_content maps to metadata."""
 
     def test_structured_content_in_metadata(self) -> None:
         raw = MCPRawResult(
@@ -132,7 +132,7 @@ class TestStructuredContent:
 
 
 class TestIsErrorMapping:
-    """isError maps 1:1 to is_error."""
+    """is_error maps 1:1 to is_error."""
 
     def test_error_true(self) -> None:
         raw = MCPRawResult(
