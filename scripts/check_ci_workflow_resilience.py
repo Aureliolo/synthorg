@@ -361,9 +361,16 @@ def _is_notifier_job(job: dict[str, object]) -> bool:
 
 
 def _has_schedule_trigger(data: dict[str, object]) -> bool:
-    """Return whether the workflow declares a ``schedule:`` trigger."""
-    for key in _ON_KEYS:
-        triggers = data.get(key)  # type: ignore[arg-type]
+    """Return whether the workflow declares a ``schedule:`` trigger.
+
+    Walks the mapping rather than indexing it: one of the keys being matched
+    is genuinely a bool (see ``_ON_KEYS``), which no lookup on a ``str``-keyed
+    mapping can express. Iterating compares whatever keys are actually there,
+    so the bool arrives on its own without a cast or a silencing comment.
+    """
+    for key, triggers in data.items():
+        if key not in _ON_KEYS:
+            continue
         if isinstance(triggers, dict) and _SCHEDULE_KEY in triggers:
             return True
         if isinstance(triggers, list) and _SCHEDULE_KEY in triggers:
