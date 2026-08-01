@@ -503,6 +503,40 @@ jobs:
           uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
           MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases --no-warn-unused-configs scripts/
 
+  # ── Python: Type Check (second opinion) ──
+  # Mypy is authoritative; pyright disagrees with it in places, so this gates
+  # on a shrink-only per-rule baseline rather than on zero findings.
+  type-check-pyright:
+    name: Type Check (pyright)
+    needs: changes
+    if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Run pyright
+        # Exit code discarded: findings are the expected steady state, and the
+        # baseline gate below is what decides pass or fail.
+        run: uv run pyright --outputjson > pyright-report.json || true
+
+      - name: Enforce shrink-only baseline
+        run: uv run python scripts/check_pyright_baseline.py --report pyright-report.json
+
+      - name: Upload pyright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pyright-report
+          path: pyright-report.json
+          retention-days: 14
+
   # ── Python: OpenAPI Liveness ──
   openapi-liveness:
     name: OpenAPI Liveness
@@ -1882,7 +1916,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
+    needs: [changes, lint, doc-drift, pin-drift-regression, runtime-stats-freshness, schema-validate, type-check, type-check-pyright, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build, dashboard-e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -1899,6 +1933,7 @@ jobs:
             ${{ needs.runtime-stats-freshness.result }}
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
+            ${{ needs.type-check-pyright.result }}
             ${{ needs.openapi-liveness.result }}
             ${{ needs.export-openapi.result }}
             ${{ needs.test-unit.result }}

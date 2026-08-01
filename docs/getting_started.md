@@ -184,7 +184,7 @@ Recommended extensions:
 - **Ruff** (`charliermarsh.ruff`): linting and formatting
 - **Pylance** (`ms-python.vscode-pylance`): type checking and IntelliSense
 
-Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy runs in CI as the authoritative check.
+Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy is the authoritative check, enforced on every push. Pyright also runs in CI as a second opinion, gated on a shrink-only per-rule baseline (`scripts/pyright_finding_baseline.json`) because its narrowing and overload analysis disagrees with mypy in places.
 
 Set the Python interpreter to the project virtual environment:
 

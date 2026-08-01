@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
 # Turn a failed GHCR prune run into an actionable repair instruction.
 #
-# The cleanup action aborts a leg on the first 400 and logs the version id but
-# not the digest, while the repair (protect_ghcr_undeletable_version.py) needs
-# the digest. This reads the failed run's own job logs, pairs each refused
-# version id with the package whose leg logged it, resolves the digest through
-# the packages API, and emits a ready-to-run command per offender.
+# The cleanup action logs the refused version id but not the digest, which is
+# what protect_ghcr_undeletable_version.py needs. Reads the failed run's job
+# logs, resolves each id to a digest, and emits a ready-to-run command.
 #
-# Writes a markdown block to $GITHUB_OUTPUT as `report`. Never fails the job:
-# it is a diagnosis aid on an already-failing path, and a parse miss must not
-# replace a real failure notice with a scripting error. When nothing matches
-# the permanent-refusal signature it says so, which is itself the finding --
-# that means the leg died of something transient (a 401 under load) that will
-# self-heal, or of something new worth reading the log for.
+# Writes markdown to $GITHUB_OUTPUT as `report`. Never fails: it is a
+# diagnosis aid on an already-failing path, and a parse miss must not replace
+# a real failure notice with a scripting error.
 set -uo pipefail
 
 : "${GH_TOKEN:?GH_TOKEN is required}"
@@ -33,8 +28,6 @@ emit() {
 
 mkdir -p "$LOG_DIR"
 
-# One archive for the whole run; per-job log endpoints would need a second
-# round trip each and the matrix has ten legs.
 if ! gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/logs" > "${LOG_DIR}/logs.zip" 2>"${LOG_DIR}/err"; then
   emit "Could not download the run logs to diagnose ($(tr -d '\n' < "${LOG_DIR}/err" | head -c 200)). Read the run directly."
   exit 0
@@ -45,8 +38,8 @@ if ! unzip -qo "${LOG_DIR}/logs.zip" -d "${LOG_DIR}/unpacked" 2>/dev/null; then
   exit 0
 fi
 
-# Each leg is its own file named after the job ("Prune synthorg-backend"), so
-# the package comes from the filename rather than from parsing the log body.
+# Each leg is its own file named after the job, so the package comes from the
+# filename rather than from parsing the log body.
 report=''
 while IFS= read -r logfile; do
   package="$(basename "$logfile" | sed -E 's/^[0-9]*_?Prune (synthorg-[a-z-]+).*/\1/')"
@@ -57,14 +50,12 @@ while IFS= read -r logfile; do
 
   grep -q "$REFUSAL_SIGNATURE" "$logfile" || continue
 
-  # Version ids appear on the Octokit ERROR line for the failed DELETE. Capture
-  # the id specifically: a bare digit scrape would also pull the `400` out of
-  # `versions/<id> - 400` and then chase it as a second, non-existent version.
+  # Capture the id specifically: a bare digit scrape would also pull the `400`
+  # out of `versions/<id> - 400` and chase it as a second version.
   while IFS= read -r version_id; do
     [ -n "$version_id" ] || continue
     digest="$(gh api "users/${OWNER}/packages/container/${package}/versions/${version_id}" --jq '.name' 2>/dev/null || true)"
-    # A 404 body reaches stdout as JSON rather than failing the call, so
-    # validate the shape instead of trusting a non-empty result.
+    # A 404 body reaches stdout as JSON rather than failing the call.
     case "$digest" in
       sha256:*) ;;
       *) digest='<digest lookup failed; read the run log>' ;;

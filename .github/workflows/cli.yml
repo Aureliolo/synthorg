@@ -65,18 +65,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -114,18 +105,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -148,14 +130,8 @@ jobs:
   # BUILD job (cardinal-rule exemption): 6-platform cross-compile + smoke.
   # Skipping it on non-CLI PRs cannot hide a correctness defect (cli-lint /
   # cli-test above run unconditionally). Allowlisted in check_local_ci_parity.py.
-  #
-  # Not on tag pushes. This job is a cross-compile CHECK -- five of its six
-  # cells build to /dev/null and the sixth is smoke-tested and discarded. On a
-  # tag, cli-release runs GoReleaser over the identical goos/goarch matrix with
-  # the identical ldflags and CGO_ENABLED, so running both compiles the same six
-  # binaries twice for one commit and ships neither of this job's. The check
-  # still runs on every PR and main push, which is where a cross-compile break
-  # needs catching; by tag time the same commit has already passed it.
+  # Not on tags: cli-release's GoReleaser compiles the identical six targets,
+  # and this job's binaries are discarded.
   cli-build:
     name: CLI Build
     needs: cli-changes
@@ -176,18 +152,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -271,18 +238,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -311,18 +269,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -391,18 +340,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -480,18 +420,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod
-          # Cached on PR and main-push, never on a tag. Without any cache every
-          # job here starts cold and recompiles the whole module from source,
-          # ~20 rebuilds of the same commit per PR across lint / test x3 OS /
-          # build x6 / bench. But this workflow also carries a `tags: v*`
-          # trigger, so on a tag its jobs gate a release: a poisoned cache
-          # entry restored into `cli-test` could turn a failing test green and
-          # let a bad release through. Keying the cache off the ref keeps the
-          # entire release path cold and unpoisonable while the everyday path
-          # stays warm. `cli-release` itself additionally sets `cache: false`
-          # outright, so the shipped binaries never see a cache either way.
-          # zizmor: ignore[cache-poisoning] -- caching is disabled on the tag
-          # refs that publish; see above.
+          # Never on a tag: this workflow's jobs gate a release there, and a
+          # poisoned cache could turn a failing test green.
+          # zizmor: ignore[cache-poisoning]
           cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           cache-dependency-path: cli/go.sum
       - uses: ./.github/actions/go-mod-download-retry
@@ -590,11 +521,8 @@ jobs:
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 
   # ── Release (GoReleaser + provenance, only on version tags) ──
-  # No `cli-build` in needs: it is deliberately skipped on tags (see that job),
-  # and a skipped dependency would park this job forever. The preconditions
-  # that remain are the ones that can actually reject a release -- lint, the
-  # three-OS test matrix, and govulncheck. GoReleaser does its own compile of
-  # every target, so a cross-compile break still surfaces here, loudly.
+  # No `cli-build` in needs: it is skipped on tags, and a skipped dependency
+  # would park this job forever.
   cli-release:
     name: CLI Release
     if: startsWith(github.ref, 'refs/tags/v')

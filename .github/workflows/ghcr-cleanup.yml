@@ -6,22 +6,11 @@ name: GHCR Cleanup
 # targets only the reapable tag classes AND carries a belt-and-braces
 # `exclude-tags` regex that protects the release tags regardless.
 #
-# A `keep-*` tag is the operator escape hatch for a version the API refuses to
-# delete. GHCR rejects a delete once a publicly visible version passes 5000
-# downloads, permanently, and the action treats any 400 as fatal -- so one such
-# version reds the leg every week forever and strands every candidate queued
-# behind it. The download count is not exposed by the REST API, so the offender
-# cannot be predicted, only named after the first refusal. `report-failure`
-# below extracts the digest from the failed run and puts the exact repair
-# command in the tracking issue:
-#
-#   uv run python scripts/protect_ghcr_undeletable_version.py \
-#     --owner <owner> --package <pkg> --digest sha256:<...>
-#
-# That script re-PUTs the manifest bytes verbatim under a `keep-undeletable-*`
-# tag, so the digest is preserved and the untagged pass stops seeing it. It
-# refuses to tag a platform-bearing image index, since a `keep-*` tag would
-# exempt a real release from cleanup for good.
+# GHCR permanently refuses to delete a public version past 5000 downloads, and
+# the action treats any 400 as fatal, so one such version reds the leg forever.
+# The count is not in the REST API, so the offender can only be named after the
+# first refusal: `report-failure` below extracts it and puts the
+# protect_ghcr_undeletable_version.py repair command in the tracking issue.
 #
 # Three passes below: dev builds, PR/scan images, orphans. Each carries its
 # own regex and rationale.
@@ -205,17 +194,11 @@ jobs:
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}
 
-  # The prune is the only scheduled workflow that had no failure sink, so its
-  # weekly red leg went unseen indefinitely (an undeletable version reds it
-  # forever, by design of the GHCR API). This job names the offender and hands
-  # over the exact repair command, so the failure is actionable rather than
-  # merely visible.
   report-failure:
     name: Open / update tracking issue on failed prune
     needs: [config, cleanup]
-    # `always()` so a failed matrix leg still reaches this. Scheduled runs only:
-    # a manual dispatch is watched by whoever triggered it and must not file an
-    # issue. `cancelled` is the 120-minute cap on a large backfill, not a defect.
+    # Scheduled only: a manual dispatch is watched by whoever triggered it.
+    # `cancelled` is the 120-minute backfill cap, not a defect.
     if: >-
       always()
       && github.event_name == 'schedule'
@@ -232,10 +215,6 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      # The action logs `DELETE .../versions/<id> - 400` and then the human
-      # message. Both are needed: the id identifies the version, the message
-      # distinguishes the permanent >5000-downloads refusal from a transient
-      # 401 (which self-heals next week and needs no repair).
       - name: Extract refused versions
         id: refused
         env:

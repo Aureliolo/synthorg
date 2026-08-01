@@ -727,6 +727,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
+      - id: ci-rollup-complete
+        name: sentinel rollups cover every job (CI Pass / CLI Pass / Docker Pass)
+        entry: uv run python scripts/check_ci_rollup_complete.py
+        language: system
+        # Any of the three workflows the gate polices, the ruleset spec whose
+        # required contexts it cross-checks, or the gate itself. A new job or a
+        # renamed sentinel must not be able to land without re-running this.
+        files: ^(\.github/workflows/(ci|cli|docker)\.yml|\.github/branch_protection\.yml|scripts/check_ci_rollup_complete\.py)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: no-api-dto-in-persistence-or-service
         name: forbid synthorg.api.dto_* imports inside persistence/ and service/
         entry: uv run python scripts/check_no_api_dto_in_persistence_or_service.py

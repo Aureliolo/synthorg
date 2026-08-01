@@ -4,12 +4,9 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-  # No `paths:` filter, deliberately. `Docker Pass` is a required status
-  # check, and a required context on a path-filtered workflow never reports
-  # on a PR that misses the paths -- which blocks that PR permanently rather
-  # than passing it. Path scoping lives one level in, on the `changes` job
-  # below, so the workflow always dispatches and always reports while the
-  # heavy build jobs stay scoped. Same shape ci.yml uses for dashboard-build.
+  # No `paths:` filter: `Docker Pass` is a required check, and GitHub treats a
+  # never-reported required context as unsatisfied, blocking the PR forever.
+  # Scoping lives on the `changes` job instead.
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -59,12 +56,15 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # ANDed with "not release-please": such a PR touches pyproject.toml, which
+    # sits in the backend and fine-tune filters, so a version bump would
+    # otherwise build both images for source that did not change.
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      sandbox: ${{ steps.filter.outputs.sandbox }}
-      sidecar: ${{ steps.filter.outputs.sidecar }}
-      fine-tune: ${{ steps.filter.outputs.fine-tune }}
-      web: ${{ steps.filter.outputs.web }}
+      backend: ${{ steps.filter.outputs.backend == 'true' && steps.rp.outputs.is_release_please != 'true' }}
+      sandbox: ${{ steps.filter.outputs.sandbox == 'true' && steps.rp.outputs.is_release_please != 'true' }}
+      sidecar: ${{ steps.filter.outputs.sidecar == 'true' && steps.rp.outputs.is_release_please != 'true' }}
+      fine-tune: ${{ steps.filter.outputs.fine-tune == 'true' && steps.rp.outputs.is_release_please != 'true' }}
+      web: ${{ steps.filter.outputs.web == 'true' && steps.rp.outputs.is_release_please != 'true' }}
     steps:
       # fetch-depth: 0. See ci.yml Detect Changes for full rationale:
       # paths-filter on push: events races on shallow checkouts.
@@ -73,6 +73,22 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: "0"
           persist-credentials: false
+      # Author identity, not just the branch name: on a fork `pull_request`,
+      # `head_ref` is attacker-controlled.
+      - name: Detect release-please PR
+        id: rp
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          if [[ "${HEAD_REF}" == release-please--* && "${PR_AUTHOR}" == "synthorg-repo-bot[bot]" ]]; then
+            echo "is_release_please=true" >> "$GITHUB_OUTPUT"
+            echo "Release-please PR: image builds short-circuited."
+          else
+            echo "is_release_please=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
@@ -212,12 +228,8 @@ jobs:
           echo "deployment_env=${ENV_TAG}" >> "$GITHUB_OUTPUT"
           echo "Deployment env (baked into backend image): ${ENV_TAG}"
 
-      # Which architectures the multi-arch app images build, as a JSON array
-      # the build matrices expand. A PR builds amd64 only: nothing is
-      # published from a PR, so the second arch would buy a scan of bytes
-      # that are then discarded, and the arm64 leg is the slower of the two
-      # to schedule. Everything that actually publishes builds both, because
-      # the published manifest list must carry both.
+      # PR builds amd64 only: nothing is published from a PR, so the second
+      # arch would scan bytes that are then discarded.
       - name: Resolve build architectures
         id: arches
         env:
@@ -553,21 +565,14 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-backend-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-backend-base-publish.result == 'success')
-    # One job per architecture, each on a runner native to it. Nothing
-    # emulates: `ubuntu-24.04-arm` is a real arm64 machine, free for public
-    # repositories. Previously both arches were built in one amd64 job with
-    # arm64 under QEMU, which is what made this job 18.7 min on main.
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
-    # Halved from 60: the ceiling covered an emulated arm64 leg compiling
-    # native wheels, and each job now builds one architecture natively.
     timeout-minutes: 30
     permissions:
       actions: read
       contents: read
       security-events: write
     strategy:
-      # An arm64 failure must not cancel a healthy amd64 build; the publish
-      # job requires both, so a half-matrix simply does not publish.
+      # An arm64 failure must not cancel a healthy amd64 build.
       fail-fast: false
       matrix:
         arch: ${{ fromJSON(needs.version.outputs.arches) }}
@@ -624,29 +629,11 @@ jobs:
       #   - tag push: same story for graduate.yml + manual tags.
       #   - workflow_dispatch: protects ad-hoc rebuilds.
       #
-      # This is the single source-of-truth gate for a broken boot
-      # path, and nothing downstream re-tests it: Docker images are
-      # content-addressed, so pulling this digest from GHCR at
-      # release time can never produce different bytes than the
-      # image smoked here. Smoking at release time instead would
-      # only catch the same regression later, after the whole Docker
-      # matrix and the signing steps had already run.
-      #
-      # The image is already loaded into the local Docker daemon
-      # by build-scan-image (it builds with `outputs: type=docker,
-      # dest=...` and re-loads); we run it in the same job, no
-      # registry pull. It probes /api/v1/healthz under the same CPU
-      # and memory limits compose applies, against a deadline derived
-      # from the image's own HEALTHCHECK start period -- so a cold
-      # boot that grows into the health budget's headroom fails here
-      # rather than on a user's first `synthorg start`.
-      #
-      # Now runs on BOTH architectures. It could not before: the arm64
-      # image only ever existed as QEMU-emulated bytes on an amd64 runner,
-      # where booting a full backend under emulation is far too slow to
-      # gate on, so arm64 images shipped having never been started. Each
-      # arch now builds on its own native hardware, so each can be booted
-      # on it for the price of the amd64 smoke alone.
+      # Single source-of-truth gate for a broken boot path; nothing
+      # downstream re-tests it. Probes /api/v1/healthz under compose's CPU
+      # and memory limits, against a deadline derived from the image's own
+      # HEALTHCHECK start period. Runs on both arches now that each builds
+      # natively.
       - name: Smoke-test backend image
         uses: ./.github/actions/smoke-test-backend-image
         with:
@@ -1011,7 +998,6 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sandbox-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
-    # Native per-arch runners; see build-backend for the full rationale.
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
@@ -1086,9 +1072,6 @@ jobs:
       !startsWith(github.ref, 'refs/tags/v') &&
       needs.build-sidecar-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sidecar-base-publish.result == 'success')
-    # Native per-arch runners; see build-backend for the full rationale. This
-    # image compiles a Go binary inside its Dockerfile, so it paid the
-    # emulation tax on every instruction of that compile.
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 30
     permissions:
@@ -1208,10 +1191,7 @@ jobs:
           base-image-tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           extra-build-args: |
             FINE_TUNE_EXTRA=${{ matrix.extra }}
-          # amd64 only, on every event: the torch / CUDA wheels these images
-          # bundle publish no arm64 build, so there is nothing to compile for
-          # the second architecture. The matrix dimension here is the gpu/cpu
-          # variant, not the arch.
+          # torch / CUDA wheels publish no arm64 build.
           platform: amd64
           cache-scope: fine-tune-${{ matrix.variant }}
           free-disk-space: "true"
@@ -1882,11 +1862,8 @@ jobs:
           gh release edit "$TAG" --notes "${CLEANED}${IMAGES}"
 
   # ── Gate: all required checks passed ──
-  # The required `Docker Pass` context. Nearly every job here is conditional
-  # on the event (PR builds but never publishes; main-push publishes; tag-push
-  # only retags), so `skipped` MUST count as passing or the gate would fail
-  # every run for the jobs that correctly sat out. Only a real `failure` or a
-  # `cancelled` is a failure.
+  # Nearly every job here is conditional on the event, so `skipped` must count
+  # as passing.
   docker-pass:
     name: Docker Pass
     if: always()

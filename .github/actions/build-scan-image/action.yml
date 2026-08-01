@@ -9,17 +9,8 @@ description: >-
   permissions are `contents: read` + `security-events: write` -- no elevated
   registry perms.
 
-  One architecture per invocation, by design. The caller runs it once per
-  arch on a runner NATIVE to that arch (`ubuntu-24.04` / `ubuntu-24.04-arm`),
-  so nothing here emulates. Building both arches in one job meant arm64 ran
-  under QEMU on an amd64 runner, which dominated the job: `Build Backend`
-  measured 18.7 min on main, nearly all of it the emulated leg compiling
-  native wheels instruction by instruction. Native runners are free for
-  public repositories, so the emulation bought nothing but wall-clock.
-
-  A consequence worth stating: the arm64 image is now scanned AND smoke-
-  tested on real arm64 hardware. Under emulation the smoke test was skipped
-  entirely, so arm64 images shipped having never been booted.
+  One architecture per invocation: the caller runs it once per arch on a
+  runner native to that arch, so nothing here emulates.
 
 inputs:
   image-name:
@@ -31,10 +22,8 @@ inputs:
     required: true
   platform:
     description: >-
-      The single architecture to build: `amd64` or `arm64`. MUST match the
-      runner the calling job selected -- this action does not register any
-      binfmt handler, so a mismatch fails on the first `RUN` with an
-      exec-format error rather than silently emulating.
+      The single architecture to build: `amd64` or `arm64`. Must match the
+      runner the calling job selected; no binfmt handler is registered.
     required: false
     default: amd64
   display-name:
@@ -128,10 +117,6 @@ outputs:
       the runner's Docker daemon.
         - PR events: `ghcr.io/<owner>/synthorg-<image-name>:sha-<short-sha>`
         - non-PR events: `ghcr.io/<owner>/synthorg-<image-name>:scan-<full-sha>-<platform>`
-      Used by smoke-test composite actions that need to `docker run` the
-      just-built image. Always non-empty on a successful build, because the
-      action builds exactly one architecture and that architecture is the
-      one the caller asked for.
     value: ${{ steps.scan-ref.outputs.ref }}
 
 runs:
@@ -154,11 +139,8 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
-    # Guard the one assumption that replaces binfmt: the runner really is the
-    # architecture the caller asked to build. A mismatch used to be absorbed by
-    # QEMU; now it would surface deep inside the build as an exec-format error
-    # on some arbitrary RUN line, so assert it up front where the message is
-    # about the actual mistake.
+    # Without this the mismatch surfaces as an exec-format error on an
+    # arbitrary RUN line deep inside the build.
     - name: Verify runner architecture matches requested platform
       shell: bash
       env:
@@ -245,17 +227,8 @@ runs:
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
           type=sha,prefix=sha-
 
-    # PR path: buildx `driver: docker` + `load: true` produces the image in
-    # the local daemon for scanning. No tarball is persisted -- PR builds
-    # never feed the publish-image action.
-    #
-    # `cache-from` but deliberately NO `cache-to`. GitHub scopes the Actions
-    # cache by branch: a PR branch may READ the base branch's cache but may
-    # not write into it, so a `cache-to` here would populate a scope only
-    # this PR can ever see while main's build stays cold. Reading main's
-    # layers is the whole win available, and it is a large one -- before
-    # this the PR path set no cache at all and rebuilt from the base image
-    # forward on every push.
+    # No `cache-to`: GitHub scopes the Actions cache by branch, so a PR may
+    # read main's cache but anything it writes only itself can ever see.
     - name: Build image (PR, loaded for scan)
       id: build-pr
       if: github.event_name == 'pull_request'
@@ -273,11 +246,8 @@ runs:
         cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-{1}', inputs.cache-scope, inputs.platform) || format('type=gha,scope={0}', inputs.platform) }}
         platforms: linux/${{ inputs.platform }}
 
-    # Non-PR path: build to a docker-archive tarball so the publish-image
-    # action can push the exact scanned bytes instead of rebuilding.
-    # `outputs: type=docker,dest=...` is single-platform (docker-archive
-    # requires one manifest), which is why one invocation is one arch; the
-    # publish job reassembles the multi-arch manifest from both tarballs.
+    # Tarball so publish-image pushes the exact scanned bytes rather than
+    # rebuilding; the publish job reassembles the manifest from both arches.
     - name: Build image tarball (non-PR)
       id: build
       if: github.event_name != 'pull_request'
@@ -295,10 +265,8 @@ runs:
         cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-{1}', inputs.cache-scope, inputs.platform) || format('type=gha,mode=max,scope={0}', inputs.platform) }}
         platforms: linux/${{ inputs.platform }}
 
-    # `!cancelled()` rather than the implicit success chain: this load is what
-    # every scan gate below keys off, so it has to be reached on its own
-    # merits. Its own build is still required, or the load would report a
-    # missing tarball instead of the build error that caused it.
+    # `!cancelled()` not the success chain: every scan gate below keys off
+    # this load, so it must be reached on its own merits.
     - name: Load image for scanning (non-PR)
       id: load
       if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -311,8 +279,7 @@ runs:
 
     - name: Compute scan image ref
       id: scan-ref
-      # Reads only inputs and github.sha, so it must not inherit a load
-      # failure: the gates below need this ref to decide anything.
+      # Must not inherit a load failure; the gates below need this ref.
       if: ${{ !cancelled() }}
       shell: bash
       env:
@@ -335,20 +302,9 @@ runs:
         PLATFORM: ${{ inputs.platform }}
       run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME ($PLATFORM)"
 
-    # `trivy image <ref>` re-exports the whole image from the Docker daemon
-    # to a docker-archive under its temp dir before analysing layers. For the
-    # fine-tune GPU image (~4 GB compressed, far larger uncompressed) that
-    # export is a third full copy alongside the build tarball and the loaded
-    # daemon image, overflowing the runner's ~14 GB root volume with
-    # `no space left on device`. The `/mnt` resource disk has ~70 GB free, so
-    # point Trivy's scratch (export temp via TMPDIR + vuln-db cache via
-    # TRIVY_CACHE_DIR) there. Created unconditionally so every image scans the
-    # same way, not just the disk-pressured fine-tune variants.
-    # Both setup steps carry `!cancelled()` for the same reason the load does:
-    # left on the default success chain they are skipped by any earlier
-    # failure, and a gate that legitimately passes then runs Trivy that was
-    # never installed, burying the real error under `command not found`.
-    # Every consumer below additionally requires the install itself.
+    # `trivy image` re-exports the image to a temp docker-archive first: a
+    # third full copy that overflows the runner's ~14 GB root on fine-tune.
+    # /mnt has ~70 GB.
     - name: Provision Trivy scratch on /mnt
       if: ${{ !cancelled() }}
       shell: bash
@@ -357,8 +313,6 @@ runs:
         sudo chown "$(id -u):$(id -g)" /mnt/trivy-tmp /mnt/trivy-cache
         df -h /mnt /
 
-    # The release asset is named by architecture, so the download URL follows
-    # the runner rather than being pinned to 64bit (amd64).
     - name: Install Trivy
       id: install-trivy
       if: ${{ !cancelled() }}
@@ -379,14 +333,8 @@ runs:
         tar -xzf "/tmp/trivy_${TRIVY_VERSION}_${asset}.tar.gz" -C /tmp trivy
         sudo install -m 0755 /tmp/trivy /usr/local/bin/trivy
 
-    # Trivy JSON + SARIF + CIS benchmark. JSON feeds evaluate-scan.sh (fails
-    # on CRITICAL, warns on HIGH). SARIF goes to GitHub Security under an
-    # arch-qualified category so the two matrix legs do not overwrite each
-    # other's findings.
-    #
-    # Each gate keys off the step that produced the image (`build-pr` on PRs,
-    # `load` otherwise) rather than the implicit success chain, so a failure
-    # in the reporting steps above cannot silently cost this image its
+    # Every gate below keys off the step that produced the image, not the
+    # success chain, so a reporting failure cannot cost this image its
     # vulnerability gate.
     - name: Trivy scan
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
@@ -410,9 +358,8 @@ runs:
         DISPLAY_NAME: ${{ inputs.display-name }}
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-${PLATFORM}.json" "$DISPLAY_NAME ($PLATFORM)"
 
-    # Artifact name carries the platform: both matrix legs upload from
-    # separate jobs in the same run, and a shared name would have them race
-    # to overwrite one another.
+    # Platform in the name: both matrix legs upload from separate jobs in the
+    # same run and a shared name would race.
     - name: Upload Trivy reports
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -422,9 +369,8 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
-    # Not `always()`: after a failed build Trivy is never installed and there
-    # is nothing to scan, so the `command not found` lands BELOW the real
-    # error and masks it.
+    # Not `always()`: after a failed build the `command not found` would land
+    # below the real error and mask it.
     - name: Trivy SARIF scan
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
       shell: bash
@@ -440,31 +386,22 @@ runs:
 
     - name: Upload SARIF to GitHub Security
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
-      # Cosmetic Security-tab upload, NOT a required check, and the real
-      # vulnerability gate is the separate `Evaluate Trivy results` step
-      # above (which stays loud). A transient code-scanning API 401/5xx must
-      # not fail the image build/publish; the SARIF re-uploads next run.
+      # Cosmetic; `Evaluate Trivy results` above is the real gate.
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
       with:
         sarif_file: trivy-${{ inputs.image-name }}-${{ inputs.platform }}.sarif
         category: trivy-${{ inputs.image-name }}-${{ inputs.platform }}
 
-    # No Trivy dependency here: cis-scan is a separate tool, so gating it on
-    # the Trivy install would couple two independent checks.
+    # No Trivy dependency: coupling two independent checks.
     - name: CIS Docker Benchmark
       if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref }}
 
-    # Hand off the scanned tarball to the publish-only job. The publish job
-    # docker-loads these exact bytes and re-tags + pushes them without
-    # rebuilding, guaranteeing the pushed digest covers the same filesystem
-    # Trivy + CIS scanned.
-    # 7-day retention covers approval delays on the environment-gated
-    # publish-image jobs: 1-day would expire the tarball before a
-    # deferred `image-push` approval lands, breaking the publish chain.
+    # 7 days, not 1: an environment-gated `image-push` approval can sit for
+    # days, and an expired tarball breaks the publish chain.
     - name: Upload image tarball (non-PR)
       if: github.event_name != 'pull_request'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,40 +1,19 @@
 #!/usr/bin/env python3
 r"""Tag a GHCR version that the API permanently refuses to delete.
 
-``ghcr-cleanup``'s untagged pass reaps dangling manifests. GHCR refuses
-to delete a *publicly visible* version once it passes 5000 downloads::
+GHCR rejects a delete once a publicly visible version passes 5000
+downloads, and ``ghcr-cleanup`` treats any 400 as fatal, so one such
+version reds the weekly prune forever. The download count is absent from
+the REST API, so the offender can only be named after a refusal; the
+prune's tracking issue quotes the digest to paste here.
 
-    DELETE /user/packages/container/synthorg-sidecar-base/versions/1046133080
-    400 Publicly visible package versions with more than 5000 downloads
-        cannot be deleted.
+Digest-targeted, not a blanket sweep: most untagged attestation indices
+SHOULD be pruned, and protecting the class would trade a red leg for
+unbounded growth of the objects the prune exists to remove.
 
-The refusal is permanent, and the cleanup action treats any 400 as fatal:
-it aborts the pass, so the leg reds every week forever and every
-candidate queued behind the offender is left unpruned. The download count
-is not exposed by the REST API, so the offender cannot be predicted --
-only named after GHCR has refused it once.
-
-This is the operator repair for that. It tags the named digest
-``keep-undeletable-<digest12>``, which takes it out of the untagged pass
-(it is no longer untagged) and out of the tagged passes (the workflow's
-``exclude-tags`` regex already admits ``keep-*``). The offending digest is
-quoted verbatim in the tracking issue the prune files on failure, so the
-repair is a copy-paste from that issue.
-
-Deliberately digest-targeted rather than a blanket sweep. Most untagged
-attestation indices are superseded ones that SHOULD be pruned; protecting
-the whole class would trade a weekly red leg for unbounded growth of
-exactly the objects the prune exists to remove.
-
-Two safety assertions before writing, because a ``keep-*`` tag is
-effectively permanent: the digest must resolve, and it must not be a
-platform-bearing image index. Protecting a live multi-arch image would
-silently exempt a real release from cleanup forever.
-
-The tag is applied by PUTting the manifest bytes back **verbatim** under
-the new tag. Re-serialising (what ``buildx imagetools create`` does)
-changes the bytes and therefore the digest, minting a second copy rather
-than naming the existing one.
+The manifest bytes are PUT back verbatim, so the digest is preserved.
+Re-serialising (what ``buildx imagetools create`` does) would mint a
+second copy instead of naming the existing one.
 
 Usage::
 
@@ -82,11 +61,7 @@ class GhcrProtectionError(Exception):
 
 
 def _fail(message: str) -> NoReturn:
-    """Raise the module error with ``message``.
-
-    A function rather than an inline ``raise`` so the call sites inside
-    ``try`` blocks stay flat.
-    """
+    """Raise the module error, keeping call sites inside ``try`` blocks flat."""
     raise GhcrProtectionError(message)
 
 
@@ -122,8 +97,6 @@ def _registry_token(owner: str, package: str, *, github_token: str, push: bool) 
 
     The distribution token endpoint authenticates with Basic, not Bearer:
     a Bearer github token is rejected 403 even when it carries the rights.
-    A dry run asks for ``pull`` only, so inspecting never requires write
-    access it is not going to use.
     """
     scope = f"repository:{owner.lower()}/{package}:pull"
     if push:
@@ -137,11 +110,10 @@ def _registry_token(owner: str, package: str, *, github_token: str, push: bool) 
 
 
 def _assert_safe_to_protect(manifest: dict[str, object], media_type: str) -> None:
-    """Refuse to protect anything that looks like a live platform image.
+    """Refuse to protect a live platform image.
 
     A ``keep-*`` tag exempts its target from every prune pass for good, so
-    the one mistake worth guarding is naming a real multi-arch image: that
-    would silently pin a release outside cleanup forever.
+    naming a real multi-arch image would pin a release outside cleanup.
     """
     if media_type not in _INDEX_TYPES:
         return
