@@ -637,9 +637,13 @@ jobs:
       # 80% alone; the gate belongs solely to test-coverage-aggregate. Every
       # per-suite arm below carries the same override for the same reason.
       #
-      # --splits/--group come from pytest-split; --durations-path points
-      # at .test_durations.unit (empty {} on first run, falls back to
-      # count-based partition until CI populates real timings).
+      # --splits/--group come from pytest-split; --durations-path points at
+      # the tracked .test_durations.unit. That file is what makes the split
+      # cost-based: without it pytest-split partitions by test COUNT, which
+      # measured 141s-322s across four equally-sized shards and put this one
+      # over the --session-timeout below. Refresh it with
+      # `make test-durations RUN_ID=<run>`; unit-shard-balance.yml watches
+      # the spread and asks when it has drifted.
       #
       # ``-v`` prints every test's nodeid as it starts, so the LAST
       # printed test before ``[gwN] node down`` names the suspect.

@@ -5,7 +5,8 @@
 # source of truth: every target maps to a command you can run directly.
 
 .PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
-	typecheck typecheck-warm typecheck-status typecheck-stop
+	typecheck typecheck-warm typecheck-status typecheck-stop \
+	test-durations
 
 # Type-check the tree through the mypy daemon (seconds once warm, and the same
 # command the pre-push hook runs). `typecheck-warm` pays the one-time graph
@@ -35,6 +36,26 @@ typecheck-status:
 
 typecheck-stop:
 	uv run python scripts/run_affected_mypy.py --stop
+
+# Rebuild `.test_durations.unit` from a finished CI run's four shard reports,
+# so pytest-split keeps partitioning the unit arm by cost rather than by test
+# count. Refresh when the four `Test Unit (shard N)` wall-clocks drift apart;
+# on a balanced file they land within a few percent of each other.
+#
+#     make test-durations RUN_ID=30708023122
+#
+# The timings come from the runners rather than a developer machine, which is
+# what makes them comparable to the budget the shards are measured against.
+test-durations:
+	@test -n "$(RUN_ID)" || { echo "RUN_ID=<ci-run-id> is required"; exit 2; }
+	rm -rf .test-durations-reports
+	gh run download $(RUN_ID) --dir .test-durations-reports \
+		-n test-results-unit-1 -n test-results-unit-2 \
+		-n test-results-unit-3 -n test-results-unit-4
+	uv run python scripts/generate_test_durations.py \
+		--out .test_durations.unit \
+		.test-durations-reports/test-results-unit-*/junit-unit-*.xml
+	rm -rf .test-durations-reports
 
 # Run the golden-company benchmark twice and emit scorecards: the reference
 # company at the COMPETENT profile (its executable brief passes its hidden

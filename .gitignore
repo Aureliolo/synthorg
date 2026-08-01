@@ -10,13 +10,23 @@ src/synthorg/_lint_boundary_fixtures/
 # pack store and produced merge noise. (Vendored third-party assets such
 # as axe-core stay committed -- vendoring is deliberate for reproducible,
 # offline builds; only OUR generated output is untracked here.)
-#   - .test_durations.*       pytest-split shard timings (Refresh workflow removed;
-#                             pytest-split count-partitions when absent)
+#   - .test_durations.integration  pytest-split shard timings for the
+#                             integration arm. Untracked because that arm's
+#                             27.5-minute budget swallows an unbalanced split;
+#                             the unit arm's does not, so ITS timings are
+#                             tracked (see below).
 #   - data/codebase_map.json  regenerated + structure-validated by
 #                             scripts/check_feature_index_freshness.py
-.test_durations.unit
 .test_durations.integration
 data/codebase_map.json
+
+# .test_durations.unit is deliberately TRACKED. Absent, pytest-split falls
+# back to partitioning by test COUNT, which measured 141s-322s across four
+# equally-sized unit shards and put shard 1 (which collects the
+# app-construction tests) over the 300s session cap. Refresh it on demand
+# with `make test-durations RUN_ID=<ci-run>`; it is not auto-committed,
+# because a weekly rewrite of a 8.5k-entry file is the merge noise that
+# retired the previous refresh workflow.
 
 # Benchmark scorecards emitted by `make benchmark`
 .benchmark/
