@@ -69,8 +69,9 @@ subsystem already up costs one probe.
 **A declined activation costs one probe too.** A subsystem that ran its
 activation and installed nothing has no capability to guard on, so without
 something else the next trigger re-runs the whole wiring to reach the same
-refusal. Every requirement and declared setting is snapshotted at the decline
-and compared on the next pass: unchanged inputs, no second attempt. An operator
+refusal. A snapshot of every requirement and declared setting is taken at the
+decline and compared on the next pass: unchanged inputs, no second attempt. An
+operator
 naming the model a subsystem was waiting for moves the snapshot and is picked up
 on that same write. Measured on a wired app, this is the difference between a
 pass costing 140 ms and one costing single-digit milliseconds.
