@@ -13,6 +13,7 @@ from typing import Final, Protocol, runtime_checkable
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -173,8 +174,16 @@ class LiveFlightRecorderSink:
 
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
         """Delegate to the sink the current configuration selects."""
+        try:
+            repository = self._repository_provider()
+        except PersistenceConnectionError:
+            # A backend wired but not yet connected raises rather than
+            # answering ``None``, which is the same "no repository yet" the
+            # provider already models. Recording is observability: it must
+            # not take down the run that produced the frames.
+            repository = None
         delegate = build_flight_recorder_sink(
-            self._repository_provider(),
+            repository,
             enabled=self._enabled,
             strategy=self._strategy,
             summary_max_chars=self.summary_max_chars,

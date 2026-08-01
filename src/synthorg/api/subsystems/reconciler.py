@@ -347,7 +347,11 @@ class SubsystemReconciler:
         """Run a subsystem's activation and record the result.
 
         A failure is recorded and the pass continues: one subsystem that
-        cannot come up must not stop the rest, and the next pass retries it.
+        cannot come up must not stop the rest. It is retried on the periodic
+        sweep, or sooner on any pass where a required capability or a declared
+        setting has moved, not on the next trigger regardless: repeating an
+        attempt against the readings that just produced it costs the whole
+        wiring tree to reach the same result.
 
         Args:
             spec: The subsystem to activate.

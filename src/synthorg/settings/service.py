@@ -78,6 +78,27 @@ _tracer = get_tracer(__name__)
 ALL_OVERRIDES_LIMIT: Final[int] = 10_000
 
 
+def _warn_if_overrides_truncated(rows: Sequence[SettingRow], *, source: str) -> None:
+    """Warn when the override fetch may have hit its bound.
+
+    A full page means the read cannot prove it saw every override, and the
+    ones past the bound resolve as though they were never set: the dashboard
+    would show a default the system is not enforcing, silently.
+
+    Args:
+        rows: The rows the bounded read returned.
+        source: The calling read, for the log.
+    """
+    if len(rows) < ALL_OVERRIDES_LIMIT:
+        return
+    logger.warning(
+        SETTINGS_VALIDATION_FAILED,
+        action=source,
+        reason="override_read_hit_limit",
+        limit=ALL_OVERRIDES_LIMIT,
+    )
+
+
 class SettingsService:
     """Central settings service with resolution, cache, and notifications.
 
@@ -349,6 +370,7 @@ class SettingsService:
 
         # Batch-fetch all DB values in one query.
         db_rows = await self._repository.list_items(limit=ALL_OVERRIDES_LIMIT)
+        _warn_if_overrides_truncated(db_rows, source="get_all")
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
             (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
@@ -406,6 +428,7 @@ class SettingsService:
         # number of overridden settings (typically << total definition
         # count) so we keep the existing batch shape.
         db_rows = await self._repository.list_items(limit=ALL_OVERRIDES_LIMIT)
+        _warn_if_overrides_truncated(db_rows, source="get_page")
         db_lookup: dict[tuple[str, str], tuple[str, str]] = {
             (row.namespace, row.key): (row.value, row.updated_at) for row in db_rows
         }
@@ -668,13 +691,11 @@ class SettingsService:
             import_source=import_source,
         )
 
-        await guard_security_writes(
-            [(namespace, key, value)],
-            governance=governance,
-            get_entry=self.get,
-        )
-        await self._guard_cross_field_rules([(namespace, key, value)])
-
+        # Ahead of both guards: a cross-field rule parses the pending value to
+        # compare it, so an unvalidated one reaches it as an unparseable
+        # string the rule can only skip, and the malformed input is reported
+        # by whichever check happens to run last rather than by the type
+        # validator that actually owns it.
         try:
             validate_value(definition, value)
         except SettingValidationError as exc:
@@ -686,6 +707,13 @@ class SettingsService:
                 reason=safe_error_description(exc),
             )
             raise
+
+        await guard_security_writes(
+            [(namespace, key, value)],
+            governance=governance,
+            get_entry=self.get,
+        )
+        await self._guard_cross_field_rules([(namespace, key, value)])
 
         store_value = self._encrypt_if_sensitive(definition, value)
         updated_at = now_iso_utc()
@@ -849,6 +877,14 @@ class SettingsService:
             )
             raise ValueError(msg)
 
+        # Ahead of both guards for the same reason as the single-key path: a
+        # cross-field rule parses the pending value, so an unvalidated one
+        # reaches it as a string it can only skip. ``_prepare_set_many``
+        # validates again on its way to building the rows; validation is pure,
+        # so the repeat costs nothing and neither call site depends on the
+        # other having run.
+        self._validate_batch(items, import_source=import_source)
+
         await guard_security_writes(
             items,
             governance=governance,
@@ -895,6 +931,41 @@ class SettingsService:
             await self._publish_change(namespace, key)
 
         return updated_at
+
+    def _validate_batch(
+        self,
+        items: Sequence[tuple[str, str, str]],
+        *,
+        import_source: SettingsImportSource,
+    ) -> None:
+        """Reject a batch carrying a value its own definition refuses.
+
+        Args:
+            items: The triples about to be written.
+            import_source: Where the write came from, for the log.
+
+        Raises:
+            SettingNotFoundError: On an unregistered namespace/key pair.
+            SettingValidationError: On a value failing type or pattern
+                validation.
+        """
+        for namespace, key, value in items:
+            definition = self._registry.get(namespace, key)
+            if definition is None:
+                logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
+                msg = f"Unknown setting: {namespace}/{key}"
+                raise SettingNotFoundError(msg)
+            try:
+                validate_value(definition, value)
+            except SettingValidationError as exc:
+                logger.warning(
+                    SETTINGS_VALIDATION_FAILED,
+                    namespace=namespace,
+                    key=key,
+                    import_source=import_source.value,
+                    reason=safe_error_description(exc),
+                )
+                raise
 
     def _prepare_set_many(
         self,
@@ -1210,7 +1281,11 @@ class SettingsService:
 
         removed_key_set = set(removed_keys)
         for definition in self._registry.list_namespace(namespace):
-            if definition.key in removed_key_set:
+            # A compose-set key is fixed for the life of the process, so
+            # sweeping its row changes nothing a subscriber could act on.
+            # Publishing anyway would announce a change to a value that has
+            # not moved and cannot.
+            if definition.key in removed_key_set and not definition.compose_set:
                 await self._publish_change(namespace, definition.key)
 
         return deleted

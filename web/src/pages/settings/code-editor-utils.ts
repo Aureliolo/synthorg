@@ -13,6 +13,7 @@ import type { SettingEntry } from '@/api/types/settings'
 import type { CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { createLogger } from '@/lib/logger'
 import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
+import { SENSITIVE_VALUE_PLACEHOLDER } from './settings-constants'
 
 const log = createLogger('settings')
 
@@ -102,7 +103,12 @@ function computeChange(value: unknown, origValue: unknown): string | null {
  * unsaveable the moment one such setting exists.
  */
 export function settingValueDiffers(entry: SettingEntry, value: unknown): boolean {
-  const { namespace, key } = entry.definition
+  const { namespace, key, sensitive } = entry.definition
+  // A sensitive setting renders as the redaction placeholder until the user
+  // types over it, so the placeholder IS the unedited state. Reading it as a
+  // change makes a document containing one compose-set secret permanently
+  // unsaveable: the rejection fires on a value nobody touched.
+  if (sensitive && value === SENSITIVE_VALUE_PLACEHOLDER) return false
   const current = entriesToObject([entry])[namespace]?.[key] ?? entry.value
   return computeChange(value, current) !== null
 }

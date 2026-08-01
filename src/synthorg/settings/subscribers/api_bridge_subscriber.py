@@ -5,10 +5,10 @@ watched ``api.*`` setting whose value lives on
 :class:`~synthorg.settings.bridge_configs.ApiBridgeConfig`.
 
 Watches ``api.max_lifecycle_events_per_query``, consumed by
-:class:`~synthorg.api.controllers.activities.ActivityController` as
-its ``LIMIT`` clamp on the lifecycle-events query. Additional
-``ApiBridgeConfig`` fields can be appended to ``_WATCHED`` when their
-consumers read the snapshot rather than a boot value.
+:class:`~synthorg.api.controllers.activities.ActivityController` as its
+``LIMIT`` clamp on the lifecycle-events query, and ``api.max_rpm_default``.
+Additional ``ApiBridgeConfig`` fields can be appended to ``_WATCHED`` when
+their consumers read the snapshot rather than a boot value.
 """
 
 from synthorg.api.state import AppState
