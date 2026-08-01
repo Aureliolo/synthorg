@@ -41,7 +41,7 @@ def test_synthesis_model_defaults_blank_and_mutable() -> None:
     defn = get_registry().get("knowledge", "synthesis_model")
     assert defn is not None
     assert defn.default == ""
-    assert defn.read_only_post_init is False
+    assert defn.compose_set is False
 
 
 def test_synthesis_max_chunks_default_matches_constant() -> None:

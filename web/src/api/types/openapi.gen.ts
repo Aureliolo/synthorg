@@ -3132,24 +3132,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/meta/restart": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Status */
-        readonly get: operations["ApiV1MetaRestartStatus"];
-        readonly put?: never;
-        /** Restart */
-        readonly post: operations["ApiV1MetaRestartRestart"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/meta/rules": {
         readonly parameters: {
             readonly query?: never;
@@ -7462,22 +7444,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[RestartResponse] */
-        readonly ApiResponse_RestartResponse_: {
-            readonly data: components["schemas"]["RestartResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[RestartStatusResponse] */
-        readonly ApiResponse_RestartStatusResponse_: {
-            readonly data: components["schemas"]["RestartStatusResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
@@ -11061,7 +11027,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059 | 8060;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -14297,16 +14263,6 @@ export type components = {
             readonly target_name: string;
             readonly target_role: string | null;
         };
-        /** PendingRestartSetting */
-        readonly PendingRestartSetting: {
-            /** @description What the setting does */
-            readonly description: string;
-            /** @description Setting key within namespace */
-            readonly key: string;
-            readonly namespace: components["schemas"]["SettingNamespace"];
-            /** @description ISO 8601 timestamp of the write */
-            readonly updated_at: string;
-        };
         /** PendingSecretCapture */
         readonly PendingSecretCapture: {
             readonly connection_type: string;
@@ -16120,25 +16076,6 @@ export type components = {
              */
             readonly status: "allowed" | "denied";
         };
-        /** RestartRequest */
-        readonly RestartRequest: {
-            /** @description Must be true to proceed */
-            readonly confirm: boolean;
-        };
-        /** RestartResponse */
-        readonly RestartResponse: {
-            /** @description Seconds until this process signals itself to shut down */
-            readonly delay_seconds: number;
-            /** @description Whether a restart was scheduled */
-            readonly restarting: boolean;
-        };
-        /** RestartStatusResponse */
-        readonly RestartStatusResponse: {
-            /** @description Settings saved but not in effect until a restart */
-            readonly pending: readonly components["schemas"]["PendingRestartSetting"][];
-            /** @description Whether this process can restart itself */
-            readonly supervised: boolean;
-        };
         /** RestoreRequest */
         readonly RestoreRequest: {
             readonly backup_id: string;
@@ -16710,6 +16647,11 @@ export type components = {
          * @description Setting metadata
          */
         readonly SettingDefinition: {
+            /**
+             * @description Fixed by the deployment at container creation; readable through the settings API, but a write is rejected
+             * @default false
+             */
+            readonly compose_set: boolean;
             /** @description Default value as string */
             readonly default: string | null;
             /** @description Human-readable description */
@@ -16731,16 +16673,6 @@ export type components = {
             /** @description Minimum value for numeric types */
             readonly min_value: number | null;
             readonly namespace: components["schemas"]["SettingNamespace"];
-            /**
-             * @description Sourced from environment at startup; mutation via SettingsService is rejected. Implies restart_required=True.
-             * @default false
-             */
-            readonly read_only_post_init: boolean;
-            /**
-             * @description Change takes effect after restart
-             * @default false
-             */
-            readonly restart_required: boolean;
             /**
              * @description Encrypt at rest and mask in UI
              * @default false
@@ -16784,8 +16716,8 @@ export type components = {
          *
          *     Listed in descending priority order: database overrides take
          *     precedence over environment variables, which override code
-         *     defaults. ``read_only_post_init=True`` settings collapse the chain
-         *     to ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
+         *     defaults. ``compose_set=True`` settings collapse the chain to
+         *     ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
          * @enum {string}
          */
         readonly SettingSource: "db" | "env" | "default";
@@ -26314,62 +26246,6 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaRestartStatus: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_RestartStatusResponse_"];
-                };
-            };
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaRestartRestart: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["RestartRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request accepted, processing continues off-line */
-            readonly 202: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_RestartResponse_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -27,8 +27,7 @@ function makeSetting(
       group: 'Server',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -63,14 +62,6 @@ export const EnvLocked: Story = {
   },
 }
 
-export const RestartRequired: Story = {
-  args: {
-    entry: makeSetting({ restart_required: true }),
-    onChange: () => {},
-    saving: false,
-  },
-}
-
 export const Disabled: Story = {
   args: {
     entry: makeSetting(),
@@ -80,9 +71,9 @@ export const Disabled: Story = {
   },
 }
 
-export const ReadOnlyPostInit: Story = {
+export const ComposeSet: Story = {
   args: {
-    entry: makeSetting({ read_only_post_init: true, restart_required: true }),
+    entry: makeSetting({ compose_set: true }),
     onChange: () => {},
     saving: false,
   },

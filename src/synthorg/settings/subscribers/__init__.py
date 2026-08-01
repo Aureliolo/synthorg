@@ -21,11 +21,8 @@ from synthorg.settings.subscribers.budget_benchmark_subscriber import (
 from synthorg.settings.subscribers.chief_of_staff_alerts_subscriber import (
     ChiefOfStaffAlertsSettingsSubscriber,
 )
-from synthorg.settings.subscribers.cos_charter_model_subscriber import (
-    CosCharterModelSettingsSubscriber,
-)
-from synthorg.settings.subscribers.direct_mcp_actor_subscriber import (
-    DirectMcpActorSettingsSubscriber,
+from synthorg.settings.subscribers.compression_subscriber import (
+    CompressionSettingsSubscriber,
 )
 from synthorg.settings.subscribers.escalation_reconnect_subscriber import (
     EscalationReconnectSettingsSubscriber,
@@ -36,11 +33,17 @@ from synthorg.settings.subscribers.eval_loop_subscriber import (
 from synthorg.settings.subscribers.event_stream_history_subscriber import (
     EventStreamHistorySettingsSubscriber,
 )
+from synthorg.settings.subscribers.flight_recorder_subscriber import (
+    FlightRecorderSettingsSubscriber,
+)
 from synthorg.settings.subscribers.github_api_url_subscriber import (
     GithubApiUrlSettingsSubscriber,
 )
 from synthorg.settings.subscribers.global_rate_limit_subscriber import (
     GlobalRateLimitSettingsSubscriber,
+)
+from synthorg.settings.subscribers.in_memory_bounds_subscriber import (
+    InMemoryBoundsSettingsSubscriber,
 )
 from synthorg.settings.subscribers.knowledge_subscriber import (
     KnowledgeSettingsSubscriber,
@@ -59,9 +62,6 @@ from synthorg.settings.subscribers.observability_bridge_subscriber import (
 )
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
-)
-from synthorg.settings.subscribers.operator_console_subscriber import (
-    OperatorConsoleSettingsSubscriber,
 )
 from synthorg.settings.subscribers.output_style_subscriber import (
     OutputStyleSettingsSubscriber,
@@ -87,6 +87,12 @@ from synthorg.settings.subscribers.security_timeout_subscriber import (
 from synthorg.settings.subscribers.simulations_subscriber import (
     SimulationsSettingsSubscriber,
 )
+from synthorg.settings.subscribers.subsystem_reconcile_subscriber import (
+    SubsystemReconcileSettingsSubscriber,
+)
+from synthorg.settings.subscribers.telemetry_subscriber import (
+    TelemetrySettingsSubscriber,
+)
 from synthorg.settings.subscribers.timeout_enforcement_subscriber import (
     EngineTimeoutEnforcementSettingsSubscriber,
 )
@@ -108,21 +114,21 @@ __all__ = [
     "BackupSettingsSubscriber",
     "BudgetBenchmarkProviderSettingsSubscriber",
     "ChiefOfStaffAlertsSettingsSubscriber",
-    "CosCharterModelSettingsSubscriber",
-    "DirectMcpActorSettingsSubscriber",
+    "CompressionSettingsSubscriber",
     "EngineTimeoutEnforcementSettingsSubscriber",
     "EscalationReconnectSettingsSubscriber",
     "EvalLoopSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",
+    "FlightRecorderSettingsSubscriber",
     "GithubApiUrlSettingsSubscriber",
     "GlobalRateLimitSettingsSubscriber",
+    "InMemoryBoundsSettingsSubscriber",
     "KnowledgeSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",
     "NotificationsBridgeSettingsSubscriber",
     "ObservabilityBridgeSettingsSubscriber",
     "ObservabilitySettingsSubscriber",
-    "OperatorConsoleSettingsSubscriber",
     "OutputStyleSettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
@@ -131,6 +137,8 @@ __all__ = [
     "SecurityBridgeSettingsSubscriber",
     "SecurityTimeoutSettingsSubscriber",
     "SimulationsSettingsSubscriber",
+    "SubsystemReconcileSettingsSubscriber",
+    "TelemetrySettingsSubscriber",
     "ToolsBridgeSettingsSubscriber",
     "WorkersBridgeSettingsSubscriber",
     "WsAuthLimitsSettingsSubscriber",

@@ -176,7 +176,7 @@ observer, so the tail comes online with no restart.
 
 ## Settings
 
-All hot-reloadable, read per fire, so none is restart-required.
+All read per fire, so an edit applies to the next one.
 
 | key | default | purpose |
 | --- | --- | --- |

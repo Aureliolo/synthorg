@@ -7,12 +7,9 @@ export type {
   EmbedderProbeResponse,
   LivenessStatus,
   MemoryHealth,
-  PendingRestartSetting,
   ReadinessProbe,
   ReadinessStatus,
   ReadinessStatus as HealthStatus,
-  RestartResponse,
-  RestartStatusResponse,
 } from './dtos.gen'
 
 export type { BackupState, CostRecordingState, MemoryState } from './enum-values.gen'

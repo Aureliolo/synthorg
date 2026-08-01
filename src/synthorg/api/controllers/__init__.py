@@ -133,7 +133,6 @@ from synthorg.api.controllers.providers.tier_assignments import (
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
-from synthorg.api.controllers.restart import RestartController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.risk_overrides import RiskOverrideController
 from synthorg.api.controllers.role_versions import RoleVersionController
@@ -303,7 +302,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ScalingController,
     TrainingController,
     MetaController,
-    RestartController,
     MetaEvolutionController,
     MetaAlertsController,
     TurnController,
@@ -451,7 +449,6 @@ __all__ = [
     "ReadinessController",
     "ReportsController",
     "RequestController",
-    "RestartController",
     "ReviewController",
     "RiskOverrideController",
     "RoleVersionController",

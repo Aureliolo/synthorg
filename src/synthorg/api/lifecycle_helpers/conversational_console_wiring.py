@@ -84,52 +84,28 @@ async def wire_operator_console(
         )
 
 
-async def rebuild_operator_console(
-    app_state: AppState,
-    *,
-    si_config: SelfImprovementConfig,
-) -> None:
-    """Unconditionally rebuild + swap the operator console from current config.
+async def unwire_operator_console(app_state: AppState) -> None:
+    """Take the operator console down so the next pass rebuilds it.
 
-    Unlike the idempotent boot wirer, this always recomputes the console and
-    swaps the slice to the fresh value, tearing it DOWN (to ``None``) when
-    ``operator_console_enabled`` flips off or the console model is cleared. The
-    rebuild re-runs the same fail-closed :func:`build_operator_console` gate
-    (governance + MCP self-consumer must be wired, a model must be bound), so a
-    live enable stays fail-closed. This is what lets the console toggle be
-    hot-reloadable without weakening the startup security invariant.
+    The reconciler pairs this with the wirer above on any change to the
+    console toggle or model, which is what makes both live: teardown, then a
+    rebuild that re-runs the same fail-closed
+    :func:`build_operator_console` gate (governance and the MCP self-consumer
+    must be wired, a model must be bound). A live enable therefore stays
+    fail-closed, and a live disable genuinely removes the console instead of
+    leaving the previous instance answering.
     """
-    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.workers.execution_service import (  # noqa: PLC0415
-        AgentEngineExecutionService,
-    )
-    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-    service = app_state.slice(RuntimeStateSlice).worker_execution_service
-    console = None
-    if isinstance(service, AgentEngineExecutionService):
-        console = build_operator_console(
-            si_config.chief_of_staff,
-            engine=service.engine,
-            autonomy_resolver=service.autonomy_resolver,
-            clock=app_state.clock,
-            secret_capture=app_state.slice(
-                IntegrationsStateSlice
-            ).secret_capture_service,
-            conversations=_console_conversation_store(app_state),
-        )
-    app_state.wire(MetaStateSlice, operator_console=console)
+    app_state.wire(MetaStateSlice, operator_console=None)
     logger.info(
         API_APP_STARTUP,
         service="operator_console",
-        note="operator console rebuilt (live toggle)",
-        wired=console is not None,
-        enabled=si_config.chief_of_staff.operator_console_enabled,
+        note="operator console unwired",
     )
 
 
 __all__ = [
-    "rebuild_operator_console",
+    "unwire_operator_console",
     "wire_operator_console",
 ]

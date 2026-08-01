@@ -591,8 +591,10 @@ def build_construction_services(
         approval_timeout_scheduler=approval_timeout_scheduler,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
-    rate_limiter_enabled = resolve_rate_limiter_enabled()
-    if not rate_limiter_enabled:
+    if not resolve_rate_limiter_enabled():
+        # The tiers are mounted either way and consult the flag per
+        # request, so this is a warning about the value the process
+        # started with, not about a stack that can never enforce.
         logger.warning(
             API_APP_STARTUP,
             note=(
@@ -603,7 +605,6 @@ def build_construction_services(
     middleware = _build_middleware(
         api_config,
         a2a_enabled=effective_config.a2a.enabled,
-        rate_limiter_enabled=rate_limiter_enabled,
     )
 
     return ConstructionResult(

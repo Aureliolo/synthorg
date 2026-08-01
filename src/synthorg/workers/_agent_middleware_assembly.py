@@ -2,10 +2,10 @@
 """Boot assembly for the agent middleware chain.
 
 Registers the agent middleware factories and builds the chain wired into
-the boot :class:`AgentEngine`, gated by ``engine.enable_agent_middleware``
-(baked in at startup). The chain's ``before_agent`` / ``after_agent``
-hooks fire at the engine execution boundary; the headline live effect is
-authority-deference defence on the agent path.
+the boot :class:`AgentEngine`, gated by ``engine.enable_agent_middleware``.
+The chain's ``before_agent`` / ``after_agent`` hooks fire at the engine
+execution boundary; the headline live effect is authority-deference defence
+on the agent path.
 
 Imports of the middleware subsystem are kept lazy (inside the function)
 so the boot path does not add an ``engine`` -> ``engine.middleware``
@@ -17,9 +17,8 @@ from typing import TYPE_CHECKING
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.middleware import MIDDLEWARE_CHAIN_BUILT
-from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import parse_bool
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -31,24 +30,24 @@ logger = get_logger(__name__)
 _ENABLE_KEY = "enable_agent_middleware"
 
 
-def build_agent_middleware_chain_or_none(
+async def build_agent_middleware_chain_or_none(
     app_state: AppState,
     *,
     error_taxonomy_config: ErrorTaxonomyConfig | None,
 ) -> AgentMiddlewareChain | None:
     """Build the boot agent middleware chain, or ``None`` when disabled.
 
+    Read through the DB-backed resolver so an operator toggling the chain
+    takes effect on the next runtime rebuild rather than the next restart.
+
     Returns:
         The composed :class:`AgentMiddlewareChain` when
         ``engine.enable_agent_middleware`` is set, otherwise ``None``
         (the engine runs with no middleware chain).
     """
-    enabled = bool(
-        resolve_init_value(
-            SettingNamespace.ENGINE,
-            _ENABLE_KEY,
-            parse=parse_bool,
-        ).value
+    enabled = await config_resolver_of(app_state).get_bool(
+        SettingNamespace.ENGINE.value,
+        _ENABLE_KEY,
     )
     if not enabled:
         return None

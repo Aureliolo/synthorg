@@ -31,7 +31,6 @@ export type NotificationCategory =
   | 'budget.threshold'
   | 'budget.exhausted'
   | 'system.error'
-  | 'system.restart_required'
   | 'system.shutdown'
   | 'agents.personality_trimmed'
   | 'agents.hired'
@@ -142,12 +141,6 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     severity: 'error',
     defaultRoutes: ['drawer', 'toast'],
     label: 'System error',
-    group: 'system',
-  },
-  'system.restart_required': {
-    severity: 'warning',
-    defaultRoutes: ['drawer', 'toast'],
-    label: 'Restart required',
     group: 'system',
   },
   'system.shutdown': {

@@ -164,16 +164,16 @@ async def test_off_by_default_cap_toggles_live_like_propose(
 ) -> None:
     """Parity: an off-by-default cap is as hot as ``propose_enabled``.
 
-    Both are ``restart_required=False`` and both take effect on the next call
-    with no restart. ``narrative_enabled`` stands in for the autonomous caps.
+    Both are live (``compose_set=False``) and both take effect on the next
+    call. ``narrative_enabled`` stands in for the autonomous caps.
     """
     registry = get_registry()
     propose_defn = registry.get("chief_of_staff", "propose_enabled")
     narrative_defn = registry.get("chief_of_staff", "narrative_enabled")
     assert propose_defn is not None
     assert narrative_defn is not None
-    assert propose_defn.restart_required is False
-    assert narrative_defn.restart_required is False
+    assert propose_defn.compose_set is False
+    assert narrative_defn.compose_set is False
 
     narrator = _narrator(
         config=ChiefOfStaffConfig(narrative_enabled=False),

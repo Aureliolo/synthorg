@@ -24,8 +24,6 @@
         "LivenessController",
         "ReadinessController",
         "HealthController",
-        "SubsystemsController",
-        "RestartController",
         "CapabilitiesController",
         "AuthBootstrapController",
         "AuthSessionController",
@@ -247,7 +245,7 @@
         "SteeringService",
         "build_steering_inbox",
         "build_supersession_proposer",
-        "build_flight_recorder_sink"
+        "LiveFlightRecorderSink"
       ],
       "mcp_tool_names": [
         "synthorg_cockpit_get_live_activity",
@@ -386,6 +384,7 @@
       "settings_namespace": "coordination",
       "state_slice_fields": [
         "metrics_store",
+        "baseline_store",
         "coordination_service",
         "ceremony_policy_service"
       ]
@@ -592,7 +591,8 @@
         "brownfield_entry_adapter",
         "task_board_entry_adapter",
         "structure_map_tool_factory",
-        "plan_item_reply_service"
+        "plan_item_reply_service",
+        "flight_recorder_sink"
       ]
     },
     {
@@ -1340,11 +1340,7 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
-      "ghost_wired_symbols": [
-        "CosCharterModelSettingsSubscriber",
-        "DirectMcpActorSettingsSubscriber",
-        "OperatorConsoleSettingsSubscriber"
-      ],
+      "ghost_wired_symbols": [],
       "mcp_tool_names": [],
       "name": "settings",
       "protocol_exports": [
@@ -1355,6 +1351,24 @@
         "settings_service",
         "settings_read_service",
         "config_resolver"
+      ]
+    },
+    {
+      "controllers": [
+        "SubsystemsController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/api/subsystems",
+      "ghost_wired_symbols": [
+        "SubsystemReconciler",
+        "SubsystemResyncScheduler"
+      ],
+      "mcp_tool_names": [],
+      "name": "subsystems",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "reconciler"
       ]
     },
     {
@@ -1481,6 +1495,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-31T19:42:15.196171Z",
+  "generated_at": "2026-08-01T09:37:28.113119Z",
   "schema_version": 1
 }

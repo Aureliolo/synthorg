@@ -24,7 +24,7 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
-from synthorg.api.lifecycle_helpers import feature_wiring, narrative_wiring
+from synthorg.api.lifecycle_helpers import narrative_wiring
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     _guard_conversational_persistence,
 )
@@ -49,6 +49,7 @@ from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSou
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.state import MetaStateSlice
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -465,60 +466,39 @@ class TestConversationalPersistenceGuard:
 
 @pytest.mark.unit
 class TestFeatureWiringProposerDegradation:
-    """A proposer wiring failure degrades rather than aborting boot."""
+    """A proposer wiring refusal degrades rather than reading as a fault."""
 
-    async def test_proposer_raise_does_not_abort_startup(
+    async def test_proposer_guard_refusal_is_contained(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Every collaborator wire_features_on_startup drives is stubbed to
-        # a no-op; only the proposer raises the guard's error. The wrap
-        # must swallow it and still run the wirers that follow, so a
-        # propose/invite misconfiguration cannot take the whole boot down.
-        noop = AsyncMock()
-        for name in (
-            "_wire_docs_engine",
-            "wire_project_brain",
-            "_wire_steering_service",
-            "wire_knowledge_engine",
-            "_wire_custom_rules_service",
-            "_wire_budget_versions_service",
-            "_wire_deliverable_receipts",
-            "_wire_fine_tune_orchestrator",
-            "_wire_research_engine",
-            "_wire_charter_engine",
-            "_wire_meta_features",
-            "wire_run_narrator",
-            "wire_refinement_router",
-        ):
-            monkeypatch.setattr(feature_wiring, name, noop)
-        load_cfg = AsyncMock(return_value=SelfImprovementConfig())
+        # A propose/invite misconfiguration (propose enabled over a
+        # persistent SQLite approval store) makes the guard raise. The
+        # activation adapter must contain it, so the subsystem simply reads
+        # as not-up and the rest of the pass is unaffected; a propagated
+        # raise would mark it FAILED and, post-setup, refuse completion.
+        from synthorg.api.subsystems import registry as subsystem_registry
+
+        async def _refuse(*_args: object, **_kwargs: object) -> None:
+            msg = "proposer boom"
+            raise ServiceUnavailableError(msg)
+
+        async def _si_config(
+            *_args: object, **_kwargs: object
+        ) -> SelfImprovementConfig:
+            return SelfImprovementConfig()
+
         monkeypatch.setattr(
-            "synthorg.meta.config.load_self_improvement_config", load_cfg
+            "synthorg.api.lifecycle_helpers.conversational_wiring."
+            "wire_chief_of_staff_proposer",
+            _refuse,
         )
-        proposer = AsyncMock(side_effect=ServiceUnavailableError("proposer boom"))
-        monkeypatch.setattr(feature_wiring, "wire_chief_of_staff_proposer", proposer)
-        after_group = AsyncMock()
-        after_write_path = AsyncMock()
-        monkeypatch.setattr(feature_wiring, "wire_group_chat_service", after_group)
-        monkeypatch.setattr(
-            feature_wiring, "wire_conversational_write_path", after_write_path
-        )
+        monkeypatch.setattr(subsystem_registry, "_si_config", _si_config)
 
         app_state = _make_state()
         with suppress_type_checks():
-            await feature_wiring.wire_features_on_startup(
-                app_state,
-                provider_registry=None,
-                persistence=None,
-                cost_tracker=None,
-                effective_approval_store=ApprovalStore(),
-            )
+            await subsystem_registry._activate_chief_of_staff_proposer(app_state)
 
-        # The wirers sequenced after the proposer still ran: the raise was
-        # contained, boot did not abort. The conversational write-path wirer
-        # (direct-MCP actor + operator console) is the last of them.
-        after_group.assert_awaited_once()
-        after_write_path.assert_awaited_once()
+        assert app_state.slice(MetaStateSlice).chief_of_staff_proposer is None
 
 
 class _NoFineTuneBackend(FakePersistenceBackend):

@@ -5,6 +5,7 @@ function makeEntry(
   namespace: string,
   key: string,
   type: SettingEntry['definition']['type'] = 'str',
+  extra: { value?: string; composeSet?: boolean } = {},
 ): SettingEntry {
   return {
     definition: {
@@ -16,15 +17,14 @@ function makeEntry(
       group: 'Test',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: extra.composeSet ?? false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
       min_value: null,
       max_value: null,
     },
-    value: '',
+    value: extra.value ?? '',
     source: 'db',
     updated_at: null,
   }
@@ -109,5 +109,36 @@ describe('validateSchema', () => {
     const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
     const diagnostics = validateSchema(parsed, schema, text, 'json')
     expect(diagnostics).toHaveLength(2)
+  })
+})
+
+describe('validateSchema compose-set awareness', () => {
+  const schema = buildSchemaInfo([
+    makeEntry('api', 'server_port', 'int', { value: '8000', composeSet: true }),
+    makeEntry('api', 'timeout', 'int', { value: '30' }),
+  ])
+
+  it('flags an edited compose-set key as an error', () => {
+    const text = '{"api": {"server_port": "9000"}}'
+    const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
+    const diagnostics = validateSchema(parsed, schema, text, 'json')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.severity).toBe('error')
+    expect(diagnostics[0]!.message).toContain('fixed by the deployment')
+    expect(text.slice(diagnostics[0]!.from, diagnostics[0]!.to)).toBe('"server_port"')
+  })
+
+  it('stays silent on an untouched compose-set key', () => {
+    const text = '{"api": {"server_port": "8000", "timeout": "30"}}'
+    const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
+    expect(validateSchema(parsed, schema, text, 'json')).toEqual([])
+  })
+
+  it('flags an edited compose-set key in YAML', () => {
+    const text = 'api:\n  server_port: "9000"'
+    const parsed = { api: { server_port: '9000' } }
+    const diagnostics = validateSchema(parsed, schema, text, 'yaml')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.message).toContain('api.server_port')
   })
 })

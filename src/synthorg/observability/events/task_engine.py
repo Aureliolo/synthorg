@@ -64,6 +64,7 @@ TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT: Final[str] = "task_engine.observer.drain_tim
 TASK_ENGINE_LOOP_DIED: Final[str] = "task_engine.loop.died"
 TASK_ENGINE_OBSERVER_LOOP_DIED: Final[str] = "task_engine.observer_loop.died"
 TASK_ENGINE_TIMEOUT_ENFORCEMENT_SET: Final[str] = "task_engine.timeout_enforcement.set"
+TASK_ENGINE_MAX_QUEUE_SIZE_SET: Final[str] = "task_engine.max_queue_size.set"
 """Emitted when the process-wide ``engine.timeout_enforcement_enabled`` cache
 flips. Logged at INFO so an operator can correlate timeout-behaviour changes
 with config events; the toggle is a runtime state transition that affects

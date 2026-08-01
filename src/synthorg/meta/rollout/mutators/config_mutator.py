@@ -1,7 +1,7 @@
 """ConfigMutator implementation backed by SettingsService.
 
 Routes a ``revert_config`` rollback operation to the canonical
-SettingsService.set path. ``read_only_post_init`` settings raise
+SettingsService.set path. ``compose_set`` settings raise
 ``RollbackMutationDeniedError`` so the rollback executor's audit
 log records the refused operation; misconfigured paths surface as
 ``RollbackMutationDeniedError`` rather than the bare
@@ -47,7 +47,7 @@ class SettingsServiceConfigMutator:
 
         Raises:
             RollbackMutationDeniedError: If the setting does not
-                exist, is post-init-readonly, or is otherwise
+                exist, is set by the deployment, or is otherwise
                 rejected by the settings service.
         """
         namespace, sep, key = path.partition(".")
@@ -67,11 +67,11 @@ class SettingsServiceConfigMutator:
                 META_ROLLBACK_OPERATION_FAILED,
                 operation_type="revert_config",
                 target=path,
-                reason="read_only_post_init",
+                reason="compose_set",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"revert_config rejected: setting {path} is post-init-readonly"
+            msg = f"revert_config rejected: setting {path} is set by the deployment"
             raise RollbackMutationDeniedError(msg) from exc
         except SettingNotFoundError as exc:
             logger.warning(

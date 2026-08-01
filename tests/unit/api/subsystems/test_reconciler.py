@@ -6,16 +6,16 @@ and a subsystem that cannot activate is recorded rather than allowed to
 abort the pass or to be forgotten.
 """
 
-from collections.abc import Callable
-
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.api.subsystems.spec import (
+    Activate,
     Capability,
     CapabilityId,
+    Deactivate,
     SubsystemPhase,
     SubsystemSpec,
 )
@@ -36,7 +36,7 @@ def _capability(world: _World, cap_id: CapabilityId) -> Capability:
     return Capability(id=cap_id, present=lambda _state: cap_id in world.present)
 
 
-def _installs(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., object]:
+def _installs(world: _World, name: str, cap_id: CapabilityId) -> Activate:
     """Build an activation that installs its own capability, as real wiring does."""
 
     async def _activate(_state: AppState) -> None:
@@ -46,7 +46,7 @@ def _installs(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., o
     return _activate
 
 
-def _removes(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., object]:
+def _removes(world: _World, name: str, cap_id: CapabilityId) -> Deactivate:
     """Build a teardown that withdraws its own capability."""
 
     async def _deactivate(_state: AppState) -> None:
@@ -74,12 +74,12 @@ class TestOrdering:
             name="consumer",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "consumer", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "consumer", CapabilityId.MEMORY_BACKEND),
         )
         provider = SubsystemSpec(
             name="provider",
             provides=CapabilityId.PERSISTENCE,
-            activate=_installs(world, "provider", CapabilityId.PERSISTENCE),  # type: ignore[arg-type]
+            activate=_installs(world, "provider", CapabilityId.PERSISTENCE),
         )
         # Declared consumer-first on purpose: order must come from the
         # dependency edges, not from how the table happens to be written.
@@ -93,16 +93,73 @@ class TestOrdering:
             name="first",
             provides=CapabilityId.PERSISTENCE,
             requires=(CapabilityId.MEMORY_BACKEND,),
-            activate=_installs(world, "first", CapabilityId.PERSISTENCE),  # type: ignore[arg-type]
+            activate=_installs(world, "first", CapabilityId.PERSISTENCE),
         )
         second = SubsystemSpec(
             name="second",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "second", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "second", CapabilityId.MEMORY_BACKEND),
         )
         with pytest.raises(SubsystemGraphInvalidError, match="cycle"):
             SubsystemReconciler((first, second), _all_capabilities(world))
+
+    def test_rebuild_without_a_teardown_is_refused(self) -> None:
+        # A rebuild is deactivate-then-activate. With no teardown the
+        # subsystem still reads active, the pass leaves it alone, and the
+        # declaration promises a replacement that never happens. Refused at
+        # the declaration itself, so it fails where it was written rather
+        # than in whichever build first orders it.
+        world = _World()
+        with pytest.raises(ValueError, match="deactivate"):
+            SubsystemSpec(
+                name="memory",
+                provides=CapabilityId.MEMORY_BACKEND,
+                activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+                settings=("memory.backend",),
+                rebuild_on_change=True,
+            )
+
+    def test_a_consumer_of_a_tearable_capability_needs_its_own_teardown(self) -> None:
+        # The owner can take MEMORY_BACKEND away while the process runs, so a
+        # consumer that captured it and cannot be taken down would keep
+        # serving from a disconnected collaborator and still read active.
+        world = _World()
+        owner = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        consumer = SubsystemSpec(
+            name="docs",
+            provides=CapabilityId.DOCS_ENGINE,
+            requires=(CapabilityId.MEMORY_BACKEND,),
+            activate=_installs(world, "docs", CapabilityId.DOCS_ENGINE),
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="no deactivate"):
+            SubsystemReconciler((owner, consumer), _all_capabilities(world))
+
+    def test_a_consumer_of_a_tearable_capability_needs_a_rebuild(self) -> None:
+        # A teardown alone is not enough: a replacement that arrives without
+        # a rebuild leaves the consumer holding the instance that was
+        # replaced.
+        world = _World()
+        owner = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        consumer = SubsystemSpec(
+            name="docs",
+            provides=CapabilityId.DOCS_ENGINE,
+            requires=(CapabilityId.MEMORY_BACKEND,),
+            activate=_installs(world, "docs", CapabilityId.DOCS_ENGINE),
+            deactivate=_removes(world, "docs", CapabilityId.DOCS_ENGINE),
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="no rebuild_on_change"):
+            SubsystemReconciler((owner, consumer), _all_capabilities(world))
 
     def test_two_owners_of_one_capability_are_refused(self) -> None:
         world = _World()
@@ -110,7 +167,7 @@ class TestOrdering:
             SubsystemSpec(
                 name=name,
                 provides=CapabilityId.MEMORY_BACKEND,
-                activate=_installs(world, name, CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+                activate=_installs(world, name, CapabilityId.MEMORY_BACKEND),
             )
             for name in ("one", "two")
         )
@@ -128,7 +185,7 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -148,7 +205,7 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -171,7 +228,7 @@ class TestReconcile:
             name="docs",
             provides=CapabilityId.KNOWLEDGE_ENGINE,
             requires=(CapabilityId.PERSISTENCE, CapabilityId.MEMORY_BACKEND),
-            activate=_installs(world, "docs", CapabilityId.KNOWLEDGE_ENGINE),  # type: ignore[arg-type]
+            activate=_installs(world, "docs", CapabilityId.KNOWLEDGE_ENGINE),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
 
@@ -190,8 +247,8 @@ class TestReconcile:
             name="memory",
             provides=CapabilityId.MEMORY_BACKEND,
             requires=(CapabilityId.PERSISTENCE,),
-            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
-            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
         )
         reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
         state = _app_state()
@@ -217,7 +274,7 @@ class TestReconcile:
         healthy = SubsystemSpec(
             name="healthy",
             provides=CapabilityId.ORG_MEMORY_BACKEND,
-            activate=_installs(world, "healthy", CapabilityId.ORG_MEMORY_BACKEND),  # type: ignore[arg-type]
+            activate=_installs(world, "healthy", CapabilityId.ORG_MEMORY_BACKEND),
         )
         broken = SubsystemSpec(
             name="broken",

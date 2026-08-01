@@ -43,6 +43,7 @@ from synthorg.engine.pipeline.errors import (
 )
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
+    PipelineAttachments,
     PlanReviewHandoff,
     RefinementHandoff,
     RoutingVerdict,
@@ -194,8 +195,8 @@ class DefaultWorkPipeline:
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
         # Solo-path assignment service: when wired, the single-agent
         # pick routes through ``TaskAssignmentService`` so its status
-        # validation and project-team filter run in production. Absent
-        # -> the direct-scorer fallback below preserves prior behaviour.
+        # validation and project-team filter run. Absent, the pick falls
+        # through to the shared scorer with neither.
         self._assignment_service = assignment_service
         self._narrator: RunNarrator | None = None
         self._refinement_router: WorkRefinementRouter | None = None
@@ -206,12 +207,15 @@ class DefaultWorkPipeline:
         # and race to stamp a different lead (lost update on ``Project.lead``).
         self._project_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
-    def attach_narrator(self, narrator: RunNarrator) -> None:
-        """Attach the post-run narrator (documentary mode).
+    def attach_narrator(self, narrator: RunNarrator | None) -> None:
+        """Attach (or clear) the post-run narrator (documentary mode).
 
         Late-bind seam: the narrator depends on services that wire only
         after persistence connects, so it is attached to the already-built
         pipeline by the startup hook rather than passed at construction.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        narrator down when the docs engine or project brain it captured is
+        replaced.
         """
         self._narrator = narrator
 
@@ -250,6 +254,22 @@ class DefaultWorkPipeline:
         """
         self._plan_review_panel = panel
         logger.info(PIPELINE_PLAN_REVIEW_PANEL_ATTACHED)
+
+    @property
+    def attachments(self) -> PipelineAttachments:
+        """Report which late-bound collaborators are currently attached.
+
+        Returns:
+            A :class:`PipelineAttachments` read straight off the fields the
+            ``attach_*`` seams write, so it cannot claim an attachment that
+            is not there.
+        """
+        return PipelineAttachments(
+            narrator=self._narrator is not None,
+            refinement_router=self._refinement_router is not None,
+            plan_review_gate=self._plan_review_gate is not None,
+            plan_review_panel=self._plan_review_panel is not None,
+        )
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Drive *work_item* through the full spine (see module docstring).

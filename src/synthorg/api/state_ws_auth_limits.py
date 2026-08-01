@@ -139,9 +139,9 @@ class WsAuthLimits:
         """Return the WebSocket first-message auth-handshake timeout.
 
         Populated by ``_apply_bridge_config`` from
-        ``api.ws_auth_timeout_seconds`` (``restart_required=True``, so the
-        operator-visible contract is "takes effect at the next restart");
-        always has a sane built-in default (10.0 s) so the handler
+        ``api.ws_auth_timeout_seconds`` and re-pushed by the ws-auth-limits
+        subscriber on an operator edit, so the next connection uses the new
+        budget; always has a sane built-in default (10.0 s) so the handler
         never reaches back through the resolver per-connection.  The
         setter validates and accepts repeated calls (no single-shot
         contract) -- tests and subsystems may stage a different value at
@@ -171,10 +171,10 @@ class WsAuthLimits:
     def frame_timeout_seconds(self) -> int:
         """Per-frame WebSocket receive timeout in seconds.
 
-        Bounded by ``[1, 600]``; defaults to 180. Read once at controller
-        construction (read_only_post_init), so the value can be staged
-        in tests via ``set_frame_timeout_seconds`` without spinning
-        the lifecycle.
+        Bounded by ``[1, 600]``; defaults to 180. Read through this holder
+        rather than the resolver per frame, so the value can be staged in
+        tests via ``set_frame_timeout_seconds`` without spinning the
+        lifecycle.
         """
         return self._frame_timeout_seconds
 

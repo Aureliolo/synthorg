@@ -24,14 +24,12 @@ from synthorg.api.controllers.health import (
     LivenessController,
     ReadinessController,
 )
-from synthorg.api.controllers.restart import RestartController
 from synthorg.api.controllers.setup.agents import SetupAgentsController
 from synthorg.api.controllers.setup.company import SetupCompanyController
 from synthorg.api.controllers.setup.completion import SetupCompletionController
 from synthorg.api.controllers.setup.locales import SetupLocalesController
 from synthorg.api.controllers.setup.status import SetupStatusController
 from synthorg.api.controllers.setup_personality import SetupPersonalityController
-from synthorg.api.controllers.subsystems import SubsystemsController
 from synthorg.api.controllers.users.account import UserController
 from synthorg.api.controllers.users.org_roles import UserOrgRolesController
 from synthorg.api.controllers.ws import ws_handler
@@ -45,8 +43,6 @@ FEATURE: FeatureModule = FeatureManifest(
         LivenessController,
         ReadinessController,
         HealthController,
-        SubsystemsController,
-        RestartController,
         CapabilitiesController,
         AuthBootstrapController,
         AuthSessionController,

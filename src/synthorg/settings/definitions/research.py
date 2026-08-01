@@ -33,7 +33,6 @@ _r.register(
             " disabled error."
         ),
         group="General",
-        restart_required=False,
     )
 )
 
@@ -52,7 +51,6 @@ _r.register(
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -65,7 +63,6 @@ _r.register(
         description="Discriminator selecting the query-planning strategy.",
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -82,7 +79,6 @@ _r.register(
         ),
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -99,7 +95,6 @@ _r.register(
         ),
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -113,7 +108,6 @@ _r.register(
         description="Discriminator selecting the synthesis strategy.",
         group="Strategies",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -132,7 +126,6 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1,
         max_value=100,
     )
@@ -152,7 +145,6 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=0.0,
         max_value=1.0,
     )
@@ -172,7 +164,6 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=0.1,
         max_value=1.0,
     )
@@ -191,7 +182,6 @@ _r.register(
         ),
         group="Tuning",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1,
         max_value=200,
     )

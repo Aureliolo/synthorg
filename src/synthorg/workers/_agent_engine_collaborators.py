@@ -10,14 +10,14 @@ from collections.abc import Callable
 from synthorg.api.state import AppState
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.docs_engine.tool_factory import DocsToolFactory
-from synthorg.engine.flight_recording import (
-    FlightRecorderSink,
-    build_flight_recorder_sink,
-)
+from synthorg.engine.flight_recording import LiveFlightRecorderSink
 from synthorg.engine.intervention import SteeringInbox, build_steering_inbox
 from synthorg.engine.state import EngineStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.knowledge.tool_factory import KnowledgeToolFactory
+from synthorg.persistence.flight_recorder_protocol import (
+    FlightRecorderFrameRepository,
+)
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.project_brain.state import ProjectBrainStateSlice
 from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
@@ -154,29 +154,52 @@ def boot_structure_map_tool_factory_provider(
     return _provider
 
 
-async def build_boot_flight_recorder_sink(app_state: AppState) -> FlightRecorderSink:
-    """Resolve the cockpit flight-recorder sink for the boot engine.
-
-    Reads the cockpit ``flight_recorder_enabled`` flag and the
-    ``flight_recorder_sink_strategy`` discriminator via the async
-    resolver (DB > env > default), and supplies the persistence-backed
-    frame repository only when persistence is connected. Without
-    persistence the factory degrades to the no-op sink, so a
-    persistence-less dev boot records nothing instead of crashing.
+def _frame_repository_provider(
+    app_state: AppState,
+) -> Callable[[], FlightRecorderFrameRepository | None]:
+    """Return a provider reading the live frame repository.
 
     Returns:
-        The configured flight-recorder sink (a no-op sink when disabled
-        or persistence is absent).
+        A zero-arg callable returning the current repository, or ``None``
+        while persistence is unconnected.
     """
-    backend = app_state.slice(PersistenceStateSlice).backend
-    repository = backend.flight_recorder_frames if backend is not None else None
+
+    def _provider() -> FlightRecorderFrameRepository | None:
+        backend = app_state.slice(PersistenceStateSlice).backend
+        return backend.flight_recorder_frames if backend is not None else None
+
+    return _provider
+
+
+async def build_boot_flight_recorder_sink(
+    app_state: AppState,
+) -> LiveFlightRecorderSink:
+    """Build the cockpit flight-recorder sink for the boot engine.
+
+    The sink re-picks its delegate per batch from the cockpit settings and
+    the live persistence backend, so enabling recording, switching strategy
+    or connecting a backend later all take effect on the next run.
+
+    Returns:
+        The live flight-recorder sink, seeded with the resolved cockpit
+        configuration.
+    """
+    sink = LiveFlightRecorderSink(_frame_repository_provider(app_state))
+    await refresh_flight_recorder_sink(app_state, sink)
+    app_state.wire(EngineStateSlice, flight_recorder_sink=sink)
+    return sink
+
+
+async def refresh_flight_recorder_sink(
+    app_state: AppState,
+    sink: LiveFlightRecorderSink,
+) -> None:
+    """Resolve the cockpit recorder settings onto *sink*."""
     resolver = config_resolver_of(app_state)
-    enabled = await resolver.get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
-    strategy = await resolver.get_str(_COCKPIT_NS, _FR_STRATEGY_KEY)
-    summary_max_chars = await resolver.get_int(_COCKPIT_NS, _FR_SUMMARY_MAX_CHARS_KEY)
-    return build_flight_recorder_sink(
-        repository,
-        enabled=enabled,
-        strategy=strategy,
-        summary_max_chars=summary_max_chars,
+    sink.apply(
+        enabled=await resolver.get_bool(_COCKPIT_NS, _FR_ENABLED_KEY),
+        strategy=await resolver.get_str(_COCKPIT_NS, _FR_STRATEGY_KEY),
+        summary_max_chars=await resolver.get_int(
+            _COCKPIT_NS, _FR_SUMMARY_MAX_CHARS_KEY
+        ),
     )

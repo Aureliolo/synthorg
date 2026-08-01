@@ -52,7 +52,6 @@ import { CodeEditorPanel } from './settings/CodeEditorPanel'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
 import { NamespaceTabBar } from './settings/SettingsHealthSection'
-import { RestartBanner } from './settings/RestartBanner'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { type SettingsPageController, useSettingsPageController } from './settings/useSettingsPageController'
@@ -210,7 +209,6 @@ function SettingsBanners({ ctrl }: { ctrl: SettingsPageController }) {
   const { data, advanced } = ctrl
   return (
     <>
-      <RestartBanner />
       {Boolean(data.error) && (
         <ErrorBanner severity="error" title="Could not load settings" description={data.error} />
       )}

@@ -426,8 +426,12 @@ func (wc *wipeContext) verifyAndPin() error {
 // Returns an error if the backend does not become healthy within the
 // timeout or the context is cancelled.
 func (wc *wipeContext) waitForBackendHealth() error {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", wc.state.BackendPort)
-	// Use the same readiness-wait budget as start (SYNTHORG_HEALTH_WAIT_TIMEOUT,
+	// Liveness, not readiness: the backup this waits for needs the backend
+	// serving, not every optional dependency reachable, and gating on
+	// readiness would abandon a recoverable wipe over an unrelated
+	// dependency that is still coming up.
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", wc.state.BackendPort)
+	// Use the same wait budget as start (SYNTHORG_HEALTH_WAIT_TIMEOUT,
 	// default 90s) rather than a hardcoded 30s: a slow first boot (e.g. a large
 	// Postgres migration) can legitimately take longer than 30s, and a shorter
 	// budget here would false-negative a backend that is still coming up.

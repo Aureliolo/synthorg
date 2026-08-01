@@ -53,6 +53,7 @@ The design specification has been split into focused documentation pages for bet
 | [A2A Protocol](design/a2a-protocol.md) | Agent-to-agent transport | Agent Card discovery, capability negotiation, signed envelope, well-known JWKS, gateway authentication |
 | [Security & Approval](design/security.md) | Approval workflow, autonomy, output scanning, policy engine | Fail-closed rule engine, review gates, credential isolation, A2A auth |
 | [Observability](design/observability.md) | Performance tracking, structured logging, correlation, event taxonomy | 11 default sinks, Prometheus / OTLP export, runtime-editable levels |
+| [Subsystem Reconciliation](design/subsystem-reconciliation.md) | Declarative wiring, level-triggered convergence | `SubsystemSpec` requires / provides / settings / rebuild_on_change, boot as the first pass, periodic resync, `GET /subsystems` phases |
 | [Notifications](design/notifications.md) | NotificationSink protocol, dispatcher, adapters | Console / ntfy / Slack / email adapters, severity filtering |
 | [Backup & Restore](design/backup.md) | Component handlers, manifests, scheduler, retention | SQLite VACUUM INTO snapshots, validated restore with safety backup |
 | [Deployment](design/deployment.md) | Container runtime, image verification, sandbox resolution | apko-composed Wolfi bases, cosign + SLSA L3, Caddy web server |

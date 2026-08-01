@@ -174,8 +174,8 @@ service keeps a dual constructor.
   the codebase in two states across many namespaces for an extended
   period.
 - **Resolve once in `__init__` into plain attributes, no subscriber.**
-  Rejected: loses runtime hot-reload for `restart_required=False`
-  knobs, a capability operators currently have via `ConfigResolver`.
+  Rejected: loses the live path for every knob an operator can change
+  while the system runs, a capability they have via `ConfigResolver`.
 - **Keep `ConfigResolver` per call.** Rejected: status quo; the
   coupling, repetition, and invisible config surface are the
   motivation.

@@ -132,7 +132,6 @@ def create_app(
         connection_catalog=result.connection_catalog,
         provider_registry=result.provider_registry,
         cost_tracker=result.cost_tracker,
-        approval_store=result.approval_store,
         performance_tracker=result.performance_tracker,
         notification_dispatcher=result.notification_dispatcher,
     )

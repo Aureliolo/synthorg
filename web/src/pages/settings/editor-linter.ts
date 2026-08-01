@@ -11,6 +11,7 @@ import { linter, type Diagnostic } from '@codemirror/lint'
 import * as YAML from 'js-yaml'
 import type { SettingEntry, SettingType } from '@/api/types/settings'
 import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
+import { settingValueDiffers } from './code-editor-utils'
 
 /* eslint-disable security/detect-non-literal-regexp --
    Every RegExp in this file is built from operator-supplied namespace /
@@ -26,6 +27,8 @@ export interface SchemaInfo {
   namespaceKeys: Map<string, Set<string>>
   /** Maps "namespace/key" -> SettingType for type validation. */
   keyTypes: Map<string, SettingType>
+  /** Maps "namespace/key" -> entry, for compose-set and value checks. */
+  entries: Map<string, SettingEntry>
 }
 
 /** @internal Exported for direct unit testing. */
@@ -33,6 +36,7 @@ export function buildSchemaInfo(entries: SettingEntry[]): SchemaInfo {
   const knownNamespaces = new Set<string>()
   const namespaceKeys = new Map<string, Set<string>>()
   const keyTypes = new Map<string, SettingType>()
+  const byCompositeKey = new Map<string, SettingEntry>()
 
   for (const entry of entries) {
     const ns = entry.definition.namespace
@@ -44,9 +48,10 @@ export function buildSchemaInfo(entries: SettingEntry[]): SchemaInfo {
     }
     keys.add(entry.definition.key)
     keyTypes.set(`${ns}/${entry.definition.key}`, entry.definition.type)
+    byCompositeKey.set(`${ns}/${entry.definition.key}`, entry)
   }
 
-  return { knownNamespaces, namespaceKeys, keyTypes }
+  return { knownNamespaces, namespaceKeys, keyTypes, entries: byCompositeKey }
 }
 
 // ── Key position finders ──────────────────────────────────────
@@ -157,6 +162,37 @@ function unknownKeyDiagnostics(
 }
 
 /**
+ * Flag an edited compose-set key where the operator typed it, rather
+ * than letting the save round-trip come back as a generic failure.
+ */
+function composeSetDiagnostics(
+  ns: string,
+  keys: Record<string, unknown>,
+  schema: SchemaInfo,
+  findKey: KeyFinder,
+  text: string,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
+  for (const [key, value] of Object.entries(keys)) {
+    const entry = schema.entries.get(`${ns}/${key}`)
+    if (!entry?.definition.compose_set) continue
+    if (!settingValueDiffers(entry, value)) continue
+    const pos = findKey(text, ns, key)
+    if (pos) {
+      diagnostics.push({
+        from: pos.from,
+        to: pos.to,
+        severity: 'error',
+        message:
+          `"${ns}.${key}" is fixed by the deployment at container start. ` +
+          'Edit the compose file and recreate the container.',
+      })
+    }
+  }
+  return diagnostics
+}
+
+/**
  * ``parsed`` is user-typed JSON/YAML, so a namespace value can be null or an
  * array at runtime despite the ``Record`` type. ``Object.keys(null)`` throws
  * inside ``unknownKeyDiagnostics``, so reject non-plain-object values here.
@@ -190,6 +226,7 @@ export function validateSchema(
     const knownKeys = schema.namespaceKeys.get(ns)
     if (!knownKeys) continue
     diagnostics.push(...unknownKeyDiagnostics(ns, keys, knownKeys, findKey, text))
+    diagnostics.push(...composeSetDiagnostics(ns, keys, schema, findKey, text))
   }
 
   return diagnostics

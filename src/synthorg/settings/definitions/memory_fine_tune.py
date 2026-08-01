@@ -234,7 +234,6 @@ _r.register(
 )
 
 _r.register(
-    # lint-allow: restart-required -- resolved once at boot into the
     # fine-tune image cache; the CLI changes the image only by recreating
     # the backend container, so a mid-run DB write would silently drift
     # from the value ephemeral stage containers actually use.
@@ -253,8 +252,7 @@ _r.register(
         ),
         group="Fine-Tune",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         env_var_override="SYNTHORG_FINE_TUNE_IMAGE",
     )
 )

@@ -14,7 +14,7 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import ProjectNotFoundError
-from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.models import PipelineAttachments, WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.enums import CharterStatus
@@ -260,6 +260,16 @@ class _FakeWorkPipeline:
 
     def attach_plan_review_panel(self, panel: object) -> None:
         raise NotImplementedError
+
+    @property
+    def attachments(self) -> PipelineAttachments:
+        """Report that nothing is attached (the charter path attaches none)."""
+        return PipelineAttachments(
+            narrator=False,
+            refinement_router=False,
+            plan_review_gate=False,
+            plan_review_panel=False,
+        )
 
 
 class SimpleResult:
@@ -515,6 +525,15 @@ class TestApprove:
                 self, work_item: WorkItem, task: object
             ) -> object:
                 raise NotImplementedError
+
+            @property
+            def attachments(self) -> PipelineAttachments:
+                return PipelineAttachments(
+                    narrator=False,
+                    refinement_router=False,
+                    plan_review_gate=False,
+                    plan_review_panel=False,
+                )
 
             def attach_narrator(self, narrator: object) -> None:
                 raise NotImplementedError

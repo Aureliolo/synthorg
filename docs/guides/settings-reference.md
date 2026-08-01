@@ -1,6 +1,6 @@
 ---
 title: Settings Reference
-description: How SynthOrg settings resolve, the runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+description: How SynthOrg settings resolve, the runtime-editable namespaces, how to view and change settings at runtime, and which settings the deployment fixes instead.
 ---
 
 # Settings Reference
@@ -23,7 +23,7 @@ values are thereafter resolved through the chain above. See
 [Configuration Precedence](../reference/configuration-precedence.md) for the
 full model.
 
-DB-backed changes take effect without restart unless the setting is marked `restart_required=True`.
+A DB-backed change takes effect immediately. The exception is a setting marked `compose_set=True`, which the deployment fixed when the container was created; the dashboard shows it read-only and a write is rejected rather than stored.
 
 ## Setting Types
 
@@ -95,7 +95,7 @@ The `api` namespace also carries operator-tunable settings that govern the respo
 | `api.csp_docs_external_origins` | JSON list | `["https://cdn.jsdelivr.net", "https://fonts.scalar.com", "https://proxy.scalar.com"]` | Trusted external origins used to build the relaxed Content-Security-Policy on `/docs/` paths. Override with internally-mirrored hosts when the backend is not allowed to reach the public Scalar CDN. Each origin must match `^https?://[\w.\-:/]+$`; a malformed entry rejects the bridge config and the runtime falls back to defaults with a `WARNING` log. |
 | `api.error_docs_base_url` | STRING | `https://synthorg.io/docs/errors` | Base URL appended with `#<category>` for the RFC 9457 `type` field on every error response. HTTPS-only (`^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$`); userinfo, query, and fragment components are rejected at runtime. |
 
-Both are `restart_required=True`: the CSP and error-docs URL are baked into module-level state during startup.
+Both apply immediately: `ApiSecurityHeadersSettingsSubscriber` re-resolves the pair and pushes it onto the module-level state the header builder reads.
 
 The Slack notification sink binds a `SLACK` connection (its `notifications.slack_timeout_seconds` bridge setting is hot-reloadable), and the forge / chat agent tools are configured under the `tools` namespace (`forge_tools_enabled` / `forge_tools_connection`, `chat_tools_enabled` / `chat_tools_connection`), applied on the next runtime rebuild.
 
@@ -137,17 +137,17 @@ curl -X POST http://localhost:3001/api/v1/settings/security/import \
   -d @security-policy.json
 ```
 
-## Restart-Required Settings
+## Compose-Set Settings
 
-Some settings are bootstrap-only and cannot be hot-reloaded safely. They are marked with `restart_required=True` in the schema. Common examples:
+A few settings are decided when the container is created and cannot be changed by the process running inside it. They carry `compose_set=True`, appear read-only in the dashboard under **Advanced · set by the deployment**, and reject a write instead of storing a value nothing will read. Common examples:
 
-- `api.rate_limit.floor_max_requests` / `unauth_max_requests` / `auth_max_requests` (the three-tier rate limiter builds at startup)
-- `api.rate_limit_auth_endpoint_max_requests` (the dedicated per-minute limiter applied as route middleware on the login / setup / change-password / dev-login endpoints; bound at module import, `read_only_post_init`)
-- `api.per_op_rate_limit.backend` / `api.per_op_concurrency.backend` (the per-op stores are constructed once at startup; enabled / overrides ARE runtime-editable)
-- `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
-- `observability.tsa_endpoint_freetsa` / `tsa_endpoint_digicert` / `tsa_endpoint_sectigo` (the timestamp trust-anchor URL is baked into `TsaClient` at construction with trust-root validation; swapping the authority mid audit-chain is security-sensitive)
+- `api.server_host` / `api.server_port` / `api.ssl_certfile` / `ssl_keyfile` / `ssl_ca_certs` (the listening socket uvicorn already opened)
+- `api.api_prefix` (every route path, and the dashboard is built against it)
+- `api.cors_allowed_origins`, `api.auth_exclude_paths`, `api.rate_limit_exclude_paths` (Litestar caches the CORS config and applies middleware exclusions at mount time)
+- `tools.sandbox_image` / `sidecar_image` (the CLI pulled and signature-verified these; the container was created against the resolved digest)
+- `observability.tsa_endpoint_freetsa` / `tsa_endpoint_digicert` / `tsa_endpoint_sectigo` (the timestamp trust anchor is resolved before the settings backend exists, and swapping the authority mid audit-chain is security-sensitive)
 
-Changing a restart-required setting writes the new value to the database but the running process continues using the old value. Restart the backend to pick up the change.
+To change one, edit the compose file (or the environment it reads) and recreate the container. `scripts/check_setting_compose_backed.py` fails any `compose_set` key the shipped compose template does not actually set, so the flag cannot be used to mean "not wired up".
 
 ## Hot-reloaded Settings
 

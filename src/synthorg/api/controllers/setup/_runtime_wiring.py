@@ -102,138 +102,42 @@ async def post_setup_reinit(app_state: AppState) -> None:
     #    after an empty-company start wakes the whole runtime live.
     await _rebuild_runtime_services(app_state)
 
-    # 4. Rewire provider-gated features that a boot-empty start could not wire
-    #    (charter needs a provider for its interview LLM), so they come online
-    #    without a restart now that a provider exists.
-    await _rewire_post_setup_features(app_state)
+    # 4. Reconcile: every provider-gated subsystem a boot-empty start left
+    #    waiting (charter needs a provider for its interview LLM) now has its
+    #    dependency, so one level-triggered pass brings them up. This is the
+    #    same pass boot and the periodic resync run, not a parallel list of
+    #    what setup happens to know about.
+    await _reconcile_post_setup(app_state)
 
 
-async def _rewire_post_setup_features(app_state: AppState) -> None:
-    """Rewire provider-gated features a boot-empty start could not wire.
+async def _reconcile_post_setup(app_state: AppState) -> None:
+    """Run one reconcile pass and refuse to complete over a failed subsystem.
 
-    The charter engine, research subsystem, and knowledge substrate wire
-    only behind a configured provider (and, for research, a now-filled
-    model), so an app that booted with no provider leaves their endpoints
-    unavailable until a restart. The wiring is idempotent (a no-op when
-    already wired), so re-running it after the provider reload + model
-    auto-fill brings them online live.
+    The reconciler records a failing activation and carries on, which is right
+    for a periodic sweep: one broken subsystem must not stop the others coming
+    up. Setup completion is the opposite case. It is a one-shot answer to "is
+    this deployment configured", so a subsystem that raised during this pass
+    means the answer is no, and persisting ``setup_complete=true`` over it
+    would hide the fault behind a green setup screen.
 
-    Raises on failure, like the other reinit steps, so ``post_setup_reinit``
-    keeps ``setup_complete=false`` rather than reporting a half-configured
-    runtime as complete. Expected degradation (provider or memory substrate
-    absent) does NOT raise here: ``_wire_charter_engine`` swallows it internally
-    and logs ``CHARTER_SUBSTRATE_UNAVAILABLE``, so setup still completes with
-    charter endpoints 503-ing, exactly as at boot. Only a genuinely broken
-    rewire (e.g. a settings read that fails) propagates and aborts completion.
+    Expected degradation does NOT reach here: a subsystem whose dependency is
+    absent reads WAITING, not FAILED, exactly as at boot.
 
     Raises:
-        Exception: Re-raised after logging so completion is not persisted.
+        SubsystemActivationError: When any subsystem's activation raised, or
+            when the pass itself could not run.
     """
-    from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
-        _wire_charter_engine,
+    from synthorg.api.subsystems.errors import (  # noqa: PLC0415
+        SubsystemActivationError,
     )
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
-        wire_chief_of_staff_proposer,
-        wire_conversational_plan_dispatcher,
-        wire_conversational_write_path,
-    )
-    from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
-        _wire_chief_of_staff_chat,
-        _wire_research_engine,
-    )
-    from synthorg.api.lifecycle_helpers.kanban_wiring import (  # noqa: PLC0415
-        wire_kanban_board,
-    )
-    from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
-        wire_knowledge_engine,
-    )
-    from synthorg.api.lifecycle_helpers.narrative_wiring import (  # noqa: PLC0415
-        wire_run_narrator,
-    )
-    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
-        wire_plan_review_gate,
-        wire_plan_review_panel,
-    )
-    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
-        wire_project_rollup_service,
-    )
-    from synthorg.api.lifecycle_helpers.refinement_wiring import (  # noqa: PLC0415
-        wire_refinement_router,
-    )
-    from synthorg.api.lifecycle_helpers.sprint_wiring import (  # noqa: PLC0415
-        wire_sprint_service,
-    )
-    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+    from synthorg.api.subsystems.runtime import reconcile_subsystems  # noqa: PLC0415
 
-    try:
-        settings_service = app_state.slice(SettingsStateSlice).settings_service
-        si_config = await load_self_improvement_config(settings_service)
-        registry = app_state.slice(ProvidersStateSlice).registry
-        persistence = app_state.slice(PersistenceStateSlice).backend
-        cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-        approval_store = app_state.slice(ApprovalStateSlice).store
-        await _wire_charter_engine(
-            app_state,
-            provider_registry=registry,
-            persistence=persistence,
-            cost_tracker=cost_tracker,
-            si_config=si_config,
-        )
-        # Research + knowledge are on by default and need a provider /
-        # memory substrate that a boot-empty start lacked; their wiring is
-        # idempotent, so re-running it brings them online live now that
-        # setup has filled their models and a provider exists.
-        await _wire_research_engine(app_state, provider_registry=registry)
-        await wire_knowledge_engine(app_state, provider_registry=registry)
-        # The Chief-of-Staff trio (chat / narrator / propose) wires only behind
-        # a resolvable per-feature model. A boot-empty start left their models
-        # blank, so they stayed unwired; setup has now provisioned real models,
-        # and their wiring is idempotent, so re-running it here brings them
-        # online with no restart (mirroring the boot order: narrator, then the
-        # proposer + the refinement router and conversational actor built on it).
-        await _wire_chief_of_staff_chat(
-            app_state,
-            provider_registry=registry,
-            cost_tracker=cost_tracker,
-            si_config=si_config,
-        )
-        await wire_run_narrator(
-            app_state,
-            provider_registry=registry,
-            cost_tracker=cost_tracker,
-            si_config=si_config,
-        )
-        if approval_store is not None:
-            await wire_chief_of_staff_proposer(
-                app_state,
-                provider_registry=registry,
-                persistence=persistence,
-                cost_tracker=cost_tracker,
-                effective_approval_store=approval_store,
-                si_config=si_config,
-            )
-            await wire_refinement_router(app_state)
-            await wire_conversational_write_path(app_state, si_config=si_config)
-        await wire_plan_review_gate(app_state)
-        await wire_plan_review_panel(
-            app_state,
-            provider_registry=registry,
-            cost_tracker=cost_tracker,
-        )
-        await wire_conversational_plan_dispatcher(app_state)
-        await wire_sprint_service(app_state)
-        await wire_project_rollup_service(app_state)
-        await wire_kanban_board(app_state)
-    except Exception as exc:
-        reraise_critical(exc)
-        logger.warning(
-            SETUP_FEATURE_REWIRE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise
+    report = await reconcile_subsystems(app_state, trigger="post_setup")
+    failed = report.failed if report is not None else ("<the pass itself>",)
+    if failed:
+        logger.warning(SETUP_FEATURE_REWIRE_FAILED, subsystems=", ".join(failed))
+        msg = f"subsystems failed to activate after setup: {', '.join(failed)}"
+        raise SubsystemActivationError(msg)
 
 
 async def _rebuild_runtime_services(app_state: AppState) -> None:

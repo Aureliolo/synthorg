@@ -131,46 +131,24 @@ async def wire_conversational_actor(
         )
 
 
-async def rebuild_conversational_actor(
-    app_state: AppState,
-    *,
-    si_config: SelfImprovementConfig,
-) -> None:
-    """Unconditionally rebuild + swap the direct-MCP actor from current config.
+async def unwire_conversational_actor(app_state: AppState) -> None:
+    """Take the direct-MCP actor down so the next pass rebuilds it.
 
-    Unlike the idempotent boot wirer, this always recomputes the actor and
-    swaps the slice to the fresh value, tearing it DOWN (to ``None``) when
-    ``direct_mcp_enabled`` flips off. The rebuild re-runs the same fail-closed
-    :func:`build_conversational_actor` gate (governance + MCP self-consumer
-    must be wired on the boot engine), so a live enable stays fail-closed: the
-    actor materialises only when the engine already carries governance. This is
-    what lets ``direct_mcp_enabled`` be hot-reloadable without weakening the
-    startup security invariant.
+    The reconciler pairs this with the wirer above on any change to
+    ``direct_mcp_enabled``, which is what makes the toggle live: teardown,
+    then a rebuild that re-runs the same fail-closed
+    :func:`build_conversational_actor` gate (governance and the MCP
+    self-consumer must be wired on the boot engine). A live enable therefore
+    stays fail-closed, and a live disable genuinely removes the actor instead
+    of leaving the previous instance acting.
     """
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.workers.execution_service import (  # noqa: PLC0415
-        AgentEngineExecutionService,
-    )
-    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-    agent_registry = app_state.slice(HrStateSlice).agent_registry
-    service = app_state.slice(RuntimeStateSlice).worker_execution_service
-    actor = None
-    if agent_registry is not None and isinstance(service, AgentEngineExecutionService):
-        actor = build_conversational_actor(
-            si_config.chief_of_staff,
-            engine=service.engine,
-            agent_registry=agent_registry,
-            autonomy_resolver=service.autonomy_resolver,
-        )
-    app_state.wire(MetaStateSlice, conversational_actor=actor)
+    app_state.wire(MetaStateSlice, conversational_actor=None)
     logger.info(
         API_APP_STARTUP,
         service="conversational_actor",
-        note="direct MCP actor rebuilt (live toggle)",
-        wired=actor is not None,
-        enabled=si_config.chief_of_staff.direct_mcp_enabled,
+        note="direct MCP actor unwired",
     )
 
 
@@ -483,25 +461,6 @@ async def wire_chief_of_staff_proposer(
         )
 
 
-async def wire_conversational_write_path(
-    app_state: AppState,
-    *,
-    si_config: SelfImprovementConfig,
-) -> None:
-    """Wire both governed chat-action services (direct-MCP actor + console).
-
-    The two share the boot engine and the same fail-closed gating shape, so
-    boot brings them up together. Each remains individually idempotent and
-    fail-closed.
-    """
-    from synthorg.api.lifecycle_helpers.conversational_console_wiring import (  # noqa: PLC0415
-        wire_operator_console,
-    )
-
-    await wire_conversational_actor(app_state, si_config=si_config)
-    await wire_operator_console(app_state, si_config=si_config)
-
-
 async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     """Attach the plan dispatcher to the proposer once its deps are up.
 
@@ -548,10 +507,9 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
 
 
 __all__ = [
-    "rebuild_conversational_actor",
+    "unwire_conversational_actor",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
     "wire_conversational_plan_dispatcher",
-    "wire_conversational_write_path",
     "wire_group_chat_service",
 ]

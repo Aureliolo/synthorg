@@ -19,6 +19,11 @@ class SubsystemsStateSlice(BaseFeatureStateSlice):
         reconciler: The reconciler, or ``None`` before boot builds it.
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+    )
 
     reconciler: SubsystemReconciler | None = None

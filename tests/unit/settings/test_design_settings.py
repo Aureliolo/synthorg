@@ -19,7 +19,7 @@ def test_image_generation_enabled_defaults_off() -> None:
     assert definition is not None
     assert definition.type is SettingType.BOOLEAN
     assert definition.default == "false"
-    assert definition.restart_required is False
+    assert definition.compose_set is False
 
 
 def test_image_model_is_model_ref_unset_by_default() -> None:
@@ -27,4 +27,4 @@ def test_image_model_is_model_ref_unset_by_default() -> None:
     assert definition is not None
     assert definition.type is SettingType.MODEL_REF
     assert definition.default == ""
-    assert definition.restart_required is False
+    assert definition.compose_set is False

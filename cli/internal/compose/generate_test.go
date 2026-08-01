@@ -601,11 +601,10 @@ func TestGenerateHardeningPresent(t *testing.T) {
 	}
 }
 
-// The dashboard refuses to restart the process unless the backend announces
-// that something will bring it back. Generating a supervised stack without
-// that announcement leaves the restart control permanently returning 409, so
-// the two must ship together or not at all.
-func TestGenerateAnnouncesRestartSupervision(t *testing.T) {
+// A crashed container has to come back on its own: nothing inside the product
+// restarts the process, so the restart policy is the only thing standing
+// between a transient fault and a deployment that stays down.
+func TestGenerateSetsRestartPolicy(t *testing.T) {
 	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
@@ -621,12 +620,8 @@ func TestGenerateAnnouncesRestartSupervision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	yaml := string(out)
 
-	if !strings.Contains(yaml, "restart: unless-stopped") {
-		t.Fatal("backend is not supervised; the supervision claim below would be a lie")
-	}
-	assertContains(t, yaml, `SYNTHORG_API_RESTART_SUPERVISED: "true"`)
+	assertContains(t, string(out), "restart: unless-stopped")
 }
 
 func TestParamsFromState(t *testing.T) {
@@ -720,6 +715,107 @@ func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
 			t.Fatal("ParamsFromState: want error for invalid SYNTHORG_REGISTRY_HOST, got nil")
 		}
 	})
+}
+
+// composeSetEnvVars are the settings the product marks ``compose_set``:
+// the process is started with them and nothing inside can change them, so
+// a render that drops one leaves the settings page reporting a value the
+// deployment never chose. Asserted per name rather than through the golden
+// compare alone, which fails with "output differs" and makes the reader
+// diff two files to learn which variable went missing.
+var composeSetEnvVars = []string{
+	"SYNTHORG_API_SERVER_HOST",
+	"SYNTHORG_API_SERVER_PORT",
+	"SYNTHORG_API_API_PREFIX",
+	"SYNTHORG_API_SSL_CERTFILE",
+	"SYNTHORG_API_SSL_KEYFILE",
+	"SYNTHORG_API_SSL_CA_CERTS",
+	"SYNTHORG_API_TRUSTED_PROXIES",
+	"SYNTHORG_API_CORS_ALLOWED_ORIGINS",
+	"SYNTHORG_API_AUTH_EXCLUDE_PATHS",
+	"SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+	"SYNTHORG_API_REQUEST_MAX_BODY_SIZE_BYTES",
+	"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_FREETSA",
+	"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_DIGICERT",
+	"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_SECTIGO",
+	"SYNTHORG_PROVIDERS_CASSETTE_MODE",
+	"SYNTHORG_PROVIDERS_CASSETTE_PATH",
+	"SYNTHORG_PERSISTENCE_BACKEND",
+	"SYNTHORG_MEMORY_BACKEND",
+	"SYNTHORG_BUS_BACKEND",
+	"SYNTHORG_LOG_DIR",
+	"SYNTHORG_LOG_LEVEL",
+	"SYNTHORG_TELEMETRY_ENABLED",
+}
+
+func TestGenerateCarriesEveryComposeSetEnvVar(t *testing.T) {
+	t.Parallel()
+	out, err := Generate(Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "internal",
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	for _, name := range composeSetEnvVars {
+		if !strings.Contains(yaml, name+":") {
+			t.Errorf("compose-set env var %s is missing from the rendered compose", name)
+		}
+	}
+}
+
+// TestComposeSetEnvVarsAreOperatorOverridable pins the interpolation form
+// on the vars an operator is meant to set without regenerating the file. A
+// bare literal there would silently ignore their .env entry.
+func TestComposeSetEnvVarsAreOperatorOverridable(t *testing.T) {
+	t.Parallel()
+	out, err := Generate(Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "internal",
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// SYNTHORG_API_SERVER_HOST / _PORT are deliberately absent: they mirror
+	// what uvicorn actually binds inside the container, so an override would
+	// make the settings page report a bind that is not happening.
+	overridable := []string{
+		"SYNTHORG_API_API_PREFIX",
+		"SYNTHORG_API_SSL_CERTFILE",
+		"SYNTHORG_API_SSL_KEYFILE",
+		"SYNTHORG_API_SSL_CA_CERTS",
+		"SYNTHORG_API_TRUSTED_PROXIES",
+		"SYNTHORG_API_CORS_ALLOWED_ORIGINS",
+		"SYNTHORG_API_AUTH_EXCLUDE_PATHS",
+		"SYNTHORG_API_RATE_LIMIT_EXCLUDE_PATHS",
+		"SYNTHORG_API_REQUEST_MAX_BODY_SIZE_BYTES",
+		"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_FREETSA",
+		"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_DIGICERT",
+		"SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_SECTIGO",
+		"SYNTHORG_PROVIDERS_CASSETTE_MODE",
+		"SYNTHORG_PROVIDERS_CASSETTE_PATH",
+	}
+	for _, name := range overridable {
+		if !strings.Contains(yaml, "${"+name+":-") {
+			t.Errorf("%s must be a ${%s:-default} interpolation so an operator can override it", name, name)
+		}
+	}
 }
 
 func assertContains(t *testing.T, s, substr string) {

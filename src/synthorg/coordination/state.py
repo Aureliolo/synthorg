@@ -1,9 +1,9 @@
 """Coordination feature state slice.
 
 Holds the coordination-metrics store (per-run multi-agent coordination
-signals), the coordination service, and the ceremony-policy service.
-All ``None`` until wired; the coordination controllers raise 503 on a
-``None`` field.
+signals), the single-agent baseline window those metrics compare against, the
+coordination service, and the ceremony-policy service. All ``None`` until
+wired; the coordination controllers raise 503 on a ``None`` field.
 """
 
 from typing import TYPE_CHECKING
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
 )
@@ -29,6 +30,7 @@ class CoordinationStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     metrics_store: CoordinationMetricsStore | None = None
+    baseline_store: BaselineStore | None = None
     coordination_service: CoordinationService | None = None
     ceremony_policy_service: CeremonyPolicyService | None = None
 

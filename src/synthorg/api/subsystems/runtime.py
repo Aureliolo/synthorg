@@ -13,7 +13,7 @@ from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.api.subsystems.state import SubsystemsStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.subsystem import SUBSYSTEM_RECONCILE_COMPLETED
+from synthorg.observability.events.subsystem import SUBSYSTEM_RECONCILE_FAILED
 
 logger = get_logger(__name__)
 
@@ -65,7 +65,7 @@ async def reconcile_subsystems(
         # settings write or a provider edit must still succeed, and the next
         # pass retries from whatever state this one left.
         logger.error(
-            SUBSYSTEM_RECONCILE_COMPLETED,
+            SUBSYSTEM_RECONCILE_FAILED,
             trigger=trigger,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

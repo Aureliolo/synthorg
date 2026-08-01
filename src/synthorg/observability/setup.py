@@ -315,8 +315,8 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     """Override the console sink level from the configured override.
 
     Resolves ``observability.log_level_console`` via bootstrap_resolver
-    (env > default; DB bypassed for read_only_post_init). Invalid
-    values fall back to INFO with a stderr warning.
+    (env > default; the DB-backed resolver does not exist this early).
+    Invalid values fall back to INFO with a stderr warning.
 
     Args:
         config: Current logging configuration.

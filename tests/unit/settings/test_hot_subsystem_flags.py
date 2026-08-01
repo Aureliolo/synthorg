@@ -1,9 +1,8 @@
-"""Conformance: hot-reconfigurable subsystem keys are not restart-bound.
+"""Conformance: the live subsystem keys are not compose-set.
 
-The research / knowledge / HR-loop / client-simulation hot keys must carry
-``restart_required=False`` and ``read_only_post_init=False`` so the dispatcher
-delivers their changes to the live subscribers / gates instead of logging a
-restart-required warning and dropping them.
+The research / knowledge / HR-loop / client-simulation keys must stay
+operator-changeable, so the dispatcher delivers their changes to the live
+subscribers / gates rather than the write being rejected.
 """
 
 import pytest
@@ -49,13 +48,10 @@ _HOT_KEY_IDS = [f"{ns}/{key}" for ns, key in _HOT_KEYS]
 
 
 @pytest.mark.parametrize(("namespace", "key"), _HOT_KEYS, ids=_HOT_KEY_IDS)
-def test_hot_key_not_restart_required(namespace: str, key: str) -> None:
-    """Every key in _HOT_KEYS resolves and is not restart-required."""
+def test_hot_key_not_compose_set(namespace: str, key: str) -> None:
+    """Every key in _HOT_KEYS resolves and stays operator-changeable."""
     defn = get_registry().get(namespace, key)
     assert defn is not None, f"{namespace}/{key} not registered"
-    assert defn.restart_required is False, (
-        f"{namespace}/{key} must be hot (restart_required=False)"
-    )
-    assert defn.read_only_post_init is False, (
-        f"{namespace}/{key} must not be read-only-post-init"
+    assert defn.compose_set is False, (
+        f"{namespace}/{key} must stay live (compose_set=False)"
     )

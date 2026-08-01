@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { cn, FOCUS_RING } from '@/lib/utils'
+import { cn, FOCUS_RING, mergeAriaToken } from '@/lib/utils'
 
 export interface ToggleFieldProps {
   label: string
@@ -8,6 +8,11 @@ export interface ToggleFieldProps {
   onChange: (checked: boolean) => void
   disabled?: boolean | undefined
   className?: string | undefined
+  /**
+   * Ids of external text describing the control, merged with the field's
+   * own description id rather than replacing it.
+   */
+  describedBy?: string | undefined
 }
 
 export function ToggleField({
@@ -17,8 +22,10 @@ export function ToggleField({
   onChange,
   disabled,
   className,
+  describedBy,
 }: ToggleFieldProps) {
   const id = useId()
+  const descriptionId = `${id}-description`
 
   return (
     <div className={cn('flex items-start gap-3', className)}>
@@ -27,6 +34,7 @@ export function ToggleField({
         role="switch"
         type="button"
         aria-checked={checked}
+        aria-describedby={mergeAriaToken(describedBy, description ? descriptionId : undefined)}
         onClick={() => onChange(!checked)}
         disabled={disabled}
         className={cn(
@@ -53,7 +61,7 @@ export function ToggleField({
           {label}
         </label>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
     </div>

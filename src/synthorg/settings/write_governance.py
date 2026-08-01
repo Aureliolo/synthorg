@@ -14,6 +14,13 @@ it relaxes no boundary: the next sweep destroys records irreversibly, so it is
 not a change an operator should be able to make as a side effect of a bulk
 import.
 
+A setting that becomes live has to arrive here at the same time. Disabling the
+global rate limiter, raising a tier's budget, shortening its window, narrowing
+auth-token entropy, dropping the agent middleware chain (which carries the
+authority-deference defence) and letting the meta-loop modify its own source
+are all one ordinary write once the value is no longer fixed at process start,
+so each is guarded in the direction that relaxes posture.
+
 The guard is enforced centrally in :class:`SettingsService` (both the single
 and batch write paths) so every surface inherits it; callers thread a
 :class:`SettingsWriteGovernance` through ``set`` / ``set_many``.
@@ -45,6 +52,8 @@ _TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
 _OUTPUT_STYLE_NS: Final[str] = SettingNamespace.OUTPUT_STYLE.value
 _PROVIDERS_NS: Final[str] = SettingNamespace.PROVIDERS.value
 _INTEGRATIONS_NS: Final[str] = SettingNamespace.INTEGRATIONS.value
+_API_NS: Final[str] = SettingNamespace.API.value
+_SELF_IMPROVEMENT_NS: Final[str] = SettingNamespace.SELF_IMPROVEMENT.value
 
 # Webhook-receipt retention. Shortening the window destroys inbound-delivery
 # evidence on the next sweep, and the destruction is irreversible, so the
@@ -88,9 +97,65 @@ _OUTPUT_STYLE_PACK_DEFAULT: Final[str] = "default"
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
     {"enabled", "audit_enabled", "post_tool_scanning_enabled"}
 )
+
+# Token entropy for the auth surface: session tickets, password-reset and
+# refresh tokens, OAuth state. Narrowing it makes every token minted afterwards
+# easier to guess, so the shrinking direction is the weakening one. The hard
+# floor lives in ``core.auth.token_size``; this guards the deliberate step, not
+# the range.
+_AUTH_TOKEN_BYTES_KEY: Final[str] = "auth_token_bytes"  # noqa: S105
+_AUTH_TOKEN_BYTES_DEFAULT: Final[str] = "32"  # noqa: S105
+
+# The agent middleware chain carries the authority-deference defence: a
+# justification header injected when a conversation shows authority cues. Off
+# is a prompt-injection countermeasure removed, so it guards like a security
+# toggle rather than a performance knob.
+_ENGINE_MIDDLEWARE_KEY: Final[str] = "enable_agent_middleware"
+_ENGINE_MIDDLEWARE_DEFAULT: Final[str] = "true"
+
+# Letting the meta-loop propose changes to its own source is the widest blast
+# radius the product has, so the enabling direction is guarded. The credential
+# requirement in the loader is a functional gate, not a deliberate-action one.
+_CODE_MODIFICATION_KEY: Final[str] = "code_modification_enabled"
+
+# The global rate limiter is the anti-abuse boundary in front of the whole API.
+# Turning it off, raising any tier's budget, or shortening the window each admit
+# more traffic than before. The credential-endpoint cap is the brute-force bound
+# on the login, setup and change-password routes, which is why raising it is
+# guarded on the same terms as disabling the limiter outright.
+_RATE_LIMITER_ENABLED_KEY: Final[str] = "rate_limiter_enabled"
+_RATE_LIMITER_ENABLED_DEFAULT: Final[str] = "true"
+_RATE_LIMIT_TIME_UNIT_KEY: Final[str] = "rate_limit_time_unit"
+_RATE_LIMIT_TIME_UNIT_DEFAULT: Final[str] = "minute"
+# Registered defaults, consulted when a key is unset so a first explicit
+# widening write is guarded rather than waved through for lack of a prior value.
+_RATE_LIMIT_CAP_DEFAULTS: Final[dict[str, str]] = {
+    "rate_limit_floor_max_requests": "10000",
+    "rate_limit_unauth_max_requests": "20",
+    "rate_limit_auth_max_requests": "6000",
+    "rate_limit_auth_endpoint_max_requests": "10",
+}
+_RATE_LIMIT_CAP_KEYS: Final[frozenset[str]] = frozenset(_RATE_LIMIT_CAP_DEFAULTS)
+# Window length in seconds. The same cap over a shorter window admits
+# proportionally more traffic, so shortening is the weakening direction.
+_RATE_LIMIT_WINDOW_SECONDS: Final[dict[str, int]] = {
+    "second": 1,
+    "minute": 60,
+    "hour": 3600,
+    "day": 86400,
+}
+_API_GUARDED_KEYS: Final[frozenset[str]] = (
+    frozenset({_RATE_LIMITER_ENABLED_KEY, _RATE_LIMIT_TIME_UNIT_KEY})
+    | _RATE_LIMIT_CAP_KEYS
+)
 # The permissive output-scan policy: switching TO it weakens posture.
 _OUTPUT_SCAN_POLICY_KEY: Final[str] = "output_scan_policy_type"
 _PERMISSIVE_OUTPUT_SCAN_POLICY: Final[str] = "log_only"
+# Non-boolean security keys whose value, not merely its truthiness, decides
+# the direction.
+_SECURITY_VALUE_KEYS: Final[frozenset[str]] = frozenset(
+    {_OUTPUT_SCAN_POLICY_KEY, _AUTH_TOKEN_BYTES_KEY}
+)
 
 # Completion-oracle keys in the ``engine`` namespace that relax independent
 # verification. Disabling the oracle, switching it to shadow mode (every REJECT
@@ -105,6 +170,7 @@ _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _ENGINE_ORACLE_DISABLE_KEY,
         _ENGINE_ORACLE_SHADOW_KEY,
         _ENGINE_ORACLE_MIN_STAKES_KEY,
+        _ENGINE_MIDDLEWARE_KEY,
     }
 )
 # Registered default for the enable toggle, consulted when the key is unset so
@@ -304,8 +370,60 @@ def _is_output_style_weakening(key: str, *, current: str | None, new: str) -> bo
     return False
 
 
+def _as_int(value: str) -> int | None:
+    """Return *value* as an integer, or ``None`` when it does not parse.
+
+    Returns:
+        The parsed integer, or ``None``. A malformed value is rejected
+        downstream by the type validator, so it is not a weakening transition.
+    """
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _is_api_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether an ``api.*`` rate-limit change admits more traffic."""
+    if key == _RATE_LIMITER_ENABLED_KEY:
+        currently_on = current is None or compare_ci(
+            current, _RATE_LIMITER_ENABLED_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
+    if key == _RATE_LIMIT_TIME_UNIT_KEY:
+        effective = current if current is not None else _RATE_LIMIT_TIME_UNIT_DEFAULT
+        current_window = _RATE_LIMIT_WINDOW_SECONDS.get(normalize_identifier(effective))
+        new_window = _RATE_LIMIT_WINDOW_SECONDS.get(normalize_identifier(new))
+        if current_window is None or new_window is None:
+            return False
+        return new_window < current_window
+    if key in _RATE_LIMIT_CAP_KEYS:
+        effective = current if current is not None else _RATE_LIMIT_CAP_DEFAULTS[key]
+        current_cap = _as_int(effective)
+        new_cap = _as_int(new)
+        if current_cap is None or new_cap is None:
+            return False
+        return new_cap > current_cap
+    return False
+
+
+def _is_self_improvement_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether a ``self_improvement.*`` change widens blast radius."""
+    if key != _CODE_MODIFICATION_KEY:
+        return False
+    # Default is "false" (off); enabling lets the meta-loop propose changes to
+    # its own source.
+    currently_off = current is None or not compare_ci(current, "true")
+    return currently_off and compare_ci(new, "true")
+
+
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
-    """Return whether an ``engine.*`` oracle change relaxes verification."""
+    """Return whether an ``engine.*`` oracle or middleware change relaxes posture."""
+    if key == _ENGINE_MIDDLEWARE_KEY:
+        currently_on = current is None or compare_ci(
+            current, _ENGINE_MIDDLEWARE_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
     if key == _ENGINE_ORACLE_DISABLE_KEY:
         currently_on = current is None or compare_ci(
             current, _ENGINE_ORACLE_ENABLED_DEFAULT
@@ -385,7 +503,7 @@ class SettingsWriteGovernance(BaseModel):
 def _is_guarded(namespace: str, key: str) -> bool:
     """Return whether ``(namespace, key)`` is a governed weakening candidate."""
     if namespace == _SECURITY_NS:
-        return key in _WEAKENING_BOOL_KEYS or key == _OUTPUT_SCAN_POLICY_KEY
+        return key in _WEAKENING_BOOL_KEYS or key in _SECURITY_VALUE_KEYS
     if namespace == _ENGINE_NS:
         return key in _ENGINE_GUARDED_KEYS
     if namespace == _TOOLS_NS:
@@ -396,6 +514,10 @@ def _is_guarded(namespace: str, key: str) -> bool:
         return key == _GATEWAY_ENABLED_KEY
     if namespace == _INTEGRATIONS_NS:
         return key == _WEBHOOK_RETENTION_KEY
+    if namespace == _API_NS:
+        return key in _API_GUARDED_KEYS
+    if namespace == _SELF_IMPROVEMENT_NS:
+        return key == _CODE_MODIFICATION_KEY
     return False
 
 
@@ -411,6 +533,17 @@ def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) ->
         return _is_mcp_sandbox_weakening(key, current=current, new=new)
     if namespace == _OUTPUT_STYLE_NS:
         return _is_output_style_weakening(key, current=current, new=new)
+    if namespace == _API_NS:
+        return _is_api_weakening(key, current=current, new=new)
+    if namespace == _SELF_IMPROVEMENT_NS:
+        return _is_self_improvement_weakening(key, current=current, new=new)
+    if key == _AUTH_TOKEN_BYTES_KEY:
+        effective = current if current is not None else _AUTH_TOKEN_BYTES_DEFAULT
+        current_width = _as_int(effective)
+        new_width = _as_int(new)
+        if current_width is None or new_width is None:
+            return False
+        return new_width < current_width
     if key in _WEAKENING_BOOL_KEYS:
         # Weakening only when turning a currently-enabled toggle off. A
         # missing current value (first write) is treated as the registered

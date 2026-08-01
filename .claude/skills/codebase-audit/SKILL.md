@@ -659,10 +659,10 @@ patterns -- DO NOT flag a setting as unwired unless you have ruled out ALL of:
    chain -- not unwired.
 5. **Subscriber pattern**: settings/subscribers/ registrations that listen for
    changes to a key.
-6. **Bootstrap-only / read-only-post-init**: settings registered with
-   read_only_post_init=True or marked bootstrap-only are intentionally not in
-   bridge configs (they're registered for /settings discoverability only). DO
-   NOT flag these.
+6. **Compose-set**: settings registered with compose_set=True are supplied by
+   the deployment at container creation and are intentionally not in bridge
+   configs (they're registered for /settings discoverability only). DO NOT
+   flag these.
 
 VERIFICATION REQUIREMENT: before flagging a setting as unwired, you MUST run at
 least three searches to rule out all six patterns above:

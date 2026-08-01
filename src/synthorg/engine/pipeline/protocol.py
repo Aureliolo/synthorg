@@ -8,7 +8,11 @@ The single coherent path every entry adapter feeds: a typed
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.task import Task
-from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
+from synthorg.engine.pipeline.models import (
+    PipelineAttachments,
+    WorkItem,
+    WorkPipelineResult,
+)
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
@@ -73,12 +77,14 @@ class WorkPipeline(Protocol):
         """
         ...
 
-    def attach_narrator(self, narrator: RunNarrator) -> None:
-        """Attach the post-run narrator (documentary mode).
+    def attach_narrator(self, narrator: RunNarrator | None) -> None:
+        """Attach (or clear) the post-run narrator (documentary mode).
 
         Late-bind seam: the narrator depends on services that wire only
         after persistence connects, so the startup hook attaches it to
         the already-built pipeline rather than passing it at construction.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        narrator down when a collaborator it captured is replaced.
         """
         ...
 
@@ -110,5 +116,17 @@ class WorkPipeline(Protocol):
         only after a provider is available, so the startup hook attaches it
         to the already-built pipeline. Absent, a gated plan is parked for
         human approval with no panel review.
+        """
+        ...
+
+    @property
+    def attachments(self) -> PipelineAttachments:
+        """Report which late-bound collaborators are currently attached.
+
+        The counterpart to the four ``attach_*`` seams. A subsystem that
+        mutates the pipeline in place installs nothing else observable, so
+        without this the reconciler would have to keep its own record of
+        what it attached, which is exactly the second list the declarative
+        model exists to remove.
         """
         ...

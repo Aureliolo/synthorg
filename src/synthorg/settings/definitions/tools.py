@@ -438,16 +438,13 @@ _r.register(
             " ``tools.sandbox.docker.image`` > registered code default."
             " The CLI injects a digest-pinned reference via the env var,"
             " so DB / YAML overrides are mostly relevant for operators"
-            " running the backend outside the CLI. Resolved once at"
-            " startup and injected into ``DockerSandboxConfig`` via the"
-            " sandbox image-resolution cache; ``read_only_post_init``"
-            " keeps later DB writes from drifting from the resolved"
-            " value used at boot."
+            " running the backend outside the CLI. The container was"
+            " created against the resolved image, so this is fixed for the"
+            " life of that container."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         env_var_override="SYNTHORG_SANDBOX_IMAGE",
     )
 )
@@ -463,17 +460,12 @@ _r.register(
             " container. Resolution precedence at backend startup: DB"
             " override > ``SYNTHORG_SIDECAR_IMAGE`` env var > YAML"
             " ``tools.sandbox.docker.sidecar_image`` > registered code"
-            " default. Resolved once at startup and injected into"
-            " ``DockerSandboxConfig`` via the sidecar image-resolution"
-            " cache; ``read_only_post_init`` keeps later DB writes from"
-            " drifting from the resolved value used at boot, and"
-            " ``restart_required`` is set because changes only take"
-            " effect after the backend container restarts."
+            " default. The container was created against the resolved"
+            " image, so this is fixed for the life of that container."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         env_var_override="SYNTHORG_SIDECAR_IMAGE",
     )
 )
@@ -627,11 +619,11 @@ _r.register(
         description=(
             "Container image used by the browser sandbox backend. Must"
             " contain Python 3, Playwright Python, and Chromium ready"
-            " to launch headless."
+            " to launch headless. Applies to browser sessions started"
+            " after the runtime rebuild the change triggers."
         ),
         group="Browser",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -646,12 +638,12 @@ _r.register(
         description=(
             "Virtual desktop driver strategy. 'xvfb' is the deterministic"
             " headless default; 'vnc' additionally exposes an x11vnc"
-            " observation channel."
+            " observation channel. Applies to desktop sessions started"
+            " after the runtime rebuild the change triggers."
         ),
         group="Desktop",
         level=SettingLevel.ADVANCED,
         validator_pattern=r"^(xvfb|vnc)$",
-        restart_required=True,
     )
 )
 
@@ -692,11 +684,11 @@ _r.register(
         description=(
             "Container image used by the desktop sandbox backend. Must"
             " contain Xvfb, xdotool, scrot, and the GUI toolkits the"
-            " agent's applications require."
+            " agent's applications require. Applies to desktop sessions"
+            " started after the runtime rebuild the change triggers."
         ),
         group="Desktop",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
@@ -1086,10 +1078,6 @@ _r.register(
 # exactly the gateway + credentialed-MCP hosts.
 
 _r.register(
-    # lint-allow: restart-required -- the OpenHands image ref is resolved once
-    # at boot (DB > env > default) into the sandbox image-resolution cache and
-    # read_only_post_init; a dedicated DockerSandbox is built from it at wiring
-    # time, so a mid-run DB write would silently drift from the image in use.
     SettingDefinition(
         namespace=SettingNamespace.TOOLS,
         key="openhands_image",
@@ -1097,17 +1085,13 @@ _r.register(
         default=f"ghcr.io/aureliolo/synthorg-openhands:v{__version__}",
         description=(
             "Docker image used for OpenHands loop containers (bundles"
-            " openhands-sdk + openhands-tools). Resolution precedence at"
-            " backend startup: DB override > ``SYNTHORG_OPENHANDS_IMAGE`` env"
-            " var > registered code default. The CLI injects a digest-pinned"
-            " reference via the env var. Read once at startup;"
-            " ``read_only_post_init`` keeps later DB writes from drifting from"
-            " the resolved value used at boot."
+            " openhands-sdk + openhands-tools). Resolution precedence:"
+            " DB override > ``SYNTHORG_OPENHANDS_IMAGE`` env var >"
+            " registered code default. Resolved when a loop container is"
+            " built, so the next run uses the new image."
         ),
         group="OpenHands",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         env_var_override="SYNTHORG_OPENHANDS_IMAGE",
         validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
     )
