@@ -34,7 +34,7 @@ RUN addgroup --gid 65532 --system build \
 WORKDIR /app
 
 COPY --chown=65532:65532 pyproject.toml uv.lock ./
-USER build
+USER 65532
 # Install the `postgres`, `distributed`, and `telemetry` extras
 # unconditionally. `postgres` and `distributed` are runtime-selectable
 # via `synthorg init --persistence-backend` and `--bus-backend`, so the
@@ -60,6 +60,14 @@ COPY --chown=65532:65532 scripts/embed_logfire_token.py scripts/embed_logfire_to
 # The embed runs *before* ``uv sync`` packages the venv so the
 # rewritten module is what gets cached in the wheel cache and
 # copied into the runtime stage.
+#
+# DL3064 flags a secret-shaped ARG because build args are recorded in
+# image history. This is a builder stage, and a multi-stage build
+# publishes only the final stage's config, so the arg never reaches a
+# pushed image. The token itself is write-only (ingest-only) and is
+# deliberately baked into the shipped venv; rotate it by bumping the
+# GHA secret and re-publishing.
+# hadolint ignore=DL3064
 ARG LOGFIRE_PROJECT_TOKEN=""
 RUN if [ -n "$LOGFIRE_PROJECT_TOKEN" ]; then \
         python scripts/embed_logfire_token.py "$LOGFIRE_PROJECT_TOKEN"; \
@@ -137,9 +145,9 @@ RUN rm -f /app/.venv/bin/python \
 # Pre-create the data directory tree in the builder so COPY --chown can
 # transfer it to the shell-less runtime stage with correct ownership.
 # Switch back to root for creating /data, then re-chown to the build user.
-USER root
+USER 0
 RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
-USER build
+USER 65532
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)

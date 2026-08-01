@@ -25,6 +25,6 @@ COPY --chown=10001:10001 docker/sandbox/healthz.py /usr/local/bin/healthz.py
 USER 10001
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-    CMD wget -qO- http://127.0.0.1:15003/healthz || exit 1
+    CMD ["/bin/sh", "-c", "wget -qO- http://127.0.0.1:15003/healthz || exit 1"]
 
 CMD ["sh", "-c", "python3 /usr/local/bin/healthz.py & sleep infinity"]

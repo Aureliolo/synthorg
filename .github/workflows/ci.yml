@@ -178,11 +178,11 @@ jobs:
         with:
           # renovate: datasource=docker depName=caddy
           image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
-          local-tag: synthorg-caddy:2.10.2-alpine
+          local-tag: synthorg-caddy:2.11.4-alpine
       - name: Caddyfile validate
         run: >-
           docker run --rm -v "$PWD:/work" -w /work
-          synthorg-caddy:2.10.2-alpine
+          synthorg-caddy:2.11.4-alpine
           caddy validate --config web/Caddyfile --adapter caddyfile
       # Spell-check runs as a dedicated step rather than a pre-commit hook so
       # the ~11s full-tree scan gates every push in CI without sitting on the
@@ -1407,15 +1407,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      # `config` is passed explicitly rather than relying on hadolint's cwd
+      # discovery, so the trusted-registries allowlist is guaranteed to apply
+      # inside the action's container.
       - name: Lint backend Dockerfile
         uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
         with:
           dockerfile: docker/backend/Dockerfile
+          config: .hadolint.yaml
 
       - name: Lint sandbox Dockerfile
         uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
         with:
           dockerfile: docker/sandbox/Dockerfile
+          config: .hadolint.yaml
 
   # ── OpenAPI: export once, share with dashboard arm ──
   # dashboard-type-check, dashboard-test and dashboard-build all need the

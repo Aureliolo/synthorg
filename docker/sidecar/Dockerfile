@@ -35,6 +35,6 @@ COPY --from=builder /build/sidecar /usr/local/bin/sidecar
 USER 10002
 
 HEALTHCHECK --interval=2s --timeout=2s --retries=3 --start-period=2s \
-    CMD wget -qO- http://localhost:15000/healthz || exit 1
+    CMD ["/bin/sh", "-c", "wget -qO- http://localhost:15000/healthz || exit 1"]
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]

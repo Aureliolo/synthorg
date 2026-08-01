@@ -34,7 +34,7 @@ RUN addgroup --gid 10003 --system fine-tune \
 WORKDIR /app
 
 COPY --chown=10003:10003 pyproject.toml uv.lock ./
-USER fine-tune
+USER 10003
 # FINE_TUNE_EXTRA is either "fine-tune-gpu" (bundled CUDA torch) or
 # "fine-tune-cpu" (CPU-only torch routed via [tool.uv.sources]).
 ARG FINE_TUNE_EXTRA

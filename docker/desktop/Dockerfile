@@ -50,7 +50,7 @@ USER 10001
 # depends on is present on PATH. Xvfb is only started on first tool use, so
 # the check verifies the binaries rather than a running display.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD command -v Xvfb && command -v xdotool && command -v scrot || exit 1
+    CMD ["/bin/sh", "-c", "command -v Xvfb && command -v xdotool && command -v scrot || exit 1"]
 
 # Keep-alive entrypoint: the sandbox lifecycle drives work via `docker exec`
 # (the desktop tool's executor brings Xvfb up idempotently on first use).

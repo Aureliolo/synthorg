@@ -1,0 +1,13 @@
+# Dockerfile lint policy. Pinned alongside the hadolint-action version in
+# .github/workflows/ci.yml and the hadolint-docker rev in
+# .pre-commit-config.yaml.
+
+# DL3026 rejects any FROM / COPY --from / mount-from outside this list, so a
+# base image can never silently move to an unreviewed registry. Docker Hub
+# supplies the python / debian / golang builder bases; ghcr.io supplies the
+# astral-sh/uv binaries and this project's own apko-composed runtime bases.
+trusted-registries:
+  - docker.io
+  - ghcr.io
+
+failure-threshold: info
