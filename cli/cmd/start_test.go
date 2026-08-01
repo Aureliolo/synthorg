@@ -367,4 +367,3 @@ func TestAssertInitialised(t *testing.T) {
 		})
 	}
 }
-
