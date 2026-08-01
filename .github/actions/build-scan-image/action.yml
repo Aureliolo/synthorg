@@ -79,10 +79,12 @@ inputs:
     default: ""
   cache-scope:
     description: >-
-      GHA cache scope suffix. Leave empty for non-matrix jobs. Fine-tune
-      passes the variant name so GPU and CPU do not share a cache layer.
-      The platform is appended automatically, so an amd64 and an arm64
-      build of the same image never share a scope.
+      GHA cache scope. Defaults to the image name, which is what keeps two
+      images from evicting each other in the repo-global Actions cache.
+      Override only to split one image further: fine-tune passes the variant
+      name so GPU and CPU do not share a cache layer. The platform is
+      appended automatically, so an amd64 and an arm64 build of the same
+      image never share a scope.
     required: false
     default: ""
   free-disk-space:
@@ -227,8 +229,13 @@ runs:
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
           type=sha,prefix=sha-
 
-    # No `cache-to`: GitHub scopes the Actions cache by branch, so a PR may
-    # read main's cache but anything it writes only itself can ever see.
+    # No BuildKit cache on this path, in either direction. A PR's base image
+    # arrives as a tarball loaded into the local daemon (it is never
+    # published from a PR), which only the `docker` driver can resolve as a
+    # `FROM`, and that driver does not carry the `gha` cache backend. Passing
+    # `cache-from` here would be silently inert rather than a cache read, and
+    # `cache-to` is wrong regardless: GitHub scopes the Actions cache by
+    # branch, so a PR writes into a scope only it can ever read.
     - name: Build image (PR, loaded for scan)
       id: build-pr
       if: github.event_name == 'pull_request'
@@ -243,7 +250,6 @@ runs:
         build-args: |
           BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
           ${{ inputs.extra-build-args }}
-        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-{1}', inputs.cache-scope, inputs.platform) || format('type=gha,scope={0}', inputs.platform) }}
         platforms: linux/${{ inputs.platform }}
 
     # Tarball so publish-image pushes the exact scanned bytes rather than
@@ -261,8 +267,16 @@ runs:
         build-args: |
           BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
           ${{ inputs.extra-build-args }}
-        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-{1}', inputs.cache-scope, inputs.platform) || format('type=gha,scope={0}', inputs.platform) }}
-        cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-{1}', inputs.cache-scope, inputs.platform) || format('type=gha,mode=max,scope={0}', inputs.platform) }}
+        # Scope is per image AND per arch. The Actions cache is repo-global,
+        # so a scope naming only the arch is shared by every image built here
+        # and three `mode=max` exports evict each other's index, leaving the
+        # hit rate at whichever image finished last while still burning the
+        # repo cache quota three times over.
+        cache-from: type=gha,scope=${{ inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name }}-${{ inputs.platform }}
+        # `ignore-error` because the export is an optimisation, not a build
+        # output: a cache-service hiccup or the repo hitting its cache quota
+        # would otherwise fail an image that built perfectly well.
+        cache-to: type=gha,mode=max,ignore-error=true,scope=${{ inputs.cache-scope != '' && inputs.cache-scope || inputs.image-name }}-${{ inputs.platform }}
         platforms: linux/${{ inputs.platform }}
 
     # `!cancelled()` not the success chain: every scan gate below keys off
@@ -409,3 +423,7 @@ runs:
         name: scan-image-${{ inputs.image-name }}-${{ inputs.platform }}
         path: /tmp/scan-image-${{ inputs.image-name }}-${{ inputs.platform }}.tar
         retention-days: 7
+        # These bytes are what the publish job pushes. An upload that found
+        # nothing must fail here, not surface later as an opaque `docker load`
+        # error in a different job.
+        if-no-files-found: error

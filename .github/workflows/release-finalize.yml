@@ -282,8 +282,8 @@ jobs:
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
       # NOTE: artifact smoke testing happens at BUILD time in
-      # cli.yml (smoke-test-cli-binary composite action) and
-      # docker.yml (smoke-test-backend-image composite action), so a
+      # verify-cli.yml (smoke-test-cli-binary composite action) and
+      # build-images.yml (smoke-test-backend-image composite action), so a
       # broken binary or backend image fails the originating PR with
       # a red ❌ on the commit row -- not the finalize-release step
       # after a tag has already been cut. The previous smoke steps
@@ -442,7 +442,7 @@ jobs:
 
           # SBOM subsection. Source of truth for which SBOMs exist
           # is the release assets list, not body-injected markers;
-          # docker.yml uploads sbom-*.cdx.json files via
+          # build-images.yml uploads sbom-*.cdx.json files via
           # `gh release upload` but does NOT inject
           # <!-- CONTAINER_SBOM_DATA --> markers, so the
           # marker-only path silently produced an empty SBOM
@@ -478,13 +478,13 @@ jobs:
           SBOM_ITEMS=""
           if [ -n "$SBOM_ASSETS" ]; then
             # Render as `\`name\`` separated by ` | `, preserving the
-            # docker.yml release-events format readers are used to.
+            # build-images.yml release-events format readers are used to.
             SBOM_LIST=$(printf '%s' "$SBOM_ASSETS" \
               | awk 'BEGIN{first=1} {if(first){first=0}else{printf " | "}; printf "`%s`", $0} END{print ""}')
             SBOM_ITEMS="$(printf '**Container images:** %s\n' "$SBOM_LIST")"
           fi
           # Marker-injected legacy data still concatenates if
-          # present, for forward-compat if a future docker.yml
+          # present, for forward-compat if a future build-images.yml
           # change starts emitting CONTAINER_SBOM_DATA.
           if [ -n "$CONTAINER_SBOM" ]; then
             SBOM_ITEMS="$(printf '%s\n\n%s' "$SBOM_ITEMS" "$CONTAINER_SBOM")"
@@ -542,7 +542,7 @@ jobs:
           fi
 
           # ── Promote AI Highlights from the release-please PR body ──
-          # release.yml writes a `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->`
+          # release-cut.yml writes a `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->`
           # block onto the rolling release-please PR body via gh pr edit.
           # When the PR is merged, release-please builds the release notes
           # from CHANGELOG.md only, leaving the Highlights block stranded on
@@ -800,7 +800,7 @@ jobs:
       # the published stable) are kept: a main push can mint the next
       # version's dev build (e.g. v0.8.10-dev.1) while the previous stable
       # (v0.8.9) is still finalizing, and that dev build's downstream
-      # docker.yml run is still attaching assets to its draft. Deleting it
+      # build-images.yml run is still attaching assets to its draft. Deleting it
       # here would 404 that in-flight run's update-release job. Only runs when
       # a stable release was just published (not for dev releases themselves).
       # The already_published branch handles replays after a concurrent run

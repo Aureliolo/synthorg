@@ -9,10 +9,13 @@ func TestExpectedSANRegexMatchesValidRefs(t *testing.T) {
 	re := regexp.MustCompile(ExpectedSANRegex)
 
 	valid := []string{
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v0.3.0",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/heads/main",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v0.3.0-rc.1",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v1.2.3+build.456",
+		// Images published under the retired workflow name stay verifiable.
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0-rc.1",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v1.2.3+build.456",
 	}
 	for _, ref := range valid {
 		if !re.MatchString(ref) {
@@ -25,11 +28,15 @@ func TestExpectedSANRegexRejectsInvalidRefs(t *testing.T) {
 	re := regexp.MustCompile(ExpectedSANRegex)
 
 	invalid := []string{
-		"https://github.com/evil/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/other-repo/.github/workflows/docker.yml@refs/tags/v0.3.0",
-		"https://example.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
+		"https://github.com/evil/synthorg/.github/workflows/build-images.yml@refs/tags/v0.3.0",
+		"https://github.com/Aureliolo/other-repo/.github/workflows/build-images.yml@refs/tags/v0.3.0",
+		"https://example.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v0.3.0",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.0.0",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.0.0",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/heads/feature/evil",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/feature/evil",
+		// A workflow whose name merely contains the accepted one.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-build-images.yml@refs/heads/main",
 		"",
 		"random-string",
 	}

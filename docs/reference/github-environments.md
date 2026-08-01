@@ -12,13 +12,13 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 
 | Environment | Branch policy | Triggered by |
 |---|---|---|
-| `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` + `cla.yml:cla-sign` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_CLIENT_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
-| `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
-| `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
-| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY`: a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
-| `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
-| `lighthouse` | _none_ (see below) | `lighthouse.yml` pull_request events. Holds `LHCI_GITHUB_APP_TOKEN`. |
+| `github-pages` | `main` | `build-docs.yml` push to main |
+| `release` | `main` | `release-cut.yml` + `release-dev.yml` + `release-rollover.yml` + `release-graduate.yml` + `repo-cla.yml:cla-sign` (main-scoped), `release-finalize.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_CLIENT_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
+| `release-tags` | `v*` | `verify-cli.yml:cli-release` + `build-images.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
+| `image-push` | `main`, `v*` | `build-images.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
+| `apko-lock` | `main` | `maint-apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY`: a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
+| `cloudflare-preview` | _none_ (see below) | `build-docs-preview.yml` pull_request events |
+| `lighthouse` | _none_ (see below) | `perf-web-vitals.yml` pull_request events. Holds `LHCI_GITHUB_APP_TOKEN`. |
 
 The release path is intentionally split into two environments. GitHub's
 deployment branch policies only match ref _names_; they do NOT verify
@@ -42,7 +42,7 @@ would either:
 - block every PR preview (if set to `main`), or
 - admit everything (if set to `*`), providing no real protection.
 
-`lighthouse` is the same case. `lighthouse.yml` triggers on
+`lighthouse` is the same case. `perf-web-vitals.yml` triggers on
 `pull_request`, `merge_group`, and `push` to `main`;
 `lighthouse-dashboard` runs on all three and holds
 `LHCI_GITHUB_APP_TOKEN`, while `lighthouse-site` runs on `pull_request`
@@ -56,9 +56,9 @@ no branch policy either.
 
 The workflow-level gate is the actual control:
 
-- `pages-preview.yml:deploy-preview` / `cleanup-preview`: gated on
+- `build-docs-preview.yml:deploy-preview` / `cleanup-preview`: gated on
   `same_repo == 'true'` so fork PRs cannot access Cloudflare secrets.
-- `lighthouse.yml:lighthouse-site`: gated on
+- `perf-web-vitals.yml:lighthouse-site`: gated on
   `github.event.pull_request.head.repo.full_name == github.repository`
   (or `workflow_dispatch`) so a fork PR cannot reach
   `LHCI_GITHUB_APP_TOKEN`. `lighthouse-dashboard` carries the same fork
@@ -156,13 +156,13 @@ installation token (valid ≤1 hour) via the
 `release-runner-setup` composite action, which wraps
 `actions/create-github-app-token@v3.1.1`. Consumers:
 
-- `release.yml`: `release-please-action` token input, so the RP
+- `release-cut.yml`: `release-please-action` token input, so the RP
   tag push on release-PR merge triggers Docker + CLI builds. The
   BSL Change Date Contents API commit keeps `GITHUB_TOKEN` (lands
   on the RP PR branch, not `main`; no recursion concern). One
   side-effect of the App-token PR creation: GitHub's anti-recursion
   rule blocks `pull_request` workflows for events created by the
-  workflow's own installation token, so `ci.yml` does not auto-fire
+  workflow's own installation token, so `verify-backend.yml` does not auto-fire
   on the release PR. The required `CI Pass` check is therefore
   satisfied by a direct commit-status post: the job's final step
   resolves the release PR's current head SHA and issues
@@ -170,27 +170,27 @@ installation token (valid ≤1 hour) via the
   `context=CI Pass`, `state=success` under `GITHUB_TOKEN` (which
   carries `statuses: write`). Statuses are unconditionally part of
   a PR's `statusCheckRollup` and satisfy `required_status_checks`
-  evaluation, so the merge gate resolves without ci.yml ever
-  firing. (The earlier mechanism, a `gh workflow run ci.yml`
+  evaluation, so the merge gate resolves without verify-backend.yml ever
+  firing. (The earlier mechanism, a `gh workflow run verify-backend.yml`
   workflow_dispatch nudge, produced a check_run on the SHA but
   the dispatched run's `check_suite.pull_requests` was empty, so
   the check did not appear in the rollup; the merge UI stayed
   stuck on `CI Pass: Expected, waiting`. See PR #1615 for the
-  full root cause.) `ci.yml`'s `is_release_please` skip remains
+  full root cause.) `verify-backend.yml`'s `is_release_please` skip remains
   in place as defence-in-depth so a future change in
   release-please's identity does not accidentally run a full CI
   suite on a release PR. The `branch-protection-audit` job inside
-  `ci.yml` keeps a `github.ref == 'refs/heads/main'` gate so any
+  `verify-backend.yml` keeps a `github.ref == 'refs/heads/main'` gate so any
   ad-hoc dispatch from a non-main ref skips cleanly instead of
   hitting the `release` environment's branch allowlist.
-- `dev-release.yml`: tag creation for dev pre-releases via
+- `release-dev.yml`: tag creation for dev pre-releases via
   `gh api`.
-- `auto-rollover.yml`: empty `Release-As:` commit via the Git
+- `release-rollover.yml`: empty `Release-As:` commit via the Git
   Data API (`POST /git/commits` + `PATCH /git/refs/heads/main`).
-- `graduate.yml`: user-triggered signed empty commit with a
+- `release-graduate.yml`: user-triggered signed empty commit with a
   `Release-As:` trailer for target versions that skip the normal
   patch cadence.
-- `cla.yml:cla-sign`: signed commit on the `cla-signatures`
+- `repo-cla.yml:cla-sign`: signed commit on the `cla-signatures`
   branch via the Git Data API (`POST /git/blobs` + `POST
   /git/trees` + `POST /git/commits` + `PATCH /git/refs/heads/
   cla-signatures`). The signed commit lets the `cla-signatures`
@@ -229,7 +229,7 @@ installation token (valid ≤1 hour) via the
    action-resolution time.
 8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
    the free Experiment tier). The release-notes Highlights step in
-   `release.yml` and the `test-highlights.yml` dry-run read it; a
+   `release-cut.yml` and the `release-highlights-dryrun.yml` dry-run read it; a
    repository-level secret is visible to the `release` environment
    job. The step is best-effort, so a missing or invalid key only
    skips the Highlights block -- it never fails the release.
@@ -246,7 +246,7 @@ delete the old key.
 (`main` only) is the structural gate. A workflow triggered from
 any other ref cannot read `RELEASE_BOT_APP_*` even if it
 declares them in its YAML. Tag-only release jobs
-(`cli.yml:cli-release`, `docker.yml:update-release`) run under
+(`verify-cli.yml:cli-release`, `build-images.yml:update-release`) run under
 the separate `release-tags` environment, which carries no
 privileged secrets, so a forged `v*` tag on unmerged code
 cannot reach the App credentials.
@@ -259,10 +259,10 @@ for `push` events):
 
 ```bash
 # Trigger from main -- should succeed
-gh workflow run apko-lock.yml --ref main
+gh workflow run maint-apko-lock.yml --ref main
 
 # Trigger from a feature branch -- should be blocked at the environment gate.
 # GitHub will show the job in "Waiting" state; the run log cites the branch
 # policy violation.
-gh workflow run apko-lock.yml --ref chore/some-branch
+gh workflow run maint-apko-lock.yml --ref chore/some-branch
 ```

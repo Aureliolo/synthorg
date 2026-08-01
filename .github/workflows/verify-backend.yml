@@ -105,7 +105,7 @@ jobs:
       contents: read
     env:
       # Hooks NOT run by the all-files steps below: each is covered by a
-      # dedicated CI job (Go in cli.yml, dashboard lint, secrets, etc.) or is a
+      # dedicated CI job (Go in verify-cli.yml, dashboard lint, secrets, etc.) or is a
       # developer-clone git-state hook with no CI meaning (the three migration /
       # rebase checks need origin/main + a base ref this shallow checkout lacks;
       # they fail closed in CI rather than gating content). check_local_ci_parity.py
@@ -672,13 +672,11 @@ jobs:
             -v \
             -s
 
-      # Critical safety net: pytest can exit 0 with zero tests run.
-      # PR #2080 reproduced this -- 3 of 4 xdist workers crashed during
-      # pytest_sessionstart, master saw "no test failures" and exited 0,
-      # the job was marked success despite junit-unit-N.xml showing
-      # tests="0". Without this gate, a CI session that silently runs
-      # ZERO tests passes the green-checkmark check. We MUST surface
-      # that as a hard failure.
+      # Critical safety net: pytest can exit 0 with zero tests run. When
+      # xdist workers crash during pytest_sessionstart, the master sees no
+      # test failures and exits 0, so the job is marked success while
+      # junit-unit-N.xml shows tests="0". Without this gate a session that
+      # silently ran ZERO tests earns a green checkmark.
       - name: Sanity check (junit shows tests > 0)
         if: ${{ !cancelled() }}
         shell: python
@@ -721,16 +719,12 @@ jobs:
           name: test-results-unit-${{ matrix.shard }}
           path: junit-unit-${{ matrix.shard }}.xml
 
-      # Upload any core dumps that landed in the workspace, on
-      # success OR failure. Previously gated on ``failure() ||
-      # cancelled()`` but PR #2080 demonstrated a "success-with-zero-
-      # tests" failure mode: workers crashed via os.abort (producing
-      # cores), pytest exited 0, GHA marked the step success, the
-      # gated upload was SKIPPED, the cores were lost. ``!cancelled()``
-      # uploads on every non-cancelled exit. ``if-no-files-found:
-      # ignore`` keeps a genuinely-green job's tail clean. Retention is
-      # short (3 days) because core dumps can be large and the value
-      # decays rapidly once the crash is diagnosed.
+      # ``!cancelled()``, not ``failure() || cancelled()``: workers can crash
+      # via os.abort (producing cores) while pytest still exits 0, so a
+      # failure-gated upload would be SKIPPED on exactly the runs whose cores
+      # matter most. ``if-no-files-found: ignore`` keeps a genuinely-green
+      # job's tail clean. Retention is short (3 days) because core dumps are
+      # large and lose value once the crash is diagnosed.
       - name: Upload core dumps
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1226,22 +1220,18 @@ jobs:
           done
           echo "All four suites contributed coverage data (unit + integration sharded 4/4)."
 
-      - name: Inspect coverage data files (forensic)
+      - name: Inspect coverage data files
         run: |
-          # List every downloaded .coverage* file with its size so we can
-          # see at a glance which shards produced data and how much. The
-          # aggregate gate has been silently dropping per-shard files
-          # (PR #2080: "Combined 7 files, skipped 3" -> 70% on a suite
-          # that should be ~90%); without this listing, the combine step
-          # gives no signal about which shard's coverage was lost.
+          # List every downloaded .coverage* file with its size, so which
+          # shards produced data is visible at a glance. The combine step can
+          # silently drop per-shard files and under-report total coverage
+          # with no other signal about which shard's data was lost.
           ls -laR coverage-data || true
           echo "--- file count by shard prefix ---"
           # ``-A`` is required: every per-shard data file is named
-          # ``.coverage.<suite>-<shard>``, leading dot. A plain ``ls``
-          # hides them and the sed/sort/uniq pipe input is empty,
-          # which is what we observed on PR #2080 (the "file count by
-          # shard prefix" line printed and then nothing followed). ``-A``
-          # includes dotfiles but excludes ``.`` and ``..``.
+          # ``.coverage.<suite>-<shard>``, leading dot, so a plain ``ls``
+          # hides them and the sed/sort/uniq pipe reads empty input.
+          # ``-A`` includes dotfiles but excludes ``.`` and ``..``.
           # shellcheck disable=SC2012  # coverage-data holds controlled CI-artifact names (.coverage.<suite>-<shard>); ls -A is the deliberate dotfile-listing path
           ls -A coverage-data 2>/dev/null \
             | sed -E 's/\.[0-9a-f]+\.[0-9]+\.[0-9a-f]+$//' \
@@ -1878,7 +1868,7 @@ jobs:
     # also restricts deploys to main, so allowing this job to attempt
     # a deploy from a non-main ref would surface a noisy "deployment
     # was rejected" annotation on every CI run dispatched against a
-    # release-please branch (the standard nudge used by release.yml
+    # release-please branch (the standard nudge used by release-cut.yml
     # to trigger CI on App-token-authored PRs). Gate at the if: check
     # so non-main dispatches simply skip this job.
     #

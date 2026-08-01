@@ -3,7 +3,6 @@
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 
@@ -25,7 +24,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]  # dynamically loaded gate module; attrs resolved by name
+_GATE = _load_gate()
 
 
 # ── _effective_stages ───────────────────────────────────────────

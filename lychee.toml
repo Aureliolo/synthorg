@@ -1,11 +1,11 @@
 # Lychee link-checker config. One source of truth, consumed two ways:
 #
-#   - .github/workflows/lychee.yml (PR/push gate) and the local
+#   - .github/workflows/verify-links.yml (PR/push gate) and the local
 #     pre-push hook in .pre-commit-config.yaml (id: lychee) run lychee
 #     `--offline`: internal links only (relative + file://), so a
 #     third-party host's downtime or expired certificate can never
 #     block a merge or a push.
-#   - .github/workflows/lychee-external.yml (weekly) runs online and
+#   - .github/workflows/maint-link-rot.yml (weekly) runs online and
 #     applies the strict network tuning below to remote links, filing
 #     a tracking issue on rot instead of blocking.
 #

@@ -79,7 +79,7 @@ echo
 # descends from main -- so admitting `v*` here would grant token access
 # to any v-shaped tag, including ones created on unmerged feature
 # branches. Tag-only release jobs (cli-release,
-# docker.yml:update-release) ride on `release-tags` instead, which
+# build-images.yml:update-release) ride on `release-tags` instead, which
 # carries no privileged secrets and only provides a structural ref gate.
 ENV_CONFIG=(
   "github-pages|branch:main"

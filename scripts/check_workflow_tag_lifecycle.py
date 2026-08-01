@@ -8,7 +8,7 @@ workflow file) reproduces the race documented in #1818:
 
 1. Step 1 creates ``refs/tags/$DEV_TAG`` via ``gh api .../git/refs``.
    The ref-create fires ``push`` events to every ``tags: v*``-listening
-   workflow (currently ``cli.yml`` and ``docker.yml``); those workflows
+   workflow (currently ``verify-cli.yml`` and ``build-images.yml``); those workflows
    begin running on hosted runners and ``actions/checkout`` the new
    tag within seconds.
 2. Step 2 (or a later step in the same workflow) attempts a follow-on
@@ -27,9 +27,9 @@ The convention this gate enforces:
     a separate workflow that does not also produce the original tag, so
     its delete cannot race a producer-side race window.
 
-Reference fix: ``dev-release.yml`` after #1818 (release-create failure
+Reference fix: ``release-dev.yml`` after #1818 (release-create failure
 preserves the orphan tag; the existing stale-pre-release sweeper +
-``finalize-release.yml``'s stable-release sweep garbage-collect it
+``release-finalize.yml``'s stable-release sweep garbage-collect it
 later in separate workflow runs that do NOT also mint tags).
 
 This is a no-baseline gate: a NEW convention should pass clean from day
@@ -146,7 +146,7 @@ _STEERING_MESSAGE = (
     "downstream `tags: v*`-listening workflows on actions/checkout (#1818). "
     "Move the cleanup to a separate workflow that does not also produce "
     "the original tag, or leave orphan tags for the existing dev-pre-"
-    "release sweeper to collect. Reference fix: dev-release.yml after "
+    "release sweeper to collect. Reference fix: release-dev.yml after "
     "#1818."
 )
 

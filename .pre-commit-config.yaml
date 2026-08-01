@@ -35,7 +35,7 @@ ci:
   #     dual-backend-test-parity / schema-drift / no-magic-numbers /
   #     convention-gate-inventory / mcp-admin-guardrail:
   #     scoped gates that need ``uv`` + repo source -- redundant given
-  #     the `Lint` + `Forbidden literals gate` jobs in ci.yml.
+  #     the `Lint` + `Forbidden literals gate` jobs in verify-backend.yml.
   #   - check-push-rebased / check-single-migration-per-pr /
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
@@ -48,7 +48,7 @@ ci:
   # regression unchecked. ``no-review-origin-in-code`` and
   # ``no-migration-framing`` run at ``stages: [pre-push]`` (the
   # local-only pre-push hook surface) so pre-commit.ci does not pick
-  # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
+  # them up; their CI counterpart is the ``Lint`` job in ``verify-backend.yml``
   # which runs the same scripts on every PR.
   skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -719,8 +719,8 @@ repos:
         entry: uv run python scripts/check_local_ci_parity.py
         language: system
         # Trigger on this config (hooks added/removed/restaged), either CI
-        # workflow the gate polices -- ci.yml (all-files SKIP list / job
-        # conditions) and cli.yml (cardinal-rule job conditions) -- or the
+        # workflow the gate polices -- verify-backend.yml (all-files SKIP list / job
+        # conditions) and verify-cli.yml (cardinal-rule job conditions) -- or the
         # gate script itself, so a change that breaks parity or re-introduces
         # a changed-file-conditioned correctness job cannot bypass the check.
         files: ^(\.pre-commit-config\.yaml|\.github/workflows/verify-(backend|cli)\.yml|scripts/check_local_ci_parity\.py)$

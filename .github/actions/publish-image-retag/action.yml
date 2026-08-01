@@ -8,7 +8,7 @@ description: >-
   against the digest, and emits the per-image `pushed-tags-<image>.txt`
   inventory artifact for the workflow-level `verify-signatures` job.
 
-  Why this exists: the tag-push run of `docker.yml` previously rebuilt
+  Why this exists: the tag-push run of `build-images.yml` previously rebuilt
   every image and signed its own slightly-different manifest list bytes,
   racing main-push on the shared `sha-<short>` tag. Since cosign signs
   by digest -- not by tag -- a signature attached to
@@ -170,7 +170,7 @@ runs:
             echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) -- transient retries exhausted after ${ATTEMPTS} attempts. The error pattern matched TRANSIENT_RE but persisted through the full backoff window; GHCR may be in a longer outage. Check https://www.githubstatus.com/ and re-run this retag job once recovered."
           else
             # Genuine non-transient: no amount of retries would have helped.
-            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of docker.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
+            echo "::error::imagetools inspect ${REPO}:sha-${SHORT_SHA} failed (exit ${rc}) with non-transient error. Most common cause: the main-push run of build-images.yml for SHA ${SHORT_SHA} did not publish this image (look for 'manifest unknown' / 404 in the stderr above; re-run main-push, then re-run this retag job). For other causes (auth, registry config, TLS verification, ...) inspect the stderr above."
           fi
           exit "$rc"
         done

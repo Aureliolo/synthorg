@@ -11,9 +11,9 @@ gate makes that impossible to introduce silently: every hook wired in
 * run by the CI ``pre-commit run --all-files`` job (the hybrid job that
   executes the Python / ruff / built-in gates over the whole tree), or
 * listed in :data:`_COVERED_ELSEWHERE` with the dedicated CI job that
-  covers it (Go in cli.yml, dashboard lint in ci.yml, links in
-  lychee.yml, secrets in secret-scan.yml, workflow security in
-  zizmor.yml, the dedicated mypy / unit-test jobs, etc.), or
+  covers it (Go in verify-cli.yml, dashboard lint in verify-backend.yml, links in
+  verify-links.yml, secrets in security-secrets.yml, workflow security in
+  verify-workflows.yml, the dedicated mypy / unit-test jobs, etc.), or
 * listed in :data:`_LOCAL_ONLY` as a developer-clone hook that has no
   meaningful CI counterpart (a branch-freshness or migration-immutability
   check that depends on git state CI's fixed-SHA checkout does not have).
@@ -30,7 +30,7 @@ PreToolUse hooks are out of scope: they are agent-time tool-call blocks
 with no repo-content counterpart, so CI cannot mirror them.
 
 The gate also enforces the **cardinal rule**: no CI *correctness* job in
-``ci.yml`` may be conditioned on which files changed (``dorny/paths-filter``
+``verify-backend.yml`` may be conditioned on which files changed (``dorny/paths-filter``
 outputs), because a false "unchanged" -- which the workflow comments admit
 can happen on a shallow-checkout race -- silently drops the gate. Pure
 build / perf jobs may keep path scoping; they are listed in
@@ -68,35 +68,35 @@ _PARITY_STAGES: Final[frozenset[str]] = frozenset({"pre-commit", "pre-push"})
 # need a toolchain absent from that python+uv job, or a dedicated job
 # already covers them). Each maps to the CI job that DOES cover it.
 _COVERED_ELSEWHERE: Final[dict[str, str]] = {
-    "go-vet": "cli.yml :: cli-lint (go vet ./...)",
-    "go-test": "cli.yml :: cli-test (go test ./...)",
-    "golangci-lint": "cli.yml :: cli-lint (golangci-lint run)",
+    "go-vet": "verify-cli.yml :: cli-lint (go vet ./...)",
+    "go-test": "verify-cli.yml :: cli-test (go test ./...)",
+    "golangci-lint": "verify-cli.yml :: cli-lint (golangci-lint run)",
     "web-checks": (
-        "ci.yml :: dashboard-lint (npm run lint + lint:knip + lint:circular; "
+        "verify-backend.yml :: dashboard-lint (npm run lint + lint:knip + lint:circular; "
         "the job runs each script over the whole dashboard. The hook scopes "
         "only ESLint to the pushed files; knip and circular run whole-dashboard "
         "in the hook too, since neither takes a file list)"
     ),
     "dto-types-ts-in-sync": (
-        "ci.yml :: dashboard-type-check (runs the gate where the pinned "
+        "verify-backend.yml :: dashboard-type-check (runs the gate where the pinned "
         "web/node_modules provides openapi-typescript + its typescript peer; "
         "the python+uv Gates job has no node toolchain)"
     ),
-    "lychee": "lychee.yml :: lychee (internal link check)",
-    "hadolint-docker": "ci.yml :: dockerfile-lint (hadolint-action)",
-    "gitleaks": "secret-scan.yml :: gitleaks",
-    "zizmor": "zizmor.yml :: zizmor (workflow security)",
-    "mypy": "ci.yml :: type-check (full-tree mypy)",
-    "pytest-unit": "ci.yml :: test-unit (pytest -m unit)",
-    "vale": "ci.yml :: lint (dedicated vale prose-lint step)",
-    "caddy-validate": "ci.yml :: lint (dedicated caddy validate step)",
+    "lychee": "verify-links.yml :: lychee (internal link check)",
+    "hadolint-docker": "verify-backend.yml :: dockerfile-lint (hadolint-action)",
+    "gitleaks": "security-secrets.yml :: gitleaks",
+    "zizmor": "verify-workflows.yml :: zizmor (workflow security)",
+    "mypy": "verify-backend.yml :: type-check (full-tree mypy)",
+    "pytest-unit": "verify-backend.yml :: test-unit (pytest -m unit)",
+    "vale": "verify-backend.yml :: lint (dedicated vale prose-lint step)",
+    "caddy-validate": "verify-backend.yml :: lint (dedicated caddy validate step)",
     "check-single-migration-per-pr": (
-        "ci.yml :: schema-validate (Enforce at most one new revision per PR; "
+        "verify-backend.yml :: schema-validate (Enforce at most one new revision per PR; "
         "that job fetches the base ref, which the all-files job's shallow "
         "checkout does not)"
     ),
     "check-no-modify-migration": (
-        "ci.yml :: schema-validate (Block modification of committed migrations; "
+        "verify-backend.yml :: schema-validate (Block modification of committed migrations; "
         "that fetch-depth:0 job has origin/main, which the all-files job's "
         "shallow checkout does not)"
     ),
@@ -115,7 +115,7 @@ _LOCAL_ONLY: Final[dict[str, str]] = {
     ),
 }
 
-# ci.yml jobs allowed to keep ``dorny/paths-filter`` conditioning because
+# verify-backend.yml jobs allowed to keep ``dorny/paths-filter`` conditioning because
 # they are pure build / perf steps whose skip cannot hide a correctness
 # defect. Every entry needs a justification.
 _PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
@@ -127,7 +127,7 @@ _PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
     "branch-protection-audit": "post-merge infra audit, main-only (not a PR gate)",
 }
 
-# cli.yml jobs allowed to keep ``cli-changes`` conditioning -- the Go lint /
+# verify-cli.yml jobs allowed to keep ``cli-changes`` conditioning -- the Go lint /
 # test / vuln CORRECTNESS jobs are de-conditioned, leaving only these
 # build / perf jobs scoped. Each skip cannot hide a correctness defect.
 _CLI_PATH_SCOPED_BUILD_PERF: Final[dict[str, str]] = {
@@ -159,7 +159,7 @@ class _CardinalWorkflow:
 
 # Workflows that carry CORRECTNESS jobs. codspeed/docker/lighthouse run only
 # perf / build / publish jobs (no correctness), so the cardinal rule does not
-# apply to them; ci.yml and cli.yml are the two with correctness gates.
+# apply to them; verify-backend.yml and verify-cli.yml are the two with correctness gates.
 _CARDINAL_WORKFLOWS: Final[tuple[_CardinalWorkflow, ...]] = (
     _CardinalWorkflow(
         path=_CI_WORKFLOW,
@@ -455,7 +455,7 @@ def _step_condition_violations(
 
 
 def _cardinal_rule_violations(repo_root: Path) -> list[str]:
-    """Flag correctness jobs/steps (ci.yml + cli.yml) conditioned on changed files."""
+    """Flag correctness jobs/steps (verify-backend.yml + verify-cli.yml) conditioned on changed files."""
     problems: list[str] = []
     for wf in _CARDINAL_WORKFLOWS:
         workflow = _load_yaml(repo_root / wf.path)

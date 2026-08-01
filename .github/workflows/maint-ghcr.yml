@@ -198,11 +198,17 @@ jobs:
     name: Open / update tracking issue on failed prune
     needs: [config, cleanup]
     # Scheduled only: a manual dispatch is watched by whoever triggered it.
-    # `cancelled` is the 120-minute backfill cap, not a defect.
+    #
+    # `cancelled` reports too. It was excluded as "just the 120-minute
+    # backfill cap", but that cap is reachable only from a dispatch, which
+    # this job already ignores. On the weekly schedule a cancellation is a
+    # hang, a stall or a timeout, and excluding it meant a prune that never
+    # finished alerted nobody, week after week, since nothing else watches
+    # this workflow.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && needs.cleanup.result == 'failure'
+      && (needs.cleanup.result == 'failure' || needs.cleanup.result == 'cancelled')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

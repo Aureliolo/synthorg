@@ -17,6 +17,8 @@ set -uo pipefail
 
 readonly REFUSAL_SIGNATURE='more than 5000 downloads'
 readonly LOG_DIR="${RUNNER_TEMP:-/tmp}/ghcr-prune-logs"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 
 emit() {
   {
@@ -38,28 +40,59 @@ if ! unzip -qo "${LOG_DIR}/logs.zip" -d "${LOG_DIR}/unpacked" 2>/dev/null; then
   exit 0
 fi
 
-# Each leg is its own file named after the job, so the package comes from the
-# filename rather than from parsing the log body.
-report=''
-while IFS= read -r logfile; do
-  package="$(basename "$logfile" | sed -E 's/^[0-9]*_?Prune (synthorg-[a-z-]+).*/\1/')"
-  case "$package" in
-    synthorg-*) ;;
-    *) continue ;;
+# The refusal message and the refused id land on SEPARATE lines: the action
+# logs `[Octokit ERROR] DELETE .../container/<pkg>/versions/<id> - 400` when
+# the call is rejected, and the `##[error]` explaining why only at the end of
+# the pass. So a version is matched to the refusal by proximity, taking the
+# nearest preceding rejected DELETE, and both package and id come from that
+# line's URL rather than from the log's filename.
+#
+# The pairing has to be this tight. Grepping the whole file for `- 400`
+# whenever the refusal appears anywhere in it would sweep up unrelated
+# rejections (the header notes GHCR's spurious 401s under concurrent load,
+# and a malformed manifest or bad scope 400s the same way) and present them
+# all as permanent refusals, so a human following the emitted commands would
+# tag a version out of the prune forever for a fault that was transient.
+resolve_digest() {
+  local package=$1 version_id=$2 digest
+  digest="$("${SCRIPT_DIR}/../.github/scripts/gh_with_retry.sh" \
+    "ghcr version $package/$version_id" \
+    gh api "users/${OWNER}/packages/container/${package}/versions/${version_id}" \
+    --jq '.name' 2>/dev/null || true)"
+  # A 404 body reaches stdout as JSON rather than failing the call.
+  case "$digest" in
+    sha256:*) printf '%s' "$digest" ;;
+    *) printf '%s' '<digest lookup failed; read the run log>' ;;
   esac
+}
 
+report=''
+unexplained=''
+while IFS= read -r logfile; do
   grep -q "$REFUSAL_SIGNATURE" "$logfile" || continue
 
-  # Capture the id specifically: a bare digit scrape would also pull the `400`
-  # out of `versions/<id> - 400` and chase it as a second version.
-  while IFS= read -r version_id; do
-    [ -n "$version_id" ] || continue
-    digest="$(gh api "users/${OWNER}/packages/container/${package}/versions/${version_id}" --jq '.name' 2>/dev/null || true)"
-    # A 404 body reaches stdout as JSON rather than failing the call.
-    case "$digest" in
-      sha256:*) ;;
-      *) digest='<digest lookup failed; read the run log>' ;;
-    esac
+  # `<line>\t<package>\t<id>` for every rejected DELETE in this leg.
+  rejected=()
+  while IFS= read -r entry; do
+    [ -n "$entry" ] && rejected+=("$entry")
+  done < <(sed -nE 's#^([0-9]+):.*/container/([a-zA-Z0-9._-]+)/versions/([0-9]+) - 400.*#\1\t\2\t\3#p' \
+    < <(grep -nE '/container/[a-zA-Z0-9._-]+/versions/[0-9]+ - 400' "$logfile"))
+  [ ${#rejected[@]} -gt 0 ] || continue
+
+  matched=''
+  while IFS= read -r refusal_line; do
+    [ -n "$refusal_line" ] || continue
+    best=''
+    for entry in "${rejected[@]}"; do
+      line="${entry%%$'\t'*}"
+      [ "$line" -lt "$refusal_line" ] && best="$entry"
+    done
+    [ -n "$best" ] || continue
+    matched="${matched}${best}
+"
+    package="$(printf '%s' "$best" | cut -f2)"
+    version_id="$(printf '%s' "$best" | cut -f3)"
+    digest="$(resolve_digest "$package" "$version_id")"
     report="${report}
 **\`${package}\`** version \`${version_id}\`
 
@@ -68,14 +101,30 @@ GITHUB_TOKEN=\$(gh auth token) uv run python scripts/protect_ghcr_undeletable_ve
   --owner ${OWNER} --package ${package} --digest ${digest}
 \`\`\`
 "
-  done < <(sed -nE 's#.*versions/([0-9]+) - 400.*#\1#p' "$logfile" | sort -u)
+  done < <(grep -n "$REFUSAL_SIGNATURE" "$logfile" | cut -d: -f1)
+
+  # A rejection with no refusal attributable to it is a different fault, and
+  # saying so beats folding it into the permanent bucket.
+  for entry in "${rejected[@]}"; do
+    printf '%s\n' "$matched" | grep -qF "$entry" && continue
+    unexplained="${unexplained}
+- \`$(printf '%s' "$entry" | cut -f2)\` version \`$(printf '%s' "$entry" | cut -f3)\` was rejected 400 without a >5000-downloads message"
+  done
 done < <(find "${LOG_DIR}/unpacked" -type f -name '*.txt' 2>/dev/null)
 
-if [ -z "$report" ]; then
+if [ -z "$report" ] && [ -z "$unexplained" ]; then
   emit "No permanent (>5000 downloads) refusal found in this run's logs. The leg most likely hit a transient GHCR 401 under concurrent load, which self-heals on the next weekly run -- leave this open one week and close it if the next run is green. If it fails again, read the run log for a new failure mode."
+  exit 0
+fi
+
+if [ -z "$report" ]; then
+  emit "No >5000-downloads refusal was attributable to a rejected delete, but the run did reject one. Read the run log; this is not the known permanent-refusal case:
+${unexplained}"
   exit 0
 fi
 
 emit "GHCR permanently refuses to delete the version(s) below (publicly visible, past 5000 downloads). The prune aborts its pass on the first one, so each must be tagged out before the leg can go green:
 ${report}
-Each command re-PUTs the manifest verbatim under a \`keep-undeletable-*\` tag, preserving the digest. The prune's \`exclude-tags\` regex already admits \`keep-*\`."
+Each command re-PUTs the manifest verbatim under a \`keep-undeletable-*\` tag, preserving the digest. The prune's \`exclude-tags\` regex already admits \`keep-*\`.${unexplained:+
+
+Also rejected, but NOT with the permanent-refusal message, so do NOT tag these out without reading the log:${unexplained}}"

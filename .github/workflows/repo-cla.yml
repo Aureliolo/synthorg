@@ -27,8 +27,8 @@ name: Repo - CLA
 # Why the split. The default branch-protection ruleset enforces
 # required_signatures across ~ALL refs (no cla-signatures carve-out).
 # All other automation in the repo already mints signed commits as
-# synthorg-repo-bot via the Git Data API (release.yml,
-# dev-release.yml, auto-rollover.yml, graduate.yml). Routing CLA
+# synthorg-repo-bot via the Git Data API (release-cut.yml,
+# release-dev.yml, release-rollover.yml, release-graduate.yml). Routing CLA
 # writes through the same mechanism keeps the trusted-write surface
 # uniform and lets the default ruleset stay at a clean ~ALL scope.
 

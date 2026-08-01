@@ -3,7 +3,7 @@ package selfupdate
 import "strings"
 
 // Marker and separator constants. These are stable contract surface from
-// .github/workflows/release.yml and .github/workflows/finalize-release.yml --
+// .github/workflows/release-cut.yml and .github/workflows/release-finalize.yml --
 // the workflow always emits the markers on their own line at column 0, so
 // substring matching is sufficient (no Markdown parser required).
 const (
@@ -76,7 +76,7 @@ func normaliseLineEndings(s string) string {
 }
 
 // stripHighlightsHeader removes a leading "## Highlights" line if present.
-// release.yml always emits this header right after the start marker; the
+// release-cut.yml always emits this header right after the start marker; the
 // renderer adds its own styled header.
 func stripHighlightsHeader(content string) string {
 	trimmed := strings.TrimLeft(content, "\n")

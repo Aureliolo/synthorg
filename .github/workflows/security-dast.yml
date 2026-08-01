@@ -89,7 +89,7 @@ jobs:
 
       # Build the apko-composed Wolfi base image locally, mirroring CI's
       # backend-base build. The backend Dockerfile has no default for
-      # `BASE_IMAGE` (PR #1465 / Scorecard Pinned-Dependencies), so the
+      # `BASE_IMAGE`, by design so Scorecard's Pinned-Dependencies holds, so the
       # DAST workflow must supply a pinned reference. Building the base
       # in-workflow yields a `sha-<short>` tag tied to the current commit
       # -- no floating registry tag is consulted.

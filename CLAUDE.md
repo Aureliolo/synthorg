@@ -58,6 +58,7 @@ make typecheck-status                               # which daemons are up, and 
 make typecheck-stop                                 # stop this worktree's daemons now (~2.5 GB back, ~4 GB if the scripts daemon is also warm); they also self-expire after 2h idle, and a SessionEnd hook stops them on a clean session exit
 uv run mypy src/ tests/ evals/ docker/ d2_fence.py                             # cold equivalent; add --num-workers=N on POSIX only (WinError 233 on Windows)
 MYPYPATH=. uv run mypy --explicit-package-bases --no-warn-unused-configs scripts/   # scripts/ cold (flat-dir name clash; --num-workers=N also POSIX-only here)
+uv run pyright --outputjson > /tmp/pyright.json && uv run python scripts/check_pyright_baseline.py --report /tmp/pyright.json   # second type-checker; CI-only (no pre-push), blocks on a shrink-only per-rule baseline. mypy stays authoritative
 uv run python -m pytest tests/ -m unit                                              # -n 8 --dist=loadfile via pyproject addopts
 uv run python -m pytest tests/ -m integration
 uv run python -m pytest tests/ -m e2e

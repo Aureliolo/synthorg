@@ -93,10 +93,10 @@ jobs:
         run: |
           for config in docker/*/apko.yaml; do
             # docker/web/apko.yaml depends on synthorg-web-assets@local,
-            # a melange-built apk produced fresh per docker.yml run, with
+            # a melange-built apk produced fresh per build-images.yml run, with
             # no stable upstream to lock against. Skipping cleanly avoids
             # `failed to read apk key: melange.rsa.pub` when apko looks
-            # for the workflow-build-time keyring outside docker.yml.
+            # for the workflow-build-time keyring outside build-images.yml.
             if [ "${config}" = "docker/web/apko.yaml" ]; then
               echo "Skipping ${config} (workflow-build-time @local deps)"
               continue

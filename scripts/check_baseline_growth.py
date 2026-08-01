@@ -66,9 +66,18 @@ def _count_json_entries(text: str) -> int:
     let malformed baselines slip through the ``staged > head`` comparison.
 
     For dict payloads, prefer the ``locations`` key (the canonical shape used
-    by gate baselines). When ``locations`` is missing or non-collection, fall
-    back to counting top-level keys so a flat-dict baseline format still
-    surfaces growth instead of silently returning 0.
+    by gate baselines).
+
+    A ``{name: count}`` payload is summed rather than counted, because its
+    suppressed-violation total lives in the values: counting keys would score
+    a single rule going from 5 findings to 500 as no growth at all, which is
+    the likeliest regression shape for that format. Counting keys stays the
+    fallback for every other mapping, where one key is one suppression.
+
+    Summing requires every value to be a positive int. A zero would break
+    monotonicity in the other direction: adding a ``{"new-rule": 0}`` entry
+    leaves the sum unchanged while the baseline has in fact grown by a key,
+    so such a payload falls back to counting keys instead.
     """
     try:
         payload = json.loads(text)
@@ -81,6 +90,11 @@ def _count_json_entries(text: str) -> int:
             return len(locations)
         if isinstance(locations, list):
             return len(locations)
+        if payload and all(
+            isinstance(value, int) and not isinstance(value, bool) and value > 0
+            for value in payload.values()
+        ):
+            return sum(payload.values())
         return len(payload)
     if isinstance(payload, list):
         return len(payload)

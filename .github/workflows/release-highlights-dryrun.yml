@@ -1,7 +1,7 @@
 name: Release - Highlights (dry-run)
 
 # Manual dry-run of the release-notes Highlights code path that lives
-# inside release.yml. Lets the repo owner exercise the Mistral
+# inside release-cut.yml. Lets the repo owner exercise the Mistral
 # integration (`mistral-large-latest`, free Experiment tier) against a
 # sample changelog WITHOUT waiting for a real Release Please release PR
 # and WITHOUT editing any real PR body. Output lands in the run's step
@@ -75,7 +75,7 @@ jobs:
           )
           fi
 
-          # Same untrusted-content fence + escape policy as release.yml.
+          # Same untrusted-content fence + escape policy as release-cut.yml.
           # The literal ``</untrusted-changelog>`` sequence is escaped so a
           # prompt-injection payload cannot close the fence and smuggle
           # instructions into the model turn.
@@ -91,9 +91,9 @@ jobs:
 
       - name: Generate Highlights via Mistral
         id: highlights
-        # Mirrors the release.yml step exactly -- this workflow exists to
+        # Mirrors the release-cut.yml step exactly -- this workflow exists to
         # dry-run the same model + prompt against a sample input. Keep the
-        # model, prompt, and call shape in sync with release.yml.
+        # model, prompt, and call shape in sync with release-cut.yml.
         env:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           SYSTEM_PROMPT: |
@@ -163,7 +163,7 @@ jobs:
             exit 1
           fi
           CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
-          # Randomised heredoc delimiter (see release.yml rationale): model
+          # Randomised heredoc delimiter (see release-cut.yml rationale): model
           # output derives from untrusted changelog content.
           DELIM="HIGHLIGHTS_RESPONSE_$(openssl rand -hex 12)"
           {
@@ -188,7 +188,7 @@ jobs:
             fi
             echo "---"
             echo ""
-            echo "Rendered output (matches what release.yml would prepend to the release PR body, minus the sticky-marker wrapper):"
+            echo "Rendered output (matches what release-cut.yml would prepend to the release PR body, minus the sticky-marker wrapper):"
             echo ""
             echo "## Highlights"
             echo ""

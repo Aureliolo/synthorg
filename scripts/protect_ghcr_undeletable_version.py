@@ -28,18 +28,30 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Final, NoReturn
 
 _REGISTRY: Final[str] = "https://ghcr.io"
+_REGISTRY_HOST: Final[str] = "ghcr.io"
 _TAG_PREFIX: Final[str] = "keep-undeletable-"
-_DIGEST_RE: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
+_DIGEST_RE: Final[re.Pattern[str]] = re.compile(r"sha256:[0-9a-f]{64}")
 _DIGEST_TAG_CHARS: Final[int] = 12
 
 _HTTP_OK: Final[int] = 200
 _HTTP_CREATED: Final[int] = 201
+_HTTP_SERVER_ERROR_MIN: Final[int] = 500
 _ERROR_BODY_CHARS: Final[int] = 200
+_REQUEST_TIMEOUT_SECONDS: Final[int] = 30
+
+# This is a repair tool run against a registry that is already misbehaving:
+# the prune it unblocks fails on GHCR's spurious 401s under concurrent load,
+# so the repair path must survive the same conditions it exists to clean up.
+_RETRY_ATTEMPTS: Final[int] = 4
+_RETRY_BACKOFF_SECONDS: Final[int] = 3
+_RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({401, 408, 429})
 
 _INDEX_TYPES: Final[frozenset[str]] = frozenset(
     {
@@ -65,6 +77,40 @@ def _fail(message: str) -> NoReturn:
     raise GhcrProtectionError(message)
 
 
+def _assert_registry_url(url: str) -> None:
+    """Refuse any URL that is not this registry over https.
+
+    Compares the parsed host, not a string prefix: ``https://ghcr.io.evil``
+    and ``https://ghcr.io@evil`` both pass a ``startswith`` check.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or parts.hostname != _REGISTRY_HOST:
+        _fail(f"refusing to call a non-registry URL: {url}")
+
+
+def _request_once(
+    url: str,
+    *,
+    authorization: str,
+    accept: str,
+    method: str,
+    body: bytes | None,
+    content_type: str | None,
+) -> tuple[int, bytes, dict[str, str]]:
+    """Issue one HTTP call, returning status, body and headers."""
+    _assert_registry_url(url)
+    req = urllib.request.Request(url, method=method, data=body)  # noqa: S310 -- URL is asserted https + ghcr.io by _assert_registry_url above
+    req.add_header("Authorization", authorization)
+    req.add_header("Accept", accept)
+    if content_type is not None:
+        req.add_header("Content-Type", content_type)
+    try:
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT_SECONDS) as resp:  # noqa: S310 -- same assertion as above
+            return resp.status, resp.read(), dict(resp.headers)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), dict(exc.headers)
+
+
 def _request(
     url: str,
     *,
@@ -74,22 +120,46 @@ def _request(
     body: bytes | None = None,
     content_type: str | None = None,
 ) -> tuple[int, bytes, dict[str, str]]:
-    """Issue one HTTP call, returning status, body and headers."""
-    if not url.startswith(_REGISTRY):
-        _fail(f"refusing to call a non-registry URL: {url}")
-    req = urllib.request.Request(url, method=method, data=body)  # noqa: S310 -- URL is asserted to be under the https-only _REGISTRY constant above
-    req.add_header("Authorization", authorization)
-    req.add_header("Accept", accept)
-    if content_type is not None:
-        req.add_header("Content-Type", content_type)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 -- same assertion as above
-            return resp.status, resp.read(), dict(resp.headers)
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read(), dict(exc.headers)
-    except urllib.error.URLError as exc:
-        message = f"{method} {url} failed: {exc.reason}"
-        raise GhcrProtectionError(message) from exc
+    """Issue an HTTP call, retrying transient registry failures.
+
+    Retries network errors, 5xx, and the 401/408/429 class GHCR is known to
+    return spuriously under load. A definitive 4xx returns immediately: the
+    caller decides, and retrying a real permission or shape error only delays
+    the diagnosis.
+    """
+    last_error: urllib.error.URLError | None = None
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            status, payload, headers = _request_once(
+                url,
+                authorization=authorization,
+                accept=accept,
+                method=method,
+                body=body,
+                content_type=content_type,
+            )
+        except urllib.error.URLError as exc:
+            last_error = exc
+        else:
+            transient = (
+                status >= _HTTP_SERVER_ERROR_MIN or status in _RETRYABLE_STATUSES
+            )
+            if not transient or attempt == _RETRY_ATTEMPTS:
+                return status, payload, headers
+            print(
+                f"{method} {url} returned {status}; retrying "
+                f"({attempt}/{_RETRY_ATTEMPTS})",
+                file=sys.stderr,
+            )
+        if attempt == _RETRY_ATTEMPTS:
+            break
+        time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+
+    message = f"{method} {url} failed after {_RETRY_ATTEMPTS} attempts"
+    if last_error is not None:
+        message = f"{message}: {last_error.reason}"
+        raise GhcrProtectionError(message) from last_error
+    raise GhcrProtectionError(message)
 
 
 def _registry_token(owner: str, package: str, *, github_token: str, push: bool) -> str:
@@ -106,7 +176,14 @@ def _registry_token(owner: str, package: str, *, github_token: str, push: bool) 
     status, payload, _ = _request(url, authorization=f"Basic {basic}")
     if status != _HTTP_OK:
         _fail(f"registry token exchange returned {status} for scope '{scope}'")
-    return str(json.loads(payload)["token"])
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        msg = f"registry token response was not JSON: {exc.msg}"
+        raise GhcrProtectionError(msg) from exc
+    if not isinstance(parsed, dict) or "token" not in parsed:
+        _fail("registry token response carried no 'token' field")
+    return str(parsed["token"])
 
 
 def _assert_safe_to_protect(manifest: dict[str, object], media_type: str) -> None:
@@ -181,7 +258,9 @@ def main(argv: list[str] | None = None) -> int:
     """Tag one undeletable GHCR version so the prune stops targeting it."""
     args = _parse_args(argv)
 
-    if not _DIGEST_RE.match(args.digest):
+    # `fullmatch`, not `match`: `$` also matches before a trailing newline, so
+    # a digest pasted out of a tracking issue could carry one into the URL.
+    if not _DIGEST_RE.fullmatch(args.digest):
         print(
             f"::error::--digest must be sha256:<64 hex>, got '{args.digest}'",
             file=sys.stderr,
@@ -204,7 +283,14 @@ def main(argv: list[str] | None = None) -> int:
             push=not args.dry_run,
         )
         payload, media_type = _fetch_manifest(repo, args.digest, token=token)
-        _assert_safe_to_protect(json.loads(payload), media_type)
+        try:
+            manifest = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            msg = f"manifest for {args.digest} was not JSON: {exc.msg}"
+            raise GhcrProtectionError(msg) from exc
+        if not isinstance(manifest, dict):
+            _fail(f"manifest for {args.digest} was not a JSON object")
+        _assert_safe_to_protect(manifest, media_type)
 
         if args.dry_run:
             print(f"would tag {args.digest} as {repo}:{tag} ({media_type})")

@@ -20,7 +20,7 @@ name: Ops - Red Alert
 #   - `cancelled`, which is overwhelmingly concurrency supersession rather
 #     than a real failure. A run a human cancels because it is visibly broken
 #     is indistinguishable from that here and is dropped with it.
-#   - A tag push. `docker.yml` and `cli.yml` also run on `tags: v*`, where
+#   - A tag push. `build-images.yml` and `verify-cli.yml` also run on `tags: v*`, where
 #     `head_branch` is the tag, so a broken RELEASE build opens no tracker.
 #     Release failures are watched directly by whoever cut the tag.
 #

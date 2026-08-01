@@ -11,7 +11,7 @@ GitHub-signed commit, regardless of which token it uses:
    GitHub under ``github-actions[bot]`` -- but those pushes are
    suppressed from firing downstream workflow events (GitHub's
    anti-recursion rule). This is the exact failure mode
-   ``auto-rollover.yml`` was designed to avoid.
+   ``release-rollover.yml`` was designed to avoid.
 2. Locally-built commits + push with **any non-GITHUB_TOKEN credential**
    (PAT, App installation token, resurrected ``RELEASE_PLEASE_TOKEN``)
    produce **unsigned** commits. GitHub can only attach a bot signature
@@ -31,7 +31,7 @@ somewhere" -- that whitelist was the original shape but it is unsound:
 the token mint buys API-path signing, not local-git-push signing, so
 the presence of a mint does not sanitise a local-git write. Workflows
 that need to write to the repo must invoke the Git Data API directly
-(see ``auto-rollover.yml`` / ``graduate.yml`` / ``dev-release.yml`` for
+(see ``release-rollover.yml`` / ``release-graduate.yml`` / ``release-dev.yml`` for
 reference implementations).
 
 Baseline
@@ -101,8 +101,8 @@ _STEERING_MESSAGE = (
     "GitHub-signed commit -- GitHub can only attach a bot signature when "
     "the commit is created through the Git Data API (POST /git/commits). "
     "Route writes through the API with an App installation token. "
-    "Reference implementations: auto-rollover.yml, graduate.yml, "
-    "dev-release.yml."
+    "Reference implementations: release-rollover.yml, release-graduate.yml, "
+    "release-dev.yml."
 )
 
 _FORCE_REFRESH_FLAG = "--force"

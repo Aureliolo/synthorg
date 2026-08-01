@@ -206,6 +206,17 @@ Runs as the `type-check-pyright` job in `.github/workflows/verify-backend.yml`
 and blocks on `scripts/check_pyright_baseline.py`, a shrink-only per-rule
 baseline. No pre-push gate.
 
+The baseline seeds at 531 findings across 15 rules and, unlike every other
+entry in the Exemption Ledger above, names no draining issue. That is
+deliberate rather than an omission: mypy is authoritative here, so a residual
+population reflects genuine analyser disagreement (narrowing, generics,
+overload resolution) rather than debt with a finish line. The ratchet is the
+mechanism instead of a target: counts may only fall, growth needs
+`ALLOW_BASELINE_GROWTH=1`, and a rule landing below its allowance prints the
+`--update-baseline` invitation that locks the gain in. A rule reaching zero
+is a prompt to ask whether pyright and mypy now agree on that category, not
+progress toward an overall zero.
+
 ### New Python tools
 
 Added to `[dependency-groups.dev]` and `.pre-commit-config.yaml`:

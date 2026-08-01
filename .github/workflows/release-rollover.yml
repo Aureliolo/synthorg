@@ -226,7 +226,7 @@ jobs:
         if: steps.check.outputs.needed == 'true'
         env:
           # App installation token (not GITHUB_TOKEN) so the resulting
-          # commit triggers downstream release.yml + dev-release.yml
+          # commit triggers downstream release-cut.yml + release-dev.yml
           # workflows (GITHUB_TOKEN-authored commits are suppressed by
           # GitHub's anti-recursion rule, which does not apply to App
           # tokens). Git Data API commits from an App token are signed

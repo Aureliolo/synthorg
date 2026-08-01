@@ -120,9 +120,31 @@ def test_count_json_entries_no_locations_dict_falls_back_to_top_level_keys() -> 
     additions even on unconventional baseline shapes.
     """
     assert _MODULE._count_json_entries(json.dumps({"foo": "bar"})) == 1
-    assert (
-        _MODULE._count_json_entries(json.dumps({"a": 1, "b": 2, "c": 3, "d": 4})) == 4
-    )
+    assert _MODULE._count_json_entries(json.dumps({"a": [1], "b": {"c": 2}})) == 2
+
+
+def test_count_json_entries_sums_a_rule_count_baseline() -> None:
+    """A ``{rule: count}`` payload is measured by its values, not its keys.
+
+    Counting keys left the pyright baseline's ratchet almost ornamental: the
+    likeliest regression is one rule's count rising, which leaves the key set
+    identical and so scored as no growth at all.
+    """
+    small = json.dumps({"reportArgumentType": 5, "reportOptionalMemberAccess": 2})
+    large = json.dumps({"reportArgumentType": 500, "reportOptionalMemberAccess": 200})
+    assert _MODULE._count_json_entries(small) == 7
+    assert _MODULE._count_json_entries(large) == 700
+
+
+def test_count_json_entries_falls_back_to_keys_when_a_value_is_zero() -> None:
+    """A zero-valued entry would let a key be added without moving the sum."""
+    assert _MODULE._count_json_entries(json.dumps({"a": 1})) == 1
+    assert _MODULE._count_json_entries(json.dumps({"a": 1, "b": 0})) == 2
+
+
+def test_count_json_entries_does_not_sum_booleans() -> None:
+    """``bool`` is an ``int`` subclass; a flag mapping is one key per entry."""
+    assert _MODULE._count_json_entries(json.dumps({"a": True, "b": True})) == 2
 
 
 # ── classification ──────────────────────────────────────────────

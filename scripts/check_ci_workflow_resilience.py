@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces eight invariants across the CI definitions so the resilience
+Enforces nine invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -122,6 +122,18 @@ hardening they carry cannot silently regress:
    Dockerfile with a tag-only base would silently reopen the gap. Build stages
    and ``${...}`` build args are exempt: neither resolves against a registry.
 
+9. **No job floats on a rolling runner alias.** ``ubuntu-latest`` is
+   repointed at the next LTS on GitHub's schedule, so a runner-image
+   migration lands unreviewed and mid-flight on every job at once, while
+   every other input here is pinned. This is a gate rather than a Renovate
+   manager because the label is not a package version: no datasource
+   resolves it (``actions/runner-images`` publishes ``ubuntu24/<date>``
+   tags, which no versioning scheme maps onto ``ubuntu-24.04``), and a
+   ``runs-on:`` written as an expression is invisible to a regex manager
+   regardless. Bumping stays a deliberate edit; this stops the alias
+   returning. ``_ROLLING_RUNNER_EXEMPT`` carries the one matrix whose
+   purpose is running on whatever GitHub ships as latest.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
@@ -222,6 +234,20 @@ _ENFORCED_ACTIONS: Final[frozenset[str]] = frozenset(
         "CodSpeedHQ/action",
     }
 )
+
+# Rolling runner aliases: GitHub repoints these at the next LTS on its own
+# schedule, so a job on one migrates without review.
+_ROLLING_RUNNER_ALIASES: Final[frozenset[str]] = frozenset(
+    {"ubuntu-latest", "windows-latest", "macos-latest"}
+)
+
+# `<workflow>::<job>` -> why the job may keep a rolling alias.
+_ROLLING_RUNNER_EXEMPT: Final[dict[str, str]] = {
+    ".github/workflows/verify-cli.yml::cli-test": (
+        "Cross-platform matrix whose purpose is proving the CLI builds on "
+        "whatever GitHub currently ships as latest; pinning would defeat it."
+    ),
+}
 
 # Externally-dependent upload/OIDC actions deliberately NOT enforced, with
 # the reason each is safe to leave un-laddered. Documented here so a future
@@ -348,7 +374,7 @@ def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
     followed by exactly one unguarded final attempt. Steps are walked in
     order, per enforced action, via a small state machine so that:
 
-    * TWO independent ladders for the same action in one job (e.g. ci.yml's
+    * TWO independent ladders for the same action in one job (e.g. verify-backend.yml's
       coverage + test-results Codecov uploads) are EACH validated -- a naive
       aggregate "any guarded AND any unguarded" check would let a malformed
       ``[bare, bare]`` ladder hide behind a sibling ``[guarded, guarded,
@@ -1169,6 +1195,44 @@ def _relative_path(path: Path) -> str:
         return resolved.as_posix()
 
 
+def _check_runner_pinned(
+    job_name: str, rel_path: str, job: dict[str, object]
+) -> list[str]:
+    """Invariant: no job may float on a rolling runner alias.
+
+    ``ubuntu-latest`` is repointed at the next LTS on GitHub's schedule, so a
+    runner-image migration would land unreviewed, mid-flight, on every job at
+    once. Every other input in this tree is pinned (action SHAs, Dockerfile
+    digests, Node, the binary tool versions), and the runner was the last one
+    floating.
+
+    A gate rather than a Renovate manager: the runner label is not a package
+    version, so no datasource resolves it (``actions/runner-images`` publishes
+    ``ubuntu24/<date>`` tags, which no versioning scheme maps onto
+    ``ubuntu-24.04``), and a `runs-on:` written as an expression is invisible
+    to a regex manager anyway. Bumping the label stays a deliberate manual
+    edit; this only stops the rolling alias coming back.
+
+    ``cli-test`` keeps its ``matrix.os`` alias because that matrix exists to
+    prove the CLI builds on whatever GitHub currently ships as latest.
+    """
+    if f"{rel_path}::{job_name}" in _ROLLING_RUNNER_EXEMPT:
+        return []
+    runs_on = job.get("runs-on")
+    labels: list[str] = []
+    if isinstance(runs_on, str):
+        labels = [runs_on]
+    elif isinstance(runs_on, list):
+        labels = [str(item) for item in runs_on]
+    return [
+        f"job '{job_name}' runs on the rolling alias '{label}'. Pin an explicit "
+        "runner image (e.g. ubuntu-24.04), or add the job to "
+        "_ROLLING_RUNNER_EXEMPT with a reason."
+        for label in labels
+        if label.strip() in _ROLLING_RUNNER_ALIASES
+    ]
+
+
 def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]:
     """Return all violation messages for one workflow file.
 
@@ -1209,6 +1273,7 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         violations.extend(_check_job_steps(name, rel_path, job))
         violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
         violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
+        violations.extend(_check_runner_pinned(name, rel_path, job))
     return violations
 
 

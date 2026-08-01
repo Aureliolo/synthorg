@@ -42,7 +42,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── Gate: detect which surfaces actually changed ──
   changes:
     name: Detect lighthouse-relevant changes
     runs-on: ubuntu-24.04
@@ -66,7 +65,7 @@ jobs:
         id: filter
         with:
           # base/ref make the diff correct on `merge_group` (empty/falsy on
-          # pull_request, so default detection is preserved there). See ci.yml
+          # pull_request, so default detection is preserved there). See verify-backend.yml
           # Detect Changes for the full rationale.
           base: ${{ github.event.merge_group.base_sha }}
           ref: ${{ github.event.merge_group.head_sha }}
@@ -94,15 +93,15 @@ jobs:
               # the site audit too.
               - 'web/package.json'
               - 'web/package-lock.json'
-              # ``pages-preview.yml`` is included because its
+              # ``build-docs-preview.yml`` is included because its
               # own ``paths:`` covers itself, so a change to it
               # WILL redeploy the preview and the wait loop will
-              # see fresh content. ``lighthouse.yml`` is
-              # deliberately NOT in this filter even though a
-              # change to it could affect the site audit:
-              # ``pages-preview.yml`` is not triggered by
-              # changes to ``lighthouse.yml``, so the wait loop
-              # would time out against a stale preview.
+              # see fresh content. This workflow is deliberately
+              # NOT in this filter even though a change to it
+              # could affect the site audit:
+              # ``build-docs-preview.yml`` is not triggered by
+              # changes to it, so the wait loop would time out
+              # against a stale preview.
               # Lighthouse-config-only PRs are still covered by
               # the ``dashboard`` filter, which builds the
               # preview itself locally.
@@ -237,7 +236,7 @@ jobs:
           # races the previous deployment
           # still serving on the alias and would cause LHCI to score
           # stale HTML against the wrong commit. Wait until the
-          # banner injected by pages-preview.yml carries this PR
+          # banner injected by build-docs-preview.yml carries this PR
           # head's 7-char SHA before unblocking the LHCI run.
           EXPECTED_SHORT_SHA: ${{ github.event.pull_request.head.sha }}
         # NOTE: deliberately no ``set -o pipefail`` here. The earlier
@@ -286,7 +285,7 @@ jobs:
             echo "Attempt $i/${MAX_ATTEMPTS}: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting ${POLL_INTERVAL}s..."
             sleep "${POLL_INTERVAL}"
           done
-          echo "::error::pr-preview did not serve commit ${SHORT_SHA} after ${MAX_ATTEMPTS} attempts (worst case ~$((MAX_ATTEMPTS * (CURL_MAX_TIME + POLL_INTERVAL)))s). Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
+          echo "::error::pr-preview did not serve commit ${SHORT_SHA} after ${MAX_ATTEMPTS} attempts (worst case ~$((MAX_ATTEMPTS * (CURL_MAX_TIME + POLL_INTERVAL)))s). Either build-docs-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)

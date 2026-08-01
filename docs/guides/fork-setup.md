@@ -25,12 +25,12 @@ Create at **Settings -> Environments -> New environment**:
 
 | Environment | Used by | Required to pass CI Preflight? |
 |-------------|---------|---------------------|
-| `release` | `release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, `finalize-release.yml` | Yes |
-| `release-tags` | `cli.yml`, `docker.yml` (tag pushes) | Yes |
-| `apko-lock` | `apko-lock.yml` (scheduled lockfile updates) | Yes |
-| `cloudflare-preview` | `pages-preview.yml` | Yes |
-| `image-push` | `docker.yml` image push paths | Yes |
-| `github-pages` | `pages.yml` push to main | Yes |
+| `release` | `release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, `release-finalize.yml` | Yes |
+| `release-tags` | `verify-cli.yml`, `build-images.yml` (tag pushes) | Yes |
+| `apko-lock` | `maint-apko-lock.yml` (scheduled lockfile updates) | Yes |
+| `cloudflare-preview` | `build-docs-preview.yml` | Yes |
+| `image-push` | `build-images.yml` image push paths | Yes |
+| `github-pages` | `build-docs.yml` push to main | Yes |
 
 For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs. See [`docs/reference/github-environments.md`](../reference/github-environments.md) for the full branch-policy matrix.
 
@@ -38,7 +38,7 @@ Workflow consumers of each environment fall into two camps: required for any rel
 
 ## 3. Create the release-bot GitHub App
 
-The release pipeline (`release.yml`, `dev-release.yml`, `auto-rollover.yml`, `graduate.yml`, and `finalize-release.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
+The release pipeline (`release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, `release-graduate.yml`, and `release-finalize.yml`) mints installation tokens from a GitHub App with the right repository permissions. Without it, every commit those workflows produce on `main` would be unsigned and rejected by branch protection. The App is the single piece of state that makes the release pipeline able to write to a protected `main`. The same App is also used by the weekly `maint-apko-lock.yml` cron when it opens its lockfile-update PR (its credentials are duplicated into the `apko-lock` env under different secret names so each env carries its own copy).
 
 Steps:
 
@@ -77,7 +77,7 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 ### Optional: GHCR image cleanup
 
-`ghcr-cleanup.yml` prunes old dev and PR container images from your fork's GHCR namespace (releases are always kept). It ships **disabled**, in dry-run. To enable real deletions on your fork:
+`maint-ghcr.yml` prunes old dev and PR container images from your fork's GHCR namespace (releases are always kept). It ships **disabled**, in dry-run. To enable real deletions on your fork:
 
 - Set the repository **variable** `GHCR_CLEANUP_ENABLED=true` (Settings -> Secrets and variables -> Actions -> Variables). While unset, the cleanup runs in dry-run and deletes nothing.
 - Optionally add a repository **secret** `GHCR_CLEANUP_TOKEN`: a classic PAT with `write:packages` + `delete:packages` scopes, giving the cleanup an explicit deletion identity. When absent, deletion falls back to the auto-provided `${{ github.token }}`. Both are repository-scoped, not environment-scoped.

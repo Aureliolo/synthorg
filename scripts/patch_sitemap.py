@@ -21,7 +21,7 @@ Run after ``zensical build``:
     uv run zensical build
     uv run python scripts/patch_sitemap.py
 
-CI (``pages.yml``, ``pages-preview.yml``) runs the same sequence before
+CI (``build-docs.yml``, ``build-docs-preview.yml``) runs the same sequence before
 deploying the docs site.
 """
 

@@ -12,8 +12,16 @@ whenever code moves, so a location-keyed baseline would fail on a pure
 rename while saying nothing about type safety.
 
 Baseline only shrinks; growth needs ``ALLOW_BASELINE_GROWTH=1``. Creating it
-for the first time is exempt, since with no file on disk every rule reads as
-new and the baseline could otherwise never be seeded.
+for the very first time is exempt, since with nothing to compare against every
+rule reads as new and the baseline could otherwise never be seeded. That
+exemption keys off git history rather than the working tree, so deleting the
+file locally cannot reset the ratchet.
+
+The workflow runs pyright under ``|| true`` (a non-zero exit is its steady
+state), so a run that analysed nothing still yields a well-formed report of
+zero findings. Compared naively that reads as every rule at zero and passes a
+required check while checking nothing, so the report must prove it analysed a
+plausible share of the tree before its counts are trusted.
 
 Usage::
 
@@ -24,26 +32,71 @@ Usage::
 import argparse
 import json
 import os
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 from typing import Final
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
-_BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "pyright_finding_baseline.json"
+_BASELINE_REL: Final[str] = "scripts/pyright_finding_baseline.json"
+_BASELINE_PATH: Final[Path] = _REPO_ROOT / _BASELINE_REL
 _NO_RULE: Final[str] = "(no-rule)"
 _GROWTH_ENV: Final[str] = "ALLOW_BASELINE_GROWTH"
 
+# A catastrophe floor, not an expectation: pyright is configured with no
+# include/exclude so it walks the whole tree, which is thousands of files.
+# Anything near zero means a broken venv or config, never a clean run.
+_MIN_FILES_ANALYSED: Final[int] = 100
+
+
+class ReportUnusableError(Exception):
+    """Raised when a report cannot be trusted to reflect a real analysis."""
+
 
 def _load_counts(report_path: Path) -> Counter[str]:
-    """Count pyright errors per rule from a ``--outputjson`` report."""
+    """Count pyright errors per rule from a ``--outputjson`` report.
+
+    Raises:
+        ReportUnusableError: the report describes an analysis too small to be
+            a real run, so its counts would understate findings.
+    """
     payload = json.loads(report_path.read_text(encoding="utf-8"))
+    summary = payload.get("summary")
+    analysed = summary.get("filesAnalyzed") if isinstance(summary, dict) else None
+    if not isinstance(analysed, int) or analysed < _MIN_FILES_ANALYSED:
+        msg = (
+            f"pyright analysed {analysed} file(s), below the {_MIN_FILES_ANALYSED} "
+            "floor. The report does not reflect a real run (broken venv, bad "
+            "config, or a crash), so its counts cannot be compared."
+        )
+        raise ReportUnusableError(msg)
     counts: Counter[str] = Counter()
     for diagnostic in payload.get("generalDiagnostics", []):
         if diagnostic.get("severity") != "error":
             continue
         counts[str(diagnostic.get("rule") or _NO_RULE)] += 1
     return counts
+
+
+def _baseline_is_committed() -> bool:
+    """Return whether the baseline exists in ``HEAD``.
+
+    Working-tree existence would let ``rm`` on the baseline re-enter the
+    seeding path and silently widen the ratchet, so committed history is the
+    authority. A missing or broken git treats the baseline as committed, which
+    keeps the growth check armed rather than opening it.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "show", f"HEAD:{_BASELINE_REL}"],
+            check=False,
+            capture_output=True,
+            cwd=_REPO_ROOT,
+        )
+    except OSError:
+        return True
+    return result.returncode == 0
 
 
 def _load_baseline() -> dict[str, int]:
@@ -80,8 +133,30 @@ def _violations(counts: Counter[str], baseline: dict[str, int]) -> list[str]:
     return problems
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Compare a pyright report against the shrink-only baseline."""
+def _handle_update_baseline(
+    counts: Counter[str], problems: list[str], *, seeding: bool
+) -> int:
+    """Rewrite the baseline from this report unless that would widen it."""
+    if problems and not seeding and os.environ.get(_GROWTH_ENV) != "1":
+        print(
+            "::error::refusing to grow the pyright baseline. Fix the new "
+            f"findings, or set {_GROWTH_ENV}=1 with explicit approval.",
+            file=sys.stderr,
+        )
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+    _write_baseline(counts)
+    action = "seeded" if seeding else "updated"
+    print(
+        f"baseline {action}: {sum(counts.values())} finding(s) "
+        f"across {len(counts)} rule(s)"
+    )
+    return 0
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--report",
@@ -95,38 +170,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Rewrite the baseline from this report (shrink only, unless "
         f"{_GROWTH_ENV}=1).",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Compare a pyright report against the shrink-only baseline."""
+    args = _build_parser().parse_args(argv)
 
     if not args.report.exists():
         print(f"::error::pyright report not found: {args.report}", file=sys.stderr)
         return 2
 
-    counts = _load_counts(args.report)
-    # Seeding the first baseline is initialisation, not widening: with no file
-    # on disk every rule reads as new, so growth protection would make the
-    # baseline impossible to create. It applies from the second write onward.
-    seeding = not _BASELINE_PATH.exists()
+    try:
+        counts = _load_counts(args.report)
+    except ReportUnusableError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        return 2
+
+    seeding = not _baseline_is_committed()
     baseline = _load_baseline()
     problems = _violations(counts, baseline)
-    growth_allowed = os.environ.get(_GROWTH_ENV) == "1"
 
     if args.update_baseline:
-        if problems and not seeding and not growth_allowed:
-            print(
-                "::error::refusing to grow the pyright baseline. Fix the new "
-                f"findings, or set {_GROWTH_ENV}=1 with explicit approval.",
-                file=sys.stderr,
-            )
-            for problem in problems:
-                print(f"  {problem}", file=sys.stderr)
-            return 1
-        _write_baseline(counts)
-        action = "seeded" if seeding else "updated"
-        print(
-            f"baseline {action}: {sum(counts.values())} finding(s) "
-            f"across {len(counts)} rule(s)"
-        )
-        return 0
+        return _handle_update_baseline(counts, problems, seeding=seeding)
 
     if problems:
         print("::error::pyright findings grew past the baseline:", file=sys.stderr)

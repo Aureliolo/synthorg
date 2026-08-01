@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -112,5 +113,43 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	err := assertSLSAProvenance(b)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON payload")
+	}
+}
+
+func TestExpectedSANRegexAcceptsBothReleaseWorkflowNames(t *testing.T) {
+	re := regexp.MustCompile(expectedSANRegex)
+
+	valid := []string{
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3-rc.1",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3+build.4",
+		// Releases cut under the retired workflow name stay updatable.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.2.3",
+	}
+	for _, ref := range valid {
+		if !re.MatchString(ref) {
+			t.Errorf("SAN regex should match %q", ref)
+		}
+	}
+}
+
+func TestExpectedSANRegexRejectsNonReleaseIdentities(t *testing.T) {
+	re := regexp.MustCompile(expectedSANRegex)
+
+	invalid := []string{
+		// Branch refs never sign a release, retired name included.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/heads/main",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/heads/main",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/pull/1/merge",
+		// The image workflow must not be able to sign CLI archives.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v1.2.3",
+		"https://github.com/evil/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-verify-cli.yml@refs/tags/v1.2.3",
+		"",
+	}
+	for _, ref := range invalid {
+		if re.MatchString(ref) {
+			t.Errorf("SAN regex should NOT match %q", ref)
+		}
 	}
 }

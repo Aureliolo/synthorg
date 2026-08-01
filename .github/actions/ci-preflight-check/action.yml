@@ -241,7 +241,7 @@ runs:
           setup_block+=$'4. **Install** the App on this repository.\n'
           setup_block+=$'5. Generate a private key under "Private keys -> Generate private key" and save the PEM file.\n'
           setup_block+=$'6. Copy the App\'s Client ID and PEM contents into the `release` environment as the two secrets above.\n\n'
-          setup_block+=$'The minted token is what mints signed bot commits on protected `main` and bypasses the GITHUB_TOKEN anti-recursion rule for tag-triggered downstream workflows. Without it, `release.yml`, `dev-release.yml`, `auto-rollover.yml`, and `graduate.yml` skip cleanly (they are already gated on `!github.event.repository.fork`).\n\n'
+          setup_block+=$'The minted token is what mints signed bot commits on protected `main` and bypasses the GITHUB_TOKEN anti-recursion rule for tag-triggered downstream workflows. Without it, `release-cut.yml`, `release-dev.yml`, `release-rollover.yml`, and `release-graduate.yml` skip cleanly (they are already gated on `!github.event.repository.fork`).\n\n'
         fi
 
         if [ "${env_exists[cloudflare-preview]}" != "true" ]; then
@@ -249,7 +249,7 @@ runs:
           setup_block+=$'After creating the environment, add:\n\n'
           setup_block+=$'- `CLOUDFLARE_API_TOKEN` -- Pages-deploy-scoped API token from https://dash.cloudflare.com/profile/api-tokens.\n'
           setup_block+=$'- `CLOUDFLARE_ACCOUNT_ID` -- account ID from the Cloudflare dashboard sidebar.\n\n'
-          setup_block+=$'`pages-preview.yml` is the only consumer; the deploy step skips when these secrets are unset.\n\n'
+          setup_block+=$'`build-docs-preview.yml` is the only consumer; the deploy step skips when these secrets are unset.\n\n'
         fi
 
         if [ "${env_exists[apko-lock]}" != "true" ]; then
@@ -257,7 +257,7 @@ runs:
           setup_block+=$'After creating the environment, add these secrets:\n\n'
           setup_block+=$'- `APKO_BOT_APP_CLIENT_ID` -- the SAME Client ID used for `RELEASE_BOT_APP_CLIENT_ID` in the `release` env. The same App authenticates both the release pipeline and the weekly apko-lock cron; the credentials are duplicated under different secret names so each env carries its own copy without granting either workflow access across env boundaries.\n'
           setup_block+=$'- `APKO_BOT_APP_PRIVATE_KEY` -- the SAME PEM contents used for `RELEASE_BOT_APP_PRIVATE_KEY`.\n\n'
-          setup_block+=$'`apko-lock.yml` mints a token from these secrets and uses it to create the lockfile-update PR. Without them, the `Mint repo-bot App token` step fails with a missing-input error. If you skip the apko-lock workflow entirely, the env still needs to exist (preflight gates on its presence) but the secrets can stay unset.\n\n'
+          setup_block+=$'`maint-apko-lock.yml` mints a token from these secrets and uses it to create the lockfile-update PR. Without them, the `Mint repo-bot App token` step fails with a missing-input error. If you skip the apko-lock workflow entirely, the env still needs to exist (preflight gates on its presence) but the secrets can stay unset.\n\n'
         fi
 
         if [ "${env_exists[image-push]}" != "true" ]; then
@@ -267,7 +267,7 @@ runs:
 
         if [ "${env_exists[github-pages]}" != "true" ]; then
           setup_block+=$'### `github-pages`\n\n'
-          setup_block+=$'No secrets required. The GitHub-managed Pages deployment uses the workflow token. The environment exists for branch-policy gating on the `main`-only Pages publish path. See `pages.yml`.\n\n'
+          setup_block+=$'No secrets required. The GitHub-managed Pages deployment uses the workflow token. The environment exists for branch-policy gating on the `main`-only Pages publish path. See `build-docs.yml`.\n\n'
         fi
 
         if [ -z "$setup_block" ]; then

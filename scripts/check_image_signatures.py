@@ -176,7 +176,7 @@ def _validate_repo_prefix(repo_prefix: str) -> None:
     """
     if not _REPO_PREFIX_RE.match(repo_prefix):
         msg = (
-            f"error: --repo-prefix {repo_prefix!r} must match the OCI repo grammar "
+            f"::error::--repo-prefix {repo_prefix!r} must match the OCI repo grammar "
             "(lowercase, '.', '_', '-', '/'), and end with '-' (e.g. "
             "'aureliolo/synthorg-')"
         )
@@ -192,14 +192,14 @@ def _validate_image_tag(pair: ImageTag) -> None:
     """
     if not _IMAGE_NAME_RE.match(pair.image):
         msg = (
-            f"error: image name {pair.image!r} must match OCI name grammar "
+            f"::error::image name {pair.image!r} must match OCI name grammar "
             "(lowercase alphanumerics with '.', '_', '-')"
         )
         print(msg, file=sys.stderr)
         raise SystemExit(USAGE_EXIT_CODE)
     if not _TAG_RE.match(pair.tag):
         msg = (
-            f"error: tag {pair.tag!r} must match OCI tag grammar "
+            f"::error::tag {pair.tag!r} must match OCI tag grammar "
             "(1-128 chars from [A-Za-z0-9_.-], not starting with '.' or '-')"
         )
         print(msg, file=sys.stderr)
@@ -220,7 +220,7 @@ def parse_image_tag_groups(args: list[str]) -> list[ImageTag]:
                 continue
             if ":" not in entry:
                 print(
-                    f"error: --image-tags entry {entry!r} must be in 'image:tag' form",
+                    f"::error::--image-tags entry {entry!r} must be in 'image:tag' form",
                     file=sys.stderr,
                 )
                 raise SystemExit(USAGE_EXIT_CODE)
@@ -229,7 +229,7 @@ def parse_image_tag_groups(args: list[str]) -> list[ImageTag]:
             tag = tag.strip()
             if not image or not tag:
                 print(
-                    f"error: --image-tags entry {entry!r} has empty image or tag",
+                    f"::error::--image-tags entry {entry!r} has empty image or tag",
                     file=sys.stderr,
                 )
                 raise SystemExit(USAGE_EXIT_CODE)
@@ -575,11 +575,19 @@ def provenance_present(
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
     headers = {"Accept": SIG_ACCEPT, **auth_header}
     status, _, body = _request_with_retry("GET", url, headers)
+    # `_request_with_retry` hands back a lingering 5xx rather than raising, so
+    # the caller decides. Reporting one as "no provenance" would fail a release
+    # that is correctly attested, so only a 404 means genuinely absent.
+    if status >= HTTP_SERVER_ERROR_MIN or status not in (HTTP_OK, HTTP_NOT_FOUND):
+        msg = f"registry error HTTP {status} on provenance check for {url}"
+        raise urllib.error.URLError(msg)
     if status != HTTP_OK:
         return False
     try:
         index = json.loads(body)
     except json.JSONDecodeError:
+        return False
+    if not isinstance(index, dict):
         return False
     manifests = index.get("manifests")
     if not isinstance(manifests, list):
@@ -664,9 +672,9 @@ def _auth_header_for_repo(
 
 
 def _print_failures(failures: list[str]) -> None:
-    """Render the failure block to stderr."""
+    """Render the failure block to stderr as a Checks-tab annotation."""
     print(file=sys.stderr)
-    print("Signature verification FAILED:", file=sys.stderr)
+    print("::error::Signature verification FAILED:", file=sys.stderr)
     for line in failures:
         print(f"  - {line}", file=sys.stderr)
 
@@ -677,7 +685,7 @@ def main() -> int:
     _validate_repo_prefix(args.repo_prefix)
     pairs = parse_image_tag_groups(args.image_tags)
     if not pairs:
-        print("error: no --image-tags pairs provided", file=sys.stderr)
+        print("::error::no --image-tags pairs provided", file=sys.stderr)
         return USAGE_EXIT_CODE
     for pair in pairs:
         _validate_image_tag(pair)

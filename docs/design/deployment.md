@@ -46,7 +46,7 @@ Reconciliation mechanisms:
 
 ## GHCR image retention
 
-Published and dev images accumulate in GHCR on every build, so `ghcr-cleanup.yml` (a standalone workflow that runs weekly on a schedule, and on its own via `workflow_dispatch`) prunes the non-release ones on a fixed policy. Official releases are never touched.
+Published and dev images accumulate in GHCR on every build, so `maint-ghcr.yml` (a standalone workflow that runs weekly on a schedule, and on its own via `workflow_dispatch`) prunes the non-release ones on a fixed policy. Official releases are never touched.
 
 | Tag class | Example | Retention |
 |-----------|---------|-----------|

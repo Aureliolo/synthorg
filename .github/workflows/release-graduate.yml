@@ -160,7 +160,7 @@ jobs:
           # Empty commit (reuses parent tree) via Git Data API. The App
           # token produces a GitHub-signed commit that verifies as
           # `{verified: true, reason: "valid"}` AND triggers downstream
-          # release.yml + dev-release.yml workflows -- the single tool
+          # release-cut.yml + release-dev.yml workflows -- the single tool
           # that satisfies main's signed-commits rule and the recursion
           # carve-out together.
           COMMIT_MESSAGE=$(printf 'chore: graduate to v%s\n\n%s\n\nRelease-As: %s' \

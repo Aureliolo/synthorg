@@ -1,10 +1,10 @@
 name: Release runner setup
 description: >-
   Shared setup for workflows that mint signed commits as `synthorg-repo-bot`.
-  Primary callers are the release-pipeline workflows (release.yml,
-  dev-release.yml, auto-rollover.yml, graduate.yml); cla.yml's signature-
-  recording job uses the same composite to satisfy the default ruleset's
-  required_signatures rule on the cla-signatures branch (see #1633).
+  Primary callers are the release-pipeline workflows (release-cut.yml,
+  release-dev.yml, release-rollover.yml, release-graduate.yml); repo-cla.yml's
+  signature-recording job uses the same composite to satisfy the default
+  ruleset's required_signatures rule on the cla-signatures branch.
   Asserts the triggering ref is refs/heads/main and mints a short-lived
   installation token for the `synthorg-repo-bot` GitHub App. The minted
   token is exposed on the `token` output so downstream steps can use it

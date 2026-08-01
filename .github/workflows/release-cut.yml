@@ -39,7 +39,7 @@ jobs:
       # For the "Post CI Pass status on release PR" step below: the
       # statuses API needs `statuses: write` to mark the required
       # `CI Pass` check satisfied on the release PR's head SHA
-      # without running ci.yml. See the rationale on that step.
+      # without running verify-backend.yml. See the rationale on that step.
       statuses: write
     steps:
       # Minimal checkout of main required so `./.github/actions/...`
@@ -366,11 +366,11 @@ jobs:
       # synthorg-repo-bot App installation token. GitHub's
       # anti-recursion rule blocks `pull_request` workflows for
       # events created by the workflow's own installation token,
-      # so ci.yml / codspeed-python.yml / codspeed-web.yml /
-      # lighthouse.yml never auto-fire on release PRs.
+      # so verify-backend.yml / perf-benchmarks.yml / perf-web-vitals.yml
+      # never auto-fire on release PRs.
       #
-      # An earlier attempt used `gh workflow run ci.yml
-      # --ref <release-branch>` to nudge ci.yml via
+      # An earlier attempt used `gh workflow run verify-backend.yml
+      # --ref <release-branch>` to nudge verify-backend.yml via
       # workflow_dispatch -- but workflow_dispatch runs produce a
       # check_suite with empty `pull_requests`, so the resulting
       # check_run does NOT appear in the PR's status rollup.
@@ -386,14 +386,14 @@ jobs:
       # check_run) directly on the PR head SHA. Statuses are in
       # the rollup unconditionally, satisfy branch protection's
       # required-check evaluation, and don't require any workflow
-      # run at all. ci.yml's `is_release_please` skip stays in
+      # run at all. verify-backend.yml's `is_release_please` skip stays in
       # place as defense-in-depth in case release-please's
       # identity ever changes.
       #
       # The required-context list MUST stay in sync with
       # `.github/branch_protection.yml` (the spec) and the live
       # `protect-main` ruleset. The branch-protection drift audit
-      # in ci.yml will surface the spec side; new required
+      # in verify-backend.yml will surface the spec side; new required
       # contexts must be added here at the same time, or the
       # release PR will silently re-block.
       #
@@ -468,7 +468,7 @@ jobs:
           inference quota), or the post-CI-Pass status spoof failed.
 
           When this stays red, no new release PR is opened on main;
-          dev tags continue to mint via dev-release.yml but no stable
+          dev tags continue to mint via release-dev.yml but no stable
           release ever lands.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'

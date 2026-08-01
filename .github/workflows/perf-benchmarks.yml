@@ -19,7 +19,7 @@ name: Perf - Benchmarks
 #   main (see .github/branch_protection.yml). A workflow-level paths:
 #   filter would prevent the workflow from starting on PRs that touch
 #   neither surface, leaving the required checks absent / pending and
-#   blocking unrelated merges. Same architecture as lighthouse.yml: the
+#   blocking unrelated merges. Same architecture as perf-web-vitals.yml: the
 #   workflow ALWAYS runs on pull_request / push to main; the changes gate
 #   detects which surfaces were touched and skips the heavy bench job(s)
 #   accordingly. Each pass-job aggregates its own shard so the required
@@ -54,7 +54,7 @@ on:
     branches: [main]
   # The required `CodSpeed Python Pass` / `CodSpeed Web Pass` contexts must
   # report on the merge-queue ref so a dropped pull_request dispatch on a PR
-  # head can never permanently block a merge. See ci.yml and
+  # head can never permanently block a merge. See verify-backend.yml and
   # docs/reference/claude-reference.md (Merge queue).
   merge_group:
   # workflow_dispatch lets CodSpeed back-test historical commits to seed
@@ -68,7 +68,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── Gate: detect which surfaces changed ──
   changes:
     name: Detect changes
     runs-on: ubuntu-24.04
@@ -80,7 +79,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       web: ${{ steps.filter.outputs.web }}
     steps:
-      # fetch-depth: 0. See ci.yml Detect Changes for full rationale:
+      # fetch-depth: 0. See verify-backend.yml Detect Changes for full rationale:
       # paths-filter on push: events races on shallow checkouts.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -92,7 +91,7 @@ jobs:
         with:
           # base/ref make the diff correct on `merge_group` (empty/falsy on
           # push / pull_request, so default detection is preserved there). See
-          # ci.yml Detect Changes for the full rationale.
+          # verify-backend.yml Detect Changes for the full rationale.
           base: ${{ github.event.merge_group.base_sha }}
           ref: ${{ github.event.merge_group.head_sha }}
           filters: |
