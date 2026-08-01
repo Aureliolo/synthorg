@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25@sha256:0adf442eae370b6087e08edc7c50b552d80ddf261576f4ebd6421006b2461f12
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # =============================================================================
 # SynthOrg Sidecar -- transparent network proxy for sandbox containers
 # =============================================================================
@@ -35,6 +35,6 @@ COPY --from=builder /build/sidecar /usr/local/bin/sidecar
 USER 10002
 
 HEALTHCHECK --interval=2s --timeout=2s --retries=3 --start-period=2s \
-    CMD wget -qO- http://localhost:15000/healthz || exit 1
+    CMD ["/bin/sh", "-c", "wget -qO- http://localhost:15000/healthz || exit 1"]
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]

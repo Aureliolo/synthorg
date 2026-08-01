@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25@sha256:0adf442eae370b6087e08edc7c50b552d80ddf261576f4ebd6421006b2461f12
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # =============================================================================
 # SynthOrg Backend -- 2-stage build: builder -> apko-composed Wolfi runtime
 # =============================================================================
@@ -22,7 +22,7 @@ ARG BASE_IMAGE
 # ---------------------------------------------------------------------------
 FROM python:3.14.3-slim@sha256:5e59aae31ff0e87511226be8e2b94d78c58f05216efda3b07dbbed938ec8583b AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.32@sha256:df4cae8f3a96d175e2e5f992e597550000edbe78fdc2594d5cd8de1a217f504c /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -34,7 +34,7 @@ RUN addgroup --gid 65532 --system build \
 WORKDIR /app
 
 COPY --chown=65532:65532 pyproject.toml uv.lock ./
-USER build
+USER 65532
 # Install the `postgres`, `distributed`, and `telemetry` extras
 # unconditionally. `postgres` and `distributed` are runtime-selectable
 # via `synthorg init --persistence-backend` and `--bus-backend`, so the
@@ -60,6 +60,14 @@ COPY --chown=65532:65532 scripts/embed_logfire_token.py scripts/embed_logfire_to
 # The embed runs *before* ``uv sync`` packages the venv so the
 # rewritten module is what gets cached in the wheel cache and
 # copied into the runtime stage.
+#
+# DL3064 flags a secret-shaped ARG because build args are recorded in
+# image history. This is a builder stage, and a multi-stage build
+# publishes only the final stage's config, so the arg never reaches a
+# pushed image. The token itself is write-only (ingest-only) and is
+# deliberately baked into the shipped venv; rotate it by bumping the
+# GHA secret and re-publishing.
+# hadolint ignore=DL3064
 ARG LOGFIRE_PROJECT_TOKEN=""
 RUN if [ -n "$LOGFIRE_PROJECT_TOKEN" ]; then \
         python scripts/embed_logfire_token.py "$LOGFIRE_PROJECT_TOKEN"; \
@@ -137,9 +145,9 @@ RUN rm -f /app/.venv/bin/python \
 # Pre-create the data directory tree in the builder so COPY --chown can
 # transfer it to the shell-less runtime stage with correct ownership.
 # Switch back to root for creating /data, then re-chown to the build user.
-USER root
+USER 0
 RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
-USER build
+USER 65532
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)

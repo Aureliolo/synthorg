@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25@sha256:0adf442eae370b6087e08edc7c50b552d80ddf261576f4ebd6421006b2461f12
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # =============================================================================
 # SynthOrg Sandbox -- thin wrapper over apko-composed Wolfi base
 # =============================================================================
@@ -25,6 +25,6 @@ COPY --chown=10001:10001 docker/sandbox/healthz.py /usr/local/bin/healthz.py
 USER 10001
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-    CMD wget -qO- http://127.0.0.1:15003/healthz || exit 1
+    CMD ["/bin/sh", "-c", "wget -qO- http://127.0.0.1:15003/healthz || exit 1"]
 
 CMD ["sh", "-c", "python3 /usr/local/bin/healthz.py & sleep infinity"]
