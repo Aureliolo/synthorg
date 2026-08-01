@@ -22,7 +22,7 @@ concurrency:
 jobs:
   check-balance:
     name: Compare unit shard wall-clocks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read    # actions/checkout (to load the tracking-issue action)
