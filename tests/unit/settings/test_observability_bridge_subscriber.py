@@ -84,7 +84,7 @@ class TestProtocol:
         assert ("observability", _SIGNING_KEY) in watched
 
     def test_tsa_endpoints_are_not_watched(self) -> None:
-        """TSA endpoints stay restart-bound, so watching them would be dead."""
+        """TSA endpoints are compose-set, so watching them would be dead."""
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
         for preset in ("freetsa", "digicert", "sectigo"):

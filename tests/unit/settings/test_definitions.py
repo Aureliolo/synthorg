@@ -46,7 +46,7 @@ class TestDefinitionsLoading:
 
         The dashboard's ``SettingDefinition`` TypeScript interface relies
         on the flag being present in every serialised definition so it
-        can disable post-init-readonly inputs. Pin the field's presence
+        can block edits to compose-set inputs. Pin the field's presence
         here so a missing-field regression would fail collection rather
         than silently re-enable 22 fields.
         """

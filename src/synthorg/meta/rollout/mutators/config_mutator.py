@@ -27,7 +27,7 @@ class SettingsServiceConfigMutator:
     strings; the type validator decodes per ``SettingDefinition.type``),
     and calls :meth:`SettingsService.set`.
 
-    Read-only-post-init settings cannot be mutated post-startup. Such
+    Compose-set settings cannot be mutated post-startup. Such
     rejections surface as :class:`RollbackMutationDeniedError` so the
     rollback executor's audit log records the refused operation rather
     than silently no-op'ing.

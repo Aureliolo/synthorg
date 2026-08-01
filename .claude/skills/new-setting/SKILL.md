@@ -96,10 +96,12 @@ to fall back on. Default to live, and pick the seam the consumer allows:
 
 `compose_set=True` is only for what the running process genuinely cannot change
 about itself (the socket it already bound, an image the CLI verified, a trust
-anchor resolved before the settings backend exists). It also obliges you to add
-the env var to `cli/internal/compose/compose.yml.tmpl` in the same change:
-`check_setting_compose_backed` fails a compose-set key the deployment does not
-actually pass, so the flag cannot mean "not wired up".
+anchor resolved before the settings backend exists). It also obliges you to pass
+the env var from every shipped launcher that starts the process reading it, in
+the same change: both `cli/internal/compose/compose.yml.tmpl` and
+`docker/compose.yml` for a backend setting, or `cli/cmd/worker_start.go` for a
+worker-only one. `check_setting_compose_backed` fails a compose-set key the
+deployment does not actually pass, so the flag cannot mean "not wired up".
 
 If the setting weakens security when written, it additionally needs the
 confirm-and-reason guardrail in `settings/write_governance.py`.

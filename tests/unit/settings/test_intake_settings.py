@@ -3,9 +3,9 @@
 ``simulations.intake_strategy`` / ``simulations.intake_model`` /
 ``intake_default_project`` seed the client-simulation runtime at construction
 via the bootstrap resolver (env > default). They are hot
-(``compose_set=False``, ``compose_set=False``): a change rebuilds
-and swaps the runtime live via the simulations settings subscriber, and the DB
-value is re-resolved on-startup and on every reload.
+(``compose_set=False``): a change rebuilds and swaps the runtime live via the
+simulations settings subscriber, and the DB value is re-resolved on-startup
+and on every reload.
 """
 
 from unittest.mock import AsyncMock

@@ -184,9 +184,11 @@ class DockerSandboxConfig(BaseModel):
             " SYNTHORG_SIDECAR_IMAGE env var > YAML"
             " tools.sandbox.docker.sidecar_image > version-pinned"
             " fallback constant ghcr.io/aureliolo/synthorg-sidecar:v<release>."
-            " Read once at"
-            " startup from the sidecar image-resolution cache; runtime"
-            " DB overrides require a restart."
+            " ConfigResolver writes the resolved value into the sidecar"
+            " image-resolution cache once at startup; this field's"
+            " default_factory reads from that cache. The registered"
+            " setting is compose-set: the container was created against"
+            " the resolved image."
         ),
     )
     network_allow_all: bool = Field(

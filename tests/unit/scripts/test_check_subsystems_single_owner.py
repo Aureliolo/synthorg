@@ -100,6 +100,66 @@ class TestScan:
         )
         assert scan_repo(_write_repo(tmp_path, caller=caller)) == ()
 
+    def test_an_aliased_import_is_flagged(self, tmp_path: Path) -> None:
+        # Renaming on import binds a second name for the same function; the
+        # call through it is the same second caller.
+        caller = (
+            "from synthorg.api.lifecycle_helpers.thing_wiring import (\n"
+            "    wire_thing as _wt,\n"
+            ")\n"
+            "\n"
+            "async def boot(app_state: object) -> None:\n"
+            "    await _wt(app_state)\n"
+        )
+        (violation,) = scan_repo(_write_repo(tmp_path, caller=caller))
+        assert violation.name == "wire_thing"
+
+    def test_a_module_attribute_call_is_flagged(self, tmp_path: Path) -> None:
+        caller = (
+            "from synthorg.api.lifecycle_helpers import thing_wiring\n"
+            "\n"
+            "async def boot(app_state: object) -> None:\n"
+            "    await thing_wiring.wire_thing(app_state)\n"
+        )
+        (violation,) = scan_repo(_write_repo(tmp_path, caller=caller))
+        assert violation.name == "wire_thing"
+
+    def test_the_opt_out_is_honoured_anywhere_in_a_multiline_call(
+        self, tmp_path: Path
+    ) -> None:
+        # The marker belongs on the argument it explains, which for a call
+        # spanning lines is not the line carrying the callee.
+        caller = (
+            "from synthorg.api.lifecycle_helpers.thing_wiring import wire_thing\n"
+            "\n"
+            "async def boot(app_state: object) -> None:\n"
+            "    await wire_thing(\n"
+            "        app_state,"
+            "  # lint-allow: subsystem-single-owner -- ordering\n"
+            "    )\n"
+        )
+        assert scan_repo(_write_repo(tmp_path, caller=caller)) == ()
+
+    def test_a_teardown_is_not_owned_wiring(self, tmp_path: Path) -> None:
+        # ``unwire_thing`` contains "wire" but is the teardown half, which the
+        # registry calls from its own deactivate adapter.
+        root = _write_repo(tmp_path)
+        (root / _REGISTRY_REL).write_text(
+            _REGISTRY + "\n\nasync def _deactivate_thing(app_state: object) -> None:\n"
+            "    from synthorg.api.lifecycle_helpers.thing_wiring import unwire_thing\n"
+            "\n"
+            "    await unwire_thing(app_state)\n",
+            encoding="utf-8",
+        )
+        (root / "src/synthorg/api/other.py").write_text(
+            "from synthorg.api.lifecycle_helpers.thing_wiring import unwire_thing\n"
+            "\n"
+            "async def teardown(app_state: object) -> None:\n"
+            "    await unwire_thing(app_state)\n",
+            encoding="utf-8",
+        )
+        assert scan_repo(root) == ()
+
 
 class TestGate:
     def test_passes_on_a_clean_repo(self, tmp_path: Path) -> None:

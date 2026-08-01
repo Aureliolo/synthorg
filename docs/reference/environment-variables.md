@@ -131,8 +131,10 @@ directory.
    `os.environ.get` at the relevant boot site. Document the consumer
    module path in the row.
 3. If the variable should be **discoverable but read-only**: register
-   with `compose_set=True`, add it to the compose template in the same
-   change (`check_setting_compose_backed.py` enforces this), link the
-   registry key in this page, and consume via `os.environ.get` at the
-   boot site (the registry entry just exposes the value to the
-   /settings UI).
+   with `compose_set=True`, add it to **both** backend compose sources in
+   the same change (`cli/internal/compose/compose.yml.tmpl` and
+   `docker/compose.yml`; a worker-only variable goes in
+   `cli/cmd/worker_start.go` instead), link the registry key in this
+   page, and consume via `os.environ.get` at the boot site (the registry
+   entry just exposes the value to the /settings UI).
+   `check_setting_compose_backed.py` enforces the wiring.

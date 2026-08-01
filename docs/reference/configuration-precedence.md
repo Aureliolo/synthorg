@@ -119,7 +119,7 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
 | `chief_of_staff.propose_enabled` | `SYNTHORG_CHIEF_OF_STAFF_PROPOSE_ENABLED` | On-by-default conversational capability; live-gated per request via `ensure_feature_enabled` (no restart). The siblings `explain_chat_enabled` / `group_chat_enabled` / `routing_enabled` behave the same. |
 | `chief_of_staff.alerts_enabled` | `SYNTHORG_CHIEF_OF_STAFF_ALERTS_ENABLED` | Off-by-default autonomous capability (also: `learning_enabled` / `narrative_enabled` / `invite_enabled`). No restart: `alerts_enabled` is started/stopped live by `ChiefOfStaffAlertsSettingsSubscriber`; the others are gated per cycle/turn. Each additionally requires the persona master switch `self_improvement.chief_of_staff_enabled`. |
-| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. `DirectMcpActorSettingsSubscriber` rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed guarantee moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
+| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. The subsystem reconciler rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed guarantee moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
 | `chief_of_staff.chat_model` | `SYNTHORG_CHIEF_OF_STAFF_CHAT_MODEL` | Per-feature model for conversational turns (also `propose_model` / `routing_model` / `narrative_model`); read live per LLM call, no restart. Auto-filled at setup-complete when left blank. |
 | `knowledge.enabled` | `SYNTHORG_KNOWLEDGE_ENABLED` | On-by-default knowledge substrate; ghost-wired at boot and live-gated per request at the knowledge tools (no restart). The `knowledge.synthesis_model` / `knowledge.synthesis_provider` / `knowledge.synthesis_synthesizer` / `knowledge.synthesis_max_chunks` keys rebuild + swap the synthesiser via a subscriber; `knowledge.synthesis_enabled` remains live-gated at the entrypoint. |
 | `research.enabled` | `SYNTHORG_RESEARCH_ENABLED` | On-by-default research pipeline; ghost-wired at boot and live-gated per request at the research tools (no restart). The model lives in `research.model` (auto-filled at setup-complete); model / provider / strategy / threshold keys rebuild + swap the service via a subscriber. |
@@ -427,11 +427,16 @@ A registered setting whose consuming machinery exists but is never instantiated 
 
 ## Compose-set or live
 
-A setting is either fixed when a process starts or changeable while the system
-runs. There is no third category, and therefore no restart control and no
-pending-restart state: a `compose_set=True` definition rejects a write and is
-shown read-only in the dashboard, and everything else applies immediately
-through one of the seams below.
+A **registered** setting is either fixed when a process starts or changeable
+while the system runs. There is no third category, and therefore no restart
+control and no pending-restart state: a `compose_set=True` definition rejects a
+write and is shown read-only in the dashboard, and everything else applies
+immediately through one of the seams below.
+
+This is a statement about the settings registry, not about every value the
+process reads. The Category 3 bootstrap secrets above are pure environment and
+are never registered: they are consumed before a settings backend exists, so
+they have no definition to carry the flag and no write path to reject.
 
 `compose_set` is reserved for what a running process genuinely cannot change
 about itself: the bind address and TLS material uvicorn already opened, the

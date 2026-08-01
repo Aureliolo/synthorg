@@ -86,15 +86,15 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("memory", "embedder_model"),
         ("memory", "embedder_dims"),
         ("memory", "consolidation_interval"),
-        # Auto-review + the completion oracle are wired into the runtime on a
-        # rebuild: the pipeline is (re)built by ``build_runtime_services`` and
-        # the oracle gates are re-attached to the review-gate service, so an
-        # edit to any of these applies on the next task without a restart.
         # Both are resolved into the boot AgentEngine when
         # ``build_runtime_services`` (re)builds it, so an edit reaches a run
         # only through a rebuild.
         ("engine", "clarification_enabled"),
         ("engine", "scoping_enabled"),
+        # Auto-review + the completion oracle are wired into the runtime on a
+        # rebuild: the pipeline is (re)built by ``build_runtime_services`` and
+        # the oracle gates are re-attached to the review-gate service, so an
+        # edit to any of these applies on the next task without a restart.
         ("engine", "auto_review_on_completion"),
         ("engine", "completion_oracle_enabled"),
         ("engine", "completion_oracle_shadow_mode"),
