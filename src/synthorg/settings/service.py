@@ -781,14 +781,19 @@ class SettingsService:
         """
 
         async def _current(namespace: str, key: str) -> str | None:
-            try:
-                entry = await self.get(namespace, key)
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                return None
+            # Deliberately unguarded: a read that cannot answer must fail the
+            # write, not let the rule compare against a default that is not
+            # in force and approve the combination it exists to refuse.
+            entry = await self.get(namespace, key)
             return entry.value
 
-        await enforce_cross_field_rules(items, get_current=_current)
+        def _default(namespace: str, key: str) -> str | None:
+            definition = self._registry.get(namespace, key)
+            return None if definition is None else str(definition.default)
+
+        await enforce_cross_field_rules(
+            items, get_current=_current, get_default=_default
+        )
 
     async def _set_many(
         self,

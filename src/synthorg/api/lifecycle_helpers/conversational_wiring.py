@@ -34,6 +34,18 @@ from synthorg.providers.registry import ProviderRegistry
 logger = get_logger(__name__)
 
 
+class ConversationalApprovalsUnsupportedError(ServiceUnavailableError):
+    """The backend cannot durably hold a conversational approval.
+
+    Distinct from the bare ``ServiceUnavailableError`` its parent raises so
+    the subsystem activation can catch the deliberate refusal without also
+    catching a genuine wiring fault: ``require_service`` reports an absent
+    collaborator with the same base type, and treating that as an intended
+    refusal would leave the subsystem reading BLOCKED instead of FAILED,
+    with nothing naming what is actually broken.
+    """
+
+
 async def wire_group_chat_service(
     app_state: AppState,
     *,
@@ -169,9 +181,9 @@ def _guard_conversational_persistence(
     capability guard rather than a live constraint on either of them.
 
     Raises:
-        ServiceUnavailableError: When propose or invite is enabled
-            against a persistent ``ApprovalStore`` on a backend that does
-            not support conversational approvals.
+        ConversationalApprovalsUnsupportedError: When propose or invite is
+            enabled against a persistent ``ApprovalStore`` on a backend that
+            does not support conversational approvals.
     """
     store_has_persistent_repo = (
         isinstance(approval_store, ApprovalStore) and approval_store.has_persistent_repo
@@ -195,7 +207,7 @@ def _guard_conversational_persistence(
             backend_name=persistence.backend_name,
             approval_store_type=type(approval_store).__name__,
         )
-        raise ServiceUnavailableError(msg)
+        raise ConversationalApprovalsUnsupportedError(msg)
 
 
 async def _wire_conversational_repositories_and_reconcile(

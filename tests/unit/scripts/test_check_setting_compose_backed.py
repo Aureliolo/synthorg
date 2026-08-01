@@ -116,6 +116,20 @@ class TestGate:
         )
         assert main(["--repo-root", str(root)]) == 1
 
+    def test_a_longer_var_does_not_back_its_prefix(self, tmp_path: Path) -> None:
+        # ``SYNTHORG_API_SERVER_HOST`` is a strict prefix of the variable the
+        # compose files actually set. A substring test would call it backed
+        # and approve a value no launcher ever passes.
+        longer = "      SYNTHORG_API_SERVER_HOST_ALIAS: 'example'\n"
+        root = _write_repo(
+            tmp_path,
+            key="server_host",
+            extra="        compose_set=True,\n",
+            template=longer,
+            docker_compose=longer,
+        )
+        assert main(["--repo-root", str(root)]) == 1
+
     def test_fails_when_only_the_cli_template_sets_the_var(
         self, tmp_path: Path
     ) -> None:

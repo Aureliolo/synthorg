@@ -166,14 +166,32 @@ def unbacked(
     """
     failures: list[tuple[ComposeSetSetting, str]] = []
     for record in records:
-        if record.env_var in sources[_WORKER_SOURCE_REL]:
+        if _sets_env_var(sources[_WORKER_SOURCE_REL], record.env_var):
             continue
         failures.extend(
             (record, rel)
             for rel in _BACKEND_SOURCE_RELS
-            if record.env_var not in sources[rel]
+            if not _sets_env_var(sources[rel], record.env_var)
         )
     return sorted(failures, key=lambda pair: (pair[0].setting_key, pair[1]))
+
+
+def _sets_env_var(source: str, env_var: str) -> bool:
+    """Report whether *source* sets exactly *env_var*.
+
+    Matched on whole tokens. A plain substring test passes a setting whose
+    variable is a strict prefix of one that IS set, so ``SYNTHORG_API_SSL``
+    would read as backed on the strength of ``SYNTHORG_API_SSL_CERT_FILE``
+    and the gate would approve a value no launcher ever passes.
+
+    Args:
+        source: The launcher text to search.
+        env_var: The variable that must appear.
+
+    Returns:
+        ``True`` when the variable appears as its own token.
+    """
+    return re.search(rf"(?<!\w){re.escape(env_var)}(?!\w)", source) is not None
 
 
 def _read_sources(repo_root: Path) -> dict[str, str]:

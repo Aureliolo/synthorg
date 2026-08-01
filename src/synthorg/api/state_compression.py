@@ -55,8 +55,15 @@ class CompressionState:
             (nothing is serving responses, so there is nothing to retune).
 
         Raises:
+            TypeError: If *minimum_size* is not an ``int``. ``bool`` is
+                refused explicitly: it is an ``int`` subclass, so ``True``
+                would otherwise install a one-byte threshold and compress
+                every response the API returns.
             ValueError: If *minimum_size* is not positive.
         """
+        if isinstance(minimum_size, bool) or not isinstance(minimum_size, int):
+            msg = f"minimum_size must be an int, got {type(minimum_size).__name__}"
+            raise TypeError(msg)
         if minimum_size <= 0:
             msg = f"minimum_size must be positive, got {minimum_size}"
             raise ValueError(msg)

@@ -381,9 +381,9 @@ async def _activate_chief_of_staff_proposer(app_state: AppState) -> None:
     BLOCKED, its controller 503s, and the rest of the pass is unaffected.
     """
     from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+        ConversationalApprovalsUnsupportedError,
         wire_chief_of_staff_proposer,
     )
-    from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
     try:
         await wire_chief_of_staff_proposer(
@@ -394,9 +394,12 @@ async def _activate_chief_of_staff_proposer(app_state: AppState) -> None:
             effective_approval_store=_required_approval_store(app_state),
             si_config=await _si_config(app_state),
         )
-    except ServiceUnavailableError as exc:
+    except ConversationalApprovalsUnsupportedError as exc:
         # lint-allow: swallow-ok -- the guard's refusal is the intended
-        # outcome; every other exception is a genuine fault and propagates.
+        # outcome. Caught by its own type rather than the shared 503 base,
+        # so an absent collaborator (which require_service reports with that
+        # base) still marks the subsystem FAILED instead of reading as a
+        # deliberate refusal.
         logger.warning(
             SUBSYSTEM_ACTIVATION_DECLINED,
             subsystem="chief_of_staff_proposer",
@@ -614,11 +617,16 @@ async def _activate_company_read_service(app_state: AppState) -> None:
         _wire_company_read_service,
     )
 
+    # Persistence is deliberately absent from ``requires``: company reads
+    # degrade to the resolver alone, so ``None`` here is a supported state
+    # rather than a missing dependency. Read through the typed accessor all
+    # the same, so renaming the property fails the type check instead of
+    # silently reporting every backend disconnected.
     persistence = _persistence(app_state)
     await _wire_company_read_service(
         app_state,
         persistence,
-        connected=getattr(persistence, "is_connected", False),
+        connected=persistence is not None and persistence.is_connected,
     )
 
 
