@@ -701,6 +701,38 @@ def test_index_using_drift_is_flagged() -> None:
     assert "index_attr:idx_m:using:BTREE:GIN" in findings
 
 
+def test_partial_index_not_null_spellings_are_equivalent() -> None:
+    """``NOT x IS NULL`` and ``x IS NOT NULL`` are one predicate, not drift.
+
+    Each dialect parses the same predicate into a different tree, so the
+    comparison folds them together before rendering.
+    """
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, e TEXT);"
+        "CREATE INDEX idx_e ON t(e) WHERE NOT e IS NULL;"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, e TEXT);"
+        "CREATE INDEX idx_e ON t(e) WHERE e IS NOT NULL;"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert not [f for f in findings if f.startswith("index_attr:idx_e:where")]
+
+
+def test_partial_index_where_drift_is_still_flagged() -> None:
+    """Folding the NOT-IS-NULL spellings must not mask a genuine predicate diff."""
+    sqlite_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, e TEXT);"
+        "CREATE INDEX idx_e ON t(e) WHERE e IS NOT NULL;"
+    )
+    postgres_sql = (
+        "CREATE TABLE t (id TEXT PRIMARY KEY, e TEXT);"
+        "CREATE INDEX idx_e ON t(e) WHERE e IS NULL;"
+    )
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "index_attr:idx_e:where:e IS NOT NULL:e IS NULL" in findings
+
+
 def test_index_columns_drift_is_flagged() -> None:
     """A shared-name index with different indexed columns surfaces drift."""
     sqlite_sql = (

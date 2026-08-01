@@ -263,6 +263,27 @@ def _normalise_index(stmt: exp.Create, dialect: str) -> NormalizedIndex | None:
     )
 
 
+def _canonicalize_predicate(node: exp.Expression) -> exp.Expression:
+    """Fold ``NOT x IS NULL`` into the equivalent ``x IS NOT NULL`` shape.
+
+    The two backends parse an identical partial-index predicate into different
+    trees: SQLite yields ``Not(Is(x, Null))`` while Postgres yields
+    ``Is(x, Null, negate=True)``. Rendering each with its own dialect would
+    then report the pair as drift, so both are folded to one spelling first.
+    """
+
+    def _fold(candidate: exp.Expression) -> exp.Expression:
+        if isinstance(candidate, exp.Not) and isinstance(candidate.this, exp.Is):
+            inner_is = candidate.this
+            if not inner_is.args.get("negate"):
+                folded = inner_is.copy()
+                folded.set("negate", value=True)
+                return folded
+        return candidate
+
+    return node.copy().transform(_fold)
+
+
 def _extract_index_params(
     inner: exp.Index,
     dialect: str,
@@ -283,7 +304,7 @@ def _extract_index_params(
     columns = tuple(column_names)
     where_node = params.args.get("where")
     if where_node is not None:
-        where_text = where_node.this.sql(dialect=dialect)
+        where_text = _canonicalize_predicate(where_node.this).sql(dialect=dialect)
     using_node = params.args.get("using")
     if using_node is not None:
         using_text = using_node.sql(dialect=dialect).upper()
