@@ -5,13 +5,16 @@ binary outcome and uptime only, never the component topology and never the
 build version. Both live behind authentication on ``/health``.
 """
 
+import asyncio
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.config import ApiConfig
 from synthorg.api.controllers._health_probes import (
     TelemetryStatus,
     memory_readiness,
@@ -21,6 +24,7 @@ from synthorg.api.controllers._health_probes import (
 )
 from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
+from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.health import (
     ProviderHealthRecord,
@@ -579,6 +583,35 @@ class TestReadinessProviders:
             )
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
+        ) as client:
+            response = await client.get("/api/v1/readyz")
+            assert response.status_code == 200
+            assert response.json()["data"]["status"] == "ok"
+
+    async def test_a_stalled_provider_probe_leaves_readiness_ok(self) -> None:
+        # Excluding providers from the roll-up is not enough on its own: run
+        # inside the gating fan-out, a probe that never returns expires the
+        # shared budget and produces the same 503 by another route. The gate
+        # must be decided by the dependencies this process owns, whatever the
+        # provider probe is doing.
+        class _StalledTracker(ProviderHealthTracker):
+            @override
+            async def are_all_reachable(
+                self,
+                *,
+                now: datetime | None = None,
+            ) -> bool:
+                await asyncio.Event().wait()
+                raise AssertionError  # pragma: no cover - never reached
+
+        # A short budget so the stall is bounded by the probe's own timeout
+        # rather than by the default an operator would run in production.
+        config = RootConfig(
+            company_name="test",
+            api=ApiConfig(readiness_probe_timeout_seconds=0.2),
+        )
+        async with LoopAsyncClient(
+            create_app(config=config, provider_health_tracker=_StalledTracker()),
         ) as client:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 200

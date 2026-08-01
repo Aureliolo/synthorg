@@ -384,7 +384,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         interval_seconds=effective_config.api.subsystem_resync_interval_seconds,
     )
     startup = [*startup, resync_scheduler.start]
-    shutdown = [resync_scheduler.stop, *shutdown]
 
     async def _start_construction_dispatcher() -> None:
         # Bring up the construction-phase dispatcher's HTTP-bearing sinks under
@@ -418,5 +417,10 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     feature_lifecycle_runner = build_feature_lifecycle_runner()
     startup = [*startup, feature_lifecycle_runner.start_all]
     shutdown = [feature_lifecycle_runner.stop_all, *shutdown]
+
+    # Ahead of the feature runner, so nothing is left that could wire a
+    # subsystem back up. A sweep firing between the two teardowns would
+    # reactivate against feature hooks that have already stopped.
+    shutdown = [resync_scheduler.stop, *shutdown]
 
     return startup, shutdown

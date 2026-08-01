@@ -12,7 +12,10 @@ from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.spec import Capability, CapabilityId, SubsystemSpec
 
 
-def order_subsystems(specs: Iterable[SubsystemSpec]) -> tuple[SubsystemSpec, ...]:
+def order_subsystems(
+    specs: Iterable[SubsystemSpec],
+    known: Iterable[CapabilityId] = (),
+) -> tuple[SubsystemSpec, ...]:
     """Return the specs in dependency order.
 
     Ties break on declaration order so a reconcile pass is deterministic and
@@ -20,16 +23,29 @@ def order_subsystems(specs: Iterable[SubsystemSpec]) -> tuple[SubsystemSpec, ...
 
     Args:
         specs: The declared subsystems, in declaration order.
+        known: Capabilities that have a live probe. A requirement that is
+            neither provided by a subsystem nor probed here has no way to read
+            as absent, so it is refused rather than silently satisfied.
 
     Returns:
         The same specs ordered so every provider precedes its consumers.
 
     Raises:
-        SubsystemGraphInvalidError: On a duplicate ``provides``, or a cycle.
+        SubsystemGraphInvalidError: On a duplicate name, a duplicate
+            ``provides``, an unprobed requirement, or a cycle.
     """
     pending = list(specs)
+    probed = set(known)
     providers: dict[CapabilityId, str] = {}
+    names: set[str] = set()
     for spec in pending:
+        if spec.name in names:
+            msg = (
+                f"Subsystem name {spec.name!r} is declared twice; the name keys "
+                "the status surface and the reconciler's own bookkeeping"
+            )
+            raise SubsystemGraphInvalidError(msg)
+        names.add(spec.name)
         existing = providers.get(spec.provides)
         if existing is not None:
             msg = (
@@ -38,6 +54,9 @@ def order_subsystems(specs: Iterable[SubsystemSpec]) -> tuple[SubsystemSpec, ...
             )
             raise SubsystemGraphInvalidError(msg)
         providers[spec.provides] = spec.name
+
+    if probed:
+        _reject_unprobed_requirements(pending, providers, probed)
 
     ordered: list[SubsystemSpec] = []
     satisfied: set[CapabilityId] = set()
@@ -60,6 +79,39 @@ def order_subsystems(specs: Iterable[SubsystemSpec]) -> tuple[SubsystemSpec, ...
         ready_names = {spec.name for spec in ready}
         remaining = [spec for spec in remaining if spec.name not in ready_names]
     return tuple(ordered)
+
+
+def _reject_unprobed_requirements(
+    specs: Sequence[SubsystemSpec],
+    providers: Mapping[CapabilityId, str],
+    probed: set[CapabilityId],
+) -> None:
+    """Refuse a requirement nothing can ever report as absent.
+
+    An ambient precondition is established during construction and read by a
+    probe. One that is neither owned nor probed is not ambient, it is a typo,
+    and it fails open: the consumer activates as though the dependency were
+    there.
+
+    Args:
+        specs: The declared subsystems.
+        providers: Capability owners, keyed by capability.
+        probed: Capabilities that have a live probe.
+
+    Raises:
+        SubsystemGraphInvalidError: On a requirement that is neither owned
+            nor probed.
+    """
+    for spec in specs:
+        for need in spec.requires:
+            if need in providers or need in probed:
+                continue
+            msg = (
+                f"Subsystem {spec.name!r} requires {need.value!r}, which no "
+                "subsystem provides and no capability probes; it would read as "
+                "present on every pass"
+            )
+            raise SubsystemGraphInvalidError(msg)
 
 
 def missing_capabilities(
@@ -111,21 +163,33 @@ def capability_fingerprint(
     needs: Sequence[CapabilityId],
     capabilities: Mapping[CapabilityId, Capability],
     app_state: AppState,
-) -> tuple[bool, ...]:
-    """Snapshot the availability of a subsystem's requirements.
+    generations: Mapping[CapabilityId, int] | None = None,
+) -> tuple[tuple[bool, int], ...]:
+    """Snapshot the availability and identity of a subsystem's requirements.
 
     Compared across passes to spot a dependency that changed under a
-    subsystem which captured it by value at activation.
+    subsystem which captured it by value at activation. Availability alone is
+    not enough, and on its own is never enough: activation only runs when no
+    requirement is missing, so a snapshot of availability taken then matches
+    every later snapshot taken while the subsystem is still up. The
+    generation counter is what makes a replacement visible, so a provider
+    rebuilt underneath a consumer reads as the different instance it is.
 
     Args:
         needs: The capabilities to snapshot, in declaration order.
         capabilities: Live availability checks, keyed by capability.
         app_state: Application state the checks read.
+        generations: How many times each capability's owner has come up.
 
     Returns:
-        One flag per requirement, positionally aligned with ``needs``.
+        One ``(present, generation)`` pair per requirement, positionally
+        aligned with ``needs``.
     """
-    return tuple(_is_present(capabilities.get(need), app_state) for need in needs)
+    counters = generations or {}
+    return tuple(
+        (_is_present(capabilities.get(need), app_state), counters.get(need, 0))
+        for need in needs
+    )
 
 
 def _is_present(capability: Capability | None, app_state: AppState) -> bool:

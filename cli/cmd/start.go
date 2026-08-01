@@ -40,10 +40,14 @@ var startCmd = &cobra.Command{
 
 By default this pulls each image (verifying signatures and SLSA
 attestations against the pinned digests) before bringing the stack
-up detached, then waits for the backend's /api/v1/readyz to return
-healthy. Pass --no-pull to skip the pull when iterating locally,
---no-detach to stream logs in the foreground, or --dry-run to print
-the docker commands the run would issue without executing them.`,
+up detached, then waits for the backend's /api/v1/healthz to report
+it is serving. Success means the backend is up, not that every
+optional dependency answered: /api/v1/readyz may still return 503,
+in which case start prints which subsystems are waiting and exits 0
+anyway, because the dashboard that fixes them is already running.
+Pass --no-pull to skip the pull when iterating locally, --no-detach
+to stream logs in the foreground, or --dry-run to print the docker
+commands the run would issue without executing them.`,
 	Example: `  synthorg start              # pull, verify, and start
   synthorg start --no-pull    # start without pulling images
   synthorg start --dry-run    # preview what would happen
@@ -370,7 +374,8 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 	sp.Success("Containers started")
 
-	if err := waitForBackendHealthy(ctx, info, safeDir, state, out, errOut, healthTimeout); err != nil {
+	dependenciesReady, err := waitForBackendHealthy(ctx, info, safeDir, state, out, errOut, healthTimeout)
+	if err != nil {
 		return err
 	}
 
@@ -381,7 +386,14 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
 		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),
 	}
-	out.Box("Ready", readyLines)
+	// "Started" is what the command actually established when a dependency
+	// is still missing or was never probed; "Ready" over a degraded stack
+	// contradicts the warning printed directly above it.
+	boxTitle := "Started"
+	if dependenciesReady {
+		boxTitle = "Ready"
+	}
+	out.Box(boxTitle, readyLines)
 	out.Blank()
 	out.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
 	// Surface the --no-pull caveat BEFORE the routine status-watch tip:
@@ -395,13 +407,18 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	return nil
 }
 
-// waitForBackendHealthy polls the started backend's readiness endpoint
-// until it is healthy or the timeout elapses, unless --no-wait was set.
-func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {
+// waitForBackendHealthy polls the started backend's liveness endpoint until
+// it is serving or the timeout elapses, unless --no-wait was set.
+//
+// The bool reports whether every dependency also answered ready. It is false
+// whenever that is not known to be true, including when the probe was skipped
+// or could not be made, so the caller never labels an unverified start as
+// ready.
+func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) (bool, error) {
 	if startNoWait {
 		out.Step("Health check skipped (--no-wait)")
 		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
-		return nil
+		return false, nil
 	}
 	sp := out.StartSpinner("Waiting for backend to start...")
 	// Liveness, not readiness. `start` promises the backend is up and
@@ -417,42 +434,46 @@ func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string
 		sp.Error("Backend did not start")
 		reportStartFailure(ctx, info, safeDir, errOut)
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
-		return fmt.Errorf("backend did not start: %w", err)
+		return false, fmt.Errorf("backend did not start: %w", err)
 	}
 	sp.Success("Backend started")
-	warnIfDependenciesDegraded(ctx, state, out)
+	dependenciesReady := warnIfDependenciesDegraded(ctx, state, out)
 	if state.PersistenceBackend == "postgres" {
 		out.Step("Postgres migrations checked/applied during backend startup")
 	}
-	return nil
+	return dependenciesReady, nil
 }
 
 // warnIfDependenciesDegraded reports a backend that is serving but has a
-// dependency still unresolved, without failing the command.
+// dependency still unresolved, without failing the command. It returns
+// whether readiness answered OK; a probe that could not be made returns
+// false, because "not observed ready" is the honest answer and the caller
+// labels its final box from it.
 //
 // The readiness body is deliberately topology-free, so this can only say
 // that something is degraded, not which thing. Naming it needs the
 // authenticated detail endpoint; pointing at the dashboard is what the CLI
 // can honestly do with an unauthenticated probe.
-func warnIfDependenciesDegraded(ctx context.Context, state config.State, out *ui.UI) {
+func warnIfDependenciesDegraded(ctx context.Context, state config.State, out *ui.UI) bool {
 	readyURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
 	if err != nil {
-		return
+		return false
 	}
 	resp, err := health.HTTPClient().Do(req)
 	if err != nil {
-		return
+		return false
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusOK {
-		return
+		return true
 	}
 	out.Warn("Backend is serving, but a dependency is not ready yet.")
 	out.HintNextStep(
 		"Subsystems waiting on a missing dependency come up on their own once " +
 			"it appears; open the dashboard or run 'synthorg doctor' to see which.",
 	)
+	return false
 }
 
 // registryOverrideEnvVars lists every env var that, if set, overrides
@@ -534,7 +555,8 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 	if healthTimeout <= 0 {
 		healthTimeout = config.DefaultHealthWaitTimeout
 	}
-	return waitForBackendHealthy(ctx, info, safeDir, state, out, errOut, healthTimeout)
+	_, err := waitForBackendHealthy(ctx, info, safeDir, state, out, errOut, healthTimeout)
+	return err
 }
 
 // composeServiceNames returns the compose service names that need pulling

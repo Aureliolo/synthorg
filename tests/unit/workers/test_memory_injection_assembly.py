@@ -7,15 +7,14 @@ every task and no agent ever received a memory it had not explicitly
 asked for.
 """
 
-import inspect
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-import synthorg.api.lifecycle_assembly
+from synthorg.api.lifecycle_assembly import assemble_lifespan_hooks
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.registry import SUBSYSTEMS
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.config.schema import RootConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.wiki_export import WikiExporter
@@ -25,6 +24,7 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers._memory_assembly import (
     build_memory_injection_strategy_or_none,
@@ -166,15 +166,35 @@ class TestOrgMemoryWiringOrder:
     """
 
     def test_reconcile_precedes_runtime_services(self) -> None:
-        source = Path(inspect.getfile(synthorg.api.lifecycle_assembly)).read_text(
-            encoding="utf-8"
+        # Asserted against the assembled hook list, not the module's source
+        # text: the order that matters is the one the app actually runs, and
+        # a source scan agrees with it only until someone reformats the file.
+        startup, _ = assemble_lifespan_hooks(
+            make_app_state(),
+            persistence=None,
+            message_bus=None,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            should_auto_wire_settings=False,
+            effective_config=RootConfig(company_name="test"),
+            connection_catalog=None,
+            provider_registry=None,
+            cost_tracker=None,
+            approval_store=MagicMock(spec=ApprovalStoreProtocol),
+            performance_tracker=None,
+            notification_dispatcher=MagicMock(spec=NotificationDispatcher),
         )
-        hooks = source.split("startup = [", 1)[1].split("]", 1)[0]
+        names = [getattr(hook, "__name__", "") for hook in startup]
 
-        reconcile_at = hooks.index("_reconcile_subsystems")
-        runtime_at = hooks.index("_install_runtime_services")
-
-        assert reconcile_at < runtime_at
+        assert "_reconcile_subsystems" in names
+        assert "_install_runtime_services" in names
+        assert names.index("_reconcile_subsystems") < names.index(
+            "_install_runtime_services"
+        )
 
     def test_both_memory_backends_are_declared(self) -> None:
         # Declared, so the pass that runs before runtime services brings

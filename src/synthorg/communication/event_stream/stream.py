@@ -248,7 +248,16 @@ class EventStreamHub:
         A subscriber already streaming keeps the queue it was given: an
         ``asyncio.Queue`` cannot be rebounded, and swapping one underneath a
         live consumer would drop whatever it had buffered.
+
+        Raises:
+            ValueError: When the bound is below 1. The constructor refuses
+                the same value, and a live write is the path an operator
+                actually takes, so accepting it here would mean the only
+                reachable route to an unusable queue is the guarded one.
         """
+        if value < 1:
+            msg = f"max_queue_size must be >= 1, got {value}"
+            raise ValueError(msg)
         self._max_queue_size = value
 
     async def _run_prune(self, idle_ttl_fallback: float) -> None:

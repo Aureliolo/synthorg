@@ -18,9 +18,10 @@ from synthorg.observability.events.subsystem import (
     SUBSYSTEM_RESYNC_STARTED,
     SUBSYSTEM_RESYNC_STOPPED,
 )
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
-_NAMESPACE = "api"
+_NAMESPACE = SettingNamespace.API.value
 _INTERVAL_KEY = "subsystem_resync_interval_seconds"
 
 
@@ -45,8 +46,16 @@ class SubsystemResyncScheduler(AsyncCycleScheduler):
 
     @override
     async def _run_cycle_once(self) -> None:
-        """Run one reconcile pass."""
-        await reconcile_subsystems(self._app_state, trigger="resync")
+        """Run one reconcile pass, re-attempting whatever declined.
+
+        The unconditional retry belongs here and nowhere else. An activation
+        that declined over a condition its declaration does not model leaves
+        nothing an event trigger could compare against, so this sweep is what
+        makes such a subsystem recoverable at all.
+        """
+        await reconcile_subsystems(
+            self._app_state, trigger="resync", retry_declined=True
+        )
 
     @override
     async def _resolve_wait_interval(self) -> float:

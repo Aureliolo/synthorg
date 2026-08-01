@@ -13,7 +13,7 @@ from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.api.subsystems.state import SubsystemsStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.subsystem import SUBSYSTEM_RECONCILE_COMPLETED
+from synthorg.observability.events.subsystem import SUBSYSTEM_RECONCILE_ABORTED
 
 logger = get_logger(__name__)
 
@@ -42,6 +42,7 @@ async def reconcile_subsystems(
     app_state: AppState,
     *,
     trigger: str,
+    retry_declined: bool = False,
 ) -> ReconcileReport | None:
     """Drive every declared subsystem toward its desired state.
 
@@ -52,12 +53,16 @@ async def reconcile_subsystems(
     Args:
         app_state: Application state the checks and wiring read.
         trigger: What prompted this pass, for the logs only.
+        retry_declined: Re-attempt activations that already declined on
+            inputs that have not moved since. Reserved for the periodic sweep.
 
     Returns:
         The pass report, or ``None`` when the pass itself could not run.
     """
     try:
-        return await reconciler_of(app_state).reconcile(app_state, trigger=trigger)
+        return await reconciler_of(app_state).reconcile(
+            app_state, trigger=trigger, retry_declined=retry_declined
+        )
     except Exception as exc:  # noqa: BLE001 -- a trigger must not take the caller down
         reraise_critical(exc)
         # Reaching here means the pass could not run at all, not that a
@@ -65,7 +70,7 @@ async def reconcile_subsystems(
         # settings write or a provider edit must still succeed, and the next
         # pass retries from whatever state this one left.
         logger.error(
-            SUBSYSTEM_RECONCILE_COMPLETED,
+            SUBSYSTEM_RECONCILE_ABORTED,
             trigger=trigger,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

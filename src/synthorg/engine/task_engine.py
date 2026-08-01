@@ -102,15 +102,10 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._message_bus = message_bus
         self._config = config or TaskEngineConfig()
         self._clock: Clock = clock if clock is not None else SystemClock()
-        # Eager init: ``submit`` may enqueue mutations before the
-        # processing task is spawned; the queue must exist for the
-        # atomic check-and-put in ``submit`` to work safely.
-        #
-        # The queue itself is unbounded and the admission cap is enforced
-        # in ``submit`` under ``_admission_lock``: the check-and-put is
-        # atomic there either way, and keeping the bound out of the queue
-        # object lets an operator resize it without swapping the queue the
-        # processing loop is parked on.
+        # Eager init: ``submit`` may enqueue before the processing task is
+        # spawned. Unbounded on purpose, with the cap enforced in ``submit``
+        # under ``_admission_lock``, so an operator can resize it without
+        # swapping the queue the processing loop is parked on.
         # fmt: off
         self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue()  # lint-allow: loop-bound-init -- see.  # noqa: E501
         # fmt: on

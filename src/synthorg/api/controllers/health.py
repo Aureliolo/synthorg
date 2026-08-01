@@ -11,6 +11,7 @@
 """
 
 import asyncio
+import contextlib
 from enum import StrEnum
 from typing import Literal
 
@@ -257,6 +258,63 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
         return boot_value
 
 
+async def _probe_providers_reported(
+    app_state: AppState,
+    probe_timeout: float,
+) -> bool | None:
+    """Report provider reachability without ever gating readiness.
+
+    Kept out of the gating fan-out, not merely out of the roll-up. Provider
+    reachability is reported and never gates, so a probe that stalls must not
+    be able to spend the budget the gating dependencies are measured against:
+    inside the fan-out it would expire the shared timeout and return the same
+    503 that excluding it from the roll-up was meant to remove.
+
+    Args:
+        app_state: Application state carrying the provider health tracker.
+        probe_timeout: Seconds this probe may take before reporting DOWN.
+
+    Returns:
+        Whether every tracked provider is reachable, or ``None`` when no
+        tracker is configured.
+    """
+
+    async def _probe() -> bool:
+        return await require_service(
+            app_state.slice(ProvidersStateSlice).health_tracker,
+            "Provider Health Tracker",
+        ).are_all_reachable()
+
+    try:
+        async with asyncio.timeout(probe_timeout):
+            return await probe_service(
+                configured=app_state.slice(ProvidersStateSlice).health_tracker
+                is not None,
+                probe=_probe,
+                component="providers",
+            )
+    except TimeoutError:
+        logger.warning(
+            API_HEALTH_CHECK,
+            component="providers",
+            error="provider probe timed out",
+            error_type="TimeoutError",
+            timeout_seconds=probe_timeout,
+        )
+        return False
+
+
+async def _discard(task: asyncio.Task[bool | None]) -> None:
+    """Drop a reporting probe whose result cannot change the verdict.
+
+    Args:
+        task: The in-flight probe to cancel and settle.
+    """
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     """Probe every configured dependency and compute the readiness status.
 
@@ -274,6 +332,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
             (MemoryError / RecursionError / CancelledError).
     """
     probe_timeout = await _resolve_readiness_probe_timeout(app_state)
+    providers_task = asyncio.create_task(
+        _probe_providers_reported(app_state, probe_timeout)
+    )
     try:
         # Bound the whole dependency fan-out: a single hung probe (a
         # wedged health_check that never returns) must yield a 503
@@ -295,20 +356,6 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
                 ),
             )
 
-            async def _probe_providers() -> bool:
-                return await require_service(
-                    app_state.slice(ProvidersStateSlice).health_tracker,
-                    "Provider Health Tracker",
-                ).are_all_reachable()
-
-            providers_task = tg.create_task(
-                probe_service(
-                    configured=app_state.slice(ProvidersStateSlice).health_tracker
-                    is not None,
-                    probe=_probe_providers,
-                    component="providers",
-                ),
-            )
             # Inside the fan-out so a wedged memory store is bounded by
             # the same probe budget as every other dependency.
             memory_task = tg.create_task(resolve_memory_state(app_state))
@@ -316,6 +363,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         # The probe fan-out exceeded the budget; ``asyncio.timeout``
         # cancelled the TaskGroup and surfaced a bare ``TimeoutError``.
         # A timed-out probe is an unavailable verdict, not a 500.
+        await _discard(providers_task)
         logger.warning(
             API_HEALTH_CHECK,
             component="readiness",
@@ -335,13 +383,15 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
             if isinstance(exc, MemoryError | RecursionError | asyncio.CancelledError)
         ]
         if fatal:
+            await _discard(providers_task)
             raise
+        await _discard(providers_task)
         log_exception_redacted(logger, API_HEALTH_CHECK, group, component="readiness")
         return _unavailable_status(app_state)
 
     persistence_ok = persistence_task.result()
     bus_ok = bus_task.result()
-    providers_ok = providers_task.result()
+    providers_ok = await providers_task
     telemetry_status = resolve_telemetry_status(app_state)
     memory_health = memory_task.result()
     memory_ready = memory_readiness(memory_health)

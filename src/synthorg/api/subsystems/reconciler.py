@@ -100,9 +100,11 @@ class ReconcileReport:
 class _Bookkeeping:
     """Cross-pass memory the level-triggered comparison itself cannot hold."""
 
-    fingerprints: dict[str, tuple[bool, ...]] = field(default_factory=dict)
+    fingerprints: dict[str, tuple[tuple[bool, int], ...]] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
     declined: set[str] = field(default_factory=set)
+    attempted: dict[str, tuple[tuple[bool, int], ...]] = field(default_factory=dict)
+    generations: dict[CapabilityId, int] = field(default_factory=dict)
 
 
 class SubsystemReconciler:
@@ -128,20 +130,29 @@ class SubsystemReconciler:
                 ordered. Raised here, at construction, so a bad declaration
                 fails the build rather than quietly never activating.
         """
-        self._specs = order_subsystems(specs)
         self._capabilities = {cap.id: cap for cap in capabilities}
+        self._specs = order_subsystems(specs, self._capabilities)
         self._book = _Bookkeeping()
         # Created on first use, not here: an event loop may not exist yet at
         # construction, and binding a lock to the wrong loop is unrecoverable.
         self._lock: asyncio.Lock | None = None
 
-    async def reconcile(self, app_state: AppState, *, trigger: str) -> ReconcileReport:
+    async def reconcile(
+        self,
+        app_state: AppState,
+        *,
+        trigger: str,
+        retry_declined: bool = False,
+    ) -> ReconcileReport:
         """Run one pass over every subsystem.
 
         Args:
             app_state: Application state the checks and wiring read.
             trigger: What prompted this pass, for the logs. Carries no
                 behavioural weight; the pass is identical either way.
+            retry_declined: Re-attempt an activation that already declined on
+                inputs that have not moved since. Reserved for the periodic
+                sweep, which is the one caller that knows time has passed.
 
         Returns:
             The per-subsystem observation for this pass.
@@ -151,7 +162,9 @@ class SubsystemReconciler:
             lock = asyncio.Lock()
             self._lock = lock
         async with lock:
-            return await self._pass(app_state, trigger=trigger)
+            return await self._pass(
+                app_state, trigger=trigger, retry_declined=retry_declined
+            )
 
     def statuses(self, app_state: AppState) -> tuple[SubsystemStatus, ...]:
         """Report current state without changing anything.
@@ -164,12 +177,20 @@ class SubsystemReconciler:
         """
         return tuple(self._observe(spec, app_state) for spec in self._specs)
 
-    async def _pass(self, app_state: AppState, *, trigger: str) -> ReconcileReport:
+    async def _pass(
+        self,
+        app_state: AppState,
+        *,
+        trigger: str,
+        retry_declined: bool,
+    ) -> ReconcileReport:
         """Evaluate and converge every subsystem once, in dependency order.
 
         Args:
             app_state: Application state the checks and wiring read.
             trigger: What prompted this pass, for the logs.
+            retry_declined: Re-attempt activations that already declined on
+                inputs that have not moved since.
 
         Returns:
             The per-subsystem observation for this pass.
@@ -178,7 +199,9 @@ class SubsystemReconciler:
         activated: list[str] = []
         deactivated: list[str] = []
         for spec in self._specs:
-            outcome = await self._converge(spec, app_state)
+            outcome = await self._converge(
+                spec, app_state, retry_declined=retry_declined
+            )
             if outcome is _Outcome.ACTIVATED:
                 activated.append(spec.name)
             elif outcome is _Outcome.DEACTIVATED:
@@ -197,12 +220,20 @@ class SubsystemReconciler:
         )
         return report
 
-    async def _converge(self, spec: SubsystemSpec, app_state: AppState) -> _Outcome:
+    async def _converge(
+        self,
+        spec: SubsystemSpec,
+        app_state: AppState,
+        *,
+        retry_declined: bool = False,
+    ) -> _Outcome:
         """Bring one subsystem to its desired state.
 
         Args:
             spec: The subsystem to converge.
             app_state: Application state the checks and wiring read.
+            retry_declined: Re-attempt an activation that already declined
+                under inputs that have not changed since.
 
         Returns:
             What this subsystem did on this pass.
@@ -221,7 +252,47 @@ class SubsystemReconciler:
             active = is_active(spec, self._capabilities, app_state)
         if active:
             return _Outcome.NONE
+        if not retry_declined and not self._attempt_worthwhile(spec, app_state):
+            return _Outcome.NONE
         return await self._activate(spec, app_state)
+
+    def _attempt_worthwhile(self, spec: SubsystemSpec, app_state: AppState) -> bool:
+        """Report whether activating is worth trying again.
+
+        An activation that declined is a function of what it read, so repeating
+        it against the same readings declines again. Every requirement is
+        snapshotted at the decline, and a pass whose snapshot matches skips the
+        attempt rather than paying for it, so a burst of unrelated triggers
+        costs one probe instead of the whole wiring tree. What the snapshot
+        cannot see is the undeclared condition that made the subsystem BLOCKED
+        in the first place, which is why the periodic sweep attempts
+        unconditionally.
+
+        Args:
+            spec: The subsystem being evaluated.
+            app_state: Application state the checks read.
+
+        Returns:
+            ``True`` when nothing has been tried yet, or a requirement moved.
+        """
+        previous = self._book.attempted.get(spec.name)
+        if previous is None:
+            return True
+        current = capability_fingerprint(
+            spec.requires, self._capabilities, app_state, self._book.generations
+        )
+        return current != previous
+
+    def _record_attempt(self, spec: SubsystemSpec, app_state: AppState) -> None:
+        """Snapshot what this activation read, so a repeat can be skipped.
+
+        Args:
+            spec: The subsystem that just attempted activation.
+            app_state: Application state the checks read.
+        """
+        self._book.attempted[spec.name] = capability_fingerprint(
+            spec.requires, self._capabilities, app_state, self._book.generations
+        )
 
     async def _activate(self, spec: SubsystemSpec, app_state: AppState) -> _Outcome:
         """Run a subsystem's activation and record the result.
@@ -248,6 +319,7 @@ class SubsystemReconciler:
                 error_type=type(exc).__name__,
                 error=detail,
             )
+            self._record_attempt(spec, app_state)
             return _Outcome.NONE
         self._book.failures.pop(spec.name, None)
         if not is_active(spec, self._capabilities, app_state):
@@ -258,10 +330,18 @@ class SubsystemReconciler:
             # present there is nothing to name, and reporting that as waiting
             # would leave an operator with nowhere to look.
             self._book.declined.add(spec.name)
+            self._record_attempt(spec, app_state)
             return _Outcome.NONE
         self._book.declined.discard(spec.name)
+        self._book.attempted.pop(spec.name, None)
+        # Bumped before the consumers' snapshot is taken, so what this
+        # subsystem installed is a different instance to whatever a consumer
+        # captured from the previous one.
+        self._book.generations[spec.provides] = (
+            self._book.generations.get(spec.provides, 0) + 1
+        )
         self._book.fingerprints[spec.name] = capability_fingerprint(
-            spec.requires, self._capabilities, app_state
+            spec.requires, self._capabilities, app_state, self._book.generations
         )
         logger.info(SUBSYSTEM_ACTIVATED, subsystem=spec.name)
         return _Outcome.ACTIVATED
@@ -292,6 +372,13 @@ class SubsystemReconciler:
             )
             return _Outcome.NONE
         self._book.fingerprints.pop(spec.name, None)
+        # Everything remembered about the instance just torn down describes a
+        # subsystem that no longer exists. Left behind, a teardown for a
+        # vanished dependency would keep reporting the failure or the decline
+        # of the previous instance instead of the missing requirement.
+        self._book.attempted.pop(spec.name, None)
+        self._book.failures.pop(spec.name, None)
+        self._book.declined.discard(spec.name)
         logger.info(SUBSYSTEM_DEACTIVATED, subsystem=spec.name)
         return _Outcome.DEACTIVATED
 
@@ -309,7 +396,9 @@ class SubsystemReconciler:
         previous = self._book.fingerprints.get(spec.name)
         if previous is None:
             return False
-        current = capability_fingerprint(spec.requires, self._capabilities, app_state)
+        current = capability_fingerprint(
+            spec.requires, self._capabilities, app_state, self._book.generations
+        )
         return current != previous
 
     def _enabled(self, spec: SubsystemSpec, app_state: AppState) -> bool:
@@ -345,6 +434,16 @@ class SubsystemReconciler:
             Its phase, plus whatever explains a non-active one.
         """
         if is_active(spec, self._capabilities, app_state):
+            # Only reachable without a teardown: with one, the pass that saw
+            # the requirement go took the subsystem down instead of leaving
+            # it up to serve from a collaborator that is no longer there.
+            unmet = missing_capabilities(spec, self._capabilities, app_state)
+            if unmet:
+                return SubsystemStatus(
+                    name=spec.name,
+                    phase=SubsystemPhase.DEGRADED,
+                    waiting_on=unmet,
+                )
             return SubsystemStatus(name=spec.name, phase=SubsystemPhase.ACTIVE)
         if not self._enabled(spec, app_state):
             return SubsystemStatus(name=spec.name, phase=SubsystemPhase.DISABLED)

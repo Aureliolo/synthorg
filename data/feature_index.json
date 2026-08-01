@@ -24,7 +24,6 @@
         "LivenessController",
         "ReadinessController",
         "HealthController",
-        "SubsystemsController",
         "RestartController",
         "CapabilitiesController",
         "AuthBootstrapController",
@@ -1500,6 +1499,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-01T11:41:40.266457Z",
+  "generated_at": "2026-08-01T13:05:37.837628Z",
   "schema_version": 1
 }

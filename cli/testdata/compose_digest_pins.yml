@@ -75,8 +75,9 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      # uid/gid are load-bearing: Caddy runs as 65532 and drops to
-      # read-only mode if it cannot write a root-owned tmpfs.
+      # uid/gid are load-bearing: a tmpfs mounts root-owned by default,
+      # which Caddy (running as 65532) cannot write, so it would fall
+      # back to read-only mode.
       - /tmp:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
       - /config/caddy:noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
       - /data/caddy:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532

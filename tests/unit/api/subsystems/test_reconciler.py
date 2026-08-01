@@ -117,6 +117,40 @@ class TestOrdering:
         with pytest.raises(SubsystemGraphInvalidError, match="one owner"):
             SubsystemReconciler(specs, _all_capabilities(world))
 
+    def test_a_duplicate_name_is_refused(self) -> None:
+        world = _World()
+        specs = (
+            SubsystemSpec(
+                name="memory",
+                provides=CapabilityId.MEMORY_BACKEND,
+                activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            ),
+            SubsystemSpec(
+                name="memory",
+                provides=CapabilityId.ORG_MEMORY_BACKEND,
+                activate=_installs(world, "memory", CapabilityId.ORG_MEMORY_BACKEND),
+            ),
+        )
+        # The name keys the status surface and every bookkeeping dict, so two
+        # declarations sharing one would silently share a decline record.
+        with pytest.raises(SubsystemGraphInvalidError, match="declared twice"):
+            SubsystemReconciler(specs, _all_capabilities(world))
+
+    def test_a_requirement_nothing_probes_is_refused(self) -> None:
+        world = _World()
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.TOOL_CALL_FEEDBACK,),
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        # Unprobed and unowned, so it would read as an ambient precondition
+        # and be satisfied on every pass: the consumer activates as though
+        # the dependency were there.
+        probes = (_capability(world, CapabilityId.MEMORY_BACKEND),)
+        with pytest.raises(SubsystemGraphInvalidError, match="no capability probes"):
+            SubsystemReconciler((spec,), probes)
+
 
 @pytest.mark.unit
 class TestReconcile:
@@ -203,6 +237,91 @@ class TestReconcile:
         assert report.deactivated == ("memory",)
         assert world.deactivations == ["memory"]
 
+    async def test_losing_a_dependency_with_no_teardown_reports_degraded(
+        self,
+    ) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        await reconciler.reconcile(state, trigger="boot")
+
+        world.present.discard(CapabilityId.PERSISTENCE)
+        report = await reconciler.reconcile(state, trigger="resync")
+
+        # Nothing to tear down with, so it stays up holding a collaborator
+        # that is gone. Reporting that as active would be the exact drift
+        # reading liveness from ``provides`` exists to prevent.
+        assert report.deactivated == ()
+        assert report.statuses[0].phase is SubsystemPhase.DEGRADED
+        assert report.statuses[0].waiting_on == (CapabilityId.PERSISTENCE,)
+
+    async def test_disabling_a_running_subsystem_takes_it_down(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE, CapabilityId.KNOWLEDGE_ENGINE)
+        spec = SubsystemSpec(
+            name="knowledge",
+            provides=CapabilityId.KNOWLEDGE_ENGINE,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "knowledge", CapabilityId.KNOWLEDGE_ENGINE),
+            deactivate=_removes(world, "knowledge", CapabilityId.KNOWLEDGE_ENGINE),
+            enabled_by="knowledge.enabled",
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        config = RootConfig(company_name="test")
+        state = AppState(
+            config=config.model_copy(
+                update={
+                    "knowledge": config.knowledge.model_copy(update={"enabled": False})
+                }
+            )
+        )
+
+        # Already up when the operator turns it off, so the pass must take it
+        # down rather than only decline to bring it up next time.
+        report = await reconciler.reconcile(state, trigger="settings_write")
+
+        assert report.deactivated == ("knowledge",)
+        assert world.deactivations == ["knowledge"]
+        assert report.statuses[0].phase is SubsystemPhase.DISABLED
+
+    async def test_a_replaced_dependency_rebuilds_its_consumer(self) -> None:
+        world = _World()
+        provider = SubsystemSpec(
+            name="provider",
+            provides=CapabilityId.PERSISTENCE,
+            activate=_installs(world, "provider", CapabilityId.PERSISTENCE),
+            deactivate=_removes(world, "provider", CapabilityId.PERSISTENCE),
+        )
+        consumer = SubsystemSpec(
+            name="consumer",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "consumer", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "consumer", CapabilityId.MEMORY_BACKEND),
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((provider, consumer), _all_capabilities(world))
+        state = _app_state()
+        await reconciler.reconcile(state, trigger="boot")
+        assert world.activations == ["provider", "consumer"]
+
+        # The provider is replaced within a single pass: ordered first, it
+        # reactivates and reinstalls the capability before the consumer is
+        # evaluated. Availability alone cannot see that, because it reads
+        # present both before and after, while the consumer still holds the
+        # instance being replaced.
+        world.present.discard(CapabilityId.PERSISTENCE)
+        report = await reconciler.reconcile(state, trigger="resync")
+
+        assert world.activations == ["provider", "consumer", "provider", "consumer"]
+        assert "consumer" in report.activated
+        assert report.statuses[1].phase is SubsystemPhase.ACTIVE
+
     async def test_a_failing_activation_is_recorded_and_retried(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
         attempts: list[int] = []
@@ -233,7 +352,9 @@ class TestReconcile:
         # One subsystem that cannot come up must not stop the others.
         assert "healthy" in first.activated
 
-        second = await reconciler.reconcile(state, trigger="resync")
+        second = await reconciler.reconcile(
+            state, trigger="resync", retry_declined=True
+        )
         assert second.activated == ("broken",)
         assert second.failed == ()
 
@@ -282,9 +403,130 @@ class TestReconcile:
         assert first.statuses[0].phase is SubsystemPhase.BLOCKED
 
         # The operator configures the embedder. Nothing announces it, which
-        # is exactly why the sweep keeps asking.
+        # is exactly why the sweep keeps asking, and why it is the one caller
+        # that asks unconditionally.
         allow["now"] = True
-        later = await reconciler.reconcile(state, trigger="resync")
+        later = await reconciler.reconcile(state, trigger="resync", retry_declined=True)
 
         assert later.activated == ("memory",)
         assert later.statuses[0].phase is SubsystemPhase.ACTIVE
+
+
+@pytest.mark.unit
+class TestDeclinedRetry:
+    """A decline is a verdict on its inputs, so unchanged inputs cost nothing.
+
+    Without this, every event trigger re-runs the whole wiring tree for each
+    subsystem that declined, to reach the same refusal. On a deployment with
+    an unset embedding model that is twenty activations per pass.
+    """
+
+    async def test_an_event_trigger_does_not_re_run_a_decline(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        attempts: list[int] = []
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+
+        await reconciler.reconcile(state, trigger="boot")
+        await reconciler.reconcile(state, trigger="settings_write")
+        await reconciler.reconcile(state, trigger="provider_mutation")
+
+        assert attempts == [1]
+
+    async def test_a_requirement_arriving_re_runs_the_decline(self) -> None:
+        world = _World()
+        attempts: list[int] = []
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+
+        await reconciler.reconcile(state, trigger="boot")
+        # Nothing was attempted: the requirement is missing, so the subsystem
+        # is waiting rather than declining.
+        assert attempts == []
+
+        # The requirement arrives. What the subsystem would read has moved, so
+        # the snapshot must not suppress the attempt.
+        world.present.add(CapabilityId.PERSISTENCE)
+        await reconciler.reconcile(state, trigger="settings_write")
+        assert attempts == [1]
+
+        await reconciler.reconcile(state, trigger="settings_write")
+        assert attempts == [1]
+
+    async def test_the_sweep_re_runs_a_decline_with_nothing_changed(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        attempts: list[int] = []
+
+        async def _decline(_state: AppState) -> None:
+            attempts.append(1)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+
+        await reconciler.reconcile(state, trigger="boot")
+        await reconciler.reconcile(state, trigger="resync", retry_declined=True)
+
+        # The condition that declined is one the declaration cannot model, so
+        # nothing it could compare against would ever move. Only a caller that
+        # knows time has passed can recover it.
+        assert attempts == [1, 1]
+
+    async def test_a_teardown_restores_the_next_attempt(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        attempts: list[int] = []
+        allow = {"now": True}
+
+        async def _activate(_state: AppState) -> None:
+            attempts.append(1)
+            if allow["now"]:
+                world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_activate,
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+
+        await reconciler.reconcile(state, trigger="boot")
+        assert attempts == [1]
+
+        # Losing the requirement tears it down; regaining it must activate
+        # again rather than compare against a snapshot the teardown
+        # invalidated.
+        allow["now"] = False
+        world.present.discard(CapabilityId.PERSISTENCE)
+        await reconciler.reconcile(state, trigger="provider_mutation")
+        world.present.add(CapabilityId.PERSISTENCE)
+        await reconciler.reconcile(state, trigger="provider_mutation")
+
+        assert attempts == [1, 1]

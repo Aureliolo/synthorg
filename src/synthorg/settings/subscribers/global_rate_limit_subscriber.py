@@ -25,6 +25,10 @@ _NAMESPACE = "api"
 # itself returns an empty tuple and would reject every window there is,
 # including the one already in force. The members live on ``__value__``.
 _KNOWN_WINDOWS: frozenset[str] = frozenset(get_args(RateLimitWindowUnit.__value__))
+# ``rate_limit_exclude_paths`` is deliberately absent: Litestar applies
+# exclusions when the middleware is mounted, never per request, so no swap
+# can move them. Watching it would rebuild the tiers and log that the limits
+# were swapped, which is true of everything except the setting that changed.
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         (_NAMESPACE, "rate_limiter_enabled"),
@@ -32,7 +36,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         (_NAMESPACE, "rate_limit_unauth_max_requests"),
         (_NAMESPACE, "rate_limit_auth_max_requests"),
         (_NAMESPACE, "rate_limit_time_unit"),
-        (_NAMESPACE, "rate_limit_exclude_paths"),
     }
 )
 

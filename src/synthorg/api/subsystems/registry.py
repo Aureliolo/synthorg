@@ -12,34 +12,44 @@ when the table is built. A value captured once is the same mistake as a
 wiring decision made once: the provider registry in particular is rebuilt
 after a persisted reload, and a captured reference would be the stale one.
 
-Imports are local to each adapter. This module names most of the wiring
-tree, so importing it eagerly would pull the whole boot graph into any cold
-import of :mod:`synthorg.api`.
+Wiring imports are local to each adapter. This module names most of the
+wiring tree, so importing those eagerly would pull the whole boot graph into
+any cold import of :mod:`synthorg.api`. The collaborator TYPES below are
+different: they are protocols and leaf types the accessors have to name so an
+activation call cannot silently take its arguments in the wrong order.
 """
 
+from synthorg._core.features import require_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.spec import CapabilityId, SubsystemSpec
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.registry import ProviderRegistry
 
 
 async def _si_config(app_state: AppState) -> SelfImprovementConfig:
-    """Load the self-improvement config several activations need.
+    """Return the self-improvement config several activations need.
+
+    Reads the slice cache rather than re-parsing: nine activations ask for it
+    in a single pass, and a subsystem gated on an operator toggle asks again
+    on every pass thereafter. ``MetaSelfImprovementSettingsSubscriber``
+    invalidates the cache on an edit, so a shared instance is as live as a
+    fresh parse.
 
     Args:
-        app_state: Application state carrying the settings service.
+        app_state: Application state carrying the cached config.
 
     Returns:
         The resolved config.
     """
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+    from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
 
-    return await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service
-    )
+    return await self_improvement_config_of(app_state)
 
 
-def _registry(app_state: AppState) -> object:
+def _registry(app_state: AppState) -> ProviderRegistry | None:
     """Return the live provider registry.
 
     Args:
@@ -53,7 +63,7 @@ def _registry(app_state: AppState) -> object:
     return app_state.slice(ProvidersStateSlice).registry
 
 
-def _persistence(app_state: AppState) -> object:
+def _persistence(app_state: AppState) -> PersistenceBackend | None:
     """Return the live persistence backend.
 
     Args:
@@ -67,7 +77,7 @@ def _persistence(app_state: AppState) -> object:
     return app_state.slice(PersistenceStateSlice).backend
 
 
-def _cost_tracker(app_state: AppState) -> object:
+def _cost_tracker(app_state: AppState) -> CostTrackerProtocol | None:
     """Return the live cost tracker.
 
     Args:
@@ -81,7 +91,7 @@ def _cost_tracker(app_state: AppState) -> object:
     return app_state.slice(BudgetStateSlice).cost_tracker
 
 
-def _approval_store(app_state: AppState) -> object:
+def _approval_store(app_state: AppState) -> ApprovalStoreProtocol | None:
     """Return the live approval store.
 
     Args:
@@ -93,6 +103,23 @@ def _approval_store(app_state: AppState) -> object:
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
 
     return app_state.slice(ApprovalStateSlice).store
+
+
+def _required_approval_store(app_state: AppState) -> ApprovalStoreProtocol:
+    """Return the approval store for an activation that cannot run without it.
+
+    Only for a subsystem declaring ``APPROVAL_STORE`` in ``requires``: the
+    reconciler has already checked it is there, and raising is the honest
+    response if that ever stops being true, rather than passing ``None`` into
+    a collaborator whose signature says it never receives one.
+
+    Args:
+        app_state: Application state carrying the approval slice.
+
+    Returns:
+        The wired store.
+    """
+    return require_service(_approval_store(app_state), "Approval Store")
 
 
 async def _activate_memory_backend(app_state: AppState) -> None:
@@ -137,7 +164,7 @@ async def _activate_knowledge_engine(app_state: AppState) -> None:
         wire_knowledge_engine,
     )
 
-    await wire_knowledge_engine(app_state, provider_registry=_registry(app_state))  # type: ignore[arg-type]
+    await wire_knowledge_engine(app_state, provider_registry=_registry(app_state))
 
 
 async def _activate_project_brain(app_state: AppState) -> None:
@@ -155,7 +182,7 @@ async def _activate_research_engine(app_state: AppState) -> None:
         _wire_research_engine,
     )
 
-    await _wire_research_engine(app_state, provider_registry=_registry(app_state))  # type: ignore[arg-type]
+    await _wire_research_engine(app_state, provider_registry=_registry(app_state))
 
 
 async def _activate_charter_engine(app_state: AppState) -> None:
@@ -166,9 +193,9 @@ async def _activate_charter_engine(app_state: AppState) -> None:
 
     await _wire_charter_engine(
         app_state,
-        provider_registry=_registry(app_state),  # type: ignore[arg-type]
-        persistence=_persistence(app_state),  # type: ignore[arg-type]
-        cost_tracker=_cost_tracker(app_state),  # type: ignore[arg-type]
+        provider_registry=_registry(app_state),
+        persistence=_persistence(app_state),
+        cost_tracker=_cost_tracker(app_state),
         si_config=await _si_config(app_state),
     )
 
@@ -181,10 +208,10 @@ async def _activate_toolsmith(app_state: AppState) -> None:
 
     await wire_toolsmith(
         app_state,
-        provider_registry=_registry(app_state),  # type: ignore[arg-type]
-        persistence=_persistence(app_state),  # type: ignore[arg-type]
-        approval_store=_approval_store(app_state),  # type: ignore[arg-type]
-        cost_tracker=_cost_tracker(app_state),  # type: ignore[arg-type]
+        provider_registry=_registry(app_state),
+        persistence=_persistence(app_state),
+        approval_store=_approval_store(app_state),
+        cost_tracker=_cost_tracker(app_state),
     )
 
 
@@ -223,7 +250,7 @@ async def _activate_signals(app_state: AppState) -> None:
 
     await _wire_signals_service(
         app_state,
-        effective_approval_store=_approval_store(app_state),  # type: ignore[arg-type]
+        effective_approval_store=_required_approval_store(app_state),
     )
 
 
@@ -298,8 +325,8 @@ async def _activate_chief_of_staff_chat(app_state: AppState) -> None:
 
     await _wire_chief_of_staff_chat(
         app_state,
-        provider_registry=_registry(app_state),  # type: ignore[arg-type]
-        cost_tracker=_cost_tracker(app_state),  # type: ignore[arg-type]
+        provider_registry=_registry(app_state),
+        cost_tracker=_cost_tracker(app_state),
         si_config=await _si_config(app_state),
     )
 
@@ -312,10 +339,10 @@ async def _activate_chief_of_staff_proposer(app_state: AppState) -> None:
 
     await wire_chief_of_staff_proposer(
         app_state,
-        provider_registry=_registry(app_state),  # type: ignore[arg-type]
-        persistence=_persistence(app_state),  # type: ignore[arg-type]
-        cost_tracker=_cost_tracker(app_state),  # type: ignore[arg-type]
-        effective_approval_store=_approval_store(app_state),  # type: ignore[arg-type]
+        provider_registry=_registry(app_state),
+        persistence=_persistence(app_state),
+        cost_tracker=_cost_tracker(app_state),
+        effective_approval_store=_required_approval_store(app_state),
         si_config=await _si_config(app_state),
     )
 
@@ -337,9 +364,9 @@ async def _activate_group_chat(app_state: AppState) -> None:
 
     await wire_group_chat_service(
         app_state,
-        provider_registry=_registry(app_state),  # type: ignore[arg-type]
-        persistence=_persistence(app_state),  # type: ignore[arg-type]
-        cost_tracker=_cost_tracker(app_state),  # type: ignore[arg-type]
+        provider_registry=_registry(app_state),
+        persistence=_persistence(app_state),
+        cost_tracker=_cost_tracker(app_state),
         si_config=await _si_config(app_state),
     )
 
@@ -543,7 +570,11 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="group_chat",
         provides=CapabilityId.GROUP_CHAT,
-        requires=(CapabilityId.PERSISTENCE,),
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.AGENT_REGISTRY,
+        ),
         activate=_activate_group_chat,
     ),
     SubsystemSpec(

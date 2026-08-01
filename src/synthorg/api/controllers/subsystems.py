@@ -7,6 +7,8 @@ what is it waiting for". Both come from the same declarations the
 reconciler acts on, so the answer cannot drift from the behaviour.
 """
 
+from collections import Counter
+
 from litestar import Controller, get
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +19,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.runtime import reconciler_of
 from synthorg.api.subsystems.spec import SubsystemPhase
+from synthorg.core.types import NotBlankStr
 
 
 class SubsystemReport(BaseModel):
@@ -33,9 +36,9 @@ class SubsystemReport(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: str = Field(description="Subsystem identifier")
+    name: NotBlankStr = Field(description="Subsystem identifier")
     phase: SubsystemPhase = Field(description="Current resting state")
-    waiting_on: tuple[str, ...] = Field(
+    waiting_on: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Unmet dependencies, when waiting",
     )
@@ -52,9 +55,11 @@ class SubsystemsResponse(BaseModel):
         subsystems: The reports, ordered as the reconciler activates them,
             so a dependency always appears before what waits on it.
         active: How many are up.
+        degraded: How many are up while a requirement is gone.
         waiting: How many are waiting on a named dependency.
         blocked: How many have every dependency but declined to activate.
         failed: How many raised on their last activation attempt.
+        disabled: How many an operator has switched off.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -63,9 +68,11 @@ class SubsystemsResponse(BaseModel):
         description="Declared subsystems in activation order",
     )
     active: int = Field(ge=0, description="Count in the active phase")
+    degraded: int = Field(ge=0, description="Count up with a missing requirement")
     waiting: int = Field(ge=0, description="Count waiting on a dependency")
     blocked: int = Field(ge=0, description="Count that declined to activate")
     failed: int = Field(ge=0, description="Count whose activation raised")
+    disabled: int = Field(ge=0, description="Count an operator switched off")
 
 
 class SubsystemsController(Controller):
@@ -101,12 +108,15 @@ class SubsystemsController(Controller):
             )
             for status in statuses
         )
+        counts = Counter(report.phase for report in reports)
         return ApiResponse(
             data=SubsystemsResponse(
                 subsystems=reports,
-                active=sum(1 for r in reports if r.phase is SubsystemPhase.ACTIVE),
-                waiting=sum(1 for r in reports if r.phase is SubsystemPhase.WAITING),
-                blocked=sum(1 for r in reports if r.phase is SubsystemPhase.BLOCKED),
-                failed=sum(1 for r in reports if r.phase is SubsystemPhase.FAILED),
+                active=counts[SubsystemPhase.ACTIVE],
+                degraded=counts[SubsystemPhase.DEGRADED],
+                waiting=counts[SubsystemPhase.WAITING],
+                blocked=counts[SubsystemPhase.BLOCKED],
+                failed=counts[SubsystemPhase.FAILED],
+                disabled=counts[SubsystemPhase.DISABLED],
             ),
         )

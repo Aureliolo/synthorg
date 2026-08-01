@@ -4,6 +4,7 @@ from typing import Final
 
 SUBSYSTEM_RECONCILE_STARTED: Final[str] = "subsystem.reconcile.started"
 SUBSYSTEM_RECONCILE_COMPLETED: Final[str] = "subsystem.reconcile.completed"
+SUBSYSTEM_RECONCILE_ABORTED: Final[str] = "subsystem.reconcile.aborted"
 SUBSYSTEM_ACTIVATED: Final[str] = "subsystem.activated"
 SUBSYSTEM_DEACTIVATED: Final[str] = "subsystem.deactivated"
 SUBSYSTEM_ACTIVATION_FAILED: Final[str] = "subsystem.activation.failed"

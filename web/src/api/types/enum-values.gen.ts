@@ -1068,6 +1068,7 @@ export type StrategicOutputMode = (typeof STRATEGIC_OUTPUT_MODE_VALUES)[number]
 
 export const SUBSYSTEM_PHASE_VALUES = [
     'active',
+    'degraded',
     'waiting',
     'blocked',
     'disabled',

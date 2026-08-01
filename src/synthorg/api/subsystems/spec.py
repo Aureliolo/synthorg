@@ -84,9 +84,16 @@ class SubsystemPhase(StrEnum):
     declined anyway on a condition of its own (memory with no embedding model
     chosen). Reporting that as ``WAITING`` would name no dependency and leave
     an operator with nowhere to look; the subsystem logs the reason.
+
+    ``DEGRADED`` is up while a requirement it captured is gone. Only a
+    subsystem with no ``deactivate`` can rest here: one with a teardown is
+    taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
+    that is not there, which is the drift reading liveness from ``provides``
+    exists to prevent.
     """
 
     ACTIVE = "active"
+    DEGRADED = "degraded"
     WAITING = "waiting"
     BLOCKED = "blocked"
     DISABLED = "disabled"

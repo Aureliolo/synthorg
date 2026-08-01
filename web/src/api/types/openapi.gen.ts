@@ -17492,9 +17492,15 @@ export type components = {
          *     declined anyway on a condition of its own (memory with no embedding model
          *     chosen). Reporting that as ``WAITING`` would name no dependency and leave
          *     an operator with nowhere to look; the subsystem logs the reason.
+         *
+         *     ``DEGRADED`` is up while a requirement it captured is gone. Only a
+         *     subsystem with no ``deactivate`` can rest here: one with a teardown is
+         *     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
+         *     that is not there, which is the drift reading liveness from ``provides``
+         *     exists to prevent.
          * @enum {string}
          */
-        readonly SubsystemPhase: "active" | "waiting" | "blocked" | "disabled" | "failed";
+        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "blocked" | "disabled" | "failed";
         /** SubsystemReport */
         readonly SubsystemReport: {
             /** @description Failure description, when failed */
@@ -17514,6 +17520,10 @@ export type components = {
             readonly active: number;
             /** @description Count that declined to activate */
             readonly blocked: number;
+            /** @description Count up with a missing requirement */
+            readonly degraded: number;
+            /** @description Count an operator switched off */
+            readonly disabled: number;
             /** @description Count whose activation raised */
             readonly failed: number;
             /** @description Declared subsystems in activation order */
