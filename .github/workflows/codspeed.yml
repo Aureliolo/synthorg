@@ -161,6 +161,12 @@ jobs:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
           mode: simulation,memory
+          # Allocator time is the dominant source of run-to-run variance in
+          # simulation mode, and it measures the allocator rather than our
+          # code. Excluding it narrows the noise band that has repeatedly
+          # produced phantom regressions. Scoped to simulation results only,
+          # so the `memory` instrument's allocation counts are untouched.
+          exclude-allocations: "true"
           # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
           # pytest-codspeed must run serial for deterministic measurements.
           # --typeguard-packages= overrides the addopts default so the typeguard
@@ -180,6 +186,7 @@ jobs:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
           mode: simulation,memory
+          exclude-allocations: "true"
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
       - name: Backoff before CodSpeed Python attempt 3
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
@@ -193,6 +200,7 @@ jobs:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
           mode: simulation,memory
+          exclude-allocations: "true"
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
 
   # ── Shard 2: React dashboard benchmarks ──
@@ -239,6 +247,7 @@ jobs:
         uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
         with:
           mode: simulation
+          exclude-allocations: "true"
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
@@ -252,6 +261,7 @@ jobs:
         uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
         with:
           mode: simulation
+          exclude-allocations: "true"
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 3
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
@@ -263,6 +273,7 @@ jobs:
         uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
         with:
           mode: simulation
+          exclude-allocations: "true"
           run: npm --prefix web run bench
 
   # ── Branch-protection-friendly aggregators ──
