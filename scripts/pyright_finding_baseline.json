@@ -1,0 +1,17 @@
+{
+  "reportArgumentType": 339,
+  "reportAssignmentType": 3,
+  "reportAttributeAccessIssue": 55,
+  "reportFunctionMemberAccess": 2,
+  "reportGeneralTypeIssues": 19,
+  "reportIncompatibleMethodOverride": 6,
+  "reportIncompatibleVariableOverride": 8,
+  "reportInconsistentOverload": 1,
+  "reportMissingImports": 7,
+  "reportOptionalMemberAccess": 35,
+  "reportPossiblyUnboundVariable": 5,
+  "reportRedeclaration": 1,
+  "reportReturnType": 4,
+  "reportTypedDictNotRequiredAccess": 45,
+  "reportUnusedExcept": 1
+}

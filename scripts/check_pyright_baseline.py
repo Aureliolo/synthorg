@@ -11,7 +11,9 @@ was deleted in the same PR. Not per-file or per-line: findings move
 whenever code moves, so a location-keyed baseline would fail on a pure
 rename while saying nothing about type safety.
 
-Baseline only shrinks; growth needs ``ALLOW_BASELINE_GROWTH=1``.
+Baseline only shrinks; growth needs ``ALLOW_BASELINE_GROWTH=1``. Creating it
+for the first time is exempt, since with no file on disk every rule reads as
+new and the baseline could otherwise never be seeded.
 
 Usage::
 
@@ -100,12 +102,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     counts = _load_counts(args.report)
+    # Seeding the first baseline is initialisation, not widening: with no file
+    # on disk every rule reads as new, so growth protection would make the
+    # baseline impossible to create. It applies from the second write onward.
+    seeding = not _BASELINE_PATH.exists()
     baseline = _load_baseline()
     problems = _violations(counts, baseline)
     growth_allowed = os.environ.get(_GROWTH_ENV) == "1"
 
     if args.update_baseline:
-        if problems and not growth_allowed:
+        if problems and not seeding and not growth_allowed:
             print(
                 "::error::refusing to grow the pyright baseline. Fix the new "
                 f"findings, or set {_GROWTH_ENV}=1 with explicit approval.",
@@ -115,8 +121,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {problem}", file=sys.stderr)
             return 1
         _write_baseline(counts)
+        action = "seeded" if seeding else "updated"
         print(
-            f"baseline updated: {sum(counts.values())} finding(s) across {len(counts)} rule(s)"
+            f"baseline {action}: {sum(counts.values())} finding(s) "
+            f"across {len(counts)} rule(s)"
         )
         return 0
 
