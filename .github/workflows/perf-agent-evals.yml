@@ -1,4 +1,4 @@
-name: Agent Evaluations
+name: Perf - Agent Evals
 
 on:
   schedule:

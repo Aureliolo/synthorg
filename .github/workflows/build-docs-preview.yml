@@ -1,4 +1,4 @@
-name: PR Preview
+name: Build - Docs Preview
 
 on:
   pull_request:
@@ -24,7 +24,7 @@ on:
       # times out polling for a banner SHA that was never deployed.
       - "web/package.json"
       - "web/package-lock.json"
-      - ".github/workflows/pages-preview.yml"
+      - ".github/workflows/build-docs-preview.yml"
   workflow_dispatch:
     inputs:
       pr_number:

@@ -4,7 +4,7 @@
 #
 # Python 3.14 -- exact patch version pinned by apko.lock.json (refreshed weekly).
 # Transitive apks are resolved and digest-pinned by apko.lock.json, which is
-# refreshed weekly by .github/workflows/apko-lock.yml.
+# refreshed weekly by .github/workflows/maint-apko-lock.yml.
 
 contents:
   repositories:

@@ -1,4 +1,4 @@
-name: CI
+name: Verify - Backend
 
 on:
   push:
@@ -84,7 +84,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/verify-backend.yml'
               - 'web/src/api/types/openapi.gen.ts'
               - 'web/src/api/types/dtos.gen.ts'
               - 'web/src/api/types/enum-values.gen.ts'
@@ -1836,11 +1836,45 @@ jobs:
   # Contents RW + PRs RW + Metadata R (see docs/reference/github-
   # environments.md); rulesets are accessible to any installation with
   # metadata read, which is sufficient for this read-only audit.
+  # PR-time half of the ruleset audit. The full audit below needs
+  # `administration: read` to fetch the live rulesets, a scope GITHUB_TOKEN
+  # cannot hold, so it needs the App token from the main-restricted `release`
+  # environment and can only run post-merge. That covers out-of-band UI edits.
+  # This job needs no token and covers the other case: a PR changed the spec,
+  # so the live ruleset will need applying at merge. Advisory, because applying
+  # it BEFORE merge would block every other open PR on a context main does not
+  # yet produce.
+  branch-protection-spec:
+    name: Branch-protection spec change
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Needs the base commit on disk to diff the spec against it.
+          fetch-depth: "0"
+          persist-credentials: false
+      - name: Install yq
+        run: |
+          set -euo pipefail
+          sudo curl -sSfL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+            https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 \
+            -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+      - name: Report spec change
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/check_branch_protection_spec_changed.sh
+
   branch-protection-audit:
     name: Branch-protection drift audit
     # Accept push-to-main (informational) AND workflow_dispatch from
-    # main so the audit can be triggered ad-hoc from Actions -> "CI"
-    # -> Run workflow. The ``release`` environment's branch policy
+    # main so the audit can be triggered ad-hoc. The ``release`` environment's branch policy
     # also restricts deploys to main, so allowing this job to attempt
     # a deploy from a non-main ref would surface a noisy "deployment
     # was rejected" annotation on every CI run dispatched against a

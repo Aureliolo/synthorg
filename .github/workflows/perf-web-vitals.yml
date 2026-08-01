@@ -1,4 +1,4 @@
-name: Lighthouse CI
+name: Perf - Web Vitals
 
 # Web Vitals + Lighthouse perf-score gates for both the React 19
 # dashboard (run against the production-built ``vite preview``) and
@@ -82,7 +82,7 @@ jobs:
               # dashboard audit.
               - 'scripts/export_openapi.py'
               - '.github/actions/setup-python-uv/**'
-              - '.github/workflows/lighthouse.yml'
+              - '.github/workflows/perf-web-vitals.yml'
             site:
               - 'site/**'
               - 'docs/**'
@@ -106,7 +106,7 @@ jobs:
               # Lighthouse-config-only PRs are still covered by
               # the ``dashboard`` filter, which builds the
               # preview itself locally.
-              - '.github/workflows/pages-preview.yml'
+              - '.github/workflows/build-docs-preview.yml'
 
   # ── Dashboard: Lighthouse against vite preview ──
   lighthouse-dashboard:

@@ -202,9 +202,9 @@ surface by #2121, so `tests.*` now inherits the global
 
 ### Pyright
 
-Added as a CI artefact via `.github/workflows/pyright.yml`. The job
-runs `pyright --outputjson`, uploads the report, and `continue-on-error:
-true`. No pre-push gate.
+Runs as the `type-check-pyright` job in `.github/workflows/verify-backend.yml`
+and blocks on `scripts/check_pyright_baseline.py`, a shrink-only per-rule
+baseline. No pre-push gate.
 
 ### New Python tools
 

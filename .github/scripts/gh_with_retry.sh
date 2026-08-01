@@ -20,7 +20,7 @@
 #     and callers now treat 75 as a soft-skip, so the bug would be swallowed.
 # 401 is deliberately IN the transient allowlist (not definitive) -- see above.
 #
-# Posture mirrors `.github/workflows/cla.yml::gh_api_retry` and
+# Posture mirrors `.github/workflows/repo-cla.yml::gh_api_retry` and
 # `.github/scripts/docker_push_with_retry.sh`, but with the shorter 4-attempt
 # ladder (15 -> 30 -> 60s, ~1m45s worst case) suited to short-timeout release
 # jobs whose work self-heals on the next trigger rather than the CLA gate's

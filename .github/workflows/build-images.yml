@@ -1,4 +1,4 @@
-name: Docker
+name: Build - Images
 
 on:
   push:
@@ -99,7 +99,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.dockerignore'
-              - '.github/workflows/docker.yml'
+              - '.github/workflows/build-images.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
@@ -111,7 +111,7 @@ jobs:
             sandbox:
               - 'docker/sandbox/**'
               - '.dockerignore'
-              - '.github/workflows/docker.yml'
+              - '.github/workflows/build-images.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
@@ -123,7 +123,7 @@ jobs:
             sidecar:
               - 'docker/sidecar/**'
               - '.dockerignore'
-              - '.github/workflows/docker.yml'
+              - '.github/workflows/build-images.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
@@ -138,7 +138,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.dockerignore'
-              - '.github/workflows/docker.yml'
+              - '.github/workflows/build-images.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
@@ -154,7 +154,7 @@ jobs:
               - 'mkdocs.yml'
               - 'scripts/export_openapi.py'
               - 'src/synthorg/api/**'
-              - '.github/workflows/docker.yml'
+              - '.github/workflows/build-images.yml'
               - '.github/actions/build-apko-base/**'
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-image-loaded/**'

@@ -1,4 +1,4 @@
-name: GHCR Cleanup
+name: Maint - GHCR
 
 # Prune dev and non-release container versions from GHCR. Official
 # release images (latest, X.Y, X.Y.Z) and every signature / attestation

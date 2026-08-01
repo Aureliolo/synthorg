@@ -1,4 +1,4 @@
-name: CI Preflight
+name: Ops - Preflight
 
 # Detect missing repository setup (environments, labels, branch protection,
 # GitHub App installation) and surface it as a single tracking issue. Runs

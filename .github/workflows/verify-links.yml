@@ -1,11 +1,11 @@
-name: Link Check (lychee)
+name: Verify - Links
 
 # Internal-link gate for README, every CLAUDE.md tier, and every
 # Markdown under docs/. Runs lychee ``--offline``: relative and
 # ``file://`` links are validated and a broken one fails the run; no
 # network probe is made, so a third-party host's downtime or expired
 # certificate can never block a merge. External (remote) links are
-# checked separately by ``.github/workflows/lychee-external.yml``,
+# checked separately by ``.github/workflows/maint-link-rot.yml``,
 # which files a tracking issue instead of blocking. Config:
 # ``lychee.toml`` (shared with the local pre-push hook).
 #
@@ -23,7 +23,7 @@ on:
       - "cli/CLAUDE.md"
       - "web/CLAUDE.md"
       - "docs/**/*.md"
-      - ".github/workflows/lychee.yml"
+      - ".github/workflows/verify-links.yml"
       - "lychee.toml"
       - "scripts/install_cli_tools.sh"
   push:
@@ -34,7 +34,7 @@ on:
       - "cli/CLAUDE.md"
       - "web/CLAUDE.md"
       - "docs/**/*.md"
-      - ".github/workflows/lychee.yml"
+      - ".github/workflows/verify-links.yml"
       - "lychee.toml"
       - "scripts/install_cli_tools.sh"
   workflow_dispatch:

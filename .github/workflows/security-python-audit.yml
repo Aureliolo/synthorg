@@ -1,4 +1,4 @@
-name: Python Audit
+name: Security - Python Audit
 
 on:
   schedule:

@@ -1,4 +1,4 @@
-name: Graduate
+name: Release - Graduate
 
 # One-click Release-As: trailer for target versions that skip the normal
 # patch cadence (1.0 graduation, explicit minor jumps). Trigger via

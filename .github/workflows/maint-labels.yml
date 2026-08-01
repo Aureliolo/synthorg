@@ -1,4 +1,4 @@
-name: Sync Labels
+name: Maint - Labels
 
 on:
   # Manual-only. Edits to .github/labels.yml do NOT auto-sync; the

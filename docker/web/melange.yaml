@@ -6,13 +6,13 @@
 #   /usr/share/caddy/html/docs/     -- zensical-built MkDocs output + pre-compressed (.gz + .br)
 #   /etc/synthorg/Caddyfile          -- the server config
 #
-# Built in CI by .github/workflows/docker.yml build-web-assets job with
+# Built in CI by .github/workflows/build-images.yml build-web-assets job with
 # `melange build --source-dir <repo-root>`; the CI job first runs
 # `npm -C web run build` and `uv run zensical build` so the inputs
 # (web/dist/, _site/docs/) exist on disk before melange runs.
 #
 # The apk version is injected from pyproject.toml at build time via
-# --vars-file (see .github/workflows/docker.yml build-web-assets job).
+# --vars-file (see .github/workflows/build-images.yml build-web-assets job).
 
 package:
   name: synthorg-web-assets

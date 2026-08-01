@@ -1,4 +1,4 @@
-name: CLA
+name: Repo - CLA
 
 # Contributor License Agreement gate.
 #
@@ -536,7 +536,7 @@ jobs:
           # Filter on event=pull_request_target so we don't accidentally
           # re-run the current issue_comment job.
           LAST_RUN=$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/cla.yml/runs?head_sha=$PR_HEAD_SHA&event=pull_request_target&per_page=1" \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/repo-cla.yml/runs?head_sha=$PR_HEAD_SHA&event=pull_request_target&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
           if [ -z "$LAST_RUN" ]; then
             # Visible warning, not a quiet ::notice::: if the prior run is

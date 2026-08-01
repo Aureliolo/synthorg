@@ -1,4 +1,4 @@
-name: CodSpeed
+name: Perf - Benchmarks
 
 # Continuous performance regression detection across the Python backend and
 # the React 19 dashboard, consolidated into a SINGLE workflow per CodSpeed's
@@ -102,11 +102,11 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/setup-python-uv/**'
-              - '.github/workflows/codspeed.yml'
+              - '.github/workflows/perf-benchmarks.yml'
             web:
               - 'web/**'
               - 'docs/openapi/openapi.json'
-              - '.github/workflows/codspeed.yml'
+              - '.github/workflows/perf-benchmarks.yml'
 
   # ── Shard 1: Python backend benchmarks ──
   codspeed-python:

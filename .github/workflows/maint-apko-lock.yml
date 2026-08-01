@@ -1,4 +1,4 @@
-name: Update apko lockfiles
+name: Maint - apko Lockfiles
 
 on:
   schedule:
@@ -236,7 +236,7 @@ jobs:
             --base main \
             --head "$BRANCH" \
             --title "ci: update apko lockfiles" \
-            --body "Automated weekly update of apko lockfiles via \`.github/workflows/apko-lock.yml\`.
+            --body "Automated weekly update of apko lockfiles via \`.github/workflows/maint-apko-lock.yml\`.
 
           Wolfi package digests and transitive dependencies have been refreshed." \
             --label dependencies --label "type:ci" --label "scope:docker" \

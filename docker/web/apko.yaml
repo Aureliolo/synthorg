@@ -11,7 +11,7 @@
 #
 # synthorg-web-assets is not on the Wolfi public repo -- apko resolves it from
 # the workflow-local apk repository that build-web-assets publishes to. See
-# .github/workflows/docker.yml.
+# .github/workflows/build-images.yml.
 
 contents:
   repositories:

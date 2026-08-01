@@ -52,7 +52,7 @@ import yaml
 
 _REPO_ROOT_DEFAULT: Final[Path] = Path(__file__).resolve().parent.parent
 _PRECOMMIT_CONFIG: Final[str] = ".pre-commit-config.yaml"
-_CI_WORKFLOW: Final[str] = ".github/workflows/ci.yml"
+_CI_WORKFLOW: Final[str] = ".github/workflows/verify-backend.yml"
 
 # Hook types installed by this repo (``default_install_hook_types``). A
 # hook with no explicit ``stages:`` runs at all of these.
@@ -168,7 +168,7 @@ _CARDINAL_WORKFLOWS: Final[tuple[_CardinalWorkflow, ...]] = (
         build_perf=_PATH_SCOPED_BUILD_PERF,
     ),
     _CardinalWorkflow(
-        path=".github/workflows/cli.yml",
+        path=".github/workflows/verify-cli.yml",
         changes_re=re.compile(r"needs\.cli-changes\.outputs\.([A-Za-z_][A-Za-z0-9_]*)"),
         # cli-changes exposes only ``changed`` -- a pure changed-file output, no
         # event guards -- so nothing is exempt here.

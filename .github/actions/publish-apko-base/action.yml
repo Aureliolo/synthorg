@@ -35,7 +35,7 @@ inputs:
       `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
       needed so a re-run can reach the base tarball an earlier attempt
       uploaded; the full reasoning and its security trade-off are in the header
-      comment of `.github/workflows/docker.yml`.
+      comment of `.github/workflows/build-images.yml`.
     required: true
 
 outputs:

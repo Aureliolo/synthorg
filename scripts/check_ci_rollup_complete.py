@@ -38,19 +38,24 @@ _BRANCH_PROTECTION: Final[str] = ".github/branch_protection.yml"
 
 # workflow filename -> the job id of its sentinel rollup.
 _ROLLUPS: Final[dict[str, str]] = {
-    "ci.yml": "ci-pass",
-    "cli.yml": "cli-pass",
-    "docker.yml": "docker-pass",
+    "verify-backend.yml": "ci-pass",
+    "verify-cli.yml": "cli-pass",
+    "build-images.yml": "docker-pass",
 }
 
 # `<workflow>::<job>` -> why the rollup does not depend on it. Each entry is a
 # job whose failure cannot block a merge, so each needs a real reason.
 _EXEMPT: Final[dict[str, str]] = {
-    "ci.yml::branch-protection-audit": (
+    "verify-backend.yml::branch-protection-audit": (
         "Informational drift audit; push-to-main and dispatch only, and "
         "environment-gated on `release` so a PR could never run it."
     ),
-    "cli.yml::cli-release": (
+    "verify-backend.yml::branch-protection-spec": (
+        "Advisory: reports that a PR changes the ruleset spec so the live "
+        "update is known before merge. Blocking it would fail every PR that "
+        "legitimately edits the spec."
+    ),
+    "verify-cli.yml::cli-release": (
         "Tag-only publish, after the rollup has already reported on the same "
         "commit. Release failures surface via finalize-release."
     ),

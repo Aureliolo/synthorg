@@ -1,4 +1,4 @@
-name: GitHub Pages
+name: Build - Docs
 
 on:
   push:
@@ -15,7 +15,7 @@ on:
       - "cli/scripts/install.sh"
       - "cli/scripts/install.ps1"
       - ".github/actions/**"
-      - ".github/workflows/pages.yml"
+      - ".github/workflows/build-docs.yml"
   workflow_dispatch:
 
 permissions: {}

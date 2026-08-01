@@ -1,4 +1,4 @@
-name: Finalize Release
+name: Release - Finalise
 
 # Publish draft releases once both CLI and Docker workflows succeed.
 # Release Please creates draft releases (immutable once published),
@@ -10,7 +10,7 @@ on:
   # execution; only queries workflow status via gh CLI and publishes a draft
   # release. Guarded by event != 'pull_request' and startsWith(head_branch, 'v').
   workflow_run:
-    workflows: [Docker, CLI]
+    workflows: ["Build - Images", "Verify - CLI"]
     types: [completed]
 
 permissions: {}
@@ -127,9 +127,12 @@ jobs:
           # instead of `gh run list` -- it is more reliable than the
           # search-indexed listing -- and retry with backoff to absorb any
           # residual lag from the indexer.
+          # Names must match the `workflows:` trigger above exactly; a
+          # mismatch fails the release rather than silently publishing
+          # unverified.
           case "$WORKFLOW_NAME" in
-            Docker) SIBLING_NAME=CLI ;;
-            CLI) SIBLING_NAME=Docker ;;
+            "Build - Images") SIBLING_NAME="Verify - CLI" ;;
+            "Verify - CLI") SIBLING_NAME="Build - Images" ;;
             *)
               echo "::error::Unexpected triggering workflow: $WORKFLOW_NAME"
               exit 1

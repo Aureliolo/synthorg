@@ -1,4 +1,4 @@
-name: Main Red Alert
+name: Ops - Red Alert
 
 # Surfaces a red `main` as a pinned tracking issue within minutes.
 #
@@ -34,7 +34,7 @@ on:
   # executed. Every payload field is read through `env:`. Fork PRs cannot
   # reach it: gated on head_repository == this repo and event == 'push'.
   workflow_run:
-    workflows: ["CI", "Docker", "CLI"]
+    workflows: ["Verify - Backend", "Build - Images", "Verify - CLI"]
     types: [completed]
 
 permissions: {}

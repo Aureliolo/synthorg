@@ -257,7 +257,7 @@ shell, no package manager, minimal attack surface. The build uses a 2-stage Dock
 
 Base images are declared in `docker/*/apko.yaml` with relaxed package specs
 (e.g. `python-3.14`). Exact patch versions are resolved and pinned by
-`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/apko-lock.yml`.
+`docker/*/apko.lock.json`, refreshed weekly by `.github/workflows/maint-apko-lock.yml`.
 
 ### CIS Docker Benchmark
 
@@ -275,7 +275,7 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 ### Artifact Provenance
 
 - All base images **pinned by SHA-256 digest** (no mutable tags)
-- **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/apko-lock.yml`
+- **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/maint-apko-lock.yml`
 - **Renovate** auto-updates base-image digests weekly (Saturday mornings) for every Dockerfile (backend, sandbox, sidecar, fine-tune, desktop); the `dockerfile` manager plus `docker:pinDigests` scans them all
 - **cosign keyless signing** on every pushed image (Sigstore OIDC-bound)
 - **Buildx SPDX SBOMs** (SLSA L1) auto-generated and pushed to GHCR as registry attestations (inspect via `docker buildx imagetools inspect`). Standalone CycloneDX JSON SBOMs are generated separately by Syft. See [Software Bill of Materials](#software-bill-of-materials-sbom) below.

@@ -1,4 +1,4 @@
-name: Test Highlights (dry-run)
+name: Release - Highlights (dry-run)
 
 # Manual dry-run of the release-notes Highlights code path that lives
 # inside release.yml. Lets the repo owner exercise the Mistral
