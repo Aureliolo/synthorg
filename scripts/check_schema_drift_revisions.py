@@ -94,7 +94,7 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
 # three copies in the same PR.
 _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
     # renovate: datasource=docker depName=postgres
-    "postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88"
+    "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
 )
 _PROVISION_EXIT_CODE: Final[int] = 3
 """Exit code for "the throwaway Postgres container never came up".
