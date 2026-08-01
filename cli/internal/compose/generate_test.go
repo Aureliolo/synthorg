@@ -717,7 +717,7 @@ func TestParamsFromState_InvalidTunableReturnsError(t *testing.T) {
 	})
 }
 
-// composeSetEnvVars are the settings the product marks ``compose_set``:
+// composeSetEnvVars are the settings the product marks compose_set:
 // the process is started with them and nothing inside can change them, so
 // a render that drops one leaves the settings page reporting a value the
 // deployment never chose. Asserted per name rather than through the golden
