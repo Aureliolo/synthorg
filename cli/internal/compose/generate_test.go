@@ -746,6 +746,14 @@ var composeSetEnvVars = []string{
 	"SYNTHORG_LOG_DIR",
 	"SYNTHORG_LOG_LEVEL",
 	"SYNTHORG_TELEMETRY_ENABLED",
+	"SYNTHORG_TUNNEL_STATE_DIR",
+}
+
+// distributedComposeSetEnvVars are compose-set settings the template emits
+// only for a distributed bus. The default render cannot assert them, so a
+// regression that dropped one would pass every other test in this file.
+var distributedComposeSetEnvVars = []string{
+	"SYNTHORG_NATS_URL",
 }
 
 func TestGenerateCarriesEveryComposeSetEnvVar(t *testing.T) {
@@ -768,6 +776,37 @@ func TestGenerateCarriesEveryComposeSetEnvVar(t *testing.T) {
 	for _, name := range composeSetEnvVars {
 		if !strings.Contains(yaml, name+":") {
 			t.Errorf("compose-set env var %s is missing from the rendered compose", name)
+		}
+	}
+	for _, name := range distributedComposeSetEnvVars {
+		if strings.Contains(yaml, name+":") {
+			t.Errorf("%s is distributed-only but appears in the default render", name)
+		}
+	}
+}
+
+func TestGenerateCarriesDistributedComposeSetEnvVars(t *testing.T) {
+	t.Parallel()
+	out, err := Generate(Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "nats",
+		NATSURL:            "nats://synthorg-nats:4222",
+		NATSClientPort:     3003,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	for _, name := range distributedComposeSetEnvVars {
+		if !strings.Contains(yaml, name+":") {
+			t.Errorf("compose-set env var %s is missing from the distributed render", name)
 		}
 	}
 }

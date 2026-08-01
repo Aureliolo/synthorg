@@ -72,8 +72,13 @@ def test_inventory_extracts_namespace_key_and_metadata(tmp_path: Path) -> None:
     assert setting_keys == {"backup.enabled", "backup.path"}
 
 
-def test_inventory_skips_compose_set(tmp_path: Path) -> None:
-    """``compose_set=True`` settings are tagged so the lint can skip."""
+def test_inventory_records_compose_set_flag(tmp_path: Path) -> None:
+    """The loader carries ``compose_set`` through onto each record.
+
+    Scope is the extraction only. That the flag then suppresses a
+    violation is the matcher's behaviour, covered end-to-end by
+    ``test_compose_set_setting_skipped`` in the ghosts module.
+    """
     repo = _make_fake_repo(
         tmp_path,
         settings_files={
