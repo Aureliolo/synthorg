@@ -141,7 +141,7 @@ curl -X POST http://localhost:3001/api/v1/settings/security/import \
 
 A few settings are decided when the container is created and cannot be changed by the process running inside it. They carry `compose_set=True`, appear read-only in the dashboard under **Advanced · set by the deployment**, and reject a write instead of storing a value nothing will read. Common examples:
 
-- `api.server_host` / `api.server_port` / `api.ssl_certfile` / `ssl_keyfile` / `ssl_ca_certs` (the listening socket uvicorn already opened)
+- `api.server_host` / `api.server_port` / `api.ssl_certfile` / `api.ssl_keyfile` / `api.ssl_ca_certs` (the listening socket uvicorn already opened)
 - `api.api_prefix` (every route path, and the dashboard is built against it)
 - `api.cors_allowed_origins`, `api.auth_exclude_paths`, `api.rate_limit_exclude_paths` (Litestar caches the CORS config and applies middleware exclusions at mount time)
 - `tools.sandbox_image` / `sidecar_image` (the CLI pulled and signature-verified these; the container was created against the resolved digest)
@@ -172,7 +172,7 @@ limiter (``api.rate_limit.*``). Both are runtime-editable via settings.
 | Setting | Type | Default | Runtime-editable | Purpose |
 |---------|------|---------|------------------|---------|
 | `api.per_op_rate_limit.enabled` | BOOLEAN | `true` | yes | Master switch; when `false` every `per_op_rate_limit` guard becomes a no-op. |
-| `api.per_op_rate_limit.backend` | ENUM | `memory` | no (restart) | Sliding-window store backend. `memory` is the only shipped implementation; `redis` is reserved for cross-worker fairness. |
+| `api.per_op_rate_limit.backend` | ENUM | `memory` | not settable | Sliding-window store backend, pinned to `memory`, the only shipped implementation; `redis` is reserved for cross-worker fairness. No registered setting writes it. |
 | `api.per_op_rate_limit.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": [max_requests, window_seconds]}`. Setting either component to `0` disables the guard for that operation; negative values are rejected. |
 
 Example override to tighten ``memory.fine_tune`` to two starts per day.
@@ -191,7 +191,7 @@ curl -X PUT http://localhost:3001/api/v1/settings/api/per_op_rate_limit_override
 | Setting | Type | Default | Runtime-editable | Purpose |
 |---------|------|---------|------------------|---------|
 | `api.per_op_concurrency.enabled` | BOOLEAN | `true` | yes | Master switch for the `PerOpConcurrencyMiddleware`. |
-| `api.per_op_concurrency.backend` | ENUM | `memory` | no (restart) | Inflight-counter store backend. `memory` today; `redis` reserved. |
+| `api.per_op_concurrency.backend` | ENUM | `memory` | not settable | Inflight-counter store backend, pinned to `memory`; `redis` reserved. No registered setting writes it. |
 | `api.per_op_concurrency.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": <max_inflight>}`. `0` disables; negative values are rejected. |
 
 The six endpoints that declare an inflight cap by default:

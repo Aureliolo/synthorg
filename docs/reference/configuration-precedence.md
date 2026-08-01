@@ -476,9 +476,12 @@ Everything else is live, through whichever seam its consumer allows:
   `budget.benchmark_provider` / `model_tier_overrides`, and the
   `simulations.verification_review_enabled` / `verification_grader` /
   `verification_decomposer` pipeline rebuild);
-- a `settings=` declaration on a `SubsystemSpec`, which the reconciler treats
-  as drift and rebuilds the subsystem for (`memory.embedder_model` and its
-  siblings reconnect the memory backend on the spot). See
+- a `settings=` declaration on a `SubsystemSpec`, which puts the key in the
+  watched set so a write to it triggers a reconcile pass. That alone does not
+  replace a running subsystem: `rebuild_on_change=True` is what makes the pass
+  tear the subsystem down and activate it again. `memory_backend` declares
+  both, which is why `memory.embedder_model` and its siblings reconnect the
+  memory backend on the spot. See
   [Subsystem Reconciliation](../design/subsystem-reconciliation.md).
 
 ### Security toggle write guardrail

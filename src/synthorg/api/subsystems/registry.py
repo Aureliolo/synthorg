@@ -1138,8 +1138,9 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="strategy_context",
         provides=CapabilityId.STRATEGY_CONTEXT,
-        # Reads the memory backend and the meeting orchestrator, so a boot
-        # without memory resolves a thinner context rather than none.
+        # The memory backend and the meeting orchestrator are optional reads,
+        # not requirements: a boot without memory resolves a thinner context
+        # rather than none, so only the bus is declared.
         requires=(CapabilityId.MESSAGE_BUS,),
         activate=_activate_strategy_context,
     ),

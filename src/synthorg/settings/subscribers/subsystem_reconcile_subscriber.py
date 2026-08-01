@@ -76,11 +76,24 @@ class SubsystemReconcileSettingsSubscriber:
             self._app_state,
             trigger=f"setting:{namespace}.{key}",
         )
+        if report is None:
+            # A pass that could not run is not a pass that found nothing to
+            # do. Reporting it as zero-and-zero reads as converged, which is
+            # the one conclusion an operator must not draw from it.
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                outcome="not_run",
+            )
+            return
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
             namespace=namespace,
             key=key,
-            activated=len(report.activated) if report is not None else 0,
-            deactivated=len(report.deactivated) if report is not None else 0,
+            outcome="reconciled",
+            activated=len(report.activated),
+            deactivated=len(report.deactivated),
         )

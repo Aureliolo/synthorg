@@ -756,6 +756,14 @@ var distributedComposeSetEnvVars = []string{
 	"SYNTHORG_NATS_URL",
 }
 
+// sandboxComposeSetEnvVars are compose-set settings the template emits only
+// when the sandbox is enabled. Same blind spot as the distributed set: the
+// default render cannot assert them.
+var sandboxComposeSetEnvVars = []string{
+	"SYNTHORG_SANDBOX_IMAGE",
+	"SYNTHORG_SIDECAR_IMAGE",
+}
+
 func TestGenerateCarriesEveryComposeSetEnvVar(t *testing.T) {
 	t.Parallel()
 	out, err := Generate(Params{
@@ -781,6 +789,37 @@ func TestGenerateCarriesEveryComposeSetEnvVar(t *testing.T) {
 	for _, name := range distributedComposeSetEnvVars {
 		if strings.Contains(yaml, name+":") {
 			t.Errorf("%s is distributed-only but appears in the default render", name)
+		}
+	}
+	for _, name := range sandboxComposeSetEnvVars {
+		if strings.Contains(yaml, name+":") {
+			t.Errorf("%s is sandbox-only but appears in the default render", name)
+		}
+	}
+}
+
+func TestGenerateCarriesSandboxComposeSetEnvVars(t *testing.T) {
+	t.Parallel()
+	out, err := Generate(Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "sqlvector",
+		BusBackend:         "internal",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	for _, name := range sandboxComposeSetEnvVars {
+		if !strings.Contains(yaml, name+":") {
+			t.Errorf("compose-set env var %s is missing from the sandbox render", name)
 		}
 	}
 }

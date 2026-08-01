@@ -159,7 +159,7 @@ is exactly the shape a second pass catches.
 - [ ] Precedence category chosen deliberately, Cat-1 unless there is a reason
 - [ ] Plan accepted before the definition was registered
 - [ ] Definition registered, with a `description` an operator can act on
-- [ ] Applies live, or `compose_set` with the env var added to the compose template
+- [ ] Applies live, or `compose_set` with the env var added to every launcher that starts its reader: both `cli/internal/compose/compose.yml.tmpl` and `docker/compose.yml`, or `cli/cmd/worker_start.go` for a worker-only setting
 - [ ] Consumer reachable from boot, reading through `ConfigResolver`
 - [ ] The literal it replaces is gone
 - [ ] The five gates above pass

@@ -71,6 +71,7 @@ def order_subsystems(
             raise SubsystemGraphInvalidError(msg)
         providers[spec.provides] = spec.name
     _reject_unteardownable_consumers(pending)
+    _reject_unregistered_settings(pending)
 
     _reject_invalid_enabled_by(pending)
     _reject_unprobed_requirements(pending, providers, probed)
@@ -204,6 +205,44 @@ def _reject_unprobed_requirements(
                 f"Subsystem {spec.name!r} requires {need.value!r}, which no "
                 "subsystem provides and no capability probes; it would read as "
                 "present on every pass"
+            )
+            raise SubsystemGraphInvalidError(msg)
+
+
+def _reject_unregistered_settings(specs: Sequence[SubsystemSpec]) -> None:
+    """Refuse a declared setting no settings write can ever name.
+
+    :func:`settings_fingerprint` snapshots an unreadable key as ``None``,
+    deliberately, and :func:`settings_drift` skips those positions so a
+    resolver outage does not read as drift. A key that is merely misspelled or
+    renamed reads that same way on every pass, so the drift it was declared to
+    detect can never fire and a ``rebuild_on_change`` subsystem keeps its stale
+    instance forever. The watched set the settings subscriber derives has the
+    same hole: it waits on a pair no write emits. Both are the declaration
+    being wrong, so it is refused where it is written.
+
+    ``enabled_by`` has its own check, which additionally requires a boolean.
+
+    Args:
+        specs: The declared subsystems.
+
+    Raises:
+        SubsystemGraphInvalidError: On an entry that is not ``namespace.key``,
+            or that names no registered setting.
+    """
+    import synthorg.settings.definitions  # noqa: F401, PLC0415 -- registers them
+    from synthorg.settings.registry import get_registry  # noqa: PLC0415
+
+    registry = get_registry()
+    for spec in specs:
+        for entry in spec.settings:
+            namespace, separator, key = entry.partition(".")
+            if separator and registry.get(namespace, key) is not None:
+                continue
+            msg = (
+                f"Subsystem {spec.name!r} declares setting {entry!r}, which is "
+                "not a registered 'namespace.key'; it would snapshot as empty "
+                "on every pass and never trigger the rebuild it was declared for"
             )
             raise SubsystemGraphInvalidError(msg)
 

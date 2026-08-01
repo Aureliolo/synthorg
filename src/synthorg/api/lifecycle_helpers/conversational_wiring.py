@@ -408,9 +408,11 @@ async def wire_chief_of_staff_proposer(
     """Wire the Chief of Staff proposer behind propose_enabled + persistence.
 
     Raises:
-        ServiceUnavailableError: When propose or invite is enabled against
-            a persistent ApprovalStore on a backend that does not support
-            conversational approvals.
+        ConversationalApprovalsUnsupportedError: When propose or invite is
+            enabled against a persistent ApprovalStore on a backend that does
+            not support conversational approvals. Named precisely because a
+            caller has to catch the refusal without also catching the shared
+            503 base a genuine wiring fault raises.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 

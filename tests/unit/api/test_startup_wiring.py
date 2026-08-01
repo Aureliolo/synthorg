@@ -479,7 +479,10 @@ class TestFeatureWiringProposerDegradation:
         # raise would mark it FAILED and, post-setup, refuse completion.
         from synthorg.api.subsystems import registry as subsystem_registry
 
+        attempts: list[int] = []
+
         async def _refuse(*_args: object, **_kwargs: object) -> None:
+            attempts.append(1)
             msg = "proposer boom"
             raise ConversationalApprovalsUnsupportedError(msg)
 
@@ -499,6 +502,9 @@ class TestFeatureWiringProposerDegradation:
         with suppress_type_checks():
             await subsystem_registry._activate_chief_of_staff_proposer(app_state)
 
+        # Awaited first, so the empty slice below is the contained refusal and
+        # not an adapter that returned before reaching the wiring at all.
+        assert attempts == [1]
         assert app_state.slice(MetaStateSlice).chief_of_staff_proposer is None
 
     async def test_a_missing_collaborator_is_not_contained(

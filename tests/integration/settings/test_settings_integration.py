@@ -17,6 +17,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.settings.write_governance import SettingsWriteGovernance
+from tests._shared import sid
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -112,7 +113,7 @@ class TestApiSettingsIntegration:
             governance=SettingsWriteGovernance(
                 confirm=True,
                 reason="integration: exercise the DB override path",
-                actor="test-operator",
+                actor=sid("operator"),
             ),
         )
         await settings_service.set(

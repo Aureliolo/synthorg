@@ -243,7 +243,10 @@ func validateNATSURL(raw string) error {
 // rather than as the CONTAINER positional.
 func validateContainerName(name string) error {
 	if name == "" {
-		// Empty means "use default" -- validated later.
+		// Empty is not a usable CONTAINER positional. Nothing downstream
+		// checks it either, so the caller must resolve the default and reject
+		// an empty resolved value itself (validateWorkerStartPlan does); this
+		// reports no error for the flag-omitted shape only.
 		return nil
 	}
 	if !isContainerNameAlnum(rune(name[0])) {

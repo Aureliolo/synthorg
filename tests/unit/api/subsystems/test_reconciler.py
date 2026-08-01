@@ -174,6 +174,35 @@ class TestOrdering:
                 rebuild_on_change=True,
             )
 
+    def test_an_unregistered_declared_setting_is_refused(self) -> None:
+        # settings_fingerprint snapshots an unreadable key as "", so a
+        # misspelled one compares equal on every pass: the rebuild it was
+        # declared for could never fire, and nothing would ever say so.
+        world = _World()
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+            settings=("memory.no_such_key",),
+            rebuild_on_change=True,
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="not a registered"):
+            SubsystemReconciler((spec,), _all_capabilities(world))
+
+    def test_a_setting_without_a_namespace_is_refused(self) -> None:
+        world = _World()
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+            settings=("backend",),
+            rebuild_on_change=True,
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="not a registered"):
+            SubsystemReconciler((spec,), _all_capabilities(world))
+
     def test_a_consumer_of_a_tearable_capability_needs_its_own_teardown(self) -> None:
         # The owner can take MEMORY_BACKEND away while the process runs, so a
         # consumer that captured it and cannot be taken down would keep

@@ -33,7 +33,7 @@ class SelfImprovementTriggerError(SelfImprovementError):
 class RollbackMutationDeniedError(SelfImprovementError):
     """Raised by a rollback mutator when the underlying store refuses a write.
 
-    Examples: a ``compose_set`` setting the deployment fixed, a frozen
+    Examples: a ``compose_set`` setting fixed by the deployment, a frozen
     entity that has been retired, or an architecture target that no
     longer exists. The rollback executor
     propagates this so the audit log records the refused operation

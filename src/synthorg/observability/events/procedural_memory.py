@@ -62,3 +62,8 @@ PROCEDURAL_MEMORY_PROPOSER_INIT: Final[str] = "procedural_memory.proposer.init"
 
 PROCEDURAL_PRUNING_UNKNOWN_TYPE: Final[str] = "procedural_pruning.unknown_type"
 """Unknown pruning strategy type in factory configuration."""
+
+PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED: Final[str] = (
+    "procedural_memory.config.resolve_failed"
+)
+"""Resolved procedural settings failed validation; boot config kept."""

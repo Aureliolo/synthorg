@@ -207,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
+        owned_count = len(owned_wiring(repo_root))
         violations = scan_repo(repo_root)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -225,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: {len(owned_wiring(repo_root))} declared subsystems, one path each.")
+    print(f"OK: {owned_count} declared subsystems, one path each.")
     return 0
 
 
