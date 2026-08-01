@@ -14,7 +14,6 @@ import pytest
 from synthorg.api.lifecycle_assembly import assemble_lifespan_hooks
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.registry import SUBSYSTEMS
-from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.config.schema import RootConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.wiki_export import WikiExporter
@@ -184,7 +183,6 @@ class TestOrgMemoryWiringOrder:
             connection_catalog=None,
             provider_registry=None,
             cost_tracker=None,
-            approval_store=MagicMock(spec=ApprovalStoreProtocol),
             performance_tracker=None,
             notification_dispatcher=MagicMock(spec=NotificationDispatcher),
         )
