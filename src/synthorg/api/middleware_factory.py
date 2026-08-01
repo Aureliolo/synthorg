@@ -328,6 +328,35 @@ def _build_auth_exclude_paths(
     return exclude_paths
 
 
+def _resolve_trusted_proxies() -> frozenset[str]:
+    """Read the configured trusted proxies.
+
+    Returns:
+        The configured entries, or an empty set when none resolve.
+    """
+    resolved = resolve_init_value(
+        SettingNamespace.API,
+        "trusted_proxies",
+        parse=parse_str_tuple_json,
+    )
+    if isinstance(resolved.value, tuple):
+        return frozenset(resolved.value)
+    # Coercing to empty silently is what an operator would never expect from a
+    # value they configured: every proxied client collapses into one
+    # rate-limit bucket, and _warn_if_untrusted_proxies stays quiet on a
+    # local-host bind, so nothing else would report it.
+    logger.warning(
+        API_NETWORK_EXPOSURE_WARNING,
+        note=(
+            "trusted_proxies did not resolve to a tuple; proceeding as though "
+            "no proxies are trusted, so proxied clients share one unauth "
+            "rate-limit bucket."
+        ),
+        resolved_type=type(resolved.value).__name__,
+    )
+    return frozenset()
+
+
 def _warn_if_untrusted_proxies(trusted: frozenset[str], host: str) -> None:
     """Warn when no trusted proxies are configured for a non-local host."""
     if not trusted and host not in ("127.0.0.1", "localhost", "::1"):
@@ -524,14 +553,7 @@ def _build_middleware(
     # off could turn it back on, see the write accepted, and have no
     # middleware in the stack to enforce it. This is the shape
     # ``PerOpConcurrencyMiddleware`` already uses for its own master switch.
-    trusted_resolved = resolve_init_value(
-        SettingNamespace.API,
-        "trusted_proxies",
-        parse=parse_str_tuple_json,
-    )
-    trusted = frozenset(
-        trusted_resolved.value if isinstance(trusted_resolved.value, tuple) else ()
-    )
+    trusted = _resolve_trusted_proxies()
     host_resolved = resolve_init_value(SettingNamespace.API, "server_host")
     _warn_if_untrusted_proxies(trusted, str(host_resolved.value))
     unauth_identifier = _build_unauth_identifier(trusted)

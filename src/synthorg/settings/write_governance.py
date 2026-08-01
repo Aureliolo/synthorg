@@ -151,9 +151,9 @@ async def guard_security_delete(
     Deleting an override reverts the key to its env > default fallback, so a
     delete that would drop a currently-secure toggle to a weaker effective
     value must go through the explicit confirm+reason set path, never a silent
-    delete. This holds across every governed namespace (``security``,
-    ``engine``, ``tools``, ``output_style``, ``providers``, ``integrations``):
-    deleting, say, the
+    delete. This holds across every governed namespace, which is whatever
+    :func:`~synthorg.settings.write_governance_policy.is_guarded` covers rather
+    than a list repeated here: deleting, say, the
     ``tools.credentialed_mcp_enabled`` or ``providers.gateway_enabled``
     override would otherwise revert to a broader env/default value, bypassing
     the set-path guardrail. The guarded value is the real env>default fallback

@@ -1422,12 +1422,25 @@ class TestBuildMiddleware:
         # disable direction only: an operator who booted with it off could
         # turn it back on, see the write accepted, and have no middleware in
         # the stack to enforce it.
+        from litestar.middleware.rate_limit import (
+            RateLimitConfig as LsRL,
+        )
+
         from synthorg.api.middleware_factory import _build_middleware
 
         disabled = root_config.api.model_copy(update={"rate_limiter_enabled": False})
-        assert len(_build_middleware(disabled)) == len(
-            _build_middleware(root_config.api)
-        )
+        # By store name rather than stack length: a change that swapped a tier
+        # for some other middleware would keep the length and lose the tier.
+        stores = [
+            entry.kwargs["config"].store
+            for entry in _build_middleware(disabled)
+            if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
+        ]
+        assert stores == [
+            "rate_limit_floor",
+            "rate_limit_unauth",
+            "rate_limit_auth",
+        ]
 
     def test_three_rate_limiters_have_distinct_stores(
         self,

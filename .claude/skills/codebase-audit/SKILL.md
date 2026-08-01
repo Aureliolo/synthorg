@@ -665,11 +665,13 @@ patterns -- DO NOT flag a setting as unwired unless you have ruled out ALL of:
    flag these.
 
 VERIFICATION REQUIREMENT: before flagging a setting as unwired, you MUST run at
-least three searches to rule out all six patterns above:
+least four searches to rule out all six patterns above:
   - Grep for the literal "<namespace>.<key>" string across src/synthorg/
   - Grep for the field name in src/synthorg/config/ (Pydantic config models)
   - Grep for the namespace in ConfigResolver methods (any get_<area>_config /
     get_<area>_bridge_config method)
+  - Read the setting's own SettingDefinition in settings/definitions/ and check
+    for compose_set=True (nothing above detects pattern 6)
 
 If any of those searches find a consumer, the setting is NOT unwired -- skip it.
 

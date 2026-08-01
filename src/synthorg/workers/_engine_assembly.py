@@ -103,7 +103,6 @@ _TOOLS_NS: str = "tools"
 _GIT_LOG_MAX_COUNT_KEY: str = "git_log_max_count"
 _CODE_RUNNER_OUTPUT_TAIL_KEY: str = "code_runner_output_tail_limit"
 _EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
-_MEMORY_NS: str = SettingNamespace.MEMORY.value
 
 
 async def _build_tool_registry(

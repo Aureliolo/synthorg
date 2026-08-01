@@ -89,8 +89,8 @@ _r.register(
         description=(
             "Recorder sink implementation. 'persistence' appends frames to"
             " the connected backend; 'noop' discards them (frames are not"
-            " recorded). Applies to the next agent run: the sink picks its"
-            " delegate per batch."
+            " recorded). Applies to the next batch: the sink picks its"
+            " delegate per batch, so a change lands mid-run."
         ),
         group="Flight Recorder",
         level=SettingLevel.ADVANCED,

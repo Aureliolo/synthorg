@@ -113,6 +113,22 @@ export function settingValueDiffers(entry: SettingEntry, value: unknown): boolea
   return computeChange(value, current) !== null
 }
 
+/**
+ * The document's new value for a setting the user actually edited.
+ *
+ * `settingValueDiffers` runs first because `computeChange` cannot see the
+ * sensitive-placeholder rule: a redacted compose-set setting nobody touched
+ * would read as changed and block every save of the document.
+ */
+function changedValueFor(
+  entry: SettingEntry,
+  value: unknown,
+  current: unknown,
+): string | null {
+  if (!settingValueDiffers(entry, value)) return null
+  return computeChange(value, current)
+}
+
 export interface SettingChanges {
   changes: Map<string, string>
   unknownKeys: string[]
@@ -139,7 +155,7 @@ export function buildChanges(
         unknownKeys.push(ck)
         continue
       }
-      const changed = computeChange(value, origNs[key])
+      const changed = changedValueFor(entry, value, origNs[key])
       if (changed === null) continue
       if (entry.definition.compose_set) composeSetKeys.push(ck)
       else if (entry.source === 'env') envKeys.push(ck)

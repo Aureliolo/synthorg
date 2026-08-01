@@ -126,8 +126,14 @@ describe('buildChanges', () => {
 
   it('flags env-sourced keys', () => {
     const entryLookup = new Map<string, SettingEntry>([
-      ['api/retries', makeEntry({ namespace: 'api', key: 'retries', source: 'env' })],
+      [
+        'api/retries',
+        makeEntry({ namespace: 'api', key: 'retries', source: 'env', value: '5' }),
+      ],
     ])
+    // The entry value matches `original`: the real caller derives one from the
+    // other (entriesToObject), so a fixture where they disagree describes a
+    // state the app cannot reach.
     const original = { api: { retries: '5' } }
     const parsed = { api: { retries: '10' } }
     const { envKeys } = buildChanges(parsed, original, entryLookup)
@@ -138,7 +144,13 @@ describe('buildChanges', () => {
     const entryLookup = new Map<string, SettingEntry>([
       [
         'api/server_port',
-        makeEntry({ namespace: 'api', key: 'server_port', compose_set: true, source: 'env' }),
+        makeEntry({
+          namespace: 'api',
+          key: 'server_port',
+          compose_set: true,
+          source: 'env',
+          value: '8000',
+        }),
       ],
     ])
     const original = { api: { server_port: '8000' } }

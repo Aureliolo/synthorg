@@ -512,8 +512,9 @@ class DefaultWorkPipeline:
         missing narrator is a no-op, and any error degrades to a logged
         warning. Critical interpreter errors still propagate.
         """
-        # Snapshot once: the attach is a monotonic None -> narrator late-bind,
-        # so a single load keeps the null-check and the call on the same value.
+        # Snapshot once: a reconciler rebuild can detach the narrator between
+        # the null-check and the call, so a single load keeps both on the same
+        # value rather than calling one that has since become None.
         narrator = self._narrator
         if narrator is None:
             logger.debug(

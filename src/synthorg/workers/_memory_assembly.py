@@ -10,6 +10,8 @@ reviewable on its own.
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
@@ -34,6 +36,10 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.shared_store import OrgSharedKnowledgeStore
 from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text
 from synthorg.settings.enums import SettingNamespace
@@ -41,6 +47,8 @@ from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 # The reformulation and sufficiency prompts are self-contained (they
@@ -241,17 +249,29 @@ async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryCon
     """
     namespace = SettingNamespace.MEMORY.value
     resolver = config_resolver_of(app_state)
-    return app_state.config.memory.procedural.model_copy(
-        update={
-            "temperature": await resolver.get_float(
-                namespace, "procedural_temperature"
-            ),
-            "max_tokens": await resolver.get_int(namespace, "procedural_max_tokens"),
-            "skill_md_directory": await resolver.get_str(
-                namespace, "procedural_skill_md_directory"
-            ),
-        }
-    )
+    booted = app_state.config.memory.procedural
+    directory = await resolver.get_str(namespace, "procedural_skill_md_directory")
+    resolved = booted.model_dump() | {
+        "temperature": await resolver.get_float(namespace, "procedural_temperature"),
+        "max_tokens": await resolver.get_int(namespace, "procedural_max_tokens"),
+        # An empty read is the documented "keep skills in the backend only",
+        # and the field is NotBlankStr, so the sentinel maps to unset.
+        "skill_md_directory": directory or None,
+    }
+    try:
+        # Revalidated rather than copied in: model_copy skips validation
+        # entirely, so a value outside the field's bounds (an env override is
+        # never checked at write time) would reach the proposer as config the
+        # model itself declares impossible.
+        return ProceduralMemoryConfig.model_validate(resolved)
+    except ValidationError as exc:
+        logger.warning(
+            PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="resolved procedural settings are out of bounds; keeping boot config",
+        )
+        return booted
 
 
 __all__ = [

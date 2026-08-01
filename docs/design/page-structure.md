@@ -303,7 +303,7 @@ Global search overlay: navigate to any page, search agents by name, search tasks
 **Trigger**: Bell icon in sidebar bottom + unread badge
 Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
 
-**Category taxonomy**: 17 notification categories with routing defaults and severity mappings:
+**Category taxonomy**: 16 notification categories with routing defaults and severity mappings:
 
 | Category | Default Route | Severity |
 |----------|--------------|----------|
@@ -492,7 +492,7 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Workflows** (list) | (none) | N/A |
 | **Subworkflows** | (none) | N/A; refreshes via polling (30s) |
 | **Workflow Editor** | (none) | N/A; REST API only, no real-time collaboration |
-| **Settings** | `system` | Restart-required notifications |
+| **Settings** | (none) | N/A; a write applies live, so there is nothing to be told about later |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
 
 **Global subscriptions** (active regardless of current page):

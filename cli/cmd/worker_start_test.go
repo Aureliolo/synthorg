@@ -311,6 +311,32 @@ func TestRunWorkerStartForwardsThroughTheEnvironment(t *testing.T) {
 	}
 }
 
+// TestResolveWorkerStartFlagsIgnoresAStaleContainerGlobal pins the
+// Changed("container") guard. pflag binds --container to a package global, so
+// an earlier explicit invocation leaves it set; without the guard the next
+// invocation that omits the flag execs into the previous container instead of
+// the default, and nothing else in this file would notice.
+func TestResolveWorkerStartFlagsIgnoresAStaleContainerGlobal(t *testing.T) {
+	origContainer := workerStartContainer
+	t.Cleanup(func() { workerStartContainer = origContainer })
+
+	first := newWorkerStartTestCmd(&bytes.Buffer{})
+	if err := first.Flags().Set("container", "synthorg-backend-old"); err != nil {
+		t.Fatalf("could not set --container: %v", err)
+	}
+	opts := GetGlobalOpts(first.Context())
+	if got := resolveWorkerStartFlags(first, opts).container; got != "synthorg-backend-old" {
+		t.Fatalf("explicit --container resolved to %q, want synthorg-backend-old", got)
+	}
+
+	// The global still holds the first invocation's value here, which is
+	// precisely the state the guard has to survive.
+	second := newWorkerStartTestCmd(&bytes.Buffer{})
+	if got := resolveWorkerStartFlags(second, GetGlobalOpts(second.Context())).container; got != defaultWorkerContainer {
+		t.Errorf("omitted --container resolved to %q, want %q", got, defaultWorkerContainer)
+	}
+}
+
 // TestRunWorkerStartRefusesABadPlanBeforeExec proves validation runs before
 // anything is handed to docker: a rejected plan must exec nothing at all.
 func TestRunWorkerStartRefusesABadPlanBeforeExec(t *testing.T) {

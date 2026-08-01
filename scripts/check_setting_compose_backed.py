@@ -235,8 +235,29 @@ def _resolve_go_constants(text: str, constants: dict[str, str]) -> str:
         the variable name matches whether the call site spells the literal or
         the constant.
     """
-    resolved = [value for name, value in constants.items() if name in text]
+    resolved = [
+        value for name, value in constants.items() if _references_token(text, name)
+    ]
     return "\n".join([text, *resolved])
+
+
+def _references_token(source: str, name: str) -> bool:
+    """Report whether *source* names *name* as its own identifier.
+
+    Whole-token for the same reason :func:`_sets_env_var` is: with a plain
+    substring test a constant whose name is a strict prefix of another
+    (``EnvAPIServerHost`` inside ``EnvAPIServerHostname``) resolves off the
+    longer one's mention, and its value joins the searched text even though
+    the launcher never sets it.
+
+    Args:
+        source: The Go source to search.
+        name: The constant identifier.
+
+    Returns:
+        ``True`` when the identifier appears as its own token.
+    """
+    return re.search(rf"(?<!\w){re.escape(name)}(?!\w)", source) is not None
 
 
 def _run(repo_root: Path) -> int:

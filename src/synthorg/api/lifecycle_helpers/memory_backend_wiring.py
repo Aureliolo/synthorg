@@ -127,9 +127,9 @@ async def _resolved_memory_config(app_state: AppState) -> CompanyMemoryConfig:
     """Return the memory config with the operator's current choices applied.
 
     The boot config mirrors ``memory.backend`` from the environment only, so
-    reading it alone would ignore a value written through the dashboard and
-    make a change that the reconciler correctly rebuilt for produce the same
-    backend again.
+    reading it alone would ignore a value written through the dashboard: the
+    rebuild the reconciler correctly triggered would then construct the same
+    backend it just tore down.
 
     Returns:
         The boot config, with backend and consolidation interval replaced by
