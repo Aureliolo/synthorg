@@ -88,7 +88,7 @@ rewiring, and two lists drift: that is precisely how `wire_memory_backend`
 came to be absent from the post-setup rewire while thirteen siblings were in
 it. Three shapes are all the same defect and all rejected: a post-setup rewire
 list, a settings subscriber that re-runs wiring, and a composite wrapper that
-runs several owned wirers in a fixed order. Enforced by
+runs several registry-owned `wire_*` functions in a fixed order. Enforced by
 `scripts/check_subsystems_single_owner.py`; opt out per-line with
 `# lint-allow: subsystem-single-owner -- <reason>`.
 
