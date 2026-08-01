@@ -3,21 +3,22 @@
 
 Provides the central service layer that merges setting values from
 three sources in priority order: DB > env > code default. For settings
-flagged ``read_only_post_init=True`` the DB tier is bypassed and the
-chain collapses to env > default.
+flagged ``compose_set=True`` the DB tier is bypassed and the chain
+collapses to env > default.
 
 One cohesive responsibility: the setting-value lifecycle. Caching
 (for non-sensitive entries), encryption (for sensitive entries),
-read-only-post-init bypass, audit-namespace tagging, and bus-based
-change notifications are all facets of "resolve / persist / notify a
-setting value" with shared invariants (the registry, the repository,
-the encryptor, the version semantics); splitting them fragments the
+compose-set bypass, audit-namespace tagging, and bus-based change
+notifications are all facets of "resolve / persist / notify a setting
+value" with shared invariants (the registry, the repository, the
+encryptor, the version semantics); splitting them fragments the
 single audit chain operators rely on.
 """
 
 import os
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
@@ -42,10 +43,6 @@ from synthorg.observability.events.settings import (
 from synthorg.observability.metrics_hub import record_settings_mutation
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
-from synthorg.settings._overrides_scan import (
-    ALL_OVERRIDES_LIMIT,
-    collect_pending_restart,
-)
 from synthorg.settings._setting_audit import emit_security_setting_changed
 from synthorg.settings._value_rules import (
     SENSITIVE_MASK,
@@ -53,6 +50,7 @@ from synthorg.settings._value_rules import (
     reject_if_read_only,
     validate_value,
 )
+from synthorg.settings.cross_field_rules import enforce_cross_field_rules
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
 from synthorg.settings.errors import (
@@ -61,7 +59,6 @@ from synthorg.settings.errors import (
     SettingValidationError,
 )
 from synthorg.settings.models import (
-    PendingRestartSetting,
     SettingDefinition,
     SettingEntry,
     SettingValue,
@@ -76,6 +73,10 @@ from synthorg.settings.write_governance import (
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
+# Only explicitly-overridden settings have a row, so one page covers every
+# deployment; the bound exists so a corrupted table cannot stream unboundedly.
+ALL_OVERRIDES_LIMIT: Final[int] = 10_000
+
 
 class SettingsService:
     """Central settings service with resolution, cache, and notifications.
@@ -86,8 +87,8 @@ class SettingsService:
        ``env_var_override``)
     3. Code defaults (from ``SettingDefinition.default``)
 
-    For settings flagged ``read_only_post_init=True`` the DB tier is
-    bypassed and the chain collapses to env > default.
+    For settings flagged ``compose_set=True`` the DB tier is bypassed
+    and the chain collapses to env > default.
 
     The cache stores only non-sensitive DB values.  Sensitive values
     are decrypted on every read to avoid holding plaintext secrets
@@ -249,13 +250,11 @@ class SettingsService:
             if cached is not None:
                 return cached
 
-        # Read-only-post-init entries are sourced exclusively from env /
-        # YAML / code default at process startup; the DB row (if any --
-        # left over from a pre-rename schema or a stale ops mistake) MUST
-        # NOT be consulted, otherwise the running process would surface
-        # a value the operator believed was overridden out via
-        # ``set()`` -- which we already reject on the write side.
-        if not definition.read_only_post_init:
+        # Compose-set entries come from the deployment; a DB row (left over
+        # from an earlier schema or a stale ops mistake) MUST NOT be
+        # consulted, otherwise the running process would surface a value it
+        # is not actually using.
+        if not definition.compose_set:
             setting_value = await self._resolve_db(definition)
             if setting_value is not None:
                 # Direct dict item assignment, not a {**self._cache, k: v}
@@ -270,16 +269,15 @@ class SettingsService:
                 return setting_value
 
         fallback = await self._resolve_fallback(definition)
-        # Read-only-post-init: cache the first-read snapshot so
-        # subsequent ``/settings`` queries and ``SETTINGS_VALUE_RESOLVED``
-        # events report the *same* value the runtime captured at boot.
-        # Without this snapshot, a mid-process mutation of ``os.environ``
-        # or the in-memory config object would let the resolved value
-        # drift away from what middleware / NATS clients / worker pools
-        # locked in at startup, and ``/settings`` would lie about
-        # reality.  Sensitive read-only-post-init values are still
-        # bypassed (they should never survive in cache).
-        if definition.read_only_post_init and not definition.sensitive:
+        # Compose-set: cache the first-read snapshot so subsequent
+        # ``/settings`` queries and ``SETTINGS_VALUE_RESOLVED`` events report
+        # the *same* value the runtime captured at boot. Without it, a
+        # mid-process mutation of ``os.environ`` or the in-memory config
+        # object would let the resolved value drift away from what middleware
+        # / NATS clients / worker pools locked in at startup, and
+        # ``/settings`` would lie about reality. Sensitive compose-set values
+        # are still bypassed (they should never survive in cache).
+        if definition.compose_set and not definition.sensitive:
             self._cache[cache_key] = fallback
         return fallback
 
@@ -361,25 +359,6 @@ class SettingsService:
             entry = await self._resolve_with_db_lookup(defn, db_hit)
             entries.append(entry)
         return tuple(entries)
-
-    async def pending_restart(
-        self,
-        *,
-        since: datetime,
-    ) -> tuple[PendingRestartSetting, ...]:
-        """List restart-required settings written after ``since``.
-
-        Args:
-            since: This process's boot instant.
-
-        Returns:
-            The pending settings, sorted by namespace then key.
-        """
-        return await collect_pending_restart(
-            self._repository,
-            self._registry,
-            since=since,
-        )
 
     async def get_page(
         self,
@@ -499,10 +478,9 @@ class SettingsService:
         ns = definition.namespace
         key = definition.key
 
-        # Read-only-post-init: ignore any DB row (mirrors the per-key
-        # ``get()`` short-circuit so batch reads do not surface a
-        # stale override).
-        if definition.read_only_post_init:
+        # Compose-set: ignore any DB row (mirrors the per-key ``get()``
+        # short-circuit so batch reads do not surface a stale override).
+        if definition.compose_set:
             db_hit = None
 
         if db_hit is not None:
@@ -558,8 +536,7 @@ class SettingsService:
 
     def _invalidate_cache(self, namespace: str, key: str) -> None:
         """Remove a key from the settings cache."""
-        cache_key = (namespace, key)
-        self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
+        self._cache.pop((namespace, key), None)
         logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
     def _invalidate_namespace_cache(self, namespace: str) -> None:
@@ -583,18 +560,16 @@ class SettingsService:
         Returns:
             A ``(value, updated_at)`` string pair from the DB row for
             CAS preflight; ``("", "")`` when no DB override exists, the
-            key is unregistered, or the setting is
-            ``read_only_post_init``.
+            key is unregistered, or the setting is ``compose_set``.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
             return "", ""
-        # Read-only-post-init entries are never written via the service,
-        # so CAS callers must observe the same "no DB override" sentinel
-        # the read path returns -- returning a stale row here would let
-        # a CAS preflight succeed against a value the runtime no longer
-        # honours.
-        if definition.read_only_post_init:
+        # Compose-set entries are never written via the service, so CAS
+        # callers must observe the same "no DB override" sentinel the read
+        # path returns: a stale row here would let a CAS preflight succeed
+        # against a value the runtime does not honour.
+        if definition.compose_set:
             return "", ""
         setting_value = await self._resolve_db(definition)
         if setting_value is None:
@@ -698,6 +673,7 @@ class SettingsService:
             governance=governance,
             get_entry=self.get,
         )
+        await self._guard_cross_field_rules([(namespace, key, value)])
 
         try:
             validate_value(definition, value)
@@ -746,7 +722,7 @@ class SettingsService:
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
         record_settings_mutation(namespace=namespace)
         emit_security_setting_changed(namespace, key=key, action_type="set")
-        await self._publish_change(namespace, key, definition)
+        await self._publish_change(namespace, key)
 
         display_value = SENSITIVE_MASK if definition.sensitive else value
         return SettingEntry(
@@ -788,6 +764,31 @@ class SettingsService:
                 import_source=import_source,
                 governance=governance,
             )
+
+    async def _guard_cross_field_rules(
+        self, items: Sequence[tuple[str, str, str]]
+    ) -> None:
+        """Reject a write whose combined result breaks a cross-setting rule.
+
+        Args:
+            items: The triples about to be written.
+
+        Raises:
+            SettingValidationError: When the resulting combination is
+                invalid. Raised before anything is persisted, so the caller
+                sees the refusal rather than a 200 followed by a value the
+                system never enforces.
+        """
+
+        async def _current(namespace: str, key: str) -> str | None:
+            try:
+                entry = await self.get(namespace, key)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                return None
+            return entry.value
+
+        await enforce_cross_field_rules(items, get_current=_current)
 
     async def _set_many(
         self,
@@ -848,9 +849,12 @@ class SettingsService:
             governance=governance,
             get_entry=self.get,
         )
+        # Checked over the whole batch: a pair that is only valid together
+        # (raising the floor and a tier in one write) has to be allowed.
+        await self._guard_cross_field_rules(items)
 
         updated_at = now_iso_utc()
-        prepared, definitions = self._prepare_set_many(
+        prepared, written_pairs = self._prepare_set_many(
             items,
             updated_at,
             import_source=import_source,
@@ -874,7 +878,7 @@ class SettingsService:
             msg = f"Concurrent modification on batch: {keys}"
             raise VersionConflictError(msg)
 
-        for namespace, key, definition in definitions:
+        for namespace, key in written_pairs:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
             record_settings_mutation(namespace=namespace)
@@ -883,7 +887,7 @@ class SettingsService:
                 key=key,
                 action_type="set_many",
             )
-            await self._publish_change(namespace, key, definition)
+            await self._publish_change(namespace, key)
 
         return updated_at
 
@@ -895,20 +899,19 @@ class SettingsService:
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> tuple[
         list[SettingRow],
-        list[tuple[str, str, SettingDefinition]],
+        list[tuple[str, str]],
     ]:
         """Validate, encrypt, and shape items for a batch ``set_many`` write.
 
         Returns two parallel lists: the tuple format the repository
-        protocol expects, and the per-item definitions so the caller
-        can invalidate cache + publish change events after the
-        transactional write succeeds.
+        protocol expects, and the per-item keys so the caller can
+        invalidate cache + publish change events after the transactional
+        write succeeds.
 
         Returns:
             Two parallel lists: the ``list[SettingRow]`` the repository
-            protocol expects, and a ``list`` of ``(namespace, key,
-            SettingDefinition)`` for post-write cache-invalidation and
-            publish calls.
+            protocol expects, and a ``list`` of ``(namespace, key)`` for
+            post-write cache-invalidation and publish calls.
 
         Raises:
             SettingNotFoundError: If a namespace/key pair in the batch
@@ -918,7 +921,7 @@ class SettingsService:
                 in the batch.
         """
         prepared: list[SettingRow] = []
-        definitions: list[tuple[str, str, SettingDefinition]] = []
+        written_pairs: list[tuple[str, str]] = []
         seen: set[tuple[str, str]] = set()
         for namespace, key, value in items:
             pair = (namespace, key)
@@ -967,8 +970,8 @@ class SettingsService:
                     updated_at=updated_at,
                 )
             )
-            definitions.append((namespace, key, definition))
-        return prepared, definitions
+            written_pairs.append((namespace, key))
+        return prepared, written_pairs
 
     def _encrypt_if_sensitive(
         self,
@@ -1067,7 +1070,7 @@ class SettingsService:
             record_settings_mutation(namespace=namespace)
             emit_security_setting_changed(namespace, key=key, action_type="delete")
 
-            await self._publish_change(namespace, key, definition)
+            await self._publish_change(namespace, key)
 
     async def delete_namespace(self, namespace: str) -> int:
         """Span-wrapped public entry point for a whole-namespace delete.
@@ -1118,18 +1121,15 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
-        # Read-only-post-init keys in this namespace are reported as a
-        # WARNING but do not block the whole-namespace delete: the
-        # writable overrides the operator wants to clear should not be
-        # held hostage by the presence of a read-only entry.  Reads
-        # already bypass the DB for read-only-post-init definitions
-        # (see ``_resolve_with_db_lookup``), so any stale row that
-        # ``delete_namespace_returning_keys`` removes is a no-op for
-        # the running process.
+        # Compose-set keys in this namespace are reported as a WARNING but
+        # do not block the whole-namespace delete: the writable overrides
+        # the operator wants to clear should not be held hostage by the
+        # presence of a read-only entry. Reads already bypass the DB for
+        # compose-set definitions (see ``_resolve_with_db_lookup``), so any
+        # stale row that ``delete_namespace_returning_keys`` removes is a
+        # no-op for the running process.
         readonly_definition_keys = {
-            d.key
-            for d in self._registry.list_namespace(namespace)
-            if d.read_only_post_init
+            d.key for d in self._registry.list_namespace(namespace) if d.compose_set
         }
 
         # Atomic delete-and-return-keys: the repository removes every
@@ -1174,7 +1174,7 @@ class SettingsService:
                 SETTINGS_VALIDATION_FAILED,
                 namespace=namespace,
                 action="delete_namespace",
-                reason="read_only_post_init_swept",
+                reason="compose_set_swept",
                 read_only_keys=swept_readonly,
             )
 
@@ -1206,7 +1206,7 @@ class SettingsService:
         removed_key_set = set(removed_keys)
         for definition in self._registry.list_namespace(namespace):
             if definition.key in removed_key_set:
-                await self._publish_change(namespace, definition.key, definition)
+                await self._publish_change(namespace, definition.key)
 
         return deleted
 
@@ -1228,9 +1228,12 @@ class SettingsService:
         self,
         namespace: str,
         key: str,
-        definition: SettingDefinition,
     ) -> None:
-        """Publish a change notification to the message bus."""
+        """Publish a change notification to the message bus.
+
+        Every published change is one a subscriber can act on: a compose-set
+        setting is rejected on the write side, so it never reaches here.
+        """
         if self._message_bus is None:
             return
 
@@ -1249,10 +1252,6 @@ class SettingsService:
                     extra=(
                         ("namespace", namespace),
                         ("key", key),
-                        (
-                            "restart_required",
-                            str(definition.restart_required),
-                        ),
                     ),
                 ),
             )

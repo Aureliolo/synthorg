@@ -93,19 +93,37 @@ function computeChange(value: unknown, origValue: unknown): string | null {
   return stringifyValue(origValue) !== strValue ? strValue : null
 }
 
+/**
+ * True when a document value differs from the entry's current value.
+ *
+ * The buffer holds every setting, editable or not, so a caller that
+ * rejects writes to a class of setting must first know the user actually
+ * edited it: rejecting on mere presence would make the document
+ * unsaveable the moment one such setting exists.
+ */
+export function settingValueDiffers(entry: SettingEntry, value: unknown): boolean {
+  const { namespace, key } = entry.definition
+  const current = entriesToObject([entry])[namespace]?.[key] ?? entry.value
+  return computeChange(value, current) !== null
+}
+
+export interface SettingChanges {
+  changes: Map<string, string>
+  unknownKeys: string[]
+  envKeys: string[]
+  composeSetKeys: string[]
+}
+
 /** Validate and diff parsed settings against original. */
 export function buildChanges(
   parsed: ParsedSettings,
   original: Record<string, Record<string, unknown>>,
   entryLookup: ReadonlyMap<string, SettingEntry>,
-): {
-  changes: Map<string, string>
-  unknownKeys: string[]
-  envKeys: string[]
-} {
+): SettingChanges {
   const changes = new Map<string, string>()
   const unknownKeys: string[] = []
   const envKeys: string[] = []
+  const composeSetKeys: string[] = []
   for (const [ns, keys] of Object.entries(parsed)) {
     const origNs = original[ns] ?? {}
     for (const [key, value] of Object.entries(keys)) {
@@ -115,15 +133,14 @@ export function buildChanges(
         unknownKeys.push(ck)
         continue
       }
-      if (entry.source === 'env') {
-        envKeys.push(ck)
-        continue
-      }
       const changed = computeChange(value, origNs[key])
-      if (changed !== null) changes.set(ck, changed)
+      if (changed === null) continue
+      if (entry.definition.compose_set) composeSetKeys.push(ck)
+      else if (entry.source === 'env') envKeys.push(ck)
+      else changes.set(ck, changed)
     }
   }
-  return { changes, unknownKeys, envKeys }
+  return { changes, unknownKeys, envKeys, composeSetKeys }
 }
 
 function parseRawDocument(text: string, format: CodeFormat): unknown {

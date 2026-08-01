@@ -60,9 +60,8 @@ def _resolve_timeout_policy(config: ApprovalTimeoutConfig | None) -> TimeoutPoli
 def resolve_rate_limiter_enabled() -> bool:
     """Resolve ``api.rate_limiter_enabled`` at app construction time.
 
-    Cat-2 (``read_only_post_init=True``): env > default. The
-    ``SettingsService`` rejects runtime mutation, so the value baked
-    here lives for the process lifetime.
+    Env > default. This seeds the live tier config; an operator edit
+    reaches the middleware through the global rate-limit subscriber.
 
     Returns:
         Whether the global rate limiter is enabled.

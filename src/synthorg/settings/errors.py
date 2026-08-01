@@ -34,14 +34,14 @@ class SettingValidationError(SettingsError):
 
 
 class SettingReadOnlyError(SettingValidationError):
-    """Raised when a write is attempted on a ``read_only_post_init`` setting.
+    """Raised when a write is attempted on a ``compose_set`` setting.
 
     Inherits from :class:`SettingValidationError` so the existing HTTP 422
     error mapping in the API controllers picks it up without changes.
-    These settings are sourced from environment variables or YAML at
-    process startup and cannot be overridden by ``SettingsService.set()``
-    or related mutations -- the registry entry exists for discoverability
-    only.
+    The deployment fixed these when the container was created, so
+    ``SettingsService.set()`` and related mutations reject rather than
+    store a value the running process will never read -- the registry
+    entry exists for discoverability only.
     """
 
 

@@ -10,6 +10,8 @@ export interface TagInputProps {
   disabled?: boolean | undefined
   placeholder?: string | undefined
   className?: string | undefined
+  /** Ids of external text describing the control. */
+  describedBy?: string | undefined
 }
 
 interface TagInputHandlers {
@@ -81,7 +83,15 @@ function useTagInputHandlers(
   return { draft, setDraft, handleKeyDown, handlePaste, removeAt }
 }
 
-export function TagInput({ value, onChange, label, disabled, placeholder, className }: TagInputProps) {
+export function TagInput({
+  value,
+  onChange,
+  label,
+  disabled,
+  placeholder,
+  className,
+  describedBy,
+}: TagInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const labelId = useId()
   const { draft, setDraft, handleKeyDown, handlePaste, removeAt } = useTagInputHandlers(value, onChange)
@@ -126,6 +136,7 @@ export function TagInput({ value, onChange, label, disabled, placeholder, classN
           placeholder={value.length === 0 ? placeholder : undefined}
           aria-labelledby={labelledBy}
           aria-label={placeholder ?? 'Tags input'}
+          aria-describedby={describedBy}
           className="min-w-20 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
         />
       </div>

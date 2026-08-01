@@ -1,6 +1,6 @@
 import { createContext, use, useCallback, useId, useMemo, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, mergeAriaToken } from '@/lib/utils'
 
 interface BaseFieldProps {
   label: string
@@ -72,26 +72,6 @@ export function PasswordVisibilityGroup({ children }: { children: React.ReactNod
   )
 }
 
-/**
- * Merge a caller-supplied ARIA id token list with a component-managed
- * token, preserving both. Prevents caller overrides via ``...domProps``
- * from silently dropping the component's ``hintId``/``errorId`` so
- * screen readers continue to receive the validation text.
- */
-function mergeAriaToken(
-  incoming: string | undefined,
-  managed: string | undefined,
-): string | undefined {
-  const tokens = new Set<string>()
-  if (incoming) {
-    for (const token of incoming.split(/\s+/)) {
-      if (token) tokens.add(token)
-    }
-  }
-  if (managed) tokens.add(managed)
-  if (tokens.size === 0) return undefined
-  return [...tokens].join(' ')
-}
 
 function buildInputClasses({
   hasError,

@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Final, cast
 
 from synthorg.api.state_bridge_config import BridgeConfigState
+from synthorg.api.state_compression import CompressionState
 from synthorg.api.state_per_op_limits import PerOpLimitsState
 from synthorg.api.state_request_locks import RequestLockRegistry
 from synthorg.api.state_slices import AppStateSliceMixin
@@ -81,6 +82,7 @@ class AppState(AppStateSliceMixin):
     startup_time: float
     boot_at: datetime
     bridge_config: BridgeConfigState
+    compression: CompressionState
     per_op_limits: PerOpLimitsState
     request_locks: RequestLockRegistry
     ws_auth_limits: WsAuthLimits
@@ -136,6 +138,7 @@ class AppState(AppStateSliceMixin):
         # Cohesive owners of the cross-cutting mutable primitives a frozen
         # slice cannot hold.
         self.bridge_config = BridgeConfigState()
+        self.compression = CompressionState()
         self.per_op_limits = PerOpLimitsState()
         self.request_locks = RequestLockRegistry()
         self.ws_auth_limits = WsAuthLimits()

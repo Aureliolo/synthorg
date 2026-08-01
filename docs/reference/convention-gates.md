@@ -117,11 +117,12 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_runtime_stats_freshness.py` | push (`--skip-network`); CI (full) | `runtime_stats.yaml` + generator | full | no | none | keep |
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
-| `check_setting_restart_required_justified.py` | push | `settings/definitions/` | full | no | `setting_restart_required_baseline.txt` | keep |
+| `check_setting_compose_backed.py` | push | `settings/definitions/` + compose template + worker launch | full | no | none | keep |
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
+| `check_subsystems_single_owner.py` | push | `api/subsystems/registry.py` + `src/synthorg/` | full | no | none | add |
 | `check_timeout_interval_default_drift.py` | commit+push | boot-resolver + security defaults | full | no | none | harden |
 | `check_verified_completion_paths.py` | push | plan/project transitions + `src/synthorg/` | full | no | none | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |

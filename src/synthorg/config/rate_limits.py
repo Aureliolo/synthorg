@@ -297,6 +297,10 @@ class LiveRateLimits(BaseModel):
         floor_max_requests: Per-IP ceiling across the whole API.
         unauth_max_requests: Per-IP ceiling for anonymous callers.
         auth_max_requests: Per-user ceiling for authenticated callers.
+        auth_endpoint_max_requests: Per-IP ceiling on the credential
+            endpoints. Neither ``enabled`` nor ``time_unit`` reaches it: it
+            is a brute-force bound, so turning the general limiter off or
+            widening its window must not relax it.
         time_unit: Window the caps are counted over.
     """
 
@@ -306,6 +310,7 @@ class LiveRateLimits(BaseModel):
     floor_max_requests: int = Field(ge=1)
     unauth_max_requests: int = Field(ge=1)
     auth_max_requests: int = Field(ge=1)
+    auth_endpoint_max_requests: int = Field(ge=1)
     time_unit: RateLimitWindowUnit = "minute"
 
     @model_validator(mode="after")

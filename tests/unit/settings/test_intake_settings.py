@@ -3,7 +3,7 @@
 ``simulations.intake_strategy`` / ``simulations.intake_model`` /
 ``intake_default_project`` seed the client-simulation runtime at construction
 via the bootstrap resolver (env > default). They are hot
-(``restart_required=False``, ``read_only_post_init=False``): a change rebuilds
+(``compose_set=False``, ``compose_set=False``): a change rebuilds
 and swaps the runtime live via the simulations settings subscriber, and the DB
 value is re-resolved on-startup and on every reload.
 """
@@ -39,8 +39,7 @@ def test_intake_strategy_registered() -> None:
     assert defn.type is SettingType.ENUM
     assert defn.default == "direct"
     assert defn.enum_values == ("direct", "agent")
-    assert defn.read_only_post_init is False
-    assert defn.restart_required is False
+    assert defn.compose_set is False
 
 
 def test_intake_model_registered() -> None:
@@ -48,8 +47,7 @@ def test_intake_model_registered() -> None:
     assert defn is not None
     assert defn.type is SettingType.MODEL_REF
     assert defn.default is None
-    assert defn.read_only_post_init is False
-    assert defn.restart_required is False
+    assert defn.compose_set is False
 
 
 def test_intake_default_project_registered() -> None:
@@ -57,8 +55,7 @@ def test_intake_default_project_registered() -> None:
     assert defn is not None
     assert defn.type is SettingType.STRING
     assert defn.default == "client-intake"
-    assert defn.read_only_post_init is False
-    assert defn.restart_required is False
+    assert defn.compose_set is False
 
 
 def test_intake_default_project_bootstrap_default() -> None:

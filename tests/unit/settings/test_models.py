@@ -105,7 +105,7 @@ class TestSettingDefinition:
         assert defn.default is None
         assert defn.level == SettingLevel.BASIC
         assert defn.sensitive is False
-        assert defn.restart_required is False
+        assert defn.compose_set is False
         assert defn.enum_values == ()
         assert defn.validator_pattern is None
         assert defn.min_value is None
@@ -121,7 +121,7 @@ class TestSettingDefinition:
             group="Output Scanning",
             level=SettingLevel.ADVANCED,
             sensitive=False,
-            restart_required=True,
+            compose_set=True,
             enum_values=("redact", "withhold", "log_only", "autonomy_tiered"),
             validator_pattern=None,
             min_value=None,
@@ -133,7 +133,7 @@ class TestSettingDefinition:
             "log_only",
             "autonomy_tiered",
         )
-        assert defn.restart_required is True
+        assert defn.compose_set is True
 
     def test_frozen(self) -> None:
         defn = SettingDefinition(
@@ -166,7 +166,8 @@ class TestSettingDefinition:
                 group="Limits",
             )
 
-    def test_read_only_post_init_defaults_false(self) -> None:
+    def test_compose_set_defaults_false(self) -> None:
+        """Live is the default; being compose-set is the deliberate choice."""
         defn = SettingDefinition(
             namespace=SettingNamespace.BUDGET,
             key="total_monthly",
@@ -174,38 +175,18 @@ class TestSettingDefinition:
             description="Monthly budget in the configured currency",
             group="Limits",
         )
-        assert defn.read_only_post_init is False
+        assert defn.compose_set is False
 
-    def test_read_only_post_init_requires_restart_required(self) -> None:
-        # read_only_post_init implies the value is baked at boot; it
-        # would be misleading to advertise the entry as live-mutable
-        # while the service rejects writes. The cross-field validator
-        # enforces the implication so misconfiguration fails at
-        # construction time.
-        with pytest.raises(ValidationError) as excinfo:
-            SettingDefinition(
-                namespace=SettingNamespace.OBSERVABILITY,
-                key="log_directory",
-                type=SettingType.STRING,
-                description="Log output directory (env-only)",
-                group="Logging",
-                read_only_post_init=True,
-                restart_required=False,
-            )
-        assert "restart_required" in str(excinfo.value)
-
-    def test_read_only_post_init_with_restart_required_ok(self) -> None:
+    def test_compose_set_is_declarable(self) -> None:
         defn = SettingDefinition(
             namespace=SettingNamespace.OBSERVABILITY,
             key="log_directory",
             type=SettingType.STRING,
             description="Log output directory (env-only)",
             group="Logging",
-            read_only_post_init=True,
-            restart_required=True,
+            compose_set=True,
         )
-        assert defn.read_only_post_init is True
-        assert defn.restart_required is True
+        assert defn.compose_set is True
 
 
 class TestSettingValue:

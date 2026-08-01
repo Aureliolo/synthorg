@@ -3,7 +3,7 @@
  * operator can tune model routing in context with the providers they are
  * configuring. Reads/writes the ``providers`` settings namespace via the
  * settings API, reusing the shared SettingRow renderer for parity with
- * the main settings screen (badges, env-lock notices, restart hints).
+ * the main settings screen (badges, env-lock and compose-set notices).
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Route } from 'lucide-react'

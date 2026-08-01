@@ -91,7 +91,6 @@ import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
 import { recommendationsHandlers } from './recommendations'
 import { reportsHandlers } from './reports'
-import { restartHandlers } from './restart'
 import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
@@ -165,7 +164,6 @@ export const defaultHandlers = [
   ...qualityHandlers,
   ...recommendationsHandlers,
   ...reportsHandlers,
-  ...restartHandlers,
   ...rolesHandlers,
   ...scalingHandlers,
   ...settingsHandlers,

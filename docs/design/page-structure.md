@@ -243,12 +243,12 @@ The **coordination namespace** includes a dedicated **Ceremony Policy** sub-page
 
 The **memory namespace** includes a dedicated **Fine-Tuning** sub-page (`/settings/memory/fine-tuning`) for managing the domain-specific embedding fine-tuning pipeline. The page displays pipeline status (5-stage stepper with live progress bar), run history, preflight validation (dependencies, GPU, documents, disk space), and controls for starting/cancelling fine-tuning runs with optional advanced parameter overrides (epochs, learning rate, batch size). A **Checkpoints** section lists all fine-tuned model checkpoints with evaluation metrics (NDCG@10, Recall@10), deploy/rollback/delete actions (deploy activates the checkpoint and updates embedder settings; rollback restores the pre-deployment backup config; delete is rejected for the active checkpoint), and an active-checkpoint indicator. All checkpoint actions require CEO or SYSTEM role.
 
-The **backup namespace** covers backup configuration settings (schedule, retention, path) and links to a dedicated **Admin Backups** page at `/admin/backups` (a standalone admin route, reached via a Settings action card from the backup namespace). That page surfaces the full backup lifecycle: create, cursor-paginated list, restore (with a restart-required notice), and delete.
+The **backup namespace** covers backup configuration settings (schedule, retention, path) and links to a dedicated **Admin Backups** page at `/admin/backups` (a standalone admin route, reached via a Settings action card from the backup namespace). That page surfaces the full backup lifecycle: create, cursor-paginated list, restore (which swaps the database underneath the process, so the notice says to restart it), and delete.
 
-System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Genuinely read-only settings (`read_only_post_init`: sourced from env / YAML at process start, a dashboard write is rejected) are moved out of the inline groups into a per-namespace collapsed **"Advanced · startup-only"** disclosure, marked read-only, so an operator can inspect the baked-in value without mistaking an enabled-looking input for something editable. This is distinct from the basic/advanced *visibility* toggle above: a merely `restart_required` setting is DB-writable and stays inline with a restart badge (only its effect waits for a restart), so it is deliberately not moved into that disclosure.
+System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Settings the deployment fixes (`compose_set`: the container was created with the value, a dashboard write is rejected) are moved out of the inline groups into a per-namespace collapsed **"Advanced · set by the deployment"** disclosure, marked read-only and badged, so an operator can inspect the value without mistaking an enabled-looking input for something editable. This is distinct from the basic/advanced *visibility* toggle above. Every setting outside that disclosure applies as soon as it is saved; there is no third state and no restart notice.
 
 **API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /settings/security/export`, `POST /settings/security/import`, `GET /security/audit`, `GET /coordination/metrics`, `GET /ceremony-policy`, `GET /ceremony-policy/resolved?department=`, `GET /ceremony-policy/active`, `GET /departments/{name}/ceremony-policy`, `PUT /departments/{name}/ceremony-policy`, `DELETE /departments/{name}/ceremony-policy`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
-**WS channels**: `system` (restart-required notifications)
+**WS channels**: `system` (system-level notifications)
 
 #### Documentation (`/docs/`)
 
@@ -313,7 +313,6 @@ Slide-in drawer aggregating system notifications: budget alerts, approval arriva
 | `budget.threshold` | toast + drawer | warning |
 | `budget.exhausted` | toast + drawer + browser | critical |
 | `system.error` | toast + drawer | error |
-| `system.restart_required` | toast + drawer | warning |
 | `system.shutdown` | toast + drawer + browser | critical |
 | `agents.personality_trimmed` | toast only | info |
 | `agents.hired` | drawer only | info |

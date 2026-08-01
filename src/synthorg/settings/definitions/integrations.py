@@ -287,7 +287,6 @@ _r.register(
 )
 
 _r.register(
-    # lint-allow: restart-required -- resolved once at boot into the tunnel
     # manager's state-dir paths (downloaded binaries + the devtunnel CLI's
     # confined HOME); the adapters cache these at construction, so a mid-run
     # DB write would silently drift from the directories actually in use.
@@ -307,8 +306,7 @@ _r.register(
         ),
         group="Tunnel",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         env_var_override="SYNTHORG_TUNNEL_STATE_DIR",
     )
 )
@@ -327,7 +325,6 @@ _r.register(
         ),
         group="GitHub",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         # HTTPS-only: a bearer token rides the Authorization header, so a
         # plaintext http:// endpoint would leak it on the wire.
         validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",

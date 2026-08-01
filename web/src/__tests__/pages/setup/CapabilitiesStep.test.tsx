@@ -107,15 +107,6 @@ describe('CapabilitiesStep', () => {
     expect(screen.getByLabelText('Chief of Staff model')).toBeInTheDocument()
   })
 
-  it('does not show restart badges in the wizard', async () => {
-    server.use(chiefOfStaffOn())
-    renderWithRouter(<CapabilitiesStep />)
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: 'Research' })).toBeInTheDocument(),
-    )
-    expect(screen.queryByText('Restart')).not.toBeInTheDocument()
-  })
-
   it('gates the Research model picker on the Research toggle', async () => {
     server.use(chiefOfStaffOn())
     renderWithRouter(<CapabilitiesStep />)

@@ -26,6 +26,8 @@ export interface AgentModelPickerProps {
   extraGroups?: readonly SelectOptionGroup[] | undefined
   /** Help text under the control, e.g. a warning about the current choice. */
   hint?: string | undefined
+  /** Ids of external text describing the control. */
+  describedBy?: string | undefined
   /**
    * Which half of the catalogue to offer. Defaults to `chat`.
    *
@@ -138,6 +140,7 @@ export function AgentModelPicker({
   hideLabel,
   extraGroups,
   hint,
+  describedBy,
   kind = 'chat',
 }: AgentModelPickerProps) {
   const providerGroups = useMemo(
@@ -173,6 +176,7 @@ export function AgentModelPicker({
       disabled={disabled}
       placeholder={hasModels ? 'Select model...' : 'No models available'}
       hint={hint}
+      describedBy={describedBy}
     />
   )
 }

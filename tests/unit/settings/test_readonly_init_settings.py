@@ -1,6 +1,6 @@
-"""Service-layer rejection of writes on read-only-post-init settings.
+"""Service-layer rejection of writes on compose-set settings.
 
-A ``SettingDefinition`` marked ``read_only_post_init=True`` is sourced
+A ``SettingDefinition`` marked ``compose_set=True`` is sourced
 exclusively from environment variables or YAML at process startup; the
 registry entry exists for discoverability via the /settings API.  The
 service layer must reject every write surface (``set``, ``set_many``,
@@ -20,6 +20,7 @@ from synthorg.settings.errors import SettingReadOnlyError, SettingValidationErro
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -30,10 +31,9 @@ def _read_only_definition() -> SettingDefinition:
         key="log_directory",
         type=SettingType.STRING,
         default="",
-        description="Log output directory (env-only, restart required)",
+        description="Log output directory (fixed by the deployment)",
         group="Logging",
-        read_only_post_init=True,
-        restart_required=True,
+        compose_set=True,
     )
 
 
@@ -59,11 +59,11 @@ def registry() -> SettingsRegistry:
 
 @pytest.fixture
 def repo() -> AsyncMock:
-    # ``AsyncMock(spec=SettingsRepository)`` already stubs every async
-    # method on the protocol; configure the per-test return values via
-    # ``.return_value`` rather than reassigning each attribute to a
-    # fresh ``AsyncMock`` (the prior pattern was redundant).
-    repo = AsyncMock(spec=SettingsRepository)
+    # ``mock_of`` autospecs every method on the protocol; configure the
+    # per-test return values on the auto-mocked attributes rather than
+    # assigning fresh ``AsyncMock`` instances (which would be bare mocks
+    # and trip ``scripts/check_mock_spec.py``).
+    repo: AsyncMock = mock_of[SettingsRepository]()
     repo.get.return_value = None
     repo.save.return_value = True
     repo.set_many.return_value = True
@@ -85,7 +85,7 @@ def service(repo: AsyncMock, registry: SettingsRegistry) -> SettingsService:
 # ── set() ────────────────────────────────────────────────────────
 
 
-async def test_set_rejects_read_only_post_init(
+async def test_set_rejects_compose_set(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     with pytest.raises(SettingReadOnlyError):
@@ -128,7 +128,7 @@ async def test_set_many_rejects_when_any_item_is_read_only(
 # ── delete() ─────────────────────────────────────────────────────
 
 
-async def test_delete_rejects_read_only_post_init(
+async def test_delete_rejects_compose_set(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     with pytest.raises(SettingReadOnlyError):
@@ -150,7 +150,7 @@ async def test_delete_namespace_sweeps_with_warning_when_mixed(
     service: SettingsService,
     repo: AsyncMock,
 ) -> None:
-    # A namespace that contains a mix of writable and read-only-post-init
+    # A namespace that contains a mix of writable and compose-set
     # definitions must NOT be hostage to the read-only entry: writable
     # overrides the operator wants to clear should still go through.
     # Reads already bypass DB for read-only entries, so any stale row
@@ -169,7 +169,7 @@ async def test_delete_namespace_sweeps_with_warning_when_mixed(
         log
         for log in logs
         if log.get("event") == "settings.validation.failed"
-        and log.get("reason") == "read_only_post_init_swept"
+        and log.get("reason") == "compose_set_swept"
     ]
     assert swept_logs, logs
     assert swept_logs[0].get("read_only_keys") == ["log_directory"]
@@ -190,7 +190,7 @@ async def test_read_only_resolves_through_env(
 # ── DB row is ignored on reads ───────────────────────────────────
 
 
-async def test_get_bypasses_db_for_read_only_post_init(
+async def test_get_bypasses_db_for_compose_set(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     # A leftover row (from a prior schema or an ops mistake on a peer
@@ -208,7 +208,7 @@ async def test_get_bypasses_db_for_read_only_post_init(
     repo.get.assert_not_awaited()
 
 
-async def test_get_namespace_bypasses_db_for_read_only_post_init(
+async def test_get_namespace_bypasses_db_for_compose_set(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     repo.get_namespace.return_value = (
@@ -224,10 +224,10 @@ async def test_get_namespace_bypasses_db_for_read_only_post_init(
     assert log_dir.value == ""
     # get_namespace still issues the batch DB query (writable settings in
     # the same namespace need it); the per-entry resolver is responsible
-    # for ignoring the row when the definition is read-only-post-init.
+    # for ignoring the row when the definition is compose-set.
 
 
-async def test_get_versioned_returns_no_override_for_read_only_post_init(
+async def test_get_versioned_returns_no_override_for_compose_set(
     service: SettingsService, repo: AsyncMock
 ) -> None:
     repo.get.return_value = SettingRow(

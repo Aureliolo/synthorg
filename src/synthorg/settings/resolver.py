@@ -664,21 +664,18 @@ class ConfigResolver:
     async def get_api_config(self) -> ApiConfig:
         """Assemble an ``ApiConfig`` with runtime-editable overrides.
 
-        Resolves the five runtime-relevant API settings (rate-limit
-        max requests for both tiers, rate-limit time unit, JWT expiry,
-        min password length) and merges them onto the YAML-loaded base
-        config.
+        Resolves the runtime-relevant API settings (the rate-limit caps
+        for both user-gated tiers plus the credential endpoints, the
+        rate-limit time unit, JWT expiry, min password length) and merges
+        them onto the YAML-loaded base config.
 
-        Bootstrap-only settings (``server_host``, ``server_port``,
+        Compose-set settings (``server_host``, ``server_port``,
         ``api_prefix``, ``ssl_certfile``, ``ssl_keyfile``,
-        ``ssl_ca_certs``, ``trusted_proxies``,
-        ``cors_allowed_origins``,
-        ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
-        **not** resolved -- they are baked into the Litestar app at
-        construction and require a restart to take effect.  The two
-        rate-limit max-request settings are also bootstrap-only
-        (``restart_required=True``) but are resolved here so the
-        assembled ``ApiConfig`` reflects DB/env overrides at startup.
+        ``ssl_ca_certs``, ``trusted_proxies``, ``cors_allowed_origins``,
+        ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are **not**
+        resolved: they are baked into the Litestar app at construction.
+        The rate-limit caps resolved here seed the live tier config the
+        middleware reads per request.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
 
@@ -703,6 +700,9 @@ class ConfigResolver:
                 t_auth = tg.create_task(
                     self.get_int("api", "rate_limit_auth_max_requests")
                 )
+                t_auth_endpoint = tg.create_task(
+                    self.get_int("api", "rate_limit_auth_endpoint_max_requests")
+                )
                 t_time_unit = tg.create_task(
                     self.get_enum("api", "rate_limit_time_unit", RateLimitTimeUnit)
                 )
@@ -726,6 +726,7 @@ class ConfigResolver:
                     update={
                         "unauth_max_requests": t_unauth.result(),
                         "auth_max_requests": t_auth.result(),
+                        "auth_endpoint_max_requests": t_auth_endpoint.result(),
                         "time_unit": t_time_unit.result(),
                     },
                 ),

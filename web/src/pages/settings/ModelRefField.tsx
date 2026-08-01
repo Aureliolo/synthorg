@@ -114,6 +114,8 @@ interface ModelRefFieldProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean | undefined
+  /** Ids of external text describing the control. */
+  describedBy?: string | undefined
   /** ``namespace/key``, so the embedder setting can offer the built-in. */
   settingKey?: string | undefined
 }
@@ -129,6 +131,7 @@ export function ModelRefField({
   value,
   onChange,
   disabled,
+  describedBy,
   settingKey,
 }: ModelRefFieldProps) {
   const providers = useProvidersStore((s) => s.providers)
@@ -168,6 +171,7 @@ export function ModelRefField({
       providers={providerMap}
       onChange={handleChange}
       disabled={disabled}
+      describedBy={describedBy}
       hideLabel
       kind={isEmbedder ? 'embedding' : 'chat'}
       extraGroups={isEmbedder ? BUILTIN_EMBEDDER_GROUP : undefined}

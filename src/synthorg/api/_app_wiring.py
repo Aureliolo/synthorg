@@ -365,6 +365,20 @@ async def _wire_steering_service(
     logger.info(API_APP_STARTUP, service="steering", note="wired")
 
 
+async def unwire_steering_service(app_state: AppState) -> None:
+    """Drop the steering service so the next pass rebuilds it.
+
+    It holds the project brain by value, so once the brain is replaced this
+    service is steering against a brain nothing else reads. A partial wire,
+    not a slice swap, because the cockpit slice also carries the notifier and
+    the flight recorder, which this subsystem does not own.
+    """
+    from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
+
+    app_state.wire(CockpitStateSlice, steering_service=None)
+    logger.info(API_APP_STARTUP, service="steering", note="unwired")
+
+
 async def _build_steering_proposer(
     app_state: AppState,
     *,

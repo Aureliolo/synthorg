@@ -38,12 +38,14 @@ def _limits(
     floor_max_requests: int = 1000,
     unauth_max_requests: int = 20,
     auth_max_requests: int = 600,
+    auth_endpoint_max_requests: int = 10,
 ) -> LiveRateLimits:
     return LiveRateLimits(
         enabled=enabled,
         floor_max_requests=floor_max_requests,
         unauth_max_requests=unauth_max_requests,
         auth_max_requests=auth_max_requests,
+        auth_endpoint_max_requests=auth_endpoint_max_requests,
     )
 
 
@@ -57,6 +59,7 @@ class TestTierSelection:
             (RateLimitTier.FLOOR, 1000),
             (RateLimitTier.UNAUTH, 20),
             (RateLimitTier.AUTH, 600),
+            (RateLimitTier.AUTH_ENDPOINT, 10),
         ],
     )
     def test_each_tier_reads_its_own_cap(
@@ -86,7 +89,8 @@ class TestFloorInvariant:
             _limits(floor_max_requests=100, auth_max_requests=600)
 
     def test_a_floor_equal_to_the_highest_tier_is_allowed(self) -> None:
-        assert _limits(floor_max_requests=600, auth_max_requests=600) is not None
+        limits = _limits(floor_max_requests=600, auth_max_requests=600)
+        assert limits.floor_max_requests == limits.auth_max_requests
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

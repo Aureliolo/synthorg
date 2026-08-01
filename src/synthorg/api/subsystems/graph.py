@@ -14,6 +14,15 @@ from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.spec import Capability, CapabilityId, SubsystemSpec
 from synthorg.config.schema import RootConfig
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.subsystem import (
+    SUBSYSTEM_CAPABILITY_PROBE_FAILED,
+    SUBSYSTEM_SETTINGS_UNREADABLE,
+)
+from synthorg.settings.state import SettingsStateSlice
+
+logger = get_logger(__name__)
 
 
 def order_subsystems(
@@ -36,8 +45,10 @@ def order_subsystems(
 
     Raises:
         SubsystemGraphInvalidError: On a duplicate name, a duplicate
-            ``provides``, an ``enabled_by`` that names no boolean setting, an
-            unprobed requirement, or a cycle.
+            ``provides``, an unregistered declared setting, an ``enabled_by``
+            that names no boolean setting, an unprobed requirement, a cycle,
+            or a consumer of a tearable capability that declares no teardown
+            of its own.
     """
     pending = list(specs)
     probed = set(known)
@@ -59,6 +70,7 @@ def order_subsystems(
             )
             raise SubsystemGraphInvalidError(msg)
         providers[spec.provides] = spec.name
+    _reject_unteardownable_consumers(pending)
 
     _reject_invalid_enabled_by(pending)
     _reject_unprobed_requirements(pending, providers, probed)
@@ -196,6 +208,48 @@ def _reject_unprobed_requirements(
             raise SubsystemGraphInvalidError(msg)
 
 
+def _reject_unteardownable_consumers(specs: Sequence[SubsystemSpec]) -> None:
+    """Refuse a declaration whose teardown promise cannot be kept.
+
+    A capability is tearable when its owner declares a ``deactivate``, so it
+    can genuinely go away while the process runs. Every consumer of one has to
+    be able to go away with it: a subsystem that captured a collaborator at
+    activation and cannot be taken down keeps serving from the instance that
+    was just disconnected, and reads ACTIVE while it does. It also has to
+    declare ``rebuild_on_change``, because a replacement that arrives without
+    a rebuild is the same stale reference by another route.
+
+    Applied transitively: giving a consumer a teardown makes what IT provides
+    tearable in turn, so its own consumers come under the same rule.
+
+    Args:
+        specs: The declared subsystems.
+
+    Raises:
+        SubsystemGraphInvalidError: When a consumer of a tearable capability
+            declares no teardown of its own, or no rebuild.
+    """
+    tearable = {spec.provides for spec in specs if spec.deactivate is not None}
+    for spec in specs:
+        depends_on_tearable = any(need in tearable for need in spec.requires)
+        if not depends_on_tearable:
+            continue
+        if spec.deactivate is None:
+            msg = (
+                f"Subsystem {spec.name!r} requires a capability its owner can "
+                "tear down, but declares no deactivate; it would keep serving "
+                "from a disconnected collaborator and still read active"
+            )
+            raise SubsystemGraphInvalidError(msg)
+        if not spec.rebuild_on_change:
+            msg = (
+                f"Subsystem {spec.name!r} requires a capability its owner can "
+                "replace, but declares no rebuild_on_change; it would hold the "
+                "instance that was replaced"
+            )
+            raise SubsystemGraphInvalidError(msg)
+
+
 def missing_capabilities(
     spec: SubsystemSpec,
     capabilities: Mapping[CapabilityId, Capability],
@@ -253,9 +307,10 @@ def capability_fingerprint(
     subsystem which captured it by value at activation. Availability alone is
     not enough, and on its own is never enough: activation only runs when no
     requirement is missing, so a snapshot of availability taken then matches
-    every later snapshot taken while the subsystem is still up. The
-    generation counter is what makes a replacement visible, so a provider
-    rebuilt underneath a consumer reads as the different instance it is.
+    every later snapshot taken while the subsystem is still up. A provider
+    rebuilt within a single pass reads present both before and after, while
+    every consumer still holds the instance it is replacing. The generation
+    counter is what makes that replacement visible.
 
     Args:
         needs: The capabilities to snapshot, in declaration order.
@@ -274,6 +329,51 @@ def capability_fingerprint(
     )
 
 
+async def settings_fingerprint(
+    keys: Sequence[str],
+    app_state: AppState,
+) -> tuple[str, ...]:
+    """Snapshot the values a subsystem's activation reads from settings.
+
+    Compared across passes to spot an operator edit under a subsystem that
+    baked the value in at activation. A key that cannot be read snapshots as
+    the empty string, which compares equal to the next unreadable read, so a
+    resolver outage does not present as drift and thrash the subsystem.
+
+    Args:
+        keys: ``namespace.key`` settings to snapshot, in declaration order.
+        app_state: Application state carrying the resolver.
+
+    Returns:
+        One value per key, positionally aligned with ``keys``.
+    """
+    if not keys:
+        return ()
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if resolver is None:
+        return tuple("" for _ in keys)
+    values: list[str] = []
+    for entry in keys:
+        namespace, _, key = entry.partition(".")
+        try:
+            values.append(str(await resolver.get_str(namespace, key)))
+        except Exception as exc:  # noqa: BLE001 -- unreadable snapshots as empty
+            reraise_critical(exc)
+            # Logged rather than absorbed: an outage here disables drift
+            # detection for every subsystem with declared settings, and
+            # without this line nothing explains why an operator's edit
+            # never rebuilt anything.
+            logger.warning(
+                SUBSYSTEM_SETTINGS_UNREADABLE,
+                namespace=namespace,
+                key=key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            values.append("")
+    return tuple(values)
+
+
 def _is_present(capability: Capability | None, app_state: AppState) -> bool:
     """Report whether a capability reads as available.
 
@@ -281,6 +381,11 @@ def _is_present(capability: Capability | None, app_state: AppState) -> bool:
     precondition established during construction, not something a subsystem
     owes. Declaring one that nothing establishes is caught by
     :func:`order_subsystems`, so this cannot mask a real gap.
+
+    A probe is documented as cheap and non-raising, but it reads across
+    slices and a raising one would take the whole pass down with it, leaving
+    every other subsystem unreconciled over a fault in one. Treat the failure
+    as absence: the subsystem waits, and the next pass tries again.
 
     Args:
         capability: The capability check, or ``None`` when undeclared.
@@ -291,4 +396,14 @@ def _is_present(capability: Capability | None, app_state: AppState) -> bool:
     """
     if capability is None:
         return True
-    return capability.present(app_state)
+    try:
+        return capability.present(app_state)
+    except Exception as exc:  # noqa: BLE001 -- absence, not a dead pass
+        reraise_critical(exc)
+        logger.warning(
+            SUBSYSTEM_CAPABILITY_PROBE_FAILED,
+            capability=capability.id.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return False

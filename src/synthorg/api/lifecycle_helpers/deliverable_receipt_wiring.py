@@ -63,3 +63,23 @@ async def _wire_deliverable_receipts(app_state: AppState) -> None:
     if review_gate is not None:
         review_gate.set_receipt_service(service)
     logger.info(API_APP_STARTUP, service="deliverable_receipts", note="wired")
+
+
+async def unwire_deliverable_receipts(app_state: AppState) -> None:
+    """Drop the receipt service so the next pass rebuilds it.
+
+    The service holds the docs service by value, so when that is replaced
+    this one is holding an instance nobody else can reach. Detaching it from
+    the review gate as well: a gate still pointing at the old service would
+    write receipts through the replaced docs engine.
+    """
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+    from synthorg.deliverable_receipts.state_slice import (  # noqa: PLC0415
+        DeliverableReceiptStateSlice,
+    )
+
+    review_gate = app_state.slice(ApprovalStateSlice).review_gate
+    if review_gate is not None:
+        review_gate.set_receipt_service(None)
+    app_state.swap_slice(DeliverableReceiptStateSlice())
+    logger.info(API_APP_STARTUP, service="deliverable_receipts", note="unwired")

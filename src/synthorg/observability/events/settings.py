@@ -54,9 +54,6 @@ re-arms. Failure resolves to ``enabled=True`` so a settings outage
 cannot silently silence the dispatcher."""
 SETTINGS_SUBSCRIBER_NOTIFIED: Final[str] = "settings.subscriber.notified"
 SETTINGS_SUBSCRIBER_ERROR: Final[str] = "settings.subscriber.error"
-SETTINGS_SUBSCRIBER_RESTART_REQUIRED: Final[str] = (
-    "settings.subscriber.restart_required"
-)
 SETTINGS_SERVICE_SWAPPED: Final[str] = "settings.service.swapped"
 SETTINGS_SERVICE_SWAP_FAILED: Final[str] = "settings.service.swap_failed"
 SETTINGS_CHANNEL_CREATED: Final[str] = "settings.channel.created"

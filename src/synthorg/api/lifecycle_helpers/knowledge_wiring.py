@@ -154,6 +154,18 @@ async def _build_and_wire_knowledge(
     )
 
 
+async def unwire_knowledge_engine(app_state: AppState) -> None:
+    """Drop the knowledge engine so the next pass rebuilds it.
+
+    The service captures the memory backend at construction, so a replaced
+    backend leaves this one reading through the disconnected instance.
+    """
+    from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
+
+    app_state.swap_slice(KnowledgeStateSlice())
+    logger.info(API_APP_STARTUP, service="knowledge_engine", note="unwired")
+
+
 async def _maybe_build_knowledge_synthesizer(
     app_state: AppState,
     *,

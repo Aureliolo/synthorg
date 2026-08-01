@@ -40,14 +40,13 @@ def reject_if_read_only(
     action: str,
     import_source: SettingsImportSource | None = None,
 ) -> None:
-    """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
+    """Raise ``SettingReadOnlyError`` for compose-set settings.
 
-    The registry entry exists for discoverability via the /settings
-    API; the resolved value is sourced from environment variables or
-    YAML at process startup.  Mutation surfaces (``set``, ``set_many``,
-    ``delete``, ``delete_namespace``) must reject so an operator does
-    not believe the override took effect when the running process keeps
-    the boot-time value.
+    The registry entry exists for discoverability via the /settings API; the
+    value itself came from the deployment when the container was created.
+    Mutation surfaces (``set``, ``set_many``, ``delete``,
+    ``delete_namespace``) must reject rather than store a value the running
+    process will never read.
 
     ``import_source`` is included in the validation log when supplied
     so the every ``set()`` rejection path carries the same tag the
@@ -59,25 +58,24 @@ def reject_if_read_only(
         import_source: Where the write came from, when known.
 
     Raises:
-        SettingReadOnlyError: If the setting's ``read_only_post_init``
-            flag is set, meaning the value was sourced from env/YAML at
-            startup and cannot be mutated at runtime.
+        SettingReadOnlyError: If the setting is ``compose_set``.
     """
-    if not definition.read_only_post_init:
+    if not definition.compose_set:
         return
     payload: dict[str, object] = {
         "namespace": definition.namespace,
         "key": definition.key,
-        "reason": "read_only_post_init",
+        "reason": "compose_set",
         "action": action,
     }
     if import_source is not None:
         payload["import_source"] = import_source.value
     logger.warning(SETTINGS_VALIDATION_FAILED, **payload)
     msg = (
-        f"Setting {definition.namespace}/{definition.key} is sourced"
-        f" from env / YAML at startup and cannot be modified at runtime"
-        f" (action={action!r}). Update the env var or YAML and restart."
+        f"Setting {definition.namespace}/{definition.key} is set by the"
+        f" deployment and cannot be modified at runtime"
+        f" (action={action!r}). Change it in the compose file and recreate"
+        f" the container."
     )
     raise SettingReadOnlyError(msg)
 

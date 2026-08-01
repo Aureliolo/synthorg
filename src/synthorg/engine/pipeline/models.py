@@ -227,6 +227,38 @@ class WorkPhaseResult(BaseModel):
         return self
 
 
+class PipelineAttachments(BaseModel):
+    """Which late-bound collaborators are attached to a work pipeline.
+
+    A subsystem that attaches one of these mutates the pipeline and installs
+    nothing else observable, so this is what makes it visible: liveness is
+    read from the pipeline itself rather than from a record kept alongside
+    it, which is the only way the two cannot drift.
+
+    Attributes:
+        narrator: Documentary mode narrates a completed run.
+        refinement_router: Under-specified team work is refined rather than
+            blocked by the coordinator's clarification gate.
+        plan_review_gate: Splittable team work is parked for human approval
+            before a team builds.
+        plan_review_panel: A gated plan gets a stakeholder review before the
+            human sees it.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    narrator: bool = Field(description="Whether a run narrator is attached")
+    refinement_router: bool = Field(
+        description="Whether a work-refinement router is attached",
+    )
+    plan_review_gate: bool = Field(
+        description="Whether a human plan-approval gate is attached",
+    )
+    plan_review_panel: bool = Field(
+        description="Whether a stakeholder plan-review panel is attached",
+    )
+
+
 class RefinementHandoff(BaseModel):
     """A handoff to human-in-the-loop refinement for under-specified work.
 

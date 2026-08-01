@@ -51,8 +51,8 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 - `enabled`: Toggle scheduler start/stop
 - `schedule_hours`: Reschedule interval (1 to 168 hours)
-- `compression`, `on_shutdown`, `on_startup`: Advisory (read at use time)
-- `path`: Requires restart (not dispatched)
+- `compression`, `on_shutdown`, `on_startup`: Re-applied onto the live service's config
+- `path`: Re-points the live service's backup directory
 
 ## REST API
 

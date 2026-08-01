@@ -33,9 +33,9 @@ class SelfImprovementTriggerError(SelfImprovementError):
 class RollbackMutationDeniedError(SelfImprovementError):
     """Raised by a rollback mutator when the underlying store refuses a write.
 
-    Examples: a ``read_only_post_init`` setting whose value cannot be
-    overwritten post-startup, a frozen entity that has been retired, or
-    an architecture target that no longer exists. The rollback executor
+    Examples: a ``compose_set`` setting the deployment fixed, a frozen
+    entity that has been retired, or an architecture target that no
+    longer exists. The rollback executor
     propagates this so the audit log records the refused operation
     rather than silently skipping it.
     """

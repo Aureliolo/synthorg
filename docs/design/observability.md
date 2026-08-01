@@ -408,7 +408,7 @@ logging pipeline via `configure_logging()` (idempotent) when any of the four obs
 settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
 Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
 
-The `EventStreamHub` janitor exposes two restart-required settings under
+The `EventStreamHub` janitor exposes two settings under
 `SettingNamespace.COMMUNICATION`:
 
 - `event_stream_subscriber_idle_ttl_seconds` (FLOAT, default 86400.0 / 24h): subscribers whose
@@ -418,8 +418,8 @@ The `EventStreamHub` janitor exposes two restart-required settings under
 - `event_stream_janitor_interval_seconds` (FLOAT, default 300.0 / 5min): wall-clock interval
   between janitor sweeps.
 
-Both settings are resolved once at lifespan startup; runtime changes require a restart because
-the janitor task closes over the resolved values at spawn time.
+Both are re-resolved by the janitor on every sweep (the value passed at startup is the
+fail-safe fallback), so an operator change applies on the next one.
 
 ---
 

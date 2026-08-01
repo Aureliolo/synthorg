@@ -24,7 +24,6 @@
         "LivenessController",
         "ReadinessController",
         "HealthController",
-        "RestartController",
         "CapabilitiesController",
         "AuthBootstrapController",
         "AuthSessionController",
@@ -246,7 +245,7 @@
         "SteeringService",
         "build_steering_inbox",
         "build_supersession_proposer",
-        "build_flight_recorder_sink"
+        "LiveFlightRecorderSink"
       ],
       "mcp_tool_names": [
         "synthorg_cockpit_get_live_activity",
@@ -592,7 +591,8 @@
         "brownfield_entry_adapter",
         "task_board_entry_adapter",
         "structure_map_tool_factory",
-        "plan_item_reply_service"
+        "plan_item_reply_service",
+        "flight_recorder_sink"
       ]
     },
     {
@@ -1340,11 +1340,7 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
-      "ghost_wired_symbols": [
-        "CosCharterModelSettingsSubscriber",
-        "DirectMcpActorSettingsSubscriber",
-        "OperatorConsoleSettingsSubscriber"
-      ],
+      "ghost_wired_symbols": [],
       "mcp_tool_names": [],
       "name": "settings",
       "protocol_exports": [
@@ -1499,6 +1495,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-01T13:05:37.837628Z",
+  "generated_at": "2026-08-01T13:55:59.028019Z",
   "schema_version": 1
 }

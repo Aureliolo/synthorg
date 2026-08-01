@@ -7,7 +7,6 @@ import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
-import { useRestartStore } from '@/stores/restart'
 import { NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { buildControllerDisabledMap, saveSettingsBatch } from './utils'
 import {
@@ -181,7 +180,7 @@ interface CodeSaveDeps {
   setDirtyValues: ReturnType<typeof useSettingsDirtyState>['setDirtyValues']
 }
 
-/** Persist a batch of code-editor changes, prune saved drafts, surface restarts. */
+/** Persist a batch of code-editor changes and prune the saved drafts. */
 async function runCodeSave(changes: Map<string, string>, deps: CodeSaveDeps): Promise<Set<string>> {
   // Defensive guard: never persist the redaction placeholder for a
   // sensitive value back to the backend (it would overwrite the real
@@ -199,7 +198,6 @@ async function runCodeSave(changes: Map<string, string>, deps: CodeSaveDeps): Pr
     }
     return next
   })
-  await useRestartStore.getState().refresh()
   return failedKeys
 }
 
@@ -215,12 +213,7 @@ export function useSettingsPageController(): SettingsPageController {
     useSettingsDirtyState(data.entries, data.updateSetting)
   const advanced = useAdvancedMode(data.entries, setDirtyValues)
 
-  // Re-read rather than count locally: the backend decides what a restart
-  // would apply, from the writes it has not read yet.
-  const handleSave = useCallback(async () => {
-    await baseSave()
-    await useRestartStore.getState().refresh()
-  }, [baseSave])
+  const handleSave = baseSave
 
   useSettingsKeyboard({
     onSave: () => void handleSave(),

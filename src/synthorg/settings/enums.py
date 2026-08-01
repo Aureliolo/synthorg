@@ -79,8 +79,8 @@ class SettingSource(StrEnum):
 
     Listed in descending priority order: database overrides take
     precedence over environment variables, which override code
-    defaults. ``read_only_post_init=True`` settings collapse the chain
-    to ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
+    defaults. ``compose_set=True`` settings collapse the chain to
+    ``ENVIRONMENT > DEFAULT`` by bypassing the database tier.
     """
 
     DATABASE = "db"

@@ -96,8 +96,7 @@ _r.register(
         ),
         group="NATS",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         # Override the auto-derived ``SYNTHORG_COMMUNICATION_NATS_URL``
         # with the established operator-facing name ``SYNTHORG_NATS_URL``.
         # The Docker-compose template, the local-dev shell setup, and

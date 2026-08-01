@@ -41,6 +41,17 @@ const (
 	EnvMaxArchiveEntryBytes   = "SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES"
 )
 
+// Environment variable names the CLI forwards into the backend container
+// rather than resolving itself. Each names a backend setting, so a rename on
+// either side has one place to change and a typo cannot silently forward
+// nothing: `docker exec -e NAME` on an unset name is a no-op.
+const (
+	EnvNATSURL                  = "SYNTHORG_NATS_URL"
+	EnvNATSStreamPrefix         = "SYNTHORG_NATS_STREAM_PREFIX"
+	EnvWorkers                  = "SYNTHORG_WORKERS"
+	EnvWorkerHTTPTimeoutSeconds = "SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS"
+)
+
 // Tunables holds the resolved tunable values after merging compiled-in
 // defaults, persisted state, and environment variable overrides.
 // Precedence: env > state > default.

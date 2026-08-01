@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { RestartBadge } from './RestartBadge'
+import { ComposeSetBadge } from './ComposeSetBadge'
 
 const meta = {
-  title: 'Settings/RestartBadge',
-  component: RestartBadge,
+  title: 'Settings/ComposeSetBadge',
+  component: ComposeSetBadge,
   parameters: { layout: 'centered' },
-} satisfies Meta<typeof RestartBadge>
+} satisfies Meta<typeof ComposeSetBadge>
 
 export default meta
 type Story = StoryObj<typeof meta>

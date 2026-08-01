@@ -24,6 +24,21 @@ MEMORY_BACKEND_AGENT_ID_REJECTED: Final[str] = "memory.backend.agent_id_rejected
 MEMORY_BACKEND_WIRED: Final[str] = "memory.backend.wired"
 """Emitted at INFO once the boot path publishes a usable backend."""
 
+MEMORY_BACKEND_SETTINGS_READ_FAILED: Final[str] = "memory.backend.settings_read_failed"
+"""Emitted at WARNING when the backend choice could not be read from settings.
+
+The boot config decides instead, so memory still comes up; what is lost is a
+value the operator set through the dashboard rather than the environment.
+"""
+
+MEMORY_BACKEND_UNWIRED: Final[str] = "memory.backend.unwired"
+"""Emitted at INFO when the backend is taken down so a new one can replace it.
+
+The reconciler tears memory down on an embedder / backend / consolidation
+change; the matching ``MEMORY_BACKEND_WIRED`` follows in the same pass unless
+the new configuration resolves to nothing.
+"""
+
 MEMORY_BACKEND_WIRE_SKIPPED: Final[str] = "memory.backend.wire_skipped"
 """Emitted at WARNING when boot deliberately wires no memory backend.
 

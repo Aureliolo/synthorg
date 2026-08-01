@@ -115,7 +115,7 @@ def _build_setting_record(
     if namespace is None or key is None:
         return None
     default = _extract_string(kwargs.get("default"))
-    read_only = _extract_bool(kwargs.get("read_only_post_init")) is True
+    compose_set = _extract_bool(kwargs.get("compose_set")) is True
     setting_key = f"{namespace}.{key}"
     has_suppression = _detect_register_suppression(
         defn_call,
@@ -126,7 +126,7 @@ def _build_setting_record(
         key=key,
         setting_key=setting_key,
         default=default,
-        read_only_post_init=read_only,
+        compose_set=compose_set,
         source_file=source_file,
         source_line=defn_call.lineno,
         has_suppression=has_suppression,

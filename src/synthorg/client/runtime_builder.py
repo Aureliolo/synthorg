@@ -10,10 +10,9 @@ register.
 The intake strategy is selected at the boot site via the bootstrap
 resolver (env > registered default), matching how ``app.py`` reads
 other construction-phase settings: ``ConfigResolver`` is not wired
-until on-startup, so the database tier is intentionally not consulted
-for this baked-in-at-startup choice (``read_only_post_init`` in the
-registry). The default ``direct`` strategy needs no provider and makes
-no LLM calls, so the runtime comes online for an empty company.
+until on-startup, so the database tier cannot be consulted this early.
+The default ``direct`` strategy needs no provider and makes no LLM
+calls, so the runtime comes online for an empty company.
 """
 
 import os

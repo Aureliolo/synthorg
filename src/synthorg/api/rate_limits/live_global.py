@@ -33,6 +33,7 @@ class RateLimitTier(StrEnum):
     FLOOR = "floor"
     UNAUTH = "unauth"
     AUTH = "auth"
+    AUTH_ENDPOINT = "auth_endpoint"
 
 
 def _cap_for(config: LiveRateLimits, tier: RateLimitTier) -> int:
@@ -49,6 +50,8 @@ def _cap_for(config: LiveRateLimits, tier: RateLimitTier) -> int:
         return config.floor_max_requests
     if tier is RateLimitTier.UNAUTH:
         return config.unauth_max_requests
+    if tier is RateLimitTier.AUTH_ENDPOINT:
+        return config.auth_endpoint_max_requests
     return config.auth_max_requests
 
 
@@ -73,9 +76,13 @@ class LiveRateLimitMiddleware(RateLimitMiddleware):
 
         app = scope["litestar_app"]
         request = app.request_class(scope)
+        tier = self._tier()
         live = self._live_limits(scope)
-        limit = self.max_requests if live is None else _cap_for(live, self._tier())
-        if live is not None and not live.enabled:
+        limit = self.max_requests if live is None else _cap_for(live, tier)
+        # The credential-endpoint throttle is a brute-force bound, so the
+        # general limiter's master switch and window do not reach it.
+        live_window = live is not None and tier is not RateLimitTier.AUTH_ENDPOINT
+        if live_window and live is not None and not live.enabled:
             # Disabled live. The window keeps running underneath, so
             # re-enabling does not hand everyone a fresh budget.
             await self.app(scope, receive, send)
@@ -84,14 +91,14 @@ class LiveRateLimitMiddleware(RateLimitMiddleware):
         if await self.should_check_request(request=request):
             key = self.cache_key_from_request(request)
             async with self._lock:
-                # The window the inherited store helper expires against.
-                # Assigned under the lock, not before it: this instance is
-                # shared by every request on its tier, and the helpers read
-                # ``self.unit`` when they run rather than when it was set,
-                # so assigning outside would let a concurrent request write
-                # a window against another request's unit, expiring it early
-                # (a fresh budget mid-window) or extending it.
-                if live is not None:
+                # Assigned under the lock, not before it. This instance is
+                # shared by every request on its tier, and the inherited
+                # store helpers read ``self.unit`` when they run rather than
+                # when it was set: assigning outside the lock lets a
+                # concurrent request write a window against another
+                # request's unit, expiring it early (a fresh budget
+                # mid-window) or extending it.
+                if live_window and live is not None:
                     self.unit = live.time_unit
                 cache_object = await self.retrieve_cached_history(key, store)
                 if len(cache_object.history) >= limit:

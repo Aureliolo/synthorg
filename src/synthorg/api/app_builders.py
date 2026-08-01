@@ -64,9 +64,9 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     """Activate the structured logging pipeline.
 
     Resolves ``observability.log_directory`` via bootstrap_resolver
-    (env > default; DB bypassed for read_only_post_init). When an env
-    override is supplied, path-traversal is rejected before patching
-    the live config.
+    (env > default; the directory is a mount the deployment fixes). When an
+    env override is supplied, path-traversal is rejected before patching the
+    live config.
 
     Returns:
         ``RootConfig`` instance.
@@ -404,11 +404,12 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
     which honours ``env > default`` for the registered env var (see
     :mod:`synthorg.settings.definitions.telemetry`). The collector is built
     in the construction phase, before persistence connects, so this only
-    layers env over the code default. The authoritative DB layer (a value
-    edited through ``/settings``) is applied at restart by the
-    ``_apply_telemetry_db_layer`` on-startup hook in ``lifecycle_assembly``,
-    which re-resolves ``telemetry.enabled`` with full DB > env > default
-    precedence once the resolver is wired and before the collector starts.
+    layers env over the code default. The authoritative DB layer is applied
+    by the ``_apply_telemetry_db_layer`` on-startup hook in
+    ``lifecycle_assembly``, which re-resolves with full DB > env > default
+    precedence once the resolver is wired and before the collector starts;
+    a later operator edit reaches the same setter through
+    ``TelemetrySettingsSubscriber``.
 
     Validates the env value at this system boundary so a typo such as
     ``SYNTHORG_TELEMETRY_ENABLED=falsee`` raises rather than silently

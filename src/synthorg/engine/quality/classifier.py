@@ -31,11 +31,9 @@ logger = get_logger(__name__)
 # registered under the ``engine.classifier_rule_matched_confidence``
 # and ``engine.classifier_fallback_confidence`` settings and can be
 # overridden per-instance via the ``RuleBasedStepClassifier``
-# constructor.  Both registry entries are ``restart_required=True``
-# -- operators edit them in the settings store/dashboard and the
-# service must be restarted for the new values to flow through
-# startup wiring into newly constructed classifiers (no live
-# hot-apply path exists).
+# constructor.  A classifier bakes them in at construction, so an
+# operator edit reaches a run through the runtime rebuild the change
+# itself triggers.
 _CONFIDENCE_DEFINITIVE: float = 1.0
 _DEFAULT_CONFIDENCE_RULE_MATCHED: float = 0.7
 _DEFAULT_CONFIDENCE_FALLBACK: float = 0.5
@@ -90,15 +88,14 @@ class RuleBasedStepClassifier:
     Args:
         rule_matched_confidence: Confidence score attached to
             rule-matched verdicts.  Bridged from the
-            ``engine.classifier_rule_matched_confidence`` setting
-            (``restart_required``); callers that resolve the setting
-            at startup should pass the resolved float so the newly
-            constructed classifier carries the current value.  Must
-            be in ``[0.0, 1.0]``.
+            ``engine.classifier_rule_matched_confidence`` setting;
+            callers that resolve the setting should pass the resolved
+            float so the newly constructed classifier carries the
+            current value.  Must be in ``[0.0, 1.0]``.
         fallback_confidence: Confidence score attached to the
             NEUTRAL fallback verdict.  Bridged from
-            ``engine.classifier_fallback_confidence``
-            (``restart_required``).  Must be in ``[0.0, 1.0]``.
+            ``engine.classifier_fallback_confidence``.  Must be in
+            ``[0.0, 1.0]``.
 
     Raises:
         ValueError: If either confidence is outside ``[0.0, 1.0]``.

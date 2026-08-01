@@ -346,7 +346,7 @@ class TestBaselineWindowSizeSetting:
         # The bound that the deleted ``gt=0`` field validator enforced.
         assert defn.min_value == 1
         assert defn.max_value == 1_000_000
-        assert defn.read_only_post_init is False
+        assert defn.compose_set is False
         assert defn.env_var_override == "SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE"
 
     async def test_runtime_mutation_below_the_floor_is_refused(self) -> None:

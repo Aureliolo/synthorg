@@ -57,9 +57,10 @@ def _publish_red_team_runtime(
     """Publish or clear the red-team report store, then attach the gate.
 
     Publishes the per-execution red-team report store onto
-    ``SecurityStateSlice`` so the deliverable-receipt builder (wired later in
-    ``wire_features_on_startup``) can snapshot a run's findings into its
-    receipt. The publish is a partial wire, so the audit log / trust service /
+    ``SecurityStateSlice`` so the deliverable-receipt builder (the
+    ``deliverable_receipts`` subsystem, which comes up once the docs engine
+    does) can snapshot a run's findings into its receipt. The publish is a
+    partial wire, so the audit log / trust service /
     autonomy strategy already on the slice survive. ``post_setup_reinit()``
     rebuilds runtime services on the existing app state, so an enabled ->
     disabled transition must reset the store to ``None``; otherwise the

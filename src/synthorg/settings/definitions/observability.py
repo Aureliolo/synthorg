@@ -164,7 +164,6 @@ _r.register(
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1.0,
         max_value=60.0,
     )
@@ -187,8 +186,7 @@ _r.register(
         ),
         group="Logging",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         env_var_override="SYNTHORG_LOG_DIR",
     )
 )
@@ -238,7 +236,7 @@ _r.register(
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
         validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )
@@ -255,7 +253,7 @@ _r.register(
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
         validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )
@@ -272,7 +270,7 @@ _r.register(
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
         validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )

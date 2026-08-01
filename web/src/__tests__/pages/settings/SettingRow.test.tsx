@@ -21,8 +21,7 @@ function makeEntry(
       group: 'Server',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -36,11 +35,10 @@ function makeEntry(
   }
 }
 
-describe('SettingRow: read_only_post_init', () => {
-  it('disables the input when the definition is read-only post-init', () => {
+describe('SettingRow: compose_set', () => {
+  it('disables the input when the deployment fixed the value', () => {
     const entry = makeEntry({
-      read_only_post_init: true,
-      restart_required: true,
+      compose_set: true,
     })
 
     render(
@@ -56,10 +54,9 @@ describe('SettingRow: read_only_post_init', () => {
     expect(input.disabled).toBe(true)
   })
 
-  it('renders the post-init notice when applicable', () => {
+  it('renders the compose-set notice when applicable', () => {
     const entry = makeEntry({
-      read_only_post_init: true,
-      restart_required: true,
+      compose_set: true,
     })
 
     render(
@@ -71,17 +68,14 @@ describe('SettingRow: read_only_post_init', () => {
       />,
     )
 
-    expect(
-      screen.getByText(/Read-only after startup\./i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Set by the deployment\./i)).toBeInTheDocument()
   })
 
-  it('hides the post-init notice when the env-locked notice is already shown', () => {
-    // Env-locked source supersedes the post-init notice so operators
+  it('hides the compose-set notice when the env-locked notice is already shown', () => {
+    // Env-locked source supersedes the compose-set notice so operators
     // do not see two overlapping read-only explanations.
     const entry = makeEntry({
-      read_only_post_init: true,
-      restart_required: true,
+      compose_set: true,
       source: 'env',
     })
 
@@ -94,11 +88,25 @@ describe('SettingRow: read_only_post_init', () => {
       />,
     )
 
-    expect(
-      screen.queryByText(/Read-only after startup\./i),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Set by the deployment\./i)).not.toBeInTheDocument()
     expect(
       screen.getByText(/Value set by environment variable/i),
     ).toBeInTheDocument()
+  })
+
+  it('describes the control itself, not just the surrounding group', () => {
+    const entry = makeEntry({ compose_set: true })
+
+    render(
+      <SettingRow entry={entry} dirtyValue={undefined} onChange={() => {}} saving={false} />,
+    )
+
+    // Focus can land straight on the input, which never announces a
+    // group-level description.
+    const input = screen.getByDisplayValue<HTMLInputElement>('127.0.0.1')
+    const describedBy = input.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    const notice = screen.getByText(/Set by the deployment\./i)
+    expect(describedBy?.split(/\s+/)).toContain(notice.id)
   })
 })

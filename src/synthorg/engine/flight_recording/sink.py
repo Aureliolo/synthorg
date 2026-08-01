@@ -6,7 +6,7 @@ persistence backend; the no-op sink discards frames. Recording is
 best-effort: a failing sink logs and never propagates into the engine.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Final, Protocol, runtime_checkable
 
@@ -125,6 +125,61 @@ class NoOpFlightRecorderSink:
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
         """Discard the frames."""
         del frames
+
+
+class LiveFlightRecorderSink:
+    """Sink that re-picks its delegate from the current settings each batch.
+
+    The engine holds one sink for its lifetime, so a sink that baked the
+    cockpit settings at construction would ignore every later operator edit.
+    This one keeps the resolved values in mutable fields that
+    :meth:`apply` refreshes, and reads the frame repository through a
+    provider, so enabling recording, switching strategy, or connecting
+    persistence all take effect on the next run with nothing rebuilt.
+
+    Args:
+        repository_provider: Returns the current frame repository, or
+            ``None`` while persistence is unconnected.
+        enabled: Initial ``cockpit.flight_recorder_enabled``.
+        strategy: Initial ``cockpit.flight_recorder_sink_strategy``.
+        summary_max_chars: Initial
+            ``cockpit.flight_recorder_summary_max_chars``.
+    """
+
+    def __init__(
+        self,
+        repository_provider: Callable[[], FlightRecorderFrameRepository | None],
+        *,
+        enabled: bool = True,
+        strategy: str = "persistence",
+        summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
+    ) -> None:
+        self._repository_provider = repository_provider
+        self._enabled = enabled
+        self._strategy = strategy
+        self.summary_max_chars = summary_max_chars
+
+    def apply(
+        self,
+        *,
+        enabled: bool,
+        strategy: str,
+        summary_max_chars: int,
+    ) -> None:
+        """Adopt a freshly resolved cockpit configuration."""
+        self._enabled = enabled
+        self._strategy = strategy
+        self.summary_max_chars = summary_max_chars
+
+    async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
+        """Delegate to the sink the current configuration selects."""
+        delegate = build_flight_recorder_sink(
+            self._repository_provider(),
+            enabled=self._enabled,
+            strategy=self._strategy,
+            summary_max_chars=self.summary_max_chars,
+        )
+        await delegate.record_frames(frames)
 
 
 def build_flight_recorder_sink(
