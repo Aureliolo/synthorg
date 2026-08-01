@@ -36,7 +36,13 @@ _TIMEOUT_SECONDS = 20
 # has to wait out a grace period instead, so that one stays short: the child is
 # already spawned by the time the hook exits, so anything that will happen has
 # happened within a few tens of milliseconds.
-_LAUNCH_WAIT_SECONDS = 5.0
+# 5s was not enough. Under the pre-push hook the suite runs across 8 xdist
+# workers while other gate groups compete for the same cores, and spawning a
+# detached shell plus the stub can outlast that on a loaded machine: the hook
+# recorded its pid and wrote its log, so the launch decision was correct and
+# only the observation timed out. The bound is generous rather than tuned
+# because a healthy run returns the instant the stub writes.
+_LAUNCH_WAIT_SECONDS = 30.0
 _NO_LAUNCH_GRACE_SECONDS = 0.5
 _POLL_INTERVAL_SECONDS = 0.02
 
