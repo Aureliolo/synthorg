@@ -274,6 +274,9 @@ class PerOpConcurrencyConfig(BaseModel):
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
+type RateLimitWindowUnit = Literal["second", "minute", "hour", "day"]
+
+
 class LiveRateLimits(BaseModel):
     """The global tier caps, read per request rather than baked at boot.
 
@@ -303,7 +306,7 @@ class LiveRateLimits(BaseModel):
     floor_max_requests: int = Field(ge=1)
     unauth_max_requests: int = Field(ge=1)
     auth_max_requests: int = Field(ge=1)
-    time_unit: Literal["second", "minute", "hour", "day"] = "minute"
+    time_unit: RateLimitWindowUnit = "minute"
 
     @model_validator(mode="after")
     def _floor_covers_both_tiers(self) -> LiveRateLimits:

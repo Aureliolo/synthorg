@@ -8,6 +8,8 @@ A level-triggered design tolerates that only because something keeps
 asking.
 """
 
+from typing import override
+
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.runtime import reconcile_subsystems
 from synthorg.core.scheduler import AsyncCycleScheduler
@@ -41,10 +43,12 @@ class SubsystemResyncScheduler(AsyncCycleScheduler):
         )
         self._app_state = app_state
 
+    @override
     async def _run_cycle_once(self) -> None:
         """Run one reconcile pass."""
         await reconcile_subsystems(self._app_state, trigger="resync")
 
+    @override
     async def _resolve_wait_interval(self) -> float:
         """Re-read the cadence so a change applies without a restart.
 

@@ -6,16 +6,16 @@ and a subsystem that cannot activate is recorded rather than allowed to
 abort the pass or to be forgotten.
 """
 
-from collections.abc import Callable
-
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.api.subsystems.spec import (
+    Activate,
     Capability,
     CapabilityId,
+    Deactivate,
     SubsystemPhase,
     SubsystemSpec,
 )
@@ -36,7 +36,7 @@ def _capability(world: _World, cap_id: CapabilityId) -> Capability:
     return Capability(id=cap_id, present=lambda _state: cap_id in world.present)
 
 
-def _installs(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., object]:
+def _installs(world: _World, name: str, cap_id: CapabilityId) -> Activate:
     """Build an activation that installs its own capability, as real wiring does."""
 
     async def _activate(_state: AppState) -> None:
@@ -46,7 +46,7 @@ def _installs(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., o
     return _activate
 
 
-def _removes(world: _World, name: str, cap_id: CapabilityId) -> Callable[..., object]:
+def _removes(world: _World, name: str, cap_id: CapabilityId) -> Deactivate:
     """Build a teardown that withdraws its own capability."""
 
     async def _deactivate(_state: AppState) -> None:

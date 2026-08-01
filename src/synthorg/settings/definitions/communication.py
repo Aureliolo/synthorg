@@ -212,13 +212,13 @@ _r.register(
         default="10000",
         description=(
             "Maximum delegation records retained in the in-memory store before"
-            " FIFO eviction. Resolved at construction (env > code default) and"
-            " passed as the store's max_records; restart-required because the"
-            " bounded deque maxlen is fixed at construction."
+            " FIFO eviction. Applies immediately: the buffer is rebuilt at the"
+            " new bound keeping the newest records, so raising it costs no"
+            " history and lowering it drops only what the next writes would"
+            " have evicted."
         ),
         group="Delegation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=100,
         max_value=1_000_000,
     )

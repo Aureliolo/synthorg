@@ -13,7 +13,7 @@ changes.
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, override
+from typing import override
 
 from litestar.middleware.rate_limit import (
     RateLimitConfig as LitestarRateLimitConfig,
@@ -23,6 +23,7 @@ from litestar.middleware.rate_limit import (
 )
 from litestar.types import Receive, Scope, Send
 
+from synthorg.api.state_per_op_limits import PerOpLimitsState
 from synthorg.config.rate_limits import LiveRateLimits
 
 
@@ -71,7 +72,7 @@ class LiveRateLimitMiddleware(RateLimitMiddleware):
         )
 
         app = scope["litestar_app"]
-        request: Any = app.request_class(scope)
+        request = app.request_class(scope)
         live = self._live_limits(scope)
         limit = self.max_requests if live is None else _cap_for(live, self._tier())
         if live is not None and not live.enabled:
@@ -79,15 +80,19 @@ class LiveRateLimitMiddleware(RateLimitMiddleware):
             # re-enabling does not hand everyone a fresh budget.
             await self.app(scope, receive, send)
             return
-        if live is not None:
-            # The window the inherited store helper expires against. Read
-            # here rather than baked so a unit change takes effect on the
-            # next request instead of the next process.
-            self.unit = live.time_unit
         store = self.config.get_store_from_app(app)
         if await self.should_check_request(request=request):
             key = self.cache_key_from_request(request)
             async with self._lock:
+                # The window the inherited store helper expires against.
+                # Assigned under the lock, not before it: this instance is
+                # shared by every request on its tier, and the helpers read
+                # ``self.unit`` when they run rather than when it was set,
+                # so assigning outside would let a concurrent request write
+                # a window against another request's unit, expiring it early
+                # (a fresh budget mid-window) or extending it.
+                if live is not None:
+                    self.unit = live.time_unit
                 cache_object = await self.retrieve_cached_history(key, store)
                 if len(cache_object.history) >= limit:
                     raise TooManyRequestsException(
@@ -124,15 +129,20 @@ class LiveRateLimitMiddleware(RateLimitMiddleware):
         """
         app = scope.get("litestar_app")
         app_state = getattr(getattr(app, "state", None), "app_state", None)
-        limits = getattr(app_state, "per_op_limits", None)
+        limits: PerOpLimitsState | None = getattr(app_state, "per_op_limits", None)
         if limits is None:
             return None
         return limits.global_config
 
 
 @dataclass
-class LiveRateLimitConfig(LitestarRateLimitConfig):
+class LiveRateLimitConfig(LitestarRateLimitConfig):  # type: ignore[explicit-any]
     """Litestar rate-limit config bound to one live tier.
+
+    The ignore covers an inherited field: Litestar types
+    ``check_throttle_handler`` as taking ``Request[Any, Any, Any]``, and the
+    synthesised subclass carries that annotation into a tree that forbids an
+    explicit ``Any``. Nothing here introduces one.
 
     Attributes:
         tier: Which cap :class:`LiveRateLimitMiddleware` reads per request.

@@ -42,6 +42,9 @@ from synthorg.settings.subscribers.github_api_url_subscriber import (
 from synthorg.settings.subscribers.global_rate_limit_subscriber import (
     GlobalRateLimitSettingsSubscriber,
 )
+from synthorg.settings.subscribers.in_memory_bounds_subscriber import (
+    InMemoryBoundsSettingsSubscriber,
+)
 from synthorg.settings.subscribers.knowledge_subscriber import (
     KnowledgeSettingsSubscriber,
 )
@@ -116,6 +119,7 @@ __all__ = [
     "EventStreamHistorySettingsSubscriber",
     "GithubApiUrlSettingsSubscriber",
     "GlobalRateLimitSettingsSubscriber",
+    "InMemoryBoundsSettingsSubscriber",
     "KnowledgeSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",

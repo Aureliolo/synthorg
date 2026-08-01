@@ -15,6 +15,7 @@ from synthorg.core.datetime_guards import validate_time_range
 from synthorg.core.delegation_types import DelegationRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
+    DELEGATION_RECORD_BOUND_CHANGED,
     DELEGATION_RECORD_EVICTED,
     DELEGATION_RECORD_STORE_CLEARED,
     DELEGATION_RECORD_STORED,
@@ -72,6 +73,37 @@ class DelegationRecordStore:
         self._lock: asyncio.Lock = asyncio.Lock()
         self._warning_lock: threading.Lock = threading.Lock()
         self._eviction_warned: bool = False
+
+    def set_max_records(self, max_records: int) -> None:
+        """Rebound the record buffer in place, keeping the newest records.
+
+        A deque's ``maxlen`` is immutable, so the buffer is rebuilt under
+        ``_warning_lock`` alongside the writers. Rebuilding from the existing
+        records evicts oldest-first, the order already in force, so a shrink
+        loses exactly what the next writes would have evicted. The eviction
+        warning is re-armed because the new bound is a new threshold and an
+        operator who raised it deserves to hear when the buffer fills again.
+
+        Args:
+            max_records: New retention bound.
+
+        Raises:
+            ValueError: If *max_records* < 1.
+        """
+        if max_records < 1:
+            msg = f"max_records must be >= 1, got {max_records}"
+            raise ValueError(msg)
+        with self._warning_lock:
+            previous = self._records.maxlen
+            self._records = deque(self._records, maxlen=max_records)
+            self._eviction_warned = False
+            retained = len(self._records)
+        logger.info(
+            DELEGATION_RECORD_BOUND_CHANGED,
+            previous=previous,
+            current=max_records,
+            retained=retained,
+        )
 
     def clear(self) -> None:
         """Reset all delegation records for test isolation."""

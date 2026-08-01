@@ -65,7 +65,7 @@ class TestFloorInvariant:
             _limits(floor_max_requests=100, auth_max_requests=600)
 
     def test_a_floor_equal_to_the_highest_tier_is_allowed(self) -> None:
-        assert _limits(floor_max_requests=600, auth_max_requests=600)
+        assert _limits(floor_max_requests=600, auth_max_requests=600) is not None
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

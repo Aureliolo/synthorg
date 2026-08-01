@@ -5,8 +5,10 @@ Rebuilds ``RateLimitConfig`` from current values and swaps it into
 stores are untouched, so windows already in flight keep counting.
 """
 
+from typing import cast, get_args
+
 from synthorg.api.state import AppState
-from synthorg.config.rate_limits import LiveRateLimits
+from synthorg.config.rate_limits import LiveRateLimits, RateLimitWindowUnit
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
@@ -19,6 +21,10 @@ from synthorg.settings.service import SettingsService
 logger = get_logger(__name__)
 
 _NAMESPACE = "api"
+# ``RateLimitWindowUnit`` is a PEP 695 alias, so ``get_args`` on the alias
+# itself returns an empty tuple and would reject every window there is,
+# including the one already in force. The members live on ``__value__``.
+_KNOWN_WINDOWS: frozenset[str] = frozenset(get_args(RateLimitWindowUnit.__value__))
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         (_NAMESPACE, "rate_limiter_enabled"),
@@ -137,13 +143,22 @@ class GlobalRateLimitSettingsSubscriber:
         msg = f"setting api.{key}={raw!r} is not a valid boolean"
         raise ValueError(msg)
 
-    async def _read_unit(self) -> str:
+    async def _read_unit(self) -> RateLimitWindowUnit:
         """Read the window unit.
 
         Returns:
-            The configured unit; the model rejects an unrecognised one.
+            The configured unit.
+
+        Raises:
+            ValueError: When the stored value names no known window. Keeping
+                the previous config beats silently counting over a window
+                nobody asked for.
         """
         result = await self._settings_service.get(_NAMESPACE, "rate_limit_time_unit")
-        return normalize_ascii_lowercase(
+        raw = normalize_ascii_lowercase(
             str(result.value) if result.value is not None else "minute"
         )
+        if raw not in _KNOWN_WINDOWS:
+            msg = f"setting api.rate_limit_time_unit={raw!r} is not a known window"
+            raise ValueError(msg)
+        return cast("RateLimitWindowUnit", raw)

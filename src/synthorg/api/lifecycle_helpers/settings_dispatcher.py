@@ -33,6 +33,7 @@ from synthorg.settings.subscribers import (
     EventStreamHistorySettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
     GlobalRateLimitSettingsSubscriber,
+    InMemoryBoundsSettingsSubscriber,
     KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
@@ -177,6 +178,10 @@ def _build_settings_dispatcher(
             settings_service=settings_service,
         ),
         EscalationReconnectSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        InMemoryBoundsSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),
