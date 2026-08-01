@@ -80,7 +80,7 @@ class TestTierSelection:
 
 @pytest.mark.unit
 class TestFloorInvariant:
-    """The floor wraps both tiers, so it may never sit below either."""
+    """The floor wraps every tier, so it may never sit below one."""
 
     def test_a_floor_below_a_tier_is_refused(self) -> None:
         # Accepting this would silently cap the authenticated budget at
@@ -91,6 +91,13 @@ class TestFloorInvariant:
     def test_a_floor_equal_to_the_highest_tier_is_allowed(self) -> None:
         limits = _limits(floor_max_requests=600, auth_max_requests=600)
         assert limits.floor_max_requests == limits.auth_max_requests
+
+    def test_a_floor_below_the_credential_throttle_is_refused(self) -> None:
+        # The credential throttle is route middleware, and the app-wide
+        # floor sits in front of it: a cap above the floor is a number the
+        # operator can set and the stack can never reach.
+        with pytest.raises(ValidationError):
+            _limits(floor_max_requests=100, auth_endpoint_max_requests=600)
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

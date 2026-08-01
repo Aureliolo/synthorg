@@ -6,6 +6,7 @@ so adding a subsystem cannot put it in the wrong place in a hand-kept list.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import get_args
 
 from pydantic import BaseModel
@@ -371,32 +372,34 @@ def capability_fingerprint(
 async def settings_fingerprint(
     keys: Sequence[str],
     app_state: AppState,
-) -> tuple[str, ...]:
+) -> tuple[str | None, ...]:
     """Snapshot the values a subsystem's activation reads from settings.
 
     Compared across passes to spot an operator edit under a subsystem that
     baked the value in at activation. A key that cannot be read snapshots as
-    the empty string, which compares equal to the next unreadable read, so a
-    resolver outage does not present as drift and thrash the subsystem.
+    ``None``, which is not a value any setting can hold, so
+    :func:`settings_drift` can tell "no reading" apart from a reading that
+    happens to be empty.
 
     Args:
         keys: ``namespace.key`` settings to snapshot, in declaration order.
         app_state: Application state carrying the resolver.
 
     Returns:
-        One value per key, positionally aligned with ``keys``.
+        One reading per key, positionally aligned with ``keys``; ``None``
+        where the value could not be read.
     """
     if not keys:
         return ()
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        return tuple("" for _ in keys)
-    values: list[str] = []
+        return tuple(None for _ in keys)
+    values: list[str | None] = []
     for entry in keys:
         namespace, _, key = entry.partition(".")
         try:
             values.append(str(await resolver.get_str(namespace, key)))
-        except Exception as exc:  # noqa: BLE001 -- unreadable snapshots as empty
+        except Exception as exc:  # noqa: BLE001 -- unreadable snapshots as None
             reraise_critical(exc)
             # Logged rather than absorbed: an outage here disables drift
             # detection for every subsystem with declared settings, and
@@ -409,8 +412,60 @@ async def settings_fingerprint(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            values.append("")
+            values.append(None)
     return tuple(values)
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsDrift:
+    """The verdict of comparing two settings snapshots.
+
+    Attributes:
+        drifted: Whether a key that both snapshots read came back different.
+        retained: The snapshot to remember, keeping the last actual reading
+            per key. Without it a key unreadable at activation would compare
+            as unknown forever and never fire the rebuild it was declared for.
+    """
+
+    drifted: bool
+    retained: tuple[str | None, ...]
+
+
+def settings_drift(
+    previous: tuple[str | None, ...],
+    current: tuple[str | None, ...],
+) -> SettingsDrift:
+    """Compare two settings snapshots, ignoring keys with no reading.
+
+    A position either side could not read carries no evidence either way, so
+    it is skipped. Treating it as a value would make one transient resolver
+    error compare unequal to the successful read it followed, and tear down
+    every ``rebuild_on_change`` subsystem that had captured a setting.
+
+    Args:
+        previous: The snapshot taken when the subsystem last came up.
+        current: The snapshot taken on this pass.
+
+    Returns:
+        Whether the comparable keys moved, and the snapshot to keep.
+
+    Raises:
+        ValueError: When the snapshots are different lengths, which means
+            they were taken over different keys and cannot be compared.
+    """
+    if len(previous) != len(current):
+        msg = (
+            f"settings snapshots differ in length ({len(previous)} vs "
+            f"{len(current)}); they describe different keys"
+        )
+        raise ValueError(msg)
+    drifted = False
+    retained: list[str | None] = []
+    for was, now in zip(previous, current, strict=True):
+        if was is not None and now is not None and was != now:
+            drifted = True
+        retained.append(now if now is not None else was)
+    return SettingsDrift(drifted=drifted, retained=tuple(retained))
 
 
 def _is_present(capability: Capability | None, app_state: AppState) -> bool:

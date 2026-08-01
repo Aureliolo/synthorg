@@ -195,7 +195,6 @@ tests/unit/persistence/sqlite/test_workflow_definition_repo.py::_make_definition
 tests/unit/providers/management/test_upgrade_recommender.py::_model::9
 tests/unit/settings/test_resolver_bridge_configs.py::test_bridge_config_happy_path::6
 tests/unit/settings/test_service.py::TestValidation.test_rejects_invalid_value::6
-tests/unit/settings/test_service.py::_make_definition::10
 tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_default_resolves::6
 tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_env_override::7
 tests/unit/settings/test_url_port_entries.py::test_url_port_entry_default_resolves::6

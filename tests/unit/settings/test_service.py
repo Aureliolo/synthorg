@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from types import ModuleType
 from typing import TypedDict
 from unittest.mock import AsyncMock
@@ -46,13 +47,24 @@ class _FakeConfig(BaseModel):
 _UNSET = object()
 
 
+@dataclass(frozen=True, slots=True)
+class _Constraints:
+    """What a definition accepts as a value, beyond its type."""
+
+    enum_values: tuple[str, ...] = ()
+    min_value: float | None = None
+    max_value: float | None = None
+    validator_pattern: str | None = None
+
+
+_NO_CONSTRAINTS = _Constraints()
+
+
 class _DefnKwargs(TypedDict, total=False):
     """The `_make_definition` overrides the validation matrix drives."""
 
     setting_type: SettingType
-    enum_values: tuple[str, ...]
-    min_value: float
-    max_value: float
+    constraints: _Constraints
 
 
 def _row(
@@ -70,7 +82,7 @@ def _row(
     )
 
 
-def _make_definition(  # noqa: PLR0913
+def _make_definition(
     *,
     namespace: SettingNamespace = SettingNamespace.BUDGET,
     key: str = "total_monthly",
@@ -78,10 +90,7 @@ def _make_definition(  # noqa: PLR0913
     default: str | object | None = _UNSET,
     sensitive: bool = False,
     compose_set: bool = False,
-    enum_values: tuple[str, ...] = (),
-    min_value: float | None = None,
-    max_value: float | None = None,
-    validator_pattern: str | None = None,
+    constraints: _Constraints = _NO_CONSTRAINTS,
 ) -> SettingDefinition:
     # Only use the "100.0" default when type is FLOAT and no explicit
     # default was provided -- avoids model_validator rejecting mismatched
@@ -100,10 +109,10 @@ def _make_definition(  # noqa: PLR0913
         group="test",
         sensitive=sensitive,
         compose_set=compose_set,
-        enum_values=enum_values,
-        min_value=min_value,
-        max_value=max_value,
-        validator_pattern=validator_pattern,
+        enum_values=constraints.enum_values,
+        min_value=constraints.min_value,
+        max_value=constraints.max_value,
+        validator_pattern=constraints.validator_pattern,
     )
 
 
@@ -265,13 +274,23 @@ class TestValidation:
         ("key", "defn_kwargs", "bad_value", "match"),
         [
             ("total_monthly", {}, "not-a-number", "Expected float"),
-            ("total_monthly", {"min_value": 0.0}, "-1.0", "below minimum"),
-            ("total_monthly", {"max_value": 1000.0}, "9999.0", "above maximum"),
+            (
+                "total_monthly",
+                {"constraints": _Constraints(min_value=0.0)},
+                "-1.0",
+                "below minimum",
+            ),
+            (
+                "total_monthly",
+                {"constraints": _Constraints(max_value=1000.0)},
+                "9999.0",
+                "above maximum",
+            ),
             (
                 "strategy",
                 {
                     "setting_type": SettingType.ENUM,
-                    "enum_values": ("a", "b"),
+                    "constraints": _Constraints(enum_values=("a", "b")),
                 },
                 "c",
                 "Invalid enum",
@@ -903,7 +922,7 @@ class TestValidatorPattern:
                 key="hostname",
                 setting_type=SettingType.STRING,
                 default="localhost",
-                validator_pattern=r"^[a-z0-9.-]+$",
+                constraints=_Constraints(validator_pattern=r"^[a-z0-9.-]+$"),
             )
         )
         svc = SettingsService(
@@ -922,7 +941,7 @@ class TestValidatorPattern:
                 key="hostname",
                 setting_type=SettingType.STRING,
                 default="localhost",
-                validator_pattern=r"^[a-z0-9.-]+$",
+                constraints=_Constraints(validator_pattern=r"^[a-z0-9.-]+$"),
             )
         )
         svc = SettingsService(

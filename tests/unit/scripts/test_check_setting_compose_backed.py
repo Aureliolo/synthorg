@@ -130,6 +130,58 @@ class TestGate:
         )
         assert main(["--repo-root", str(root)]) == 1
 
+    def test_prose_about_a_variable_does_not_back_it(self, tmp_path: Path) -> None:
+        # Both compose files carry prose about variables they deliberately do
+        # NOT set: the ones baked into the image ENV, the ones an operator
+        # supplies through an env_file. Counting a mention would back exactly
+        # the settings the gate exists to catch.
+        mentioned = "      # SYNTHORG_API_SERVER_HOST is baked into the image.\n"
+        root = _write_repo(
+            tmp_path,
+            key="server_host",
+            extra="        compose_set=True,\n",
+            template=mentioned,
+            docker_compose=mentioned,
+        )
+        assert main(["--repo-root", str(root)]) == 1
+
+    def test_a_template_comment_block_does_not_back_a_variable(
+        self, tmp_path: Path
+    ) -> None:
+        # The CLI template's prose lives in Go template comments, which carry
+        # no leading `#` and would survive a YAML-only comment rule.
+        mentioned = "{{- /*\nSYNTHORG_API_SERVER_HOST is baked into the image.\n*/}}\n"
+        root = _write_repo(
+            tmp_path,
+            key="server_host",
+            extra="        compose_set=True,\n",
+            template=mentioned,
+            docker_compose=mentioned,
+        )
+        assert main(["--repo-root", str(root)]) == 1
+
+    def test_a_commented_out_forward_does_not_back_a_variable(
+        self, tmp_path: Path
+    ) -> None:
+        root = _write_repo(
+            tmp_path,
+            key="server_host",
+            extra="        compose_set=True,\n",
+            worker='// "-e", "SYNTHORG_API_SERVER_HOST",\n',
+        )
+        assert main(["--repo-root", str(root)]) == 1
+
+    def test_the_list_form_backs_a_variable(self, tmp_path: Path) -> None:
+        listed = "      - SYNTHORG_API_SERVER_HOST=0.0.0.0\n"
+        root = _write_repo(
+            tmp_path,
+            key="server_host",
+            extra="        compose_set=True,\n",
+            template=listed,
+            docker_compose=listed,
+        )
+        assert main(["--repo-root", str(root)]) == 0
+
     def test_fails_when_only_the_cli_template_sets_the_var(
         self, tmp_path: Path
     ) -> None:
