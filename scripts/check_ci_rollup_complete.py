@@ -6,7 +6,7 @@ Branch protection requires rollup contexts (``CI Pass``, ``CLI Pass``,
 ``needs:`` names: add a job and forget to wire it in, and it runs, goes
 red, and the required check stays green.
 
-Three properties:
+Five properties:
 
 1. Every top-level job appears in some rollup's ``needs``, or sits in
    :data:`_EXEMPT` with a justification.
@@ -16,6 +16,14 @@ Three properties:
 3. Every context ``branch_protection.yml`` requires is produced by some job.
    GitHub treats a never-reported required context as unsatisfied, blocking
    every PR permanently, so this is what makes renaming workflows safe.
+4. No rollup-producing workflow carries a top-level ``paths:`` filter. The
+   spec states this invariant and names this gate as its enforcement; a
+   filtered workflow simply does not run on an unrelated PR, and property 3's
+   never-reported-context deadlock follows.
+5. ``release-cut.yml`` posts every required context on the release PR. That
+   PR's head runs no workflow of its own, so each required context arrives as
+   a hand-written commit status; one missing leaves the release PR wedged at
+   "Expected, waiting".
 
 :data:`_ROLLUPS` covers every workflow that produces a required context, so
 property 1 holds wherever branch protection actually gates. A workflow left
@@ -32,6 +40,7 @@ Usage::
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Final
@@ -41,6 +50,28 @@ import yaml
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _WORKFLOW_DIR: Final[str] = ".github/workflows"
 _BRANCH_PROTECTION: Final[str] = ".github/branch_protection.yml"
+
+# GitHub resolves workflow files under either extension, so a gate that walks
+# only one of them measures a subset of what actually runs.
+_WORKFLOW_GLOBS: Final[tuple[str, ...]] = ("*.yml", "*.yaml")
+
+# Anchored at the fragment start so only a complete ``needs.<id>.result``
+# matches. A bare ``".result" in fragment`` substring test also accepted
+# ``needs.changes.outputs.result``, yielding the job id ``changes.outputs``,
+# which is in no ``needs`` list and so raised a false violation that blocked
+# every PR. An output legitimately named ``result`` or ``results`` is ordinary.
+_RESULT_REF: Final[re.Pattern[str]] = re.compile(r"^([A-Za-z0-9_-]+)\.result\b")
+
+# The release PR carries no workflow runs of its own (verify-backend.yml skips
+# release-please heads), so release-cut.yml posts each required context as a
+# commit status instead. A context added to the spec but not there leaves the
+# release PR permanently "Expected, waiting".
+_RELEASE_CUT: Final[str] = "release-cut.yml"
+_STATUS_STEP_NAME: Final[str] = "Post required-check statuses on release PR"
+_CONTEXT_LOOP: Final[re.Pattern[str]] = re.compile(
+    r"for context in(.*?);\s*do", re.DOTALL
+)
+_QUOTED: Final[re.Pattern[str]] = re.compile(r'"([^"]+)"')
 
 # workflow filename -> the job ids of its sentinel rollups.
 _ROLLUPS: Final[dict[str, tuple[str, ...]]] = {
@@ -66,6 +97,12 @@ _EXEMPT: Final[dict[str, str]] = {
     "verify-cli.yml::cli-release": (
         "Tag-only publish, after the rollup has already reported on the same "
         "commit. Release failures surface via finalize-release."
+    ),
+    "verify-cli.yml::cli-tag-smoke": (
+        "Tag-only. It gates the release path rather than the merge path: "
+        "`cli-release` needs it, so a binary that cannot start blocks the "
+        "publish. On a PR it is skipped, and wiring a permanently-skipped job "
+        "into cli-pass would only teach that rollup to accept a skip."
     ),
 }
 
@@ -117,11 +154,9 @@ def _results_references(job: dict[str, object]) -> set[str]:
             continue
         for value in env.values():
             for fragment in str(value).split("needs.")[1:]:
-                if ".result" not in fragment:
-                    continue
-                job_id = fragment.split(".result")[0].strip()
-                if job_id and job_id == job_id.strip("{}$ "):
-                    found.add(job_id)
+                match = _RESULT_REF.match(fragment)
+                if match:
+                    found.add(match.group(1))
     return found
 
 
@@ -236,17 +271,103 @@ def _produced_contexts(repo_root: Path) -> set[str]:
     are contexts a ruleset may legitimately require.
     """
     produced: set[str] = set()
-    for path in sorted((repo_root / _WORKFLOW_DIR).glob("*.yml")):
-        for job_id, job in _jobs(_load(path)).items():
-            name = job.get("name")
-            produced.add(name if isinstance(name, str) else job_id)
+    for pattern in _WORKFLOW_GLOBS:
+        for path in sorted((repo_root / _WORKFLOW_DIR).glob(pattern)):
+            for job_id, job in _jobs(_load(path)).items():
+                name = job.get("name")
+                produced.add(name if isinstance(name, str) else job_id)
     return produced
 
 
-def _context_problems(repo_root: Path) -> list[str]:
-    """Every required context must be produced by some job."""
-    produced = _produced_contexts(repo_root)
+def _triggers(workflow: dict[str, object]) -> dict[str, object]:
+    """Return a workflow's trigger mapping.
+
+    YAML 1.1 (which PyYAML implements) reads a bare ``on:`` key as the boolean
+    ``True``, so ``workflow["on"]`` is absent for every real workflow file.
+    Reading only the string key would leave this gate permanently green while
+    reporting nothing, which is worse than not having it.
+    """
+    for key in (True, "on"):
+        found = workflow.get(key)  # type: ignore[arg-type]  # YAML 1.1 coerces the `on:` key to bool
+        if isinstance(found, dict):
+            return found
+    return {}
+
+
+def _path_filter_problems(repo_root: Path) -> list[str]:
+    """No rollup-producing workflow may carry a top-level ``paths:`` filter.
+
+    ``branch_protection.yml`` states this invariant and names this gate as its
+    enforcement. It is load-bearing rather than stylistic: a filtered workflow
+    does not run on a PR that touches nothing it watches, GitHub never receives
+    the required context, and an unreported required context counts as
+    unsatisfied, so the PR can never merge.
+    """
+    problems: list[str] = []
+    for workflow_name in _ROLLUPS:
+        path = repo_root / _WORKFLOW_DIR / workflow_name
+        if not path.exists():
+            continue
+        triggers = _triggers(_load(path))
+        problems.extend(
+            f"{workflow_name}: '{event}' carries a top-level 'paths:' filter, "
+            "so its required rollup context is not reported on every PR. "
+            "GitHub treats a never-reported required context as unsatisfied, "
+            "which would block those PRs permanently. Filter per job instead."
+            for event, config in triggers.items()
+            if isinstance(config, dict) and "paths" in config
+        )
+    return problems
+
+
+def _release_pr_status_contexts(repo_root: Path) -> set[str] | None:
+    """Contexts ``release-cut.yml`` posts on the release PR, or ``None``.
+
+    ``None`` means the step could not be located, which is itself reported:
+    silently reading zero contexts would turn a renamed step into a pass.
+    """
+    path = repo_root / _WORKFLOW_DIR / _RELEASE_CUT
+    if not path.exists():
+        return None
+    for job in _jobs(_load(path)).values():
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if not isinstance(step, dict) or step.get("name") != _STATUS_STEP_NAME:
+                continue
+            loop = _CONTEXT_LOOP.search(str(step.get("run", "")))
+            if loop is None:
+                return None
+            return set(_QUOTED.findall(loop.group(1)))
+    return None
+
+
+def _release_pr_problems(repo_root: Path) -> list[str]:
+    """The release PR's posted statuses must cover every required context."""
+    posted = _release_pr_status_contexts(repo_root)
+    if posted is None:
+        return [
+            (
+                f"{_RELEASE_CUT}: could not read the '{_STATUS_STEP_NAME}' step's "
+                "context list. Every required context is posted there as a commit "
+                "status; unread, a missing one would go unnoticed until a release "
+                "PR wedged."
+            )
+        ]
     return [
+        f"{_RELEASE_CUT} does not post required context '{context}' on the "
+        "release PR. release-please heads run no workflow of their own, so an "
+        "unposted required context stays 'Expected, waiting' and the release "
+        "PR can never merge."
+        for context in sorted(_required_contexts(repo_root) - posted)
+    ]
+
+
+def _context_problems(repo_root: Path) -> list[str]:
+    """Every required context must be produced by an unfiltered workflow."""
+    produced = _produced_contexts(repo_root)
+    problems = [
         f"branch_protection.yml requires context '{context}' but no job "
         "produces that name. GitHub never reports a context nothing emits, "
         "and treats it as unsatisfied, so every PR would be blocked "
@@ -254,6 +375,8 @@ def _context_problems(repo_root: Path) -> list[str]:
         for context in sorted(_required_contexts(repo_root))
         if context not in produced
     ]
+    problems.extend(_path_filter_problems(repo_root))
+    return problems
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -272,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(_rollup_problems(workflow_name, rollup_ids, args.repo_root))
     try:
         problems.extend(_context_problems(args.repo_root))
+        problems.extend(_release_pr_problems(args.repo_root))
     except SpecShapeError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 2

@@ -264,7 +264,26 @@ Base images are declared in `docker/*/apko.yaml` with relaxed package specs
 Every published image and CLI archive carries build provenance from
 `actions/attest-build-provenance`, generated on GitHub-hosted runners with an
 ephemeral, isolated build environment and a signed, non-falsifiable provenance
-document. That is [SLSA](https://slsa.dev/spec/v1.0/levels) Build Level 3.
+document. That much is [SLSA](https://slsa.dev/spec/v1.0/levels) Build Level 2.
+
+Level 3 additionally requires the build definition to be isolated from whoever
+asks for the build, so a compromised caller cannot alter what gets built while
+still producing valid provenance. On GitHub Actions that isolation is a
+**trusted reusable workflow**: attestations generated inline in a
+directly-triggered workflow reach L2 only. Every signing and attesting step
+therefore lives in a reusable workflow, invoked through `workflow_call`:
+
+| Reusable workflow | Signs and attests |
+|---|---|
+| `.github/workflows/reusable-publish-apko-base.yml` | apko base images |
+| `.github/workflows/reusable-publish-image.yml` | backend, sandbox, sidecar, fine-tune |
+| `.github/workflows/reusable-publish-image-loaded.yml` | web |
+| `.github/workflows/reusable-release-cli.yml` | CLI archives and checksums |
+
+The caller jobs in `build-images.yml` and `verify-cli.yml` pass inputs and
+grant token scopes; they run no signing step of their own. Moving one back
+inline would silently drop that artifact to L2, so the split is load-bearing
+rather than tidiness.
 
 The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
 as the `verify-signatures` gate after every publish and requires **both** a
@@ -278,6 +297,15 @@ Verify a published image yourself:
 ```bash
 gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@sha256:<digest> \
   -R Aureliolo/synthorg
+```
+
+To hold the build to the isolated definition rather than merely to this
+repository, pin the signer workflow:
+
+```bash
+gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@sha256:<digest> \
+  -R Aureliolo/synthorg \
+  --signer-workflow Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml
 ```
 
 ### CIS Docker Benchmark

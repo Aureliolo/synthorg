@@ -13,13 +13,13 @@ The preflight is non-blocking on pull requests and feature branches; it only fai
 
 CI workflows reference a fixed set of automation labels (`automation:ci-health`, `automation:ci-preflight`, `type:ci`, `prio:low`, `prio:medium`, `prio:high`, and `autorelease: pending`). The source of truth is `.github/labels.yml`.
 
-Bootstrap once: **Actions -> Sync Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
+Bootstrap once: **Actions -> Maint - Labels -> Run workflow** on `main`. The workflow reads `.github/labels.yml` and creates or updates each label via `gh label create --force`. It never deletes labels, so any repo-specific labels you add are safe.
 
 After this, the `Missing labels` section of the preflight tracking issue should clear on the next preflight run.
 
 ## 2. Create the GitHub environments
 
-CI uses six GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open.
+CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits the first six unconditionally, so create every one of those even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open. `lighthouse` is not audited, but `perf-web-vitals.yml` runs against it and `Lighthouse Pass` is a required check, so create it too.
 
 Create at **Settings -> Environments -> New environment**:
 
@@ -31,10 +31,13 @@ Create at **Settings -> Environments -> New environment**:
 | `cloudflare-preview` | `build-docs-preview.yml` | Yes |
 | `image-push` | `build-images.yml` image push paths | Yes |
 | `github-pages` | `build-docs.yml` push to main | Yes |
+| `lighthouse` | `perf-web-vitals.yml` (holds `LHCI_GITHUB_APP_TOKEN`) | No |
 
 For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs. See [`docs/reference/github-environments.md`](../reference/github-environments.md) for the full branch-policy matrix.
 
-Workflow consumers of each environment fall into two camps: required for any release activity (`release`, `release-tags`, `image-push`, `apko-lock`, `github-pages`), and optional capabilities you can leave un-credentialed if your fork does not need them (`cloudflare-preview` for PR docs previews, `apko-lock` if you skip scheduled Wolfi lock updates). The environment must still exist for the preflight to pass; the secrets inside can be empty until you actually use the workflow.
+Workflow consumers of each environment fall into two camps: required for any release activity (`release`, `release-tags`, `image-push`, `apko-lock`, `github-pages`), and optional capabilities you can leave un-credentialed if your fork does not need them (`cloudflare-preview` for PR docs previews, `lighthouse` for the web-vitals audits, `apko-lock` if you skip scheduled Wolfi lock updates). The environment must still exist for the preflight to pass; the secrets inside can be empty until you actually use the workflow.
+
+`cloudflare-preview` and `lighthouse` carry no deployment branch policy, because they run on `pull_request` events whose `github.ref` (`refs/pull/<N>/merge`) no branch-type policy can match. Their workflow-level fork gates are the real control. See [`docs/reference/github-environments.md`](../reference/github-environments.md).
 
 ## 3. Create the release-bot GitHub App
 

@@ -58,10 +58,29 @@ def _load_counts(report_path: Path) -> Counter[str]:
     """Count pyright errors per rule from a ``--outputjson`` report.
 
     Raises:
-        ReportUnusableError: the report describes an analysis too small to be
-            a real run, so its counts would understate findings.
+        ReportUnusableError: the report does not parse, or describes an
+            analysis too small to be a real run, so its counts would
+            understate findings.
     """
-    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    raw = report_path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        # The workflow runs pyright under `|| true`, so a crash leaves partial
+        # or empty output behind and the exit code says nothing. Parsing it
+        # unguarded surfaced a raw traceback instead of the documented exit 2.
+        msg = (
+            f"pyright report {report_path.name} is not valid JSON "
+            f"({exc.msg} at line {exc.lineno}). The run crashed or was cut "
+            "short, so its counts cannot be compared."
+        )
+        raise ReportUnusableError(msg) from exc
+    if not isinstance(payload, dict):
+        msg = (
+            f"pyright report {report_path.name} is not a JSON object "
+            f"(got {type(payload).__name__}), so it carries no summary to trust."
+        )
+        raise ReportUnusableError(msg)
     summary = payload.get("summary")
     analysed = summary.get("filesAnalyzed") if isinstance(summary, dict) else None
     if not isinstance(analysed, int) or analysed < _MIN_FILES_ANALYSED:

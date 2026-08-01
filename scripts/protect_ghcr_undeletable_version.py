@@ -38,7 +38,19 @@ _REGISTRY: Final[str] = "https://ghcr.io"
 _REGISTRY_HOST: Final[str] = "ghcr.io"
 _TAG_PREFIX: Final[str] = "keep-undeletable-"
 _DIGEST_RE: Final[re.Pattern[str]] = re.compile(r"sha256:[0-9a-f]{64}")
+# OCI path-component grammar and the GitHub login grammar respectively. Both
+# reach the registry URL and the token scope, where a `/`, `?`, `#` or `..`
+# would retarget the request or widen the scope; `_assert_registry_url` only
+# constrains the host, so it cannot catch either.
+_PACKAGE_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*")
+_OWNER_RE: Final[re.Pattern[str]] = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+)
 _DIGEST_TAG_CHARS: Final[int] = 12
+
+# Buildx writes attestation children with a deliberately non-runnable platform
+# so no runtime tries to execute them. They are not evidence of a real image.
+_UNKNOWN_PLATFORM: Final[str] = "unknown"
 
 _HTTP_OK: Final[int] = 200
 _HTTP_CREATED: Final[int] = 201
@@ -171,7 +183,8 @@ def _registry_token(owner: str, package: str, *, github_token: str, push: bool) 
     scope = f"repository:{owner.lower()}/{package}:pull"
     if push:
         scope += ",push"
-    url = f"{_REGISTRY}/token?service=ghcr.io&scope={scope}"
+    query = urllib.parse.urlencode({"service": _REGISTRY_HOST, "scope": scope})
+    url = f"{_REGISTRY}/token?{query}"
     basic = base64.b64encode(f"{owner}:{github_token}".encode()).decode()
     status, payload, _ = _request(url, authorization=f"Basic {basic}")
     if status != _HTTP_OK:
@@ -186,6 +199,26 @@ def _registry_token(owner: str, package: str, *, github_token: str, push: bool) 
     return str(parsed["token"])
 
 
+def _is_real_platform(child: object) -> bool:
+    """Return True for a child describing a runnable platform.
+
+    A Buildx attestation child carries ``{"architecture": "unknown", "os":
+    "unknown"}``, which is present-but-meaningless. Treating any non-null
+    ``platform`` as real refused every attestation index -- precisely the
+    orphan class this tool exists to protect.
+    """
+    if not isinstance(child, dict):
+        return False
+    platform = child.get("platform")
+    if not isinstance(platform, dict):
+        return False
+    architecture = platform.get("architecture")
+    operating_system = platform.get("os")
+    return not (
+        architecture == _UNKNOWN_PLATFORM and operating_system == _UNKNOWN_PLATFORM
+    )
+
+
 def _assert_safe_to_protect(manifest: dict[str, object], media_type: str) -> None:
     """Refuse to protect a live platform image.
 
@@ -198,11 +231,36 @@ def _assert_safe_to_protect(manifest: dict[str, object], media_type: str) -> Non
     if not isinstance(children, list):
         return
     for child in children:
-        if isinstance(child, dict) and child.get("platform") is not None:
+        if _is_real_platform(child):
             _fail(
                 "refusing to protect a platform-bearing image index: this "
                 "digest is a real multi-arch image, not an undeletable orphan"
             )
+
+
+def _resolve_media_type(payload: bytes, headers: dict[str, str]) -> str:
+    """Resolve the manifest media type, body first, header as fallback.
+
+    ``_request_once`` returns ``dict(resp.headers)``, which drops
+    ``HTTPMessage``'s case-insensitive lookup, so a registry answering
+    ``content-type`` yielded an empty string. That is not a harmless blank:
+    an empty type is outside ``_INDEX_TYPES``, so ``_assert_safe_to_protect``
+    returned before inspecting ``manifests`` and the multi-arch guard silently
+    failed open. An OCI manifest carries its own ``mediaType``, so the body is
+    the authority and the header only covers a manifest that omits it.
+    """
+    try:
+        parsed = json.loads(payload)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        declared = parsed.get("mediaType")
+        if isinstance(declared, str) and declared.strip():
+            return declared.split(";")[0].strip()
+    header_value = next(
+        (v for k, v in headers.items() if k.lower() == "content-type"), ""
+    )
+    return header_value.split(";")[0].strip()
 
 
 def _fetch_manifest(repo: str, digest: str, *, token: str) -> tuple[bytes, str]:
@@ -217,7 +275,7 @@ def _fetch_manifest(repo: str, digest: str, *, token: str) -> tuple[bytes, str]:
             f"manifest fetch for {digest} returned {status}; "
             "the version may already be gone"
         )
-    return payload, headers.get("Content-Type", "").split(";")[0].strip()
+    return payload, _resolve_media_type(payload, headers)
 
 
 def _apply_tag(
@@ -267,12 +325,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    if not _OWNER_RE.fullmatch(args.owner):
+        print(
+            f"::error::--owner must be a GitHub login, got '{args.owner}'",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not _PACKAGE_RE.fullmatch(args.package):
+        print(
+            f"::error::--package must be a package name, got '{args.package}'",
+            file=sys.stderr,
+        )
+        return 2
+
     github_token = os.environ.get("GITHUB_TOKEN", "")
     if not github_token:
         print("::error::GITHUB_TOKEN is required", file=sys.stderr)
         return 2
 
-    repo = f"{args.owner.lower()}/{args.package}"
+    # Both components are already constrained to characters with no meaning in
+    # a URL; quoting states that for a reader and for CodeQL's data-flow.
+    owner_segment = urllib.parse.quote(args.owner.lower(), safe="")
+    package_segment = urllib.parse.quote(args.package, safe="")
+    repo = f"{owner_segment}/{package_segment}"
     tag = f"{_TAG_PREFIX}{args.digest.removeprefix('sha256:')[:_DIGEST_TAG_CHARS]}"
 
     try:
@@ -283,6 +359,14 @@ def main(argv: list[str] | None = None) -> int:
             push=not args.dry_run,
         )
         payload, media_type = _fetch_manifest(repo, args.digest, token=token)
+        if not media_type:
+            # An unresolved type would slip past the index check and then be
+            # PUT back with an empty Content-Type. Both are silent; refuse.
+            _fail(
+                f"could not resolve a media type for {args.digest} from the "
+                "manifest body or the response headers; refusing to re-PUT it "
+                "unguarded"
+            )
         try:
             manifest = json.loads(payload)
         except json.JSONDecodeError as exc:

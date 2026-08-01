@@ -205,10 +205,19 @@ jobs:
     # hang, a stall or a timeout, and excluding it meant a prune that never
     # finished alerted nobody, week after week, since nothing else watches
     # this workflow.
+    #
+    # `config` is checked too. It gates `cleanup`, so a `config` failure
+    # skips `cleanup`, leaving its result neither `failure` nor `cancelled`
+    # and skipping this job as well -- the one weekly run that most needs a
+    # tracking issue would open none.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && (needs.cleanup.result == 'failure' || needs.cleanup.result == 'cancelled')
+      && (
+        needs.config.result != 'success'
+        || needs.cleanup.result == 'failure'
+        || needs.cleanup.result == 'cancelled'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

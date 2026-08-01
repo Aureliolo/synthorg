@@ -45,8 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           # build-images.yml emits `sbom-backend` as an artifact on every build.
+          # `--status success` first: without it `--limit 1` takes the newest
+          # matching run whatever its state, so a queued, failed or cancelled
+          # re-run hides an earlier successful one and skips the diff entirely.
           RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-images.yml \
-            --commit "$HEAD_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // ""')
+            --commit "$HEAD_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // ""')
           if [ -z "$RUN_ID" ]; then
             echo "::notice::build-images.yml has not produced a run for $HEAD_SHA yet; skipping SBOM diff"
             echo "skip=true" >> "$GITHUB_OUTPUT"

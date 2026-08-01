@@ -42,7 +42,12 @@ _TIMEOUT_SECONDS = 20
 # recorded its pid and wrote its log, so the launch decision was correct and
 # only the observation timed out. The bound is generous rather than tuned
 # because a healthy run returns the instant the stub writes.
-_LAUNCH_WAIT_SECONDS = 30.0
+#
+# Held below the 30s pytest ceiling so a real failure still reports itself. At
+# exactly 30s the poll consumed the whole budget and pytest killed the test on
+# its timeout first, so the assertion naming the fault never printed and the
+# one run that had something to say said nothing.
+_LAUNCH_WAIT_SECONDS = 20.0
 _NO_LAUNCH_GRACE_SECONDS = 0.5
 _POLL_INTERVAL_SECONDS = 0.02
 

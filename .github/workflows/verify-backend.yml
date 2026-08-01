@@ -1856,6 +1856,11 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 \
             -o /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
+          # check_branch_protection_spec_changed.sh reads the required contexts
+          # under `2>/dev/null || true`, so an unusable binary yields an empty
+          # list and a summary that quietly claims the spec requires nothing.
+          # Prove the binary runs before that step trusts its output.
+          yq --version
       - name: Report spec change
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}

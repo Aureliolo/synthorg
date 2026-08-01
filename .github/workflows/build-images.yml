@@ -328,32 +328,21 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-backend-base.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: image-push
+    # Permissions are granted HERE, not only in the called workflow: a called
+    # workflow inherits the caller's token scopes and can narrow them, never
+    # widen them, so omitting these would leave it unable to push or attest.
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      tag: ${{ steps.publish.outputs.tag }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - id: publish
-        uses: ./.github/actions/publish-apko-base
-        with:
-          image-name: backend
-          tag: ${{ needs.build-backend-base.outputs.tag }}
-          artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
-          tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-apko-base.yml
+    with:
+      image-name: backend
+      tag: ${{ needs.build-backend-base.outputs.tag }}
+      artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
+      tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
 
   build-sandbox-base:
     name: Build Sandbox Base (apko)
@@ -391,32 +380,18 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-sandbox-base.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      tag: ${{ steps.publish.outputs.tag }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - id: publish
-        uses: ./.github/actions/publish-apko-base
-        with:
-          image-name: sandbox
-          tag: ${{ needs.build-sandbox-base.outputs.tag }}
-          artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
-          tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-apko-base.yml
+    with:
+      image-name: sandbox
+      tag: ${{ needs.build-sandbox-base.outputs.tag }}
+      artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
+      tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
 
   build-sidecar-base:
     name: Build Sidecar Base (apko)
@@ -454,32 +429,18 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-sidecar-base.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      tag: ${{ steps.publish.outputs.tag }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - id: publish
-        uses: ./.github/actions/publish-apko-base
-        with:
-          image-name: sidecar
-          tag: ${{ needs.build-sidecar-base.outputs.tag }}
-          artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
-          tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-apko-base.yml
+    with:
+      image-name: sidecar
+      tag: ${{ needs.build-sidecar-base.outputs.tag }}
+      artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
+      tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
 
   build-fine-tune-base:
     name: Build Fine-Tune Base (apko)
@@ -517,33 +478,19 @@ jobs:
       !cancelled() &&
       github.ref == 'refs/heads/main' &&
       needs.build-fine-tune-base.result == 'success'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      tag: ${{ steps.publish.outputs.tag }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - id: publish
-        uses: ./.github/actions/publish-apko-base
-        with:
-          image-name: fine-tune
-          tag: ${{ needs.build-fine-tune-base.outputs.tag }}
-          artifact-name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
-          tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
-          architectures: "amd64"
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-apko-base.yml
+    with:
+      image-name: fine-tune
+      tag: ${{ needs.build-fine-tune-base.outputs.tag }}
+      artifact-name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
+      tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
+      architectures: "amd64"
 
   # =========================================================================
   # Application images -- thin Dockerfile wrappers over apko bases
@@ -645,31 +592,16 @@ jobs:
       !cancelled() &&
       needs.build-backend.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Publish backend image
-        id: publish
-        uses: ./.github/actions/publish-image
-        with:
-          image-name: backend
-          app-version: ${{ needs.version.outputs.app_version }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-image.yml
+    with:
+      image-name: backend
+      app-version: ${{ needs.version.outputs.app_version }}
 
   # =========================================================================
   # Web image -- melange-packaged assets + pure apko (no Dockerfile)
@@ -938,58 +870,19 @@ jobs:
       !cancelled() &&
       needs.build-web.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    # Hands off to publish-image-loaded, whose login / push / cosign /
-    # attest / syft-SBOM steps each carry a bounded retry ladder. The job
-    # timeout must clear the SUM of those ladders (~36m composed worst
-    # case, more than the retag path since it also signs and attests) so
-    # a transient blip that trips several is retried, not cancelled
-    # mid-retry.
-    timeout-minutes: 40
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Download web image tarball
-        uses: ./.github/actions/download-artifact
-        with:
-          name: web-image-tarball
-          path: .
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # The apko-built `web.tar` is a multi-arch tarball whose internal
-      # tags are `ghcr.io/aureliolo/synthorg-web:sha-<short>-amd64` and
-      # `:sha-<short>-arm64` (set by the `apko build` invocation in
-      # `build-web`). After `docker load` those are exactly the local
-      # tags `publish-image-loaded` expects, so we can hand off
-      # directly without any re-tagging.
-      - name: Load image
-        run: |
-          docker load -i web.tar
-
-      # Hand off to the shared publish path. Identical signing and
-      # post-sign verification logic as the backend / sandbox / sidecar
-      # / fine-tune images, so a future fix lands in one place instead
-      # of two.
-      - name: Publish image
-        id: publish
-        uses: ./.github/actions/publish-image-loaded
-        with:
-          image-name: web
-          app-version: ${{ needs.version.outputs.app_version }}
-          enable-arm64: "true"
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-image-loaded.yml
+    with:
+      image-name: web
+      app-version: ${{ needs.version.outputs.app_version }}
+      tarball-artifact: web-image-tarball
+      tarball-name: web.tar
+      enable-arm64: true
 
   build-sandbox:
     name: Build Sandbox (${{ matrix.arch }})
@@ -1039,31 +932,16 @@ jobs:
       !cancelled() &&
       needs.build-sandbox.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Publish sandbox image
-        id: publish
-        uses: ./.github/actions/publish-image
-        with:
-          image-name: sandbox
-          app-version: ${{ needs.version.outputs.app_version }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-image.yml
+    with:
+      image-name: sandbox
+      app-version: ${{ needs.version.outputs.app_version }}
 
   build-sidecar:
     name: Build Sidecar (${{ matrix.arch }})
@@ -1113,31 +991,16 @@ jobs:
       !cancelled() &&
       needs.build-sidecar.result == 'success' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Publish sidecar image
-        id: publish
-        uses: ./.github/actions/publish-image
-        with:
-          image-name: sidecar
-          app-version: ${{ needs.version.outputs.app_version }}
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/reusable-publish-image.yml
+    with:
+      image-name: sidecar
+      app-version: ${{ needs.version.outputs.app_version }}
 
   # Fine-tune ships in two flavours. The matrix builds them in parallel:
   #   - gpu  -> ghcr.io/aureliolo/synthorg-fine-tune-gpu  (bundled CUDA, ~4 GB)
@@ -1217,8 +1080,6 @@ jobs:
       (needs.build-fine-tune.result == 'success' ||
         needs.build-fine-tune.result == 'failure') &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -1227,59 +1088,23 @@ jobs:
             extra: fine-tune-gpu
           - variant: cpu
             extra: fine-tune-cpu
-    environment: image-push
     permissions:
       actions: read
       contents: read
       packages: write
       id-token: write
       attestations: write
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      # Fine-tune tarballs are large (~4 GB GPU, ~1.7 GB CPU). Reclaim
-      # headroom on the runner before `docker load` doubles the disk
-      # usage (archive + daemon copy).
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
-          sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules /usr/local/.ghcup
-          sudo docker image prune --all --force
-          df -h /
-
-      - name: Publish fine-tune image
-        id: publish
-        uses: ./.github/actions/publish-image
-        with:
-          image-name: fine-tune-${{ matrix.variant }}
-          app-version: ${{ needs.version.outputs.app_version }}
-          enable-arm64: "false"
-          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Matrix jobs can't expose per-variant outputs to `update-release` via
-      # `needs.build-fine-tune-publish.outputs.digest` (only the last matrix
-      # run wins). Write the digest to a file and upload it; update-release
-      # reads both via the `fine-tune-*-digest` artifact pattern.
-      - name: Write digest to file
-        if: steps.publish.outputs.digest != ''
-        env:
-          DIGEST: ${{ steps.publish.outputs.digest }}
-        run: printf '%s' "$DIGEST" > "fine-tune-${{ matrix.variant }}.digest"
-
-      - name: Upload digest artifact
-        if: steps.publish.outputs.digest != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: fine-tune-${{ matrix.variant }}-digest
-          path: fine-tune-${{ matrix.variant }}.digest
-          retention-days: 1
+    # Matrix cells cannot expose per-variant outputs to `update-release` via
+    # `needs.build-fine-tune-publish.outputs.digest` (only the last cell wins),
+    # so each cell uploads its digest as an artifact instead; update-release
+    # reads both via the `fine-tune-*-digest` pattern.
+    uses: ./.github/workflows/reusable-publish-image.yml
+    with:
+      image-name: fine-tune-${{ matrix.variant }}
+      app-version: ${{ needs.version.outputs.app_version }}
+      enable-arm64: false
+      free-disk-space: true
+      digest-artifact-name: fine-tune-${{ matrix.variant }}
 
   # =========================================================================
   # Retag-only jobs -- fire on `push: tags: [v*]` instead of the full

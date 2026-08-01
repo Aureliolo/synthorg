@@ -10,11 +10,6 @@
 # a real failure notice with a scripting error.
 set -uo pipefail
 
-: "${GH_TOKEN:?GH_TOKEN is required}"
-: "${GH_REPO:?GH_REPO is required}"
-: "${RUN_ID:?RUN_ID is required}"
-: "${OWNER:?OWNER is required}"
-
 readonly REFUSAL_SIGNATURE='more than 5000 downloads'
 readonly LOG_DIR="${RUNNER_TEMP:-/tmp}/ghcr-prune-logs"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +22,17 @@ emit() {
     echo 'GHCR_REFUSED_EOF'
   } >> "${GITHUB_OUTPUT:-/dev/stdout}"
 }
+
+# Checked here rather than with `${VAR:?}`, which exits 1 and emits no report.
+# That contradicted the never-fail contract in the header: the consuming step
+# would fail on the scripting error and bury the real prune failure it exists
+# to diagnose. Reported and exit 0 instead, like every other diagnosis miss.
+for required in GH_TOKEN GH_REPO RUN_ID OWNER; do
+  if [ -z "${!required:-}" ]; then
+    emit "Could not diagnose: ${required} is unset. Read the run directly."
+    exit 0
+  fi
+done
 
 mkdir -p "$LOG_DIR"
 
@@ -105,8 +111,12 @@ GITHUB_TOKEN=\$(gh auth token) uv run python scripts/protect_ghcr_undeletable_ve
 
   # A rejection with no refusal attributable to it is a different fault, and
   # saying so beats folding it into the permanent bucket.
+  #
+  # `-x` anchors to the whole line. Each entry leads with its log line number,
+  # so a substring match let entry `12<TAB>pkg<TAB>34` find itself inside the
+  # matched `112<TAB>pkg<TAB>34` and drop a genuinely unattributed rejection.
   for entry in "${rejected[@]}"; do
-    printf '%s\n' "$matched" | grep -qF "$entry" && continue
+    printf '%s\n' "$matched" | grep -qxF "$entry" && continue
     unexplained="${unexplained}
 - \`$(printf '%s' "$entry" | cut -f2)\` version \`$(printf '%s' "$entry" | cut -f3)\` was rejected 400 without a >5000-downloads message"
   done

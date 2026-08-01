@@ -1224,6 +1224,15 @@ def _check_runner_pinned(
         labels = [runs_on]
     elif isinstance(runs_on, list):
         labels = [str(item) for item in runs_on]
+    elif isinstance(runs_on, dict):
+        # `runs-on: {group: ..., labels: ...}` is the runner-group form. Left
+        # unread it yielded no labels at all, so a job written that way floated
+        # on the alias while passing the gate that exists to stop exactly that.
+        declared = runs_on.get("labels")
+        if isinstance(declared, str):
+            labels = [declared]
+        elif isinstance(declared, list):
+            labels = [str(item) for item in declared]
     return [
         f"job '{job_name}' runs on the rolling alias '{label}'. Pin an explicit "
         "runner image (e.g. ubuntu-24.04), or add the job to "

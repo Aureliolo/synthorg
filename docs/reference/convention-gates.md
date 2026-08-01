@@ -296,7 +296,7 @@ Control-by-control mapping against GitHub's *Security hardening for GitHub Actio
 | Control | Status | Enforced by |
 |---|---|---|
 | Pin third-party actions to a full commit SHA | Met | Renovate `github-actions` manager; OpenSSF Scorecard `Pinned-Dependencies` (135/135 third-party, 71/71 GitHub-owned) |
-| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 29 workflows, per-job grants; Scorecard `Token-Permissions` 10/10 |
+| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 33 workflows, per-job grants; Scorecard `Token-Permissions` 10/10 |
 | Never persist credentials in the workspace | Met | `persist-credentials: false` on every checkout; zizmor `artipacked` |
 | No untrusted checkout under `pull_request_target` | Met | One use (`repo-cla.yml`), checks out `ref: main`; zizmor `dangerous-triggers` with a scoped ignore |
 | No script injection from event data | Met | Event fields routed through `env:`; zizmor `template-injection` |

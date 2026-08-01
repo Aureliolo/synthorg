@@ -184,10 +184,9 @@ jobs:
       # Smoke-test only the linux/amd64 matrix cell -- it is the
       # only goos/goarch combination the runner can execute (cross-
       # compiled darwin / windows binaries cannot run on Linux).
-      # The matrix gate is the ONLY scoping; the smoke runs on every
-      # event that triggers cli-build (PR, push to main, v* tag
-      # pushes, workflow_dispatch) -- intentionally NOT gated to
-      # PRs only. Catches `unknown flag`, crashes on startup,
+      # The matrix gate is the ONLY scoping within this job; the smoke
+      # runs on every event that reaches cli-build (PR, push to main,
+      # workflow_dispatch). Catches `unknown flag`, crashes on startup,
       # missing cgo deps, etc.
       #
       # Why every event, not just PRs:
@@ -198,15 +197,66 @@ jobs:
       #     release-please bumps, hotfixes pushed via the CLI, etc.
       #     Without smoke here, those commits would let cli-release
       #     ship a broken binary straight to a release.
-      #   - tag push: same for release-graduate.yml + manual tags. The
-      #     cli-release job downstream runs GoReleaser; if the
-      #     binary was broken, the GoReleaser archive ships broken.
       #   - workflow_dispatch: protects ad-hoc rebuilds.
       #
-      # Running the smoke here, at build time on every event, makes this
-      # the source-of-truth gate; release-finalize.yml does not re-test.
+      # Tag pushes do NOT reach here: this job is skipped on `refs/tags/v*`
+      # because cli-release's GoReleaser recompiles the same six targets.
+      # The `cli-tag-smoke` job below carries the tag path's smoke instead,
+      # and gates cli-release on it. release-finalize.yml does not re-test,
+      # so between the two of them this workflow is the source-of-truth gate
+      # on every event.
       - name: Smoke-test CLI binary
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: ./.github/actions/smoke-test-cli-binary
+        with:
+          binary-path: ${{ steps.build.outputs.binary }}
+
+  # ── Tag-push smoke (the release path's binary gate) ──
+  # cli-build is skipped on `refs/tags/v*`, which took its smoke step with
+  # it and left the release path with no binary gate at all: GoReleaser would
+  # compile, sign, attest and publish an archive nothing had ever executed.
+  # This job restores that gate for the one platform the runner can execute,
+  # and cli-release needs it, so a binary that cannot start blocks the
+  # release rather than shipping in it.
+  cli-tag-smoke:
+    name: CLI Tag Smoke
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          # This job runs only on a tag, and it gates the release, so the
+          # cache stays off for the same reason cli-build disables it there:
+          # a poisoned cache could turn a broken binary's smoke green.
+          # zizmor: ignore[cache-poisoning]
+          cache: false
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: cli
+
+      - name: Build linux/amd64
+        id: build
+        working-directory: cli
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cli-tag-smoke
+          go build -ldflags="-s -w" -o /tmp/cli-tag-smoke/synthorg ./main.go
+          echo "binary=/tmp/cli-tag-smoke/synthorg" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test CLI binary
         uses: ./.github/actions/smoke-test-cli-binary
         with:
           binary-path: ${{ steps.build.outputs.binary }}
@@ -520,332 +570,18 @@ jobs:
 
   # ── Release (GoReleaser + provenance, only on version tags) ──
   # No `cli-build` in needs: it is skipped on tags, and a skipped dependency
-  # would park this job forever.
+  # would park this job forever. `cli-tag-smoke` carries the binary gate on
+  # this path instead, and runs on exactly the same `refs/tags/v*` condition,
+  # so it is always present here rather than skipped.
   cli-release:
     name: CLI Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [cli-lint, cli-test, cli-vuln]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    # Environment-gated: the `release-tags` env branch policy (`v*`) is a
-    # structural ref gate for the GoReleaser push path. This env carries
-    # no privileged secrets -- the `synthorg-repo-bot` App credentials
-    # (`RELEASE_BOT_APP_CLIENT_ID` / `RELEASE_BOT_APP_PRIVATE_KEY`) live
-    # on the main-only `release` env so a forged `v*` tag cannot unlock them.
-    environment: release-tags
+    needs: [cli-lint, cli-test, cli-vuln, cli-tag-smoke]
+    # Permissions are granted HERE as well as in the called workflow: a called
+    # workflow inherits the caller's token scopes and may narrow them, never
+    # widen them, so omitting these would leave it unable to attest or upload.
     permissions:
       contents: write
       id-token: write
       attestations: write
-    steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: cli/go.mod
-          # Disable caching in release job to prevent cache-poisoning (zizmor).
-          cache: false
-      - uses: ./.github/actions/go-mod-download-retry
-        with:
-          working-directory: cli
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      # Syft is pulled from a GitHub release; ride a transient GitHub /
-      # network blip on the same 3-attempt backoff ladder as the attest
-      # steps. No downstream output consumed, so a straight ladder; the
-      # final attempt has no continue-on-error and fails the job.
-      - name: Install Syft (attempt 1)
-        id: install_syft_1
-        continue-on-error: true
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-
-      - name: Back off before Syft install retry 1
-        if: steps.install_syft_1.outcome == 'failure'
-        shell: bash
-        run: sleep 15
-
-      - name: Install Syft (attempt 2)
-        if: steps.install_syft_1.outcome == 'failure'
-        id: install_syft_2
-        continue-on-error: true
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-
-      - name: Back off before Syft install retry 2
-        if: steps.install_syft_2.outcome == 'failure'
-        shell: bash
-        run: sleep 30
-
-      - name: Install Syft (final attempt)
-        if: steps.install_syft_2.outcome == 'failure'
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-
-      - name: Wait for GitHub Release to exist
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "Waiting for release $TAG..."
-          for i in $(seq 1 30); do
-            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "Release $TAG found."
-              exit 0
-            fi
-            echo "Attempt $i: release not found yet, waiting 10s..."
-            sleep 10
-          done
-          echo "Release $TAG not found after 5 minutes -- proceeding, but the next upload step will fail if the draft release is missing."
-
-      - name: Copy LICENSE into CLI module
-        run: cp LICENSE cli/LICENSE
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.17.1
-          args: release --clean
-          workdir: cli
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate checksums file
-        run: |
-          if [ ! -f cli/dist/checksums.txt ] || [ ! -s cli/dist/checksums.txt ]; then
-            echo "::error::cli/dist/checksums.txt is missing or empty -- GoReleaser may have failed"
-            exit 1
-          fi
-
-      - name: Sign checksums with cosign (keyless)
-        # Route through the shared helper so a transient Fulcio/Rekor blip
-        # (tlog fetch timeout, 5xx, 429) retries on the same budget every
-        # docker push and image-sign already gets, instead of failing the
-        # release. sign-blob is safe to re-run: a retry overwrites the
-        # bundle and mints a fresh keyless signature over the same bytes.
-        run: |
-          bash .github/scripts/cosign_sign_with_retry.sh sign-blob \
-            cli/dist/checksums.txt \
-            --bundle cli/dist/checksums.txt.cosign.bundle
-
-      - name: Upload assets to draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          # gh release upload finds draft releases (unlike GoReleaser's API).
-          # --clobber overwrites if assets already exist (idempotent on re-run),
-          # so the retry wrapper is safe; a transient GitHub API blip is
-          # retried instead of failing the release.
-          .github/scripts/gh_with_retry.sh "upload CLI release assets" \
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/*.tar.gz cli/dist/*.zip \
-            cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
-
-      # The attestation writes a Rekor transparency-log entry against
-      # Sigstore's public-good backend, which intermittently times out and
-      # would otherwise fail an entire release on a single network blip.
-      # Ride three attempts with backoff before failing hard, mirroring the
-      # cosign-installer ladder in the publish-* actions. Attestation is
-      # idempotent (the bundle upload uses --clobber), so re-attempts are
-      # safe; the final attempt has no continue-on-error, so a genuine
-      # terminal error (malformed subject) still fails all three attempts
-      # and fails the job.
-      - name: Attest build provenance (SLSA Level 3, attempt 1)
-        id: attest_manifest_1
-        continue-on-error: true
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          # subject-checksums treats the file as a manifest: attests every
-          # binary archive listed inside it (the primary SLSA L3 attestations).
-          subject-checksums: cli/dist/checksums.txt
-
-      - name: Back off before provenance-attest retry 1
-        if: steps.attest_manifest_1.outcome == 'failure'
-        shell: bash
-        run: sleep 15
-
-      - name: Attest build provenance (SLSA Level 3, attempt 2)
-        if: steps.attest_manifest_1.outcome == 'failure'
-        id: attest_manifest_2
-        continue-on-error: true
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-checksums: cli/dist/checksums.txt
-
-      - name: Back off before provenance-attest retry 2
-        if: steps.attest_manifest_2.outcome == 'failure'
-        shell: bash
-        run: sleep 30
-
-      - name: Attest build provenance (SLSA Level 3, final attempt)
-        if: steps.attest_manifest_2.outcome == 'failure'
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-checksums: cli/dist/checksums.txt
-
-      # Same Rekor retry ladder for the checksums-file attestation. The
-      # bundle-path output is consumed below, so it is coalesced across
-      # whichever attempt succeeded: a continue-on-error attempt that
-      # failed, or a skipped later attempt, emits an empty output that
-      # GitHub's `||` treats as falsy, so the coalesce resolves to the one
-      # attempt that produced a bundle.
-      - name: Attest checksums file provenance (attempt 1)
-        id: attest_checksums_1
-        continue-on-error: true
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          # subject-path attests the checksums.txt file itself; bundle-path
-          # output is uploaded as .sigstore.json for OpenSSF Scorecard scoring.
-          subject-path: cli/dist/checksums.txt
-
-      - name: Back off before checksums-attest retry 1
-        if: steps.attest_checksums_1.outcome == 'failure'
-        shell: bash
-        run: sleep 15
-
-      - name: Attest checksums file provenance (attempt 2)
-        if: steps.attest_checksums_1.outcome == 'failure'
-        id: attest_checksums_2
-        continue-on-error: true
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-path: cli/dist/checksums.txt
-
-      - name: Back off before checksums-attest retry 2
-        if: steps.attest_checksums_2.outcome == 'failure'
-        shell: bash
-        run: sleep 30
-
-      - name: Attest checksums file provenance (final attempt)
-        if: steps.attest_checksums_2.outcome == 'failure'
-        id: attest_checksums_3
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-path: cli/dist/checksums.txt
-
-      - name: Upload provenance bundle to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUNDLE: ${{ steps.attest_checksums_3.outputs.bundle-path || steps.attest_checksums_2.outputs.bundle-path || steps.attest_checksums_1.outputs.bundle-path }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          if [ -z "$BUNDLE" ] || [ ! -f "$BUNDLE" ]; then
-            echo "::error::Attestation bundle not found at '$BUNDLE'"
-            exit 1
-          fi
-          cp "$BUNDLE" cli/dist/checksums.txt.sigstore.json
-
-          # Extract DSSE envelope as .intoto.jsonl for OpenSSF Scorecard
-          # provenance detection (Scorecard recognises .intoto.jsonl but
-          # classifies .sigstore.json as a signature, not provenance).
-          jq -e -c '.dsseEnvelope' "$BUNDLE" > cli/dist/checksums.txt.intoto.jsonl
-
-          .github/scripts/gh_with_retry.sh "upload provenance bundle" \
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/checksums.txt.sigstore.json \
-            cli/dist/checksums.txt.intoto.jsonl
-
-      - name: Append CLI installation and checksums to release notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-
-          # Download checksums from the release assets.
-          .github/scripts/gh_with_retry.sh "download release checksums" \
-            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "checksums.txt" --dir /tmp
-
-          # Extract per-platform checksums.
-          get_checksum() { awk -v name="$1" '$2 == name { print $1 }' /tmp/checksums.txt; }
-          CS_linux_amd64="$(get_checksum synthorg_linux_amd64.tar.gz)"
-          CS_linux_arm64="$(get_checksum synthorg_linux_arm64.tar.gz)"
-          CS_darwin_amd64="$(get_checksum synthorg_darwin_amd64.tar.gz)"
-          CS_darwin_arm64="$(get_checksum synthorg_darwin_arm64.tar.gz)"
-          CS_windows_amd64="$(get_checksum synthorg_windows_amd64.zip)"
-          CS_windows_arm64="$(get_checksum synthorg_windows_arm64.zip)"
-
-          # Build CLI section + hidden verification data for finalize-release.
-          CLI_SECTION="$(cat <<NOTES
-
-          ---
-
-          ## CLI Installation
-
-          **Linux / macOS:**
-          \`\`\`bash
-          curl -sSfL https://synthorg.io/get/install.sh | bash
-          \`\`\`
-
-          **Windows (PowerShell):**
-          \`\`\`powershell
-          irm https://synthorg.io/get/install.ps1 | iex
-          \`\`\`
-
-          > **Pin to this release:** set \`SYNTHORG_VERSION=${TAG}\` before running
-          > (bash: \`export SYNTHORG_VERSION=${TAG}\` · PowerShell: \`\$env:SYNTHORG_VERSION='${TAG}'\`).
-          >
-          > **New to SynthOrg?** See the [Getting Started guide](https://synthorg.io/get/).
-
-          <!-- CLI_VERIFICATION_DATA
-          | Archive | SHA-256 |
-          |---------|---------|
-          | \`synthorg_linux_amd64.tar.gz\` | \`${CS_linux_amd64}\` |
-          | \`synthorg_linux_arm64.tar.gz\` | \`${CS_linux_arm64}\` |
-          | \`synthorg_darwin_amd64.tar.gz\` | \`${CS_darwin_amd64}\` |
-          | \`synthorg_darwin_arm64.tar.gz\` | \`${CS_darwin_arm64}\` |
-          | \`synthorg_windows_amd64.zip\` | \`${CS_windows_amd64}\` |
-          | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
-
-          \`\`\`bash
-          gh attestation verify synthorg_linux_amd64.tar.gz -R Aureliolo/synthorg
-          \`\`\`
-          Replace the filename with any archive from this release.
-          CLI_VERIFICATION_DATA -->
-
-          <!-- CLI_COSIGN_DATA
-          \`\`\`bash
-          cosign verify-blob checksums.txt \\
-            --bundle checksums.txt.cosign.bundle \\
-            --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
-            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-          \`\`\`
-          CLI_COSIGN_DATA -->
-
-          <!-- CLI_SLSA_BUNDLE_DATA
-          \`\`\`bash
-          cosign verify-blob-attestation checksums.txt \\
-            --bundle checksums.txt.sigstore.json \\
-            --type slsaprovenance1 \\
-            --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
-            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-          \`\`\`
-          CLI_SLSA_BUNDLE_DATA -->
-          NOTES
-          )"
-
-          # Idempotent: strip existing CLI Installation section (+ preceding ---) before appending.
-          # Uses awk to buffer --- lines so the separator doesn't accumulate on re-runs.
-          EXISTING_BODY="$(.github/scripts/gh_with_retry.sh "read release body" \
-            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | awk '
-            /^---$/ { buf=$0; next }
-            /^## CLI Installation$/ { buf=""; skip=1; next }
-            { if(buf!="") print buf; buf="" }
-            /^## / { skip=0 }
-            !skip
-          ')"
-          FULL_BODY="${CLEANED_BODY}${CLI_SECTION}"
-
-          tmpfile="$(mktemp)"
-          trap 'rm -f "$tmpfile"' EXIT
-          printf '%s' "$FULL_BODY" > "$tmpfile"
-          .github/scripts/gh_with_retry.sh "edit release notes" \
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
-
-          echo "Release notes updated with install instructions, checksums, and provenance."
+    uses: ./.github/workflows/reusable-release-cli.yml

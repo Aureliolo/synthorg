@@ -96,6 +96,22 @@ rulesets:
       - type: pull_request
         parameters:
           # Stays at 1: a second approver is unsatisfiable on a solo repo.
+          #
+          # In fact NO approval count is satisfiable here, and that is
+          # deliberate rather than an oversight. `.github/CODEOWNERS` names
+          # only @Aureliolo, `require_code_owner_review` therefore demands an
+          # approval from the same account that authors every PR, and GitHub
+          # does not let an author approve their own PR;
+          # `require_last_push_approval` closes the same door from the other
+          # side. Every merge consequently runs through the repo owner's admin
+          # bypass (`gh pr merge --squash --admin`), which GitHub records in
+          # the audit log.
+          #
+          # Keeping the rules armed rather than relaxing them is the point: if
+          # a second maintainer ever joins, review becomes enforced the moment
+          # they land in CODEOWNERS, with no ruleset change to remember. The
+          # bypass actor itself is not specified here because the audit script
+          # strips `bypass_actors` on both sides (see the header).
           required_approving_review_count: 1
           dismiss_stale_reviews_on_push: true
           required_reviewers: []

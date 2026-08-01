@@ -731,10 +731,14 @@ repos:
         name: sentinel rollups cover every job (CI Pass / CLI Pass / Docker Pass)
         entry: uv run python scripts/check_ci_rollup_complete.py
         language: system
-        # Any of the three workflows the gate polices, the ruleset spec whose
-        # required contexts it cross-checks, or the gate itself. A new job or a
-        # renamed sentinel must not be able to land without re-running this.
-        files: ^(\.github/workflows/(verify-backend|verify-cli|build-images)\.yml|\.github/branch_protection\.yml|scripts/check_ci_rollup_complete\.py)$
+        # Every workflow, because the gate's verdict depends on all of them:
+        # it collects produced contexts across the whole directory, so a job
+        # renamed anywhere can strand a required context. Plus the ruleset
+        # spec whose contexts it cross-checks, the gate itself, and this file
+        # -- naming the three rollup workflows alone both missed the perf
+        # workflows the gate already polices and let a change that narrowed or
+        # deleted this very hook land without ever selecting it.
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/.*\.ya?ml|\.github/branch_protection\.yml|scripts/check_ci_rollup_complete\.py)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

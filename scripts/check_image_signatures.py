@@ -563,6 +563,12 @@ def provenance_present(
     the sigstore bundles, so provenance is one GET further: fetch the index
     and look for a child annotated with the SLSA predicate type.
 
+    Carries the same propagation budget as ``signature_present``, and needs it
+    more: signing and attestation are SEPARATE writes into that one tag, so
+    the index can already exist, and answer 200, while the attestation child
+    has not landed. A single GET would read that partial index as "never
+    attested" and fail a release that was in fact attested correctly.
+
     Raises:
         urllib.error.URLError: a network-level failure, or a non-404 registry
             error, that persisted across every attempt.
@@ -574,15 +580,26 @@ def provenance_present(
     safe_sig_tag = urllib.parse.quote(sig_tag, safe="")
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
     headers = {"Accept": SIG_ACCEPT, **auth_header}
-    status, _, body = _request_with_retry("GET", url, headers)
-    # `_request_with_retry` hands back a lingering 5xx rather than raising, so
-    # the caller decides. Reporting one as "no provenance" would fail a release
-    # that is correctly attested, so only a 404 means genuinely absent.
-    if status >= HTTP_SERVER_ERROR_MIN or status not in (HTTP_OK, HTTP_NOT_FOUND):
-        msg = f"registry error HTTP {status} on provenance check for {url}"
-        raise urllib.error.URLError(msg)
-    if status != HTTP_OK:
-        return False
+    for attempt in range(1, SIG_PROPAGATION_ATTEMPTS + 1):
+        status, _, body = _request_with_retry("GET", url, headers)
+        # `_request_with_retry` hands back a lingering 5xx rather than raising,
+        # so the caller decides. Reporting one as "no provenance" would fail a
+        # release that is correctly attested, so only a 404 means absent.
+        if status >= HTTP_SERVER_ERROR_MIN or status not in (
+            HTTP_OK,
+            HTTP_NOT_FOUND,
+        ):
+            msg = f"registry error HTTP {status} on provenance check for {url}"
+            raise urllib.error.URLError(msg)
+        if status == HTTP_OK and _has_provenance_child(body):
+            return True
+        if attempt < SIG_PROPAGATION_ATTEMPTS:
+            time.sleep(SIG_PROPAGATION_BACKOFF_SECONDS)
+    return False
+
+
+def _has_provenance_child(body: bytes) -> bool:
+    """Return True if the referrer index carries a SLSA provenance child."""
     try:
         index = json.loads(body)
     except json.JSONDecodeError:

@@ -854,6 +854,27 @@ jobs:
             printf '%s' "${base%%-dev.*}"
           }
 
+          # True (exit 0) iff no workflow run for this tag is still going.
+          #
+          # Being superseded by a newer stable proves the dev build is
+          # obsolete, not that its `tags: v*` workflows have stopped. A dev
+          # build minted shortly before the stable finalized can still have
+          # build-images.yml attaching assets, and deleting the ref mid-run
+          # 404s its checkout. Version ordering is a proxy for completion;
+          # this asks the API instead. A tag push sets `head_branch` to the
+          # tag, so these are the tag's own runs.
+          #
+          # An unreadable status counts as "still running": deferring the
+          # delete to the next stable release costs a stale tag for one
+          # cycle, while guessing wrong reds a release that was fine.
+          downstream_settled() {
+            local in_flight
+            in_flight=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$1" \
+              --limit 100 --json status \
+              --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null) || return 1
+            [ -n "$in_flight" ] && [ "$in_flight" = 0 ]
+          }
+
           # 1. Delete superseded dev releases (draft, pre-release, or published)
           #    + their tags. Use the API directly to ensure drafts are included.
           #    Strict regex: only match vX.Y.Z-dev.N (never stable tags).
@@ -899,6 +920,10 @@ jobs:
               echo "Keeping future dev release (base $dev_ver > stable $STABLE_VER): $dev_tag"
               continue
             fi
+            if ! downstream_settled "$dev_tag"; then
+              echo "Keeping $dev_tag: downstream runs still in flight or unreadable"
+              continue
+            fi
             echo "Deleting dev release + tag: $dev_tag"
             if ! gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; then
               echo "::warning::Failed to delete dev release $dev_tag"
@@ -939,6 +964,10 @@ jobs:
             dev_ver=$(dev_base_version "$dev_tag")
             if ! ver_le "$dev_ver" "$STABLE_VER"; then
               echo "Keeping future dev tag (base $dev_ver > stable $STABLE_VER): $dev_tag"
+              continue
+            fi
+            if ! downstream_settled "$dev_tag"; then
+              echo "Keeping $dev_tag: downstream runs still in flight or unreadable"
               continue
             fi
             echo "Deleting orphan dev tag: $dev_tag"

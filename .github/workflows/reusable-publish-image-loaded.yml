@@ -1,0 +1,94 @@
+name: Reusable - Publish Loaded Image
+
+# The build definition for the web image's publish, held in a trusted reusable
+# workflow. The web image arrives as an apko-built multi-arch tarball rather
+# than a Dockerfile build, so it loads the tarball into the local daemon and
+# hands the already-tagged images to `publish-image-loaded`.
+#
+# See reusable-publish-apko-base.yml for why the indirection exists: it is the
+# isolation SLSA Build L3 requires and that a directly-triggered workflow
+# cannot provide. Pin a consumer to it with:
+#
+#   gh attestation verify oci://... -R Aureliolo/synthorg \
+#     --signer-workflow Aureliolo/synthorg/.github/workflows/reusable-publish-image-loaded.yml
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Image to publish.
+        required: true
+        type: string
+      app-version:
+        description: Version the manifest list is tagged with.
+        required: true
+        type: string
+      tarball-artifact:
+        description: Artifact holding the image tarball to load.
+        required: true
+        type: string
+      tarball-name:
+        description: Tarball filename inside the artifact.
+        required: true
+        type: string
+      enable-arm64:
+        description: Whether the manifest list carries an arm64 child.
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      digest:
+        description: Digest of the published manifest list.
+        value: ${{ jobs.publish.outputs.digest }}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+    # `publish-image-loaded`'s login / push / cosign / attest / syft-SBOM steps
+    # each carry a bounded retry ladder. This must clear the SUM of them (~36m
+    # composed worst case, more than the retag path since it also signs and
+    # attests) so a transient blip that trips several is retried, not cancelled
+    # mid-retry.
+    timeout-minutes: 40
+    environment: image-push
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Download image tarball
+        uses: ./.github/actions/download-artifact
+        with:
+          name: ${{ inputs.tarball-artifact }}
+          path: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The apko-built tarball's internal tags are already
+      # `ghcr.io/aureliolo/synthorg-<name>:sha-<short>-<arch>` (set by the
+      # `apko build` invocation in the build job), which is exactly what
+      # `publish-image-loaded` expects after `docker load`. No re-tagging.
+      - name: Load image
+        env:
+          TARBALL: ${{ inputs.tarball-name }}
+        run: docker load -i "$TARBALL"
+
+      - name: Publish image
+        id: publish
+        uses: ./.github/actions/publish-image-loaded
+        with:
+          image-name: ${{ inputs.image-name }}
+          app-version: ${{ inputs.app-version }}
+          enable-arm64: ${{ inputs.enable-arm64 }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}

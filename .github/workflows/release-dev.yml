@@ -128,18 +128,40 @@ jobs:
             echo "skip=false"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check if dev tag already exists
+      - name: Check for an existing dev tag and its release
         if: steps.check-tag.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         id: tag-exists
         env:
+          GH_TOKEN: ${{ github.token }}
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
         run: |
+          set -uo pipefail
+          TAG_EXISTS=false
           if git rev-parse "$DEV_TAG" >/dev/null 2>&1; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Tag $DEV_TAG already exists, skipping"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            TAG_EXISTS=true
           fi
+          RELEASE_EXISTS=false
+          if gh release view "$DEV_TAG" >/dev/null 2>&1; then
+            RELEASE_EXISTS=true
+          fi
+
+          # Skip only when BOTH exist. Skipping on the tag alone made the
+          # preserved-tag path below unrecoverable: that path pushes the ref,
+          # then fails `gh release create` and deliberately keeps the tag, so
+          # a rerun saw the tag, skipped, and left release-finalize.yml with
+          # no draft to publish. The dev build then vanished with no release
+          # and no error, every rerun, forever.
+          SKIP=false
+          if [ "$TAG_EXISTS" = true ] && [ "$RELEASE_EXISTS" = true ]; then
+            SKIP=true
+            echo "Tag $DEV_TAG and its release both exist, skipping"
+          elif [ "$TAG_EXISTS" = true ]; then
+            echo "::notice::Tag $DEV_TAG exists with no release; recovering the draft"
+          fi
+          {
+            echo "tag_exists=$TAG_EXISTS"
+            echo "skip=$SKIP"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create dev tag and pre-release
         if: >-
@@ -156,6 +178,7 @@ jobs:
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
           DEV_NUM: ${{ steps.version.outputs.dev_num }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          TAG_EXISTS: ${{ steps.tag-exists.outputs.tag_exists }}
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -190,9 +213,14 @@ jobs:
           #    /git/refs POST AND (unlike the ambient GITHUB_TOKEN)
           #    its ref-create fires downstream ``push`` workflow events,
           #    so the tag push triggers Docker + CLI.
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/tags/$DEV_TAG" \
-            -f sha="$GITHUB_SHA"
+          #    Skipped when the ref is already there, which means an earlier
+          #    run pushed it and then failed to create the release. Re-posting
+          #    it would 422; the recovery this run performs is the release.
+          if [ "$TAG_EXISTS" != 'true' ]; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$DEV_TAG" \
+              -f sha="$GITHUB_SHA"
+          fi
 
           # 2. Create a draft pre-release pointing at the tag. The draft
           #    follows the same lifecycle as stable releases: Docker + CLI
@@ -207,16 +235,24 @@ jobs:
           #    main even when the squash content is clean. The orphan tag
           #    is harmless: the "Clean up old dev pre-releases" step below
           #    plus release-finalize.yml's stable-release sweep garbage-
-          #    collect it later, and release-finalize.yml correctly
-          #    skip-publishes a tag with no draft.
+          #    collect it later, and the tag-existence check above now
+          #    recovers the missing draft on the next run rather than
+          #    skipping past it.
           if ! gh release create "$DEV_TAG" \
             --draft \
             --prerelease \
             --title "$DEV_TAG" \
             --notes-file "$NOTES_FILE"; then
-            echo "::error::Release creation failed for $DEV_TAG"
-            echo "::warning::Tag preserved: deleting it now would race the downstream tag-triggered workflows into a checkout 404"
-            exit 1
+            # A client-side timeout can follow a server-side success, so ask
+            # before declaring failure: the release may well be there, and
+            # failing here would red a run that actually completed.
+            if gh release view "$DEV_TAG" >/dev/null 2>&1; then
+              echo "::notice::Release for $DEV_TAG exists despite the failed call; treating it as created"
+            else
+              echo "::error::Release creation failed for $DEV_TAG"
+              echo "::warning::Tag preserved: deleting it now would race the downstream tag-triggered workflows into a checkout 404. A rerun recovers the draft against this tag."
+              exit 1
+            fi
           fi
 
       - name: Clean up old dev pre-releases
@@ -228,17 +264,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Keep the 5 most recent dev pre-releases, delete the rest.
-          # The "keep 5 newest" filter guarantees the JUST-MINTED tag is
-          # never selected for deletion -- the deleted tags are 5+
-          # revisions old, and their downstream Docker / CLI workflows
-          # have long since completed. The checkout race requires deleting
-          # a tag whose downstream workflows are still in flight, which
-          # this bulk-prune never does.
+          #
+          # Revision distance is a proxy for "downstream is done", not proof
+          # of it: five merges can land inside a single image build, and
+          # deleting a tag whose `tags: v*` workflows are still running races
+          # their actions/checkout into a 404 on a ref that was valid when
+          # they started. So each candidate is asked about directly before
+          # its ref is removed. A tag push sets `head_branch` to the tag, so
+          # the tag's own runs are what this lists.
           gh release list --limit 50 --json tagName,isPrerelease,createdAt \
             --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
           | while read -r tag; do
+              IN_FLIGHT=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$tag" \
+                --limit 100 --json status \
+                --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo "")
+              if [ -z "$IN_FLIGHT" ]; then
+                echo "Skipping $tag: could not read its downstream run status"
+                continue
+              fi
+              if [ "$IN_FLIGHT" != 0 ]; then
+                echo "Skipping $tag: $IN_FLIGHT downstream run(s) still in flight"
+                continue
+              fi
               echo "Deleting old dev release: $tag"
-              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- bulk-deletes 5+-revision-old dev tags whose downstream workflows have completed; not the just-minted tag
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- deletes only dev tags whose downstream runs the step has confirmed complete; never the just-minted tag
             done
 
       # Regression guard. The dev tag was created near the top of this

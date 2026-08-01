@@ -417,8 +417,12 @@ jobs:
           DESCRIPTION="release-please PR -- auto-passes (no source changes to test)"
           # Keep in sync with .github/branch_protection.yml ::
           # rulesets[name=protect-main] :: required_status_checks.
+          # check_ci_rollup_complete.py fails the build if this list drifts
+          # from the spec, so the sync is enforced rather than remembered.
           for context in \
             "CI Pass" \
+            "CLI Pass" \
+            "Docker Pass" \
             "CodSpeed Python Pass" \
             "CodSpeed Web Pass" \
             "Lighthouse Pass"; do

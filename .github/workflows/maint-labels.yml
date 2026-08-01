@@ -2,7 +2,7 @@ name: Maint - Labels
 
 on:
   # Manual-only. Edits to .github/labels.yml do NOT auto-sync; the
-  # operator runs this workflow from Actions -> Sync Labels -> Run
+  # operator runs this workflow from Actions -> Maint - Labels -> Run
   # workflow when they want the change to land. Keeps label
   # mutations explicit and reviewable instead of riding any merge
   # to main that touches the file.

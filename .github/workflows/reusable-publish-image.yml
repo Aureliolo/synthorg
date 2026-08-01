@@ -1,0 +1,113 @@
+name: Reusable - Publish Image
+
+# The build definition for every application-image publish (backend, sandbox,
+# sidecar, fine-tune), held in a trusted reusable workflow.
+#
+# See reusable-publish-apko-base.yml for why the indirection exists: it is the
+# isolation SLSA Build L3 requires and that a directly-triggered workflow
+# cannot provide. Pin a consumer to it with:
+#
+#   gh attestation verify oci://... -R Aureliolo/synthorg \
+#     --signer-workflow Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Application image to publish (backend, sandbox, sidecar, fine-tune).
+        required: true
+        type: string
+      app-version:
+        description: Version the manifest list is tagged with.
+        required: true
+        type: string
+      timeout-minutes:
+        description: Job timeout; the fine-tune image is far larger than the rest.
+        required: false
+        default: 30
+        type: number
+      enable-arm64:
+        description: Whether the manifest list carries an arm64 child.
+        required: false
+        default: true
+        type: boolean
+      free-disk-space:
+        description: >-
+          Reclaim runner disk before `docker load`. The fine-tune tarballs
+          (~4 GB GPU, ~1.7 GB CPU) double on load and exhaust the runner
+          without it.
+        required: false
+        default: false
+        type: boolean
+      digest-artifact-name:
+        description: >-
+          When set, upload the digest under this artifact name. A matrix caller
+          cannot expose per-cell outputs (only the last cell wins), so
+          `update-release` collects the fine-tune digests as artifacts instead.
+        required: false
+        default: ""
+        type: string
+    outputs:
+      digest:
+        description: Digest of the published manifest list.
+        value: ${{ jobs.publish.outputs.digest }}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    environment: image-push
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      # Reclaim headroom before `docker load` doubles the disk usage
+      # (archive + daemon copy).
+      - name: Free disk space
+        if: inputs.free-disk-space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
+          sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules /usr/local/.ghcup
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Publish image
+        id: publish
+        uses: ./.github/actions/publish-image
+        with:
+          image-name: ${{ inputs.image-name }}
+          app-version: ${{ inputs.app-version }}
+          enable-arm64: ${{ inputs.enable-arm64 }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write digest to file
+        if: inputs.digest-artifact-name != '' && steps.publish.outputs.digest != ''
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+          DIGEST_FILE: ${{ inputs.digest-artifact-name }}.digest
+        run: printf '%s' "$DIGEST" > "$DIGEST_FILE"
+
+      - name: Upload digest artifact
+        if: inputs.digest-artifact-name != '' && steps.publish.outputs.digest != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.digest-artifact-name }}-digest
+          path: ${{ inputs.digest-artifact-name }}.digest
+          retention-days: 1

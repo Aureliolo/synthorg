@@ -1,0 +1,83 @@
+name: Reusable - Publish apko Base
+
+# The build definition for every apko base-image publish, held in a trusted
+# reusable workflow rather than inline in the caller.
+#
+# That indirection is what the SLSA Build L3 claim rests on.
+# `actions/attest-build-provenance` running inside a directly-triggered
+# workflow attests a build definition the calling workflow itself controls, so
+# the provenance is authentic but not isolated -- GitHub rates that Build L2.
+# Invoked through `workflow_call`, the signed provenance names THIS file as the
+# builder, and a consumer can pin to it:
+#
+#   gh attestation verify oci://... -R Aureliolo/synthorg \
+#     --signer-workflow Aureliolo/synthorg/.github/workflows/reusable-publish-apko-base.yml
+#
+# Consequently the steps here must stay the whole of the publish: moving any
+# signing or attestation step back into a caller would silently drop the
+# guarantee back to L2 while the docs still claimed L3.
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Base image to publish (backend, sandbox, sidecar, fine-tune).
+        required: true
+        type: string
+      tag:
+        description: Tag the build job resolved for this base image.
+        required: true
+        type: string
+      artifact-name:
+        description: Artifact holding the built base-image tarball.
+        required: true
+        type: string
+      tarball-name:
+        description: Tarball filename inside the artifact.
+        required: true
+        type: string
+      architectures:
+        description: Architectures to push; fine-tune is amd64-only.
+        required: false
+        default: "amd64,arm64"
+        type: string
+    outputs:
+      digest:
+        description: Digest of the published base image.
+        value: ${{ jobs.publish.outputs.digest }}
+      tag:
+        description: Tag the base image was published under.
+        value: ${{ jobs.publish.outputs.tag }}
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: image-push
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - id: publish
+        uses: ./.github/actions/publish-apko-base
+        with:
+          image-name: ${{ inputs.image-name }}
+          tag: ${{ inputs.tag }}
+          artifact-name: ${{ inputs.artifact-name }}
+          tarball-name: ${{ inputs.tarball-name }}
+          architectures: ${{ inputs.architectures }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

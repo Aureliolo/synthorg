@@ -361,6 +361,49 @@ jobs:
     assert _MODULE._rollup_problems("verify-backend.yml", ("ci-pass",), tmp_path) == []
 
 
+def test_an_output_named_result_is_not_read_as_a_gated_job(tmp_path: Path) -> None:
+    """``needs.X.outputs.result`` is an output, not a job id.
+
+    A substring test for ``.result`` took everything before the first match,
+    yielding the job id ``changes.outputs``. That id is in no ``needs`` list,
+    so the gate reported a violation nobody could fix and blocked the PR.
+    """
+    _write_workflow(
+        tmp_path,
+        "verify-backend.yml",
+        """
+name: Sample
+on: [push]
+jobs:
+  alpha:
+    name: Alpha
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+  ci-pass:
+    name: CI Pass
+    if: always()
+    needs: [alpha, changes]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check results
+        env:
+          RESULTS: >-
+            ${{ needs.alpha.result }}
+            ${{ needs.changes.result }}
+          FILTER_VERDICT: ${{ needs.changes.outputs.result }}
+          FILTER_VERDICTS: ${{ needs.changes.outputs.results }}
+        run: "true"
+""",
+    )
+    assert _MODULE._rollup_problems("verify-backend.yml", ("ci-pass",), tmp_path) == []
+
+
 def test_coverage_spans_the_union_of_several_rollups(tmp_path: Path) -> None:
     """A workflow may split its jobs across one rollup per required context."""
     _write_workflow(
@@ -468,17 +511,214 @@ def test_every_required_context_workflow_is_in_rollups() -> None:
     """
     required = _MODULE._required_contexts(_REPO_ROOT)
     workflow_dir = _REPO_ROOT / _MODULE._WORKFLOW_DIR
-    for path in sorted(workflow_dir.glob("*.yml")):
-        jobs = _MODULE._jobs(_MODULE._load(path))
-        names = {
-            job.get("name") if isinstance(job.get("name"), str) else job_id
-            for job_id, job in jobs.items()
-        }
-        if names & required:
-            assert path.name in _MODULE._ROLLUPS, (
-                f"{path.name} produces a required context but is not in _ROLLUPS, "
-                "so a new job there would not have to be wired into its rollup."
-            )
+    for pattern in _MODULE._WORKFLOW_GLOBS:
+        for path in sorted(workflow_dir.glob(pattern)):
+            jobs = _MODULE._jobs(_MODULE._load(path))
+            names = {
+                job.get("name") if isinstance(job.get("name"), str) else job_id
+                for job_id, job in jobs.items()
+            }
+            if names & required:
+                assert path.name in _MODULE._ROLLUPS, (
+                    f"{path.name} produces a required context but is not in "
+                    "_ROLLUPS, so a new job there would not have to be wired "
+                    "into its rollup."
+                )
+
+
+def test_workflow_discovery_covers_both_yaml_extensions() -> None:
+    """GitHub honours ``.yaml`` too, so a one-extension walk measures a subset."""
+    assert set(_MODULE._WORKFLOW_GLOBS) == {"*.yml", "*.yaml"}
+
+
+def test_produced_contexts_reads_a_yaml_extension_workflow(tmp_path: Path) -> None:
+    """A ``.yaml`` workflow's job names are contexts like any other."""
+    _write_workflow(
+        tmp_path,
+        "extra.yaml",
+        """
+name: Extra
+on: [push]
+jobs:
+  solo:
+    name: Solo Pass
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+""",
+    )
+    assert "Solo Pass" in _MODULE._produced_contexts(tmp_path)
+
+
+# ── top-level paths: filter ─────────────────────────────────────
+
+
+def _spec_requiring(context: str) -> str:
+    """Build a branch-protection spec requiring exactly one context."""
+    return f"""
+rulesets:
+  - name: protect-main
+    rules:
+      - type: required_status_checks
+        parameters:
+          required_status_checks:
+            - context: "{context}"
+"""
+
+
+def test_top_level_paths_filter_on_a_rollup_workflow_is_flagged(
+    tmp_path: Path,
+) -> None:
+    """A filtered rollup workflow leaves its required context never reported."""
+    _write_workflow(
+        tmp_path,
+        "verify-backend.yml",
+        """
+name: Sample
+on:
+  pull_request:
+    paths:
+      - "src/**"
+jobs:
+  ci-pass:
+    name: CI Pass
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+""",
+    )
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        _spec_requiring("CI Pass"), encoding="utf-8"
+    )
+    problems = _MODULE._context_problems(tmp_path)
+    assert len(problems) == 1
+    assert "top-level 'paths:' filter" in problems[0]
+    assert "pull_request" in problems[0]
+
+
+def test_unfiltered_rollup_workflow_passes(tmp_path: Path) -> None:
+    """The same workflow without the filter is clean."""
+    _write_workflow(
+        tmp_path,
+        "verify-backend.yml",
+        """
+name: Sample
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  ci-pass:
+    name: CI Pass
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+""",
+    )
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        _spec_requiring("CI Pass"), encoding="utf-8"
+    )
+    assert _MODULE._context_problems(tmp_path) == []
+
+
+def test_triggers_reads_the_yaml_bool_on_key() -> None:
+    """YAML 1.1 turns ``on:`` into ``True``; reading only ``"on"`` sees nothing.
+
+    Without this the paths-filter check would report clean on every real
+    workflow file regardless of what it declared.
+    """
+    parsed = _MODULE._load(
+        _REPO_ROOT / _MODULE._WORKFLOW_DIR / "build-docs-preview.yml"
+    )
+    assert "on" not in parsed
+    assert _MODULE._triggers(parsed) != {}
+
+
+# ── release-PR status contexts ──────────────────────────────────
+
+
+def _release_cut_posting(contexts: list[str]) -> str:
+    """Build a release-cut.yml whose status step posts the given contexts."""
+    listed = " \\\n            ".join(f'"{context}"' for context in contexts)
+    return f"""
+name: Release - Cut
+on: [push]
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: {_MODULE._STATUS_STEP_NAME}
+        run: |
+          for context in \\
+            {listed}; do
+            echo "$context"
+          done
+"""
+
+
+def test_release_pr_missing_context_is_flagged(tmp_path: Path) -> None:
+    """A required context the release PR never receives wedges that PR."""
+    _write_workflow(tmp_path, "release-cut.yml", _release_cut_posting(["CI Pass"]))
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        """
+rulesets:
+  - name: protect-main
+    rules:
+      - type: required_status_checks
+        parameters:
+          required_status_checks:
+            - context: "CI Pass"
+            - context: "Docker Pass"
+""",
+        encoding="utf-8",
+    )
+    problems = _MODULE._release_pr_problems(tmp_path)
+    assert len(problems) == 1
+    assert "Docker Pass" in problems[0]
+
+
+def test_release_pr_covering_every_context_passes(tmp_path: Path) -> None:
+    """Posting the full required set is clean."""
+    _write_workflow(
+        tmp_path, "release-cut.yml", _release_cut_posting(["CI Pass", "Docker Pass"])
+    )
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        """
+rulesets:
+  - name: protect-main
+    rules:
+      - type: required_status_checks
+        parameters:
+          required_status_checks:
+            - context: "CI Pass"
+            - context: "Docker Pass"
+""",
+        encoding="utf-8",
+    )
+    assert _MODULE._release_pr_problems(tmp_path) == []
+
+
+def test_release_pr_unreadable_step_is_flagged(tmp_path: Path) -> None:
+    """A renamed step must fail loudly, not read as zero missing contexts."""
+    _write_workflow(
+        tmp_path,
+        "release-cut.yml",
+        """
+name: Release - Cut
+on: [push]
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Post something else entirely
+        run: "true"
+""",
+    )
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        _spec_requiring("CI Pass"), encoding="utf-8"
+    )
+    problems = _MODULE._release_pr_problems(tmp_path)
+    assert len(problems) == 1
+    assert "could not read" in problems[0]
 
 
 def test_real_tree_passes() -> None:
