@@ -63,9 +63,12 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
+      # `github.sha` only, with no pull-request fallback: publishing runs on
+      # main and tag refs, never on a PR, and the attested build definition
+      # must not be able to resolve to a pull-request head.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Download image tarball

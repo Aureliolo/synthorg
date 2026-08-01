@@ -35,7 +35,9 @@ Create at **Settings -> Environments -> New environment**:
 
 For `release` and `release-tags`, configure a deployment branch policy of `main` (and `v*` for `release-tags`) so secrets only unlock for the intended refs. See [`docs/reference/github-environments.md`](../reference/github-environments.md) for the full branch-policy matrix.
 
-Workflow consumers of each environment fall into two camps: required for any release activity (`release`, `release-tags`, `image-push`, `apko-lock`, `github-pages`), and optional capabilities you can leave un-credentialed if your fork does not need them (`cloudflare-preview` for PR docs previews, `lighthouse` for the web-vitals audits, `apko-lock` if you skip scheduled Wolfi lock updates). The environment must still exist for the preflight to pass; the secrets inside can be empty until you actually use the workflow.
+The six audited environments must all exist for CI Preflight to pass, whether or not your fork uses the corresponding workflow; the secrets inside them can stay empty until you do. What varies is the credentials, not the existence: `release`, `release-tags`, `image-push` and `github-pages` need real secrets for any release activity, while `cloudflare-preview` (PR docs previews) and `apko-lock` (scheduled Wolfi lock updates) can be left un-credentialed if you skip those capabilities.
+
+`lighthouse` sits outside that set: preflight does not audit it, so omitting it keeps the tracking issue closed, but `perf-web-vitals.yml` runs against it and `Lighthouse Pass` is a required check, so create it before you expect that check to report.
 
 `cloudflare-preview` and `lighthouse` carry no deployment branch policy, because they run on `pull_request` events whose `github.ref` (`refs/pull/<N>/merge`) no branch-type policy can match. Their workflow-level fork gates are the real control. See [`docs/reference/github-environments.md`](../reference/github-environments.md).
 

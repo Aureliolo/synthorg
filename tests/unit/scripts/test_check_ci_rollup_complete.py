@@ -596,6 +596,41 @@ jobs:
     assert "pull_request" in problems[0]
 
 
+def test_top_level_paths_ignore_filter_on_a_rollup_workflow_is_flagged(
+    tmp_path: Path,
+) -> None:
+    """``paths-ignore`` reaches the same deadlock as ``paths``.
+
+    They are the positive and negative spellings of one feature, so policing
+    only the positive one leaves the deadlock reachable by inverting the
+    filter.
+    """
+    _write_workflow(
+        tmp_path,
+        "verify-backend.yml",
+        """
+name: Sample
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+jobs:
+  ci-pass:
+    name: CI Pass
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+""",
+    )
+    (tmp_path / ".github" / "branch_protection.yml").write_text(
+        _spec_requiring("CI Pass"), encoding="utf-8"
+    )
+    problems = _MODULE._context_problems(tmp_path)
+    assert len(problems) == 1
+    assert "top-level 'paths-ignore:' filter" in problems[0]
+    assert "pull_request" in problems[0]
+
+
 def test_unfiltered_rollup_workflow_passes(tmp_path: Path) -> None:
     """The same workflow without the filter is clean."""
     _write_workflow(
@@ -620,16 +655,36 @@ jobs:
     assert _MODULE._context_problems(tmp_path) == []
 
 
-def test_triggers_reads_the_yaml_bool_on_key() -> None:
+def test_triggers_reads_the_yaml_bool_on_key(tmp_path: Path) -> None:
     """YAML 1.1 turns ``on:`` into ``True``; reading only ``"on"`` sees nothing.
 
     Without this the paths-filter check would report clean on every real
     workflow file regardless of what it declared.
+
+    Built in a fixture rather than read from a repository workflow: the
+    behaviour under test is the YAML loader's key coercion, so pointing at a
+    real file would make an unrelated edit to that workflow able to break this
+    test, and would let the test pass for the wrong reason if the file stopped
+    using the mapping form.
     """
-    parsed = _MODULE._load(
-        _REPO_ROOT / _MODULE._WORKFLOW_DIR / "build-docs-preview.yml"
+    _write_workflow(
+        tmp_path,
+        "sample.yml",
+        """
+name: Sample
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  solo:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+""",
     )
+    parsed = _MODULE._load(tmp_path / ".github" / "workflows" / "sample.yml")
     assert "on" not in parsed
+    assert True in parsed
     assert _MODULE._triggers(parsed) != {}
 
 

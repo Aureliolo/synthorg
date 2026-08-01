@@ -16,10 +16,10 @@ Five properties:
 3. Every context ``branch_protection.yml`` requires is produced by some job.
    GitHub treats a never-reported required context as unsatisfied, blocking
    every PR permanently, so this is what makes renaming workflows safe.
-4. No rollup-producing workflow carries a top-level ``paths:`` filter. The
-   spec states this invariant and names this gate as its enforcement; a
-   filtered workflow simply does not run on an unrelated PR, and property 3's
-   never-reported-context deadlock follows.
+4. No rollup-producing workflow carries a top-level ``paths:`` or
+   ``paths-ignore:`` filter. The spec states this invariant and names this
+   gate as its enforcement; a filtered workflow simply does not run on an
+   unrelated PR, and property 3's never-reported-context deadlock follows.
 5. ``release-cut.yml`` posts every required context on the release PR. That
    PR's head runs no workflow of its own, so each required context arrives as
    a hand-written commit status; one missing leaves the release PR wedged at
@@ -54,6 +54,10 @@ _BRANCH_PROTECTION: Final[str] = ".github/branch_protection.yml"
 # GitHub resolves workflow files under either extension, so a gate that walks
 # only one of them measures a subset of what actually runs.
 _WORKFLOW_GLOBS: Final[tuple[str, ...]] = ("*.yml", "*.yaml")
+
+# Both spellings of the same feature. Policing only `paths` would leave the
+# identical never-reported-context deadlock reachable via `paths-ignore`.
+_PATH_FILTER_KEYS: Final[tuple[str, ...]] = ("paths", "paths-ignore")
 
 # Anchored at the fragment start so only a complete ``needs.<id>.result``
 # matches. A bare ``".result" in fragment`` substring test also accepted
@@ -295,13 +299,17 @@ def _triggers(workflow: dict[str, object]) -> dict[str, object]:
 
 
 def _path_filter_problems(repo_root: Path) -> list[str]:
-    """No rollup-producing workflow may carry a top-level ``paths:`` filter.
+    """No rollup-producing workflow may carry a top-level path filter.
 
     ``branch_protection.yml`` states this invariant and names this gate as its
     enforcement. It is load-bearing rather than stylistic: a filtered workflow
     does not run on a PR that touches nothing it watches, GitHub never receives
     the required context, and an unreported required context counts as
     unsatisfied, so the PR can never merge.
+
+    Both ``paths`` and ``paths-ignore`` are rejected. They are the positive and
+    negative spellings of one feature, so policing only the positive one leaves
+    the identical deadlock reachable by writing the filter the other way round.
     """
     problems: list[str] = []
     for workflow_name in _ROLLUPS:
@@ -310,12 +318,14 @@ def _path_filter_problems(repo_root: Path) -> list[str]:
             continue
         triggers = _triggers(_load(path))
         problems.extend(
-            f"{workflow_name}: '{event}' carries a top-level 'paths:' filter, "
+            f"{workflow_name}: '{event}' carries a top-level '{key}:' filter, "
             "so its required rollup context is not reported on every PR. "
             "GitHub treats a never-reported required context as unsatisfied, "
             "which would block those PRs permanently. Filter per job instead."
             for event, config in triggers.items()
-            if isinstance(config, dict) and "paths" in config
+            if isinstance(config, dict)
+            for key in _PATH_FILTER_KEYS
+            if key in config
         )
     return problems
 

@@ -31,9 +31,12 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      # `github.sha` only, with no pull-request fallback: the release runs on a
+      # `v*` tag ref, never on a PR, and the attested build definition must not
+      # be able to resolve to a pull-request head.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -92,7 +95,12 @@ jobs:
             echo "Attempt $i: release not found yet, waiting 10s..."
             sleep 10
           done
-          echo "Release $TAG not found after 5 minutes -- proceeding, but the next upload step will fail if the draft release is missing."
+          # Fail here rather than letting the upload fail later: this message
+          # names the actual fault (release-cut never produced the draft),
+          # whereas the downstream `gh release upload` error only reports a
+          # missing release and sends the reader to the wrong workflow.
+          echo "::error::Release $TAG not found after 5 minutes; release-cut.yml did not create the draft, so there is nothing to upload assets to."
+          exit 1
 
       - name: Copy LICENSE into CLI module
         run: cp LICENSE cli/LICENSE

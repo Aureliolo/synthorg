@@ -246,8 +246,14 @@ jobs:
           REFUSED: ${{ steps.refused.outputs.report }}
         run: |
           set -euo pipefail
+          # Randomised delimiter, matching release-cut.yml's Highlights step.
+          # `$REFUSED` is assembled from GHCR job logs, so a log line equal to
+          # a fixed marker would close the heredoc early and let everything
+          # after it be read as further `key=value` lines in $GITHUB_OUTPUT --
+          # i.e. log content smuggling extra step outputs.
+          DELIM="TRACKING_ISSUE_BODY_$(openssl rand -hex 12)"
           {
-            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            printf 'body<<%s\n' "$DELIM"
             cat <<EOF
           The weekly GHCR prune failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
 
@@ -255,7 +261,7 @@ jobs:
 
           ${REFUSED}
           EOF
-            echo 'TRACKING_ISSUE_BODY_EOF'
+            printf '%s\n' "$DELIM"
           } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/post-tracking-issue

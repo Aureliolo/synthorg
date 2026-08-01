@@ -16,10 +16,15 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
 emit() {
+  # Randomised delimiter: the report is assembled from GHCR job logs, so a log
+  # line equal to a fixed marker would close the heredoc early and let the rest
+  # be parsed as further `key=value` lines in $GITHUB_OUTPUT.
+  local delim
+  delim="GHCR_REFUSED_$(openssl rand -hex 12)"
   {
-    echo 'report<<GHCR_REFUSED_EOF'
+    printf 'report<<%s\n' "$delim"
     printf '%s\n' "$1"
-    echo 'GHCR_REFUSED_EOF'
+    printf '%s\n' "$delim"
   } >> "${GITHUB_OUTPUT:-/dev/stdout}"
 }
 

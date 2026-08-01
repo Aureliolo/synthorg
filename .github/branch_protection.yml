@@ -67,9 +67,9 @@ rulesets:
           # the same integration_id or audit_branch_protection.sh reports drift.
           #
           # Every context here is the rollup of a workflow with NO top-level
-          # `paths:` filter, which is load-bearing: GitHub treats a
-          # never-reported required context as unsatisfied, blocking the PR
-          # permanently. Enforced by check_ci_rollup_complete.py.
+          # `paths:` OR `paths-ignore:` filter, which is load-bearing: GitHub
+          # treats a never-reported required context as unsatisfied, blocking
+          # the PR permanently. Enforced by check_ci_rollup_complete.py.
           required_status_checks:
             - context: "CI Pass"
               integration_id: 15368

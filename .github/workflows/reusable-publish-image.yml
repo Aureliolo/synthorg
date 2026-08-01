@@ -21,11 +21,6 @@ on:
         description: Version the manifest list is tagged with.
         required: true
         type: string
-      timeout-minutes:
-        description: Job timeout; the fine-tune image is far larger than the rest.
-        required: false
-        default: 30
-        type: number
       enable-arm64:
         description: Whether the manifest list carries an arm64 child.
         required: false
@@ -58,7 +53,10 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # Fixed rather than a caller input: every caller (backend, sandbox,
+    # sidecar, fine-tune) used 30 before the split, and a configurable budget
+    # nobody set is a knob that only ever drifts from what the jobs need.
+    timeout-minutes: 30
     environment: image-push
     permissions:
       actions: read
@@ -69,9 +67,12 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
+      # `github.sha` only, with no pull-request fallback: publishing runs on
+      # main and tag refs, never on a PR, and the attested build definition
+      # must not be able to resolve to a pull-request head.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       # Reclaim headroom before `docker load` doubles the disk usage

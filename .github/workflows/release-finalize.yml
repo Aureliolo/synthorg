@@ -860,19 +860,10 @@ jobs:
           # obsolete, not that its `tags: v*` workflows have stopped. A dev
           # build minted shortly before the stable finalized can still have
           # build-images.yml attaching assets, and deleting the ref mid-run
-          # 404s its checkout. Version ordering is a proxy for completion;
-          # this asks the API instead. A tag push sets `head_branch` to the
-          # tag, so these are the tag's own runs.
-          #
-          # An unreadable status counts as "still running": deferring the
-          # delete to the next stable release costs a stale tag for one
-          # cycle, while guessing wrong reds a release that was fine.
+          # 404s its checkout. Shared with release-dev.yml's rolling prune so
+          # the two cleanup paths cannot drift apart.
           downstream_settled() {
-            local in_flight
-            in_flight=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$1" \
-              --limit 100 --json status \
-              --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null) || return 1
-            [ -n "$in_flight" ] && [ "$in_flight" = 0 ]
+            bash .github/scripts/gh_downstream_settled.sh "$1"
           }
 
           # 1. Delete superseded dev releases (draft, pre-release, or published)

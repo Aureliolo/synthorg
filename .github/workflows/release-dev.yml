@@ -46,6 +46,10 @@ jobs:
     environment: release
     permissions:
       contents: write
+      # `actions: read` for gh_downstream_settled.sh: without it `gh run list`
+      # fails, every candidate tag reads as unreadable, and the cleanup step
+      # below silently stops deleting anything.
+      actions: read
     steps:
       # Full-history checkout: Compute dev version step below uses
       # `git tag --sort` + `git rev-list` to compute the dev build number.
@@ -269,25 +273,17 @@ jobs:
           # of it: five merges can land inside a single image build, and
           # deleting a tag whose `tags: v*` workflows are still running races
           # their actions/checkout into a 404 on a ref that was valid when
-          # they started. So each candidate is asked about directly before
-          # its ref is removed. A tag push sets `head_branch` to the tag, so
-          # the tag's own runs are what this lists.
+          # they started. gh_downstream_settled.sh asks the API instead, and
+          # release-finalize.yml's sweep shares it so the two cannot drift.
           gh release list --limit 50 --json tagName,isPrerelease,createdAt \
             --jq '[.[] | select(.isPrerelease and (.tagName | contains("-dev.")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
           | while read -r tag; do
-              IN_FLIGHT=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$tag" \
-                --limit 100 --json status \
-                --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo "")
-              if [ -z "$IN_FLIGHT" ]; then
-                echo "Skipping $tag: could not read its downstream run status"
-                continue
-              fi
-              if [ "$IN_FLIGHT" != 0 ]; then
-                echo "Skipping $tag: $IN_FLIGHT downstream run(s) still in flight"
+              if ! bash .github/scripts/gh_downstream_settled.sh "$tag"; then
+                echo "Keeping $tag: downstream runs still in flight or unreadable"
                 continue
               fi
               echo "Deleting old dev release: $tag"
-              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- deletes only dev tags whose downstream runs the step has confirmed complete; never the just-minted tag
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true  # lint-allow: workflow-tag-lifecycle -- deletes only dev tags whose downstream runs the shared check has confirmed complete; never the just-minted tag
             done
 
       # Regression guard. The dev tag was created near the top of this
