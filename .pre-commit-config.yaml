@@ -637,12 +637,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      # Declared before dto-types-ts-in-sync, and triggered on a superset of
-      # its sources, because this hook exports the OpenAPI schema that the
-      # one below consumes: running the producer first turns that hook's own
-      # app boot into a file read. Ordering is an optimisation, not a
-      # correctness dependency -- the consumer verifies the export against
-      # the sources on disk and rebuilds it itself when they disagree.
+      # Declared before dto-types-ts-in-sync because this hook exports the
+      # OpenAPI schema that the one below consumes: running the producer
+      # first turns that hook's own app boot into a file read. Ordering is
+      # an optimisation, not a correctness dependency -- the consumer
+      # verifies the export against the sources on disk and rebuilds it
+      # itself when they disagree. The triggers deliberately are NOT equal:
+      # the consumer also fires on the generated .gen.ts mirrors and the npm
+      # lockfiles, which cannot change the schema, so widening the producer
+      # to match would boot the app for a dependency bump.
       - id: endpoint-table-in-sync
         name: endpoint-table-in-sync gate (docs/openapi/index.md matches the exported schema)
         entry: bash -c 'uv run python scripts/export_openapi.py && uv run python scripts/generate_endpoint_table.py --check'

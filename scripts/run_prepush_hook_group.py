@@ -313,6 +313,93 @@ def _argv_chars(argv: Sequence[str], paths: Sequence[str]) -> int:
     return sum(len(arg) + 1 for arg in (*argv, *paths))
 
 
+def _build_argv(tool: _Tool, filenames: Sequence[str]) -> tuple[list[str], str] | None:
+    """Resolve one tool's command line against the files pre-commit matched.
+
+    Returns:
+        The argv and the scope note for the report, or None when nothing in
+        this push is the tool's concern. Invoking it with no paths would make
+        some tools fall back to their whole configured scope, which is the
+        cost this runner exists to avoid, so it is skipped outright instead.
+    """
+    argv = list(tool.argv)
+    if tool.filename_pattern is None:
+        return argv, ""
+    matched = [f for f in filenames if tool.filename_pattern.match(f)]
+    if not matched:
+        return None
+    # The ``--`` the hook passes is consumed by argparse as its own positional
+    # separator, so it never reaches the tool. Re-emit it here or the
+    # protection the hook config documents -- a path beginning with a dash
+    # cannot be read as an option -- is not actually in force anywhere.
+    argv.append("--")
+    paths, scope_note = matched, ""
+    if _argv_chars(argv, matched) > _MAX_ARGV_CHARS and tool.whole_scope:
+        # Too many paths to hand over one at a time. The alternatives are to
+        # drop files (a gate that stops enforcing without saying so) or to
+        # split into several runs (each paying ESLint's project-service warmup
+        # again, on the push budget). Widening to the configured scope keeps
+        # every changed file covered in one invocation.
+        paths = list(tool.whole_scope)
+        scope_note = f" (whole scope: {len(matched)} paths too long to pass)"
+    argv.extend(paths)
+    return argv, scope_note
+
+
+def _spawn(argv: Sequence[str]) -> subprocess.Popen[str]:
+    """Start a tool with its output captured and its own process group.
+
+    Popen rather than ``subprocess.run(timeout=...)``: run's timeout path
+    kills only the direct child and then drains the pipes unbounded, so a
+    surviving grandchild holds the push open forever. See _terminate_tree.
+
+    Returns:
+        The running child.
+    """
+    return subprocess.Popen(
+        argv,
+        cwd=_REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        # POSIX: give the child its own process group so one killpg reaches
+        # every descendant. Windows gets the tree via taskkill /T.
+        start_new_session=sys.platform != "win32",
+    )
+
+
+def _wedged_result(
+    process: subprocess.Popen[str], tool: _Tool, started: float, scope_note: str
+) -> _Result:
+    """Kill a tool that outlived its timeout, and report it as a gate defect.
+
+    Returns:
+        A failing :class:`_Result` carrying whatever the tool emitted before
+        it wedged, which is often the only clue to why.
+    """
+    _terminate_tree(process)
+    # Bounded, because an unbounded drain is exactly the bug this avoids.
+    try:
+        stdout, stderr = process.communicate(timeout=_DRAIN_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        stdout, stderr = "", ""
+    partial = (stdout + stderr).rstrip()
+    detail = f"\nOutput before it wedged:\n{partial}" if partial else ""
+    # lint-allow: clock-seam -- gate script, no DI
+    elapsed = time.monotonic() - started
+    return _Result(
+        tool.name,
+        _EXIT_TIMED_OUT,
+        f"timed out after {_TOOL_TIMEOUT_SECONDS}s and was killed with its "
+        f"process tree; the push must not wait on a wedged tool, so this "
+        f"reads as a failure.{detail}",
+        elapsed,
+        scope_note=scope_note,
+    )
+
+
 def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     """Run one tool and capture its combined output.
 
@@ -325,32 +412,10 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     Returns:
         The tool's :class:`_Result`.
     """
-    argv = list(tool.argv)
-    scope_note = ""
-    if tool.filename_pattern is not None:
-        matched = [f for f in filenames if tool.filename_pattern.match(f)]
-        if not matched:
-            # Nothing in this push is the tool's concern. Invoking it with
-            # no paths would make some tools fall back to their whole
-            # configured scope, which is the cost this runner exists to
-            # avoid, so skip it outright.
-            return _Result(tool.name, 0, "", 0.0, skipped=True)
-        # The ``--`` the hook passes is consumed by argparse as its own
-        # positional separator, so it never reaches the tool. Re-emit it
-        # here or the protection the hook config documents -- a path
-        # beginning with a dash cannot be read as an option -- is not
-        # actually in force anywhere.
-        argv.append("--")
-        paths = matched
-        if _argv_chars(argv, matched) > _MAX_ARGV_CHARS and tool.whole_scope:
-            # Too many paths to hand over one at a time. The alternatives are
-            # to drop files (a gate that stops enforcing without saying so) or
-            # to split into several runs (each paying ESLint's project-service
-            # warmup again, on the push budget). Widening to the configured
-            # scope keeps every changed file covered in one invocation.
-            paths = list(tool.whole_scope)
-            scope_note = f" (whole scope: {len(matched)} paths too long to pass)"
-        argv.extend(paths)
+    built = _build_argv(tool, filenames)
+    if built is None:
+        return _Result(tool.name, 0, "", 0.0, skipped=True)
+    argv, scope_note = built
     # Windows ships ``npm`` as ``npm.cmd``; CreateProcess will not resolve
     # the bare name, and ``shell=True`` would hand the shell a path list
     # taken from git output. Resolving on PATH keeps the argv form exact.
@@ -365,61 +430,21 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     argv[0] = resolved
     started = time.monotonic()  # lint-allow: clock-seam -- gate script, no DI
     try:
-        # Popen rather than ``subprocess.run(timeout=...)``: run's timeout path
-        # kills only the direct child and then drains the pipes unbounded, so a
-        # surviving grandchild holds the push open forever. See _terminate_tree.
-        with subprocess.Popen(
-            argv,
-            cwd=_REPO_ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            # POSIX: give the child its own process group so one killpg
-            # reaches every descendant. Windows gets the tree via taskkill /T.
-            start_new_session=sys.platform != "win32",
-        ) as process:
+        with _spawn(argv) as process:
             try:
                 stdout, stderr = process.communicate(timeout=_TOOL_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
-                _terminate_tree(process)
-                # Keep whatever the tool emitted before wedging: it is often
-                # the only clue to why. Bounded, because the whole point here
-                # is that a drain must never be able to block the push.
-                try:
-                    stdout, stderr = process.communicate(timeout=_DRAIN_TIMEOUT_SECONDS)
-                except subprocess.TimeoutExpired:
-                    stdout, stderr = "", ""
-                partial = (stdout + stderr).rstrip()
-                detail = f"\nOutput before it wedged:\n{partial}" if partial else ""
-                # lint-allow: clock-seam -- gate script, no DI
-                return _Result(
-                    tool.name,
-                    _EXIT_TIMED_OUT,
-                    f"timed out after {_TOOL_TIMEOUT_SECONDS}s and was killed "
-                    f"with its process tree; the push must not wait on a "
-                    f"wedged tool, so this reads as a failure.{detail}",
-                    time.monotonic() - started,
-                    scope_note=scope_note,
-                )
+                return _wedged_result(process, tool, started, scope_note)
             returncode = process.returncode
     except OSError as exc:
         # lint-allow: clock-seam -- gate script, no DI
-        return _Result(
-            tool.name,
-            _EXIT_NOT_FOUND,
-            f"failed to start: {type(exc).__name__}: {exc}",
-            time.monotonic() - started,
-        )
+        elapsed = time.monotonic() - started
+        message = f"failed to start: {type(exc).__name__}: {exc}"
+        return _Result(tool.name, _EXIT_NOT_FOUND, message, elapsed)
     # lint-allow: clock-seam -- gate script, no DI
     elapsed = time.monotonic() - started
     return _Result(
-        tool.name,
-        returncode,
-        stdout + stderr,
-        elapsed,
-        scope_note=scope_note,
+        tool.name, returncode, stdout + stderr, elapsed, scope_note=scope_note
     )
 
 

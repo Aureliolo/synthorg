@@ -111,6 +111,16 @@ class SchemaDriftProvisionError(Exception):
     """The Postgres throwaway container could not be started."""
 
 
+class SchemaDriftParseError(Exception):
+    """A statement this gate must compare could not be identified.
+
+    Distinct from finding drift: it means the comparison never happened
+    for that object. Raised rather than skipped because the two sides are
+    parsed by the same regex, so a silent miss removes the object from
+    both and leaves nothing for the diff to notice.
+    """
+
+
 _POSTGRES_DEFAULT_PORT: Final[int] = 5432
 """Default Postgres listener port inside the testcontainer.
 
@@ -248,8 +258,10 @@ async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> st
         await migrations.migrate_apply(url, revisions_path=revisions_path)
         wrapped_container = pg.get_wrapped_container()
         if wrapped_container is None or wrapped_container.id is None:
+            # Provisioning, not drift: the split exit code exists so a
+            # caller can retry infrastructure without retrying a finding.
             msg = "Postgres testcontainer has no id; cannot run pg_dump."
-            raise SystemExit(msg)
+            raise SchemaDriftProvisionError(msg)
         container_id = wrapped_container.id
         dump = await asyncio.to_thread(_run_pg_dump, container_id, user, dbname)
     finally:
@@ -286,11 +298,13 @@ def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
             timeout=_PG_DUMP_TIMEOUT_SECONDS,
         ).stdout
     except subprocess.TimeoutExpired as exc:
+        # A dump that never finished is a provisioning failure worth
+        # retrying, not a schema finding to go and read.
         msg = (
             f"pg_dump timed out after {_PG_DUMP_TIMEOUT_SECONDS}s "
             f"against container {container_id}"
         )
-        raise SystemExit(msg) from exc
+        raise SchemaDriftProvisionError(msg) from exc
 
 
 _YOYO_TABLE_PREFIXES: Final[tuple[str, ...]] = ("_yoyo", "yoyo_")
@@ -404,7 +418,13 @@ def _extract_triggers_and_functions(sql_text: str) -> dict[str, _TriggerOrFuncti
         if upper.startswith(("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")):
             match = _FUNCTION_NAME_PATTERN.search(body)
             if match is None:
-                continue
+                # This regex is the only thing that sees trigger and function
+                # DDL at all (sqlglot drops it through its Command fallback).
+                # A name it cannot read would drop the object from BOTH sides
+                # of the comparison, so drift in it would be undetectable and
+                # nothing would say the check had been skipped.
+                msg = f"could not extract a function name from: {body[:120]!r}"
+                raise SchemaDriftParseError(msg)
             name = match.group(1)
             findings[f"function:{name}"] = _TriggerOrFunction(
                 kind="function",
@@ -414,7 +434,8 @@ def _extract_triggers_and_functions(sql_text: str) -> dict[str, _TriggerOrFuncti
         elif upper.startswith(("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER")):
             match = _TRIGGER_NAME_PATTERN.search(body)
             if match is None:
-                continue
+                msg = f"could not extract a trigger name from: {body[:120]!r}"
+                raise SchemaDriftParseError(msg)
             name = match.group(1)
             findings[f"trigger:{name}"] = _TriggerOrFunction(
                 kind="trigger",

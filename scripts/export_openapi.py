@@ -49,10 +49,12 @@ if "SYNTHORG_DB_PATH" not in os.environ:
 # supply a stable value too, so pre-import setdefault keeps this script
 # usable in CI and local previews without requiring the operator to set
 # the env var explicitly.  Real deployments inject their own secret via
-# the compose env block.
+# the compose env block.  Taken from the shared module rather than spelled
+# again: two copies of the same placeholder drift silently, because this
+# one runs first and makes the shared setdefault a no-op.
 os.environ.setdefault(
     "SYNTHORG_PAGINATION_CURSOR_SECRET",
-    "openapi-export-stable-cursor-secret-not-a-real-secret",
+    shared.STABLE_CURSOR_SECRET,
 )
 
 # Pinned for stability; update after testing newer releases in local preview.

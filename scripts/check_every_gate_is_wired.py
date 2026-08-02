@@ -153,21 +153,41 @@ def _reachable_from_agent_hooks() -> set[str]:
     return found
 
 
-def _allowlisted() -> dict[str, str]:
-    """Return ``stem -> reason`` for every deliberately unwired gate."""
+def _allowlisted() -> tuple[dict[str, str], list[str]]:
+    """Read the deliberately-unwired allowlist.
+
+    A malformed entry is reported rather than dropped. Dropping it
+    produces exactly the output of "this gate was never allowlisted",
+    so a typo'd key or an unquoted YAML ``yes`` sends the author to
+    look for wiring they already declared.
+
+    Returns:
+        ``(stem -> reason, problems)``.
+    """
     if not _ALLOWLIST.is_file():
-        return {}
+        return {}, []
     data = yaml.safe_load(_ALLOWLIST.read_text(encoding="utf-8")) or {}
     entries = data.get("unwired_gates") or []
     allowed: dict[str, str] = {}
+    problems: list[str] = []
     for entry in entries:
         if not isinstance(entry, dict):
+            problems.append(
+                f"unwired_gate_allowlist.yaml: {entry!r} is not a mapping;"
+                " each entry needs a 'script' and a 'reason'."
+            )
             continue
         script = str(entry.get("script", ""))
         reason = str(entry.get("reason", "")).strip()
-        if script.endswith(".py") and reason:
-            allowed[script.removesuffix(".py")] = reason
-    return allowed
+        if not script.endswith(".py") or not reason:
+            problems.append(
+                f"unwired_gate_allowlist.yaml: {entry!r} is not a usable"
+                " exemption; 'script' must name a .py file and 'reason' must"
+                " be non-empty. It exempts nothing as written."
+            )
+            continue
+        allowed[script.removesuffix(".py")] = reason
+    return allowed, problems
 
 
 def check() -> list[str]:
@@ -179,9 +199,9 @@ def check() -> list[str]:
         | _reachable_from_ci()
         | _reachable_from_agent_hooks()
     )
-    allowed = _allowlisted()
+    allowed, problems = _allowlisted()
 
-    problems = [
+    problems += [
         f"{stem}.py is never invoked: it is absent from"
         " .pre-commit-config.yaml, the three runner tables"
         " (run_prepush_python_gates._GATES, run_prepush_hook_group._GROUPS,"

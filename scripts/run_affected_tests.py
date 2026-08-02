@@ -16,11 +16,14 @@ file (``__init__.py``, ``constants.py``), and a ``pyproject.toml`` edit, which
 carries pytest's own configuration. ``--full`` runs the whole suite on demand,
 with the timing-regression guards armed.
 
-A changed test file selects only itself. Nothing imports a test file, so its
-siblings verify nothing the change could have broken, and the packages where
-that costs the most are the ones with no source package to scope against:
-``tests/unit/scripts`` alone is a fifth of the unit tier, so touching one
-gate's tests used to run every gate's tests.
+A changed test file usually selects only itself: almost nothing imports a test
+module, so its siblings verify nothing the change could have broken. The
+exception is the handful that other test modules DO import for a shared fake or
+helper, and for those the importers' packages are selected as well -- otherwise
+breaking a shared fake would pass a push having run only the file that defines
+it. Scoping by package instead would cost the most exactly where there is no
+source package to scope against: ``tests/unit/scripts`` is a thirteenth of the
+unit tier by collected cases, and every gate's tests share it.
 
 A change can also be too broad to fit the budget without any of those triggers
 firing, simply by touching many packages at once. Past
@@ -39,7 +42,6 @@ etc.  Git command failures fall back to running the full unit suite.
 """
 
 import argparse
-import contextlib
 import math
 import os
 import re
@@ -48,9 +50,11 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Final, Literal
 
 # Hard wall-clock caps so a Windows + Python 3.14 + xdist IOCP teardown
@@ -87,6 +91,15 @@ _MAX_AFFECTED_TEST_FILES: Final[int] = 600
 # need instead of silently checking nothing.
 _TEST_TIERS: Final[frozenset[str]] = frozenset(
     {"unit", "integration", "e2e", "conformance", "benchmarks", "evals", "evals_spine"}
+)
+
+# A test module imported by another test module, by dotted path. Both import
+# forms are matched because both appear in the tree, and the trailing boundary
+# stops ``tests.unit.meta.test_service`` from also matching a longer sibling
+# whose name merely extends it.
+_TEST_MODULE_IMPORT: Final[re.Pattern[str]] = re.compile(
+    r"^(?:from|import)\s+(tests(?:\.[A-Za-z_][A-Za-z0-9_]*)*\.test_[A-Za-z0-9_]+)\b",
+    re.MULTILINE,
 )
 
 if __package__ in {None, ""}:
@@ -209,6 +222,54 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     return "other", None
 
 
+@cache
+def _test_module_importers() -> Mapping[str, frozenset[str]]:
+    """Map each imported test module to the packages that import it.
+
+    A test module is normally a leaf: pytest collects it and nothing else
+    reads it, which is what makes selecting one file sufficient. A few
+    carry a shared fake or helper that sibling test modules import by
+    dotted path, and for those the leaf assumption is simply false -- a
+    change to the definition can break importers the file-level selection
+    would never run.
+
+    Scanned once per process with a regex rather than parsed: the answer
+    is needed only for the handful of changed test files in one push, and
+    an import that this regex misses degrades to today's file-only
+    selection rather than to a wrong package.
+
+    Returns:
+        Dotted module name -> the ``tests/unit/`` packages importing it.
+    """
+    importers: dict[str, set[str]] = {}
+    for path in (_REPO_ROOT / "tests").rglob("*.py"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        parts = path.relative_to(_REPO_ROOT).as_posix().split("/")
+        if parts[1] != "unit":
+            # Only the unit tier is this runner's to select; an importer in
+            # another tier is that tier's runner to worry about.
+            continue
+        package = parts[2] if len(parts) > MIN_MODULE_DEPTH else "."
+        for match in _TEST_MODULE_IMPORT.finditer(text):
+            importers.setdefault(match.group(1), set()).add(package)
+    return MappingProxyType(
+        {name: frozenset(packages) for name, packages in importers.items()}
+    )
+
+
+def _importer_packages(filepath: str) -> frozenset[str]:
+    """Return the ``tests/unit/`` packages importing the module at *filepath*.
+
+    Returns:
+        The importing packages, empty when nothing imports this module.
+    """
+    dotted = filepath.removesuffix(".py").replace("/", ".")
+    return _test_module_importers().get(dotted, frozenset())
+
+
 def _selected_test_files(module: str, filepaths: set[str]) -> list[str]:
     """Return the changed test files under ``tests/unit/<module>`` to run.
 
@@ -265,6 +326,10 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
             continue
         if category == "test_unit_file":
             changed_test_files.setdefault(module, set()).add(filepath)
+            # A test module that other test modules import is not a leaf:
+            # its importers have to run too, or breaking a shared fake
+            # passes a push having run only the file that defines it.
+            modules.update(_importer_packages(filepath))
         else:
             modules.add(module)
 
@@ -525,17 +590,29 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     that started its own group (some C-extensions running aiosqlite /
     docker calls do exactly that).
     """
-    if sys.platform == "win32":
-        with contextlib.suppress(subprocess.SubprocessError, OSError):
+    # A kill that fails is announced. The caller reports the hung-run exit
+    # code either way, so a silent failure here reads as "the tree is gone"
+    # while the workers are still holding the locks this exists to release.
+    try:
+        if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True,
                 check=False,
                 timeout=5.0,
             )
-    else:
-        with contextlib.suppress(ProcessLookupError, OSError):
+        else:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        # Already gone, which is the outcome this wanted.
+        pass
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(
+            f"could not kill the pytest process tree at pid {proc.pid} "
+            f"({type(exc).__name__}: {exc}); workers may still be running "
+            "and holding file locks.",
+            file=sys.stderr,
+        )
 
 
 def _own_process_group_kwargs() -> dict[str, object]:

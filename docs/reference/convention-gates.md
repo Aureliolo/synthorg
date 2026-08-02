@@ -29,7 +29,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
-| `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` | full | no | none | add |
+| `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |

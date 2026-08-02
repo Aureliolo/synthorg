@@ -65,10 +65,15 @@ def _retryable_embedding_errors() -> tuple[type[Exception], ...]:
     import path of ``synthorg.api.app`` (via the memory embedder, reached
     from the meeting conflict detector), and importing litellm costs ~2.5s,
     which every app boot, every cold-import test and every xdist worker's
-    collection was paying to build a tuple used by one ``isinstance``. The
-    only route to that check runs through ``probe.py``, which already
-    defers its own ``from litellm import aembedding``, so litellm is
-    always loaded by the time an error needs classifying.
+    collection was paying to build a tuple used by one ``isinstance``.
+
+    Both routes to that check -- ``probe.py`` and
+    ``text_embedder.ProviderTextEmbedder.embed_many`` -- defer their own
+    ``from litellm import aembedding`` and raise only after calling it, so
+    litellm is resident by the time an error needs classifying and this
+    import is free. That is a property of every caller, not of a single
+    chokepoint: a new call site reaching the classifier without importing
+    litellm first would pay the ~2.5s here, inside a failing request.
 
     Returns:
         The exception types worth another attempt.

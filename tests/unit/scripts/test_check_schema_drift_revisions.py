@@ -9,7 +9,6 @@ the load-bearing test here applies a small revision set both ways and
 asserts the resulting schema is identical.
 """
 
-import asyncio
 import importlib.util
 import shutil
 import sqlite3  # lint-allow: persistence-boundary -- reads the schema the gate builds
@@ -70,13 +69,21 @@ def _dump(db_path: Path) -> str:
     return ";\n".join(row[0] for row in rows)
 
 
-def _apply(revisions_path: Path) -> str:
+async def _apply(revisions_path: Path) -> str:
+    """Apply *revisions_path* to a throwaway database and dump its schema.
+
+    Awaited from an ``async def`` test rather than wrapped in
+    ``asyncio.run``: pytest-asyncio's loop factory is what applies this
+    suite's Windows ``SelectorEventLoop`` pin, and it only governs loops it
+    creates. A loop opened here directly would take the platform default.
+
+    Returns:
+        The resulting schema, as ``CREATE`` statements.
+    """
     with tempfile.TemporaryDirectory(prefix="fold-test-") as tmp:
         db = Path(tmp) / "drift.db"
-        asyncio.run(
-            migrations.migrate_apply(
-                migrations.to_sqlite_url(str(db)), revisions_path=revisions_path
-            )
+        await migrations.migrate_apply(
+            migrations.to_sqlite_url(str(db)), revisions_path=revisions_path
         )
         return _dump(db)
 
@@ -84,13 +91,13 @@ def _apply(revisions_path: Path) -> str:
 class TestFoldRevisions:
     """Folding must be a pure speed change, never a semantic one."""
 
-    def test_folded_schema_matches_unfolded(self, tmp_path: Path) -> None:
+    async def test_folded_schema_matches_unfolded(self, tmp_path: Path) -> None:
         # The whole justification for folding, asserted directly.
         source = tmp_path / "revisions"
         _seed(source)
         folded = _MODULE._fold_revisions(source)
         try:
-            assert _apply(folded) == _apply(source)
+            assert await _apply(folded) == await _apply(source)
         finally:
             shutil.rmtree(folded, ignore_errors=True)
 

@@ -86,13 +86,13 @@ _MODULE = _load()
 
 @dataclass
 class _FakeProcess:
-    """Stand-in for the ``Popen`` the runner now opens per tool.
+    """Stand-in for the ``Popen`` each tool runs under.
 
-    The runner moved off ``subprocess.run(timeout=...)`` because run's
-    timeout path kills only the direct child and then drains the pipes
-    without bound, so a surviving grandchild hangs the push. Modelling
-    ``communicate`` (and its ``TimeoutExpired``) is therefore the only way
-    to exercise the code path that used to hang.
+    ``subprocess.run(timeout=...)`` kills only the direct child and then
+    drains the pipes without bound, so a surviving grandchild hangs the
+    push; the runner uses ``Popen`` + ``communicate`` instead so the drain
+    stays bounded. Modelling ``communicate`` and its ``TimeoutExpired`` is
+    the only way to exercise that bounded drain.
     """
 
     argv: list[str]

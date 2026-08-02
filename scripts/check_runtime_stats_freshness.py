@@ -193,12 +193,15 @@ def _check_drift(
             # convention; do not silently absorb resource exhaustion.
             raise
         except Exception as exc:
-            # An unexpected fetcher failure (KeyError, ConnectionError, ...)
-            # for one stat must not abort drift detection for the others.
-            print(
-                f"note: skipping drift check for {name} "
-                f"(unexpected error: {type(exc).__name__}: {exc})",
-                file=sys.stderr,
+            # Unlike _StatFetchError, this is not an offline machine: it is a
+            # fetcher that no longer works (a renamed field, a changed
+            # signature). The others are still worth checking, so the loop
+            # continues, but a fetcher that cannot run is not evidence its
+            # stat is fresh, so the run fails rather than noting it in
+            # passing on an otherwise-green gate.
+            lines.append(
+                f"stats.{name} could not be fetched "
+                f"({type(exc).__name__}: {exc}); its drift is unchecked."
             )
             continue
         committed_entry = stats_block.get(name)
@@ -229,9 +232,9 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-network",
         action="store_true",
         help=(
-            "Skip subprocess-backed fetchers (tests). "
-            "Used by pre-push so developers do not pay the pytest "
-            "collection cost on every push."
+            "Skip the slow fetchers (tests, providers_via_litellm). "
+            "Used by pre-push so developers pay neither the pytest "
+            "collection cost nor the litellm import on every push."
         ),
     )
     args = parser.parse_args(argv)

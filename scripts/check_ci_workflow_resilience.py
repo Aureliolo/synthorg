@@ -990,10 +990,28 @@ def _composite_uses(data: dict[str, object]) -> list[str]:
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, object] | None:
-    """Parse *path* as YAML, returning ``None`` unless it is a mapping."""
+    """Parse *path* as YAML, returning ``None`` unless it is a mapping.
+
+    An unreadable composite action is announced rather than silently
+    treated as declaring nothing. The closures below are what make this
+    gate closed under "calls a consumer"; a file they cannot read drops
+    out of every one of them, so a composite that genuinely downloads an
+    artifact or costs retry budget stops being counted, and the gate
+    reports zero violations for a scope it never saw.
+
+    Returns:
+        The parsed mapping, or ``None`` when the file is unreadable, not
+        YAML, or not a mapping.
+    """
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except OSError, yaml.YAMLError, UnicodeDecodeError:
+    except (OSError, yaml.YAMLError, UnicodeDecodeError) as exc:
+        print(
+            f"::warning::could not read {path}: {type(exc).__name__}; it is "
+            "excluded from artifact-consumer, sink and ladder-cost tracking, "
+            "so invariants 5 and 6 are not enforced for anything it reaches.",
+            file=sys.stderr,
+        )
         return None
     return data if isinstance(data, dict) else None
 
@@ -1758,7 +1776,14 @@ def _check_dockerfile_digest_pins() -> list[str]:
     for path in sorted(root.rglob(_DOCKERFILE_NAME)):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError) as exc:
+            # A Dockerfile the gate cannot read is a Dockerfile it cannot
+            # vouch for, and this invariant is the only thing standing
+            # between the docker.io mirror and unpinned content.
+            violations.append(
+                f"{_relative_path(path)}: could not read "
+                f"({type(exc).__name__}); digest pinning is unverified."
+            )
             continue
         violations.extend(
             f"{_relative_path(path)}:{number}: '{ref}' is not digest-pinned."

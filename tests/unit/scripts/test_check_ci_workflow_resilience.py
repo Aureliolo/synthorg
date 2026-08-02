@@ -110,6 +110,13 @@ def _scan(tmp_path: Path, content: str, *, fresh: bool = False) -> list[str]:
     """
     target = tmp_path / "wf.yml"
     target.write_text(content, encoding="utf-8")
+    if not fresh and _MODULE._REPO_ROOT != _REPO_ROOT:  # type: ignore[attr-defined]
+        # The cached context describes the real repository. A case that
+        # repointed the roots and forgot ``fresh=True`` would silently be
+        # answered about the wrong tree, and its assertions would pass or
+        # fail for reasons it never expressed.
+        msg = "_REPO_ROOT is monkeypatched; pass fresh=True to _scan"
+        raise AssertionError(msg)
     context: tuple[object, ...] = () if fresh else _repo_scan_context()
     violations: list[str] = _MODULE._scan_file(  # type: ignore[attr-defined]
         target, *context

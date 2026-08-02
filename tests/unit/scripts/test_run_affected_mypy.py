@@ -51,7 +51,6 @@ _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dyna
 _REAL_ADOPT_IDLE_TIMEOUT = _MODULE._adopt_idle_timeout
 _REAL_RECORD_BOUNDED_LIFETIME = _MODULE._record_bounded_lifetime
 _REAL_FORGET_BOUNDED_LIFETIME = _MODULE._forget_bounded_lifetime
-_REAL_DROP_STALE_GRAPH = _MODULE._drop_stale_graph
 # Captured for the same reason: the ``main`` tests replace ``_parse_args``,
 # and the helper that builds their arguments must not re-enter the stub.
 _REAL_PARSE_ARGS = _MODULE._parse_args
@@ -82,6 +81,12 @@ def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
     # Same reasoning: unstubbed, the staleness check would issue a real
     # ``dmypy stop`` against the developer's own daemon.
     monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+    # The orphan reap enumerates the machine's processes; the retry's wait
+    # sleeps out its full grace period whenever no status file ever appears,
+    # which no test here is asserting and every timeout would then blame on
+    # the wrong thing.
+    monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon, **_kw: None)
+    monkeypatch.setattr(_MODULE, "_wait_for_daemon", lambda _daemon: False)
 
 
 def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
@@ -466,10 +471,9 @@ class TestIdleTimeoutAdoption:
 class TestWorktreeHolders:
     """Finding what holds a worktree open, without offering up a neighbour.
 
-    This replaces a PowerShell snippet that lived in two skill docs. Keeping
-    the matching in Python is the point: it is the rule that decides what an
-    operator is invited to kill, so it belongs somewhere testable rather than
-    in a quoting-sensitive shell predicate duplicated across files.
+    Keeping the matching in Python is the point: it is the rule that decides
+    what an operator is invited to kill, so it belongs somewhere testable
+    rather than in a quoting-sensitive shell predicate.
     """
 
     @pytest.mark.parametrize(

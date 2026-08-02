@@ -9,7 +9,7 @@ exemption never outliving its reason.
 
 import importlib.util
 from pathlib import Path
-from typing import Any, cast
+from types import ModuleType
 
 import pytest
 
@@ -18,14 +18,20 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _load() -> Any:  # type: ignore[explicit-any]
+def _load() -> ModuleType:
+    """Load the gate by path.
+
+    Returns:
+        The module. ``ModuleType.__getattr__`` is already typed ``Any``,
+        so attribute access resolves without an explicit-Any opt-out.
+    """
     script = _REPO_ROOT / "scripts" / "check_every_gate_is_wired.py"
     spec = importlib.util.spec_from_file_location("_check_every_gate_is_wired", script)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast(Any, module)  # type: ignore[explicit-any]
+    return module
 
 
 _MODULE = _load()
@@ -114,7 +120,27 @@ class TestAllowlist:
         # an allowlist becomes a place to silence the gate.
         _declare(tree, "check_manual")
         _allowlist(tree, "unwired_gates:\n  - script: check_manual.py\n")
-        assert len(_MODULE.check()) == 1
+        problems = _MODULE.check()
+        assert len(problems) == 2
+        assert any("exempts nothing as written" in problem for problem in problems)
+
+    def test_a_malformed_entry_says_so(self, tree: Path) -> None:
+        # Silently dropping it produces the same output as "never
+        # allowlisted", sending the author to look for wiring they already
+        # declared rather than at the typo in front of them.
+        _declare(tree, "check_manual")
+        _allowlist(
+            tree,
+            "unwired_gates:\n  - scirpt: check_manual.py\n    reason: typo\n",
+        )
+        problems = _MODULE.check()
+        assert any("is not a usable exemption" in problem for problem in problems)
+
+    def test_a_non_mapping_entry_says_so(self, tree: Path) -> None:
+        _declare(tree, "check_manual")
+        _allowlist(tree, "unwired_gates:\n  - check_manual.py\n")
+        problems = _MODULE.check()
+        assert any("is not a mapping" in problem for problem in problems)
 
     def test_an_entry_for_a_deleted_gate_is_reported(self, tree: Path) -> None:
         _allowlist(

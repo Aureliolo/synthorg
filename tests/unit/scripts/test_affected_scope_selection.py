@@ -11,6 +11,7 @@ hour again.
 
 import importlib.util
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -35,6 +36,9 @@ class _TestsModule(Protocol):
 
     @staticmethod
     def count_affected_test_files(test_dirs: list[str]) -> int: ...
+
+    @staticmethod
+    def _test_module_importers() -> Mapping[str, frozenset[str]]: ...
 
     @staticmethod
     def _run_tests() -> int: ...
@@ -221,6 +225,31 @@ def test_mypy_path_selection(changed: list[str], expected_deferred: bool) -> Non
     paths, deferred = _MYPY._affected_mypy_paths(changed)
     assert deferred is expected_deferred
     assert _FULL_SUITE not in _norm(paths)
+
+
+def test_a_test_module_other_tests_import_selects_its_importers() -> None:
+    """The file-level narrowing rests on test modules being leaves.
+
+    A handful are not: they carry a shared fake or helper that sibling
+    modules import by dotted path. Selecting only the file that defines
+    it would let a break in that fake pass a push, having run the one
+    file that cannot observe the breakage.
+    """
+    importers = _TESTS._test_module_importers()
+    shared = "tests.unit.engine.workflow.test_subworkflow_registry"
+
+    assert shared in importers, "the tree no longer has a cross-imported test"
+    dirs, _ = _TESTS._affected_test_dirs([f"{shared.replace('.', '/')}.py"])
+    assert "tests/unit/engine" in _norm(dirs)
+
+
+def test_a_leaf_test_file_still_selects_only_itself() -> None:
+    """The importer lookup must not quietly re-widen the common case."""
+    assert _THIS_TEST_FILE.removesuffix(".py").replace("/", ".") not in (
+        _TESTS._test_module_importers()
+    )
+    dirs, _ = _TESTS._affected_test_dirs([_THIS_TEST_FILE])
+    assert _norm(dirs) == {_THIS_TEST_FILE}
 
 
 def test_a_gate_test_file_does_not_select_every_other_gates_tests() -> None:

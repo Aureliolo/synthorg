@@ -377,9 +377,15 @@ class TestEmptyYAML:
 @pytest.mark.unit
 @pytest.mark.usefixtures("wired_generator")
 class TestFetcherUnexpectedException:
-    """A fetcher raising a non-``_StatFetchError`` exception is skipped, not crashed."""
+    """A broken fetcher fails the gate without aborting the other stats.
 
-    def test_unexpected_exception_skips_stat_and_continues(
+    Distinct from ``_StatFetchError``, which means "this machine is
+    offline" and is deliberately tolerated. Any other exception means the
+    fetcher itself no longer works, and a fetcher that cannot run is not
+    evidence that its stat is fresh.
+    """
+
+    def test_unexpected_exception_fails_the_run(
         self,
         yaml_path: Path,
         capsys: pytest.CaptureFixture[str],
@@ -393,8 +399,28 @@ class TestFetcherUnexpectedException:
 
         fetchers["providers_via_litellm"] = _raise_runtime
         with patch.object(gen, "_FETCHERS", fetchers):
-            assert check.main([]) == 0
+            assert check.main([]) == 1
         captured = capsys.readouterr()
-        assert "stats.providers_via_litellm.display drift" not in captured.err
         assert "providers_via_litellm" in captured.err
         assert "RuntimeError" in captured.err
+        assert "drift is unchecked" in captured.err
+
+    def test_the_other_stats_are_still_checked(
+        self,
+        yaml_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # Failing the run must not mean abandoning the remaining fetchers:
+        # one broken fetcher would then hide every other stat's drift.
+        _seed_fresh_yaml(yaml_path)
+        fetchers = _deterministic_fetchers()
+
+        def _raise_runtime() -> JsonDict:
+            msg = "unexpected boom"
+            raise RuntimeError(msg)
+
+        fetchers["providers_via_litellm"] = _raise_runtime
+        fetchers["mcp_tools"] = lambda: {"raw": 999, "display": "999"}
+        with patch.object(gen, "_FETCHERS", fetchers):
+            assert check.main([]) == 1
+        assert "stats.mcp_tools" in capsys.readouterr().err

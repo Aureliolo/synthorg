@@ -1,0 +1,22 @@
+name: Warm typeguard bytecode cache
+description: |
+  Instrument the ``synthorg`` package once, serially, before pytest starts.
+
+  Every pytest invocation in this repository runs under
+  ``--typeguard-packages=synthorg`` (a global ``addopts`` entry, not a
+  per-tier flag), so every module is AST-rewritten before it can be
+  imported: roughly 17s of work per process. The instrumented bytecode is
+  cached in ``__pycache__``, but CI restores no such cache between runs,
+  so without this step every xdist worker in every job re-instruments the
+  whole package at once and each pays the full cost.
+
+  Used by every job that runs pytest. Warming only the unit job would
+  leave the integration, e2e and conformance jobs paying it in full, on
+  their own runners with their own empty caches.
+
+runs:
+  using: composite
+  steps:
+    - name: Warm the typeguard bytecode cache
+      shell: bash
+      run: uv run python scripts/warm_typeguard_cache.py --quiet

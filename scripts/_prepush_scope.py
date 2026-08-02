@@ -4,11 +4,10 @@
 question in two languages: which of the changed paths does this push have
 to check locally, and which question is wide enough that CI owns it?
 
-They used to answer it from two private copies of the same constants. A
-push is held to a five-minute budget and both runners police that budget,
-so a carve-out added to one copy and not the other does not fail: it
-silently makes the two runners disagree about what a push covers. The
-constants and the git plumbing live here so there is one answer.
+A push is held to a five-minute budget and both runners police it, so a
+carve-out that reached only one of them would not fail loudly: it would
+silently make the two disagree about what a push covers. The constants
+and the git plumbing live here so there is one answer to give.
 """
 
 import re

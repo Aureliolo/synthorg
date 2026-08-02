@@ -11,10 +11,9 @@ gate exists to catch.
 
 import importlib.util
 import json
-from collections.abc import Callable
+import os
 from pathlib import Path
 from types import ModuleType
-from typing import cast
 
 import pytest
 
@@ -55,9 +54,13 @@ def export_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _export(schema: dict[str, object] | None = None) -> str:
-    """Write a schema plus its state exactly as the producer does."""
+    """Write a schema plus its state exactly as the producer does.
+
+    Returns:
+        The schema text written, so a caller can assert against it.
+    """
     text = json.dumps(schema if schema is not None else _SCHEMA, indent=2) + "\n"
-    cast("Callable[[str], None]", _MODULE.SCHEMA_FILE.write_text)(text)
+    _MODULE.SCHEMA_FILE.write_text(text, encoding="utf-8")
     _MODULE.write_export_state(text)
     return text
 
@@ -142,7 +145,12 @@ class TestFreshnessRejectsAnythingElse:
 
 
 class TestHermeticEnv:
-    """The export environment is scoped to the block, never leaked."""
+    """The export environment is scoped to the block, never leaked.
+
+    Owned here rather than beside either consumer: both import this one
+    implementation, so a second copy of these cases would drift from it
+    without either copy failing.
+    """
 
     _KEYS = (
         "SYNTHORG_DB_PATH",
@@ -151,8 +159,6 @@ class TestHermeticEnv:
     )
 
     def test_sets_then_restores(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import os
-
         for key in self._KEYS:
             monkeypatch.delenv(key, raising=False)
         with _MODULE.hermetic_env():
@@ -164,8 +170,6 @@ class TestHermeticEnv:
     def test_an_operator_pinned_backend_wins(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        import os
-
         pinned = str(tmp_path / "operator.db")
         monkeypatch.setenv("SYNTHORG_DB_PATH", pinned)
         monkeypatch.setenv("SYNTHORG_DATABASE_URL", "postgresql://operator")
@@ -173,3 +177,22 @@ class TestHermeticEnv:
             assert os.environ["SYNTHORG_DB_PATH"] == pinned
             assert os.environ["SYNTHORG_DATABASE_URL"] == "postgresql://operator"
         assert os.environ["SYNTHORG_DB_PATH"] == pinned
+
+    def test_restores_when_the_block_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The export boots an app inside this block; a boot failure must
+        # not leave the process pinned to an in-memory backend.
+        for key in self._KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+        def _raise_inside() -> None:
+            with _MODULE.hermetic_env():
+                assert os.environ["SYNTHORG_DB_PATH"] == ":memory:"
+                msg = "boom"
+                raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            _raise_inside()
+        for key in self._KEYS:
+            assert key not in os.environ

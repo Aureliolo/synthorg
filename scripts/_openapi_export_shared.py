@@ -15,9 +15,10 @@ fallback direction is the safe one, so a missing, stale, truncated or
 hand-edited artefact costs time, never correctness.
 
 The fingerprint hashes the sources themselves. Stat metadata is cheaper
-but not sufficient: a same-size edit inside one clock tick is invisible
-to it, and "stale unless you edited quickly" is not a guarantee worth
-stating. Reading the tree is a fraction of the boot it avoids.
+but not sufficient: a length-preserving edit within one timestamp tick
+is invisible to it, and "stale unless you edited slowly" is not a
+guarantee worth stating. Reading the tree is a fraction of the boot it
+avoids.
 
 State lives in a sibling file rather than inside the schema, so the
 published ``openapi.json`` stays a pristine OpenAPI document with no
@@ -34,7 +35,7 @@ import sys
 from collections.abc import Iterator
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, TypedDict, cast
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 OUTPUT_DIR: Final[Path] = REPO_ROOT / "docs" / "openapi"
@@ -55,7 +56,7 @@ HERMETIC_ENV_KEYS: Final[tuple[str, ...]] = (
 # create_app refuses to boot on an ephemeral pagination cursor secret, so a
 # build-time export has to supply one. Not a credential: it signs nothing that
 # outlives the export process.
-_STABLE_CURSOR_SECRET: Final[str] = (
+STABLE_CURSOR_SECRET: Final[str] = (
     "openapi-export-stable-cursor-secret-not-a-real-secret"  # noqa: S105
 )
 
@@ -77,9 +78,7 @@ def hermetic_env() -> Iterator[None]:
         if "SYNTHORG_DB_PATH" not in os.environ:
             os.environ["SYNTHORG_DB_PATH"] = ":memory:"
             os.environ.pop("SYNTHORG_DATABASE_URL", None)
-        os.environ.setdefault(
-            "SYNTHORG_PAGINATION_CURSOR_SECRET", _STABLE_CURSOR_SECRET
-        )
+        os.environ.setdefault("SYNTHORG_PAGINATION_CURSOR_SECRET", STABLE_CURSOR_SECRET)
         yield
     finally:
         for key, original in snapshot.items():
@@ -119,7 +118,7 @@ def as_dict(value: object) -> dict[str, object]:
     return {}
 
 
-def collect_strenum_classes() -> dict[str, type]:
+def collect_strenum_classes() -> dict[str, type[StrEnum]]:
     """Map ``ClassName`` to the actual StrEnum subclass across synthorg.
 
     The walk inspects every loaded ``synthorg.*`` module rather than a
@@ -130,7 +129,7 @@ def collect_strenum_classes() -> dict[str, type]:
     Returns:
         Class name mapped to the class, for every unambiguous StrEnum.
     """
-    name_to_class: dict[str, type] = {}
+    name_to_class: dict[str, type[StrEnum]] = {}
     conflicts: set[str] = set()
     for module in list(sys.modules.values()):
         module_name = getattr(module, "__name__", "")
@@ -207,13 +206,15 @@ def build_openapi_schema() -> dict[str, object]:
 def source_fingerprint() -> str:
     """Fingerprint every source file the schema is derived from.
 
-    Content rather than ``(size, mtime)``. Windows advances the system
-    clock in ~15.6ms steps, so a same-size edit landing in the tick the
-    export did reads as byte-identical and the stale schema is trusted:
-    the gate's one job, failing on the timing of the edit. Reading the
-    tree costs well under a second against the ``create_app()`` boot it
-    exists to skip, and it also makes a fresh checkout (every mtime
-    rewritten, every byte the same) correctly read as fresh.
+    Content rather than ``(size, mtime)``. Two files can differ in
+    neither: an edit that preserves length, landing inside whatever
+    timestamp granularity the filesystem and clock happen to provide,
+    is invisible to stat metadata, and "stale unless you edited slowly"
+    is not a guarantee worth stating for a gate whose one job is
+    refusing a stale artefact. Reading the tree costs well under a
+    second against the ``create_app()`` boot it exists to skip, and it
+    also makes a fresh checkout (every mtime rewritten, every byte the
+    same) correctly read as fresh.
 
     Returns:
         A hex digest over each source's path and contents.
@@ -226,13 +227,28 @@ def source_fingerprint() -> str:
     return digest.hexdigest()
 
 
+class _ExportState(TypedDict):
+    """What the state file records about one export.
+
+    Named so the writer and the reader below share one declaration.
+    Without it they agree by convention across two functions, and a
+    renamed key produces a permanent cache miss rather than an error:
+    the export silently stops being reused and only shows up as the
+    push getting slower again.
+    """
+
+    version: int
+    sources: str
+    schema_sha256: str
+
+
 def write_export_state(schema_json: str) -> None:
     """Record what the just-written schema was derived from.
 
     Args:
         schema_json: The exact text written to :data:`SCHEMA_FILE`.
     """
-    state = {
+    state: _ExportState = {
         "version": _STATE_VERSION,
         "sources": source_fingerprint(),
         "schema_sha256": hashlib.sha256(schema_json.encode("utf-8")).hexdigest(),

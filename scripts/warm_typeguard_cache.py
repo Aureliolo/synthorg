@@ -61,7 +61,25 @@ def _walk_package(*, quiet: bool) -> tuple[int, list[str]]:
     import synthorg
 
     skipped: list[str] = []
-    for info in pkgutil.walk_packages(synthorg.__path__, prefix="synthorg."):
+
+    def _record(name: str, exc: BaseException) -> None:
+        skipped.append(f"{name}: {type(exc).__name__}: {exc}")
+        if not quiet:
+            print(f"  skipped {name} ({type(exc).__name__})")
+
+    def _on_walk_error(name: str) -> None:
+        # walk_packages imports each PACKAGE itself to read its __path__ and
+        # recurse. Without this callback it re-raises anything that is not an
+        # ImportError straight out of the generator, where the loop body's own
+        # handler below cannot see it -- one subpackage raising at import would
+        # end the whole warm rather than being skipped like any other module.
+        exc = sys.exception()
+        _record(name, exc if exc is not None else RuntimeError("import failed"))
+
+    walk = pkgutil.walk_packages(
+        synthorg.__path__, prefix="synthorg.", onerror=_on_walk_error
+    )
+    for info in walk:
         if info.name in sys.modules:
             continue
         try:
@@ -69,14 +87,15 @@ def _walk_package(*, quiet: bool) -> tuple[int, list[str]]:
         except MemoryError, RecursionError:
             # Resource exhaustion is not an optional dependency; let it out.
             raise
-        except BaseException as exc:
+        except (Exception, SystemExit) as exc:
             # A module may be unimportable for reasons that have nothing to
             # do with warming: an optional extra absent from this env, or a
-            # module that exits on import. Neither should fail the warm, and
-            # every one of them simply stays uncached.
-            skipped.append(f"{info.name}: {type(exc).__name__}: {exc}")
-            if not quiet:
-                print(f"  skipped {info.name} ({type(exc).__name__})")
+            # module that exits on import (SystemExit is not an Exception, so
+            # it is named). Neither should fail the warm, and every one of
+            # them simply stays uncached. KeyboardInterrupt is deliberately
+            # NOT caught: this walks hundreds of modules, and swallowing it
+            # would leave the run unstoppable from the terminal.
+            _record(info.name, exc)
     return sum(1 for name in sys.modules if name.startswith("synthorg")), skipped
 
 

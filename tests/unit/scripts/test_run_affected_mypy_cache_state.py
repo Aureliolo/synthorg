@@ -26,8 +26,9 @@ already well past the tests size budget.
 import importlib.util
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -37,14 +38,20 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _load() -> Any:  # type: ignore[explicit-any]
+def _load() -> ModuleType:
+    """Load the hook script by path.
+
+    Returns:
+        The module. ``ModuleType.__getattr__`` is already typed ``Any``,
+        so attribute access resolves without an explicit-Any opt-out.
+    """
     script = _REPO_ROOT / "scripts" / "run_affected_mypy.py"
     spec = importlib.util.spec_from_file_location("_run_affected_mypy_state", script)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast(Any, module)  # type: ignore[explicit-any]
+    return module
 
 
 _MODULE = _load()
@@ -67,6 +74,33 @@ def _record_marker(daemon: Any, digest: str | None) -> None:  # type: ignore[exp
     if digest is not None:
         payload["dependency_digest"] = digest
     daemon.lifetime_file.write_text(json.dumps(payload), encoding="utf-8")
+
+
+# Captured before the autouse fixture replaces it, so the reaper's own test
+# reaches the real implementation.
+_REAL_REAP = _MODULE._reap_orphaned_servers
+
+
+@pytest.fixture(autouse=True)
+def _keep_the_machine_out_of_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[None]:
+    """Stop the daemon lifecycle reaching real processes.
+
+    ``_check_daemon`` enumerates processes to reap orphans and can wait out
+    a grace period for a starting server. Both are real system calls against
+    the developer's own daemons, and the wait would sleep past the suite's
+    timeout in any test where no status file ever appears.
+
+    The per-run process-table snapshot is cleared around every test: it is
+    memoised for the life of the process, so one test's table would
+    otherwise answer the next one's question.
+    """
+    _MODULE._process_table_snapshot.cache_clear()
+    monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon, **_kw: None)
+    monkeypatch.setattr(_MODULE, "_wait_for_daemon", lambda _daemon: False)
+    yield
+    _MODULE._process_table_snapshot.cache_clear()
 
 
 @pytest.fixture
@@ -196,22 +230,32 @@ class TestRebuildIsReported:
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
-        calls: list[tuple[str, ...]],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        # The threshold is only reachable if the elapsed span actually
-        # brackets the check; a clock read on the wrong side of it would
-        # leave the report permanently silent and nothing else would say so.
-        daemon = _daemon(tmp_path)
-        _running(daemon)
-        monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon: None)
-        ticks = iter([0.0, _MODULE._REBUILD_REPORT_SECONDS + 1.0])
+        # Only the dmypy call advances the clock, so the report can fire
+        # only if the measured span brackets it. A clock read on the wrong
+        # side would leave it permanently silent with nothing to say so.
+        now = [0.0]
         monkeypatch.setattr(
-            _MODULE, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+            _MODULE,
+            "time",
+            SimpleNamespace(
+                monotonic=lambda: now[0],
+                time=lambda: now[0],
+                sleep=lambda _seconds: None,
+            ),
         )
+        issued: list[tuple[str, ...]] = []
 
-        assert _MODULE._check_daemon(daemon) == 0
-        assert calls[-1][:1] == ("run",)
+        def _slow_run(_daemon: object, *args: str, **_kwargs: object) -> int:
+            issued.append(args)
+            now[0] += _MODULE._REBUILD_REPORT_SECONDS + 1.0
+            return 0
+
+        monkeypatch.setattr(_MODULE, "_dmypy", _slow_run)
+
+        assert _MODULE._check_daemon(_daemon(tmp_path)) == 0
+        assert issued[-1][:1] == ("run",)
         assert "full graph rebuild" in capsys.readouterr().err
 
 
@@ -279,6 +323,44 @@ class TestOrphanedServers:
 
         assert _MODULE._orphaned_servers(daemon) == []
 
+    def test_a_dead_status_pid_needs_no_launcher_lookup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The status file names a process that is gone, so there is no live
+        # daemon whose launcher could be mistaken for an orphan, and asking
+        # for a dead process's parent only fails.
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=100)
+
+        def _must_not_be_called(_pid: int) -> int | None:
+            pytest.fail("looked up the parent of a pid that is not running")
+
+        monkeypatch.setattr(_MODULE, "_process_parent", _must_not_be_called)
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: self._table(daemon.status_file, 42),
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == [42]
+
+    def test_an_unidentifiable_launcher_claims_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # With the daemon alive but its launcher unknown, the launcher is
+        # indistinguishable from an orphan, and killing it takes down a
+        # working daemon.
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=100)
+        monkeypatch.setattr(_MODULE, "_process_parent", lambda _pid: None)
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: self._table(daemon.status_file, 100, 99),
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == []
+
     def test_no_status_file_claims_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -297,11 +379,11 @@ class TestOrphanedServers:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         stopped: list[int] = []
-        monkeypatch.setattr(_MODULE, "_orphaned_servers", lambda _daemon: [42])
+        monkeypatch.setattr(_MODULE, "_orphaned_servers", lambda _daemon, **_kw: [42])
         monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: 2577)
         monkeypatch.setattr(_MODULE, "_stop_holder", stopped.append)
 
-        _MODULE._reap_orphaned_servers(_daemon(tmp_path))
+        _REAL_REAP(_daemon(tmp_path))
 
         assert stopped == [42]
         assert "2577MB" in capsys.readouterr().err
@@ -329,6 +411,52 @@ class TestOrphanedServers:
 
         assert _MODULE._check_daemon(daemon) == 0
         assert waited == ["waited"], "the retry raced the starting server"
+
+
+class TestStartLock:
+    """Two processes must not both decide to start a server."""
+
+    def test_the_lock_is_taken_and_released(self, tmp_path: Path) -> None:
+        daemon = _daemon(tmp_path)
+        lock = daemon.status_file.with_suffix(".start.lock")
+
+        with _MODULE._start_lock(daemon) as held:
+            assert held is True
+            assert lock.is_file()
+
+        assert not lock.exists()
+
+    def test_a_second_holder_proceeds_rather_than_blocking(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Fail-open: a lock that could stall a push is worse than the race
+        # it prevents, so the loser proceeds and says so via its return.
+        daemon = _daemon(tmp_path)
+        daemon.status_file.with_suffix(".start.lock").write_text("999")
+        monkeypatch.setattr(_MODULE, "_DAEMON_START_GRACE_SECONDS", 0.05)
+        monkeypatch.setattr(_MODULE, "_DAEMON_POLL_SECONDS", 0.01)
+
+        with _MODULE._start_lock(daemon) as held:
+            assert held is False
+
+    def test_a_lock_older_than_a_build_is_taken_over(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A process that died holding the lock must not wedge every later
+        # run; nothing else would ever remove the file.
+        daemon = _daemon(tmp_path)
+        lock = daemon.status_file.with_suffix(".start.lock")
+        lock.write_text("999")
+        monkeypatch.setattr(_MODULE, "_MYPY_TIMEOUT_SECONDS", -1)
+
+        with _MODULE._start_lock(daemon) as held:
+            assert held is True
+
+    def test_a_fresh_lock_is_not_stale(self, tmp_path: Path) -> None:
+        lock = tmp_path / "fresh.lock"
+        lock.write_text("1")
+
+        assert _MODULE._lock_is_stale(lock) is False
 
 
 class TestWedgedServerIsKilled:

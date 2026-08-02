@@ -525,10 +525,11 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             if (denyReason) {
               throw new Error(denyReason);
             }
-            // rewarm_caches_after_sync.sh: a `uv sync` invalidates the resident
-            // dmypy graph, so re-warm it off the push path. Fail-open like the
-            // SessionEnd counterpart -- it is housekeeping, and the script
-            // itself declines unless a daemon is already resident.
+            // rewarm_caches_after_sync.sh: a `uv sync` invalidates both the
+            // resident dmypy graph and typeguard's instrumented bytecode, so
+            // re-warm them off the push path. Fail-open like the SessionEnd
+            // counterpart -- it is housekeeping, and the script itself
+            // declines unless a daemon is already resident.
             //
             // `runHookScript` sends only `tool_input`, so the script's
             // did-the-sync-succeed check sees no signal and re-warms either

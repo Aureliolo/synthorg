@@ -10,7 +10,7 @@ run in a mode where caching is impossible.
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Any, cast
+from types import ModuleType
 
 import pytest
 
@@ -19,14 +19,20 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _load() -> Any:  # type: ignore[explicit-any]
+def _load() -> ModuleType:
+    """Load the warmer by path.
+
+    Returns:
+        The module. ``ModuleType.__getattr__`` is already typed ``Any``,
+        so attribute access resolves without an explicit-Any opt-out.
+    """
     script = _REPO_ROOT / "scripts" / "warm_typeguard_cache.py"
     spec = importlib.util.spec_from_file_location("_warm_typeguard_cache", script)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast(Any, module)  # type: ignore[explicit-any]
+    return module
 
 
 _MODULE = _load()
