@@ -298,9 +298,9 @@ Control-by-control mapping against GitHub's *Security hardening for GitHub Actio
 | Control | Status | Enforced by |
 |---|---|---|
 | Pin third-party actions to a full commit SHA | Met | Renovate `github-actions` manager; OpenSSF Scorecard `Pinned-Dependencies` (135/135 third-party, 71/71 GitHub-owned) |
-| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 33 workflows, per-job grants; Scorecard `Token-Permissions` 10/10 |
+| Minimum `GITHUB_TOKEN` permissions | Met | Top-level `permissions: {}` in all 35 workflows, per-job grants; `check_ci_workflow_resilience.py` invariant 11; Scorecard `Token-Permissions` 10/10 |
 | Never persist credentials in the workspace | Met | `persist-credentials: false` on every checkout; zizmor `artipacked` |
-| No untrusted checkout under `pull_request_target` | Met | One use (`repo-cla.yml`), checks out `ref: main`; zizmor `dangerous-triggers` with a scoped ignore |
+| No untrusted checkout under `pull_request_target` | Met | One use (`repo-cla.yml`), whose `pull_request_target` job checks out nothing at all; `check_ci_workflow_resilience.py` invariant 12; zizmor `dangerous-triggers` with a scoped ignore |
 | No script injection from event data | Met | Event fields routed through `env:`; zizmor `template-injection` |
 | Cache never influences a release artifact | Met | `verify-cli.yml` disables the Go cache on tag refs; `cli-release` sets `cache: false`; zizmor `cache-poisoning` |
 | Every job bounded by `timeout-minutes` | Met | `check_ci_workflow_resilience.py` invariant 1 |
@@ -310,4 +310,5 @@ Control-by-control mapping against GitHub's *Security hardening for GitHub Actio
 | Base images resolved by digest | Met | `check_ci_workflow_resilience.py` invariant 8 |
 | Artefacts signed and provenance-attested | Met | `scripts/check_image_signatures.py` (signature **and** SLSA provenance) |
 | Self-hosted runners | Not applicable | GitHub-hosted only |
-| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh` (post-merge drift) and the `branch-protection-spec` PR check |
+| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh`, run per PR by `verify-rulesets.yml` against main's spec and again on push to main, plus the `branch-protection-spec` PR check for the opposite direction |
+| Tag protection for release refs | Met | `.github/branch_protection.yml`'s `protect-release-tags` ruleset (`creation` + `update` on `refs/tags/v*`), audited by `scripts/audit_branch_protection.sh` |

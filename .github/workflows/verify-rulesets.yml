@@ -1,0 +1,115 @@
+name: Verify - Rulesets
+
+# Catch ruleset drift while a PR is open.
+#
+# The audit runs in two directions and neither half alone sees both:
+# verify-backend.yml's `branch-protection-audit` compares the live rulesets
+# against the committed spec, but only on push to main, so a ruleset applied
+# in Settings -> Rules and never written into the spec stays invisible until
+# the next merge. check_branch_protection_spec_changed.sh runs at PR time but
+# only asks whether THIS PR edits the spec. This job closes the gap: it runs
+# the live-vs-committed comparison on every PR.
+#
+# Both specs are compared, because either one alone gives a wrong answer on a
+# case the other gets right. The pull request's spec is the primary: when it
+# matches the live rulesets, the branch is the repair for a drift and passes.
+# main's spec is consulted only when the primary disagrees, and rescues the
+# case this repo's ordering makes routine: a pull request that ADDS a ruleset
+# to be applied after merge differs from live by design, and if main still
+# matches live there is nothing wrong. Only when neither matches is there
+# drift nobody is fixing, which is the alarm.
+#
+# The job runs the pull request's own tree, like every other check here. It
+# holds no secrets and a read-only token, so the blast radius is a check that
+# could lie about its own branch; the authoritative run is
+# verify-backend.yml's on push to main, and GitHub enforces the rulesets
+# server-side either way.
+#
+# Advisory by design: this is not in `protect-main`'s required_status_checks,
+# so it reports drift rather than blocking a merge. Promoting it would need
+# the context added to the spec and posted by release-cut.yml on the release
+# PR (see check_ci_rollup_complete.py).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  # Drift is corrected in Settings -> Rules, which fires no workflow event, so
+  # without this a red PR stays red until someone pushes to it.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  branch-protection-drift:
+    name: Ruleset drift audit
+    # release-please PRs carry no spec change and get the same short-circuit
+    # every other verify-backend.yml job gives them.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || !(startsWith(github.head_ref, 'release-please--')
+           && github.event.pull_request.user.login == 'synthorg-repo-bot[bot]')
+    runs-on: ubuntu-24.04
+    # The yq install carries a ~5-minute curl retry budget and every ruleset
+    # read has its own retry ladder, so the job needs headroom for both rather
+    # than a cap tight enough to kill one mid-retry.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          sparse-checkout: |
+            .github
+            scripts
+          persist-credentials: false
+      - name: Install yq
+        uses: ./.github/actions/install-yq
+      # main's spec, as DATA for the fallback comparison. Fetched by API rather
+      # than by a second checkout so the workspace holds exactly one tree. A
+      # missing or unreadable file leaves the path empty, which the audit reads
+      # as "no second spec offered" and reports drift on the primary alone.
+      - name: Fetch main's spec
+        id: base-spec
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPEC_PATH: .github/branch_protection.yml
+        run: |
+          set -euo pipefail
+          out=/tmp/main_branch_protection.yml
+          if gh api -H "Accept: application/vnd.github.raw" \
+            "repos/${GITHUB_REPOSITORY}/contents/${SPEC_PATH}?ref=main" > "$out"; then
+            echo "path=$out" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Could not read ${SPEC_PATH} from main; auditing this branch's spec alone."
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Audit
+        env:
+          # The rulesets endpoints need `metadata: read`, which GITHUB_TOKEN
+          # carries; on a public repository they answer unauthenticated. No
+          # App token, no deployment environment, nothing privileged.
+          GH_TOKEN: ${{ github.token }}
+          RECONCILING_SPEC: ${{ steps.base-spec.outputs.path }}
+          # Explicit repo: `gh repo view` inference is fragile under
+          # persist-credentials: false and masks a transient 401 as a bogus
+          # "could not infer repo" failure.
+          GH_REPO: ${{ github.repository }}
+          # Four attempts absorb a transient GitHub API window that outlasts a
+          # single retry; the job timeout above leaves the accumulated backoff
+          # room so it cannot be killed mid-ladder. On a pull_request run an
+          # exhausted ladder FAILS rather than deferring, because there is no
+          # guaranteed re-audit before the PR merges.
+          GH_RETRY_ATTEMPTS: 4
+        run: |
+          set -euo pipefail
+          if [ -n "${RECONCILING_SPEC:-}" ]; then
+            bash scripts/audit_branch_protection.sh \
+              --reconciling-spec "$RECONCILING_SPEC"
+          else
+            bash scripts/audit_branch_protection.sh
+          fi

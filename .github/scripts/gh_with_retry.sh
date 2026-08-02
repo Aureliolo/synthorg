@@ -39,12 +39,23 @@
 #               so callers whose work self-heals can skip this run rather than
 #               page. Distinct from the wrapped command's own exit codes
 #               (`gh` only ever exits 0-4), so callers can branch on it.
-#   - exit <wrapped rc> (non-zero, non-75) : definitive / non-transient error;
-#               fail loud.
+#   - exit 77 : retries exhausted on an AUTH-shaped failure. Retrying 401 is
+#               right (see the startup blip above) but surviving the whole
+#               ladder is not that blip: a revoked installation, a rotated
+#               key, or a token lacking the scope for a private resource all
+#               persist. Deferring those would let a caller report a clean
+#               pass it never verified, so this is a separate code no caller
+#               may treat as soft. 77 is outside `gh`'s 0-4 range and outside
+#               EX_TEMPFAIL, so a caller that only special-cases 75 fails
+#               loud by default.
+#   - exit <wrapped rc> (non-zero, non-75/77) : definitive / non-transient
+#               error; fail loud.
 set -euo pipefail
 
 # EX_TEMPFAIL (sysexits.h): transient failure the caller may choose to defer.
 EXIT_TRANSIENT_EXHAUSTED=75
+# Exhausted on an auth signature: never deferrable, whatever the caller wants.
+EXIT_AUTH_EXHAUSTED=77
 
 LABEL="${1:?missing label}"
 shift
@@ -118,6 +129,13 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
 
   if [ "$i" -eq "$ATTEMPTS" ]; then
     cat "$errfile" >&2
+    # Case-insensitive to match TRANSIENT_RE, which admitted this failure with
+    # -i. A case-sensitive test here would let a lowercase spelling exhaust as
+    # exit 75, which callers are allowed to defer.
+    if grep -qiE 'HTTP 401' "$errfile"; then
+      echo "::error::${LABEL}: authentication failure persisted after ${ATTEMPTS} attempts (last exit ${rc}). This is not the post-job-start auth blip, which clears on the next attempt; check whether the token was revoked or rotated, or lacks the scope for this resource." >&2
+      exit "$EXIT_AUTH_EXHAUSTED"
+    fi
     echo "::error::${LABEL}: transient API failure persisted after ${ATTEMPTS} attempts (last exit ${rc})" >&2
     exit "$EXIT_TRANSIENT_EXHAUSTED"
   fi

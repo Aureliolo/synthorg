@@ -179,10 +179,7 @@ installation token (valid ≤1 hour) via the
   full root cause.) `verify-backend.yml`'s `is_release_please` skip remains
   in place as defence-in-depth so a future change in
   release-please's identity does not accidentally run a full CI
-  suite on a release PR. The `branch-protection-audit` job inside
-  `verify-backend.yml` keeps a `github.ref == 'refs/heads/main'` gate so any
-  ad-hoc dispatch from a non-main ref skips cleanly instead of
-  hitting the `release` environment's branch allowlist.
+  suite on a release PR.
 - `release-dev.yml`: tag creation for dev pre-releases via
   `gh api`.
 - `release-rollover.yml`: empty `Release-As:` commit via the Git

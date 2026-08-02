@@ -4,16 +4,23 @@
 # Do not edit volatile fields here -- only the structural rules we want
 # enforced. The audit script normalises the live API response to this
 # shape before diffing:
-#   - Strips id, node_id, created_at, updated_at
+#   - Strips id, node_id, created_at, updated_at, current_user_can_bypass,
+#     source, source_type, _links
 #   - Strips bypass_actors (owner-private; different accounts have
-#     different admin setups)
+#     different admin setups). This is the one field the audit is blind
+#     to, and it is load-bearing for protect-release-tags below.
 #   - Strips copilot_code_review rule entries on BOTH sides -- Copilot
 #     review is a UI-managed convenience that GitHub toggles when it
 #     adjusts review-rate-limit policies, so treating its drift as
 #     alertable produces noise on every policy change. Do NOT add
 #     copilot_code_review entries to this spec; the audit will silently
 #     drop them on the spec side as well.
-#   - Sorts `rules` alphabetically by `type`
+#   - Sorts `rules` alphabetically by `type`, and rulesets by `name`
+#   - Drops a `parameters` key only when the API emits it as null. A
+#     POPULATED parameters object is compared, so a rule that carries one
+#     live must declare it here or the audit reports drift.
+#   - Sorts every object's keys recursively (`jq -S`), so key order in
+#     this file is free
 #
 # A mismatch fails the audit, signalling drift between the committed
 # spec and whatever someone changed in Settings -> Rules.
@@ -122,3 +129,44 @@ rulesets:
             - merge
             - squash
             - rebase
+
+  - name: protect-release-tags
+    target: tag
+    enforcement: active
+    conditions:
+      ref_name:
+        include:
+          - "refs/tags/v*"
+        exclude: []
+    rules:
+      # A v* tag may point at any commit in history, and GitHub runs a
+      # workflow from the tagged tree rather than from main. Push access to
+      # any branch plus the ability to create a tag was therefore enough to
+      # resurrect a retired signing workflow at its old path and mint a
+      # release certificate under a name the CLI still admits -- the one
+      # attack the certificate-extension binding in
+      # cli/internal/verify/identity.go cannot see, because such a build
+      # genuinely is this repository on a GitHub-hosted runner.
+      #
+      # `update` alone would leave delete-then-recreate open, so both rules
+      # are required to close the path.
+      - type: creation
+      - type: update
+      # Deletion is deliberately unrestricted. release-finalize.yml's
+      # orphan-dev-tag sweep deletes tags under `github.token`, and GitHub
+      # does not accept the built-in Actions integration as a repo-level
+      # bypass actor, so restricting deletion would break that sweep. The
+      # accepted cost is erasure, not forgery: anyone with `contents: write`
+      # can still delete a published v* tag, orphaning its release and
+      # breaking tag-triggered jobs, and recovery needs an admin because the
+      # creation rule blocks re-pushing the name.
+      #
+      # Bypass actors (the release-bot App and the admin role) are not
+      # declared here because the audit script strips `bypass_actors` on
+      # both sides (see the header). That makes this ruleset's guarantee --
+      # only those two can create a v* tag -- the one property the drift
+      # audit cannot check. Widening the bypass list in Settings -> Rules
+      # reopens the attack above and the audit still reports OK, so that
+      # list needs reviewing by hand. It is also why the App's own
+      # reachability matters: any workflow that can mint its token inherits
+      # the bypass.

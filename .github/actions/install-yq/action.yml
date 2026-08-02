@@ -1,0 +1,51 @@
+name: Install yq
+description: >-
+  Installs Mike Farah's yq (Go binary, no runtime deps) at a digest-pinned
+  version. The version and its SHA-256 live here as the single source of
+  truth: three call sites shared one copy-pasted block, so a Renovate bump
+  that updated some of them left the rest downloading a new asset against a
+  stale hash, failing a job with no visible link to a dependency update.
+
+inputs:
+  connect-timeout:
+    description: curl --connect-timeout, in seconds.
+    required: false
+    default: "30"
+  retry:
+    description: curl --retry attempt count.
+    required: false
+    default: "8"
+  retry-max-time:
+    description: >-
+      curl --retry-max-time, in seconds. Must leave the calling job's
+      timeout-minutes room for the work that follows the download.
+    required: false
+    default: "300"
+
+runs:
+  using: composite
+  steps:
+    - name: Install yq
+      shell: bash
+      env:
+        # A release asset can be replaced under an existing tag, so the tag
+        # alone is not a pin; the digest is.
+        # renovate: datasource=github-releases depName=mikefarah/yq
+        YQ_VERSION: v4.45.1
+        YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+        CONNECT_TIMEOUT: ${{ inputs.connect-timeout }}
+        RETRY: ${{ inputs.retry }}
+        RETRY_MAX_TIME: ${{ inputs.retry-max-time }}
+      run: |
+        set -euo pipefail
+        curl -sSfL --connect-timeout "${CONNECT_TIMEOUT}" --retry "${RETRY}" \
+          --retry-all-errors --retry-max-time "${RETRY_MAX_TIME}" \
+          "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+          -o /tmp/yq
+        echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
+        sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+        # check_branch_protection_spec_changed.sh reads the required contexts
+        # under `2>/dev/null || true`, so an unusable binary would yield an
+        # empty list and a summary that quietly claims the spec requires
+        # nothing. Prove the binary runs before any caller trusts its output.
+        yq --version

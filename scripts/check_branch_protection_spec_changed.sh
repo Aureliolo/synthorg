@@ -3,11 +3,11 @@
 # known before merge rather than discovered by the post-merge audit.
 #
 # The full audit (`audit_branch_protection.sh`) diffs the spec against the LIVE
-# rulesets, which needs `administration: read` -- a scope `GITHUB_TOKEN` cannot
-# hold, so it needs the App token from the main-restricted `release`
-# environment and can only run after merge. That covers out-of-band UI edits.
-# It cannot cover the common case: a PR edits the spec, main goes red on the
-# next push, and the ruleset has to be applied under time pressure.
+# rulesets, and covers out-of-band UI edits: verify-rulesets.yml runs it on
+# every PR against main's spec, and verify-backend.yml runs it again on push
+# to main. It cannot cover the opposite case, which is this script's: a PR
+# edits the spec, main goes red on the next push, and the ruleset has to be
+# applied under time pressure.
 #
 # This half needs no token: it only asks whether THIS PR changed the spec, and
 # if so prints what to apply. Advisory by design -- the live ruleset usually
