@@ -28,7 +28,10 @@ from synthorg.engine.prompt import SystemPrompt, build_error_prompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.budget import BUDGET_HARD_CEILING_HALT_STAMPED
+from synthorg.observability.events.budget import (
+    BUDGET_HARD_CEILING_HALT_STAMPED,
+    BUDGET_HARD_CEILING_RAISED,
+)
 from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -498,6 +501,55 @@ class AgentEngineErrorsMixin:
             accumulated_cost=exc.accumulated_cost,
             ceiling_amount=exc.ceiling_amount,
         )
+
+    async def _ceiling_synced_task(self, task: Task) -> Task:
+        """Return *task* carrying the operator's current hard ceiling.
+
+        ``Task.hard_ceiling`` is the snapshot taken at intake, while the
+        linked forecast row is what an operator raises to release a run
+        parked on spend. Enforcement reads the task, so without this the
+        raised ceiling never reaches the checker and a resumed run
+        re-parks on the value that stopped it.
+
+        A forecast that cannot be read leaves the task snapshot in place:
+        the stale ceiling is the lower of the two, so the run parks again
+        rather than spending past a limit nobody raised.
+
+        Args:
+            task: The task about to be enforced against.
+
+        Returns:
+            The task, with ``hard_ceiling`` refreshed when the linked
+            forecast carries a different one.
+        """
+        repo = getattr(self, "_cost_forecast_repo", None)
+        if repo is None or task.forecast_id is None:
+            return task
+        try:
+            forecast = await repo.get(task.forecast_id)
+        except Exception as read_exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrades to the stricter snapshot ceiling
+            reraise_critical(read_exc)
+            logger.warning(
+                EXECUTION_ENGINE_BUDGET_STOPPED,
+                task_id=str(task.id),
+                note="forecast ceiling read failed; enforcing the task snapshot",
+                error_type=type(read_exc).__name__,
+                error=safe_error_description(read_exc),
+            )
+            return task
+        if forecast is None or forecast.ceiling_amount is None:
+            return task
+        if forecast.ceiling_amount == task.hard_ceiling:
+            return task
+        logger.debug(
+            BUDGET_HARD_CEILING_RAISED,
+            task_id=str(task.id),
+            forecast_id=str(task.forecast_id),
+            new_ceiling=forecast.ceiling_amount,
+            note="raised ceiling applied to the run",
+        )
+        return task.model_copy(update={"hard_ceiling": forecast.ceiling_amount})
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,

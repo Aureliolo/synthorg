@@ -832,7 +832,7 @@ class AgentEngine(
             budget_checker: BudgetChecker | None
             if self._budget_enforcer:
                 budget_checker = await self._budget_enforcer.make_budget_checker(
-                    task,
+                    await self._ceiling_synced_task(task),
                     agent_id,
                     project_id=task.project,
                     project_budget=project_budget,

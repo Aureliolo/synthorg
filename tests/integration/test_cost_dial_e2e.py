@@ -138,9 +138,17 @@ class _InMemoryForecastRepo:
 class _EngineHost(AgentEngineErrorsMixin):
     """Host for the engine error mixin under test."""
 
-    def __init__(self, *, approval_gate: object | None) -> None:
+    def __init__(
+        self,
+        *,
+        approval_gate: object | None,
+        cost_forecast_repo: object | None = None,
+    ) -> None:
         self._approval_gate = approval_gate
         self._cost_tracker = None
+        self._cost_forecast_repo = cast(  # type: ignore[explicit-any]  # in-memory fake repo stands in for the protocol
+            "Any", cost_forecast_repo
+        )
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -279,7 +287,10 @@ async def test_cost_dial_full_lifecycle() -> None:
     async def _park_ok(**_: object) -> None:
         return None
 
-    engine = _EngineHost(approval_gate=SimpleNamespace(park_context=_park_ok))
+    engine = _EngineHost(
+        approval_gate=SimpleNamespace(park_context=_park_ok),
+        cost_forecast_repo=repo,
+    )
     run_result = cast(  # type: ignore[explicit-any]  # engine internal returns a dynamic resume payload
         "Any",
         await engine._handle_budget_error(
@@ -293,13 +304,16 @@ async def test_cost_dial_full_lifecycle() -> None:
     )
     assert run_result.execution_result.termination_reason is TerminationReason.PARKED
 
-    # 6. Operator raises the ceiling; the checker stops raising for
-    #    cost values up to the new line.
-    raised_ceiling_task = _task(hard_ceiling=3.00, forecast_id=forecast_id)
-    resumed_checker = await enforcer.make_budget_checker(
-        raised_ceiling_task,
-        "agent-1",
+    # 6. Operator raises the ceiling on the forecast row, which is the
+    #    only thing a raise touches: nothing rewrites Task.hard_ceiling.
+    #    The resumed run therefore carries the ceiling that parked it and
+    #    must pick the raised one up from the forecast, or it re-parks.
+    await repo.save(
+        repo.rows[forecast_id].model_copy(update={"ceiling_amount": 3.00}),
     )
+    resumed_task = await engine._ceiling_synced_task(task_with_ceiling)
+    assert resumed_task.hard_ceiling == pytest.approx(3.00)
+    resumed_checker = await enforcer.make_budget_checker(resumed_task, "agent-1")
     assert resumed_checker is not None
     assert resumed_checker(_checker_ctx(accumulated_cost=1.50)) is False
 

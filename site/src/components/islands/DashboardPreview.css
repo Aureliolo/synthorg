@@ -25,8 +25,8 @@
 /* CSP-safe token utilities.                                          */
 /* The site ships a strict Content-Security-Policy that blocks inline */
 /* `style=` attributes (CSP hashes cover <style> elements, not style  */
-/* attributes). These classes replace what used to be inline styles   */
-/* on the dashboard islands so the tokens apply under the strict CSP. */
+/* attributes), so the dashboard islands read their design tokens     */
+/* through these classes instead of inline styles.                    */
 /* ------------------------------------------------------------------ */
 .dp-bg-base { background: var(--dp-bg-base); }
 .dp-bg-surface { background: var(--dp-bg-surface); }

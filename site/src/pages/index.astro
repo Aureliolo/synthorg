@@ -103,7 +103,7 @@ try {
     <div class="max-w-4xl mx-auto text-center">
       <p class="text-sm text-gray-300">
         <span class="font-semibold text-violet-400">Honest status:</span>
-        The platform, infrastructure, and subsystem libraries are built and tested. The autonomous agent runtime that makes the organisation execute work end to end is in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
+        The platform, infrastructure, and the agent runtime are built and exercised by deterministic harnesses with a scripted provider. Operator-facing maturity and acceptance against a real provider are in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
         <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Roadmap</a> ·
         <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Issue tracker</a> ·
         <a href="#contact" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Get in touch</a>
@@ -161,7 +161,7 @@ try {
   <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
-      <p class="text-gray-400 mb-12">The designed, modular, protocol-driven architecture. Every component is pluggable and built as tested code; the agent runtime that drives it end to end is in active development.</p>
+      <p class="text-gray-400 mb-12">The modular, protocol-driven architecture. Every component is pluggable and built as tested code; acceptance against a real provider is in active development.</p>
 
       <ExpandableArchitecture />
 
@@ -180,8 +180,8 @@ try {
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
         Autonomous agents need guardrails. The CI/CD pipeline and container
         infrastructure security below is in place today; the application-runtime
-        guardrails are designed and unit-tested, and become active with the agent
-        runtime (in active development).
+        guardrails gate every action under deterministic harnesses, with
+        real-provider acceptance in active development.
       </p>
 
       <div class="grid md:grid-cols-3 gap-8">
@@ -240,9 +240,9 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Use Cases</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-        The studio is designed for organisations like these. They describe the
-        target shape of a SynthOrg company, not validated end-to-end runs; the
-        agent runtime that executes them is in active development.
+        SynthOrg is built for organisations like these. They describe the target
+        shape of a SynthOrg company, not runs validated against a real provider,
+        which is in active development.
       </p>
 
       <UseCaseCards />

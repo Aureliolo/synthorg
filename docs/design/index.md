@@ -1,6 +1,6 @@
 ---
 title: Design Overview
-description: Core vision, design principles, and foundational concepts of SynthOrg, an AI software company that reports to its operator.
+description: Core vision, design principles, and foundational concepts of SynthOrg, a synthetic organisation that reports to its operator.
 ---
 
 # Design Overview

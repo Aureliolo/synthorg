@@ -27,6 +27,7 @@ from synthorg.budget.errors import (
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
@@ -86,6 +87,18 @@ class _FakeForecastRepo:
         self.saved.append(entity)
 
 
+class _ExplodingForecastRepo:
+    """CostForecastRepository double whose reads always fail."""
+
+    async def get(self, entity_id: UUID) -> Forecast | None:
+        msg = f"forecast {entity_id} unreadable"
+        raise QueryError(msg)
+
+    async def save(self, entity: Forecast) -> None:
+        msg = f"forecast {entity.forecast_id} unwritable"
+        raise QueryError(msg)
+
+
 class _MockEngine(AgentEngineErrorsMixin):
     """Minimal mixin host providing the attributes the mixin reads."""
 
@@ -140,6 +153,45 @@ def _task() -> Task:
         created_by="op-1",
         hard_ceiling=1.5,
     )
+
+
+@pytest.mark.asyncio
+async def test_raised_forecast_ceiling_reaches_enforcement() -> None:
+    """An operator's raised ceiling overrides the intake task snapshot.
+
+    ``Task.hard_ceiling`` is the value captured at intake and is never
+    rewritten, while ``raise_ceiling`` moves the forecast row. Reading
+    the task alone would re-park a resumed run on the very ceiling that
+    stopped it.
+    """
+    forecast_id = uuid4()
+    raised = _forecast(forecast_id).model_copy(update={"ceiling_amount": 5.0})
+    repo = _FakeForecastRepo(raised)
+
+    engine = _MockEngine(approval_gate=None, cost_forecast_repo=repo)
+    stale = _task().model_copy(update={"forecast_id": forecast_id})
+    synced = await engine._ceiling_synced_task(stale)
+
+    assert stale.hard_ceiling == 1.5
+    assert synced.hard_ceiling == 5.0
+
+
+@pytest.mark.asyncio
+async def test_unreadable_forecast_keeps_the_stricter_snapshot() -> None:
+    """A forecast read failure enforces the task snapshot, not no ceiling.
+
+    The snapshot is the lower of the two, so degrading to it re-parks the
+    run rather than letting it spend past a limit nobody raised.
+    """
+    engine = _MockEngine(
+        approval_gate=None,
+        cost_forecast_repo=_ExplodingForecastRepo(),
+    )
+    stale = _task().model_copy(update={"forecast_id": uuid4()})
+
+    synced = await engine._ceiling_synced_task(stale)
+
+    assert synced.hard_ceiling == 1.5
 
 
 @pytest.mark.asyncio

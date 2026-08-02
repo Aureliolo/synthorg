@@ -1,8 +1,8 @@
 ---
-// Self-contained GitHub Star/Fork link. Replaces the third-party
-// buttons.github.io script + iframe (which loaded on every page and leaked
-// visitor IPs to GitHub). The optional count is fetched at build time by the
-// caller and passed in; a null count renders a count-less button.
+// Self-contained GitHub Star/Fork link, built in-house rather than embedding
+// GitHub's buttons.github.io script + iframe, which loads on every page and
+// leaks visitor IPs to GitHub. The optional count is fetched at build time by
+// the caller and passed in; a null count renders a count-less button.
 interface Props {
   href: string;
   label: string;
