@@ -220,7 +220,9 @@ def _promote_response_defaults_to_required(
     return schema
 
 
-def export_openapi_schema() -> dict[str, object]:
+def export_openapi_schema(
+    verified: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Return the enriched OpenAPI schema, reusing a verified export.
 
     ``scripts/export_openapi.py`` produces the same schema for the
@@ -236,10 +238,15 @@ def export_openapi_schema() -> dict[str, object]:
     needs, and the published document must keep describing the wire
     contract rather than the codegen's view of it.
 
+    Args:
+        verified: A schema the caller has already verified, so the source
+            tree is not re-hashed to answer the same question twice. When
+            ``None`` the check runs here.
+
     Returns:
         The schema the TypeScript codegen renders from.
     """
-    reused = load_verified_schema()
+    reused = load_verified_schema() if verified is None else verified
     if reused is not None:
         return _promote_response_defaults_to_required(reused)
     return _promote_response_defaults_to_required(build_openapi_schema())
@@ -556,7 +563,10 @@ def main() -> int:
     # The pinned hash seed exists to make ``create_app()``'s schema output
     # byte-stable. A verified export means no app boot, so the re-exec would
     # buy nothing and cost a second interpreter start on the push budget.
-    if load_verified_schema() is None:
+    # Resolved once and carried: verification hashes the whole source tree,
+    # so asking twice pays for that walk twice.
+    verified = load_verified_schema()
+    if verified is None:
         pinned_exit: int | None = re_exec_with_fixed_hash_seed()
         if pinned_exit is not None:
             return pinned_exit
@@ -574,7 +584,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    openapi_ts, dtos_ts, enum_values_ts = generate_all()
+    openapi_ts, dtos_ts, enum_values_ts = generate_all(export_openapi_schema(verified))
     targets: tuple[tuple[Path, str], ...] = (
         (OPENAPI_GEN_TS, openapi_ts),
         (DTOS_GEN_TS, dtos_ts),

@@ -439,7 +439,11 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     except OSError as exc:
         # lint-allow: clock-seam -- gate script, no DI
         elapsed = time.monotonic() - started
-        message = f"failed to start: {type(exc).__name__}: {exc}"
+        # ``strerror`` is the OS's fixed description ("No such file or
+        # directory"); ``str(exc)`` appends ``filename``, which here is a
+        # path assembled from git output. The type and the reason are what
+        # a reader acts on, so the path buys nothing and is not printed.
+        message = f"failed to start: {type(exc).__name__}: {exc.strerror}"
         return _Result(tool.name, _EXIT_NOT_FOUND, message, elapsed)
     # lint-allow: clock-seam -- gate script, no DI
     elapsed = time.monotonic() - started

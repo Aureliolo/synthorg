@@ -203,6 +203,7 @@ import argparse
 import re
 import sys
 from collections.abc import Iterable, Sequence
+from functools import cache
 from pathlib import Path
 from typing import Final, NamedTuple
 
@@ -518,6 +519,15 @@ def _check_pull_request_target_refs(
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
+        # A job whose body is `uses:` passes its `with:` into a called
+        # workflow, which resolves it with this repository's secrets. The
+        # interpolation happens here, so this is the only place it is visible.
+        violations.extend(
+            f"job '{job_name}': job-level `with:` interpolates '{marker}' under"
+            " pull_request_target. A called reusable workflow resolves it with"
+            " the base repository's secrets."
+            for marker in _pr_head_markers(job.get("with"))
+        )
         # Workflow- and job-level env reach every `run:` in the job without
         # appearing in it, so checking step bodies alone leaves `env: REF:
         # ${{ github.head_ref }}` plus a bare `echo $REF` compliant.
@@ -548,6 +558,16 @@ def _check_pull_request_target_refs(
                     " the base repository's secrets. Check out a base-side ref"
                     " (`main`, or `github.sha`) instead."
                     for marker in _pr_head_markers(with_block.get("ref", ""))
+                )
+            elif isinstance(with_block, dict):
+                # Any other action's inputs: a third-party step taking a
+                # `ref` / `pr-sha` / `head` can resolve fork content itself,
+                # and only the checkout family is recognised above.
+                violations.extend(
+                    f"{context}: `with:` interpolates '{marker}' under"
+                    " pull_request_target. Pull-request-controlled data must"
+                    " not reach a privileged job."
+                    for marker in _pr_head_markers(with_block)
                 )
             for field in ("run", "env"):
                 value = step.get(field)
@@ -989,8 +1009,15 @@ def _composite_uses(data: dict[str, object]) -> list[str]:
     ]
 
 
+@cache
 def _load_yaml_mapping(path: Path) -> dict[str, object] | None:
     """Parse *path* as YAML, returning ``None`` unless it is a mapping.
+
+    Cached per path: five separate whole-tree walks (the four fixpoint
+    closures plus discovery) each ask about the same ~25 action files, and
+    parsing them once is the same reason ``_scan_paths`` hoists the closures
+    themselves. Keyed on the Path, so a test that repoints the roots asks
+    about different files and gets its own answers.
 
     Returns:
         The parsed mapping, or ``None`` when the file is unreadable, not

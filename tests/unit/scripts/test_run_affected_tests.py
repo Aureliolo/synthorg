@@ -1132,7 +1132,17 @@ class TestKillProcessTreeAnnouncesFailure:
     failure here reads as "the tree is gone" while workers still hold the
     locks the kill exists to release."""
 
-    @pytest.mark.skipif(sys.platform != "win32", reason="taskkill is Windows-only")
+    @pytest.fixture
+    def _on_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Take the taskkill branch whatever the host is.
+
+        Skipping off Windows would leave the branch unexercised on the
+        Linux runners that gate every PR, so the one platform the fix is
+        for is the only one that never proves it.
+        """
+        monkeypatch.setattr(_MODULE.sys, "platform", "win32")
+
+    @pytest.mark.usefixtures("_on_windows")
     def test_a_refused_taskkill_is_announced(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -1147,7 +1157,7 @@ class TestKillProcessTreeAnnouncesFailure:
 
         assert "taskkill refused" in capsys.readouterr().err
 
-    @pytest.mark.skipif(sys.platform != "win32", reason="taskkill is Windows-only")
+    @pytest.mark.usefixtures("_on_windows")
     def test_a_successful_taskkill_is_quiet(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

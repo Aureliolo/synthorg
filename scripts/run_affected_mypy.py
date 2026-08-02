@@ -1195,9 +1195,10 @@ def _start_lock(daemon: _Daemon) -> Iterator[bool]:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
-            if _lock_is_stale(lock):
-                lock.unlink(missing_ok=True)
+            if _lock_is_stale(lock) and _remove_stale_lock(lock):
                 continue
+            # Either the lock is live, or the takeover failed and retrying
+            # it immediately would spin the whole grace period at full tilt.
             time.sleep(_DAEMON_POLL_SECONDS)
             continue
         except OSError:
@@ -1213,6 +1214,27 @@ def _start_lock(daemon: _Daemon) -> Iterator[bool]:
         if held:
             with contextlib.suppress(OSError):
                 lock.unlink(missing_ok=True)
+
+
+def _remove_stale_lock(lock: Path) -> bool:
+    """Take over a lock whose owner died, reporting whether it worked.
+
+    Windows refuses to unlink a file another process still holds open, so a
+    takeover can fail against a lock that only looked abandoned. Failing is
+    not fatal: the caller waits it out like a live lock, and the whole
+    mechanism is advisory anyway.
+
+    Args:
+        lock: The lock file to remove.
+
+    Returns:
+        Whether the lock is now gone.
+    """
+    try:
+        lock.unlink(missing_ok=True)
+    except OSError:
+        return False
+    return True
 
 
 def _lock_is_stale(lock: Path) -> bool:

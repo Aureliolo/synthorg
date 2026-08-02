@@ -480,9 +480,6 @@ class TestSharedDeadline:
                 sleep=lambda _seconds: None,
             ),
         )
-        monkeypatch.setattr(
-            _MODULE, "_MYPY_TIMEOUT_SECONDS", _MODULE._MYPY_TIMEOUT_SECONDS
-        )
         timeouts: list[object] = []
 
         failed: int = _MODULE._DMYPY_FAILED
@@ -533,7 +530,7 @@ class TestWedgedServerIsKilled:
 
         def _always_times_out(argv: list[str], **kwargs: object) -> object:
             issued.append(tuple(argv[argv.index("--status-file") + 2 :]))
-            raise subprocess.TimeoutExpired(argv, cast(float, kwargs["timeout"]))
+            raise subprocess.TimeoutExpired(argv, cast("float", kwargs["timeout"]))
 
         monkeypatch.setattr(_MODULE.subprocess, "run", _always_times_out)
         monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)

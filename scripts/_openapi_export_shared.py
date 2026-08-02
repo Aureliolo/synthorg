@@ -136,7 +136,15 @@ def collect_strenum_classes() -> dict[str, type[StrEnum]]:
         if not isinstance(module_name, str) or not module_name.startswith("synthorg."):
             continue
         for attr_name in dir(module):
-            attr = getattr(module, attr_name, None)
+            # Nine synthorg packages re-export lazily through a module-level
+            # ``__getattr__``, so this getattr can run a real import. Its
+            # default only swallows AttributeError, and an absent optional
+            # extra would otherwise abort the whole export from inside a
+            # cosmetic docstring walk.
+            try:
+                attr = getattr(module, attr_name, None)
+            except ImportError:
+                continue
             if (
                 not isinstance(attr, type)
                 or attr is StrEnum

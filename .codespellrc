@@ -29,9 +29,9 @@ ignore-words-list = hel
 # ``/FO`` is the Windows ``tasklist`` output-format flag, which codespell reads
 # as a misspelling of "of". ``scirpt: check_manual.py`` is the mistyped YAML
 # entry a gate test feeds its allowlist to prove a malformed key is reported
-# rather than silently dropped; spelling it correctly would test nothing. The
-# fixture's whole line is matched, not the word alone, so the misspelling
-# stays reportable everywhere else including elsewhere in that same file.
-ignore-regex = /FO\b|scirpt: check_manual\.py
+# rather than silently dropped; spelling it correctly would test nothing.
+# Anchored to the fixture's exact line, trailing ``\n`` included, so neither
+# prose containing the word nor a differently-valued YAML entry is covered.
+ignore-regex = /FO\b|  - scirpt: check_manual\.py\\n
 quiet-level = 3
 check-hidden = false

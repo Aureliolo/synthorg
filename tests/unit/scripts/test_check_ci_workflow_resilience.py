@@ -53,6 +53,7 @@ import yaml
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_ci_workflow_resilience.py"
 
 
@@ -110,12 +111,22 @@ def _scan(tmp_path: Path, content: str, *, fresh: bool = False) -> list[str]:
     """
     target = tmp_path / "wf.yml"
     target.write_text(content, encoding="utf-8")
-    if not fresh and _MODULE._REPO_ROOT != _REPO_ROOT:  # type: ignore[attr-defined]
+    # Both roots, because either one alone can be repointed: the closures
+    # walk from ``_ACTIONS_ROOT`` and only report against ``_REPO_ROOT``.
+    repointed = [
+        name
+        for name, live, original in (
+            ("_REPO_ROOT", _MODULE._REPO_ROOT, _REPO_ROOT),  # type: ignore[attr-defined]
+            ("_ACTIONS_ROOT", _MODULE._ACTIONS_ROOT, _ACTIONS_ROOT),  # type: ignore[attr-defined]
+        )
+        if live != original
+    ]
+    if not fresh and repointed:
         # The cached context describes the real repository. A case that
         # repointed the roots and forgot ``fresh=True`` would silently be
         # answered about the wrong tree, and its assertions would pass or
         # fail for reasons it never expressed.
-        msg = "_REPO_ROOT is monkeypatched; pass fresh=True to _scan"
+        msg = f"{', '.join(repointed)} monkeypatched; pass fresh=True to _scan"
         raise AssertionError(msg)
     context: tuple[object, ...] = () if fresh else _repo_scan_context()
     violations: list[str] = _MODULE._scan_file(  # type: ignore[attr-defined]
@@ -1249,6 +1260,46 @@ class TestPullRequestTargetRefs:
         violations = _scan(tmp_path, self._wf(self._TARGET, steps))
         assert len(violations) == 1
         assert "run" in violations[0]
+
+    def test_pr_data_in_a_non_checkout_step_with_flagged(self, tmp_path: Path) -> None:
+        # A third-party action taking a ref resolves fork content itself, and
+        # only the checkout family is recognised by the ref-specific check.
+        steps = (
+            "      - uses: some-org/fetch-pr@abc\n"
+            "        with:\n"
+            "          pr-sha: ${{ github.event.pull_request.head.sha }}\n"
+        )
+        violations = _scan(tmp_path, self._wf(self._TARGET, steps))
+        assert len(violations) == 1
+        assert "`with:`" in violations[0]
+
+    def test_a_non_checkout_step_with_base_data_is_clean(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: some-org/fetch-pr@abc\n"
+            "        with:\n          pr-sha: ${{ github.sha }}\n"
+        )
+        assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
+
+    def test_pr_data_in_a_job_level_with_flagged(self, tmp_path: Path) -> None:
+        # A reusable-workflow call passes `with:` into a workflow that
+        # resolves it holding this repository's secrets; the interpolation
+        # is visible only at the call site.
+        content = (
+            f"{self._TARGET}\n{_PERMS}jobs:\n  a:\n"
+            "    uses: ./.github/workflows/other.yml\n"
+            "    with:\n      ref: ${{ github.head_ref }}\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "job-level `with:`" in violations[0]
+
+    def test_a_job_level_with_base_data_is_clean(self, tmp_path: Path) -> None:
+        content = (
+            f"{self._TARGET}\n{_PERMS}jobs:\n  a:\n"
+            "    uses: ./.github/workflows/other.yml\n"
+            "    with:\n      ref: main\n"
+        )
+        assert _scan(tmp_path, content) == []
 
     def test_pr_data_in_step_env_flagged(self, tmp_path: Path) -> None:
         steps = (
