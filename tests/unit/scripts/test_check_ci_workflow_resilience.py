@@ -1255,6 +1255,37 @@ class TestPullRequestTargetRefs:
         )
         assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
 
+    def test_head_repository_checkout_flagged(self, tmp_path: Path) -> None:
+        # `repository:` selects the fork outright, so pinning `ref` to a
+        # base-side value buys nothing: the tree is still fork-authored and
+        # the job still holds the base repository's secrets.
+        steps = (
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n"
+            "          repository: "
+            "${{ github.event.pull_request.head.repo.full_name }}\n"
+            "          ref: main\n"
+        )
+        violations = _scan(tmp_path, self._wf(self._TARGET, steps))
+        assert len(violations) == 1
+        assert "`repository`" in violations[0]
+
+    def test_base_side_checkout_inputs_are_clean(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n"
+            "          repository: ${{ github.repository }}\n"
+            "          ref: ${{ github.sha }}\n"
+        )
+        assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
+
+    def test_a_head_ref_is_reported_once_not_twice(self, tmp_path: Path) -> None:
+        # The generic input sweep skips `ref`, which the specialised check
+        # above it already covers with the actionable remediation text.
+        violations = _scan(tmp_path, self._wf(self._TARGET, self._HEAD_CHECKOUT))
+        assert len(violations) == 1
+        assert "checkout ref resolves" in violations[0]
+
     def test_pr_data_in_run_body_flagged(self, tmp_path: Path) -> None:
         steps = "      - run: echo ${{ github.event.pull_request.head.label }}\n"
         violations = _scan(tmp_path, self._wf(self._TARGET, steps))

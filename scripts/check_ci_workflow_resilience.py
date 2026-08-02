@@ -586,6 +586,18 @@ def _check_step_refs(job_name: str, job: dict[str, object]) -> list[str]:
                 " (`main`, or `github.sha`) instead."
                 for marker in _pr_head_markers(with_block.get("ref", ""))
             )
+            # `ref` is not the only input that selects what lands in the
+            # workspace: `repository` picks the fork outright, at which
+            # point a base-side ref buys nothing at all.
+            violations.extend(
+                f"{context}: checkout input `{input_name}` resolves"
+                f" '{marker}' under pull_request_target."
+                " Pull-request-controlled data must not decide what a"
+                " privileged job checks out."
+                for input_name, value in with_block.items()
+                if input_name != "ref"
+                for marker in _pr_head_markers(value)
+            )
         elif isinstance(with_block, dict):
             # Any other action's inputs: a third-party step taking a
             # `ref` / `pr-sha` / `head` can resolve fork content itself,

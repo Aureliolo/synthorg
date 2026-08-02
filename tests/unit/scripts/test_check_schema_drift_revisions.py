@@ -181,6 +181,13 @@ class TestUnreadableTriggerAndFunctionNames:
         assert "trigger name" in str(caught.value)
         assert "on widget" in str(caught.value)
 
+    def test_both_gate_failures_share_one_catchable_base(self) -> None:
+        # A caller that wants "the gate could not do its job" as distinct
+        # from "the gate found drift" has one name to catch, and adding a
+        # third failure mode cannot silently escape it.
+        assert issubclass(_MODULE.SchemaDriftParseError, _MODULE.SchemaDriftError)
+        assert issubclass(_MODULE.SchemaDriftProvisionError, _MODULE.SchemaDriftError)
+
     def test_a_readable_pair_is_extracted(self) -> None:
         # The negative cases above prove nothing on their own: a matcher
         # that raised unconditionally would satisfy both.
