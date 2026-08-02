@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from typing import Final, Literal, Self
+from typing import Final, Literal, NoReturn, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -31,14 +31,69 @@ CONTAINER_WORKSPACE: Final[str] = "/workspace"
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
 _MAX_PORT: Final[int] = 65535
-_HOST_PORT_PARTS: Final[int] = 2
-_HOST_ALIAS_PARTS: Final[int] = 2
+_COLON_PAIR_PARTS: Final[int] = 2
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown
 # suffixes so malformed values fail at config-load time rather than
 # surfacing as opaque Docker API errors at container creation.
 _TMPFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[kmg]?$", re.IGNORECASE)
+
+
+def _reject_entry(field: str, msg: str) -> NoReturn:
+    """Log a rejected config entry and raise.
+
+    Raises:
+        ValueError: Always, carrying *msg*.
+    """
+    logger.warning(CONFIG_VALIDATION_FAILED, field=field, reason=msg)
+    raise ValueError(msg)
+
+
+def _colon_pair(entry: str, *, field: str, shape: str) -> tuple[str, str]:
+    """Split a ``left:right`` entry, rejecting any other shape.
+
+    Returns:
+        The left and right halves.
+
+    Raises:
+        ValueError: If the entry is not exactly two non-empty halves.
+    """
+    parts = entry.split(":")
+    if len(parts) != _COLON_PAIR_PARTS or not all(parts):
+        _reject_entry(
+            field,
+            f"{field} entry {entry!r} must use {shape} (exactly one ':',"
+            " neither side empty); IPv6 addresses are not supported",
+        )
+    return parts[0], parts[1]
+
+
+def _validate_host_port(entry: str, *, field: str) -> None:
+    """Validate a ``host:port`` entry, rejecting wildcards and bad ports.
+
+    Only IPv4 addresses and hostnames are supported; the sidecar's
+    transparent proxy cannot express an IPv6 destination.
+
+    Raises:
+        ValueError: If the entry is malformed or the port is out of range.
+    """
+    host, port_str = _colon_pair(entry, field=field, shape="'host:port'")
+    if host == "*":
+        _reject_entry(
+            field, f"host part of {entry!r} must be a hostname or IP, not a wildcard"
+        )
+    try:
+        port = int(port_str)
+    except ValueError as exc:
+        msg = f"port {port_str!r} in {entry!r} is not a valid integer"
+        logger.warning(CONFIG_VALIDATION_FAILED, field=field, reason=msg)
+        raise ValueError(msg) from exc
+    if port < _MIN_PORT or port > _MAX_PORT:
+        _reject_entry(
+            field,
+            f"port {port} in {entry!r} must be between {_MIN_PORT} and {_MAX_PORT}",
+        )
 
 
 def _default_sandbox_image() -> str:
@@ -127,6 +182,16 @@ class DockerSandboxConfig(BaseModel):
             "Extra 'name:target' /etc/hosts entries for the container, e.g."
             " 'host.docker.internal:host-gateway' so an egress-pinned"
             " container can reach a service published on the host"
+        ),
+    )
+    allowed_paths: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "'host:port=/prefix' entries narrowing an allowed destination to"
+            " those URL path prefixes, enforced per HTTP request by the"
+            " sidecar. Needed whenever a permitted host:port also serves"
+            " routes the container must not reach; repeat the host:port to"
+            " grant several prefixes"
         ),
     )
     dns_allowed: bool = Field(
@@ -419,52 +484,7 @@ class DockerSandboxConfig(BaseModel):
             ValueError: If an argument fails domain validation.
         """
         for entry in self.allowed_hosts:
-            parts = entry.split(":")
-            if len(parts) != _HOST_PORT_PARTS:
-                msg = (
-                    f"allowed_hosts entry {entry!r} must use "
-                    "'host:port' format (exactly one ':'); "
-                    "IPv6 addresses are not supported"
-                )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg)
-            host, port_str = parts
-            if not host or host == "*":
-                msg = (
-                    f"host part of {entry!r} must be a hostname "
-                    "or IP (not empty or wildcard)"
-                )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg)
-            try:
-                port = int(port_str)
-            except ValueError as exc:
-                msg = f"port {port_str!r} in {entry!r} is not a valid integer"
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg) from exc
-            if port < _MIN_PORT or port > _MAX_PORT:
-                msg = (
-                    f"port {port} in {entry!r} must be "
-                    f"between {_MIN_PORT} and {_MAX_PORT}"
-                )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg)
+            _validate_host_port(entry, field="allowed_hosts")
         return self
 
     @model_validator(mode="after")
@@ -478,19 +498,42 @@ class DockerSandboxConfig(BaseModel):
             ValueError: If an argument fails domain validation.
         """
         for entry in self.extra_hosts:
-            parts = entry.split(":")
-            if len(parts) != _HOST_ALIAS_PARTS or not all(parts):
-                msg = (
-                    f"extra_hosts entry {entry!r} must use 'name:target'"
-                    " format (exactly one ':', neither side empty), e.g."
-                    " 'host.docker.internal:host-gateway'"
+            _colon_pair(
+                entry,
+                field="extra_hosts",
+                shape="'name:target', e.g. 'host.docker.internal:host-gateway'",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_allowed_paths(self) -> Self:
+        """Validate ``allowed_paths`` entries and pin them to a permitted host.
+
+        A rule for a destination that is not in ``allowed_hosts`` grants
+        nothing and silently reads as protection, so it is rejected rather
+        than ignored.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an entry is malformed or names an unlisted host.
+        """
+        for entry in self.allowed_paths:
+            host_port, _, prefix = entry.partition("=")
+            if not prefix.startswith("/"):
+                _reject_entry(
+                    "allowed_paths",
+                    f"allowed_paths entry {entry!r} must use"
+                    " 'host:port=/prefix' (the prefix starting with '/')",
                 )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="extra_hosts",
-                    reason=msg,
+            _validate_host_port(host_port, field="allowed_paths")
+            if host_port not in self.allowed_hosts:
+                _reject_entry(
+                    "allowed_paths",
+                    f"allowed_paths entry {entry!r} narrows {host_port!r},"
+                    " which is not in allowed_hosts, so it grants nothing",
                 )
-                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

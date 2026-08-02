@@ -9,8 +9,8 @@ import (
 
 // fullSandboxedPins returns a pin map populated with valid sha256 digests
 // for every SynthOrg image of a sandbox-enabled config (backend / web /
-// sandbox / sidecar, optionally fine-tune). Used to construct fixtures
-// where hasSynthOrgDigests would otherwise reject for missing keys.
+// sandbox / sidecar / openhands, optionally fine-tune). Used to construct
+// fixtures where hasSynthOrgDigests would otherwise reject for missing keys.
 func fullSandboxedPins(fineTuning bool, variant string) map[string]string {
 	pins := map[string]string{
 		"backend":   "sha256:1111111111111111111111111111111111111111111111111111111111111111",

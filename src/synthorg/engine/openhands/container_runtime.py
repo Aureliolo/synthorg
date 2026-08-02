@@ -102,6 +102,10 @@ _TURN_COST_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
 # Cap the unknown-kind value logged from an untrusted container line.
 _MAX_KIND_LOG_CHARS: Final[int] = 64
 
+# The container reports an SDK event it could not map onto the four
+# adapter-relevant classes under this kind, carrying the class name.
+_UNMAPPED_KIND: Final[str] = "unmapped"
+
 
 def _spec_line(spec: OpenHandsRunSpec) -> str:
     """Render the container-facing spec as one newline-terminated JSON line.
@@ -146,7 +150,19 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
             note="container event line was not a JSON object",
         )
         return None, prev_cost
-    kind = _KIND_BY_NAME.get(str(payload.get("kind", "")))
+    name = str(payload.get("kind", ""))
+    if name == _UNMAPPED_KIND:
+        # The container recognised an SDK event it has no mapping for. That is
+        # a version skew in the SDK contract, not a transport fault, so name
+        # the event class at WARNING rather than losing the turn in silence.
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            note="container reported an unmapped SDK event",
+            sdk_event=str(payload.get("text", ""))[:_MAX_KIND_LOG_CHARS],
+        )
+        return None, prev_cost
+    kind = _KIND_BY_NAME.get(name)
     if kind is None:
         # A protocol-skew (an event kind this host does not know) must not
         # vanish silently: log the kind so a version mismatch is discoverable.
@@ -154,7 +170,7 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
             EXECUTION_LOOP_ERROR,
             loop_type="openhands",
             note="unknown container event kind",
-            kind=str(payload.get("kind", ""))[:_MAX_KIND_LOG_CHARS],
+            kind=name[:_MAX_KIND_LOG_CHARS],
         )
         return None, prev_cost
     accumulated = _non_negative_float(payload.get("cost"))

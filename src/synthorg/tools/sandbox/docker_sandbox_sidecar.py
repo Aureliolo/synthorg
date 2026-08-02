@@ -81,6 +81,9 @@ class DockerSandboxSidecarMixin(ABC):
         else:
             hosts_csv = ",".join(self._config.allowed_hosts)
             env_list.append(f"SIDECAR_ALLOWED_HOSTS={hosts_csv}")
+            if self._config.allowed_paths:
+                paths_csv = ",".join(self._config.allowed_paths)
+                env_list.append(f"SIDECAR_ALLOWED_PATHS={paths_csv}")
 
         dns_flag = "1" if self._config.dns_allowed else "0"
         lo_flag = "1" if self._config.loopback_allowed else "0"

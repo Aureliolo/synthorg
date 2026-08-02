@@ -17,9 +17,11 @@ import (
 // Allowlist is a thread-safe allowlist that resolves hostnames to IPs.
 type Allowlist struct {
 	mu        sync.RWMutex
-	resolved  map[string]bool // "ip:port" -> true
-	hostnames map[string]bool // "hostname" -> true (any port)
+	resolved  map[string]bool     // "ip:port" -> true
+	hostnames map[string]bool     // "hostname" -> true (any port)
+	paths     map[string][]string // "ip:port" -> allowed URL path prefixes
 	raw       []config.HostPort
+	rawPaths  []config.PathRule
 	loopback  bool
 	allowAll  atomic.Bool
 
@@ -33,8 +35,21 @@ type Allowlist struct {
 // IP entries are added directly; hostnames are resolved on first call.
 // Set resolveInterval to 0 to disable background re-resolution.
 func New(hosts []config.HostPort, loopback bool, resolveIntervalSec int, allowAll ...bool) *Allowlist {
+	return NewWithPaths(hosts, nil, loopback, resolveIntervalSec, allowAll...)
+}
+
+// NewWithPaths creates an Allowlist that additionally narrows the listed
+// destinations to a set of URL path prefixes, enforced per HTTP request.
+func NewWithPaths(
+	hosts []config.HostPort,
+	paths []config.PathRule,
+	loopback bool,
+	resolveIntervalSec int,
+	allowAll ...bool,
+) *Allowlist {
 	al := &Allowlist{
 		raw:      hosts,
+		rawPaths: paths,
 		loopback: loopback,
 		stopCh:   make(chan struct{}),
 	}
@@ -107,12 +122,36 @@ func (a *Allowlist) UpdateRules(hosts []config.HostPort, allowAll bool) {
 
 	a.resolveMu.Lock()
 	a.mu.Lock()
+	rawPaths := a.rawPaths
 	a.raw = hosts
 	a.resolved = resolved
 	a.hostnames = hostnames
 	a.mu.Unlock()
+	// Path rules are resolved against the same DNS answers the host rules
+	// just used, so a rewritten allowlist cannot leave a destination
+	// L4-allowed while its L7 narrowing points at a stale address.
+	paths := resolvePaths(rawPaths)
+	a.mu.Lock()
+	a.paths = paths
+	a.mu.Unlock()
 	a.resolveMu.Unlock()
 	a.allowAll.Store(allowAll)
+}
+
+// PathPrefixes returns the URL path prefixes this destination is narrowed
+// to, and whether any narrowing applies at all.
+func (a *Allowlist) PathPrefixes(ip string, port uint16) ([]string, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	prefixes, ok := a.paths[fmt.Sprintf("%s:%d", ip, port)]
+	return prefixes, ok
+}
+
+// HasPathRules reports whether any L7 narrowing is configured at all.
+func (a *Allowlist) HasPathRules() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return len(a.rawPaths) > 0
 }
 
 func (a *Allowlist) resolve() {
@@ -123,14 +162,49 @@ func (a *Allowlist) resolve() {
 	a.mu.RLock()
 	raw := make([]config.HostPort, len(a.raw))
 	copy(raw, a.raw)
+	rawPaths := make([]config.PathRule, len(a.rawPaths))
+	copy(rawPaths, a.rawPaths)
 	a.mu.RUnlock()
 
 	resolved, hostnames := resolveHosts(raw)
+	paths := resolvePaths(rawPaths)
 
 	a.mu.Lock()
 	a.resolved = resolved
 	a.hostnames = hostnames
+	a.paths = paths
 	a.mu.Unlock()
+}
+
+// resolvePaths maps each path rule's host:port onto the resolved IP:port
+// keys the proxy sees after DNAT, so the L7 check keys off the same value
+// the L4 check already matched. DNS lookups run outside any lock.
+func resolvePaths(rules []config.PathRule) map[string][]string {
+	paths := make(map[string][]string)
+	for _, rule := range rules {
+		for _, key := range resolveKeys(rule.Host, rule.Port) {
+			paths[key] = append(paths[key], rule.Prefix)
+		}
+	}
+	return paths
+}
+
+// resolveKeys returns the "ip:port" keys a host:port entry resolves to.
+func resolveKeys(host string, port uint16) []string {
+	if ip := net.ParseIP(host); ip != nil {
+		return []string{fmt.Sprintf("%s:%d", host, port)}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	cancel()
+	if err != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		keys = append(keys, fmt.Sprintf("%s:%d", ip, port))
+	}
+	return keys
 }
 
 // resolveHosts builds resolved IP:port and hostname maps from the

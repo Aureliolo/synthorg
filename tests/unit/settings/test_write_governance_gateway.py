@@ -1,10 +1,17 @@
-"""Governance tests for the ``providers.gateway_enabled`` weakening guard."""
+"""Governance tests for the default-on capability toggles and loop routing.
+
+The three capability toggles share one transition matrix, so they are driven
+from one parametrized table rather than three hand-copied sets: a missing
+cell in a copied set reads as "covered" while proving nothing, which is how
+the credentialed-MCP unset case went untested.
+"""
 
 from collections.abc import Awaitable, Callable
 
 import pytest
 
 from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
+from synthorg.settings.registry import get_registry
 from synthorg.settings.write_governance import (
     SettingsWriteGovernance,
     enforce_security_write_governance,
@@ -12,9 +19,16 @@ from synthorg.settings.write_governance import (
 
 pytestmark = pytest.mark.unit
 
-_ENABLE = ("providers", "gateway_enabled", "true")
-_DISABLE = ("providers", "gateway_enabled", "false")
 _SATISFIED = SettingsWriteGovernance(confirm=True, reason="ops", actor="admin")
+
+# Every capability toggle that ships ON. Each must behave identically:
+# unset restates the running posture, a stored "false" returning to "true"
+# reopens the surface, and turning it off tightens.
+_DEFAULT_ON_TOGGLES = [
+    ("providers", "gateway_enabled"),
+    ("tools", "openhands_enabled"),
+    ("tools", "credentialed_mcp_enabled"),
+]
 
 
 def _current(value: str | None) -> Callable[[str, str], Awaitable[str | None]]:
@@ -24,82 +38,100 @@ def _current(value: str | None) -> Callable[[str, str], Awaitable[str | None]]:
     return _get
 
 
-async def test_enabling_gateway_without_governance_is_rejected() -> None:
+@pytest.mark.parametrize(("namespace", "key"), _DEFAULT_ON_TOGGLES)
+async def test_reenabling_after_explicit_disable_is_rejected(
+    namespace: str, key: str
+) -> None:
     with pytest.raises(SecurityToggleConfirmationRequiredError):
         await enforce_security_write_governance(
-            [_ENABLE], governance=None, get_current=_current("false")
+            [(namespace, key, "true")], governance=None, get_current=_current("false")
         )
 
 
-async def test_enabling_gateway_from_unset_is_unguarded() -> None:
-    # The gateway ships on, so an unset value is already the running posture:
+@pytest.mark.parametrize(("namespace", "key"), _DEFAULT_ON_TOGGLES)
+async def test_enabling_from_unset_is_unguarded(namespace: str, key: str) -> None:
+    # The toggle ships on, so an unset value is already the running posture:
     # writing "true" restates it rather than opening anything.
     await enforce_security_write_governance(
-        [_ENABLE], governance=None, get_current=_current(None)
+        [(namespace, key, "true")], governance=None, get_current=_current(None)
     )
 
 
-async def test_enabling_gateway_with_governance_is_allowed() -> None:
+@pytest.mark.parametrize(("namespace", "key"), _DEFAULT_ON_TOGGLES)
+async def test_reenabling_with_governance_is_allowed(namespace: str, key: str) -> None:
     await enforce_security_write_governance(
-        [_ENABLE], governance=_SATISFIED, get_current=_current("false")
+        [(namespace, key, "true")], governance=_SATISFIED, get_current=_current("false")
     )
 
 
-async def test_disabling_gateway_is_unguarded() -> None:
+@pytest.mark.parametrize(("namespace", "key"), _DEFAULT_ON_TOGGLES)
+async def test_disabling_is_unguarded(namespace: str, key: str) -> None:
     await enforce_security_write_governance(
-        [_DISABLE], governance=None, get_current=_current("true")
+        [(namespace, key, "false")], governance=None, get_current=_current("true")
     )
 
 
-_OPENHANDS_ENABLE = ("tools", "openhands_enabled", "true")
-_OPENHANDS_DISABLE = ("tools", "openhands_enabled", "false")
+@pytest.mark.parametrize(("namespace", "key"), _DEFAULT_ON_TOGGLES)
+def test_registered_default_is_on(namespace: str, key: str) -> None:
+    # The transition tests above all read "unset means on" from the policy,
+    # which is only true while the registry agrees. Without this, a revert of
+    # the shipped default passes every other test in this file.
+    defn = get_registry().get(namespace, key)
+    assert defn is not None
+    assert defn.default == "true"
 
 
-async def test_reenabling_openhands_without_governance_is_rejected() -> None:
+_AUTO_SELECT = ("engine", "loop_auto_select_enabled")
+_DEFAULT_LOOP = ("engine", "default_loop_type")
+_OVERRIDES = ("engine", "loop_complexity_overrides")
+
+
+async def test_enabling_loop_auto_select_without_governance_is_rejected() -> None:
+    # Shipping the sandboxed loop and routing real tasks into it are separate
+    # decisions; this is the one that spawns a container running generated
+    # code, so it cannot be the less guarded of the two.
     with pytest.raises(SecurityToggleConfirmationRequiredError):
         await enforce_security_write_governance(
-            [_OPENHANDS_ENABLE], governance=None, get_current=_current("false")
+            [(*_AUTO_SELECT, "true")], governance=None, get_current=_current("false")
         )
 
 
-async def test_enabling_openhands_from_unset_is_unguarded() -> None:
+async def test_disabling_loop_auto_select_is_unguarded() -> None:
     await enforce_security_write_governance(
-        [_OPENHANDS_ENABLE], governance=None, get_current=_current(None)
+        [(*_AUTO_SELECT, "false")], governance=None, get_current=_current("true")
     )
 
 
-async def test_reenabling_openhands_with_governance_is_allowed() -> None:
-    await enforce_security_write_governance(
-        [_OPENHANDS_ENABLE], governance=_SATISFIED, get_current=_current("false")
-    )
-
-
-async def test_disabling_openhands_is_unguarded() -> None:
-    await enforce_security_write_governance(
-        [_OPENHANDS_DISABLE], governance=None, get_current=_current("true")
-    )
-
-
-_MCP_ENABLE = ("tools", "credentialed_mcp_enabled", "true")
-_MCP_DISABLE = ("tools", "credentialed_mcp_enabled", "false")
-
-
-async def test_enabling_credentialed_mcp_without_governance_is_rejected() -> None:
+@pytest.mark.parametrize(
+    ("setting", "current", "new"),
+    [
+        (_DEFAULT_LOOP, "react", "openhands"),
+        (_OVERRIDES, "complex:hybrid", "complex:openhands"),
+        (_OVERRIDES, None, "epic:openhands"),
+    ],
+)
+async def test_routing_a_task_to_the_sandboxed_loop_is_rejected(
+    setting: tuple[str, str], current: str | None, new: str
+) -> None:
     with pytest.raises(SecurityToggleConfirmationRequiredError):
         await enforce_security_write_governance(
-            [_MCP_ENABLE], governance=None, get_current=_current("false")
+            [(*setting, new)], governance=None, get_current=_current(current)
         )
 
 
-async def test_enabling_credentialed_mcp_with_governance_is_allowed() -> None:
+@pytest.mark.parametrize(
+    ("setting", "current", "new"),
+    [
+        (_DEFAULT_LOOP, "openhands", "react"),
+        (_OVERRIDES, "complex:openhands", "complex:hybrid"),
+        (_DEFAULT_LOOP, "react", "hybrid"),
+    ],
+)
+async def test_routing_away_from_the_sandboxed_loop_is_unguarded(
+    setting: tuple[str, str], current: str | None, new: str
+) -> None:
     await enforce_security_write_governance(
-        [_MCP_ENABLE], governance=_SATISFIED, get_current=_current("false")
-    )
-
-
-async def test_disabling_credentialed_mcp_is_unguarded() -> None:
-    await enforce_security_write_governance(
-        [_MCP_DISABLE], governance=None, get_current=_current("true")
+        [(*setting, new)], governance=None, get_current=_current(current)
     )
 
 

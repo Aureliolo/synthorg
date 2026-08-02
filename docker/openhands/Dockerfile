@@ -8,7 +8,7 @@
 #
 # The SDK lives ONLY in this image, never the main package venv. This is a
 # dependency-hygiene isolation: openhands-sdk + openhands-tools pull a
-# ~338-package closure (litellm 1.93, fastmcp, openai, browser-use, grpcio,
+# large hash-pinned closure (litellm 1.93, fastmcp, openai, browser-use, grpcio,
 # ...) and a litellm version that conflicts with the app's pinned litellm;
 # keeping it here avoids polluting the app's carefully-pinned dependency set.
 # (It installs cleanly on 3.14; the isolation is not about a build
@@ -22,6 +22,15 @@
 # (docker/sidecar/). The host-side adapter
 # (engine/openhands/container_runtime.py) spawns this container, feeds the run
 # spec on stdin, and parses the normalized JSON event stream from stdout.
+#
+# Deliberately no HEALTHCHECK, unlike docker/sandbox: this is a one-shot task
+# runner with no long-lived process to probe, so a healthcheck would report
+# "starting" for the container's entire lifetime.
+#
+# The egress pin is two-layer. allowed_hosts permits the backend's host:port;
+# allowed_paths narrows it to the gateway and credentialed-MCP path prefixes,
+# because both endpoints live in the same backend process as its auth,
+# metrics and webhook routes, and a host:port allowlist alone grants those too.
 # =============================================================================
 
 ARG BASE_IMAGE
@@ -39,20 +48,26 @@ LABEL org.opencontainers.image.title="synthorg-openhands" \
 # on every change.
 ENV OPENHANDS_VENV=/opt/openhands/venv
 
+# The one package the lockfile cannot hash-pin, because it is the installer
+# that reads it. Left floating, a rebuild of an identical lockfile can resolve
+# a different pip, which is the only unaudited input to this image.
+# renovate: datasource=pypi depName=pip
+ARG PIP_VERSION=26.2
+
 USER 0
 
 # Isolated venv + hash-pinned closure so the SDK deps never mingle with the
 # app runtime and every build resolves the identical, audited dependency set.
 COPY docker/openhands/requirements.lock /opt/openhands/requirements.lock
 RUN python3 -m venv "${OPENHANDS_VENV}" \
-    && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --upgrade pip \
+    && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --upgrade "pip==${PIP_VERSION}" \
     && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --require-hashes \
         -r /opt/openhands/requirements.lock \
     && chown -R 10001:10001 /opt/openhands
 
-# After the closure, not before: the entrypoint changes far more often than the
-# lockfile, and copying it first made every edit re-resolve and reinstall all
-# ~338 packages.
+# After the closure: the RUN above depends only on requirements.lock, so this
+# ordering keeps the whole pip layer cached whenever only the entrypoint
+# changes, which is most of the time.
 COPY --chown=10001:10001 docker/openhands/run_task.py /opt/openhands/run_task.py
 
 WORKDIR /workspace

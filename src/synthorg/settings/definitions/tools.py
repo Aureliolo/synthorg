@@ -1020,14 +1020,18 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="credentialed_mcp_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Enable the credentialed-tool MCP server so an embedded harness can"
-            " call the governed forge / chat tools over MCP. Off by default."
-            " Enabling exposes credentialed actions to the harness, so the"
-            " deliberate confirm+reason+actor guardrail applies to the enable"
-            " transition. Re-read live per request; the connection approval"
-            " gate still parks every write."
+            " call the governed forge / chat tools over MCP. On by default,"
+            " because a bundled harness attaches this endpoint unconditionally"
+            " and cannot build its agent without it. Reachable does not mean"
+            " permitted: the server grants exactly what"
+            " tools.credentialed_mcp_capabilities lists, which is nothing until"
+            " an operator names a capability, and the connection approval gate"
+            " still parks every write. Turning it off and back on reopens that"
+            " surface, so that transition takes the deliberate"
+            " confirm+reason+actor guardrail. Re-read live per request."
         ),
         group="Credentialed MCP",
         level=SettingLevel.ADVANCED,

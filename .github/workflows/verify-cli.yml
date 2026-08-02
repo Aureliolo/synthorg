@@ -84,6 +84,49 @@ jobs:
           version: v2.12.2
           working-directory: cli
 
+  # ── Sidecar (second Go module) ──
+  # CORRECTNESS gate: de-conditioned (cardinal rule), same as cli-lint.
+  # docker/sidecar is its own Go module and was previously covered by nothing:
+  # build-images.yml only compiles it inside the image build, which cannot fail
+  # a lint or run a test. It is the sole enforcement point between a sandboxed
+  # agent and the host network, including the per-request path narrowing the
+  # OpenHands loop depends on, so it gates here like the CLI does.
+  sidecar-verify:
+    name: Sidecar Lint + Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: docker/sidecar/go.mod
+          # zizmor: ignore[cache-poisoning]
+          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          cache-dependency-path: docker/sidecar/go.sum
+      - uses: ./.github/actions/go-mod-download-retry
+        with:
+          working-directory: docker/sidecar
+
+      - name: go vet
+        working-directory: docker/sidecar
+        run: go vet ./...
+
+      - name: Run tests with race detector
+        working-directory: docker/sidecar
+        run: go test -race ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # renovate: datasource=github-releases depName=golangci/golangci-lint
+          version: v2.12.2
+          working-directory: docker/sidecar
+
   # ── Test (multi-platform) ──
   # CORRECTNESS gate: de-conditioned (cardinal rule). Runs on every PR / push.
   cli-test:
@@ -541,7 +584,18 @@ jobs:
   cli-pass:
     name: CLI Pass
     if: always()
-    needs: [cli-changes, cli-lint, cli-test, cli-build, cli-bench, cli-vuln, cli-fuzz, cli-license]
+    needs:
+      [
+        cli-changes,
+        cli-lint,
+        sidecar-verify,
+        cli-test,
+        cli-build,
+        cli-bench,
+        cli-vuln,
+        cli-fuzz,
+        cli-license,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -551,6 +605,7 @@ jobs:
           RESULTS: >-
             ${{ needs.cli-changes.result }}
             ${{ needs.cli-lint.result }}
+            ${{ needs.sidecar-verify.result }}
             ${{ needs.cli-test.result }}
             ${{ needs.cli-build.result }}
             ${{ needs.cli-bench.result }}

@@ -1,19 +1,96 @@
+version: "2"
+
 run:
-  timeout: 5m
+  go: "1.26"
   modules-download-mode: readonly
 
+# The sidecar is the only thing between a sandboxed agent and the host
+# network, so it carries a security-weighted set. It is NOT a copy of
+# cli/.golangci.yml: this module is a transparent L3/L4 proxy and a DNS
+# server, so two of the CLI's linters are wrong here by construction and are
+# disabled with reasons rather than suppressed per line.
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
     - misspell
-    - goimports
+    - gocritic
+    - bodyclose
+    - errname
+    - errorlint
+    - prealloc
+    - unconvert
+    - unparam
+    - gocyclo
+    - funlen
+    - gocognit
+    - nestif
     - revive
+    - gosec
+  # noctx is deliberately absent. It wants (*net.Dialer).DialContext over
+  # net.Dial/net.DialTimeout, which suits a client with a request lifetime.
+  # This process is a relay: its accept loop and per-connection upstream dial
+  # have no enclosing request context, and the dial is already bounded by an
+  # explicit timeout. Adopting it would mean threading a synthetic context
+  # through the data path for no cancellation benefit.
+  settings:
+    errcheck:
+      # A deferred Close on a socket or file being torn down has no
+      # actionable error: the fd is going away regardless, and the operation
+      # whose result mattered has already returned. Checking it would mean
+      # logging noise on every connection teardown.
+      exclude-functions:
+        - (net.Conn).Close
+        - (net.Listener).Close
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*net.TCPConn).Close
+        - (*net.UDPConn).Close
+    gocyclo:
+      min-complexity: 12
+    funlen:
+      lines: 80
+      statements: 60
+    gocognit:
+      min-complexity: 15
+    nestif:
+      min-complexity: 4
+    revive:
+      rules:
+        - name: unused-parameter
+        - name: unused-receiver
+        - name: confusing-naming
+        - name: cognitive-complexity
+          arguments: [15]
+  exclusions:
+    rules:
+      # Same rationale as cli/.golangci.yml: the complexity signal lives in
+      # production code, not in table-test enumeration, and test fixtures
+      # legitimately bind throwaway ports and ignore teardown errors.
+      - path: '_test\.go$'
+        linters:
+          [gocyclo, funlen, gocognit, nestif, revive, gosec, errcheck, prealloc]
+      # dnat.go builds every iptables argument itself from validated config;
+      # nothing user-supplied reaches the argv. G204 cannot see that the
+      # slice is internally constructed.
+      - path: 'internal/proxy/dnat\.go$'
+        linters: [gosec]
+        text: 'G204'
+      # The JSON encode into an http.ResponseWriter already carries a
+      # per-line nolint:errcheck with its reason; gosec re-reports the same
+      # call under G104.
+      - path: 'internal/health/health\.go$'
+        linters: [gosec]
+        text: 'G104'
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 issues:
-  exclude-dirs:
-    - vendor
+  max-issues-per-linter: 50
+  max-same-issues: 5

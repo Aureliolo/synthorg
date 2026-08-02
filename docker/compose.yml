@@ -119,11 +119,13 @@ services:
       SYNTHORG_PERSISTENCE_BACKEND: "postgres"
       SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
-      # Everything below is a setting the product marks compose_set: the
-      # process is started with it and nothing inside can change it, so
+      # The next block is the settings the product marks compose_set: the
+      # process is started with them and nothing inside can change them, so
       # this file has to pass every one or the label is a lie for this
       # deployment path. Kept in step with the CLI's own template by
-      # scripts/check_setting_compose_backed.py.
+      # scripts/check_setting_compose_backed.py. It ends at the cassette
+      # pair below; what follows is ordinary env-layer seeding of live
+      # settings, which the gate does not inspect.
       SYNTHORG_API_SERVER_HOST: "0.0.0.0"
       SYNTHORG_API_SERVER_PORT: "3001"
       SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"

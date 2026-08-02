@@ -13,13 +13,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-import aiodocker
 import pytest
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.workers._openhands_wiring import _HOST_GATEWAY_ALIAS
-from tests._shared import JsonDict
+from tests._shared import FakeDockerClient, JsonDict
 
 pytestmark = pytest.mark.unit
 
@@ -31,21 +30,12 @@ def _sandbox(workspace: Path, **overrides: object) -> DockerSandbox:
     return DockerSandbox(config=config, workspace=workspace)
 
 
-class _RecordingDocker(aiodocker.Docker):
-    """A Docker client that records the create payload instead of sending it.
-
-    Subclasses the real class rather than mocking it: ``containers`` is bound
-    in ``Docker.__init__``, so an autospec double cannot carry it, and the
-    annotation is runtime-checked. Skipping ``super().__init__`` is the point:
-    no session is opened, so nothing reaches a daemon.
-    """
+class _RecordingDocker(FakeDockerClient):
+    """A Docker client that records the create payload instead of sending it."""
 
     def __init__(self) -> None:
         self.created: list[JsonDict] = []
-        self.containers = cast(
-            "aiodocker.containers.DockerContainers",
-            SimpleNamespace(create=self._create),
-        )
+        super().__init__(SimpleNamespace(create=self._create))
 
     async def _create(self, config: JsonDict) -> SimpleNamespace:
         self.created.append(config)

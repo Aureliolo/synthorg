@@ -129,6 +129,11 @@ jobs:
               - 'docker/openhands/**'
               - 'docker/sandbox/**'
               - 'src/synthorg/engine/openhands/**'
+              # The boot gate that decides whether the loop exists at all, and
+              # the sandbox config carrying its egress pinning: a change here
+              # can break the container contract without touching the image.
+              - 'src/synthorg/workers/_openhands_wiring.py'
+              - 'src/synthorg/tools/sandbox/**'
               - 'tests/integration/engine/test_openhands_container_contract.py'
               - '.dockerignore'
               - '.github/workflows/build-images.yml'
@@ -987,7 +992,7 @@ jobs:
       needs.build-sandbox-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
-    # Above the sandbox's 30: this image layers a ~338-package hash-pinned pip
+    # Above the sandbox's 30: this image layers a large hash-pinned pip
     # closure on top of the same base, and the amd64 leg also runs the
     # container contract test.
     timeout-minutes: 45

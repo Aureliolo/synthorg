@@ -475,8 +475,11 @@ class DockerSandboxExecMixin:
             BaseException: Raised when the relevant invariant fails.
         """
         sidecar_id = await self._create_sidecar(docker)
-        await self._track_container(f"_sidecar:{sidecar_id}", None)
+        # Inside the try from here on: a cancellation delivered between the
+        # create and the tracking write would otherwise strand a created
+        # container with nothing left holding its id.
         try:
+            await self._track_container(f"_sidecar:{sidecar_id}", None)
             sidecar_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
             await sidecar_obj.start()
             logger.debug(SANDBOX_SIDECAR_STARTED, sidecar_id=sidecar_id[:12])

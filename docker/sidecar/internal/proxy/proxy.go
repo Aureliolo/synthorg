@@ -101,6 +101,36 @@ func (p *Proxy) acceptLoop() {
 	}
 }
 
+// admit reports whether the layer-4 allowlist permits this destination,
+// resetting the connection rather than closing it gracefully when it does
+// not, so the sandbox sees "connection refused" instead of a timeout.
+func (p *Proxy) admit(conn net.Conn, destIP string, destPort uint16) bool {
+	if !p.al.IsAllowedIP(destIP, destPort) {
+		if p.logger != nil {
+			p.logger.Info("proxy.connection.blocked",
+				"dst_ip", destIP, "dst_port", destPort,
+				"reason", "not in allowlist",
+			)
+		}
+		if tc, ok := conn.(*net.TCPConn); ok {
+			_ = tc.SetLinger(0)
+		}
+		return false
+	}
+	if p.logger != nil {
+		if p.al.IsAllowAll() {
+			p.logger.Warn("proxy.connection.allow_all",
+				"dst_ip", destIP, "dst_port", destPort,
+			)
+		} else {
+			p.logger.Info("proxy.connection.allowed",
+				"dst_ip", destIP, "dst_port", destPort,
+			)
+		}
+	}
+	return true
+}
+
 func (p *Proxy) handleConn(conn net.Conn) {
 	defer conn.Close()
 
@@ -112,30 +142,8 @@ func (p *Proxy) handleConn(conn net.Conn) {
 		return
 	}
 
-	// Check allowlist (includes allow-all check internally).
-	if !p.al.IsAllowedIP(destIP, destPort) {
-		if p.logger != nil {
-			p.logger.Info("proxy.connection.blocked",
-				"dst_ip", destIP, "dst_port", destPort,
-				"reason", "not in allowlist",
-			)
-		}
-		// Send TCP RST instead of graceful close so the sandbox
-		// gets an immediate connection refused, not a timeout.
-		if tc, ok := conn.(*net.TCPConn); ok {
-			_ = tc.SetLinger(0)
-		}
+	if !p.admit(conn, destIP, destPort) {
 		return
-	}
-
-	if p.al.IsAllowAll() && p.logger != nil {
-		p.logger.Warn("proxy.connection.allow_all",
-			"dst_ip", destIP, "dst_port", destPort,
-		)
-	} else if p.logger != nil {
-		p.logger.Info("proxy.connection.allowed",
-			"dst_ip", destIP, "dst_port", destPort,
-		)
 	}
 
 	// Dial upstream.
@@ -152,7 +160,20 @@ func (p *Proxy) handleConn(conn net.Conn) {
 	}
 	defer upstream.Close()
 
-	// Bidirectional copy.
+	// A destination narrowed to path prefixes is relayed at HTTP level, so
+	// sharing one port with unrelated routes does not grant them.
+	if prefixes, narrowed := p.al.PathPrefixes(destIP, destPort); narrowed {
+		p.relayGuarded(conn, upstream, destIP, destPort, prefixes)
+		return
+	}
+
+	p.relayRaw(conn, upstream)
+}
+
+// relayRaw copies bytes in both directions until either side closes. Used for
+// a destination with no path narrowing, where the sidecar has no reason to
+// understand the protocol being carried.
+func (p *Proxy) relayRaw(conn net.Conn, upstream net.Conn) {
 	var copyWg sync.WaitGroup
 	copyWg.Add(1)
 	go func() {

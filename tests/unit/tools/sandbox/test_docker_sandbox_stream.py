@@ -21,6 +21,7 @@ from synthorg.tools.sandbox.docker_sandbox_stream import (
 )
 from synthorg.tools.sandbox.errors import SandboxStartError
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from tests._shared import FakeDockerClient
 
 pytestmark = pytest.mark.unit
 
@@ -171,12 +172,8 @@ class _SpawnHarness(DockerSandboxStreamMixin):
         self.destroyed.append(handle)
 
 
-class _FakeDocker(aiodocker.Docker):
-    """A Docker client whose only live surface is ``containers.create``.
-
-    Subclasses the real client (bypassing its connection setup) so the
-    typeguard-instrumented ``_spawn_stream_container`` accepts it.
-    """
+class _FakeDocker(FakeDockerClient):
+    """A Docker client whose only live surface is ``containers.create``."""
 
     def __init__(
         self,
@@ -190,7 +187,7 @@ class _FakeDocker(aiodocker.Docker):
             return SimpleNamespace(id=container_id)
 
         create: Callable[[object], Awaitable[object]] = _create
-        self.containers = SimpleNamespace(create=create)  # type: ignore[assignment]
+        super().__init__(SimpleNamespace(create=create))
 
 
 async def test_spawn_self_cleans_when_tracking_fails() -> None:

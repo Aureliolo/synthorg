@@ -64,7 +64,7 @@ func (l *logger) log(lvl logLevel, levelStr, msg string, kvs []any) {
 		fmt.Fprintf(os.Stderr, "sidecar: log marshal failed: %v\n", err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, string(data))
+	_, _ = fmt.Fprintln(os.Stdout, string(data))
 }
 
 func logFatal(msg string, kvs ...any) {

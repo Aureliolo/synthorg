@@ -97,9 +97,16 @@ standard streams (no in-container HTTP server):
   bearer's claims, and the gateway ignores the request's `model` field.
 - The host-side `DockerSandbox.stream_container_task` spawns the container
   with `stdin`/`stdout` attached, writes the spec, and yields each `stdout`
-  line. Egress is pinned by the network sidecar to exactly the gateway +
-  credentialed-MCP hosts (the backend's `allowed_hosts`); the workspace is
-  mounted read-write. The container and sidecar are torn down on every
+  line. Egress is pinned by the network sidecar to the gateway +
+  credentialed-MCP endpoints, at two layers: `allowed_hosts` permits the
+  backend's `host:port`, and `allowed_paths` narrows that destination to
+  each endpoint's own URL path prefix, enforced per HTTP request. The
+  second layer is load-bearing rather than defence in depth: both endpoints
+  live in the same backend process as its authentication, metrics and
+  webhook routes, so a `host:port` allowlist alone would grant every one of
+  them, including the routes auth middleware deliberately excludes. TLS to
+  a narrowed destination is refused outright, since its paths are
+  unreadable. The workspace is mounted read-write. The container and sidecar are torn down on every
   exit path (natural end, early stop, error, or cancellation of the
   awaiting coroutine).
 
@@ -159,7 +166,7 @@ The capability ships **on** (`tools.openhands_enabled`, which carries
 rather than left for an operator to discover:
 
 - **The image is built and published** by `build-images.yml` alongside the
-  other five (`build-openhands` / `build-openhands-publish` / `retag-openhands`,
+  other six (`build-openhands` / `build-openhands-publish` / `retag-openhands`,
   signed and verified like the rest). It has no apko base of its own: the
   Dockerfile takes `ARG BASE_IMAGE` and builds `FROM` the sandbox base, so
   `build-sandbox-base` is also gated on the `openhands` paths filter.

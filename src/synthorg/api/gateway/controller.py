@@ -74,12 +74,17 @@ class GatewayController(Controller):
         )
         token = extract_bearer_token(request.headers.get("authorization", "")) or ""
         try:
-            body = await _read_json_body(request)
-            registry = provider_registry_of(app_state)
-            cost_tracker = cost_tracker_of(app_state)
+            # Resolve the toggle before reading the body: the route is
+            # auth-excluded so it can check its own bearer, which means an
+            # unauthenticated caller can reach here, and parsing megabytes of
+            # their JSON first is work done on behalf of a request that is
+            # about to be refused.
             enabled = await config_resolver_of(app_state).get_bool(
                 _PROVIDERS_NS, _GATEWAY_ENABLED_KEY
             )
+            body = await _read_json_body(request)
+            registry = provider_registry_of(app_state)
+            cost_tracker = cost_tracker_of(app_state)
             if bool(body.get("stream")):
                 return await _stream_response(
                     service,

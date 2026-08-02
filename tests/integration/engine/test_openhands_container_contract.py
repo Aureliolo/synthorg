@@ -20,16 +20,17 @@ kind instead of a line on stderr nobody reads.
 
 No provider is contacted: the stub answers every completion locally, so the run
 costs nothing. It needs a Docker daemon and the built image, named by
-``SYNTHORG_OPENHANDS_IMAGE``; without either the module skips.
+``SYNTHORG_OPENHANDS_IMAGE``; without either the test class skips.
 """
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
 import threading
 import uuid
-from collections.abc import Generator, Iterator
+from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar, Final, override
 
@@ -51,6 +52,9 @@ _MARKER: Final[str] = "synthorg-contract-ok"
 # the accumulated total advances by a known amount on every turn.
 _COST_PER_CALL: Final[float] = 0.25
 _RUN_TIMEOUT_SECONDS: Final[float] = 480.0
+# Bounds the short docker CLI calls (remove, inspect) independently of the
+# run budget, so a wedged daemon is reported rather than silently absorbed.
+_DOCKER_CLI_TIMEOUT_SECONDS: Final[float] = 60.0
 # Bound through a name, not a literal in the argv list, so the lint rule against
 # partial executable paths sees a resolved value (as tests/integration/
 # test_web_image.py does for the same reason).
@@ -72,10 +76,18 @@ class _StubHandler(BaseHTTPRequestHandler):
     """
 
     protocol_version = "HTTP/1.1"
+    # Bound the read so a handler thread parked on an idle keep-alive socket
+    # unblocks itself. ThreadingHTTPServer.server_close() joins every handler
+    # thread with no timeout, so a thread waiting on a peer that never closes
+    # hangs teardown until the whole test times out.
+    timeout = 5
     # Rebound per test by the fixture, on a fresh subclass, so recorded calls
     # never leak between tests.
     calls: ClassVar[list[dict[str, str]]] = []
     completions: ClassVar[list[int]] = []
+    # Guards the read-modify-use on `completions`: append-then-len across
+    # concurrent handler threads can hand two of them the same turn number.
+    lock: ClassVar[threading.Lock] = threading.Lock()
     port: int = 0
 
     @override
@@ -86,6 +98,11 @@ class _StubHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        # Close after every response so a handler thread never parks waiting
+        # for a request that will not come. This stub needs no pooling, and
+        # server_close() joins handler threads unconditionally.
+        self.send_header("Connection", "close")
+        self.close_connection = True
         # Every response carries a session id: the MCP client reads it from the
         # initialize response and replays it on later calls.
         self.send_header("Mcp-Session-Id", "synthorg-contract-session")
@@ -110,9 +127,10 @@ class _StubHandler(BaseHTTPRequestHandler):
         """Route a completion or an MCP JSON-RPC call."""
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length) if length else b""
-        self.calls.append(
-            {"path": self.path, "auth": self.headers.get("Authorization", "")}
-        )
+        with self.lock:
+            self.calls.append(
+                {"path": self.path, "auth": self.headers.get("Authorization", "")}
+            )
         if self.path.endswith("chat/completions"):
             self._completion(raw)
             return
@@ -121,8 +139,9 @@ class _StubHandler(BaseHTTPRequestHandler):
     def _completion(self, raw: bytes) -> None:
         """Answer a completion: a tool call first, then a closing message."""
         request = json.loads(raw or b"{}")
-        self.completions.append(1)
-        turn = len(self.completions)
+        with self.lock:
+            self.completions.append(1)
+            turn = len(self.completions)
         advertised = {
             tool.get("function", {}).get("name") for tool in request.get("tools", [])
         }
@@ -188,36 +207,61 @@ class _StubHandler(BaseHTTPRequestHandler):
         self._respond(200, json.dumps(payload).encode())
 
 
-@pytest.fixture
-def stub() -> Generator[type[_StubHandler]]:
-    """Serve the gateway + MCP stub on an ephemeral port for one test.
-
-    Yields a per-test handler subclass so the recorded calls belong to this
-    test alone rather than to whatever ran before it.
+@contextlib.contextmanager
+def _serving_stub() -> Iterator[type[_StubHandler]]:
+    """Serve the gateway + MCP stub on an ephemeral port.
 
     Yields:
-        The bound handler class, carrying ``port``, ``calls`` and
-        ``completions`` for assertions.
+        A fresh handler subclass carrying ``port``, ``calls`` and
+        ``completions``, so recorded calls never leak between users.
     """
 
-    # Declared here, not at module scope: a class body evaluated per fixture
-    # call gets its own list objects, so one test's recorded calls can never
-    # be read by the next.
+    # Declared here, not at module scope: a class body evaluated per call gets
+    # its own list objects, so one user's recorded calls can never be read by
+    # the next.
     class _BoundStub(_StubHandler):
         calls: ClassVar[list[dict[str, str]]] = []
         completions: ClassVar[list[int]] = []
 
-    handler = _BoundStub
-    server = ThreadingHTTPServer(("0.0.0.0", 0), handler)  # noqa: S104
-    handler.port = server.server_address[1]
+    server = ThreadingHTTPServer(("0.0.0.0", 0), _BoundStub)  # noqa: S104
+    _BoundStub.port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield handler
+        yield _BoundStub
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=10)
+
+
+@pytest.fixture
+def stub() -> Iterator[type[_StubHandler]]:
+    """Serve the stub for one test that needs its own run.
+
+    Yields:
+        The bound handler class.
+    """
+    with _serving_stub() as handler:
+        yield handler
+
+
+_HappyRun = tuple[type[_StubHandler], "subprocess.CompletedProcess[str]"]
+
+
+@pytest.fixture(scope="class")
+def happy_run() -> Iterator[_HappyRun]:
+    """Run the container once and share the result across the happy-path tests.
+
+    These assert different facets of one deterministic run (same stub, same
+    spec), and each container launch costs ~30s, so re-deriving the same
+    output per assertion buys nothing.
+
+    Yields:
+        The stub that served the run, and the finished process.
+    """
+    with _serving_stub() as handler:
+        yield handler, _run_container(_run_spec(handler.port))
 
 
 def _run_spec(port: int, *, gateway_port: int | None = None) -> OpenHandsRunSpec:
@@ -250,11 +294,18 @@ def _run_container(spec: OpenHandsRunSpec) -> subprocess.CompletedProcess[str]:
     Returns:
         The finished process, with stdout carrying the event stream.
     """
+    return _run_container_with_input(_spec_line(spec))
+
+
+def _run_container_with_input(stdin: str) -> subprocess.CompletedProcess[str]:
+    """Drive one container run with arbitrary stdin.
+
+    Returns:
+        The finished process, with stdout carrying the event stream.
+    """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw")
     name = f"{_NAME_PREFIX}{worker}-{os.getpid()}"
-    subprocess.run(  # noqa: S603
-        [_DOCKER, "rm", "-f", name], capture_output=True, check=False
-    )
+    _force_remove(name)
     try:
         return subprocess.run(  # noqa: S603
             [
@@ -269,7 +320,7 @@ def _run_container(spec: OpenHandsRunSpec) -> subprocess.CompletedProcess[str]:
                 "--add-host=host.docker.internal:host-gateway",
                 _IMAGE,
             ],
-            input=_spec_line(spec),
+            input=stdin,
             capture_output=True,
             text=True,
             # The SDK renders box-drawing characters; the platform default
@@ -280,9 +331,21 @@ def _run_container(spec: OpenHandsRunSpec) -> subprocess.CompletedProcess[str]:
             check=False,
         )
     finally:
-        subprocess.run(  # noqa: S603
-            [_DOCKER, "rm", "-f", name], capture_output=True, check=False
-        )
+        _force_remove(name)
+
+
+def _force_remove(name: str) -> None:
+    """Remove a container, bounded so a wedged daemon fails attributably.
+
+    Without its own timeout this inherits only the whole-test deadline, and a
+    hard kill there skips the cleanup it was meant to guarantee.
+    """
+    subprocess.run(  # noqa: S603
+        [_DOCKER, "rm", "-f", name],
+        capture_output=True,
+        check=False,
+        timeout=_DOCKER_CLI_TIMEOUT_SECONDS,
+    )
 
 
 def _events(stdout: str) -> list[OpenHandsEvent]:
@@ -316,9 +379,10 @@ def _totals(stdout: str) -> Iterator[float]:
 @skip_no_image
 class TestContainerContract:
     def test_run_spec_parses_and_reaches_the_gateway(
-        self, stub: type[_StubHandler]
+        self,
+        happy_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
     ) -> None:
-        result = _run_container(_run_spec(stub.port))
+        stub, result = happy_run
 
         assert "empty run spec on stdin" not in result.stdout
         assert result.returncode == 0, result.stderr[-2000:]
@@ -333,10 +397,12 @@ class TestContainerContract:
         assert all(c["auth"] == f"Bearer {_BEARER}" for c in mcp)
 
     def test_stdout_carries_only_normalized_events(
-        self, stub: type[_StubHandler]
+        self,
+        happy_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
     ) -> None:
-        result = _run_container(_run_spec(stub.port))
+        _, result = happy_run
 
+        assert result.returncode == 0, result.stderr[-2000:]
         # _events() asserts every single line parses, which is the real claim:
         # stdout is a protocol, so any prose on it is a defect.
         kinds = [event.kind for event in _events(result.stdout)]
@@ -351,9 +417,13 @@ class TestContainerContract:
         actions = [e for e in _events(result.stdout) if e.tool_name]
         assert [e.tool_name for e in actions] == [_TOOL]
 
-    def test_cost_deltas_sum_to_the_run_total(self, stub: type[_StubHandler]) -> None:
-        result = _run_container(_run_spec(stub.port))
+    def test_cost_deltas_sum_to_the_run_total(
+        self,
+        happy_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
+    ) -> None:
+        _, result = happy_run
 
+        assert result.returncode == 0, result.stderr[-2000:]
         totals = list(_totals(result.stdout))
         assert totals[-1] > 0.0, "the container reported no spend at all"
         assert totals == sorted(totals), f"accumulated cost went backwards: {totals}"
@@ -365,9 +435,10 @@ class TestContainerContract:
         )
 
     def test_run_terminates_and_leaves_no_container(
-        self, stub: type[_StubHandler]
+        self,
+        happy_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
     ) -> None:
-        result = _run_container(_run_spec(stub.port))
+        _, result = happy_run
 
         assert result.returncode == 0
         survivors = subprocess.run(  # noqa: S603
@@ -383,8 +454,31 @@ class TestContainerContract:
             capture_output=True,
             text=True,
             check=True,
+            timeout=_DOCKER_CLI_TIMEOUT_SECONDS,
         )
         assert survivors.stdout.strip() == "", survivors.stdout
+
+    def test_empty_stdin_fails_fast_instead_of_hanging(self) -> None:
+        # The host keeps stdin attached for the container's lifetime rather
+        # than half-closing it, so a regression to "read until EOF" would leak
+        # a running container instead of failing. Nothing else bounds it.
+        result = _run_container_with_input("")
+
+        assert result.returncode == 1
+        assert "empty run spec" in result.stdout
+
+    def test_malformed_stdin_reports_a_coherent_error(self) -> None:
+        # The only path where the bearer is still unknown when the scrubber
+        # runs. Without its empty-secret guard, replace("", "***") would wedge
+        # "***" between every character of the message.
+        result = _run_container_with_input("{not json\n")
+
+        assert result.returncode == 1
+        errors = [
+            e for e in _events(result.stdout) if e.kind is OpenHandsEventKind.ERROR
+        ]
+        assert errors, f"expected an error event, got {result.stdout!r}"
+        assert "***" not in errors[0].text
 
     def test_failure_never_echoes_the_run_bearer(
         self, stub: type[_StubHandler]
