@@ -298,7 +298,7 @@ _EXCLUDED: Final[dict[str, str]] = {
 
 _TIMEOUT_KEY: Final[str] = "timeout-minutes"
 
-_TRACKING_ISSUE_ACTION: Final[str] = ".github/actions/post-tracking-issue"
+_TRACKING_ISSUE_DIR: Final[str] = ".github/actions/post-tracking-issue"
 _SCHEDULE_KEY: Final[str] = "schedule"
 _IF_KEY: Final[str] = "if"
 # PyYAML parses YAML 1.1, where a bare `on:` key is the boolean True rather
@@ -373,16 +373,14 @@ def _admits(equals: set[str], not_equals: set[str]) -> _Admission:
 
 
 def _reaches_tracking_issue(uses: str, sinks: frozenset[str]) -> bool:
-    """Return whether a ``uses:`` reference reaches the tracking-issue sink.
+    """Return True when a step files a tracking issue, directly or not.
 
-    Matched on the resolved action id rather than by substring, so a NEIGHBOUR
+    Resolved to a directory rather than matched by substring, so a NEIGHBOUR
     of the composite (``./.github/actions/post-tracking-issue-v2``) is not
-    mistaken for it and silently credited as a sink. The ``./`` strip and the
-    ``/``-anchored suffix mirror ``_is_checkout_action``: both the local and
-    the fork-qualified reference forms have to resolve.
+    mistaken for it and silently credited as a sink.
     """
-    action = _action_id(uses).removeprefix("./").rstrip("/")
-    return any(action == sink or action.endswith(f"/{sink}") for sink in sinks)
+    directory = _local_action_dir(uses)
+    return directory is not None and directory in sinks
 
 
 def _tracking_issue_dirs() -> frozenset[str]:
@@ -395,7 +393,7 @@ def _tracking_issue_dirs() -> frozenset[str]:
     report a workflow as routing nothing while it routes correctly.
     """
     calls: dict[str, set[str]] = {}
-    filers: set[str] = {_TRACKING_ISSUE_ACTION}
+    filers: set[str] = {_TRACKING_ISSUE_DIR}
     for path in _iter_action_files():
         data = _load_yaml_mapping(path)
         if data is None:
@@ -486,13 +484,14 @@ def _sink_problems(watched: dict[str, dict[str, _Admission]]) -> list[str]:
 
 
 def _check_schedule_notifiers(
-    data: dict[str, object], jobs: dict[str, object]
+    data: dict[str, object], jobs: dict[str, object], sinks: frozenset[str]
 ) -> list[str]:
     """Check invariant 10 for one workflow file.
 
     Args:
         data: The parsed workflow mapping.
         jobs: The workflow's ``jobs`` mapping.
+        sinks: Local action directories that reach the tracking issue.
 
     Returns:
         Violation messages, empty when the workflow is compliant or carries
@@ -500,7 +499,6 @@ def _check_schedule_notifiers(
     """
     if not _has_schedule_trigger(data):
         return []
-    sinks = _tracking_issue_dirs()
     notifiers = {
         str(name): job
         for name, job in jobs.items()
@@ -509,7 +507,7 @@ def _check_schedule_notifiers(
     if not notifiers:
         return [
             (
-                f"scheduled workflow has no {_TRACKING_ISSUE_ACTION} job;"
+                f"scheduled workflow has no {_TRACKING_ISSUE_DIR} job;"
                 " a cron run nobody watches must be able to report failure"
                 " and non-completion somewhere"
             )
@@ -517,8 +515,8 @@ def _check_schedule_notifiers(
     watched: dict[str, dict[str, _Admission]] = {}
     for notifier_name, job in notifiers.items():
         condition = str(job.get(_IF_KEY, ""))
-        for job_name, (equals, nots) in _result_comparisons(condition).items():
-            watched.setdefault(job_name, {})[notifier_name] = _admits(equals, nots)
+        for name, (equals, not_equals) in _result_comparisons(condition).items():
+            watched.setdefault(name, {})[notifier_name] = _admits(equals, not_equals)
     if not watched:
         names = ", ".join(sorted(notifiers))
         return [
@@ -1502,7 +1500,11 @@ def _check_runner_pinned(
     ]
 
 
-def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]:
+def _scan_file(
+    path: Path,
+    consumers: frozenset[str] | None = None,
+    sinks: frozenset[str] | None = None,
+) -> list[str]:
     """Return all violation messages for one workflow file.
 
     Args:
@@ -1510,6 +1512,8 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         consumers: Local action directories that reach an artifact download.
             Computed on demand when omitted; ``_scan_paths`` passes the one
             it resolved so a whole-tree run walks the actions tree once.
+        sinks: Local action directories that reach the tracking issue,
+            resolved once by ``_scan_paths`` for the same reason.
 
     Returns:
         Violation messages, empty when the file is compliant.
@@ -1517,6 +1521,8 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
     rel_path = _relative_path(path)
     if consumers is None:
         consumers = _artifact_consumer_dirs()
+    if sinks is None:
+        sinks = _tracking_issue_dirs()
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -1543,7 +1549,7 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
         violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
         violations.extend(_check_runner_pinned(name, rel_path, job))
-    violations.extend(_check_schedule_notifiers(data, jobs))
+    violations.extend(_check_schedule_notifiers(data, jobs, sinks))
     return violations
 
 
@@ -1621,13 +1627,14 @@ def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
     consumers = _artifact_consumer_dirs()
+    sinks = _tracking_issue_dirs()
     for message in _check_dockerfile_digest_pins():
         failed = True
         print(message, file=sys.stderr)
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
-        violations = _scan_file(path, consumers)
+        violations = _scan_file(path, consumers, sinks)
         if not violations:
             continue
         failed = True

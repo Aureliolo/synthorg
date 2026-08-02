@@ -1372,8 +1372,10 @@ class TestScheduleNotifiers:
         wrapper = actions / "wrap-issue"
         wrapper.mkdir()
         (wrapper / "action.yml").write_text(
-            "runs:\n  using: composite\n  steps:\n"
-            "    - uses: ./.github/actions/post-tracking-issue\n",
+            _composite(
+                "    - uses: ./.github/actions/post-tracking-issue\n",
+                token_input=False,
+            ),
             encoding="utf-8",
         )
         monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
