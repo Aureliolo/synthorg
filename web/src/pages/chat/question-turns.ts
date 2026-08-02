@@ -20,6 +20,7 @@ export function toQuestionTurns(records: readonly OrgQuestionRecord[]): OrgTurn[
       taskTitle: question.task_title ?? undefined,
       project: question.project ?? undefined,
       hardToReverse: question.reversibility === 'hard_to_reverse',
+      isDecision: question.is_decision,
       options: question.options.map((option) => ({
         id: option.id,
         title: option.title,

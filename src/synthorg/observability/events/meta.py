@@ -218,11 +218,25 @@ META_CHAT_CONVERSATION_ACCESS_DENIED: Final[str] = "meta.chat.conversation_denie
 # still come from the shared decision write; this only records which door.
 META_CHAT_QUESTION_ANSWERED: Final[str] = "meta.chat.question_answered"
 
-# Emitted at WARNING when a question decision targets an id that is unknown or
-# is an approval that is not a parked question. Both surface an identical 404
-# so an arbitrary approval id cannot be probed through this narrow door; the
-# server-side ``reason`` records which it was.
+# Emitted at WARNING when a question decision targets an approval that exists
+# but is not a parked question. An unknown id is logged by the shared approval
+# fetch under ``API_RESOURCE_NOT_FOUND`` instead, so the two cases stay
+# distinguishable server-side while surfacing one identical 404 to the caller:
+# an arbitrary approval id cannot be probed through this narrow door.
 META_CHAT_QUESTION_NOT_FOUND: Final[str] = "meta.chat.question_not_found"
+
+# Emitted at WARNING when one open question cannot be projected onto the chat
+# surface's shape. The row is dropped from the page rather than failing the
+# whole list for every operator, so this is the only signal it happened.
+META_CHAT_QUESTION_UNPROJECTABLE: Final[str] = "meta.chat.question_unprojectable"
+
+# Emitted at WARNING when a parked question carries a reversibility value that
+# is not a known member. Both this and a MISSING value render as unclassified,
+# but only this one means something wrote a value nothing can read, so only
+# this one is worth an operator's attention.
+META_CHAT_QUESTION_REVERSIBILITY_UNDECODABLE: Final[str] = (
+    "meta.chat.question_reversibility_undecodable"
+)
 
 # -- Learning-curve endpoint -----------------------------------------------
 

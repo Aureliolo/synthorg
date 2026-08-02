@@ -16,6 +16,7 @@ import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.questions import QUESTION_ACTION_TYPES
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
@@ -313,7 +314,7 @@ class TestApprovalsApprove:
         with structlog.testing.capture_logs() as logs:
             result = await handler(
                 app_state=fake_app_state,
-                arguments={"approval_id": "a1", "comment": "LGTM"},
+                arguments={"approval_id": "a1", "reason": "LGTM", "confirm": True},
                 actor=actor,
             )
         body = json.loads(result)
@@ -323,12 +324,35 @@ class TestApprovalsApprove:
         assert body["data"]["decided_by"] == str(actor.id)
         assert body["data"]["decision_reason"] == "LGTM"
 
+        # Approving authorises the escalated action, so it carries the same
+        # admin attribution the reject side does.
+        audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["actor_agent_id"] == str(actor.id)
+        assert audit[0]["target_id"] == "a1"
+
         # The signed security.* audit event is chained for the decision.
         chained = [e for e in logs if e.get("event") == SECURITY_APPROVAL_APPROVED]
         assert len(chained) == 1
         assert chained[0]["approval_id"] == "a1"
         assert chained[0]["actor_agent_id"] == str(actor.id)
         assert chained[0]["reason"] == "LGTM"
+
+    async def test_approve_without_confirm(
+        self,
+        fake_app_state: AppState,
+        actor: AgentIdentity,
+    ) -> None:
+        handler = APPROVAL_HANDLERS["synthorg_approvals_approve"]
+
+        result = await handler(
+            app_state=fake_app_state,
+            arguments={"approval_id": "a1", "reason": "LGTM"},
+            actor=actor,
+        )
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "guardrail_violated"
 
     async def test_approve_not_found(
         self,
@@ -341,7 +365,7 @@ class TestApprovalsApprove:
 
         result = await handler(
             app_state=fake_app_state,
-            arguments={"approval_id": "missing"},
+            arguments={"approval_id": "missing", "reason": "x", "confirm": True},
             actor=actor,
         )
         body = json.loads(result)
@@ -361,7 +385,7 @@ class TestApprovalsApprove:
 
         result = await handler(
             app_state=fake_app_state,
-            arguments={"approval_id": "a1"},
+            arguments={"approval_id": "a1", "reason": "x", "confirm": True},
             actor=actor,
         )
         body = json.loads(result)
@@ -375,11 +399,67 @@ class TestApprovalsApprove:
         handler = APPROVAL_HANDLERS["synthorg_approvals_approve"]
         result = await handler(
             app_state=fake_app_state,
-            arguments={"approval_id": "a1"},
+            arguments={"approval_id": "a1", "reason": "x", "confirm": True},
             actor=None,
         )
         body = json.loads(result)
         assert body["status"] == "error"
+
+
+@pytest.mark.parametrize(
+    "tool",
+    ["synthorg_approvals_approve", "synthorg_approvals_reject"],
+)
+class TestParkedQuestionsAreOutOfScope:
+    """The org's questions to a human are not this door's to settle."""
+
+    @pytest.mark.parametrize("action_type", list(QUESTION_ACTION_TYPES))
+    async def test_a_parked_question_is_refused_untouched(
+        self,
+        fake_app_state: AppState,
+        fake_approval_store: AsyncMock,
+        actor: AgentIdentity,
+        tool: str,
+        action_type: str,
+    ) -> None:
+        # The actor here is an agent. Answering another agent's question
+        # would turn the one deliberate human checkpoint into an
+        # agent-to-agent instruction channel, under an audit row claiming a
+        # decision nobody made.
+        fake_approval_store.get.return_value = _make_item(
+            approval_id="q1", action_type=action_type
+        )
+        handler = APPROVAL_HANDLERS[tool]
+
+        result = await handler(
+            app_state=fake_app_state,
+            arguments={"approval_id": "q1", "reason": "answered", "confirm": True},
+            actor=actor,
+        )
+
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "forbidden"
+        fake_approval_store.save_if_pending.assert_not_called()
+
+    async def test_an_ordinary_approval_is_still_decidable(
+        self,
+        fake_app_state: AppState,
+        fake_approval_store: AsyncMock,
+        actor: AgentIdentity,
+        tool: str,
+    ) -> None:
+        fake_approval_store.get.return_value = _make_item(approval_id="a1")
+        fake_approval_store.save_if_pending.side_effect = lambda updated: updated
+        handler = APPROVAL_HANDLERS[tool]
+
+        result = await handler(
+            app_state=fake_app_state,
+            arguments={"approval_id": "a1", "reason": "fine", "confirm": True},
+            actor=actor,
+        )
+
+        assert json.loads(result)["status"] == "ok"
 
 
 # --- reject (destructive) --------------------------------------------------

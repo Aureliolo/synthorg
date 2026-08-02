@@ -5,6 +5,7 @@ import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { usePolling } from '@/hooks/usePolling'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import {
+  isQuestionEvent,
   useOrgQuestionsStore,
   type OrgQuestionRecord,
 } from '@/stores/org-questions'
@@ -22,14 +23,24 @@ const QUESTION_CHANNELS = ['approvals'] as const satisfies readonly WsChannel[]
 
 export interface UseOrgQuestionsReturn {
   questions: readonly OrgQuestionRecord[]
-  resolving: ReadonlySet<string>
-  answer: (approvalId: string, answer: string, chosenOptionId?: string) => void
-  decline: (approvalId: string) => void
+  /**
+   * Last load failure, or null. Surfaced rather than swallowed: a failed
+   * hydrate renders an empty list, which is indistinguishable from "the org
+   * has nothing to ask" while agents are in fact parked waiting.
+   */
+  error: string | null
+  /** True when more open questions exist than this page shows. */
+  hasMore: boolean
 }
 
+/**
+ * Answering is deliberately absent from this surface: the card subscribes to
+ * the store itself, so nothing has to be threaded from the page down to it.
+ */
 export function useOrgQuestions(): UseOrgQuestionsReturn {
   const questions = useOrgQuestionsStore((s) => s.questions)
-  const resolving = useOrgQuestionsStore((s) => s.resolving)
+  const error = useOrgQuestionsStore((s) => s.error)
+  const hasMore = useOrgQuestionsStore((s) => s.hasMore)
 
   // Hydrate on mount: a reload must not lose a waiting question.
   useEffect(() => {
@@ -51,7 +62,10 @@ export function useOrgQuestions(): UseOrgQuestionsReturn {
       QUESTION_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          markFresh()
+          // Only a question frame counts as freshness. The approvals channel
+          // carries every approval in the org, and treating that traffic as
+          // freshness would let a busy queue suppress the poll indefinitely.
+          if (isQuestionEvent(event)) markFresh()
           useOrgQuestionsStore.getState().handleWsEvent(event)
         },
       })),
@@ -59,17 +73,5 @@ export function useOrgQuestions(): UseOrgQuestionsReturn {
   )
   useWebSocket({ bindings })
 
-  const answer = useCallback(
-    (approvalId: string, text: string, chosenOptionId?: string) => {
-      void useOrgQuestionsStore
-        .getState()
-        .answerQuestion(approvalId, text, chosenOptionId)
-    },
-    [],
-  )
-  const decline = useCallback((approvalId: string) => {
-    void useOrgQuestionsStore.getState().declineQuestion(approvalId)
-  }, [])
-
-  return { questions, resolving, answer, decline }
+  return { questions, error, hasMore }
 }

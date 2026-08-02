@@ -1,9 +1,9 @@
 """Approval domain MCP tools.
 
-``reject`` is destructive -- enforces the ``confirm=True`` + non-blank
-``reason`` guardrail at the schema level so a caller who forgets
-``confirm`` is rejected by the wire layer before ever reaching the
-handler.
+``approve`` and ``reject`` both settle an escalation and are both
+destructive -- each enforces the ``confirm=True`` + non-blank ``reason``
+guardrail at the schema level so a caller who forgets ``confirm`` is
+rejected by the wire layer before ever reaching the handler.
 """
 
 from typing import TYPE_CHECKING, get_args
@@ -99,15 +99,18 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
         required=("action_type", "description"),
         args_model=ApprovalsCreateArgs,
     ),
-    write_tool(
+    admin_tool(
         "approvals",
         "approve",
-        "Approve a pending approval item.",
+        (
+            "Approve a pending approval item (destructive; requires confirm). "
+            "Cannot answer a question an agent parked for a human."
+        ),
         {
             "approval_id": {"type": "string", "description": "Approval UUID"},
-            "comment": {"type": "string", "description": "Approval comment"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("approval_id",),
+        required=("approval_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=ApprovalsApproveArgs,
     ),
     admin_tool(

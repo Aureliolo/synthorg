@@ -7,11 +7,13 @@ decline through the SAME decision write the approvals endpoints use, so the two
 doors can never record different things for one question.
 """
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, LiteralString
 
 from litestar import Request
 from litestar.datastructures import State
+from pydantic import ValidationError
 
 from synthorg._core.features import require_service
 from synthorg.api.controllers._chat_question_models import (
@@ -20,7 +22,11 @@ from synthorg.api.controllers._chat_question_models import (
     ParkedQuestionOption,
     QuestionDecisionResult,
 )
-from synthorg.api.controllers.approvals._decide import apply_approval, apply_rejection
+from synthorg.api.controllers.approvals._decide import (
+    NarrowDoor,
+    apply_approval,
+    apply_rejection,
+)
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
 from synthorg.api.controllers.approvals._shared import (
     ApprovalContext,
@@ -28,40 +34,44 @@ from synthorg.api.controllers.approvals._shared import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalStatus, QuestionReversibility
+from synthorg.approval.questions import (
+    QUESTION_ACTION_TYPES,
+    is_question,
+)
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_QUESTION_ANSWERED,
     META_CHAT_QUESTION_NOT_FOUND,
+    META_CHAT_QUESTION_REVERSIBILITY_UNDECODABLE,
+    META_CHAT_QUESTION_UNPROJECTABLE,
 )
 
 logger = get_logger(__name__)
 
-#: The two action types an agent's question is recorded under.
-CLARIFY_ACTION_TYPE: Final[str] = "clarify:question"
-DECISION_ACTION_TYPE: Final[str] = "decision:project"
-QUESTION_ACTION_TYPES: Final[tuple[str, ...]] = (
-    CLARIFY_ACTION_TYPE,
-    DECISION_ACTION_TYPE,
-)
-
-#: Fixed, server-owned resume text for a declined question. Never operator
+#: Fixed, server-owned audit reason for a declined question. Never operator
 #: input: the decline route takes no request body, so there is no field an
-#: attacker could populate on the "I am not answering" path.
-DECLINE_REASON: Final[str] = (
-    "The operator declined to answer this question. Proceed on your own best "
-    "judgement, and state the assumption you made in your next output."
-)
+#: attacker could populate on the "I am not answering" path. This is what the
+#: audit row records; the guidance the agent is meant to ACT on travels
+#: separately on the resume's trusted channel as ``DECLINED_QUESTION_NOTE``,
+#: because a rejection reason is fenced as untrusted data by contract.
+DECLINE_REASON: Final[str] = "The operator declined to answer this question."
 
 #: 404 message shared by an unknown id and a non-question id, so a caller
 #: cannot probe which arbitrary approval ids exist through this narrow door.
-_NOT_FOUND_MESSAGE: Final[str] = "Question not found"
+#: Threaded into the fetch as well as the scope check, because the default
+#: miss message quotes the caller's identifier back and would otherwise make
+#: the two cases distinguishable by response body alone.
+_NOT_FOUND_MESSAGE: Final[LiteralString] = "Question not found"
 
 
-def _decode_reversibility(raw: str | None) -> QuestionReversibility | None:
+def _decode_reversibility(
+    raw: str | None, *, approval_id: str
+) -> QuestionReversibility | None:
     """Decode the agent's declared reversibility from approval metadata.
 
     Returns:
@@ -71,10 +81,17 @@ def _decode_reversibility(raw: str | None) -> QuestionReversibility | None:
         to carry.
     """
     if not raw:
+        # A question parked before the tools required the field. Expected, and
+        # distinct from the corrupt case below, which is why only that one logs.
         return None
     try:
         return QuestionReversibility(raw)
     except ValueError:
+        logger.warning(
+            META_CHAT_QUESTION_REVERSIBILITY_UNDECODABLE,
+            approval_id=approval_id,
+            known_values=[member.value for member in QuestionReversibility],
+        )
         return None
 
 
@@ -108,26 +125,38 @@ def _to_question(item: ApprovalItem, context: ApprovalContext | None) -> ParkedQ
         task_id=item.task_id,
         task_title=task.title if task is not None else None,
         project=project.name if project is not None else None,
-        reversibility=_decode_reversibility(item.metadata.get("reversibility")),
-        is_decision=item.action_type == DECISION_ACTION_TYPE,
+        reversibility=_decode_reversibility(
+            item.metadata.get("reversibility"), approval_id=str(item.id)
+        ),
         options=options,
         asked_at=item.created_at,
     )
 
 
-def _ordering_key(question: ParkedQuestion) -> tuple[bool, datetime]:
+def _ordering_key(item: ApprovalItem) -> tuple[bool, datetime]:
     """Sort key putting hard-to-reverse questions first, then oldest first.
+
+    Reads the raw approval rather than the projection so the whole set can be
+    ordered and paged before anything is enriched.
 
     Returns:
         A tuple whose first element is ``False`` for a hard-to-reverse question
         so it sorts ahead of the rest.
     """
-    hard = question.reversibility is QuestionReversibility.HARD_TO_REVERSE
-    return (not hard, question.asked_at)
+    reversibility = _decode_reversibility(
+        item.metadata.get("reversibility"), approval_id=str(item.id)
+    )
+    hard = reversibility is QuestionReversibility.HARD_TO_REVERSE
+    return (not hard, item.created_at)
 
 
-async def list_open_questions(app_state: AppState) -> tuple[ParkedQuestion, ...]:
-    """Return every question currently waiting on a human.
+async def open_question_items(app_state: AppState) -> tuple[ApprovalItem, ...]:
+    """Return every open question as a raw approval, in display order.
+
+    Enrichment is deliberately NOT done here. It costs a task read, an
+    artifact query and an oracle evaluation per item, and the caller only
+    renders one page: enriching the whole backlog first would make a polled
+    endpoint's cost scale with the queue rather than with the page.
 
     Returns:
         The open questions, hard-to-reverse first and oldest first within each
@@ -137,36 +166,76 @@ async def list_open_questions(app_state: AppState) -> tuple[ParkedQuestion, ...]
         ServiceUnavailableError: When the approval store is not wired.
     """
     store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
-    items: list[ApprovalItem] = []
-    for action_type in QUESTION_ACTION_TYPES:
-        # Filter on status here rather than paging: ``list_items_page`` has no
-        # status filter, so a page could come back entirely decided.
-        items.extend(
-            await store.list_items(
-                status=ApprovalStatus.PENDING, action_type=action_type
+
+    # Filter on status here rather than paging: ``list_items_page`` has no
+    # status filter, so a page could come back entirely decided. The two reads
+    # are independent, so they fan out rather than running back to back.
+    async with asyncio.TaskGroup() as group:
+        reads = [
+            group.create_task(
+                store.list_items(status=ApprovalStatus.PENDING, action_type=action_type)
             )
-        )
-    contexts = await resolve_approval_context(app_state, tuple(items))
-    questions = [_to_question(item, contexts.get(str(item.id))) for item in items]
-    return tuple(sorted(questions, key=_ordering_key))
+            for action_type in QUESTION_ACTION_TYPES
+        ]
+    items = [item for read in reads for item in read.result()]
+    return tuple(sorted(items, key=_ordering_key))
+
+
+async def project_questions(
+    app_state: AppState,
+    items: tuple[ApprovalItem, ...],
+) -> tuple[ParkedQuestion, ...]:
+    """Enrich and project one page of open questions.
+
+    A row whose projection fails is dropped with a warning rather than failing
+    the page: the DTO's field caps match the tool's today, but the underlying
+    approval fields are unbounded, so one malformed row must not take the whole
+    surface down for every operator. The enrichment layer degrades per row for
+    the same reason.
+
+    Returns:
+        The questions as the dashboard renders them, in the order supplied.
+    """
+    contexts = await resolve_approval_context(app_state, items)
+    projected: list[ParkedQuestion] = []
+    for item in items:
+        try:
+            projected.append(_to_question(item, contexts.get(str(item.id))))
+        except ValidationError as exc:
+            logger.warning(
+                META_CHAT_QUESTION_UNPROJECTABLE,
+                approval_id=str(item.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+    return tuple(projected)
 
 
 def _require_question(item: ApprovalItem) -> None:
     """Refuse an approval that is not a parked agent question.
 
-    Runs before the pending check and before any write, so an out-of-scope
-    approval is refused without being touched.
+    Runs before the pending check and before any decision is written, so an
+    out-of-scope approval is refused without being decided. (The preceding
+    store read still applies lazy TTL expiry, as it does for any reader.)
 
     Raises:
         ResourceNotFoundError: When the approval is not a parked question.
     """
-    if item.action_type not in QUESTION_ACTION_TYPES:
+    if not is_question(item.action_type):
         logger.warning(
             META_CHAT_QUESTION_NOT_FOUND,
             approval_id=str(item.id),
             reason="not_a_question",
         )
         raise ResourceNotFoundError(_NOT_FOUND_MESSAGE)
+
+
+#: The scope this surface decides within: only a parked agent question, and
+#: one fixed 404 whether the id is unknown or merely out of scope.
+_QUESTION_DOOR: Final[NarrowDoor] = NarrowDoor(
+    not_found_message=_NOT_FOUND_MESSAGE,
+    require=_require_question,
+)
 
 
 def _to_result(response: ApprovalResponse) -> QuestionDecisionResult:
@@ -200,13 +269,21 @@ async def answer_question(
         ConflictError: When the question was already decided.
         ValidationError: When a project decision has no valid chosen option.
     """
+    # Redact before the answer becomes the decision reason, so the masked copy
+    # is what is persisted, resumed with and broadcast rather than only what
+    # is echoed back. The agent writes the question, so it can solicit a
+    # credential ("paste the token so I can continue") and the operator can
+    # oblige; the untrusted-content fence stops the text steering the model but
+    # does nothing about handing a live secret to a tool-capable agent. The
+    # sibling act/configure turns redact for the same reason.
+    answer = NotBlankStr(redact_turn_content(data.answer))
     response = await apply_approval(
         app_state,
         request,
         approval_id,
-        comment=data.answer,
+        comment=answer,
         chosen_option_id=data.chosen_option_id,
-        require=_require_question,
+        door=_QUESTION_DOOR,
     )
     logger.info(
         META_CHAT_QUESTION_ANSWERED,
@@ -236,7 +313,7 @@ async def decline_question(
         request,
         approval_id,
         reason=DECLINE_REASON,
-        require=_require_question,
+        door=_QUESTION_DOOR,
     )
     logger.info(
         META_CHAT_QUESTION_ANSWERED,
@@ -248,11 +325,9 @@ async def decline_question(
 
 
 __all__ = [
-    "CLARIFY_ACTION_TYPE",
-    "DECISION_ACTION_TYPE",
     "DECLINE_REASON",
-    "QUESTION_ACTION_TYPES",
     "answer_question",
     "decline_question",
-    "list_open_questions",
+    "open_question_items",
+    "project_questions",
 ]

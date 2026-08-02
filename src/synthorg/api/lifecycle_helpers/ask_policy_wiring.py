@@ -7,8 +7,7 @@ no restart.
 """
 
 from synthorg.api.state import AppState
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
@@ -17,40 +16,46 @@ logger = get_logger(__name__)
 async def wire_ask_policy(app_state: AppState) -> None:
     """Build + bind the ask-policy provider from settings at boot.
 
-    A no-op when the settings service is not yet available.
-    ``rebuild_and_bind_ask_policy`` always binds a provider (fail-to-on for any
-    recoverable error), so a settings fault never leaves the organisation
-    silently unable to ask; only a critical error propagates and is re-raised.
+    Binds the shipped default when the settings service is not available yet.
+    Returning without binding would be a silent fail-to-OFF: an unbound
+    provider means ``should_inject_ask_policy`` is false and the standing
+    directive never reaches a prompt, which is precisely the failure this
+    subsystem exists to prevent. Only a critical error propagates.
     """
+    from synthorg.engine.ask_policy.models import AskPolicyConfig  # noqa: PLC0415
+    from synthorg.engine.ask_policy.wiring import (  # noqa: PLC0415
+        bind_ask_policy_config,
+        rebuild_and_bind_ask_policy,
+    )
     from synthorg.settings.state import (  # noqa: PLC0415
         SettingsStateSlice,
         settings_service_of,
     )
 
     if app_state.slice(SettingsStateSlice).settings_service is None:
-        return
-    from synthorg.engine.ask_policy.wiring import (  # noqa: PLC0415
-        rebuild_and_bind_ask_policy,
-    )
-
-    try:
-        config = await rebuild_and_bind_ask_policy(settings_service_of(app_state))
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
+        config = bind_ask_policy_config(AskPolicyConfig())
+        logger.info(
             API_APP_STARTUP,
             service="ask_policy",
-            note="ask-policy wiring unavailable; skipped",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            note="settings service unavailable; bound the shipped default",
+            enabled=config.enabled,
         )
+        return
+
+    # No try/except: the rebuild reports a settings fault through its own
+    # logging and never raises for one, so a handler here would be dead code
+    # for the failure it would claim to cover. A critical error propagates.
+    config_or_kept = await rebuild_and_bind_ask_policy(settings_service_of(app_state))
+    # ``None`` means a read failed and an existing binding was kept, which
+    # cannot happen at boot (nothing is bound yet) but is cheap to honour.
+    if config_or_kept is None:
         return
     logger.info(
         API_APP_STARTUP,
         service="ask_policy",
         note="wired",
-        enabled=config.enabled,
-        extra_directive_count=len(config.extra_directives),
+        enabled=config_or_kept.enabled,
+        extra_directive_count=len(config_or_kept.extra_directives),
     )
 
 

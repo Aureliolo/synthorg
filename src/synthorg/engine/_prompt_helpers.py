@@ -129,9 +129,15 @@ SECTION_STRATEGY: Final[str] = "strategy"
 # Strategy is trimmed before company because it is additive context.
 # Tools section was removed from the default template per D22
 # (non-inferable principle), but custom templates may still render tools.
+# Ask-policy sits ahead of the task: an operator can stack additions under the
+# standing directive, and an untrimmable section that an operator can grow is a
+# section that can evict the work the agent was given. The standing directive
+# is prose the trimmer keeps until this section goes entirely, which is the
+# right trade against losing the task itself.
 TRIMMABLE_SECTIONS: Final[tuple[str, ...]] = (
     SECTION_STRATEGY,
     SECTION_COMPANY,
+    SECTION_ASK_POLICY,
     SECTION_TASK,
     SECTION_ORG_POLICIES,
 )

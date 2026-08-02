@@ -39,6 +39,7 @@ from evals.loop_ab.rollup import rollup_by_complexity
 from evals.loop_ab.rubric import LoopCellScore, score_cell
 from evals.loop_ab.workspace import seed_workspace
 from evals.models.brief import Brief
+from evals.prompt_layers import bind_default_prompt_layers
 from evals.runner.execution import run_brief
 from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import grade_executable
@@ -199,6 +200,10 @@ def _build_engine(
     execution_loop = build_execution_loop(
         coord.loop_type, openhands_loop_deps=deps.openhands_loop_deps
     )
+    # No API lifespan runs here, so the ambient prompt layers the product binds
+    # at boot have to be bound explicitly or the A/B compares a prompt the
+    # product never sends.
+    bind_default_prompt_layers()
     return AgentEngine(
         provider=deps.build_provider(coord.tier),
         execution_loop=execution_loop,

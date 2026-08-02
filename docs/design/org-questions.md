@@ -270,10 +270,18 @@ the change lands on the next prompt build. Neither needs a restart.
 
 The provider is bound at boot by
 `api/lifecycle_helpers/ask_policy_wiring.py::wire_ask_policy`, with reachability
-locked in the anti-ghost manifest. A settings-read failure binds the
-**default-on** provider with no extras. That is the mirror image of the
-output-style posture, and deliberately so: for enforcement the conservative
-direction is to keep enforcing, and for asking it is to keep asking.
+locked in the anti-ghost manifest. A settings-read failure on a cold boot binds
+the **default-on** provider with no extras: the same rule the output-style
+guardrail follows when it collapses to a minimal still-enforcing pack, which is
+to keep the load-bearing behaviour running. There it means "keep enforcing" and
+here it means "keep asking".
+
+Never unbound is not the same as always the shipped default. A read failure
+when a provider is ALREADY bound keeps what is bound instead, because the
+riskiest moment for that read is the subscriber re-reading straight after an
+operator wrote the key: rebinding the default there would silently revert a
+deliberate, governance-audited `disabled` with nothing in the dashboard to
+show for it.
 
 Turning any of the three enable toggles off removes the only in-run path by
 which an agent defers a material, hard-to-reverse choice to a human, which

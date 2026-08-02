@@ -95,7 +95,7 @@ def build_prompt_result(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     personality_trim_info: PersonalityTrimInfo | None = None,
     strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders | None = None,
+    prompt_providers: PromptAmbientProviders,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content.
 
@@ -114,12 +114,10 @@ def build_prompt_result(  # noqa: PLR0913
         should_inject_strategy,
     )
 
-    house_style = None if prompt_providers is None else prompt_providers.house_style
-    ask_policy = None if prompt_providers is None else prompt_providers.ask_policy
     injected: set[str] = set()
-    if should_inject_house_style(agent, provider=house_style):
+    if should_inject_house_style(agent, provider=prompt_providers.house_style):
         injected.add(_SECTION_HOUSE_STYLE)
-    if should_inject_ask_policy(provider=ask_policy):
+    if should_inject_ask_policy(provider=prompt_providers.ask_policy):
         injected.add(_SECTION_ASK_POLICY)
     if should_inject_strategy(agent, strategy_config):
         injected.add(_SECTION_STRATEGY)

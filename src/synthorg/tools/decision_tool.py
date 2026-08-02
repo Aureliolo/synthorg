@@ -12,7 +12,7 @@ run) marked both as a clarification (so the task moves to
 ``AWAITING_INPUT`` while it waits) and as a decision (so the human's
 choice is recorded as a project-brain DECISION entry on resume). The
 chosen option's writeup rides back in as the decision the parked agent
-continues with, injected by ``ApprovalGate.build_resume_message``.
+continues with, injected by ``build_resume_message``.
 """
 
 import json
@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from synthorg.approval.enums import ApprovalRiskLevel, QuestionReversibility
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.questions import DECISION_ACTION_TYPE
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
@@ -36,6 +37,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_FAILED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._question_output_guard import guard_question_text
 
 from .base import BaseTool, ToolExecutionResult
 
@@ -44,7 +46,7 @@ logger = get_logger(__name__)
 #: Action type for a project-decision park. Structurally a
 #: ``category:action`` pair; the actually-emitted successor to the dead
 #: ``arch:decide`` action type.
-_DECISION_ACTION_TYPE: str = "decision:project"
+_DECISION_ACTION_TYPE: Final[str] = DECISION_ACTION_TYPE
 
 #: Every project decision must offer at least two structured options so the
 #: operator always picks by option id rather than approving with no decision.
@@ -52,7 +54,7 @@ _MIN_OPTIONS: Final[int] = 2
 
 #: Bound on the number of options a single decision may present, so a
 #: runaway model cannot flood the human with choices.
-_MAX_OPTIONS: int = 12
+_MAX_OPTIONS: Final[int] = 12
 
 #: Cap for the evidence package's compact ``title`` label, derived from the
 #: (up to 4096-char) question so the title stays a short summary distinct from
@@ -236,12 +238,35 @@ class RequestProjectDecisionTool(BaseTool):
                 f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
                 for err in exc.errors()
             )
+            # Logged as well as returned: the error result goes back to the
+            # agent, so an agent looping on a malformed call is otherwise
+            # invisible to the operator watching the run.
+            logger.warning(
+                APPROVAL_GATE_ESCALATION_FAILED,
+                agent_id=self._agent_id,
+                action_type=_DECISION_ACTION_TYPE,
+                error_type=type(exc).__name__,
+                invalid_fields=[
+                    ".".join(str(part) for part in err["loc"]) for err in exc.errors()
+                ],
+                note="Malformed decision arguments",
+            )
             return ToolExecutionResult(
                 content=f"Invalid decision arguments: {details}",
                 is_error=True,
             )
 
-        question = args.question.strip()
+        # The question and every option writeup are agent-authored prose a
+        # human reads in the chat transcript, so they pass the same
+        # output-style boundary an inter-agent message does before persisting.
+        blocked, approved = guard_question_text(
+            args.question.strip(),
+            *(opt.title for opt in args.options),
+            *(opt.summary for opt in args.options),
+        )
+        if blocked is not None:
+            return blocked
+        question = approved[0]
         approval_id = str(uuid4())
         # One timestamp for the whole decision so the evidence package and the
         # approval item share it. Options are already validated by

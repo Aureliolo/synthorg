@@ -236,7 +236,7 @@ class AgentEngineChatActionMixin:
             parked_context: The deserialized taskless context.
             approval_id: The approval item identifier (audit context).
             decision_message: Decision text from
-                ``ApprovalGate.build_resume_message``.
+                ``build_resume_message``.
             effective_autonomy: Autonomy tier for the resumed invoker.
 
         Returns:

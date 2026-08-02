@@ -64,7 +64,7 @@ def build_template_context(  # noqa: PLR0913
     trimming_enabled: bool = True,
     estimator: PromptTokenEstimator | None = None,
     strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders | None = None,
+    prompt_providers: PromptAmbientProviders,
 ) -> tuple[dict[str, object], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -83,8 +83,9 @@ def build_template_context(  # noqa: PLR0913
         trimming_enabled: Whether personality trimming is active.
         estimator: Token estimator for personality trimming.
         strategy_config: Strategy config for trendslop mitigation.
-        prompt_providers: The ambient provider snapshot (resolved once per
-            prompt build); ``None`` falls back to the ambient providers.
+        prompt_providers: The ambient provider snapshot, resolved once per
+            prompt build. Required, because a default here would be a second
+            place the ambient globals are read.
 
     Returns:
         Tuple of (template variables dict, personality trim info or None).
@@ -128,10 +129,8 @@ def build_template_context(  # noqa: PLR0913
         inject_house_style_context,
     )
 
-    house_style = None if prompt_providers is None else prompt_providers.house_style
-    ask_policy = None if prompt_providers is None else prompt_providers.ask_policy
-    inject_house_style_context(context, agent, provider=house_style)
-    inject_ask_policy_context(context, agent, provider=ask_policy)
+    inject_house_style_context(context, agent, provider=prompt_providers.house_style)
+    inject_ask_policy_context(context, agent, provider=prompt_providers.ask_policy)
 
     if task is not None:
         # Title / description / acceptance criteria are client-supplied
@@ -202,7 +201,7 @@ def trim_sections(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders | None = None,
+    prompt_providers: PromptAmbientProviders,
 ) -> tuple[
     str,
     int,
@@ -399,7 +398,7 @@ def render_and_estimate(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders | None = None,
+    prompt_providers: PromptAmbientProviders,
 ) -> tuple[str, int, PersonalityTrimInfo | None]:
     """Render the template and estimate its token count.
 
@@ -419,8 +418,8 @@ def render_and_estimate(  # noqa: PLR0913
         profile: Prompt profile controlling rendering verbosity.
         trimming_enabled: Whether personality trimming is active.
         strategy_config: Strategy config for trendslop mitigation.
-        prompt_providers: The ambient provider snapshot (resolved once per
-            prompt build); ``None`` falls back to the ambient providers.
+        prompt_providers: The ambient provider snapshot, resolved once per
+            prompt build.
 
     Returns:
         Tuple of (rendered content, estimated token count,

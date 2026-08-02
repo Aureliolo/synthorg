@@ -14,10 +14,15 @@ autonomy / environment / sandbox helpers this mixin calls through
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from synthorg.approval.resume_annotations import (
+    DEFAULT_RESUME_ANNOTATIONS,
+    ResumeAnnotations,
+)
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.resume_message import build_resume_message
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
@@ -114,6 +119,7 @@ class ResumeDispatchMixin:
         approved: bool,
         decided_by: str,
         decision_reason: str | None,
+        annotations: ResumeAnnotations = DEFAULT_RESUME_ANNOTATIONS,
     ) -> None:
         """Spawn the parked-context resume as a tracked background task.
 
@@ -129,6 +135,7 @@ class ResumeDispatchMixin:
             approved=approved,
             decided_by=decided_by,
             has_reason=decision_reason is not None,
+            reason_provenance=annotations.reason_provenance.value,
         )
         _ = self._resume_tasks.spawn(
             self._resume_parked(
@@ -136,6 +143,7 @@ class ResumeDispatchMixin:
                 approved=approved,
                 decided_by=decided_by,
                 decision_reason=decision_reason,
+                annotations=annotations,
             ),
             event=APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
@@ -150,6 +158,7 @@ class ResumeDispatchMixin:
         approved: bool,
         decided_by: str,
         decision_reason: str | None,
+        annotations: ResumeAnnotations = DEFAULT_RESUME_ANNOTATIONS,
     ) -> None:
         """Restore the parked context and continue the original run.
 
@@ -199,11 +208,12 @@ class ResumeDispatchMixin:
             )
             return
         ctx, _ = resumed
-        decision_message = gate.build_resume_message(
+        decision_message = build_resume_message(
             approval_id,
             approved=approved,
             decided_by=decided_by,
             decision_reason=decision_reason,
+            annotations=annotations,
         )
         task_id = str(ctx.task_execution.task.id) if ctx.task_execution else ""
         project_id = ctx.task_execution.task.project if ctx.task_execution else None

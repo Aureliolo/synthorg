@@ -163,6 +163,18 @@ conflict position is an adversarial stance an agent is defending in a
 structured dispute, presented to an impartial judge rather than to peers.
 """
 
+TAG_DECISION_OPTION: Final[str] = "decision-option"
+"""Wrap the writeup of the option an operator chose on a parked decision fork.
+
+The operator picks structurally, by option id; the prose that then rides back
+into the resumed turn is the writeup the agent itself authored when it offered
+the fork, and it can carry whatever an upstream tool result put there.
+
+Distinct from :data:`TAG_TASK_DATA` (the operator's own free text): labelling
+agent prose as operator-supplied would misstate the provenance in exactly the
+direction that makes a laundered instruction more credible to the model.
+"""
+
 
 def _collect_fence_tags() -> frozenset[str]:
     """Collect every ``TAG_*`` fence-name constant defined in this module.

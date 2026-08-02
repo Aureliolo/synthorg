@@ -16,6 +16,7 @@ from synthorg.settings.write_governance_policy import is_guarded, is_weakening
 
 _NS = "engine"
 _ASK_KEYS = ("ask_policy_enabled", "clarification_enabled", "scoping_enabled")
+_EXTRAS = "ask_policy_extra_directives"
 
 
 class TestGuarded:
@@ -25,11 +26,43 @@ class TestGuarded:
         assert is_guarded(_NS, key) is True
 
     @pytest.mark.unit
-    def test_extra_directives_are_not_guarded(self) -> None:
-        # The standing directive underneath cannot be removed by editing the
-        # operator's own list, so guarding routine list editing would make the
-        # guardrail noisy without protecting anything.
-        assert is_guarded(_NS, "ask_policy_extra_directives") is False
+    def test_extra_directives_are_guarded(self) -> None:
+        # An added directive renders directly beneath the standing one, so
+        # "never escalate schema decisions, decide them yourself" neutralises
+        # the deferral posture org-wide by a different edit than the toggle.
+        assert is_guarded(_NS, _EXTRAS) is True
+
+
+class TestExtraDirectivesDirection:
+    """Only GROWTH is weakening: shrinking leaves the standing directive."""
+
+    @pytest.mark.unit
+    def test_adding_a_directive_is_weakening(self) -> None:
+        assert is_weakening(_NS, _EXTRAS, current="[]", new='[{"id": "a"}]') is True
+
+    @pytest.mark.unit
+    def test_first_write_of_a_directive_is_weakening(self) -> None:
+        assert is_weakening(_NS, _EXTRAS, current=None, new='[{"id": "a"}]') is True
+
+    @pytest.mark.unit
+    def test_removing_a_directive_is_not_weakening(self) -> None:
+        assert is_weakening(_NS, _EXTRAS, current='[{"id": "a"}]', new="[]") is False
+
+    @pytest.mark.unit
+    def test_editing_in_place_is_not_weakening(self) -> None:
+        # Same count, different text: routine wording edits stay quiet, which
+        # is what keeps the guardrail worth reading when it does fire.
+        assert (
+            is_weakening(_NS, _EXTRAS, current='[{"id": "a"}]', new='[{"id": "b"}]')
+            is False
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("raw", ["not json", '{"id": "a"}'])
+    def test_an_unparseable_payload_is_not_weakening(self, raw: str) -> None:
+        # The type validator rejects it downstream, so judging it here would
+        # only turn a malformed write into a confirmation prompt.
+        assert is_weakening(_NS, _EXTRAS, current="[]", new=raw) is False
 
 
 class TestWeakeningDirection:

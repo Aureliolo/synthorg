@@ -24,6 +24,12 @@ export interface ChatInputAreaProps {
    * than one send box, so the two do not share one accessible name.
    */
   sendLabel?: string
+  /**
+   * Hard cap on the composed text, mirroring the endpoint's own limit so the
+   * field stops accepting characters the POST would reject. Omit where the
+   * backend imposes none.
+   */
+  maxLength?: number
   /** Visible rows for the multiline field. Default 2. */
   rows?: number
   className?: string
@@ -44,6 +50,7 @@ export function ChatInputArea({
   label,
   placeholder,
   sendLabel = 'Send message',
+  maxLength,
   rows = 2,
   className,
 }: ChatInputAreaProps) {
@@ -82,6 +89,7 @@ export function ChatInputArea({
           placeholder={placeholder}
           onKeyDown={handleKeyDown}
           disabled={inputDisabled}
+          {...(maxLength === undefined ? {} : { maxLength })}
         />
       </div>
       <Button

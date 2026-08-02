@@ -43,6 +43,15 @@ APPROVAL_GATE_REVIEW_AUDIT_DRAIN_FAILED: Final[str] = (
 APPROVAL_GATE_DECISION_RECORD_FAILED: Final[str] = (
     "approval_gate.decision.record_failed"
 )
+# A decision offering options was decided without resolving one of them: no id
+# supplied, or one naming no option on the package. The caller gets a 4xx, so
+# without this the server side of a client contract bug leaves no trace.
+APPROVAL_GATE_OPTION_UNRESOLVED: Final[str] = "approval_gate.decision.option_unresolved"
+# One best-effort step of recording a decision into the project brain declined
+# to run (not a decision fork, no brain wired, no resolvable project, ...), or
+# its options metadata would not decode. Never fails the decision, so this is
+# the only signal a shaping decision never reached the brain.
+APPROVAL_GATE_BRAIN_RECORD_SKIPPED: Final[str] = "approval_gate.brain.record_skipped"
 # Plan-review resume failure modes, kept distinct from the generic
 # APPROVAL_GATE_RESUME_FAILED so an operator can tell a dispatch failure from a
 # status-sync lag from a decision-record miss without parsing a free-text note.

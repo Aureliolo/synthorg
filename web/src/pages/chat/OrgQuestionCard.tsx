@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { StatusPill } from '@/components/ui/status-pill'
+import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { approvalDetailPath } from '@/utils/approvals'
 import { formatRelativeTime } from '@/utils/format'
 
@@ -17,20 +18,36 @@ import type { QuestionEvent, QuestionOption } from './org-chat-types'
  * A clarification takes free text. A project decision takes a structural pick
  * instead, because the server resolves the chosen option's writeup as what the
  * agent continues with, so free text there would be silently dropped.
+ *
+ * The card reads the questions store directly rather than taking the actions
+ * and the resolving set through the transcript: they were threaded five levels
+ * for one leaf, and subscribing here scopes a resolve's re-render to the card
+ * being resolved instead of every open card.
  */
 
 const CARD = 'mr-8 space-y-2 rounded-md border border-border bg-card-hover p-card'
 const HARD_CARD =
   'mr-8 space-y-2 rounded-md border border-warning/40 bg-card-hover p-card'
 
-const ANSWER_LABEL = 'Answer the question'
+/** Backend cap on ``AnswerQuestionRequest.answer``; over it the POST 400s. */
+const ANSWER_MAX_LENGTH = 4096
+
 const ANSWER_PLACEHOLDER = 'Answer so the agent can carry on...'
-// The composer at the foot of the page also renders a send button, so the two
-// must not share an accessible name.
-const SEND_LABEL = 'Send answer'
 
 const DECLINE_HINT =
   'Decline: the agent resumes and proceeds on its own judgement, stating the assumption it made.'
+
+/**
+ * Name a control by the question it acts on.
+ *
+ * Several questions can be open at once, and the composer at the foot of the
+ * page renders its own send button, so a bare "Send answer" leaves a
+ * screen-reader user with a list of identically named controls and no way to
+ * tell which question they are about to answer.
+ */
+function labelFor(action: string, event: QuestionEvent): string {
+  return `${action}: ${event.askedByName} asks "${event.question}"`
+}
 
 function QuestionHeader({ event }: { event: QuestionEvent }) {
   const context = [event.taskTitle, event.project].filter(Boolean).join(' - ')
@@ -57,13 +74,13 @@ function QuestionHeader({ event }: { event: QuestionEvent }) {
 }
 
 function DeclineRow({
-  approvalId,
+  event,
   resolving,
   onDecline,
 }: {
-  approvalId: string
+  event: QuestionEvent
   resolving: boolean
-  onDecline: (approvalId: string) => void
+  onDecline: () => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -72,12 +89,18 @@ function DeclineRow({
         variant="outline"
         disabled={resolving}
         aria-busy={resolving}
-        onClick={() => onDecline(approvalId)}
+        aria-label={labelFor('Decline', event)}
+        onClick={onDecline}
       >
         Decline
       </Button>
       <Button asChild variant="link" size="sm" className="h-auto p-0">
-        <Link to={approvalDetailPath(approvalId)}>Review in Approvals</Link>
+        <Link
+          to={approvalDetailPath(event.approvalId)}
+          aria-label={labelFor('Review in Approvals', event)}
+        >
+          Review in Approvals
+        </Link>
       </Button>
     </div>
   )
@@ -91,15 +114,15 @@ function ClarifyBody({
 }: {
   event: QuestionEvent
   resolving: boolean
-  onAnswer: (approvalId: string, answer: string) => void
-  onDecline: (approvalId: string) => void
+  onAnswer: (answer: string, chosenOptionId?: string) => void
+  onDecline: () => void
 }) {
   const [draft, setDraft] = useState('')
   const send = useCallback(() => {
     const answer = draft.trim()
     if (!answer) return
-    onAnswer(event.approvalId, answer)
-  }, [draft, event.approvalId, onAnswer])
+    onAnswer(answer)
+  }, [draft, onAnswer])
 
   return (
     <div className="space-y-2">
@@ -108,17 +131,14 @@ function ClarifyBody({
         onChange={setDraft}
         onSend={send}
         disabled={resolving || draft.trim().length === 0}
-        label={ANSWER_LABEL}
+        label={labelFor('Answer', event)}
         placeholder={ANSWER_PLACEHOLDER}
-        sendLabel={SEND_LABEL}
+        sendLabel={labelFor('Send answer', event)}
+        maxLength={ANSWER_MAX_LENGTH}
         rows={2}
       />
       <p className="text-micro text-muted-foreground">{DECLINE_HINT}</p>
-      <DeclineRow
-        approvalId={event.approvalId}
-        resolving={resolving}
-        onDecline={onDecline}
-      />
+      <DeclineRow event={event} resolving={resolving} onDecline={onDecline} />
     </div>
   )
 }
@@ -159,14 +179,14 @@ function DecisionBody({
 }: {
   event: QuestionEvent
   resolving: boolean
-  onAnswer: (approvalId: string, answer: string, chosenOptionId: string) => void
-  onDecline: (approvalId: string) => void
+  onAnswer: (answer: string, chosenOptionId?: string) => void
+  onDecline: () => void
 }) {
   const pick = useCallback(
     (option: QuestionOption) => {
-      onAnswer(event.approvalId, option.title, option.id)
+      onAnswer(option.title, option.id)
     },
-    [event.approvalId, onAnswer],
+    [onAnswer],
   )
   return (
     <div className="space-y-2">
@@ -181,47 +201,41 @@ function DecisionBody({
         ))}
       </ul>
       <p className="text-micro text-muted-foreground">{DECLINE_HINT}</p>
-      <DeclineRow
-        approvalId={event.approvalId}
-        resolving={resolving}
-        onDecline={onDecline}
-      />
+      <DeclineRow event={event} resolving={resolving} onDecline={onDecline} />
     </div>
   )
 }
 
 export interface OrgQuestionCardProps {
   event: QuestionEvent
-  resolving: boolean
-  onAnswer: (approvalId: string, answer: string, chosenOptionId?: string) => void
-  onDecline: (approvalId: string) => void
 }
 
 /** Render one parked agent question, answerable in place. */
-export function OrgQuestionCard({
-  event,
-  resolving,
-  onAnswer,
-  onDecline,
-}: OrgQuestionCardProps) {
+export function OrgQuestionCard({ event }: OrgQuestionCardProps) {
+  const resolving = useOrgQuestionsStore((s) => s.resolving.has(event.approvalId))
+  const answerQuestion = useOrgQuestionsStore((s) => s.answerQuestion)
+  const declineQuestion = useOrgQuestionsStore((s) => s.declineQuestion)
+
+  const onAnswer = useCallback(
+    (answer: string, chosenOptionId?: string) => {
+      void answerQuestion(event.approvalId, answer, chosenOptionId)
+    },
+    [answerQuestion, event.approvalId],
+  )
+  const onDecline = useCallback(() => {
+    void declineQuestion(event.approvalId)
+  }, [declineQuestion, event.approvalId])
+
+  const Body = event.isDecision ? DecisionBody : ClarifyBody
   return (
     <div className={event.hardToReverse ? HARD_CARD : CARD}>
       <QuestionHeader event={event} />
-      {event.options.length > 0 ? (
-        <DecisionBody
-          event={event}
-          resolving={resolving}
-          onAnswer={onAnswer}
-          onDecline={onDecline}
-        />
-      ) : (
-        <ClarifyBody
-          event={event}
-          resolving={resolving}
-          onAnswer={onAnswer}
-          onDecline={onDecline}
-        />
-      )}
+      <Body
+        event={event}
+        resolving={resolving}
+        onAnswer={onAnswer}
+        onDecline={onDecline}
+      />
     </div>
   )
 }

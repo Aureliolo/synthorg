@@ -11,12 +11,8 @@ The directive text names no tool, so nothing here depends on them.
 """
 
 from synthorg.api.state import AppState
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.settings import (
-    SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
-)
+from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -71,18 +67,10 @@ class AskPolicySettingsSubscriber:
             rebuild_and_bind_ask_policy,
         )
 
-        try:
-            # rebuild_and_bind_ask_policy emits ASK_POLICY_PROVIDER_REBOUND once
-            # the new provider is bound; no second emission here.
-            await rebuild_and_bind_ask_policy(self._settings_service)
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="ask_policy",
-                trigger_namespace=namespace,
-                trigger_key=key,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+        # No try/except: the rebuild reports a settings fault through its own
+        # logging and keeps the last known-good binding rather than raising,
+        # so a handler here would be unreachable for the failure it names.
+        # A critical error is meant to propagate and abort the dispatch.
+        # It emits ASK_POLICY_PROVIDER_REBOUND (or _RETAINED) itself, so there
+        # is no second emission here.
+        await rebuild_and_bind_ask_policy(self._settings_service)

@@ -51,6 +51,7 @@ API_APPROVAL_CREATED: Final[str] = "api.approval.created"
 # chain signs the human decision.
 API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
 API_APPROVAL_EXPIRE_BATCH_FAILED: Final[str] = "api.approval.expire_batch_failed"
+API_APPROVAL_ADD_CALLBACK_FAILED: Final[str] = "api.approval.add_callback_failed"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"
 API_APPROVAL_PUBLISH_FAILED: Final[str] = "api.approval.publish_failed"
 API_APPROVAL_CONFLICT: Final[str] = "api.approval.conflict"

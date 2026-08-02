@@ -160,8 +160,6 @@ _SANDBOXED_LOOP_TYPE: Final[str] = "openhands"
 # to a human. Turning any of them off removes that deferral, which relaxes the
 # running verification posture the same way disabling the completion oracle
 # does, so the disabling direction routes through the deliberate guardrail.
-# Editing the operator-authored extra directives is deliberately unguarded: the
-# standing directive underneath cannot be removed that way.
 _ENGINE_ASK_POLICY_KEY: Final[str] = "ask_policy_enabled"
 _ENGINE_CLARIFICATION_KEY: Final[str] = "clarification_enabled"
 _ENGINE_SCOPING_KEY: Final[str] = "scoping_enabled"
@@ -169,6 +167,15 @@ _ENGINE_ASK_KEYS: Final[frozenset[str]] = frozenset(
     {_ENGINE_ASK_POLICY_KEY, _ENGINE_CLARIFICATION_KEY, _ENGINE_SCOPING_KEY}
 )
 _ENGINE_ASK_ENABLED_DEFAULT: Final[str] = "true"
+
+# The extra-directives list is guarded in the ADDING direction. An addition
+# cannot delete the standing directive, but it does not need to: it renders
+# directly beneath it in the same section, so "never escalate schema or spend
+# decisions, decide them yourself" neutralises the deferral posture org-wide
+# for every agent. That is the same weakening the guarded enable toggle
+# protects, reached by a different edit. Shrinking or clearing the list only
+# leaves the standing directive, so it is not guarded.
+_ENGINE_ASK_EXTRA_DIRECTIVES_KEY: Final[str] = "ask_policy_extra_directives"
 
 _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -179,6 +186,7 @@ _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _ENGINE_AUTO_SELECT_KEY,
         _ENGINE_DEFAULT_LOOP_KEY,
         _ENGINE_COMPLEXITY_OVERRIDES_KEY,
+        _ENGINE_ASK_EXTRA_DIRECTIVES_KEY,
         *_ENGINE_ASK_KEYS,
     }
 )
@@ -465,8 +473,34 @@ def _sandboxed_loop_routes(value: str | None) -> frozenset[str]:
     return frozenset(routes)
 
 
+def _added_directive_count(current: str | None, new: str) -> int:
+    """Return how many entries *new* adds over *current*, as JSON arrays.
+
+    Returns:
+        The growth in entry count, or ``0`` when either value does not parse
+        as a JSON array. A malformed payload is rejected by the type
+        validator, so treating it as no growth here does not let one through.
+    """
+
+    def _count(raw: str | None) -> int | None:
+        if raw is None or not raw.strip():
+            return 0
+        try:
+            parsed = json.loads(raw)
+        except ValueError, TypeError:
+            return None
+        return len(parsed) if isinstance(parsed, list) else None
+
+    before, after = _count(current), _count(new)
+    if before is None or after is None:
+        return 0
+    return max(after - before, 0)
+
+
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether an ``engine.*`` oracle, middleware or ask change relaxes it."""
+    if key == _ENGINE_ASK_EXTRA_DIRECTIVES_KEY:
+        return _added_directive_count(current, new) > 0
     if key in _ENGINE_ASK_KEYS:
         currently_on = current is None or compare_ci(
             current, _ENGINE_ASK_ENABLED_DEFAULT

@@ -23,6 +23,7 @@ from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
     TAG_CONFLICT_POSITION,
     TAG_CRITERIA_JSON,
+    TAG_DECISION_OPTION,
     TAG_KNOWLEDGE,
     TAG_LIVING_DOC,
     TAG_MEMORY_ENTRY,
@@ -67,12 +68,12 @@ logger = get_logger(__name__)
 # is still wrapped in the fence, not rejected (rejection would
 # break legitimate tools that echo user text in responses).
 # Closing-tag look-alikes for every untrusted-content fence declared
-# in ``synthorg.engine.prompt_safety``.  This list is maintained by
-# hand: the ``TAG_*`` constants are independent module-level names with
-# no shared registry to iterate, so every new fence tag must be added
-# here too or its closing-tag breakout attempts go undetected.  Optional
-# whitespace before ``>`` mirrors ``_escape_closing_tag`` so lenient
-# variants (``</task-data >`` / ``</task-data\t>``) still trip.
+# in ``synthorg.engine.prompt_safety``.  Listed explicitly rather than
+# iterated from ``ALL_FENCE_TAGS`` so the pattern set is fixed at
+# authoring time; the import-time guard below is what keeps the list
+# complete.  Optional whitespace before ``>`` mirrors
+# ``_escape_closing_tag`` so lenient variants (``</task-data >`` /
+# ``</task-data\t>``) still trip.
 _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_TASK_DATA,
     TAG_TASK_FACT,
@@ -89,6 +90,7 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_BRAIN_STATE,
     TAG_KNOWLEDGE,
     TAG_CONFLICT_POSITION,
+    TAG_DECISION_OPTION,
 )
 
 # Import-time guard: every fence tag in the prompt-safety registry must

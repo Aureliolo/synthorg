@@ -1,10 +1,15 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { listParkedQuestions } from '@/api/endpoints/chat-questions'
+import type { answerParkedQuestion } from '@/api/endpoints/chat-questions'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
-import { apiError, openQuestionsHandler, parkedQuestionFixture } from '@/mocks/handlers'
-import { paginatedEnvelopeFor } from '@/mocks/handlers/helpers'
+import {
+  apiError,
+  openQuestionsHandler,
+  parkedQuestionFixture,
+  questionsPage,
+  successFor,
+} from '@/mocks/handlers'
 import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
@@ -79,9 +84,7 @@ describe('useOrgQuestionsStore', () => {
       http.get('/api/v1/meta/chat/questions', () => {
         listCalls += 1
         return HttpResponse.json(
-          paginatedEnvelopeFor<typeof listParkedQuestions>([
-            parkedQuestionFixture({ approval_id: 'q-1' }),
-          ]),
+          questionsPage([parkedQuestionFixture({ approval_id: 'q-1' })]),
         )
       }),
     )
@@ -92,6 +95,123 @@ describe('useOrgQuestionsStore', () => {
       expect(useOrgQuestionsStore.getState().questions).toHaveLength(1),
     )
     expect(listCalls).toBe(1)
+  })
+
+  it('coalesces a burst of question events into two reads, not five', async () => {
+    // One event proves nothing: it cannot tell coalescing from "only one fetch
+    // was ever triggered". Five must produce exactly two reads -- the one in
+    // flight, plus one more covering everything that arrived during it.
+    let listCalls = 0
+    let release = (): void => {}
+    const firstResponseSent = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get('/api/v1/meta/chat/questions', async () => {
+        listCalls += 1
+        if (listCalls === 1) await firstResponseSent
+        return HttpResponse.json(
+          questionsPage([parkedQuestionFixture({ approval_id: 'q-1' })]),
+        )
+      }),
+    )
+
+    const store = useOrgQuestionsStore.getState()
+    store.handleWsEvent(submittedEvent('clarify:question'))
+    await vi.waitFor(() => expect(listCalls).toBe(1))
+    for (let i = 0; i < 4; i++) {
+      store.handleWsEvent(submittedEvent('clarify:question'))
+    }
+    release()
+
+    await vi.waitFor(() => expect(listCalls).toBe(2))
+    await vi.waitFor(() =>
+      expect(useOrgQuestionsStore.getState().loading).toBe(false),
+    )
+    expect(listCalls).toBe(2)
+  })
+
+  it('an answer echoes what the server recorded when it differs', async () => {
+    // On a decision the server resolves the chosen option's writeup, so the
+    // recorded text is not what the operator typed and is the only place they
+    // see what the agent actually received.
+    server.use(
+      openQuestionsHandler([parkedQuestionFixture({ approval_id: 'q-1' })]),
+      http.post(ANSWER_URL, () =>
+        HttpResponse.json(
+          successFor<typeof answerParkedQuestion>({
+            approval_id: 'q-1',
+            status: 'approved',
+            recorded_answer: 'SQLite: zero ops, single writer.',
+            decided_at: '2026-08-02T10:05:00Z',
+          }),
+        ),
+      ),
+    )
+    await useOrgQuestionsStore.getState().fetchQuestions()
+
+    await useOrgQuestionsStore.getState().answerQuestion('q-1', 'SQLite', 'sqlite')
+
+    const toast = useToastStore.getState().toasts.at(-1)
+    expect(toast?.description).toContain('SQLite: zero ops, single writer.')
+  })
+
+  it('adds no echo when the recorded answer is what was typed', async () => {
+    server.use(
+      openQuestionsHandler([parkedQuestionFixture({ approval_id: 'q-1' })]),
+      http.post(ANSWER_URL, () =>
+        HttpResponse.json(
+          successFor<typeof answerParkedQuestion>({
+            approval_id: 'q-1',
+            status: 'approved',
+            recorded_answer: 'Use Postgres.',
+            decided_at: '2026-08-02T10:05:00Z',
+          }),
+        ),
+      ),
+    )
+    await useOrgQuestionsStore.getState().fetchQuestions()
+
+    await useOrgQuestionsStore.getState().answerQuestion('q-1', 'Use Postgres.')
+
+    expect(useToastStore.getState().toasts.at(-1)?.description).toBeUndefined()
+  })
+
+  it('reuses one idempotency key across a retry of the same answer', async () => {
+    // A user-driven retry after a timeout has to carry the SAME key, or the
+    // server cannot recognise the replay: it re-decides, 409s, and the
+    // operator is told their answer failed when it landed.
+    const keys: (string | null)[] = []
+    let attempt = 0
+    server.use(
+      openQuestionsHandler([parkedQuestionFixture({ approval_id: 'q-1' })]),
+      http.post(ANSWER_URL, ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        attempt += 1
+        if (attempt === 1) {
+          return HttpResponse.json(apiError('gateway timeout'), { status: 504 })
+        }
+        return HttpResponse.json(
+          successFor<typeof answerParkedQuestion>({
+            approval_id: 'q-1',
+            status: 'approved',
+            recorded_answer: 'Postgres',
+            decided_at: '2026-08-02T10:05:00Z',
+          }),
+        )
+      }),
+    )
+    await useOrgQuestionsStore.getState().fetchQuestions()
+
+    expect(await useOrgQuestionsStore.getState().answerQuestion('q-1', 'Postgres')).toBe(
+      false,
+    )
+    expect(await useOrgQuestionsStore.getState().answerQuestion('q-1', 'Postgres')).toBe(
+      true,
+    )
+
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toBe(keys[1])
   })
 
   it.each<WsEventType>([

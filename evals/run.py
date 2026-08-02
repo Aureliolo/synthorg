@@ -38,6 +38,7 @@ from evals.models.scorecard import (
     JudgeCalibrationReport,
     Scorecard,
 )
+from evals.prompt_layers import bind_default_prompt_layers
 from evals.runner.deliverables import BENCHMARK_DELIVERABLES, DEFAULT_DELIVERABLE
 from evals.runner.execution import BriefRunOutcome, run_brief
 from evals.runner.grading import grade_brief
@@ -525,6 +526,10 @@ async def run_benchmark_async(  # noqa: PLR0913
         if memory_backend is not None
         else None
     )
+    # No API lifespan runs here, so the ambient prompt layers the product binds
+    # at boot have to be bound explicitly or the benchmark scores a prompt the
+    # product never sends.
+    bind_default_prompt_layers()
     engine = AgentEngine(
         provider=active_provider,
         recovery_strategy=FailAndReassignStrategy(),

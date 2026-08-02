@@ -2,7 +2,7 @@
 """Ask-policy feature manifest.
 
 The subsystem holds no state slice, no REST controller, and no settings
-namespace of its own (its three keys live in ``engine``, like the
+namespace of its own (its two keys live in ``engine``, like the
 completion oracle's). It binds a process-global ambient provider the prompt
 build reads, and re-binds it on a settings change. This manifest exists so
 those dynamically-bound symbols satisfy the ghost-wiring parity gate.

@@ -303,13 +303,6 @@ export interface OrgEventCardProps {
     draftId: string,
     handles: Readonly<Record<string, string>>,
   ) => void
-  resolvingQuestions: ReadonlySet<string>
-  onAnswerQuestion: (
-    approvalId: string,
-    answer: string,
-    chosenOptionId?: string,
-  ) => void
-  onDeclineQuestion: (approvalId: string) => void
 }
 
 /** Render one inline transcript event, dispatching on its type. */
@@ -320,9 +313,6 @@ export function OrgEventCard({
   onResolveInvite,
   sending,
   onSubmitSecretCaptures,
-  resolvingQuestions,
-  onAnswerQuestion,
-  onDeclineQuestion,
 }: OrgEventCardProps) {
   switch (event.type) {
     case 'invite':
@@ -335,14 +325,9 @@ export function OrgEventCard({
         />
       )
     case 'question':
-      return (
-        <OrgQuestionCard
-          event={event}
-          resolving={resolvingQuestions.has(event.approvalId)}
-          onAnswer={onAnswerQuestion}
-          onDecline={onDeclineQuestion}
-        />
-      )
+      // Self-sufficient: it reads the questions store itself, so answering
+      // needs nothing threaded down from the page.
+      return <OrgQuestionCard event={event} />
     case 'secret-capture':
       return (
         <SecretCaptureCard

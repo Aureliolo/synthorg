@@ -151,6 +151,15 @@ export interface QuestionEvent {
   project?: string | undefined
   /** The agent declared the choice hard to reverse, so answering matters more. */
   hardToReverse: boolean
+  /**
+   * The answer is a structural pick from {@link options}, not free text.
+   *
+   * Taken from the server rather than re-derived from `options.length`: the
+   * server resolves the chosen option's writeup as what the agent continues
+   * with, so which shape the card renders has to agree with which shape the
+   * server will accept.
+   */
+  isDecision: boolean
   /** Non-empty only for a project decision; the operator picks one. */
   options: readonly QuestionOption[]
   askedAt: string

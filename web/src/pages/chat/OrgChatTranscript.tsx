@@ -58,13 +58,6 @@ interface EventProps {
     draftId: string,
     handles: Readonly<Record<string, string>>,
   ) => void
-  resolvingQuestions: ReadonlySet<string>
-  onAnswerQuestion: (
-    approvalId: string,
-    answer: string,
-    chosenOptionId?: string,
-  ) => void
-  onDeclineQuestion: (approvalId: string) => void
 }
 
 function EventTurnView({ turn, events }: { turn: OrgEventTurn; events: EventProps }) {
@@ -76,9 +69,6 @@ function EventTurnView({ turn, events }: { turn: OrgEventTurn; events: EventProp
       onResolveInvite={events.onResolveInvite}
       sending={events.sending}
       onSubmitSecretCaptures={events.onSubmitSecretCaptures}
-      resolvingQuestions={events.resolvingQuestions}
-      onAnswerQuestion={events.onAnswerQuestion}
-      onDeclineQuestion={events.onDeclineQuestion}
     />
   )
 }
@@ -155,13 +145,6 @@ export interface OrgChatTranscriptProps {
     handles: Readonly<Record<string, string>>,
   ) => void
   onRetry: (turnId: number) => void
-  resolvingQuestions: ReadonlySet<string>
-  onAnswerQuestion: (
-    approvalId: string,
-    answer: string,
-    chosenOptionId?: string,
-  ) => void
-  onDeclineQuestion: (approvalId: string) => void
 }
 
 /** The scrolling transcript of the unified org conversation. */
@@ -173,9 +156,6 @@ export function OrgChatTranscript({
   onResolveInvite,
   onSubmitSecretCaptures,
   onRetry,
-  resolvingQuestions,
-  onAnswerQuestion,
-  onDeclineQuestion,
 }: OrgChatTranscriptProps) {
   // Stable identity so the memoised TurnView only re-renders when its own turn
   // (or one of the resolution sets) actually changes, not on every keystroke.
@@ -185,19 +165,8 @@ export function OrgChatTranscript({
       resolvingInvites,
       onResolveInvite,
       onSubmitSecretCaptures,
-      resolvingQuestions,
-      onAnswerQuestion,
-      onDeclineQuestion,
     }),
-    [
-      sending,
-      resolvingInvites,
-      onResolveInvite,
-      onSubmitSecretCaptures,
-      resolvingQuestions,
-      onAnswerQuestion,
-      onDeclineQuestion,
-    ],
+    [sending, resolvingInvites, onResolveInvite, onSubmitSecretCaptures],
   )
   // While a token stream is live the growing bubble is aria-hidden, so a
   // screen reader learns the state (not every token) from this debounced
@@ -228,7 +197,7 @@ export function OrgChatTranscript({
         <button
           type="button"
           onClick={autoScroll.jumpToLatest}
-          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground shadow-md hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card p-card-tight text-xs text-foreground shadow-md hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
         >
           <ArrowDown className="size-3.5" aria-hidden />
           Jump to latest

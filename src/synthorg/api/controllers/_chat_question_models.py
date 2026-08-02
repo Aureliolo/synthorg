@@ -10,7 +10,7 @@ ask; these are the projection the chat surface renders and answers.
 
 from typing import Final
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.approval.enums import ApprovalStatus, QuestionReversibility
 from synthorg.core.types import NotBlankStr
@@ -57,8 +57,6 @@ class ParkedQuestion(BaseModel):
         reversibility: The agent's declared reversibility; ``None`` for a
             question parked before the tools required it, which renders as
             unclassified rather than inventing a value the agent never asserted.
-        is_decision: Whether this is a project decision (picked structurally
-            from ``options``) rather than an open-ended clarification.
         options: The options to pick between; empty for a clarification.
         asked_at: When the agent parked.
     """
@@ -73,9 +71,24 @@ class ParkedQuestion(BaseModel):
     task_title: NotBlankStr | None = None
     project: NotBlankStr | None = None
     reversibility: QuestionReversibility | None = None
-    is_decision: bool = False
     options: tuple[ParkedQuestionOption, ...] = ()
     asked_at: AwareDatetime
+
+    @computed_field
+    @property
+    def is_decision(self) -> bool:
+        """Whether this is a structural pick rather than an open question.
+
+        Derived rather than stored: the operator picks by option id, so what
+        makes a question a decision IS having options to pick from. Carrying a
+        separate flag would let the two disagree, and the disagreement that
+        matters (a decision with no options) would render a pick UI with
+        nothing to pick.
+
+        Returns:
+            ``True`` when the question offers options.
+        """
+        return bool(self.options)
 
 
 class AnswerQuestionRequest(BaseModel):

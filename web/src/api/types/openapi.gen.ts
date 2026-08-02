@@ -14316,7 +14316,18 @@ export type components = {
             readonly asked_at: string;
             readonly asked_by_id: string;
             readonly asked_by_name: string;
-            /** @default false */
+            /**
+             * @description Whether this is a structural pick rather than an open question.
+             *
+             *     Derived rather than stored: the operator picks by option id, so what
+             *     makes a question a decision IS having options to pick from. Carrying a
+             *     separate flag would let the two disagree, and the disagreement that
+             *     matters (a decision with no options) would render a pick UI with
+             *     nothing to pick.
+             *
+             *     Returns:
+             *         ``True`` when the question offers options.
+             */
             readonly is_decision: boolean;
             /** @default [] */
             readonly options: readonly components["schemas"]["ParkedQuestionOption"][];

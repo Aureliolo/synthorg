@@ -31,9 +31,6 @@ function renderCard(onSubmit: (
       onResolveInvite={vi.fn()}
       sending={false}
       onSubmitSecretCaptures={onSubmit}
-      resolvingQuestions={new Set()}
-      onAnswerQuestion={vi.fn()}
-      onDeclineQuestion={vi.fn()}
     />,
   )
 }
@@ -76,9 +73,6 @@ describe('SecretCaptureCard', () => {
         onResolveInvite={vi.fn()}
         sending={false}
         onSubmitSecretCaptures={vi.fn()}
-        resolvingQuestions={new Set()}
-        onAnswerQuestion={vi.fn()}
-        onDeclineQuestion={vi.fn()}
       />,
     )
     expect(screen.getByText(/captured securely/i)).toBeInTheDocument()

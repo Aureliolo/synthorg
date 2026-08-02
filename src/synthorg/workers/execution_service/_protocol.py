@@ -3,6 +3,10 @@
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.approval.resume_annotations import (
+    DEFAULT_RESUME_ANNOTATIONS,
+    ResumeAnnotations,
+)
 from synthorg.core.task import (
     Task,
 )
@@ -47,6 +51,7 @@ class WorkerExecutionService(Protocol):
         approved: bool,
         decided_by: str,
         decision_reason: str | None,
+        annotations: ResumeAnnotations = DEFAULT_RESUME_ANNOTATIONS,
     ) -> None:
         """Schedule a parked-context resume off the request path.
 
@@ -59,6 +64,10 @@ class WorkerExecutionService(Protocol):
         not blocked by a full agent re-run. Non-runtime implementations
         reject loudly: a parked context with no agent engine to resume
         it is a misconfiguration, not a no-op.
+
+        ``annotations`` says how the decision must be presented to the
+        resumed agent (who authored the reason, and any server-owned note),
+        derived by the caller from the persisted approval.
         """
         ...
 

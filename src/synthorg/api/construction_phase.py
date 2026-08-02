@@ -26,6 +26,7 @@ from synthorg.api.app_builders import (
 from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
+    _make_submitted_callback,
     make_steering_notifier,
 )
 from synthorg.api.app_overrides import AppOverrides
@@ -353,11 +354,13 @@ def build_construction_services(
     meeting_scheduler = meeting_wire.meeting_scheduler
 
     channels_plugin = create_channels_plugin()
-    expire_callback = _make_expire_callback(channels_plugin)
     approval_store: ApprovalStoreProtocol = (
         overrides.approval_store
         if overrides.approval_store is not None
-        else ApprovalStore(on_expire=expire_callback)
+        else ApprovalStore(
+            on_add=_make_submitted_callback(channels_plugin),
+            on_expire=_make_expire_callback(channels_plugin),
+        )
     )
 
     # Wire meeting event publisher to the meetings WS channel.

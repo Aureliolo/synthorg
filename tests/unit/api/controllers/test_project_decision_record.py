@@ -12,6 +12,8 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._project_decision_record import record_project_decision
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.evidence import EvidencePackage, RecommendedAction
+from synthorg.core.plan import PlanOption
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
@@ -41,11 +43,45 @@ def _task() -> Task:
     )
 
 
+def _picked_evidence() -> EvidencePackage:
+    """Build the evidence a decided options fork carries: a recorded pick."""
+    return EvidencePackage(
+        id=NotBlankStr("ev-1"),
+        title=NotBlankStr("Which web framework?"),
+        narrative=NotBlankStr("Which web framework should we target?"),
+        recommended_actions=(
+            RecommendedAction(
+                action_type=NotBlankStr("approve"),
+                label=NotBlankStr("Approve with the selected option"),
+                description=NotBlankStr("Proceed with the option you pick."),
+            ),
+        ),
+        options=(
+            PlanOption(
+                id=NotBlankStr("react"),
+                title=NotBlankStr("React"),
+                summary=NotBlankStr("Largest ecosystem, heaviest runtime."),
+                recommended=True,
+            ),
+            PlanOption(
+                id=NotBlankStr("vue"),
+                title=NotBlankStr("Vue"),
+                summary=NotBlankStr("Smaller, fewer hires know it."),
+            ),
+        ),
+        chosen_option_id=NotBlankStr("react"),
+        source_agent_id=NotBlankStr("agent-1"),
+        risk_level=ApprovalRiskLevel.LOW,
+        created_at=_NOW,
+    )
+
+
 def _decision_approval(
     *,
     decision: bool = True,
     task_id: str | None = "task-1",
     options: list[str] | None = None,
+    evidence: EvidencePackage | None = None,
 ) -> ApprovalItem:
     metadata: dict[str, str] = {"options": json.dumps(options or [])}
     if decision:
@@ -61,6 +97,7 @@ def _decision_approval(
         status=ApprovalStatus.PENDING,
         created_at=_NOW,
         task_id=NotBlankStr(str(as_uuid(task_id))) if task_id is not None else None,
+        evidence_package=evidence,
         metadata=metadata,
     )
 
@@ -104,6 +141,51 @@ class TestRecordProjectDecision:
         assert payload.entry_kind is BrainEntryKind.DECISION
         assert payload.decision_outcome == "React"
         assert payload.alternatives == ("React", "Vue")
+
+    async def test_free_text_answer_is_recorded_as_the_author_s_reasoning(
+        self,
+    ) -> None:
+        # No options were offered, so the answer really is the human's words.
+        item = _decision_approval()
+        state, brain = await _seed(item, task=_task())
+
+        await record_project_decision(
+            state,
+            sid("appr-1"),
+            approved=True,
+            decided_by="admin",
+            decision_reason="React, because the team already knows it.",
+        )
+
+        kwargs = brain.append_entry.await_args.kwargs
+        assert kwargs["rationale"] == "React, because the team already knows it."
+
+    async def test_a_picked_option_is_not_recorded_as_the_human_s_words(
+        self,
+    ) -> None:
+        # The writeup is the agent's; the entry is authored by the human. The
+        # rationale must say what they actually contributed, or the brain
+        # reads back as though they wrote prose they never wrote.
+        item = _decision_approval(evidence=_picked_evidence())
+        state, brain = await _seed(item, task=_task())
+
+        await record_project_decision(
+            state,
+            sid("appr-1"),
+            approved=True,
+            decided_by="admin",
+            decision_reason="React: largest ecosystem, heaviest runtime.",
+        )
+
+        kwargs = brain.append_entry.await_args.kwargs
+        assert kwargs["author"] == "admin"
+        assert "React: largest ecosystem" not in kwargs["rationale"]
+        assert "Chosen by the decision-maker" in kwargs["rationale"]
+        # The writeup is still recorded, under the field that claims no author.
+        assert (
+            kwargs["payload"].decision_outcome
+            == "React: largest ecosystem, heaviest runtime."
+        )
 
     async def test_rejection_records_nothing(self) -> None:
         item = _decision_approval()

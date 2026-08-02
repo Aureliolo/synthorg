@@ -18,14 +18,14 @@ from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.approvals._decide import (
     apply_approval,
     apply_rejection,
+    decision_dedup_key,
 )
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
-from synthorg.api.controllers.approvals._notify import _publish_approval_event
 from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
-    _resolve_urgency_thresholds,
     _to_approval_response,
 )
+from synthorg.api.controllers.approvals._urgency import _resolve_urgency_thresholds
 from synthorg.api.dto import (
     ApiResponse,
     ApproveRequest,
@@ -39,7 +39,6 @@ from synthorg.api.guards import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.api.ws_models import WsEventType
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
@@ -50,12 +49,10 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 
-# The durable idempotency-key column is bounded at 255 chars. Decision
-# endpoints store the composite key ``f"{approval_id}:{idempotency_key}"``
-# (a 36-char UUID + a ":" separator = 37 chars of prefix), so the caller's
-# raw key must stay within 255 - 37 = 218 chars or the composite would
-# overflow the column's CHECK constraint.
-_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 218
+# The stored key is a fixed-length digest of (approval id, raw key), so the
+# 255-char column cannot overflow whatever the caller sends. This bound is a
+# plain request-size sanity limit, matching the restore endpoint's.
+_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 255
 
 _IdempotencyKeyHeader = Annotated[
     NotBlankStr,
@@ -202,14 +199,11 @@ class ApprovalsDecisionsController(Controller):
             store = require_service(
                 app_state.slice(ApprovalStateSlice).store, "Approval Store"
             )
+            # The store's own ``on_add`` hook publishes APPROVAL_SUBMITTED, so
+            # this path deliberately does not: one announcement per new
+            # approval, from the one place every producer converges.
             await store.add(item)
 
-            await _publish_approval_event(
-                request,
-                app_state,
-                WsEventType.APPROVAL_SUBMITTED,
-                item,
-            )
             logger.info(
                 API_APPROVAL_CREATED,
                 approval_id=item.id,
@@ -294,7 +288,7 @@ class ApprovalsDecisionsController(Controller):
             # Bind the approval id into the key so the same caller token
             # reused against a different approval cannot return this one's
             # cached decision (matches the MCP backup handler's pattern).
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="approvals.approve",
             request_fingerprint=_request_fingerprint(data),
             decide=_do_approve,
@@ -352,7 +346,7 @@ class ApprovalsDecisionsController(Controller):
             scope="approval:reject",
             # Bind the approval id into the key (see ``approve`` above) so a
             # reused token on a different approval cannot collide.
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="approvals.reject",
             request_fingerprint=_request_fingerprint(data),
             decide=_do_reject,

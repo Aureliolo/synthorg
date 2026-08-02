@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -14,11 +15,18 @@ from synthorg.approval.enums import (
     ApprovalSource,
     ApprovalStatus,
 )
+from synthorg.approval.questions import DECLINED_QUESTION_NOTE
+from synthorg.approval.resume_annotations import (
+    DEFAULT_RESUME_ANNOTATIONS,
+    ResumeAnnotations,
+    ResumeReasonProvenance,
+)
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
 from synthorg.core.plan import PlanOption
 from synthorg.core.types import NotBlankStr
-from tests._shared import JsonDict, LoopAsyncClient, as_uuid
+from synthorg.workers.execution_service import WorkerExecutionService
+from tests._shared import JsonDict, LoopAsyncClient, as_uuid, mock_of
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
 _BASE = "/api/v1/meta/chat/questions"
@@ -35,46 +43,47 @@ def _idem(headers: Mapping[str, str]) -> dict[str, str]:
     return {**headers, "Idempotency-Key": str(uuid4())}
 
 
-class _RecordingExecutionService:
-    """Captures what the decision hands to the parked run's resume."""
+class _Resumes:
+    """The resume calls one test observed, in order."""
 
     def __init__(self) -> None:
-        self.resumes: list[dict[str, object]] = []
+        self.calls: list[dict[str, object]] = []
 
-    async def dispatch_resume(
-        self,
-        *,
-        approval_id: str,
-        approved: bool,
-        decided_by: str,
-        decision_reason: str | None,
-    ) -> None:
-        self.resumes.append(
-            {
-                "approval_id": approval_id,
-                "approved": approved,
-                "decided_by": decided_by,
-                "decision_reason": decision_reason,
-            }
-        )
+    async def record(self, **kwargs: object) -> None:
+        self.calls.append(kwargs)
+
+    def __len__(self) -> int:
+        return len(self.calls)
+
+    def __getitem__(self, index: int) -> dict[str, object]:
+        return self.calls[index]
 
 
 @pytest.fixture
-def resumes(monkeypatch: pytest.MonkeyPatch) -> _RecordingExecutionService:
+def resumes(monkeypatch: pytest.MonkeyPatch) -> _Resumes:
     """Stand in for the agent runtime so a parked decision can complete.
 
     Without a wired runtime the shared test app raises
     ``AgentRuntimeNotConfiguredError`` and rolls the decision back, which is
     the correct production behaviour but leaves nothing to assert about the
     answer that reaches the agent.
+
+    An autospec'd ``WorkerExecutionService`` rather than a one-method class:
+    the protocol has three methods, so a hand-rolled stand-in implementing one
+    is not an instance of it, and a signature drifting out from under this test
+    would go unnoticed until the isinstance check somewhere else failed.
     """
-    service = _RecordingExecutionService()
+    observed = _Resumes()
+    service = mock_of[WorkerExecutionService](
+        dispatch_resume=AsyncMock(side_effect=observed.record)
+    )
+    assert isinstance(service, WorkerExecutionService)
     monkeypatch.setattr(
         _approval_review_gate,
         "worker_execution_service_of",
         lambda _app_state: service,
     )
-    return service
+    return observed
 
 
 def _question(
@@ -247,7 +256,7 @@ class TestAnswerQuestion:
         self,
         async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
-        resumes: _RecordingExecutionService,
+        resumes: _Resumes,
     ) -> None:
         await approval_store.add(_question(approval_id="q-open"))
         resp = await async_test_client.post(
@@ -265,13 +274,15 @@ class TestAnswerQuestion:
         assert item.status is ApprovalStatus.APPROVED
         assert item.decision_reason == "Use Postgres, not SQLite."
 
-        # The answer is what the parked run resumes with.
-        assert resumes.resumes == [
+        # The answer is what the parked run resumes with, presented as the
+        # operator's own words because that is what it is.
+        assert resumes.calls == [
             {
                 "approval_id": str(as_uuid("q-open")),
                 "approved": True,
                 "decided_by": "test-ceo",
                 "decision_reason": "Use Postgres, not SQLite.",
+                "annotations": DEFAULT_RESUME_ANNOTATIONS,
             }
         ]
 
@@ -295,6 +306,7 @@ class TestAnswerQuestion:
         self,
         async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
+        resumes: _Resumes,
     ) -> None:
         await approval_store.add(_decision(approval_id="q-pick"))
         resp = await async_test_client.post(
@@ -309,6 +321,11 @@ class TestAnswerQuestion:
         # with, exactly as on the approvals door.
         assert "SQLite" in (item.decision_reason or "")
         assert "Zero ops" in (item.decision_reason or "")
+        # And it resumes labelled as the agent's own prose, because that is
+        # who wrote it: the operator supplied the pick, not the wording.
+        annotations = resumes[0]["annotations"]
+        assert isinstance(annotations, ResumeAnnotations)
+        assert annotations.reason_provenance is ResumeReasonProvenance.AGENT_OPTION
 
     async def test_unknown_id_is_not_found(
         self,
@@ -339,11 +356,66 @@ class TestAnswerQuestion:
         assert item is not None
         assert item.status is ApprovalStatus.PENDING
 
+    async def test_scope_is_refused_before_the_pending_check(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        # An ALREADY-DECIDED non-question is the only case that tells the two
+        # checks apart: scope-first answers 404, pending-first would answer
+        # 409 and thereby confirm the id exists.
+        decided = make_approval(approval_id="q-decided-plain").model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": datetime.now(UTC),
+                "decided_by": "test-ceo",
+                "decision_reason": "shipped",
+            }
+        )
+        await approval_store.add(decided)
+
+        resp = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-decided-plain')}/answer",
+            json={"answer": "Anything."},
+            headers=_idem(_DECIDE_HEADERS),
+        )
+
+        assert resp.status_code == 404
+
+    async def test_one_key_across_two_questions_decides_both(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+        resumes: _Resumes,
+    ) -> None:
+        # The dedup key binds the approval id, so a client reusing one key
+        # across two questions must not have the second replay the first's
+        # cached response and silently leave that agent parked forever.
+        await approval_store.add(_question(approval_id="q-key-a"))
+        await approval_store.add(_question(approval_id="q-key-b"))
+        shared = {**_DECIDE_HEADERS, "Idempotency-Key": str(uuid4())}
+
+        first = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-key-a')}/answer",
+            json={"answer": "Answer A."},
+            headers=shared,
+        )
+        second = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-key-b')}/answer",
+            json={"answer": "Answer B."},
+            headers=shared,
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.json()["data"]["approval_id"] == str(as_uuid("q-key-b"))
+        assert len(resumes) == 2
+
     async def test_answering_twice_conflicts_and_resumes_once(
         self,
         async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
-        resumes: _RecordingExecutionService,
+        resumes: _Resumes,
     ) -> None:
         await approval_store.add(_question(approval_id="q-twice"))
         first = await async_test_client.post(
@@ -361,7 +433,7 @@ class TestAnswerQuestion:
         item = await approval_store.get(str(as_uuid("q-twice")))
         assert item is not None
         assert item.decision_reason == "First answer."
-        assert len(resumes.resumes) == 1
+        assert len(resumes) == 1
 
     @pytest.mark.parametrize("route", ["answer", "decline"])
     async def test_idempotency_key_is_required(
@@ -387,7 +459,7 @@ class TestDeclineQuestion:
         self,
         async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
-        resumes: _RecordingExecutionService,
+        resumes: _Resumes,
     ) -> None:
         await approval_store.add(_question(approval_id="q-decline"))
         resp = await async_test_client.post(
@@ -399,8 +471,13 @@ class TestDeclineQuestion:
         assert body["status"] == "rejected"
         assert body["recorded_answer"] == DECLINE_REASON
         # Server-owned text, never operator input: the route takes no body.
-        assert resumes.resumes[0]["decision_reason"] is DECLINE_REASON
-        assert resumes.resumes[0]["approved"] is False
+        assert resumes[0]["decision_reason"] is DECLINE_REASON
+        assert resumes[0]["approved"] is False
+        # The reason is fenced by contract, so the instruction the agent is
+        # meant to ACT on rides the separate trusted channel.
+        annotations = resumes[0]["annotations"]
+        assert isinstance(annotations, ResumeAnnotations)
+        assert annotations.system_note == DECLINED_QUESTION_NOTE
 
     async def test_decline_needs_no_chosen_option(
         self,

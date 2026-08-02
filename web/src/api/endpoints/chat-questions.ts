@@ -11,13 +11,7 @@ import type {
   QuestionDecisionResult,
 } from '@/api/types/chat-questions'
 
-import {
-  apiClient,
-  paginateAll,
-  unwrap,
-  unwrapPaginated,
-  type PaginatedResult,
-} from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import { idempotencyKeyHeader } from '../idempotency'
 import type {
   ApiResponse,
@@ -27,27 +21,30 @@ import type {
 
 const BASE = '/meta/chat/questions'
 
-function pageParams(cursor: string | null): PaginationParams {
-  return cursor ? { cursor } : {}
-}
-
-async function fetchQuestionsPage(
-  cursor: string | null,
-): Promise<PaginatedResult<ParkedQuestion>> {
-  const response = await apiClient.get<PaginatedResponse<ParkedQuestion>>(BASE, {
-    params: pageParams(cursor),
-  })
-  return unwrapPaginated<ParkedQuestion>(response)
-}
+/**
+ * How many open questions the chat page renders at once.
+ *
+ * One page, not the whole set. The server already orders by what blocks most
+ * (hard-to-reverse first, then oldest), so the first page is the right first
+ * page, and walking every cursor would make the chat page's cost scale with
+ * the size of the backlog it exists to help drain.
+ */
+const QUESTION_PAGE_SIZE = 50
 
 /**
- * Every question the org is currently waiting on, hard-to-reverse first.
+ * The open questions the org is waiting on, hard-to-reverse first.
  *
- * The whole set is loaded (the server orders it) so the chat page can render
- * the cards without a second source of truth for the ordering.
+ * Returns the first page plus whether more exist, so the transcript can say
+ * so rather than silently rendering a truncated list.
  */
-export async function listParkedQuestions(): Promise<ParkedQuestion[]> {
-  return paginateAll<ParkedQuestion>(fetchQuestionsPage)
+export async function listParkedQuestions(): Promise<
+  PaginatedResult<ParkedQuestion>
+> {
+  const params: PaginationParams = { limit: QUESTION_PAGE_SIZE }
+  const response = await apiClient.get<PaginatedResponse<ParkedQuestion>>(BASE, {
+    params,
+  })
+  return unwrapPaginated<ParkedQuestion>(response)
 }
 
 /** Answer a parked question, resuming the agent with the answer. */

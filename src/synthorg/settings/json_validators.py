@@ -260,16 +260,21 @@ def _validate_ask_policy_directives(value: object) -> None:
     """Reject an ``engine.ask_policy_extra_directives`` payload of the wrong shape.
 
     Rejected at write time (visible to the operator) rather than silently
-    dropped at the next rebuild. Each entry is re-validated as the same
-    :class:`~synthorg.engine.ask_policy.models.AskDirective` the prompt build
-    parses, so write-time and runtime contracts cannot drift.
+    dropped at the next rebuild. The whole payload is re-validated as the same
+    :class:`~synthorg.engine.ask_policy.models.AskPolicyConfig` the prompt
+    build parses, so write-time and runtime contracts cannot drift: that also
+    enforces the count cap and the unique-id rule, not only per-entry shape.
 
     Raises:
-        ValueError: If the payload is not a JSON array, or any entry fails
+        ValueError: If the payload is not a JSON array, any entry fails
             ``AskDirective`` validation (unknown ``scope_kind``, blank field, a
-            ``scope`` / ``scope_kind`` pairing that cannot match, etc.).
+            ``scope`` / ``scope_kind`` pairing that cannot match), two entries
+            share an id, or the list exceeds the cap.
     """
-    from synthorg.engine.ask_policy.models import AskDirective  # noqa: PLC0415
+    from synthorg.engine.ask_policy.models import (  # noqa: PLC0415
+        AskDirective,
+        AskPolicyConfig,
+    )
 
     if not isinstance(value, list):
         msg = (
@@ -277,15 +282,21 @@ def _validate_ask_policy_directives(value: object) -> None:
             "directive objects"
         )
         raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+    directives = []
     for idx, entry in enumerate(value):
         try:
-            AskDirective.model_validate(entry)
+            directives.append(AskDirective.model_validate(entry))
         except (ValueError, TypeError) as exc:
             msg = (
                 f"engine/ask_policy_extra_directives[{idx}] is not a valid "
                 f"directive: {exc}"
             )
             raise ValueError(msg) from exc
+    try:
+        AskPolicyConfig(extra_directives=tuple(directives))
+    except (ValueError, TypeError) as exc:
+        msg = f"engine/ask_policy_extra_directives is not a valid set: {exc}"
+        raise ValueError(msg) from exc
 
 
 _JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[object], None]]] = {

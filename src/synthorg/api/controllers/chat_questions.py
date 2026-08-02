@@ -30,8 +30,10 @@ from synthorg.api.controllers._chat_question_models import (
 from synthorg.api.controllers._chat_questions import (
     answer_question,
     decline_question,
-    list_open_questions,
+    open_question_items,
+    project_questions,
 )
+from synthorg.api.controllers.approvals._decide import decision_dedup_key
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.pagination import (
@@ -51,7 +53,7 @@ _DEFAULT_LIMIT: Final[int] = 50
 # The durable idempotency-key column is bounded at 255 chars and these routes
 # store the composite ``f"{approval_id}:{idempotency_key}"`` (a 36-char UUID
 # plus a ":" separator), so the caller's raw key must stay within 218.
-_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 218
+_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 255
 
 _QuestionIdempotencyKeyHeader = Annotated[
     NotBlankStr,
@@ -110,14 +112,17 @@ class ChatQuestionsController(Controller):
             The open questions, hard-to-reverse first then oldest first.
         """
         app_state: AppState = state.app_state
-        questions = await list_open_questions(app_state)
+        # Page the raw approvals, then enrich only the page: enrichment is a
+        # per-item task + artifact + oracle read, and this endpoint is polled.
+        items = await open_question_items(app_state)
         page, meta = paginate_cursor(
-            questions,
+            items,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        questions = await project_questions(app_state, page)
+        return PaginatedResponse(data=questions, pagination=meta)
 
     @post(
         "/{approval_id:str}/answer",
@@ -169,7 +174,7 @@ class ChatQuestionsController(Controller):
             actor_id=actor.actor_id,
             # Bind the question into the key so a token reused against a
             # different question cannot return this one's cached decision.
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="/meta/chat/questions/answer",
             request_fingerprint=chat_request_fingerprint(data),
             build=_build,
@@ -222,7 +227,7 @@ class ChatQuestionsController(Controller):
             app_state,
             scope="meta.chat.questions.decline",
             actor_id=actor.actor_id,
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="/meta/chat/questions/decline",
             request_fingerprint=_decline_fingerprint(approval_id),
             build=_build,

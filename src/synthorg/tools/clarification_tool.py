@@ -7,17 +7,18 @@ resume path restores the run) and returns metadata signalling that the
 loop should park. Unlike ``request_human_approval`` the park is marked
 ``clarification`` so the task moves to ``AWAITING_INPUT`` while it waits,
 and the human's free-text answer rides back in as the decision reason
-that ``ApprovalGate.build_resume_message`` injects on resume.
+that ``build_resume_message`` injects on resume.
 """
 
 from datetime import UTC, datetime
-from typing import ClassVar, override
+from typing import ClassVar, Final, override
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel, QuestionReversibility
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.questions import CLARIFY_ACTION_TYPE
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -27,6 +28,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_FAILED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._question_output_guard import guard_question_text
 
 from .base import BaseTool, ToolExecutionResult
 
@@ -35,7 +37,7 @@ logger = get_logger(__name__)
 #: Action type for a clarification park. Structurally a
 #: ``category:action`` pair (the invoker/park path expects that shape);
 #: not a security-classified action -- clarification carries no risk.
-_CLARIFY_ACTION_TYPE: str = "clarify:question"
+_CLARIFY_ACTION_TYPE: Final[str] = CLARIFY_ACTION_TYPE
 
 
 class RequestClarificationArgs(BaseModel):
@@ -125,12 +127,31 @@ class RequestClarificationTool(BaseTool):
                 f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
                 for err in exc.errors()
             )
+            # Logged as well as returned: the error result goes back to the
+            # agent, so an agent looping on a malformed call is otherwise
+            # invisible to the operator watching the run.
+            logger.warning(
+                APPROVAL_GATE_ESCALATION_FAILED,
+                agent_id=self._agent_id,
+                action_type=_CLARIFY_ACTION_TYPE,
+                error_type=type(exc).__name__,
+                invalid_fields=[
+                    ".".join(str(part) for part in err["loc"]) for err in exc.errors()
+                ],
+                note="Malformed clarification arguments",
+            )
             return ToolExecutionResult(
                 content=f"Invalid clarification arguments: {details}",
                 is_error=True,
             )
 
-        question = args.question.strip()
+        # The question is agent-authored prose a human reads in the chat
+        # transcript, so it passes the same output-style boundary an
+        # inter-agent message does before it is persisted.
+        blocked, approved = guard_question_text(args.question.strip())
+        if blocked is not None:
+            return blocked
+        question = approved[0]
         approval_id = str(uuid4())
 
         store_error = await self._persist_item(

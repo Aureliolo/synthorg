@@ -30,6 +30,11 @@ import { server } from '@/test-setup'
 const QUESTION = 'Which database backend should I target?'
 const ANSWER_URL = '/api/v1/meta/chat/questions/:approvalId/answer'
 const DECLINE_URL = '/api/v1/meta/chat/questions/:approvalId/decline'
+// Every control on a question card is named after that question, so several
+// open cards (and the page composer) never share an accessible name.
+const ANSWER_LABEL = `Answer: Dana Dev asks "${QUESTION}"`
+const SEND_LABEL = `Send answer: Dana Dev asks "${QUESTION}"`
+const DECLINE_LABEL = `Decline: Dana Dev asks "${QUESTION}"`
 
 const SUBMITTED: WsEvent = {
   event_type: 'approval.submitted',
@@ -108,8 +113,8 @@ describe('parked questions in the unified chat', () => {
     renderChat()
     await screen.findByText(QUESTION)
 
-    await user.type(screen.getByLabelText('Answer the question'), 'Postgres.')
-    await user.click(screen.getByRole('button', { name: 'Send answer' }))
+    await user.type(screen.getByLabelText(ANSWER_LABEL), 'Postgres.')
+    await user.click(screen.getByRole('button', { name: SEND_LABEL }))
 
     await waitFor(() => expect(posted).toHaveLength(1))
     expect(posted[0]?.answer).toBe('Postgres.')
@@ -134,7 +139,7 @@ describe('parked questions in the unified chat', () => {
     renderChat()
     await screen.findByText(QUESTION)
 
-    await user.click(screen.getByRole('button', { name: 'Decline' }))
+    await user.click(screen.getByRole('button', { name: DECLINE_LABEL }))
 
     await waitFor(() => expect(keys).toHaveLength(1))
     expect(keys[0]).toBeTruthy()
