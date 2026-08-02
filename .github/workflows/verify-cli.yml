@@ -105,12 +105,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: docker/sidecar/go.mod
-          # zizmor: ignore[cache-poisoning]
-          cache: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-          cache-dependency-path: docker/sidecar/go.sum
-      - uses: ./.github/actions/go-mod-download-retry
-        with:
-          working-directory: docker/sidecar
+          # No module cache and no download step: this module has zero
+          # external dependencies, so there is no go.sum to key a cache on
+          # and nothing to fetch. Pointing the cache at an absent go.sum
+          # only produces a "paths were not resolved" warning every run.
+          cache: false
 
       - name: go vet
         working-directory: docker/sidecar

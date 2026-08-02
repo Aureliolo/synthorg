@@ -424,15 +424,28 @@ def _is_self_improvement_weakening(key: str, *, current: str | None, new: str) -
     return currently_off and compare_ci(new, "true")
 
 
-def _names_sandboxed_loop(value: str | None) -> bool:
-    """Return whether a loop-routing value routes anything to the sandboxed loop.
+def _sandboxed_loop_routes(value: str | None) -> frozenset[str]:
+    """Return which routes in a loop-routing value name the sandboxed loop.
 
-    Covers both shapes the routing keys use: a bare loop type, and the
-    ``complexity:loop`` override list.
+    Compares routes rather than mere presence: a value that already routes one
+    complexity to the sandboxed loop and now routes a second is widening what
+    reaches it, which a "does the string mention it" test would wave through
+    because the answer was already yes.
+
+    Covers both shapes the routing keys use: a bare loop type (which yields the
+    single empty-named route) and the ``complexity:loop`` override list.
+
+    Returns:
+        The complexity names routed to the sandboxed loop.
     """
     if not value:
-        return False
-    return _SANDBOXED_LOOP_TYPE in value.lower()
+        return frozenset()
+    routes = set()
+    for entry in value.lower().split(","):
+        complexity, _, loop = entry.strip().rpartition(":")
+        if loop.strip() == _SANDBOXED_LOOP_TYPE:
+            routes.add(complexity.strip())
+    return frozenset(routes)
 
 
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
@@ -457,7 +470,8 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
         # Naming the sandboxed loop where it was not named before is the
         # weakening: it starts routing real tasks into a container that runs
         # generated code. Removing it tightens and stays unguarded.
-        return _names_sandboxed_loop(new) and not _names_sandboxed_loop(current)
+        added = _sandboxed_loop_routes(new) - _sandboxed_loop_routes(current)
+        return bool(added)
     if key == _ENGINE_ORACLE_MIN_STAKES_KEY:
         # A stored or env-overridden value can be malformed too, and raising
         # here would fail the write with a parse error instead of judging the

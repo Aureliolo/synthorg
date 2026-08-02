@@ -109,6 +109,17 @@ def test_parse_event_unknown_kind_is_skipped() -> None:
     assert prev == pytest.approx(0.4)
 
 
+def test_parse_event_unmapped_kind_is_skipped_and_named() -> None:
+    # The container reports an SDK event class it neither forwards nor knows
+    # to ignore. It carries no turn, so nothing reaches the loop, but the
+    # class name has to survive into the log for the skew to be diagnosable.
+    event, prev = _parse_event(
+        json.dumps({"kind": "unmapped", "text": "SomeNewSdkEvent"}), 0.4
+    )
+    assert event is None
+    assert prev == pytest.approx(0.4)
+
+
 def test_parse_event_non_dict_payload_is_skipped() -> None:
     # Valid JSON but not an object (e.g. a bare array) is skipped, not crashed.
     event, prev = _parse_event(json.dumps([1, 2, 3]), 0.7)

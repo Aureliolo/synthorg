@@ -473,6 +473,15 @@ class DockerSandboxConfig(BaseModel):
                     f"allowed_paths entry {entry!r} must use"
                     " 'host:port=/prefix' (the prefix starting with '/')",
                 )
+            if "," in prefix:
+                # The entries are handed to the sidecar as one comma-separated
+                # variable, so a comma inside a prefix would split it into two
+                # malformed rules there.
+                reject_entry(
+                    "allowed_paths",
+                    f"prefix in {entry!r} must not contain a comma:"
+                    " the sidecar receives these entries comma-separated",
+                )
             validate_host_port(host_port, field="allowed_paths")
             if host_port not in self.allowed_hosts:
                 reject_entry(

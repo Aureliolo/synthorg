@@ -134,6 +134,13 @@ jobs:
               # can break the container contract without touching the image.
               - 'src/synthorg/workers/_openhands_wiring.py'
               - 'src/synthorg/tools/sandbox/**'
+              - 'docker/sidecar/**'
+              # The contract test drives the production event codec, which
+              # reaches into these; a change there can break the run protocol
+              # without touching anything named openhands.
+              - 'src/synthorg/core/**'
+              - 'src/synthorg/observability/**'
+              - 'tests/_shared/**'
               - 'tests/integration/engine/test_openhands_container_contract.py'
               - '.dockerignore'
               - '.github/workflows/build-images.yml'

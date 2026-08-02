@@ -284,7 +284,15 @@ providers:
 
 This is the **backend** container reaching a service on the host, and on Linux
 Engine it needs the alias to exist: Docker Desktop injects
-`host.docker.internal`, plain Engine does not.
+`host.docker.internal`, plain Engine does not. Add it to the backend service
+yourself there:
+
+```yaml
+services:
+  backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
 
 Do not confuse it with the same hostname in the OpenHands loop's two endpoint
 settings. Those point the other way, from a spawned loop container back at the

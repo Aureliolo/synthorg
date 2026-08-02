@@ -85,6 +85,14 @@ linters:
       - path: 'internal/health/health\.go$'
         linters: [gosec]
         text: 'G104'
+      # SO_ORIGINAL_DST is only reachable through a raw getsockopt, and
+      # syscall.Syscall6 takes uintptr, so unsafe.Pointer is mandated by the
+      # kernel API rather than chosen. Reading the original destination is
+      # the whole basis of transparent proxying. Mirrors the CLI's identical
+      # carve-out for the Windows disk-free syscall.
+      - path: 'internal/proxy/dnat_linux\.go$'
+        linters: [gosec]
+        text: 'G103'
 
 formatters:
   enable:

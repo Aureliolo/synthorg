@@ -120,6 +120,24 @@ class TestGate:
 
         assert deps is None
 
+    @pytest.mark.parametrize(
+        "key",
+        ["providers.gateway_base_url", "tools.credentialed_mcp_base_url"],
+    )
+    @pytest.mark.parametrize("url", ["http://host:3001", "http://host:3001/"])
+    async def test_endpoint_without_a_path_returns_none(
+        self, key: str, url: str
+    ) -> None:
+        # Both endpoints share one host, so the narrowing is per path. An
+        # endpoint with no path contributes no rule, which would leave it
+        # inside the host allowlist but refused per request: unreachable at
+        # run time rather than reported at wiring time.
+        deps = await build_openhands_loop_deps_or_none(
+            _app_state({key: url}, signer=_signer())
+        )
+
+        assert deps is None
+
     async def test_runtime_cap_at_or_above_token_ttl_returns_none(self) -> None:
         # A run outliving its bearer fails mid-run with a 401 that reads as an
         # auth fault, so the pair is refused at wiring time instead.
@@ -134,6 +152,26 @@ class TestGate:
         )
 
         assert deps is None
+
+
+class TestSignerRotationRace:
+    async def test_signer_lost_mid_wiring_returns_none(self) -> None:
+        # The gateway can rebuild while this function is awaiting settings.
+        # Handing the loop the signer captured before that window would mint
+        # bearers the gateway no longer verifies, so the signer is re-read
+        # after the awaits and an absent one fails closed.
+        app_state = _app_state(signer=_signer())
+
+        async def _get_int_then_rotate(namespace: str, key: str) -> int:
+            # Fires after the availability gate, before the deps are built.
+            app_state.swap_slice(GatewayStateSlice(signer=None))
+            return int(_WIRED.get(f"{namespace}.{key}", "0"))
+
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
+        assert resolver is not None
+        object.__setattr__(resolver, "get_int", _get_int_then_rotate)
+
+        assert await build_openhands_loop_deps_or_none(app_state) is None
 
 
 class TestSandboxEgress:

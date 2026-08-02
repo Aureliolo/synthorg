@@ -63,6 +63,15 @@ RUN python3 -m venv "${OPENHANDS_VENV}" \
     && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --upgrade "pip==${PIP_VERSION}" \
     && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --require-hashes \
         -r /opt/openhands/requirements.lock \
+    # pip is a build-time tool: the entrypoint never invokes it, and nothing
+    # installs anything at runtime (the closure is fixed and hash-pinned).
+    # Shipping it means shipping its vendored tree, which carries its own
+    # advisories against code this image never executes. Same for the base's
+    # bootstrap wheels, already consumed by the venv above.
+    && rm -rf "${OPENHANDS_VENV}"/lib/python*/site-packages/pip \
+        "${OPENHANDS_VENV}"/lib/python*/site-packages/pip-*.dist-info \
+        "${OPENHANDS_VENV}"/bin/pip* \
+        /usr/share/python-wheels \
     && chown -R 10001:10001 /opt/openhands
 
 # After the closure: the RUN above depends only on requirements.lock, so this

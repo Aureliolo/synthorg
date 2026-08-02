@@ -5,7 +5,7 @@ description: Published container images, apko-composed bases, cosign + SLSA veri
 
 # Deployment & Container Runtime
 
-SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,openhands,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, **openhands**, and **fine-tune-{gpu,cpu}** images are not Compose services; the CLI pre-pulls the sandbox family when requested, and the backend spawns sandbox/sidecar/openhands/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for all enabled images (both Compose-managed and on-demand) before starting.
+SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,openhands,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, **openhands**, and **fine-tune-{gpu,cpu}** images are not Compose services; the CLI pre-pulls the sandbox family when requested, and the backend spawns sandbox/sidecar/openhands/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for every enabled **published** image (both Compose-managed and on-demand) before starting. The unpublished `desktop` image below carries no signature to verify and is therefore outside that guarantee.
 
 ---
 
@@ -31,7 +31,7 @@ Each published image is signed with **cosign keyless** via GitHub OIDC and attes
 
 Unlike the published images above, `desktop` is **not built or published by `.github/workflows/build-images.yml`**, so it is neither cosign-signed nor SLSA-attested. Its literal `FROM` digest is kept fresh by Renovate (the `dockerfile` manager scans it). Because it is absent from the publish + signing matrix, the desktop tool's `desktop_image_pin` default does not resolve to a published image (tracked in #2033).
 
-The `openhands` image is published, but it is the one published image with no literal `FROM` digest: it takes its base via `ARG BASE_IMAGE` / `FROM ${BASE_IMAGE}`, supplied at build time from the `sandbox` base digest, so Renovate does not track that line and the base moves only when the sandbox base does.
+The `openhands` image is published, but it is the one published image with no literal `FROM` digest: it takes its base via `ARG BASE_IMAGE` / `FROM ${BASE_IMAGE}`, so Renovate does not track that line and the base moves only when the sandbox base does. A published build passes the sandbox base as `repo@sha256:...`; a pull-request build has no published base digest yet and passes the locally loaded `repo:tag` instead, so the digest pin is a property of published builds, not of every build.
 
 ## apko-composed base images
 

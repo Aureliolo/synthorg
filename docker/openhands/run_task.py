@@ -123,6 +123,30 @@ from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
 
+# Latch so the missing-cost-shape diagnostic is written once per run.
+_COST_SHAPE_REPORTED: set[str] = set()
+
+# SDK events the adapter deliberately does not forward: lifecycle, streaming
+# and telemetry that carry no turn, no action and no cost. Matched by class
+# NAME rather than isinstance so the container never fails to start because
+# the SDK dropped one, and so a RENAMED event falls through to "unmapped"
+# instead of being silently absorbed. Naming them is what lets anything
+# outside the set mean "the SDK grew something the adapter should map".
+_IGNORED_EVENT_NAMES: frozenset[str] = frozenset(
+    {
+        "ACPToolCallEvent",
+        "CondensationSummaryEvent",
+        "ConversationStateUpdateEvent",
+        "HookExecutionEvent",
+        "InterruptEvent",
+        "LLMCompletionLogEvent",
+        "PauseEvent",
+        "StreamingDeltaEvent",
+        "SystemPromptEvent",
+        "TokenEvent",
+    }
+)
+
 # LiteLLM routes by a provider prefix on the model name, and the SDK hands
 # ``model`` to it verbatim (``litellm_call_kwargs`` returns it unchanged for
 # any non-OpenHands model), so an unprefixed SynthOrg model id resolves to no
@@ -192,16 +216,31 @@ def _text_of(event: object) -> str:
     return ""
 
 
-def _normalize(event: object) -> dict[str, object]:
+def _normalize(event: object) -> dict[str, object] | None:
     """Map one SDK event onto the adapter's normalized JSON shape.
 
-    An event outside the four adapter-relevant classes is reported as
-    ``unmapped`` carrying its class name rather than dropped: the host logs
-    that at WARNING, so an SDK upgrade that introduces or renames an event
-    surfaces as a visible protocol skew instead of a silently missing turn.
+    An event that is neither adapter-relevant nor in the known-ignored set is
+    reported as ``unmapped`` carrying its class name: the host logs that at
+    WARNING, so an SDK upgrade that introduces or renames an event surfaces as
+    a visible protocol skew rather than a silently missing turn.
 
     Returns:
-        The normalized event dict.
+        The normalized event dict, or ``None`` for a known-ignored event.
+    """
+    turn = _normalize_turn(event)
+    if turn is not None:
+        return turn
+    name = type(event).__name__
+    if name in _IGNORED_EVENT_NAMES:
+        return None
+    return {"kind": "unmapped", "text": name}
+
+
+def _normalize_turn(event: object) -> dict[str, object] | None:
+    """Map one adapter-relevant SDK event onto its normalized shape.
+
+    Returns:
+        The normalized event dict, or ``None`` for any other event class.
     """
     if isinstance(event, ActionEvent):
         return {
@@ -217,7 +256,7 @@ def _normalize(event: object) -> dict[str, object]:
         # Scrubbed like every other outbound text: an SDK error carries
         # request context, and this path never reaches _safe_error_text.
         return {"kind": "error", "text": _DIAGNOSTICS.scrub(_text_of(event))}
-    return {"kind": "unmapped", "text": type(event).__name__}
+    return None
 
 
 def _build_agent(spec: dict[str, object]) -> Agent:
@@ -263,11 +302,15 @@ def _accumulated_cost(conversation: object) -> float:
         # Zero is indistinguishable from "this run cost nothing", and the
         # host's per-task budget kill reads this number, so a shape the
         # contract test does not reproduce has to leave a trace rather than
-        # silently disarming the cap.
-        sys.stderr.write(
-            f"accumulated cost unavailable: stats={type(stats).__name__} "
-            f"metrics={type(metrics).__name__}\n"
-        )
+        # silently disarming the cap. Once per run: this is called on every
+        # event, and a broken shape stays broken for the whole run, so
+        # repeating it would bury the rest of the container's diagnostics.
+        if not _COST_SHAPE_REPORTED:
+            _COST_SHAPE_REPORTED.add("reported")
+            sys.stderr.write(
+                f"accumulated cost unavailable: stats={type(stats).__name__} "
+                f"metrics={type(metrics).__name__}\n"
+            )
         return 0.0
     return float(cost or 0.0)
 
@@ -285,6 +328,8 @@ def _run(spec: dict[str, object]) -> None:
 
     def _callback(event: object) -> None:
         normalized = _normalize(event)
+        if normalized is None:
+            return
         conversation = holder.get("conversation")
         if conversation is not None:
             normalized["cost"] = _accumulated_cost(conversation)

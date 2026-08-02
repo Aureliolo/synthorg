@@ -6,9 +6,36 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// recorder collects strings written by handler / relay goroutines and read by
+// the test goroutine. The lock is the happens-before edge: without it these
+// are plain cross-goroutine slice appends, which `go test -race` reports.
+type recorder struct {
+	mu    sync.Mutex
+	items []string
+}
+
+func (r *recorder) add(s string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.items = append(r.items, s)
+}
+
+func (r *recorder) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.items...)
+}
+
+func (r *recorder) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.items = nil
+}
 
 func TestPathAllowedMatchesOnSegmentBoundary(t *testing.T) {
 	t.Parallel()
@@ -32,6 +59,16 @@ func TestPathAllowedMatchesOnSegmentBoundary(t *testing.T) {
 		// must not inherit it.
 		{"/api/v1/gateway/v1x", false},
 		{"/api/v1/mcp-gateway-admin", false},
+		// Traversal: these all satisfy a naive prefix test, and the upstream
+		// would normalise each one back to a denied route. The request is
+		// forwarded verbatim, so a non-canonical path is refused outright.
+		{"/api/v1/gateway/v1/../auth/login", false},
+		{"/api/v1/gateway/v1/../../auth/setup", false},
+		{"/api/v1/gateway/v1/./../metrics", false},
+		{"/api/v1/gateway/v1/subpath/../../auth/login", false},
+		{"/api/v1/mcp-gateway/..", false},
+		// A trailing slash is canonical enough to keep working.
+		{"/api/v1/gateway/v1/", true},
 	}
 
 	for _, tc := range cases {
@@ -71,12 +108,12 @@ func TestLooksLikeTLSDetectsClientHello(t *testing.T) {
 func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 	t.Parallel()
 
-	var reachedUpstream []string
+	reachedUpstream := &recorder{}
 	upstreamSrv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reachedUpstream = append(reachedUpstream, r.URL.Path)
+			reachedUpstream.add(r.URL.Path)
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, "ok")
+			_, _ = fmt.Fprint(w, "ok")
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -101,7 +138,7 @@ func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reachedUpstream = nil
+			reachedUpstream.reset()
 
 			clientConn, guardConn := net.Pipe()
 			upstreamConn, err := net.Dial("tcp", upstreamLn.Addr().String())
@@ -110,13 +147,13 @@ func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 			}
 			defer upstreamConn.Close()
 
-			var blockedPaths []string
+			blockedPaths := &recorder{}
 			go func() {
 				defer guardConn.Close()
 				relayHTTPGuarded(
 					bufio.NewReader(guardConn), guardConn, upstreamConn,
 					[]string{"/api/v1/gateway/v1", "/api/v1/mcp-gateway"},
-					func(_, path string) { blockedPaths = append(blockedPaths, path) },
+					func(_, path string) { blockedPaths.add(path) },
 				)
 			}()
 
@@ -138,14 +175,15 @@ func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 			if resp.StatusCode != tc.wantStatus {
 				t.Errorf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
 			}
-			reached := len(reachedUpstream) > 0
+			seen := reachedUpstream.snapshot()
+			reached := len(seen) > 0
 			if reached != tc.wantReach {
 				t.Errorf(
 					"upstream reached = %v (%v), want %v",
-					reached, reachedUpstream, tc.wantReach,
+					reached, seen, tc.wantReach,
 				)
 			}
-			if !tc.wantReach && len(blockedPaths) == 0 {
+			if !tc.wantReach && len(blockedPaths.snapshot()) == 0 {
 				t.Error("a refused request must be reported to the blocked hook")
 			}
 		})
@@ -158,10 +196,10 @@ func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 func TestRelayHTTPGuardedChecksEveryKeepAliveRequest(t *testing.T) {
 	t.Parallel()
 
-	var reached []string
+	reached := &recorder{}
 	upstreamSrv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reached = append(reached, r.URL.Path)
+			reached.add(r.URL.Path)
 			w.WriteHeader(http.StatusOK)
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -220,7 +258,7 @@ func TestRelayHTTPGuardedChecksEveryKeepAliveRequest(t *testing.T) {
 	if resp2.StatusCode != http.StatusForbidden {
 		t.Errorf("second request status = %d, want 403", resp2.StatusCode)
 	}
-	for _, p := range reached {
+	for _, p := range reached.snapshot() {
 		if strings.HasPrefix(p, "/api/v1/auth") {
 			t.Errorf("a blocked path reached upstream: %q", p)
 		}

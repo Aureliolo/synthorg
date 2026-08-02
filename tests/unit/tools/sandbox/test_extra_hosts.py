@@ -120,6 +120,68 @@ class TestSidecarHostConfig:
         assert "ExtraHosts" not in docker.host_config_of_last_create()
 
 
+class TestSidecarPathNarrowing:
+    """The L7 half of the egress pin has to reach the sidecar's environment.
+
+    ``allowed_hosts`` alone permits every route the destination serves. The
+    narrowing only exists if ``SIDECAR_ALLOWED_PATHS`` actually arrives.
+    """
+
+    async def test_allowed_paths_reach_the_sidecar_env(self, tmp_path: Path) -> None:
+        docker = _RecordingDocker()
+        sandbox = _sandbox(
+            tmp_path,
+            network="bridge",
+            allowed_hosts=("gateway.internal:3001",),
+            allowed_paths=(
+                "gateway.internal:3001=/api/v1/gateway/v1",
+                "gateway.internal:3001=/api/v1/mcp-gateway",
+            ),
+        )
+
+        await sandbox._create_sidecar(docker)
+
+        env = cast("list[str]", docker.created[-1]["Env"])
+        assert (
+            "SIDECAR_ALLOWED_PATHS=gateway.internal:3001=/api/v1/gateway/v1,"
+            "gateway.internal:3001=/api/v1/mcp-gateway" in env
+        )
+
+    async def test_absent_when_no_narrowing_is_configured(self, tmp_path: Path) -> None:
+        docker = _RecordingDocker()
+        sandbox = _sandbox(
+            tmp_path, network="bridge", allowed_hosts=("gateway.internal:3001",)
+        )
+
+        await sandbox._create_sidecar(docker)
+
+        env = cast("list[str]", docker.created[-1]["Env"])
+        assert not any(e.startswith("SIDECAR_ALLOWED_PATHS=") for e in env)
+
+
+class TestAllowedPathsValidation:
+    def test_rejects_a_prefix_that_is_not_absolute(self) -> None:
+        with pytest.raises(ValueError, match="host:port=/prefix"):
+            DockerSandboxConfig(
+                allowed_hosts=("host:3001",), allowed_paths=("host:3001=api/v1",)
+            )
+
+    def test_rejects_a_rule_for_a_host_that_is_not_allowed(self) -> None:
+        # A rule for an unlisted destination grants nothing while reading as
+        # protection, so it is refused rather than silently ignored.
+        with pytest.raises(ValueError, match="not in allowed_hosts"):
+            DockerSandboxConfig(
+                allowed_hosts=("host:3001",), allowed_paths=("other:3001=/api",)
+            )
+
+    def test_accepts_a_rule_pinned_to_an_allowed_host(self) -> None:
+        config = DockerSandboxConfig(
+            allowed_hosts=("host:3001",),
+            allowed_paths=("host:3001=/api/v1/gateway/v1",),
+        )
+        assert config.allowed_paths == ("host:3001=/api/v1/gateway/v1",)
+
+
 class TestLoopAlias:
     def test_openhands_alias_satisfies_the_validator(self) -> None:
         # The wiring hands this constant straight to DockerSandboxConfig, so a

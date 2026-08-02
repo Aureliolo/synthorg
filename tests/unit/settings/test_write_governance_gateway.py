@@ -108,6 +108,10 @@ async def test_disabling_loop_auto_select_is_unguarded() -> None:
         (_DEFAULT_LOOP, "react", "openhands"),
         (_OVERRIDES, "complex:hybrid", "complex:openhands"),
         (_OVERRIDES, None, "epic:openhands"),
+        # Widening an EXISTING route set: the value already named the
+        # sandboxed loop, so a presence test would wave this through even
+        # though a second complexity band now reaches it.
+        (_OVERRIDES, "complex:openhands", "complex:openhands,epic:openhands"),
     ],
 )
 async def test_routing_a_task_to_the_sandboxed_loop_is_rejected(
@@ -125,6 +129,14 @@ async def test_routing_a_task_to_the_sandboxed_loop_is_rejected(
         (_DEFAULT_LOOP, "openhands", "react"),
         (_OVERRIDES, "complex:openhands", "complex:hybrid"),
         (_DEFAULT_LOOP, "react", "hybrid"),
+        # Narrowing an existing route set tightens and stays unguarded.
+        (_OVERRIDES, "complex:openhands,epic:openhands", "complex:openhands"),
+        # Reordering the same routes changes nothing.
+        (
+            _OVERRIDES,
+            "complex:openhands,epic:openhands",
+            "epic:openhands,complex:openhands",
+        ),
     ],
 )
 async def test_routing_away_from_the_sandboxed_loop_is_unguarded(

@@ -118,20 +118,21 @@ func (a *Allowlist) IsAllowedHostname(hostname string) bool {
 // Acquires resolveMu to prevent backgroundResolve from overwriting
 // the fresh maps with stale ones.
 func (a *Allowlist) UpdateRules(hosts []config.HostPort, allowAll bool) {
-	resolved, hostnames := resolveHosts(hosts)
-
 	a.resolveMu.Lock()
-	a.mu.Lock()
+	a.mu.RLock()
 	rawPaths := a.rawPaths
+	a.mu.RUnlock()
+
+	resolved, hostnames, answers := resolveHosts(hosts)
+	// Path rules key off the same DNS answers the host rules just used, so a
+	// rewritten allowlist cannot leave a destination L4-allowed while its L7
+	// narrowing points at a different address.
+	paths := resolvePaths(rawPaths, answers)
+
+	a.mu.Lock()
 	a.raw = hosts
 	a.resolved = resolved
 	a.hostnames = hostnames
-	a.mu.Unlock()
-	// Path rules are resolved against the same DNS answers the host rules
-	// just used, so a rewritten allowlist cannot leave a destination
-	// L4-allowed while its L7 narrowing points at a stale address.
-	paths := resolvePaths(rawPaths)
-	a.mu.Lock()
 	a.paths = paths
 	a.mu.Unlock()
 	a.resolveMu.Unlock()
@@ -166,8 +167,8 @@ func (a *Allowlist) resolve() {
 	copy(rawPaths, a.rawPaths)
 	a.mu.RUnlock()
 
-	resolved, hostnames := resolveHosts(raw)
-	paths := resolvePaths(rawPaths)
+	resolved, hostnames, answers := resolveHosts(raw)
+	paths := resolvePaths(rawPaths, answers)
 
 	a.mu.Lock()
 	a.resolved = resolved
@@ -176,45 +177,59 @@ func (a *Allowlist) resolve() {
 	a.mu.Unlock()
 }
 
-// resolvePaths maps each path rule's host:port onto the resolved IP:port
-// keys the proxy sees after DNAT, so the L7 check keys off the same value
-// the L4 check already matched. DNS lookups run outside any lock.
-func resolvePaths(rules []config.PathRule) map[string][]string {
+// resolvePaths maps each path rule's host:port onto the resolved IP:port keys
+// the proxy sees after DNAT, so the L7 check keys off the same value the L4
+// check already matched.
+//
+// It takes the answers the host resolution just used rather than looking up
+// again. A second lookup can return a different address for the same name
+// (round-robin, a record that changed between calls), which would leave an
+// address L4-allowed with no path rule attached to it: the narrowing would
+// silently not apply to exactly the destination the sandbox reaches.
+func resolvePaths(rules []config.PathRule, answers map[string][]string) map[string][]string {
 	paths := make(map[string][]string)
 	for _, rule := range rules {
-		for _, key := range resolveKeys(rule.Host, rule.Port) {
+		host := strings.ToLower(rule.Host)
+		if ip := net.ParseIP(rule.Host); ip != nil {
+			key := fmt.Sprintf("%s:%d", rule.Host, rule.Port)
+			paths[key] = append(paths[key], rule.Prefix)
+			continue
+		}
+		for _, ip := range answers[host] {
+			key := fmt.Sprintf("%s:%d", ip, rule.Port)
 			paths[key] = append(paths[key], rule.Prefix)
 		}
 	}
 	return paths
 }
 
-// resolveKeys returns the "ip:port" keys a host:port entry resolves to.
-func resolveKeys(host string, port uint16) []string {
-	if ip := net.ParseIP(host); ip != nil {
-		return []string{fmt.Sprintf("%s:%d", host, port)}
-	}
+// lookupHost resolves a hostname to its addresses, empty on failure.
+func lookupHost(host string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	ips, err := net.DefaultResolver.LookupHost(ctx, host)
-	cancel()
 	if err != nil {
 		return nil
 	}
-	keys := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		keys = append(keys, fmt.Sprintf("%s:%d", ip, port))
-	}
-	return keys
+	return ips
 }
 
-// resolveHosts builds resolved IP:port and hostname maps from the
-// given host entries. DNS lookups run outside any lock.
-func resolveHosts(hosts []config.HostPort) (map[string]bool, map[string]bool) {
+// resolveHosts builds resolved IP:port and hostname maps from the given host
+// entries. DNS lookups run outside any lock.
+//
+// The third return value is the per-hostname answer set these maps were built
+// from, so path rules can be keyed off the same addresses instead of asking
+// DNS again and possibly getting different ones.
+func resolveHosts(
+	hosts []config.HostPort,
+) (map[string]bool, map[string]bool, map[string][]string) {
 	resolved := make(map[string]bool)
 	hostnames := make(map[string]bool)
+	answers := make(map[string][]string)
 
 	for _, hp := range hosts {
-		hostnames[strings.ToLower(hp.Host)] = true
+		host := strings.ToLower(hp.Host)
+		hostnames[host] = true
 
 		// If already an IP, add directly.
 		if ip := net.ParseIP(hp.Host); ip != nil {
@@ -222,18 +237,14 @@ func resolveHosts(hosts []config.HostPort) (map[string]bool, map[string]bool) {
 			continue
 		}
 
-		// Resolve hostname.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		ips, err := net.DefaultResolver.LookupHost(ctx, hp.Host)
-		cancel()
-		if err != nil {
-			continue
+		if _, seen := answers[host]; !seen {
+			answers[host] = lookupHost(hp.Host)
 		}
-		for _, ip := range ips {
+		for _, ip := range answers[host] {
 			resolved[fmt.Sprintf("%s:%d", ip, hp.Port)] = true
 		}
 	}
-	return resolved, hostnames
+	return resolved, hostnames, answers
 }
 
 func (a *Allowlist) backgroundResolve() {

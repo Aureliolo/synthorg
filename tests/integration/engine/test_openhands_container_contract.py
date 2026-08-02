@@ -351,6 +351,10 @@ def _force_remove(name: str) -> None:
 def _events(stdout: str) -> list[OpenHandsEvent]:
     """Parse the container's stdout with the production event codec.
 
+    An ``unmapped`` line is a valid protocol line the adapter deliberately
+    forwards nothing for, so it is skipped rather than treated as a parse
+    failure. ``_unmapped`` is the assertion that catches those.
+
     Returns:
         Every event the adapter would forward to the loop, in order.
     """
@@ -360,9 +364,38 @@ def _events(stdout: str) -> list[OpenHandsEvent]:
         if not line.strip():
             continue
         event, accumulated = _parse_event(line, accumulated)
-        assert event is not None, f"adapter could not parse container line: {line!r}"
+        if event is None:
+            assert _is_unmapped(line), (
+                f"adapter could not parse container line: {line!r}"
+            )
+            continue
         parsed.append(event)
     return parsed
+
+
+def _is_unmapped(line: str) -> bool:
+    """Report whether a line is the container's known-skew marker.
+
+    Returns:
+        ``True`` when the line carries ``kind: unmapped``.
+    """
+    try:
+        return bool(json.loads(line).get("kind") == "unmapped")
+    except ValueError:
+        return False
+
+
+def _unmapped(stdout: str) -> list[str]:
+    """Name every SDK event the container could not classify.
+
+    Returns:
+        The class names reported under the ``unmapped`` kind.
+    """
+    return [
+        str(json.loads(line).get("text", ""))
+        for line in stdout.splitlines()
+        if line.strip() and _is_unmapped(line)
+    ]
 
 
 def _totals(stdout: str) -> Iterator[float]:
@@ -403,6 +436,13 @@ class TestContainerContract:
         _, result = happy_run
 
         assert result.returncode == 0, result.stderr[-2000:]
+        # An unmapped line means the SDK emitted an event class the container
+        # neither forwards nor knows to ignore, i.e. the SDK grew or renamed
+        # one. That is the drift this test exists to catch: classify the named
+        # event in run_task._IGNORED_EVENT_NAMES or map it in _normalize.
+        assert _unmapped(result.stdout) == [], (
+            f"unclassified SDK events: {_unmapped(result.stdout)}"
+        )
         # _events() asserts every single line parses, which is the real claim:
         # stdout is a protocol, so any prose on it is a defect.
         kinds = [event.kind for event in _events(result.stdout)]
@@ -441,13 +481,17 @@ class TestContainerContract:
         _, result = happy_run
 
         assert result.returncode == 0
+        # Scoped to THIS worker's container name, not the shared prefix: under
+        # xdist a sibling worker's in-flight container would otherwise read as
+        # a leak from this test.
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "gw")
         survivors = subprocess.run(  # noqa: S603
             [
                 _DOCKER,
                 "ps",
                 "-a",
                 "--filter",
-                f"name={_NAME_PREFIX}",
+                f"name={_NAME_PREFIX}{worker}-{os.getpid()}",
                 "--format",
                 "{{.Names}}",
             ],

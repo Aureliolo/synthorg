@@ -6,8 +6,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path"
 	"strings"
+	"time"
 )
+
+// idleRequestTimeout bounds how long a kept-alive connection may sit between
+// requests before the relay gives up on it.
+const idleRequestTimeout = 120 * time.Second
 
 // relayHTTPGuarded relays a plaintext HTTP connection to upstream, refusing
 // any request whose path is outside the destination's allowed prefixes.
@@ -31,7 +37,12 @@ func relayHTTPGuarded(
 	upstreamReader := bufio.NewReader(upstream)
 
 	for {
+		// Bound the wait for the NEXT request on a kept-alive connection. A
+		// client that opens one and then stalls would otherwise hold a relay
+		// goroutine and its upstream socket for the container's lifetime.
+		_ = client.SetReadDeadline(time.Now().Add(idleRequestTimeout))
 		req, err := http.ReadRequest(clientReader)
+		_ = client.SetReadDeadline(time.Time{})
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !isClosedConn(err) {
 				onBlocked("unparseable request", "")
@@ -109,13 +120,33 @@ func (p *Proxy) relayGuarded(
 // pathAllowed reports whether path sits under one of the allowed prefixes.
 // Matching is prefix-on-a-segment-boundary, so "/api/v1/gateway" never
 // admits "/api/v1/gateway-admin".
-func pathAllowed(path string, prefixes []string) bool {
+//
+// A non-canonical path is refused outright rather than matched. http.ReadRequest
+// does not clean the request URI and req.Write forwards it verbatim, so
+// "/allowed/../auth/login" would satisfy a prefix check here and then be
+// normalised by the upstream into the very route the prefix exists to deny.
+// Comparing against the cleaned form alone would not help: the bytes on the
+// wire are what the upstream resolves. Only the raw path being already
+// canonical makes the check and the forwarded request agree.
+func pathAllowed(reqPath string, prefixes []string) bool {
+	if reqPath == "" {
+		return false
+	}
+	cleaned := path.Clean(reqPath)
+	if reqPath != cleaned && reqPath != cleaned+"/" {
+		return false
+	}
 	for _, prefix := range prefixes {
-		if path == prefix {
+		// An empty or non-absolute prefix would admit everything through the
+		// HasPrefix below; config rejects those, so refuse here too rather
+		// than trusting the caller.
+		if !strings.HasPrefix(prefix, "/") {
+			continue
+		}
+		if cleaned == strings.TrimSuffix(prefix, "/") {
 			return true
 		}
-		trimmed := strings.TrimSuffix(prefix, "/")
-		if strings.HasPrefix(path, trimmed+"/") {
+		if strings.HasPrefix(cleaned, strings.TrimSuffix(prefix, "/")+"/") {
 			return true
 		}
 	}

@@ -1,6 +1,6 @@
 # Retry Patterns
 
-Five retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all five would either obscure the semantics or expose so many knobs that the abstraction is worse than five small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
+Six retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all six would either obscure the semantics or expose so many knobs that the abstraction is worse than six small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
 
 The canonical helper for transient-I/O backoff is `synthorg.core.resilience.GeneralRetryHandler`; its module docstring carries the same carve-out list mirrored here, so a developer reading the helper sees the same boundaries.
 
@@ -122,7 +122,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | Unbounded background consumer polling a bus channel for the process lifetime | Inline poll loop (Pattern D)         |
 | A governed one-shot agent tool (write or sensitive-connection read gated; other reads fast-allow) | No loop; surface the error (Pattern E) |
 | Waiting under a deadline for state someone else transitions, nothing having failed | Bounded readiness poll (Pattern F)   |
-| None of the above                                                   | Stop and ask before adding a seventh family |
+| None of the above                                                   | Stop and ask before adding a seventh family (the table has more rows than families: Pattern C has two sub-cases) |
 
 ## Adding a new retry site
 

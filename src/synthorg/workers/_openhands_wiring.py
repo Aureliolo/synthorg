@@ -90,16 +90,11 @@ async def build_openhands_loop_deps_or_none(
     resolver = config_resolver_of(app_state)
     gateway_base_url = await resolver.get_str("providers", "gateway_base_url")
     mcp_base_url = await resolver.get_str("tools", "credentialed_mcp_base_url")
-    # Require each endpoint to resolve to a host, not merely be non-empty: a
-    # malformed URL (e.g. a missing scheme) parses to an empty host, which
-    # would collapse the egress allowlist and leave DockerSandbox._needs_sidecar
-    # unable to enable enforcement. Fail closed so sandbox egress is never
-    # created without a host allowlist.
     missing = _missing_pieces(
         enabled=await resolver.get_bool("tools", "openhands_enabled"),
         signer=app_state.slice(GatewayStateSlice).signer,
-        gateway_host=_host_port(gateway_base_url),
-        mcp_host=_host_port(mcp_base_url),
+        gateway_host=_pinnable_host(gateway_base_url),
+        mcp_host=_pinnable_host(mcp_base_url),
     )
     if missing:
         # An operator who turned the capability off is not looking at a
@@ -135,6 +130,24 @@ async def build_openhands_loop_deps_or_none(
         mcp_base_url=mcp_base_url,
         clock=app_state.clock,
     )
+
+
+def _pinnable_host(url: str) -> str:
+    """Return the ``host:port`` this endpoint can be egress-pinned to.
+
+    Both halves of the pin have to be derivable or the pin is not what it
+    claims. A URL with no host leaves the allowlist empty, so enforcement
+    never switches on. A URL with no path leaves the narrowing with nothing
+    to name, and since the two endpoints share one host, the other endpoint's
+    prefix would then be the only rule on it: this one would sit inside the
+    host allowlist yet be refused per request. Failing closed here reports a
+    misconfiguration instead of shipping an endpoint that cannot be reached.
+
+    Returns:
+        The ``host:port``, or ``""`` when either half is missing.
+    """
+    host = _host_port(url)
+    return host if host and _url_path(url) else ""
 
 
 def _log_unavailable(
