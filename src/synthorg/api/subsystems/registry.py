@@ -570,6 +570,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="group_chat",
         provides=CapabilityId.GROUP_CHAT,
+        # The cost tracker, approval store and config resolver are read
+        # through and passed as None when absent: the service runs untracked
+        # and ungated rather than not at all. Requiring them would hold the
+        # whole surface down for collaborators it degrades without.
         requires=(
             CapabilityId.PERSISTENCE,
             CapabilityId.PROVIDER_REGISTRY,
@@ -598,7 +602,12 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="risk_override_service",
         provides=CapabilityId.RISK_OVERRIDE_SERVICE,
-        requires=(CapabilityId.PERSISTENCE,),
+        # The timeout scheduler this hot-swaps a classifier onto is built
+        # from the approval store, so naming the store is what turns "never
+        # came up" into a reported unmet requirement. The tiered-policy
+        # config is not a capability: an untiered deployment has nothing to
+        # override, so activation declines and the sweep re-reads it.
+        requires=(CapabilityId.PERSISTENCE, CapabilityId.APPROVAL_STORE),
         activate=_activate_risk_override,
     ),
 )

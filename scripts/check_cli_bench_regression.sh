@@ -197,21 +197,22 @@ ensure_benchstat() {
 
 ensure_benchstat
 
-echo "=== Building PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
-build_bench_binaries "${WORK_DIR}/new"
-
-echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
-# Stash any local tracked changes + untracked files (CI checkout is
-# clean, but defend against local invocation -- a dirty working tree
-# would otherwise either block ``git checkout`` or leak local edits
-# into the merge-base baseline run, poisoning the comparison).
-# ``stash push --include-untracked`` actually mutates the working
-# tree (clean state) and pushes onto the stash stack so ``stash pop``
-# in the EXIT trap restores everything.
+# Stash any local tracked changes + untracked files BEFORE either build
+# (CI checkout is clean, but defend against local invocation). Building
+# HEAD over a dirty tree would compile uncommitted edits and label them
+# PR HEAD, comparing work in progress against the merge-base; and a dirty
+# tree would block the checkout below in any case. ``stash push
+# --include-untracked`` mutates the working tree and pushes onto the
+# stash stack so ``stash pop`` in the EXIT trap restores everything.
 if ! git diff-index --quiet HEAD -- || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
     git stash push --include-untracked --quiet -m 'cli-bench: pre-baseline-capture'
     STASHED=1
 fi
+
+echo "=== Building PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
+build_bench_binaries "${WORK_DIR}/new"
+
+echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
 git checkout --quiet "${MERGE_BASE}"
 
 echo "=== Building merge-base benchmarks ==="
