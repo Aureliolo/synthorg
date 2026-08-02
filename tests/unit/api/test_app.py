@@ -1431,11 +1431,14 @@ class TestBuildMiddleware:
         disabled = root_config.api.model_copy(update={"rate_limiter_enabled": False})
         # By store name rather than stack length: a change that swapped a tier
         # for some other middleware would keep the length and lose the tier.
-        stores = [
-            entry.kwargs["config"].store
+        # Read through ``getattr``: the stack holds several middleware shapes
+        # and only one carries ``kwargs``, which a type checker cannot narrow
+        # through a ``hasattr`` guard.
+        configs = [
+            getattr(entry, "kwargs", {}).get("config")
             for entry in _build_middleware(disabled)
-            if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
         ]
+        stores = [cfg.store for cfg in configs if isinstance(cfg, LsRL)]
         assert stores == [
             "rate_limit_floor",
             "rate_limit_unauth",

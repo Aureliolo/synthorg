@@ -145,9 +145,11 @@ to this file, without regenerating it. The two server vars mirror what uvicorn
 actually binds inside the container, so the settings page reports the real
 bind rather than the local-dev default.
 */}}
-      # data-init creates and chowns the default only. A path outside the
-      # synthorg-data volume needs a mount of its own, writable by uid 65532,
-      # or the logs live and die with the container.
+{{- /*
+data-init creates and chowns the default log directory only. A path outside
+the synthorg-data volume needs a mount of its own, writable by uid 65532, or
+the logs live and die with the container.
+*/}}
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_API_SERVER_HOST: "0.0.0.0"
       SYNTHORG_API_SERVER_PORT: "3001"
