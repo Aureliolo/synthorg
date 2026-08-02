@@ -1,0 +1,101 @@
+name: Verify - Rulesets
+
+# Catch ruleset drift while a PR is open, rather than on the first push to
+# main after it merges.
+#
+# verify-backend.yml's `branch-protection-audit` covers the same ground but
+# only on push-to-main, because reading live rulesets needs `administration:
+# read` -- a scope GITHUB_TOKEN cannot hold -- so it needs the release-bot App
+# token from the main-restricted `release` environment. Its PR-time
+# counterpart, check_branch_protection_spec_changed.sh, only asks whether THIS
+# PR edits the spec. Neither half sees the opposite direction: a ruleset
+# applied to the live repository and never written into the spec. That gap put
+# main red on the merge that followed, with the PR itself green throughout.
+#
+# `pull_request_target` closes it without widening anything:
+#
+#   - `github.ref` is the BASE branch ref, so the `release` environment's
+#     main-only deployment-branch policy is satisfied as it stands. No
+#     environment change, no new place the App key is reachable.
+#   - the workflow definition comes from the base branch, so a PR cannot
+#     rewrite this job to do something else with that token.
+#   - the audit compares main's committed spec against the live rulesets, so
+#     the job reads NO pull-request-controlled content at all. That is what
+#     makes this trigger safe here, and it is load-bearing: checking out the
+#     PR head would hand a fork's code the App token.
+#
+# Comparing the base spec rather than the PR's also keeps the deliberate
+# "apply spec changes AFTER merge" ordering intact. A PR that edits the spec
+# does not affect this job; check_branch_protection_spec_changed.sh still
+# reports that direction on the PR.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  branch-protection-drift:
+    name: Ruleset drift audit
+    # Fork gate: a fork PR cannot reach the `release` environment's secrets,
+    # so the job would fail on a missing token rather than on drift.
+    if: '!github.event.repository.fork'
+    runs-on: ubuntu-24.04
+    # Matches verify-backend.yml's audit job: the yq install carries its own
+    # ~5-minute curl retry budget and every ruleset read retries, so the job
+    # needs headroom for the ladder rather than a tight cap.
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          # The BASE commit, never the PR head. Under pull_request_target the
+          # default checkout is already the base; naming it makes the property
+          # this job's safety rests on explicit rather than incidental.
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          # Read-only audit of the GitHub rulesets API; metadata:read is
+          # the minimum scope sufficient for that surface.
+          permission-metadata: read
+      - name: Install yq
+        env:
+          # The tag is not a pin, because a release asset can be replaced
+          # under an existing tag; the digest is what pins it.
+          # renovate: datasource=github-releases depName=mikefarah/yq
+          YQ_VERSION: v4.45.1
+          YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+        run: |
+          set -euo pipefail
+          curl -sSfL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+            -o /tmp/yq
+          echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+          yq --version
+      - name: Audit
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          # Explicit repo: `gh repo view` inference is fragile under
+          # persist-credentials: false and masks a transient 401 as a bogus
+          # "could not infer repo" failure.
+          GH_REPO: ${{ github.repository }}
+          # Four attempts absorb a transient GitHub API window that outlasts a
+          # single retry; the job timeout above leaves the accumulated backoff
+          # room so it cannot be killed mid-ladder. Sustained degradation past
+          # the budget defers via exit 75 rather than reporting false drift.
+          GH_RETRY_ATTEMPTS: 4
+        run: bash scripts/audit_branch_protection.sh

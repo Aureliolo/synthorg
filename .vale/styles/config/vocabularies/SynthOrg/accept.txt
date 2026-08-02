@@ -740,6 +740,7 @@ rollups
 rootfs
 rsyslog
 ruleset
+rulesets
 runbook
 runtimes
 sambanova

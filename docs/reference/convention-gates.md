@@ -310,4 +310,4 @@ Control-by-control mapping against GitHub's *Security hardening for GitHub Actio
 | Base images resolved by digest | Met | `check_ci_workflow_resilience.py` invariant 8 |
 | Artefacts signed and provenance-attested | Met | `scripts/check_image_signatures.py` (signature **and** SLSA provenance) |
 | Self-hosted runners | Not applicable | GitHub-hosted only |
-| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh` (post-merge drift) and the `branch-protection-spec` PR check |
+| Branch protection on the default branch | Met | `.github/branch_protection.yml` + `scripts/audit_branch_protection.sh`, run per PR by `verify-rulesets.yml` against the base spec and again on push to main, plus the `branch-protection-spec` PR check for the opposite direction |
