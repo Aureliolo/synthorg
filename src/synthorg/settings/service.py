@@ -816,8 +816,11 @@ class SettingsService:
             return entry.value
 
         def _default(namespace: str, key: str) -> str | None:
+            # ``definition.default`` is already ``str | None``; wrapping it in
+            # ``str()`` turns an absent default into the literal "None", which
+            # a rule then compares as if it were a configured value.
             definition = self._registry.get(namespace, key)
-            return None if definition is None else str(definition.default)
+            return None if definition is None else definition.default
 
         await enforce_cross_field_rules(
             items, get_current=_current, get_default=_default

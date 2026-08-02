@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.api.controllers.subsystems import SubsystemReport
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.api.subsystems.spec import SubsystemPhase
@@ -78,6 +79,18 @@ class TestSubsystemsEndpoint:
         # precisely so it never lands here empty.
         for entry in waiting:
             assert entry["waiting_on"], entry["name"]
+
+    def test_a_degraded_report_may_name_its_missing_requirement(self) -> None:
+        # A degraded subsystem is up with a requirement gone, so it carries
+        # the same waiting_on a waiting one does. A response model that
+        # allowed it only on waiting would reject the report and turn the
+        # endpoint into a 500 in exactly the case an operator opened it for.
+        report = SubsystemReport(
+            name="memory_backend",
+            phase=SubsystemPhase.DEGRADED,
+            waiting_on=("persistence",),
+        )
+        assert report.waiting_on == ("persistence",)
 
     async def test_reading_does_not_activate(
         self,

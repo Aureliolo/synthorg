@@ -40,7 +40,7 @@ class SubsystemReport(BaseModel):
     phase: SubsystemPhase = Field(description="Current resting state")
     waiting_on: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Unmet dependencies, when waiting",
+        description="Unmet dependencies, when waiting or degraded",
     )
     detail: str | None = Field(
         default=None,
@@ -55,14 +55,20 @@ class SubsystemReport(BaseModel):
             The validated report.
 
         Raises:
-            ValueError: When ``waiting_on`` is populated on anything but
-                ``waiting``, or ``detail`` on anything but ``failed``. This
-                is what an operator reads to find out why something is off,
-                so a field left over from a previous phase is worse than an
-                empty one.
+            ValueError: When ``waiting_on`` is populated on a phase that names
+                no unmet requirement, or ``detail`` on anything but ``failed``.
+                This is what an operator reads to find out why something is
+                off, so a field left over from a previous phase is worse than
+                an empty one. ``degraded`` carries ``waiting_on`` for the same
+                reason ``waiting`` does: it is up, but a requirement it names
+                has gone away.
         """
-        if self.waiting_on and self.phase is not SubsystemPhase.WAITING:
-            msg = f"waiting_on is only valid on waiting, got {self.phase.value}"
+        names_unmet = {SubsystemPhase.WAITING, SubsystemPhase.DEGRADED}
+        if self.waiting_on and self.phase not in names_unmet:
+            msg = (
+                "waiting_on is only valid on waiting or degraded, got "
+                f"{self.phase.value}"
+            )
             raise ValueError(msg)
         if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
             msg = f"detail is only valid on failed, got {self.phase.value}"

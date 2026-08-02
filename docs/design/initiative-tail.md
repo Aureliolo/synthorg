@@ -176,7 +176,8 @@ observer, so the tail comes online with no restart.
 
 ## Settings
 
-All read per fire, so an edit applies to the next one.
+Every key below is read when the tail fires, so an edit applies to the next
+run of it rather than needing a restart.
 
 | key | default | purpose |
 | --- | --- | --- |

@@ -6,10 +6,15 @@ export interface ComposeSetBadgeProps {
 }
 
 /**
- * Marks a setting the deployment fixed when the container was created. It is
- * shown here so its value is discoverable, but it cannot be edited: the
- * process was started with it and nothing short of recreating the container
- * changes that. Every setting without this badge applies immediately.
+ * Marks a setting the deployment fixed when the process started. It is shown
+ * here so its value is discoverable, but it cannot be edited: the process was
+ * started with it and nothing short of restarting that process changes it.
+ * Every setting without this badge applies without a restart.
+ *
+ * The `title` here is a pointer affordance only. Assistive technology gets the
+ * same explanation from the notice `SettingRow` renders and references through
+ * the field's `aria-describedby`, so repeating it in the badge would have it
+ * announced twice for one setting.
  */
 export function ComposeSetBadge({ className }: ComposeSetBadgeProps) {
   return (

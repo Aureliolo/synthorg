@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 
 
 class CapabilityId(StrEnum):
@@ -192,14 +193,16 @@ class SubsystemSpec:
         went wrong.
 
         Raises:
-            ValueError: When ``rebuild_on_change`` is declared with no
-                ``deactivate``: rebuilding is teardown-then-activate, so
-                without a teardown the subsystem still reads active, the pass
-                leaves it alone, and the promise never fires.
+            SubsystemGraphInvalidError: When ``rebuild_on_change`` is declared
+                with no ``deactivate``: rebuilding is teardown-then-activate,
+                so without a teardown the subsystem still reads active, the
+                pass leaves it alone, and the promise never fires. The same
+                error the graph raises for its mirror fault, a replaceable
+                dependency whose consumer declares no rebuild.
         """
         if self.rebuild_on_change and self.deactivate is None:
             msg = (
                 f"Subsystem {self.name!r} declares rebuild_on_change with no "
                 "deactivate; a rebuild needs a teardown to rebuild from"
             )
-            raise ValueError(msg)
+            raise SubsystemGraphInvalidError(msg)

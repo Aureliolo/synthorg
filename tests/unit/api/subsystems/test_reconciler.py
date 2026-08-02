@@ -167,7 +167,7 @@ class TestOrdering:
         # the declaration itself, so it fails where it was written rather
         # than in whichever build first orders it.
         world = _World()
-        with pytest.raises(ValueError, match="deactivate"):
+        with pytest.raises(SubsystemGraphInvalidError, match="deactivate"):
             SubsystemSpec(
                 name="memory",
                 provides=CapabilityId.MEMORY_BACKEND,

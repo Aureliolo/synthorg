@@ -287,8 +287,16 @@ def _definition_modules(repo_root: Path) -> dict[str, set[str]]:
     return definitions
 
 
-def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
+def scan_repo(
+    repo_root: Path, owned: tuple[OwnedWiring, ...] | None = None
+) -> tuple[Violation, ...]:
     """Find every second call site of a registry-owned wiring function.
+
+    Args:
+        repo_root: Repository root to scan.
+        owned: The registry's owned wiring, when the caller already read it.
+            Passed in so a run that also reports the count parses the registry
+            once rather than once per question asked of it.
 
     Returns:
         The violations, in file then line order.
@@ -296,7 +304,10 @@ def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
     Raises:
         ValueError: When the registry cannot be read.
     """
-    owners = {entry.name: entry for entry in owned_wiring(repo_root)}
+    owners = {
+        entry.name: entry
+        for entry in (owned if owned is not None else owned_wiring(repo_root))
+    }
     definitions = _definition_modules(repo_root)
     registry_path = (repo_root / _REGISTRY_REL).resolve()
 
@@ -371,8 +382,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        owned_count = len(owned_wiring(repo_root))
-        violations = scan_repo(repo_root)
+        owned = owned_wiring(repo_root)
+        violations = scan_repo(repo_root, owned)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -390,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: {owned_count} declared subsystems, one path each.")
+    print(f"OK: {len(owned)} declared subsystems, one path each.")
     return 0
 
 

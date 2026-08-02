@@ -154,6 +154,11 @@ the logs live and die with the container.
       SYNTHORG_API_SERVER_HOST: "0.0.0.0"
       SYNTHORG_API_SERVER_PORT: "3001"
       SYNTHORG_API_API_PREFIX: "${SYNTHORG_API_API_PREFIX:-/api/v1}"
+{{- /*
+These are paths INSIDE the container. Nothing here mounts the certificate
+material, so setting one without adding a read-only mount for the file it
+names gives uvicorn a path that does not exist and the container exits.
+*/}}
       SYNTHORG_API_SSL_CERTFILE: "${SYNTHORG_API_SSL_CERTFILE:-}"
       SYNTHORG_API_SSL_KEYFILE: "${SYNTHORG_API_SSL_KEYFILE:-}"
       SYNTHORG_API_SSL_CA_CERTS: "${SYNTHORG_API_SSL_CA_CERTS:-}"
