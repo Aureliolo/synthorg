@@ -147,6 +147,19 @@ async def _resolved_memory_config(app_state: AppState) -> CompanyMemoryConfig:
         interval = ConsolidationInterval(
             await resolver.get_str("memory", "consolidation_interval")
         )
+        # Re-validated rather than copied in: ``model_copy(update=...)`` skips
+        # validation, so a stored backend naming nothing would travel all the
+        # way to ``create_memory_backend`` before anything objected. A value
+        # that fails here is the same problem as one that could not be read,
+        # and takes the same path back to the boot config.
+        resolved = type(config).model_validate(
+            config.model_dump()
+            | {
+                "backend": backend,
+                "consolidation": config.consolidation.model_dump()
+                | {"interval": interval},
+            }
+        )
     except Exception as exc:  # noqa: BLE001 -- reported, then the boot config decides
         reraise_critical(exc)
         logger.warning(
@@ -155,14 +168,7 @@ async def _resolved_memory_config(app_state: AppState) -> CompanyMemoryConfig:
             error=safe_error_description(exc),
         )
         return config
-    return config.model_copy(
-        update={
-            "backend": backend,
-            "consolidation": config.consolidation.model_copy(
-                update={"interval": interval}
-            ),
-        }
-    )
+    return resolved
 
 
 async def unwire_memory_backend(app_state: AppState) -> None:
@@ -174,7 +180,12 @@ async def unwire_memory_backend(app_state: AppState) -> None:
 
     Teardown is best-effort per step. A backend that refuses to disconnect
     must not leave the slice pointing at it, because the next pass would then
-    read memory as up and never rebuild.
+    read memory as up and never rebuild. Each failure is reported, though: a
+    scheduler that would not stop is a task still running against a backend
+    nothing points at, and only the log says so.
+
+    Args:
+        app_state: Application state holding the memory slice.
     """
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
 
@@ -192,11 +203,23 @@ async def unwire_memory_backend(app_state: AppState) -> None:
             await scheduler.stop()
         except Exception as exc:  # noqa: BLE001 -- best-effort teardown step
             reraise_critical(exc)
+            logger.warning(
+                MEMORY_BACKEND_UNWIRED,
+                step="consolidation_scheduler_stop",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     if backend is not None:
         try:
             await backend.disconnect()
         except Exception as exc:  # noqa: BLE001 -- best-effort teardown step
             reraise_critical(exc)
+            logger.warning(
+                MEMORY_BACKEND_UNWIRED,
+                step="backend_disconnect",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     logger.info(MEMORY_BACKEND_UNWIRED)
 
 

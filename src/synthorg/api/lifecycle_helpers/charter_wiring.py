@@ -4,8 +4,8 @@
 Split out of :mod:`feature_wiring` so each module stays within its
 module-size tier. ``_wire_charter_engine`` is the ``charter_engine``
 subsystem's ``activate``, ordered by what it declares it needs; it is
-best-effort +
-idempotent (an already-wired interview service short-circuits) and a
+best-effort and idempotent (an already-wired interview service
+short-circuits) and a
 missing collaborator leaves the charter controllers to 503 rather than
 poisoning startup.
 """

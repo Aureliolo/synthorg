@@ -17,6 +17,7 @@ from synthorg.settings.bootstrap_resolver import (
 )
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.registry import get_registry
 
 pytestmark = pytest.mark.unit
 
@@ -178,6 +179,12 @@ def test_compose_set_resolves_identically(
     The flag is enforced post-init by SettingsService; the bootstrap
     resolver applies env > default uniformly.
     """
+    # Pinned, so this test cannot keep claiming to cover compose_set after
+    # the key it uses stops carrying the flag.
+    definition = get_registry().get(SettingNamespace.API.value, "server_port")
+    assert definition is not None
+    assert definition.compose_set
+
     monkeypatch.setenv("SYNTHORG_API_SERVER_PORT", "9999")
     resolved = resolve_init_value(SettingNamespace.API, "server_port")
     assert resolved.value == "9999"

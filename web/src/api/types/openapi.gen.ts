@@ -17441,7 +17441,7 @@ export type components = {
             readonly name: string;
             readonly phase: components["schemas"]["SubsystemPhase"];
             /**
-             * @description Unmet dependencies, when waiting
+             * @description Unmet dependencies, when waiting or degraded
              * @default []
              */
             readonly waiting_on: readonly string[];
