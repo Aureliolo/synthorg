@@ -6,11 +6,14 @@ and a subsystem that cannot activate is recorded rather than allowed to
 abort the pass or to be forgotten.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
+from synthorg.api.subsystems.runtime import reconcile_subsystems
 from synthorg.api.subsystems.spec import (
     Activate,
     Capability,
@@ -74,8 +77,16 @@ class TestOrdering:
             ("knowledge.enabld", "not a registered"),
             ("enabled", "not a registered"),
             ("memory.backend", "a gate is on or off"),
+            ("chief_of_staff.explain_chat_enabled", "absent from the boot config"),
+            ("api.setup_complete", "absent from the boot config"),
         ],
-        ids=["misspelled-key", "no-namespace", "not-a-boolean"],
+        ids=[
+            "misspelled-key",
+            "no-namespace",
+            "not-a-boolean",
+            "no-boot-config-section",
+            "section-without-the-key",
+        ],
     )
     def test_a_gate_that_can_never_read_as_off_is_refused(
         self, gate: str, reason: str
@@ -570,3 +581,28 @@ class TestDeclinedRetry:
         await reconciler.reconcile(state, trigger="provider_mutation")
 
         assert attempts == [1, 1]
+
+
+@pytest.mark.unit
+class TestReconcileEntryPoint:
+    """What the one call boot and every trigger share does with a fault."""
+
+    async def test_an_invalid_declaration_graph_reaches_the_caller(self) -> None:
+        # A duplicate provider is a defect in the shipped declarations, so
+        # every later pass raises the same thing. Reporting it as the ``None``
+        # a transient fault returns would leave the whole system unwired
+        # behind a log line, with each trigger dutifully logging it again.
+        world = _World()
+        duplicated = tuple(
+            SubsystemSpec(
+                name=name,
+                provides=CapabilityId.MEMORY_BACKEND,
+                activate=_installs(world, name, CapabilityId.MEMORY_BACKEND),
+            )
+            for name in ("one", "two")
+        )
+        with (
+            patch("synthorg.api.subsystems.runtime.SUBSYSTEMS", duplicated),
+            pytest.raises(SubsystemGraphInvalidError, match="one owner"),
+        ):
+            await reconcile_subsystems(_app_state(), trigger="test")

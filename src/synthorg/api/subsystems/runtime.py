@@ -58,9 +58,18 @@ async def reconcile_subsystems(
 
     Returns:
         The pass report, or ``None`` when the pass itself could not run.
+
+    Raises:
+        SubsystemGraphInvalidError: When the declarations cannot be ordered.
+            Built outside the guard below deliberately: a cycle, a duplicate
+            provider or a gate that can never read as off is a defect in the
+            shipped declarations, not a transient fault, so every later pass
+            raises it too. Logging it and carrying on would leave the whole
+            system unwired behind a warning nobody is watching for.
     """
+    reconciler = reconciler_of(app_state)
     try:
-        return await reconciler_of(app_state).reconcile(
+        return await reconciler.reconcile(
             app_state, trigger=trigger, retry_declined=retry_declined
         )
     except Exception as exc:  # noqa: BLE001 -- a trigger must not take the caller down

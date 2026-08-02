@@ -6,10 +6,14 @@ so adding a subsystem cannot put it in the wrong place in a hand-kept list.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from typing import get_args
+
+from pydantic import BaseModel
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 from synthorg.api.subsystems.spec import Capability, CapabilityId, SubsystemSpec
+from synthorg.config.schema import RootConfig
 
 
 def order_subsystems(
@@ -97,7 +101,8 @@ def _reject_invalid_enabled_by(specs: Sequence[SubsystemSpec]) -> None:
 
     Raises:
         SubsystemGraphInvalidError: On an entry that is not ``namespace.key``,
-            names no registered setting, or names one that is not a boolean.
+            names no registered setting, names one that is not a boolean, or
+            names one the boot config carries no field for.
     """
     import synthorg.settings.definitions  # noqa: F401, PLC0415 -- registers them
     from synthorg.settings.enums import SettingType  # noqa: PLC0415
@@ -122,6 +127,40 @@ def _reject_invalid_enabled_by(specs: Sequence[SubsystemSpec]) -> None:
                 f"is a {definition.type.value} setting; a gate is on or off"
             )
             raise SubsystemGraphInvalidError(msg)
+        fields = _boot_config_fields(namespace)
+        if fields is None or key not in fields:
+            msg = (
+                f"Subsystem {spec.name!r} is gated by {spec.enabled_by!r}, which "
+                "is registered but absent from the boot config; the gate is read "
+                "from there, so it would read as on no matter what an operator "
+                "sets"
+            )
+            raise SubsystemGraphInvalidError(msg)
+
+
+def _boot_config_fields(namespace: str) -> frozenset[str] | None:
+    """Return the field names the boot config carries under *namespace*.
+
+    Registration and the boot config are separate surfaces: a namespace can be
+    registered without ``RootConfig`` modelling a section for it. ``_enabled``
+    reads the section, so a gate registered on such a namespace resolves to
+    nothing and reads as enabled, which is what the caller refuses.
+
+    Args:
+        namespace: The namespace half of an ``enabled_by`` entry.
+
+    Returns:
+        The section's field names, or ``None`` when the boot config models no
+        section for it. An optional section is unwrapped to the model inside
+        it, which is the shape the runtime attribute walk sees.
+    """
+    field = RootConfig.model_fields.get(namespace)
+    if field is None:
+        return None
+    for candidate in (field.annotation, *get_args(field.annotation)):
+        if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+            return frozenset(candidate.model_fields)
+    return None
 
 
 def _reject_unprobed_requirements(
