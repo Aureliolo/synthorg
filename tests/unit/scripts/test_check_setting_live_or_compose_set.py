@@ -26,6 +26,7 @@ from tests.unit.scripts._setting_live_or_compose_set_helpers import (
     make_repo,
     registration,
     registry_module,
+    runtime_builder_module,
     subscriber_module,
 )
 
@@ -40,6 +41,7 @@ _WIRE = (
     '    return await state.r.get_bool("engine", "knob")\n'
 )
 _DEFINITION_FILE = "src/synthorg/settings/definitions/engine.py"
+_RUNTIME_BUILDER = "workers/runtime_builder.py"
 
 
 def _repo(tmp_path: Path, **kwargs: object) -> Path:
@@ -121,6 +123,34 @@ class TestReachabilitySeams:
                 "async def read(r):",
                 '    return await _read(r, "knob")',
             ),
+            _lines(
+                "async def _read(*, r, key):",
+                '    return await r.get_bool("engine", key)',
+                "",
+                "",
+                "async def read(r):",
+                '    return await _read(r=r, key="knob")',
+            ),
+            _lines(
+                "class Reader:",
+                "    async def _resolve(self, key, default):",
+                '        return await self._r.get_bool("engine", key)',
+                "",
+                "    async def read(self):",
+                '        return await self._resolve("knob", False)',
+            ),
+            _lines(
+                "async def _read_ns(svc, namespace):",
+                "    return await svc.get_namespace(namespace)",
+                "",
+                "",
+                "async def read(svc):",
+                '    return await _read_ns(svc, "engine")',
+            ),
+            _lines(
+                "async def read(svc):",
+                '    return await svc.get_all("engine")',
+            ),
         ],
         ids=[
             "positional-literals",
@@ -133,10 +163,23 @@ class TestReachabilitySeams:
             "module-level-constants",
             "loop-over-a-key-collection",
             "key-forwarded-through-a-helper",
+            "key-forwarded-by-keyword",
+            "key-forwarded-through-a-method",
+            "namespace-forwarded-through-a-helper",
+            "get-all-bulk-read",
         ],
     )
     def test_seam_satisfies_the_gate(self, tmp_path: Path, body: str) -> None:
         root = _repo(tmp_path, sources={_CONSUMER: body})
+        assert scan_repo(root) == []
+
+    def test_enabled_by_alone_satisfies_the_gate(self, tmp_path: Path) -> None:
+        # The reconciler evaluates enabled_by on every pass, before and
+        # independently of any rebuild, so a write flips the subsystem.
+        root = _repo(
+            tmp_path,
+            registry=registry_module(enabled_by="engine.knob", rebuild_on_change=False),
+        )
         assert scan_repo(root) == []
 
     def test_subscriber_watched_pair_satisfies_the_gate(self, tmp_path: Path) -> None:
@@ -155,7 +198,14 @@ class TestReachabilitySeams:
     def test_dashboard_reference_satisfies_the_gate(self, tmp_path: Path) -> None:
         # The dashboard persists nothing and re-fetches through GET /settings,
         # so a key it names is live without any Python consumer.
-        root = _repo(tmp_path, web={"stores/prefs.ts": 'export const K = "knob";\n'})
+        root = _repo(
+            tmp_path,
+            web={
+                "stores/prefs.ts": (
+                    'await updateSetting("engine", "knob", { value });\n'
+                )
+            },
+        )
         assert scan_repo(root) == []
 
 
@@ -163,11 +213,19 @@ class TestUnreachable:
     """A writable setting nothing can reach is the violation."""
 
     def test_no_evidence_anywhere_fails(self, tmp_path: Path) -> None:
-        root = _repo(tmp_path)
+        body = definitions_module(registration("knob"))
+        root = make_repo(tmp_path, definitions={"engine.py": body})
         violations = scan_repo(root)
         assert _keys(violations) == ["engine.knob:unreachable"]
         assert violations[0].source_file == _DEFINITION_FILE
-        assert violations[0].source_line != 0
+        # The exact line, not merely a non-sentinel one: an off-by-one or a
+        # report against the enclosing register( call would still be non-zero.
+        expected = next(
+            number
+            for number, line in enumerate(body.splitlines(), start=1)
+            if "SettingDefinition(" in line
+        )
+        assert violations[0].source_line == expected
 
     def test_the_failure_message_names_the_definition_site(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -216,8 +274,89 @@ class TestUnreachable:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
 
-    def test_a_colocated_dashboard_test_is_not_evidence(self, tmp_path: Path) -> None:
-        root = _repo(tmp_path, web={"stores/prefs.test.ts": 'const K = "knob";\n'})
+    @pytest.mark.parametrize(
+        "path",
+        ["__tests__/prefs.test.ts", "stores/prefs.test.ts"],
+        ids=["tests-directory", "colocated-with-source"],
+    )
+    def test_a_colocated_dashboard_test_is_not_evidence(
+        self, tmp_path: Path, path: str
+    ) -> None:
+        root = _repo(
+            tmp_path, web={path: 'updateSetting("engine", "knob", { value });\n'}
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_bare_key_without_its_namespace_is_not_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        # Eight settings are keyed "enabled". Matching the key alone would let
+        # one unrelated token certify every one of them.
+        root = _repo(tmp_path, web={"stores/prefs.ts": 'const label = "knob";\n'})
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_generated_api_type_is_not_evidence(self, tmp_path: Path) -> None:
+        # Generated types spell every schema name whether anything reads it.
+        root = _repo(
+            tmp_path,
+            web={
+                "api/types/openapi.gen.ts": ('type N = "engine";\ntype K = "knob";\n')
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_settings_declaration_without_a_rebuild_is_not_liveness(
+        self, tmp_path: Path
+    ) -> None:
+        # Without rebuild_on_change the reconciler short-circuits on an already
+        # active subsystem, so the write is watched but replaces nothing.
+        root = _repo(
+            tmp_path,
+            registry=registry_module(
+                settings=("engine.knob",), rebuild_on_change=False
+            ),
+            sources={_WIRING: _WIRE},
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_cross_row_pairing_of_one_loop_is_not_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        # Unpacking binds a namespace and a key one row at a time; pairing them
+        # across rows would credit a read the loop never performs.
+        root = _repo(
+            tmp_path,
+            sources={
+                _CONSUMER: _lines(
+                    '_ROUTES = {"memory": "knob", "engine": "other"}',
+                    "",
+                    "",
+                    "async def read(r):",
+                    "    for ns, key in _ROUTES.items():",
+                    "        await r.get_bool(ns, key)",
+                )
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_name_bound_to_two_collections_resolves_to_neither(
+        self, tmp_path: Path
+    ) -> None:
+        # Walk order, not source order, would decide which binding won.
+        root = _repo(
+            tmp_path,
+            sources={
+                _CONSUMER: _lines(
+                    '_KEYS = ("other",)',
+                    "",
+                    "",
+                    "async def shadow(r):",
+                    '    _KEYS = ("knob",)',
+                    "    for key in _KEYS:",
+                    '        await r.get_bool("engine", key)',
+                )
+            },
+        )
         assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
 
 
@@ -225,14 +364,55 @@ class TestConstructionPath:
     """A read that only runs while the runtime is built is not liveness."""
 
     @pytest.mark.parametrize(
-        "source",
-        ["workers/_openhands_wiring.py", "workers/_engine_assembly.py"],
+        "module",
+        ["_openhands_wiring", "_engine_assembly", "_mcp_bridge_wiring"],
     )
     def test_a_runtime_build_read_is_construction_only(
-        self, tmp_path: Path, source: str
+        self, tmp_path: Path, module: str
     ) -> None:
-        root = _repo(tmp_path, sources={source: _BUILD})
+        # The construction path is whatever build_runtime_services imports, so
+        # a module reachable from it is assembly code however it is named.
+        root = _repo(
+            tmp_path,
+            sources={
+                f"workers/{module}.py": _BUILD,
+                _RUNTIME_BUILDER: runtime_builder_module(f"synthorg.workers.{module}"),
+            },
+        )
         assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_module_the_builder_reaches_indirectly_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # The closure is transitive: _openhands_wiring is reached through
+        # _engine_assembly, never imported by the builder directly.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/_openhands_wiring.py": _BUILD,
+                "workers/_engine_assembly.py": (
+                    "from synthorg.workers._openhands_wiring import wire_it\n"
+                ),
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers._engine_assembly"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_worker_module_the_builder_never_reaches_stays_live(
+        self, tmp_path: Path
+    ) -> None:
+        # Living under workers/ is not what makes a read construction-only;
+        # being reachable from the builder is.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/execution_service.py": _BUILD,
+                _RUNTIME_BUILDER: runtime_builder_module(),
+            },
+        )
+        assert scan_repo(root) == []
 
     def test_a_read_inside_an_activation_target_is_construction_only(
         self, tmp_path: Path
@@ -406,6 +586,154 @@ class TestDefinitionScanning:
     def test_an_inaccessible_repo_root_fails_closed(self, tmp_path: Path) -> None:
         assert main(["--repo-root", str(tmp_path / "absent")]) == 2
 
+    def test_two_helpers_sharing_a_parameter_name_both_resolve(
+        self, tmp_path: Path
+    ) -> None:
+        # Keyed by parameter alone, the second helper's call sites answered for
+        # the first, and the first helper's settings left the inventory
+        # silently: registered, never checked, never baselined.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": textwrap.dedent("""
+                    from synthorg.settings.enums import SettingNamespace, SettingType
+                    from synthorg.settings.models import SettingDefinition
+                    from synthorg.settings.registry import get_registry
+
+                    _r = get_registry()
+
+
+                    def _flag(key: str, description: str) -> None:
+                        _r.register(
+                            SettingDefinition(
+                                namespace=SettingNamespace.ENGINE,
+                                key=key,
+                                type=SettingType.BOOLEAN,
+                                default="false",
+                                description=description,
+                                group="General",
+                            )
+                        )
+
+
+                    def _number(key: str, description: str) -> None:
+                        _r.register(
+                            SettingDefinition(
+                                namespace=SettingNamespace.ENGINE,
+                                key=key,
+                                type=SettingType.INTEGER,
+                                default="1",
+                                description=description,
+                                group="General",
+                            )
+                        )
+
+
+                    _flag("first_knob", "...")
+                    _number("second_knob", "...")
+                """).lstrip("\n")
+            },
+        )
+        assert _keys(scan_repo(root)) == [
+            "engine.first_knob:unreachable",
+            "engine.second_knob:unreachable",
+        ]
+
+    def test_an_aliased_definition_import_is_scanned(self, tmp_path: Path) -> None:
+        # An unrecognised call shape drops the setting from the inventory
+        # without raising anywhere, so the alias has to resolve.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": textwrap.dedent("""
+                    from synthorg.settings.enums import SettingNamespace, SettingType
+                    from synthorg.settings.models import SettingDefinition as SD
+                    from synthorg.settings.registry import get_registry
+
+                    _r = get_registry()
+
+                    _r.register(
+                        SD(
+                            namespace=SettingNamespace.ENGINE,
+                            key="knob",
+                            type=SettingType.BOOLEAN,
+                            default="false",
+                            description="...",
+                            group="General",
+                        )
+                    )
+                """).lstrip("\n")
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_an_unresolvable_namespace_fails_closed(self, tmp_path: Path) -> None:
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob", namespace_expr="_unbound")
+                )
+            },
+        )
+        assert main(["--repo-root", str(root)]) == 2
+
+    def test_a_non_literal_compose_set_fails_closed(self, tmp_path: Path) -> None:
+        # Defaulting it to writable would report a spurious violation with no
+        # diagnostic pointing at the real cause.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob").replace(
+                        '        group="General",',
+                        '        group="General",\n        compose_set=_FLAG,',
+                    ),
+                    preamble="_FLAG = True\n",
+                )
+            },
+        )
+        assert main(["--repo-root", str(root)]) == 2
+
+    def test_a_registry_declaring_no_subsystem_fails_closed(
+        self, tmp_path: Path
+    ) -> None:
+        # Resolving no activation makes every activation-scoped read look live,
+        # which hides violations rather than inventing them.
+        root = _repo(
+            tmp_path,
+            registry=_lines(
+                "from synthorg.api.subsystems.spec import SubsystemSpec",
+                "",
+                "SUBSYSTEMS: tuple[SubsystemSpec, ...] = ()",
+            ),
+        )
+        assert main(["--repo-root", str(root)]) == 2
+
+    def test_an_unfollowable_activation_fails_closed(self, tmp_path: Path) -> None:
+        root = _repo(
+            tmp_path,
+            registry=_lines(
+                "from functools import partial",
+                "",
+                "from synthorg.api.subsystems.spec import CapabilityId, SubsystemSpec",
+                "",
+                "",
+                "async def _activate_thing(app_state, flavour):",
+                "    return None",
+                "",
+                "",
+                "SUBSYSTEMS: tuple[SubsystemSpec, ...] = (",
+                "    SubsystemSpec(",
+                '        name="thing",',
+                "        provides=CapabilityId.THING,",
+                '        activate=partial(_activate_thing, flavour="x"),',
+                "    ),",
+                ")",
+            ),
+        )
+        assert main(["--repo-root", str(root)]) == 2
+
 
 class TestBaseline:
     """The baseline absorbs history and nothing else."""
@@ -437,7 +765,15 @@ class TestBaseline:
         # A setting whose only evidence moves onto the construction path is a
         # different verdict, so it needs its own approval rather than riding
         # the row it already had.
-        root = _repo(tmp_path, sources={"workers/_engine_assembly.py": _BUILD})
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/_engine_assembly.py": _BUILD,
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers._engine_assembly"
+                ),
+            },
+        )
         baseline = tmp_path / "baseline.txt"
         baseline.write_text("engine.knob:unreachable\n", encoding="utf-8")
         new, stale = run_with_baseline(root, baseline_path=baseline)
@@ -544,5 +880,15 @@ def test_the_real_repo_resolves_every_registration() -> None:
     ``settings/definitions/``, and fails the moment that happens.
     """
     definitions = load_definitions(REPO_ROOT)
-    assert definitions
+    pairs = {record.pair for record in definitions}
+    # Named settings rather than a non-emptiness check, which would pass with
+    # three of five hundred resolved if an AST shape quietly stopped matching.
+    assert ("engine", "loop_auto_select_enabled") in pairs
+    assert ("engine", "default_loop_type") in pairs
+    assert ("engine", "loop_complexity_overrides") in pairs
+    # Registered through a `_flag(key, ...)` helper, so this is the shape a
+    # parameter-blind scan drops.
+    assert ("self_improvement", "enabled") in pairs
+    # Declared compose_set, so the inventory has to carry both categories.
+    assert any(record.compose_set for record in definitions)
     assert all(record.namespace and record.key for record in definitions)

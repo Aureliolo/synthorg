@@ -17,17 +17,22 @@ keys drifted into it unnoticed.
 A setting passes when the scan finds it named by at least one live seam:
 
 - a ``(namespace, key)`` pair in a settings subscriber's watched set;
-- a ``settings=`` / ``enabled_by`` entry on a ``SubsystemSpec``, which puts the
-  key in the reconciler's watched set;
+- an ``enabled_by`` entry on a ``SubsystemSpec``, which the reconciler
+  evaluates on every pass, or a ``settings=`` entry on a spec that also sets
+  ``rebuild_on_change=True``. Without that flag the reconciler short-circuits
+  on an already-active subsystem, so the write is watched but replaces
+  nothing;
 - a resolver read outside the construction path, in any of the shapes the tree
   uses (positional pair, ``namespace=`` / ``key=`` keywords, a bridge-config
-  field bundle, a namespace-wide read, a dotted ``"ns.key"`` literal);
-- the key quoted in the dashboard, which persists nothing and re-fetches
-  through ``GET /settings``.
+  field bundle, a namespace-wide read, a dotted ``"ns.key"`` literal, a loop
+  over a literal collection, or a helper the caller passes the namespace or
+  key to);
+- the namespace and key quoted together in one dashboard source file, which
+  persists nothing and re-fetches through ``GET /settings``.
 
-It fails when the only evidence sits on the construction path (inside
-``build_runtime_services`` or inside a subsystem activation whose spec does not
-declare the key), or when there is no evidence at all.
+It fails when the only evidence sits on the construction path (inside any
+module ``build_runtime_services`` reaches, or inside a subsystem activation
+whose spec does not declare the key), or when there is no evidence at all.
 
 There is deliberately no per-line opt-out. A marker here would read "this
 setting is writable and reaches nothing, and that is fine", which is the
@@ -45,6 +50,8 @@ Implementation is split across sibling private modules:
 - ``_setting_reachability_literals``: namespace / key literal resolution.
 - ``_setting_reachability_definitions``: the registered-settings inventory.
 - ``_setting_reachability_evidence``: live and construction-path evidence.
+- ``_setting_reachability_helpers``: the forwarding-helper index, for a read
+  whose namespace or key its caller supplies.
 
 Usage::
 
@@ -57,7 +64,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 if __package__ in {None, ""}:  # standalone invocation
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -78,8 +85,13 @@ else:
     from scripts._setting_reachability_evidence import collect_evidence
 
 _BASELINE_REL: Final[str] = "scripts/setting_live_or_compose_set_baseline.txt"
-_KIND_UNREACHABLE: Final[str] = "unreachable"
-_KIND_CONSTRUCTION: Final[str] = "construction-only"
+
+# Spelled as a literal type rather than an enum because these strings are the
+# baseline file's on-disk format, which must stay stable and diffable.
+type Kind = Literal["unreachable", "construction-only"]
+
+_KIND_UNREACHABLE: Final[Kind] = "unreachable"
+_KIND_CONSTRUCTION: Final[Kind] = "construction-only"
 _KINDS: Final[frozenset[str]] = frozenset({_KIND_UNREACHABLE, _KIND_CONSTRUCTION})
 _BASELINE_HEADER: Final[str] = """\
 # Frozen baseline of writable settings that reach nothing while the system
@@ -112,7 +124,7 @@ class Violation:
     """A writable setting an operator can change without effect."""
 
     setting_key: str
-    kind: str
+    kind: Kind
     source_file: str
     source_line: int
 
@@ -144,14 +156,14 @@ def scan_repo(repo_root: Path) -> list[Violation]:
             setting_key=record.setting_key,
             kind=(
                 _KIND_CONSTRUCTION
-                if record.pair in evidence.construction
+                if evidence.status(record.pair) == "construction"
                 else _KIND_UNREACHABLE
             ),
             source_file=record.source_file,
             source_line=record.source_line,
         )
         for record in writable
-        if record.pair not in evidence.live
+        if evidence.status(record.pair) != "live"
     ]
     return sorted(violations, key=Violation.baseline_key)
 
@@ -194,11 +206,15 @@ def _load_baseline(path: Path) -> set[str]:
     Raises:
         ValueError: If an entry is not ``<namespace>.<key>:<kind>``. A silently
             dropped row would suppress a violation nobody approved.
+        GateSourceError: If the file exists but cannot be read.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return set()
+    except OSError as exc:
+        message = f"{path}: baseline cannot be read ({type(exc).__name__})"
+        raise GateSourceError(message) from exc
     entries: set[str] = set()
     for raw in text.splitlines():
         line = raw.strip()
@@ -329,6 +345,16 @@ def main(argv: list[str] | None = None) -> int:
     except (GateSourceError, SettingScanError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except Exception as exc:
+        # Exit 1 means "you have violations". Letting anything else reach the
+        # interpreter's own handler would exit 1 too, so a broken gate would be
+        # indistinguishable from a failing one to the hook that reads the code.
+        print(
+            f"scan failed unexpectedly ({type(exc).__name__}), so its verdict"
+            " cannot be trusted",
+            file=sys.stderr,
+        )
+        return 2
     _report(new, stale)
     return 1 if new else 0
 
@@ -345,8 +371,11 @@ def _update_baseline(repo_root: Path, baseline_path: Path) -> int:
     """
     try:
         violations = scan_repo(repo_root)
-    except (GateSourceError, SettingScanError) as exc:
+    except (GateSourceError, SettingScanError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"scan failed unexpectedly ({type(exc).__name__})", file=sys.stderr)
         return 2
     try:
         write_baseline(violations, baseline_path)

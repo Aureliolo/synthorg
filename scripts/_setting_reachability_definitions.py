@@ -22,12 +22,25 @@ if __package__ in {None, ""}:  # standalone invocation
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import read_and_parse  # type: ignore[import-not-found]
     from _setting_reachability_literals import (  # type: ignore[import-not-found]
+        Scope,
+        bound_argument,
         module_aliases,
+        parameter_names,
+        positional_index,
         resolve_literal,
+        walk_with_scopes,
     )
 else:
     from scripts._gate_source import read_and_parse
-    from scripts._setting_reachability_literals import module_aliases, resolve_literal
+    from scripts._setting_reachability_literals import (
+        Scope,
+        bound_argument,
+        module_aliases,
+        parameter_names,
+        positional_index,
+        resolve_literal,
+        walk_with_scopes,
+    )
 
 DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 _DEFINITION_CALL: Final[str] = "SettingDefinition"
@@ -105,42 +118,98 @@ def _scan_file(path: Path, rel: str) -> Iterator[SettingRecord]:
         One record per resolved registration.
 
     Raises:
-        SettingScanError: If a registration cannot be resolved.
+        SettingScanError: If a registration cannot be resolved, or if the
+            module spells more registrations than the scan recognised.
     """
-    _, tree = read_and_parse(path)
+    source, tree = read_and_parse(path)
     aliases = module_aliases(tree)
-    helper_values = _helper_parameter_values(tree)
-    for call in ast.walk(tree):
-        if not _is_definition_call(call):
+    names = _definition_names(tree)
+    helper_values = _helper_parameter_values(tree, names)
+    seen = 0
+    for node, scope in walk_with_scopes(tree):
+        if not _is_definition_call(node, names):
             continue
-        kwargs = {kw.arg: kw.value for kw in call.keywords if kw.arg}
+        seen += 1
+        kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
         namespace = resolve_literal(kwargs.get("namespace"), aliases)
         if namespace is None:
-            raise SettingScanError(_unresolved(rel, call.lineno, "namespace"))
-        flag = kwargs.get("compose_set")
-        compose_set = isinstance(flag, ast.Constant) and flag.value is True
-        for key in _resolve_keys(kwargs.get("key"), helper_values, rel, call.lineno):
+            raise SettingScanError(_unresolved(rel, node.lineno, "namespace"))
+        for key in _resolve_keys(
+            kwargs.get("key"), helper_values, scope, rel, node.lineno
+        ):
             yield SettingRecord(
                 namespace=namespace,
                 key=key,
-                compose_set=compose_set,
+                compose_set=_compose_set(kwargs, rel, node.lineno),
                 source_file=rel,
-                source_line=call.lineno,
+                source_line=node.lineno,
             )
+    _check_all_recognised(source, seen, rel)
 
 
-def _is_definition_call(node: ast.AST) -> TypeIs[ast.Call]:
-    """Whether *node* constructs a ``SettingDefinition``."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == _DEFINITION_CALL
-    )
+def _definition_names(tree: ast.Module) -> frozenset[str]:
+    """Return every name this module can call ``SettingDefinition`` by.
+
+    An aliased import is the one shape a missed match would drop silently
+    rather than raise on, so the alias is resolved instead of assumed away.
+    """
+    names = {_DEFINITION_CALL}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            if alias.name == _DEFINITION_CALL and alias.asname:
+                names.add(alias.asname)
+    return frozenset(names)
+
+
+def _is_definition_call(node: ast.AST, names: frozenset[str]) -> TypeIs[ast.Call]:
+    """Whether *node* constructs a ``SettingDefinition``, however it is named."""
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Name):
+        return node.func.id in names
+    return isinstance(node.func, ast.Attribute) and node.func.attr == _DEFINITION_CALL
+
+
+def _check_all_recognised(source: str, seen: int, rel: str) -> None:
+    """Fail when the text spells more registrations than the AST matched.
+
+    A shape the matcher does not know yet drops its setting from the inventory
+    without raising anywhere else, which is the one failure this scan cannot
+    detect from its own results.
+
+    Raises:
+        SettingScanError: If the counts disagree.
+    """
+    spelled = source.count(f"{_DEFINITION_CALL}(")
+    if spelled > seen:
+        message = (
+            f"{rel}: found {spelled} '{_DEFINITION_CALL}(' in the source but"
+            f" resolved {seen}. A registration is spelled in a shape this scan"
+            " does not recognise, so it would be silently unchecked."
+        )
+        raise SettingScanError(message)
+
+
+def _compose_set(kwargs: dict[str, ast.expr], rel: str, lineno: int) -> bool:
+    """Resolve ``compose_set=``, refusing a value the scan cannot pin.
+
+    Raises:
+        SettingScanError: If present but not a literal bool.
+    """
+    flag = kwargs.get("compose_set")
+    if flag is None:
+        return False
+    if isinstance(flag, ast.Constant) and isinstance(flag.value, bool):
+        return flag.value
+    raise SettingScanError(_unresolved(rel, lineno, "compose_set"))
 
 
 def _resolve_keys(
     node: ast.expr | None,
-    helper_values: dict[str, tuple[str, ...]],
+    helper_values: dict[str, dict[str, tuple[str, ...]]],
+    scope: Scope,
     rel: str,
     lineno: int,
 ) -> tuple[str, ...]:
@@ -148,8 +217,8 @@ def _resolve_keys(
 
     Args:
         node: The ``key=`` expression.
-        helper_values: Parameter-name to literal values, from the enclosing
-            module's registration helpers.
+        helper_values: Per-helper parameter-name to literal values.
+        scope: The functions lexically enclosing this registration.
         rel: Repository-relative path, for the error message.
         lineno: Declaration line, for the error message.
 
@@ -163,9 +232,13 @@ def _resolve_keys(
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return (node.value,)
     if isinstance(node, ast.Name):
-        values = helper_values.get(node.id, ())
-        if values:
-            return values
+        # Resolved against the helper this registration actually sits in, so
+        # two helpers sharing a parameter name keep their own call sites
+        # instead of one silently answering for the other.
+        for func in reversed(scope):
+            values = helper_values.get(func.name, {}).get(node.id, ())
+            if values:
+                return values
     raise SettingScanError(_unresolved(rel, lineno, "key"))
 
 
@@ -178,7 +251,9 @@ def _unresolved(rel: str, lineno: int, field: str) -> str:
     )
 
 
-def _helper_parameter_values(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+def _helper_parameter_values(
+    tree: ast.Module, definition_names: frozenset[str]
+) -> dict[str, dict[str, tuple[str, ...]]]:
     """Resolve the key literals each registration helper is called with.
 
     A registration helper is a module-level function whose body constructs a
@@ -187,45 +262,44 @@ def _helper_parameter_values(tree: ast.Module) -> dict[str, tuple[str, ...]]:
 
     Args:
         tree: The parsed definitions module.
+        definition_names: Every name the module calls ``SettingDefinition`` by.
 
     Returns:
-        Parameter name to the literals its call sites pass. A parameter is
-        absent when any call site passes something unresolvable, so the
-        registration fails loud rather than registering a partial key set.
+        Helper name to its parameter-name to the literals its call sites pass.
+        Keying by helper is what stops two helpers that happen to share a
+        parameter name from answering for each other's registrations. A
+        parameter is absent when any call site passes something unresolvable,
+        so the registration fails loud rather than registering a partial set.
     """
-    resolved: dict[str, tuple[str, ...]] = {}
+    resolved: dict[str, dict[str, tuple[str, ...]]] = {}
     for func in tree.body:
         if not isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
-        parameter = _key_parameter(func)
+        parameter = _key_parameter(func, definition_names)
         if parameter is None:
             continue
         values = _call_site_literals(tree, func, parameter)
         if values is not None:
-            resolved[parameter] = values
+            resolved.setdefault(func.name, {})[parameter] = values
     return resolved
 
 
-def _key_parameter(func: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+def _key_parameter(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, definition_names: frozenset[str]
+) -> str | None:
     """Return the parameter *func* passes as a ``SettingDefinition`` key.
 
     Args:
         func: A module-level function.
+        definition_names: Every name the module calls ``SettingDefinition`` by.
 
     Returns:
         The parameter name, or ``None`` when *func* is not a registration
         helper.
     """
-    names = {
-        arg.arg
-        for arg in (
-            *func.args.posonlyargs,
-            *func.args.args,
-            *func.args.kwonlyargs,
-        )
-    }
+    names = parameter_names(func)
     for call in ast.walk(func):
-        if not _is_definition_call(call):
+        if not _is_definition_call(call, definition_names):
             continue
         for kw in call.keywords:
             if (
@@ -253,38 +327,15 @@ def _call_site_literals(
         The literals, or ``None`` when a call site passes a non-literal (which
         leaves the registration unresolvable, and so a hard failure).
     """
-    positional = [arg.arg for arg in (*func.args.posonlyargs, *func.args.args)]
-    index = positional.index(parameter) if parameter in positional else None
+    index = positional_index(func, parameter)
     values: list[str] = []
     for call in ast.walk(tree):
         if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
             continue
         if call.func.id != func.name:
             continue
-        node = _bound_argument(call, index, parameter)
+        node = bound_argument(call, index, parameter)
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
             return None
         values.append(node.value)
     return tuple(values) or None
-
-
-def _bound_argument(
-    call: ast.Call, index: int | None, parameter: str
-) -> ast.expr | None:
-    """Return the expression *call* binds to a parameter.
-
-    Args:
-        call: The call site.
-        index: Positional index of the parameter, or ``None`` when it is
-            keyword-only.
-        parameter: The parameter name.
-
-    Returns:
-        The bound expression, or ``None`` when the call binds nothing to it.
-    """
-    for kw in call.keywords:
-        if kw.arg == parameter:
-            return kw.value
-    if index is not None and index < len(call.args):
-        return call.args[index]
-    return None

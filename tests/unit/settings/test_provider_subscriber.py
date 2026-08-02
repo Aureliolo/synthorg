@@ -134,7 +134,7 @@ class TestProviderSubscriberRebuild:
         resolver.get_int.assert_awaited_once_with("providers", "retry_max_attempts")
         # The running engine captured the old registry; the runtime rebuild is
         # what makes the new cap reach the completion path.
-        reload_spy.assert_awaited_once_with(state)
+        reload_spy.assert_awaited_once_with(state, trigger="provider-registry")
 
     async def test_default_provider_change_rebuilds_and_binds(
         self, monkeypatch: pytest.MonkeyPatch
@@ -185,7 +185,7 @@ class TestProviderSubscriberRebuild:
         # default_provider goes through the same rebuild path as
         # retry_max_attempts, so the runtime reload -- the seam that makes the
         # new default reach the running engine -- must be awaited here too.
-        reload_spy.assert_awaited_once_with(state)
+        reload_spy.assert_awaited_once_with(state, trigger="provider-registry")
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""
@@ -251,7 +251,7 @@ class TestProviderSubscriberRebuild:
 
         calls: list[int] = []
 
-        async def _reload(_state: object) -> None:
+        async def _reload(_state: object, *, trigger: str = "") -> None:
             calls.append(1)
             if len(calls) == 1:
                 msg = "reload boom"
@@ -296,7 +296,7 @@ class TestProviderSubscriberRebuild:
 
         calls: list[int] = []
 
-        async def _reload(_state: object) -> None:
+        async def _reload(_state: object, *, trigger: str = "") -> None:
             calls.append(1)
             if len(calls) == 1:
                 msg = "reload boom"

@@ -13,7 +13,8 @@ binding the walk happened to see last.
 """
 
 import ast
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import Final
 
 _NAMESPACE_ENUM: Final[str] = "SettingNamespace"
@@ -59,6 +60,70 @@ def _resolve_attribute(node: ast.Attribute) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class ModuleBindings:
+    """What one module's names can denote.
+
+    ``rows`` keeps the correlation a tuple-unpacking loop carries. Flattening
+    it into ``iterated`` alone would let a caller pair the namespace of one row
+    with the key of another, inventing a read the source never performs.
+    """
+
+    aliases: Mapping[str, str]
+    iterated: Mapping[str, frozenset[str]]
+    rows: tuple[Mapping[str, str], ...]
+
+    def resolve(self, node: ast.expr | None) -> frozenset[str]:
+        """Return every string *node* can denote in this module.
+
+        Args:
+            node: The expression to resolve, or ``None``.
+
+        Returns:
+            One value for a literal or single binding, several for a loop
+            variable bound across a literal collection, none when unresolvable.
+        """
+        single = resolve_literal(node, self.aliases)
+        if single is not None:
+            return frozenset({single})
+        if isinstance(node, ast.Name):
+            return self.iterated.get(node.id, frozenset())
+        return frozenset()
+
+    def resolve_jointly(
+        self, first: ast.expr, second: ast.expr
+    ) -> set[tuple[str, str]]:
+        """Return the value pairs *first* and *second* can denote together.
+
+        Two names one unpacking binds side by side only ever take the values
+        of one row at a time, so pairing them across rows would credit a read
+        the loop never performs. Anything else is independent and pairs freely.
+        """
+        if isinstance(first, ast.Name) and isinstance(second, ast.Name):
+            together = self.correlated(first.id, second.id)
+            if together is not None:
+                return together
+        return {
+            (one, other)
+            for one in self.resolve(first)
+            for other in self.resolve(second)
+        }
+
+    def correlated(self, first: str, second: str) -> set[tuple[str, str]] | None:
+        """Return the values *first* and *second* take together, if correlated.
+
+        Returns:
+            The co-occurring value pairs, or ``None`` when the two names are
+            not bound together by one unpacking and so are independent.
+        """
+        together = {
+            (row[first], row[second])
+            for row in self.rows
+            if first in row and second in row
+        }
+        return together or None
+
+
 def module_aliases(tree: ast.Module) -> dict[str, str]:
     """Collect the names *tree* binds to a resolvable string.
 
@@ -74,25 +139,28 @@ def module_aliases(tree: ast.Module) -> dict[str, str]:
         Name-to-value bindings, excluding every name bound to more than one
         distinct value.
     """
-    return _collect_bindings(tree)[0]
+    return _collect_bindings(ast.walk(tree))[0]
 
 
 def _collect_bindings(
-    tree: ast.Module,
+    nodes: Iterable[ast.AST],
 ) -> tuple[dict[str, str], dict[str, ast.expr], list[tuple[ast.expr, ast.expr]]]:
-    """Walk *tree* once for everything name resolution needs.
+    """Gather everything name resolution needs from an already-walked module.
 
     Args:
-        tree: The parsed module.
+        nodes: Every node of the module, in any order.
 
     Returns:
-        The unambiguous string aliases, the collection literals by name, and
-        the ``(target, iterable)`` pairs of every loop and comprehension.
+        The unambiguous string aliases, the unambiguous collection literals by
+        name, and the ``(target, iterable)`` pairs of every loop and
+        comprehension.
     """
     candidates: dict[str, set[str]] = {}
-    collections: dict[str, ast.expr] = {}
+    # Keyed by dumped source so two spellings of the same literal do not read
+    # as a conflict, while two genuinely different literals do.
+    shapes: dict[str, dict[str, ast.expr]] = {}
     iterations: list[tuple[ast.expr, ast.expr]] = []
-    for node in ast.walk(tree):
+    for node in nodes:
         source = _iteration_source(node)
         if source is not None:
             iterations.append(source)
@@ -100,7 +168,7 @@ def _collect_bindings(
         if target is None or value is None:
             continue
         if isinstance(value, ast.Tuple | ast.List | ast.Set | ast.Dict | ast.Call):
-            collections[target] = value
+            shapes.setdefault(target, {})[ast.dump(value)] = value
         resolved = resolve_literal(value, {})
         if resolved is not None:
             candidates.setdefault(target, set()).add(resolved)
@@ -109,10 +177,19 @@ def _collect_bindings(
         for name, values in candidates.items()
         if len(values) == 1
     }
+    # Same discipline as the scalar aliases above. A name bound to two
+    # different collections resolves to neither: the walk order decides which
+    # would win, and a function-local rebinding would otherwise answer for the
+    # module-level name a loop elsewhere actually iterates.
+    collections = {
+        name: next(iter(bound.values()))
+        for name, bound in shapes.items()
+        if len(bound) == 1
+    }
     return aliases, collections, iterations
 
 
-def name_bindings(tree: ast.Module) -> tuple[dict[str, str], dict[str, frozenset[str]]]:
+def name_bindings(tree: ast.Module) -> ModuleBindings:
     """Resolve every name *tree* binds to a setting namespace or key.
 
     Two kinds. A plain binding gives one value (``_NS = SettingNamespace.X``).
@@ -130,17 +207,55 @@ def name_bindings(tree: ast.Module) -> tuple[dict[str, str], dict[str, frozenset
         tree: The parsed module.
 
     Returns:
-        The single-valued aliases, and the names an iteration can bind to
-        several strings.
+        What the module's names denote, correlation included.
     """
-    aliases, collections, iterations = _collect_bindings(tree)
+    return bindings_from_nodes(ast.walk(tree))
+
+
+def bindings_from_nodes(nodes: Iterable[ast.AST]) -> ModuleBindings:
+    """Resolve name bindings from nodes the caller has already walked.
+
+    The evidence scan walks each module once for its own purposes; handing
+    those nodes back here is what keeps name resolution from walking every
+    module a second time.
+
+    Args:
+        nodes: Every node of one module, in any order.
+
+    Returns:
+        What the module's names denote, correlation included.
+    """
+    aliases, collections, iterations = _collect_bindings(nodes)
     bound: dict[str, set[str]] = {}
+    rows: list[Mapping[str, str]] = []
     for target, iterable in iterations:
         elements = _iterable_elements(iterable, collections)
         for name, values in _bind_target(target, elements).items():
             bound.setdefault(name, set()).update(values)
+        rows.extend(_bind_rows(target, elements))
     iterated = {name: frozenset(values) for name, values in bound.items() if values}
-    return aliases, iterated
+    return ModuleBindings(aliases=aliases, iterated=iterated, rows=tuple(rows))
+
+
+def _bind_rows(
+    target: ast.expr, elements: list[ast.expr]
+) -> Iterator[Mapping[str, str]]:
+    """Yield one name-to-value map per element an unpacking binds together."""
+    if not isinstance(target, ast.Tuple | ast.List):
+        return
+    positions = [
+        (position, name.id)
+        for position, name in enumerate(target.elts)
+        if isinstance(name, ast.Name)
+    ]
+    for element in elements:
+        row = {
+            name: value
+            for position, name in positions
+            if (value := _element_at(element, position)) is not None
+        }
+        if len(row) > 1:
+            yield row
 
 
 def _iteration_source(node: ast.AST) -> tuple[ast.expr, ast.expr] | None:
@@ -253,7 +368,8 @@ def walk_with_scopes(node: ast.AST) -> Iterator[tuple[ast.AST, Scope]]:
     Carrying the chain replaces one ``ast.walk`` per function: a read buried in
     a closure still belongs to the activation or the helper it runs inside.
     Iterative rather than recursive because this runs over every node of every
-    module, where a generator frame per nesting level is the dominant cost.
+    module, where recursing would add a ``yield from`` delegation per nesting
+    level to every node it yields.
 
     Args:
         node: The node to descend from.

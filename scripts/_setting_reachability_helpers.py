@@ -2,8 +2,9 @@
 
 Several live seams put the read one call away from the value that names it. The
 Chief-of-Staff capability gate takes the key as a parameter and pairs it with a
-namespace it holds itself; the meta config overlay takes the namespace as a
-parameter and reads the whole namespace through it. In both cases the read is
+namespace it holds itself; the meta config overlay's namespace reader
+(``_read_namespace``) takes the namespace as a parameter and reads the whole
+namespace through it. In both cases the read is
 live and the caller supplies the missing half as a literal, so a scan that only
 looked at the read site would call the setting unreachable.
 
@@ -52,24 +53,31 @@ class ForwardingHelper:
     parameter: str
     index: int | None
     """Positional index in the signature, for a plain-name call site."""
-    bound_index: int | None
-    """Positional index at an attribute call site, where the implicit instance
-    parameter is supplied by the attribute rather than by an argument."""
+    receives_instance: bool
+    """Whether the signature opens with ``self`` / ``cls``, which an attribute
+    call supplies through the attribute rather than as an argument."""
     namespace: str | None
     """The namespace the helper holds itself; ``None`` when the caller names it
     and the helper reads the namespace whole."""
 
     def index_for(self, *, attribute_call: bool) -> int | None:
-        """Return the positional index to read the caller's argument from."""
-        return self.bound_index if attribute_call else self.index
+        """Return the positional index to read the caller's argument from.
+
+        Derived here rather than stored per call shape, so the one fact the
+        signature carries cannot disagree with itself.
+        """
+        if self.index is None:
+            return None
+        offset = 1 if (attribute_call and self.receives_instance) else 0
+        return self.index - offset
 
 
 @dataclass(frozen=True)
 class HelperIndex:
     """The forwarding helpers a call site can be resolved against."""
 
-    per_module: dict[str, dict[str, ForwardingHelper]]
-    shared: dict[str, ForwardingHelper]
+    _per_module: Mapping[str, Mapping[str, ForwardingHelper]]
+    _shared: Mapping[str, ForwardingHelper]
 
     def lookup(self, rel: str, name: str | None) -> ForwardingHelper | None:
         """Return the helper *name* refers to from inside *rel*.
@@ -89,8 +97,8 @@ class HelperIndex:
         """
         if name is None:
             return None
-        local = self.per_module.get(rel, {})
-        return local.get(name) or self.shared.get(name)
+        local = self._per_module.get(rel, {})
+        return local.get(name) or self._shared.get(name)
 
 
 class HelperCollector:
@@ -104,6 +112,7 @@ class HelperCollector:
 
     def __init__(self) -> None:
         self._per_module: dict[str, dict[str, set[ForwardingHelper]]] = {}
+        self._dropped: set[str] = set()
 
     def observe(
         self,
@@ -140,18 +149,32 @@ class HelperCollector:
             for name, helpers in declarations.items():
                 shared.setdefault(name, set()).update(helpers)
         return HelperIndex(
-            per_module={
+            _per_module={
                 rel: _unambiguous(declarations)
                 for rel, declarations in self._per_module.items()
             },
-            shared=_unambiguous(shared),
+            _shared=_unambiguous(shared, report=self._dropped),
         )
+
+    def dropped_names(self) -> tuple[str, ...]:
+        """Return the helper names ambiguity removed from the shared index.
+
+        A setting whose only evidence runs through such a helper is reported
+        unreachable, and without this the developer has no way to see that a
+        name collision, not their wiring, is what the gate objected to.
+        """
+        return tuple(sorted(self._dropped))
 
 
 def _unambiguous(
     declarations: dict[str, set[ForwardingHelper]],
+    report: set[str] | None = None,
 ) -> dict[str, ForwardingHelper]:
     """Keep only the names that resolve to exactly one reading."""
+    if report is not None:
+        report.update(
+            name for name, helpers in declarations.items() if len(helpers) != 1
+        )
     return {
         name: next(iter(helpers))
         for name, helpers in declarations.items()
@@ -227,12 +250,10 @@ def _record(
     namespace: str | None,
 ) -> ForwardingHelper:
     """Build the helper record for one forwarded parameter."""
-    index = positional_index(func, parameter)
-    offset = 1 if receives_instance(func) else 0
     return ForwardingHelper(
         parameter=parameter,
-        index=index,
-        bound_index=None if index is None else index - offset,
+        index=positional_index(func, parameter),
+        receives_instance=receives_instance(func),
         namespace=namespace,
     )
 

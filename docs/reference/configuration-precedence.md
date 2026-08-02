@@ -208,7 +208,11 @@ exactly one env var name per setting.
 5. Consume the value via `ConfigResolver.get_*()` (post-init) or
    `synthorg.settings.bootstrap_resolver.resolve_init_value(...)`
    (pre-init). Direct `os.environ.get` reads in application code
-   outside startup are forbidden.
+   outside startup are forbidden. For a Category-1 setting this step is
+   also what satisfies `check_setting_live_or_compose_set.py`: a read
+   that runs only while the runtime is assembled does not count, so see
+   [The complement is enforced too](#the-complement-is-enforced-too)
+   before wiring one into worker assembly.
 
 ## Bootstrap resolver (pre-`SettingsService` Cat-2 reads)
 
@@ -500,26 +504,41 @@ The gate accepts as evidence any of the seams above, read straight from the
 source tree rather than by importing it:
 
 - a `(namespace, key)` pair in any settings subscriber's `_WATCHED` set;
-- a `settings=` or `enabled_by` entry on a `SubsystemSpec`;
+- an `enabled_by` entry on a `SubsystemSpec`, or a `settings=` entry on a spec
+  that also declares `rebuild_on_change=True` (see below);
 - a resolver read in any shape the tree uses: a positional `(ns, key)` pair,
   `namespace=` / `key=` keywords (which is also what a `MirrorField`
   declaration looks like), a `_resolve_bridge_fields` bundle, a namespace-wide
-  `get_namespace` read, a dotted `"ns.key"` literal, a loop over a literal
-  collection of keys, or a helper that takes the namespace or key as a
-  parameter and is called with a literal;
-- the key quoted in `web/src/`, outside test files. The dashboard persists no
-  domain state and re-fetches through `GET /settings`, so a key it reads
-  applies on the next render.
+  `get_namespace` / `get_page` / `get_all` read, a dotted `"ns.key"` literal, a
+  loop over a literal collection of keys, or a helper that takes the namespace
+  or key as a parameter and is called with a literal;
+- the namespace *and* the key quoted in the same `web/src/` file, outside test
+  files and generated `*.gen.ts` types. The dashboard persists no domain state
+  and re-fetches through `GET /settings`, so a key it reads applies on the next
+  render. Both halves are required because eight settings share the key
+  `enabled`, and matching the key alone would let one unrelated token certify
+  every one of them.
 
-Two things are deliberately *not* evidence. A read inside
-`workers/_engine_assembly.py` or `workers/_openhands_wiring.py` runs inside
-`build_runtime_services`, and a read inside a function a `SubsystemSpec`
-names as its `activate=` / `deactivate=` target runs during activation; both
-happen once per rebuild. Declaring the key in that subsystem's `settings=`
-makes the read live again, because the reconcile pass then re-runs activation
-on a write. The activation analysis follows one import hop (the registry's
-`_activate_*` wrapper to the wiring function it calls), so a read inside a
-helper that wiring function then calls still counts as live.
+Two things are deliberately *not* evidence. A read inside any module
+`build_runtime_services` reaches runs while the runtime is assembled, and a
+read inside a function a `SubsystemSpec` names as its `activate=` /
+`deactivate=` target runs during activation; both happen once per rebuild. The
+construction path is derived by closing over the `synthorg.workers` imports of
+the module defining `build_runtime_services`, rather than listed, so it does
+not go stale as the assembly grows.
+
+Declaring the key in that subsystem's `settings=` makes the read live again
+**only alongside `rebuild_on_change=True`**. Without the flag the reconciler
+short-circuits on an already-active subsystem, so the write is watched but
+replaces nothing and the value waits for the next fresh wiring: watched is not
+the same as applied. `enabled_by` needs no flag, because the reconciler
+evaluates it on every pass regardless.
+
+The activation analysis follows one import hop (the registry's `_activate_*`
+wrapper to the wiring function it calls) and excludes reads lexically inside
+that function. It matches the function by name rather than tracing calls, so a
+read inside a helper that wiring function calls is not excluded and stays
+live.
 
 There is no per-line opt-out. A marker on this rule would read "this setting is
 writable and reaches nothing, and that is fine", which is the category the rule

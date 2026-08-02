@@ -73,17 +73,23 @@ never as a half-open stream.
 
 ## Settings
 
-All under the `providers` namespace, hot-reloadable: `gateway_enabled`,
+All under the `providers` namespace: `gateway_enabled`,
 `gateway_token_ttl_seconds`, `gateway_base_url` (the sandbox-reachable app
 address handed to the harness, which both compose deployments set from the
-published backend port). `gateway_enabled` ships **on**, because
-`tools.openhands_enabled` does and a wired loop whose every call 503s is not a
-capability; the route carries no ambient authority, authenticating only with a
-per-run signed bearer. Turning it back on after it was explicitly turned off
-reopens an egress path, so that `false -> true` transition still routes through
-the deliberate confirm+reason+actor guardrail in
-`settings/write_governance.py`. An unset value is the shipped posture rather
-than a decision to reopen, so it is not treated as a transition.
+published backend port). `gateway_enabled` and `gateway_base_url` apply while
+the system runs, the latter because the runtime-reload subscriber watches it.
+`gateway_token_ttl_seconds` is read once, while the runtime is assembled, so a
+write to it takes effect no earlier than the next rebuild; it is recorded in
+`scripts/setting_live_or_compose_set_baseline.txt` as `construction-only`.
+
+`gateway_enabled` ships **on**, because `tools.openhands_enabled` does and a
+wired loop whose every call 503s is not a capability; the route carries no
+ambient authority, authenticating only with a per-run signed bearer. Turning it
+back on after it was explicitly turned off reopens an egress path, so that
+`false -> true` transition still routes through the deliberate
+confirm+reason+actor guardrail in `settings/write_governance.py`. An unset
+value is the shipped posture rather than a decision to reopen, so it is not
+treated as a transition.
 
 ## Wiring
 

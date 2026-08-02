@@ -131,6 +131,9 @@ EXECUTION_LOOP_BUDGET_DOWNGRADE: Final[str] = "execution.loop.budget_downgrade"
 EXECUTION_LOOP_HYBRID_FALLBACK: Final[str] = "execution.loop.hybrid_fallback"
 EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
 EXECUTION_LOOP_BUDGET_UNAVAILABLE: Final[str] = "execution.loop.budget_unavailable"
+# The engine holds its selection config frozen for its lifetime, so this
+# records what a rebuild actually resolved rather than only that one happened.
+EXECUTION_LOOP_SELECTION_RESOLVED: Final[str] = "execution.loop.selection_resolved"
 
 # Hybrid loop events
 EXECUTION_HYBRID_STEP_TURN_LIMIT: Final[str] = "execution.hybrid.step_turn_limit"

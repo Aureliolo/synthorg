@@ -153,8 +153,14 @@ class TestLoopSelectionAppliesLive:
             task_id="task-live-001",
         )
 
-        assert await build_auto_loop_config_or_none(app_state) is None
-        before = AgentEngine(provider=mock_provider_factory([]))
+        # Threaded through rather than asserted and discarded, so the chain
+        # under test is the one the rebuild actually performs: gate off, no
+        # config, static loop.
+        before = AgentEngine(
+            provider=mock_provider_factory([]),
+            auto_loop_config=await build_auto_loop_config_or_none(app_state),
+        )
+        assert before._auto_loop_config is None
         assert isinstance(
             await before._resolve_loop(task, "agent-live-001", str(task.id)),
             ReactLoop,

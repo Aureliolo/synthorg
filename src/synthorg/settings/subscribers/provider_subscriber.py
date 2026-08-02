@@ -252,12 +252,14 @@ class ProviderSettingsSubscriber:
 
         self._app_state.swap_provider_registry(new_registry)
         try:
-            await reload_runtime_services(self._app_state)
+            await reload_runtime_services(self._app_state, trigger="provider-registry")
         except Exception as reload_exc:
             reraise_critical(reload_exc)
             self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
             try:
-                await reload_runtime_services(self._app_state)
+                await reload_runtime_services(
+                    self._app_state, trigger="provider-registry-rollback"
+                )
             except Exception as heal_exc:  # noqa: BLE001
                 reraise_critical(heal_exc)
                 logger.error(

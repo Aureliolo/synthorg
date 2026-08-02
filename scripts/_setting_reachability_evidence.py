@@ -14,24 +14,33 @@ when the object graph is assembled, so a write to the key it reads changes
 nothing until something rebuilds. Those reads are collected separately.
 
 The activation analysis follows one import hop: the registry's ``_activate_*``
-wrapper to the wiring function it calls. A read inside a helper that wiring
-function then calls still counts as live, which is the boundary a call graph
-would move and a whole-module rule would overshoot (those modules also hold
-per-request helpers).
+wrapper to the wiring function it calls, and excludes reads lexically inside
+that function. It matches on the function name rather than tracing calls, so a
+read in a helper the wiring function calls is not excluded and stays live. A
+call graph would move that boundary; a whole-module rule would overshoot, since
+those modules also hold per-request helpers.
+
+The runtime-build path is derived, not listed: every ``synthorg.workers``
+module reachable from the one defining ``build_runtime_services`` is assembly
+code, so the set grows with the tree instead of going stale against it.
 """
 
 import ast
 import itertools
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 if __package__ in {None, ""}:  # standalone invocation
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _gate_source import read_and_parse  # type: ignore[import-not-found]
+    from _gate_source import (  # type: ignore[import-not-found]
+        GateSourceError,
+        read_and_parse,
+        read_source,
+    )
     from _setting_reachability_helpers import (  # type: ignore[import-not-found]
         KEY_KWARGS,
         NAMESPACE_KWARGS,
@@ -39,13 +48,13 @@ if __package__ in {None, ""}:  # standalone invocation
         HelperCollector,
     )
     from _setting_reachability_literals import (  # type: ignore[import-not-found]
+        ModuleBindings,
+        bindings_from_nodes,
         called_name,
-        name_bindings,
-        resolve_literal,
         walk_with_scopes,
     )
 else:
-    from scripts._gate_source import read_and_parse
+    from scripts._gate_source import GateSourceError, read_and_parse, read_source
     from scripts._setting_reachability_helpers import (
         KEY_KWARGS,
         NAMESPACE_KWARGS,
@@ -53,9 +62,9 @@ else:
         HelperCollector,
     )
     from scripts._setting_reachability_literals import (
+        ModuleBindings,
+        bindings_from_nodes,
         called_name,
-        name_bindings,
-        resolve_literal,
         walk_with_scopes,
     )
 
@@ -66,20 +75,29 @@ _WEB_REL: Final[str] = "web/src"
 _WEB_SUFFIXES: Final[tuple[str, ...]] = (".ts", ".tsx")
 _WEB_TEST_SUFFIXES: Final[tuple[str, ...]] = (".test.ts", ".test.tsx")
 _WEB_TEST_DIR: Final[str] = "__tests__"
+# Generated API types spell every enum member and field name in the schema, so
+# they name a key without anything reading it.
+_WEB_GENERATED_SUFFIX: Final[str] = ".gen.ts"
 _WEB_TOKEN: Final[re.Pattern[str]] = re.compile(r"['\"`]([A-Za-z0-9_]+)['\"`]")
 
-# Everything in these two modules runs inside ``build_runtime_services``.
-_RUNTIME_BUILD_RELS: Final[frozenset[str]] = frozenset(
-    {
-        "src/synthorg/workers/_engine_assembly.py",
-        "src/synthorg/workers/_openhands_wiring.py",
-    }
-)
+_RUNTIME_BUILD_REL: Final[str] = "src/synthorg/workers/runtime_builder.py"
+_WORKERS_PACKAGE: Final[str] = "synthorg.workers"
 _BRIDGE_BUILDER: Final[str] = "_resolve_bridge_fields"
 # The bridge builder takes the namespace and the field specs, and nothing else.
 _BRIDGE_ARITY: Final[int] = 2
+# A declared setting pair is a 2-tuple, and a resolver read puts its namespace
+# and key inside the first three positional arguments.
+_PAIR_ARITY: Final[int] = 2
+_READ_WINDOW: Final[int] = 3
 _SPEC_CALL: Final[str] = "SubsystemSpec"
-_SPEC_SETTING_KWARGS: Final[tuple[str, ...]] = ("settings", "enabled_by")
+_SPEC_REBUILD_KWARG: Final[str] = "rebuild_on_change"
+_SPEC_SETTING_KWARGS: Final[frozenset[str]] = frozenset({"settings", "enabled_by"})
+_ACTIVATION_KWARGS: Final[frozenset[str]] = frozenset({"activate", "deactivate"})
+
+type Reach = Literal["live", "construction"]
+
+_LIVE: Final[Reach] = "live"
+_CONSTRUCTION: Final[Reach] = "construction"
 
 
 @dataclass(frozen=True)
@@ -88,6 +106,16 @@ class Evidence:
 
     live: frozenset[tuple[str, str]]
     construction: frozenset[tuple[str, str]]
+
+    def status(self, pair: tuple[str, str]) -> Reach | None:
+        """Return how *pair* is reached, or ``None`` when nothing reaches it.
+
+        One live read settles it however many construction-path reads sit
+        beside it, so the precedence lives here rather than in each caller.
+        """
+        if pair in self.live:
+            return _LIVE
+        return _CONSTRUCTION if pair in self.construction else None
 
 
 def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evidence:
@@ -101,7 +129,8 @@ def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evid
         The pairs seen live and the pairs seen only while the runtime is built.
 
     Raises:
-        GateSourceError: If a source file cannot be read or parsed.
+        GateSourceError: If a source file cannot be read or parsed, or if a
+            tree the scan depends on resolves to nothing.
     """
     targets = activation_targets(repo_root)
     # A forwarding helper can only be completed by a literal that names a
@@ -116,6 +145,7 @@ def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evid
         pairs=pairs,
         targets=targets,
         addressable=addressable,
+        build_rels=construction_modules(repo_root),
         collector=HelperCollector(),
     )
     for path, rel in _source_modules(repo_root):
@@ -127,13 +157,19 @@ def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evid
     )
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Scan:
-    """The inputs and accumulators one pass over the tree shares."""
+    """The inputs and accumulators one pass over the tree shares.
+
+    Deliberately not frozen: the three collections below are filled in place as
+    the walk proceeds, and freezing would claim an immutability the accumulator
+    does not have while silently making the type unhashable.
+    """
 
     pairs: frozenset[tuple[str, str]]
     targets: dict[str, frozenset[str]]
     addressable: frozenset[str]
+    build_rels: frozenset[str]
     collector: HelperCollector
     live: set[tuple[str, str]] = field(default_factory=set)
     construction: set[tuple[str, str]] = field(default_factory=set)
@@ -171,7 +207,8 @@ class _DeferredCall:
 
     A call cannot be resolved against the helper index while the walk is still
     building it, and re-reading the tree to build the index first doubles the
-    scan of 3,700 modules. Recording the little a call needs (its name, the
+    scan of every module in the tree. Recording the little a call needs (its
+    name, the
     literals it passes, and whether it sits on the construction path) defers
     the decision without a second parse.
     """
@@ -180,14 +217,14 @@ class _DeferredCall:
     rel: str
     attribute_call: bool
     positional: tuple[frozenset[str], ...]
-    keywords: tuple[tuple[str, frozenset[str]], ...]
+    keywords: Mapping[str, frozenset[str]]
     is_construction: bool
 
     def argument(self, index: int | None, parameter: str) -> frozenset[str]:
         """Return the literals this call binds to a parameter."""
-        for name, values in self.keywords:
-            if name == parameter:
-                return values
+        bound = self.keywords.get(parameter)
+        if bound is not None:
+            return bound
         if index is not None and 0 <= index < len(self.positional):
             return self.positional[index]
         return frozenset()
@@ -201,33 +238,53 @@ def _source_modules(repo_root: Path) -> list[tuple[Path, str]]:
 
     Returns:
         ``(path, repository-relative path)`` pairs in deterministic order.
+
+    Raises:
+        GateSourceError: If the source tree resolves to nothing. Every setting
+            would then look unreachable, blaming the settings for a tree that
+            moved.
     """
-    return [
+    modules = [
         (path, rel)
         for path in sorted((repo_root / _SRC_REL).rglob("*.py"))
         if not (rel := path.relative_to(repo_root).as_posix()).startswith(
             f"{_DEFINITIONS_REL}/"
         )
     ]
+    if not modules:
+        message = f"{_SRC_REL}: no modules found to scan for evidence"
+        raise GateSourceError(message)
+    return modules
 
 
 def _scan_module(path: Path, rel: str, scan: _Scan) -> None:
     """Route one module's evidence into the live or construction set."""
     _, tree = read_and_parse(path)
-    aliases, iterated = name_bindings(tree)
-    names = _ModuleNames(aliases=aliases, iterated=iterated)
-    whole_file_is_construction = rel in _RUNTIME_BUILD_RELS
+    # Materialised so name resolution reads the same walk the evidence pass
+    # uses, rather than traversing every module in the tree a second time.
+    walked = list(walk_with_scopes(tree))
+    names = bindings_from_nodes(node for node, _ in walked)
+    # A spec's own declaration strings are dotted "ns.key" literals, which the
+    # generic literal rule would credit as live whatever the spec says. Only
+    # _declared_settings knows what they mean, so it decides alone.
+    declared = _spec_declared_nodes(walked)
+    whole_file_is_construction = rel in scan.build_rels
     activations = scan.targets.get(rel, frozenset())
-    for node, scope in walk_with_scopes(tree):
-        is_construction = whole_file_is_construction or bool(
-            activations.intersection(func.name for func in scope)
+    for node, scope in walked:
+        if id(node) in declared:
+            continue
+        # ``activations`` is empty for nearly every module, so the membership
+        # walk over the enclosing scope is worth skipping rather than running
+        # it once per node across the tree.
+        is_construction = whole_file_is_construction or (
+            bool(activations) and any(func.name in activations for func in scope)
         )
         sink = scan.sink(is_construction=is_construction)
         sink.update(_node_evidence(node, names, scan.pairs))
         if not isinstance(node, ast.Call):
             continue
         if scope:
-            scan.collector.observe(node, rel, scope[-1], aliases)
+            scan.collector.observe(node, rel, scope[-1], names.aliases)
         recorded = _record_call(
             node, rel, names, scan.addressable, is_construction=is_construction
         )
@@ -235,10 +292,32 @@ def _scan_module(path: Path, rel: str, scan: _Scan) -> None:
             scan.deferred.append(recorded)
 
 
+def _spec_declared_nodes(
+    walked: list[tuple[ast.AST, tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]]],
+) -> frozenset[int]:
+    """Return the node identities inside a ``SubsystemSpec``'s declarations.
+
+    Args:
+        walked: The module's nodes, already traversed.
+
+    Returns:
+        Identities to skip in the generic literal scan, empty for the modules
+        (all but one) that construct no spec.
+    """
+    declared: set[int] = set()
+    for node, _ in walked:
+        if not (isinstance(node, ast.Call) and _is_spec_call(node)):
+            continue
+        for kw in node.keywords:
+            if kw.arg in _SPEC_SETTING_KWARGS:
+                declared.update(id(child) for child in ast.walk(kw.value))
+    return frozenset(declared)
+
+
 def _record_call(
     call: ast.Call,
     rel: str,
-    names: _ModuleNames,
+    names: ModuleBindings,
     addressable: frozenset[str],
     *,
     is_construction: bool,
@@ -260,12 +339,10 @@ def _record_call(
     if name is None:
         return None
     positional = tuple(names.resolve(arg) & addressable for arg in call.args)
-    keywords = tuple(
-        (kw.arg, names.resolve(kw.value) & addressable)
-        for kw in call.keywords
-        if kw.arg
-    )
-    if not any(positional) and not any(values for _, values in keywords):
+    keywords = {
+        kw.arg: names.resolve(kw.value) & addressable for kw in call.keywords if kw.arg
+    }
+    if not any(positional) and not any(keywords.values()):
         return None
     return _DeferredCall(
         name=name,
@@ -277,34 +354,9 @@ def _record_call(
     )
 
 
-@dataclass(frozen=True)
-class _ModuleNames:
-    """What the names in one module resolve to."""
-
-    aliases: dict[str, str]
-    iterated: dict[str, frozenset[str]]
-
-    def resolve(self, node: ast.expr | None) -> frozenset[str]:
-        """Return every string *node* can denote in this module.
-
-        Args:
-            node: The expression to resolve, or ``None``.
-
-        Returns:
-            One value for a literal or single binding, several for a loop
-            variable bound across a literal collection, none when unresolvable.
-        """
-        single = resolve_literal(node, self.aliases)
-        if single is not None:
-            return frozenset({single})
-        if isinstance(node, ast.Name):
-            return self.iterated.get(node.id, frozenset())
-        return frozenset()
-
-
 def _node_evidence(
     node: ast.AST,
-    names: _ModuleNames,
+    names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
 ) -> set[tuple[str, str]]:
     """Return the setting pairs one node names.
@@ -323,11 +375,29 @@ def _node_evidence(
         if (namespace, key) in pairs:
             found.add((namespace, key))
         return found
-    for first, second in itertools.pairwise(_adjacent_sequence(node)):
-        found.update(_matching(names.resolve(first), names.resolve(second), pairs))
+    for first, second in itertools.pairwise(_pairable_sequence(node)):
+        found.update(names.resolve_jointly(first, second) & pairs)
     if isinstance(node, ast.Call):
         found.update(_call_evidence(node, names, pairs))
     return found
+
+
+def _pairable_sequence(node: ast.AST) -> list[ast.expr]:
+    """Return the expressions worth sliding a namespace / key window over.
+
+    Bounded on both shapes, because an unbounded window over an arbitrary
+    sequence credits any two neighbours that happen to spell a registered pair,
+    and namespaces are ordinary words. A declared pair is a 2-tuple, and a read
+    puts the pair in its first three arguments (the resolver takes them first,
+    a feature gate takes the app state first). Both bounds were measured to
+    cost no real evidence on this tree.
+    """
+    if isinstance(node, ast.Call):
+        return list(node.args[:_READ_WINDOW])
+    if isinstance(node, ast.Tuple | ast.List):
+        elements = list(node.elts)
+        return elements if len(elements) == _PAIR_ARITY else []
+    return []
 
 
 def _matching(
@@ -360,7 +430,7 @@ def _adjacent_sequence(node: ast.AST) -> list[ast.expr]:
 
 def _call_evidence(
     call: ast.Call,
-    names: _ModuleNames,
+    names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
 ) -> set[tuple[str, str]]:
     """Return the setting pairs one call addresses through its keywords.
@@ -405,11 +475,11 @@ def _is_spec_call(call: ast.Call) -> bool:
 def _first_present(
     keywords: dict[str, ast.expr],
     candidates: tuple[str, ...],
-    names: _ModuleNames,
+    names: ModuleBindings,
 ) -> frozenset[str]:
     """Resolve the first present keyword among *candidates*."""
     for candidate in candidates:
-        resolved = names.resolve(keywords.get(candidate))
+        resolved: frozenset[str] = names.resolve(keywords.get(candidate))
         if resolved:
             return resolved
     return frozenset()
@@ -417,16 +487,25 @@ def _first_present(
 
 def _declared_settings(
     keywords: dict[str, ast.expr],
-    names: _ModuleNames,
+    names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
 ) -> Iterator[tuple[str, str]]:
-    """Yield the pairs a ``SubsystemSpec`` declares.
+    """Yield the pairs a ``SubsystemSpec`` declares as reaching a running one.
 
-    A declared key puts the subsystem in the reconciler's watched set, so a
-    write to it triggers the pass that re-runs activation. That is what makes a
-    read inside the activation live rather than construction-only.
+    ``enabled_by`` always counts: the reconciler evaluates it on every pass,
+    before and independently of any rebuild, so a write flips the subsystem on
+    or off.
+
+    ``settings=`` counts only alongside ``rebuild_on_change=True``. Without it
+    the reconciler short-circuits on an already-active subsystem
+    (``reconciler.py``, the drift branch is gated on the flag), so a write is
+    watched but replaces nothing: the value takes effect the next time the
+    subsystem is wired from scratch, which is construction, not liveness.
     """
-    for name in _SPEC_SETTING_KWARGS:
+    rebuilds = keywords.get(_SPEC_REBUILD_KWARG)
+    declares_rebuild = isinstance(rebuilds, ast.Constant) and rebuilds.value is True
+    sources = ["enabled_by"] + (["settings"] if declares_rebuild else [])
+    for name in sources:
         node = keywords.get(name)
         elements = node.elts if isinstance(node, ast.Tuple | ast.List) else [node]
         for element in elements:
@@ -438,7 +517,7 @@ def _declared_settings(
 
 def _bridge_fields(
     call: ast.Call,
-    names: _ModuleNames,
+    names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
 ) -> Iterator[tuple[str, str]]:
     """Yield the pairs a ``_resolve_bridge_fields`` bundle resolves."""
@@ -464,8 +543,10 @@ def activation_targets(repo_root: Path) -> dict[str, frozenset[str]]:
         enters there.
 
     Raises:
-        GateSourceError: If the registry cannot be read or parsed. A missing
-            registry would leave every activation read looking live.
+        GateSourceError: If the registry cannot be read or parsed, declares no
+            spec, or names an activation the scan cannot follow. Each would
+            leave activation reads looking live, which is the direction that
+            hides a violation rather than inventing one.
     """
     _, tree = read_and_parse(repo_root / _REGISTRY_REL)
     wrappers = {
@@ -473,21 +554,68 @@ def activation_targets(repo_root: Path) -> dict[str, frozenset[str]]:
         for node in tree.body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
+    specs = [
+        call
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call) and _is_spec_call(call)
+    ]
+    if not specs:
+        message = (
+            f"{_REGISTRY_REL}: no {_SPEC_CALL}(...) construction found, so no "
+            "activation could be resolved"
+        )
+        raise GateSourceError(message)
     targets: dict[str, set[str]] = {}
-    for call in ast.walk(tree):
-        if not (isinstance(call, ast.Call) and _is_spec_call(call)):
-            continue
+    for call in specs:
         for kw in call.keywords:
-            if kw.arg not in {"activate", "deactivate"}:
+            if kw.arg not in _ACTIVATION_KWARGS:
                 continue
-            wrapper = (
-                wrappers.get(kw.value.id) if isinstance(kw.value, ast.Name) else None
-            )
-            if wrapper is None:
-                continue
-            for rel, name in _imported_targets(wrapper):
+            if not isinstance(kw.value, ast.Name) or kw.value.id not in wrappers:
+                message = (
+                    f"{_REGISTRY_REL}:{call.lineno}: {kw.arg}= is not a bare "
+                    "module-level function this scan can follow"
+                )
+                raise GateSourceError(message)
+            for rel, name in _imported_targets(wrappers[kw.value.id]):
                 targets.setdefault(rel, set()).add(name)
     return {rel: frozenset(names) for rel, names in targets.items()}
+
+
+def construction_modules(repo_root: Path) -> frozenset[str]:
+    """Return every module that only runs while the runtime is assembled.
+
+    Derived by closing over the ``synthorg.workers`` imports of the module
+    defining ``build_runtime_services``: assembly code reaches other assembly
+    code, and a hand-listed pair of filenames goes stale the moment the
+    assembly grows a module (it had gone stale by twelve).
+
+    Args:
+        repo_root: Project root to scan.
+
+    Returns:
+        Repository-relative paths whose every read is construction-path.
+
+    Raises:
+        GateSourceError: If a module in the closure cannot be read or parsed.
+    """
+    seen: set[str] = set()
+    pending = [_RUNTIME_BUILD_REL]
+    while pending:
+        rel = pending.pop()
+        if rel in seen:
+            continue
+        path = repo_root / rel
+        if not path.is_file():
+            continue
+        seen.add(rel)
+        _, tree = read_and_parse(path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not node.module.startswith(f"{_WORKERS_PACKAGE}."):
+                continue
+            pending.append(f"src/{node.module.replace('.', '/')}.py")
+    return frozenset(seen)
 
 
 def _imported_targets(
@@ -507,28 +635,38 @@ def _imported_targets(
 def _web_referenced(
     repo_root: Path, pairs: frozenset[tuple[str, str]]
 ) -> set[tuple[str, str]]:
-    """Return the pairs the dashboard names as a quoted string.
+    """Return the pairs the dashboard names as quoted strings.
 
     The dashboard persists no domain state and re-fetches through
     ``GET /settings``, so a key it reads applies on the next render with no
-    restart. Test files are excluded: naming a key in a test proves the store
-    parses it, not that anything reads it.
+    restart.
+
+    Both halves must appear in the SAME file, because a key alone proves
+    nothing: eight settings are keyed ``enabled``, and one unrelated token
+    would otherwise certify all eight. Generated API types are skipped for the
+    same reason, since they spell every schema name whether or not the
+    dashboard reads it. Test files are excluded too: naming a key in a test
+    proves the store parses it, not that anything reads it.
 
     Args:
         repo_root: Project root to scan.
         pairs: The registered pairs to match against.
 
     Returns:
-        Every pair whose key appears as a complete quoted token.
+        Every pair whose namespace and key are both quoted in one file.
+
+    Raises:
+        GateSourceError: If a dashboard source file cannot be read.
     """
-    tokens: set[str] = set()
+    found: set[tuple[str, str]] = set()
     for path in sorted((repo_root / _WEB_REL).rglob("*")):
         if not path.is_file() or path.suffix not in _WEB_SUFFIXES:
             continue
         name = path.name
         if name.endswith(_WEB_TEST_SUFFIXES) or _WEB_TEST_DIR in path.parts:
             continue
-        tokens.update(
-            _WEB_TOKEN.findall(path.read_text(encoding="utf-8", errors="replace"))
-        )
-    return {pair for pair in pairs if pair[1] in tokens}
+        if name.endswith(_WEB_GENERATED_SUFFIX):
+            continue
+        tokens = set(_WEB_TOKEN.findall(read_source(path)))
+        found.update(pair for pair in pairs if pair[0] in tokens and pair[1] in tokens)
+    return found

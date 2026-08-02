@@ -75,7 +75,9 @@ class TestRebuild:
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
         await sub.on_settings_changed("simulations", "intake_strategy")
-        reload.assert_awaited_once_with(state)
+        reload.assert_awaited_once_with(
+            state, trigger="setting:simulations.intake_strategy"
+        )
 
     async def test_no_runtime_skips_reload(
         self, monkeypatch: pytest.MonkeyPatch

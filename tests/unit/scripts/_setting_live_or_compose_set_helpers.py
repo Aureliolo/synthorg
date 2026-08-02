@@ -14,10 +14,25 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 """Project root for the real-repo smoke test."""
 
-_EMPTY_REGISTRY = """
-from synthorg.api.subsystems.spec import SubsystemSpec
+# A registry declaring no spec at all is a scan the gate refuses to trust, so
+# the default carries one that reaches nothing the fixtures register.
+_INERT_REGISTRY = """
+from synthorg.api.subsystems.spec import CapabilityId, SubsystemSpec
 
-SUBSYSTEMS: tuple[SubsystemSpec, ...] = ()
+
+async def _activate_inert(app_state: object) -> None:
+    from synthorg.api.lifecycle_helpers.inert_wiring import wire_inert
+
+    await wire_inert(app_state)
+
+
+SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
+    SubsystemSpec(
+        name="inert",
+        provides=CapabilityId.INERT,
+        activate=_activate_inert,
+    ),
+)
 """
 
 
@@ -37,8 +52,8 @@ def make_repo(
         definitions: ``settings/definitions/`` file name to module body.
         sources: Path relative to ``src/synthorg/`` to module body.
         subscribers: ``settings/subscribers/`` file name to module body.
-        registry: Body of ``api/subsystems/registry.py``; a registry
-            declaring no subsystems when omitted.
+        registry: Body of ``api/subsystems/registry.py``; a registry whose one
+            spec touches nothing the fixture registers when omitted.
         web: Path relative to ``web/src/`` to file body.
 
     Returns:
@@ -51,7 +66,7 @@ def make_repo(
     subscribers_dir.mkdir(parents=True)
     registry_path = src_root / "api" / "subsystems" / "registry.py"
     registry_path.parent.mkdir(parents=True)
-    _write(registry_path, registry if registry is not None else _EMPTY_REGISTRY)
+    _write(registry_path, registry if registry is not None else _INERT_REGISTRY)
     for name, body in definitions.items():
         _write(definitions_dir / name, body)
     for name, body in (subscribers or {}).items():
@@ -146,20 +161,49 @@ def subscriber_module(*pairs: tuple[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def runtime_builder_module(*modules: str) -> str:
+    """Render the module that defines ``build_runtime_services``.
+
+    The gate derives the construction path by closing over this module's
+    ``synthorg.workers`` imports, so a fixture that wants a module treated as
+    assembly code has to be imported from here, exactly as the real tree does.
+
+    Args:
+        modules: Dotted ``synthorg.workers`` modules to import from.
+
+    Returns:
+        The rendered module body.
+    """
+    lines = [f"from {module} import wire_it" for module in modules]
+    lines.extend(
+        ["", "", "async def build_runtime_services(app_state: object) -> None:"]
+    )
+    lines.append("    return None")
+    return "\n".join(lines) + "\n"
+
+
 def registry_module(
     *,
     activate: str = "_activate_thing",
+    activate_kwarg: str = "activate",
     target_module: str = "synthorg.api.lifecycle_helpers.thing_wiring",
     target_function: str = "wire_thing",
     settings: tuple[str, ...] = (),
+    rebuild_on_change: bool = True,
+    enabled_by: str | None = None,
 ) -> str:
     """Render a subsystem registry declaring one spec.
 
     Args:
         activate: Name of the activation wrapper in the registry module.
+        activate_kwarg: Which activation keyword carries the wrapper, so a
+            test can exercise ``deactivate=`` as well.
         target_module: Module the wrapper imports the real wiring from.
         target_function: Wiring function the wrapper calls.
         settings: Dotted ``"ns.key"`` entries for the spec's ``settings=``.
+        rebuild_on_change: Whether the spec re-runs activation on a write.
+            Only then does a declared setting reach a running subsystem.
+        enabled_by: Dotted ``"ns.key"`` gating the subsystem, if any.
 
     Returns:
         The rendered module body.
@@ -178,11 +222,19 @@ def registry_module(
         "    SubsystemSpec(",
         '        name="thing",',
         "        provides=CapabilityId.THING,",
-        f"        activate={activate},",
-        "        settings=(",
-        *(f'            "{entry}",' for entry in settings),
-        "        ),",
-        "    ),",
-        ")",
+        f"        {activate_kwarg}={activate},",
     ]
+    if enabled_by is not None:
+        lines.append(f'        enabled_by="{enabled_by}",')
+    if settings:
+        lines.extend(
+            [
+                "        settings=(",
+                *(f'            "{entry}",' for entry in settings),
+                "        ),",
+            ]
+        )
+    if rebuild_on_change:
+        lines.append("        rebuild_on_change=True,")
+    lines.extend(["    ),", ")"])
     return "\n".join(lines) + "\n"
