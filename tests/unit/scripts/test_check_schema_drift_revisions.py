@@ -12,7 +12,7 @@ asserts the resulting schema is identical.
 import asyncio
 import importlib.util
 import shutil
-import sqlite3
+import sqlite3  # lint-allow: persistence-boundary -- reads the schema the gate builds
 import tempfile
 from pathlib import Path
 from types import ModuleType
@@ -42,10 +42,12 @@ _MODULE = _load()
 
 # Deliberately ordered so a fold that sorted wrongly would produce a
 # different schema: the third revision alters the table the first created.
+# The DDL is this test's subject rather than a query it issues: the gate
+# under test folds revision files, so there has to be a revision file.
 _REVISIONS = {
-    "20260101000000_first.sql": "CREATE TABLE widget (id TEXT PRIMARY KEY);\n",
-    "20260102000000_second.sql": "CREATE TABLE gadget (id TEXT PRIMARY KEY);\n",
-    "20260103000000_third.sql": "ALTER TABLE widget ADD COLUMN label TEXT;\n",
+    "20260101000000_first.sql": "CREATE TABLE widget (id TEXT PRIMARY KEY);\n",  # lint-allow: persistence-boundary -- migration fixture the gate folds  # noqa: E501
+    "20260102000000_second.sql": "CREATE TABLE gadget (id TEXT PRIMARY KEY);\n",  # lint-allow: persistence-boundary -- migration fixture the gate folds  # noqa: E501
+    "20260103000000_third.sql": "ALTER TABLE widget ADD COLUMN label TEXT;\n",  # lint-allow: persistence-boundary -- migration fixture the gate folds  # noqa: E501
 }
 
 
@@ -111,8 +113,11 @@ class TestFoldRevisions:
             body = next(folded.glob("*.sql")).read_text(encoding="utf-8")
         finally:
             shutil.rmtree(folded, ignore_errors=True)
-        assert body.index("CREATE TABLE widget") < body.index("CREATE TABLE gadget")
-        assert body.index("CREATE TABLE gadget") < body.index("ALTER TABLE widget")
+        # Read out of the fixture rather than restated: an assertion that
+        # spelled the statements again would keep passing after the fixture
+        # changed underneath it.
+        positions = [body.index(sql.strip()) for sql in _REVISIONS.values()]
+        assert positions == sorted(positions)
 
     def test_ignores_non_sql_files(self, tmp_path: Path) -> None:
         # The revisions directory carries an __init__.py; sweeping it into

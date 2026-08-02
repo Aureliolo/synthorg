@@ -14,10 +14,10 @@ and falls back to booting the app whenever it does not match. The
 fallback direction is the safe one, so a missing, stale, truncated or
 hand-edited artefact costs time, never correctness.
 
-The fingerprint is size plus mtime per source file rather than a content
-hash: it is an order of magnitude cheaper, and every real edit moves
-mtime. A fresh checkout rewrites mtimes and so reads as stale, which
-just means the app is booted, which is what would have happened anyway.
+The fingerprint hashes the sources themselves. Stat metadata is cheaper
+but not sufficient: a same-size edit inside one clock tick is invisible
+to it, and "stale unless you edited quickly" is not a guarantee worth
+stating. Reading the tree is a fraction of the boot it avoids.
 
 State lives in a sibling file rather than inside the schema, so the
 published ``openapi.json`` stays a pristine OpenAPI document with no
@@ -207,14 +207,22 @@ def build_openapi_schema() -> dict[str, object]:
 def source_fingerprint() -> str:
     """Fingerprint every source file the schema is derived from.
 
+    Content rather than ``(size, mtime)``. Windows advances the system
+    clock in ~15.6ms steps, so a same-size edit landing in the tick the
+    export did reads as byte-identical and the stale schema is trusted:
+    the gate's one job, failing on the timing of the edit. Reading the
+    tree costs well under a second against the ``create_app()`` boot it
+    exists to skip, and it also makes a fresh checkout (every mtime
+    rewritten, every byte the same) correctly read as fresh.
+
     Returns:
-        A hex digest over each source's path, size and mtime.
+        A hex digest over each source's path and contents.
     """
     digest = hashlib.blake2b(digest_size=16)
     for path in sorted(_SOURCE_ROOT.glob(_SOURCE_GLOB)):
-        stat = path.stat()
         rel = path.relative_to(REPO_ROOT).as_posix()
-        digest.update(f"{rel}:{stat.st_size}:{stat.st_mtime_ns}\n".encode())
+        digest.update(f"{rel}:{path.stat().st_size}\n".encode())
+        digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
