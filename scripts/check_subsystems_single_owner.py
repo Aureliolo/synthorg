@@ -32,9 +32,8 @@ from pathlib import Path
 _REGISTRY_REL = "src/synthorg/api/subsystems/registry.py"
 _SOURCE_REL = "src/synthorg"
 _ALLOW_MARKER = "lint-allow: subsystem-single-owner"
-# Every name _is_wiring_name accepts starts with `wire_` or `_wire_`, so both
-# spellings contain this. A file whose text lacks it can neither define nor
-# call wiring, which is what lets the scan skip parsing most of the tree.
+# Both spellings _is_wiring_name accepts contain this, so a file whose text
+# lacks it can neither define nor call wiring and need not be parsed.
 _WIRING_SUBSTRING = "wire_"
 
 

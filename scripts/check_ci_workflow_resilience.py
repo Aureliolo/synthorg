@@ -514,9 +514,25 @@ def _check_pull_request_target_refs(
     if not _has_pull_request_target(data):
         return []
     violations: list[str] = []
+    workflow_env = data.get("env")
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
+        # Workflow- and job-level env reach every `run:` in the job without
+        # appearing in it, so checking step bodies alone leaves `env: REF:
+        # ${{ github.head_ref }}` plus a bare `echo $REF` compliant.
+        for scope, env_block in (
+            ("workflow `env:`", workflow_env),
+            (f"job '{job_name}' `env:`", job.get("env")),
+        ):
+            if env_block is None:
+                continue
+            violations.extend(
+                f"job '{job_name}': {scope} interpolates '{marker}' under"
+                " pull_request_target. Pull-request-controlled data must not"
+                " reach a privileged job."
+                for marker in _pr_head_markers(env_block)
+            )
         for index, step in enumerate(_job_steps(job)):
             context = f"job '{job_name}': '{_step_label(step, index)}'"
             uses = step.get("uses")

@@ -509,13 +509,13 @@ content.
 Four rulesets are declared in `.github/branch_protection.yml`:
 
 - **`default`** (every ref): signed commits, and code-quality scanning.
-- **`protect-main`**: no direct pushes, no branch deletion, no
-  non-fast-forward pushes, signed commits, and the required status checks
-  listed in the spec (`CI Pass`, `CLI Pass`, `Docker Pass`, the two CodSpeed
-  contexts and `Lighthouse Pass`), pinned to the GitHub Actions app by
-  `integration_id`.
-- **`protect-main-reviews`**: 1 approving review, stale reviews dismissed on
-  push.
+- **`protect-main`**: no branch deletion, no non-fast-forward pushes, signed
+  commits, and the required status checks listed in the spec (`CI Pass`,
+  `CLI Pass`, `Docker Pass`, the two CodSpeed contexts and `Lighthouse Pass`),
+  pinned to the GitHub Actions app by `integration_id`.
+- **`protect-main-reviews`**: the `pull_request` rule, so every change reaches
+  main through a pull request rather than a direct push, with 1 approving
+  review and stale reviews dismissed on push.
 - **`protect-release-tags`** (`refs/tags/v*`): restricts tag **creation** and
   **update**. This one is a signing control, not a workflow-hygiene control.
   A `v*` tag may point at any commit in history and GitHub runs a workflow

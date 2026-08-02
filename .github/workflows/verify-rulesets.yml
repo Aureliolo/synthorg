@@ -10,13 +10,20 @@ name: Verify - Rulesets
 # only asks whether THIS PR edits the spec. This job closes the gap: it runs
 # the live-vs-committed comparison on every PR.
 #
-# It reads main's tree, never the PR's, for two reasons that happen to point
-# the same way. The spec that the live rulesets are supposed to match is the
-# one on main: comparing the PR's own spec would mark every legitimate
-# spec-editing PR as drifted, because this repo deliberately applies ruleset
-# changes AFTER merge (a required context main does not yet produce would
-# block every other open PR). And reading main's script rather than the PR's
-# means no pull-request-authored code runs here at all.
+# Both specs are compared, because either one alone gives a wrong answer on a
+# case the other gets right. The pull request's spec is the primary: when it
+# matches the live rulesets, the branch is the repair for a drift and passes.
+# main's spec is consulted only when the primary disagrees, and rescues the
+# case this repo's ordering makes routine: a pull request that ADDS a ruleset
+# to be applied after merge differs from live by design, and if main still
+# matches live there is nothing wrong. Only when neither matches is there
+# drift nobody is fixing, which is the alarm.
+#
+# The job runs the pull request's own tree, like every other check here. It
+# holds no secrets and a read-only token, so the blast radius is a check that
+# could lie about its own branch; the authoritative run is
+# verify-backend.yml's on push to main, and GitHub enforces the rulesets
+# server-side either way.
 #
 # Advisory by design: this is not in `protect-main`'s required_status_checks,
 # so it reports drift rather than blocking a merge. Promoting it would need
@@ -56,54 +63,29 @@ jobs:
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          # main, not the PR head and not the PR's base commit. The base
-          # commit would diff a stale spec against current live state on any
-          # PR not rebased since the spec last changed, reporting drift that
-          # does not exist.
-          ref: main
           sparse-checkout: |
             .github
             scripts
           persist-credentials: false
-      # Inlined rather than using .github/actions/install-yq, which the two
-      # verify-backend.yml callers share: this job runs main's tree, so it
-      # cannot resolve a local action that only exists on the branch under
-      # test, and would break on the very PR that introduced one.
       - name: Install yq
-        env:
-          # A release asset can be replaced under an existing tag, so the tag
-          # alone is not a pin; the digest is.
-          # renovate: datasource=github-releases depName=mikefarah/yq
-          YQ_VERSION: v4.45.1
-          YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
-        run: |
-          set -euo pipefail
-          curl -sSfL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
-            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
-            -o /tmp/yq
-          echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
-          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
-          yq --version
-      # The PR's own spec, as DATA for the reconciliation branch below. Fetched
-      # by API rather than checked out, so the job keeps running main's script
-      # against main's spec and nothing pull-request-authored is executed. A
-      # missing or unreadable file leaves the path empty, which the audit
-      # treats as "no reconciling spec offered" and reports the drift.
-      - name: Fetch the pull request's spec
-        if: github.event_name == 'pull_request'
-        id: head-spec
+        uses: ./.github/actions/install-yq
+      # main's spec, as DATA for the fallback comparison. Fetched by API rather
+      # than by a second checkout so the workspace holds exactly one tree. A
+      # missing or unreadable file leaves the path empty, which the audit reads
+      # as "no second spec offered" and reports drift on the primary alone.
+      - name: Fetch main's spec
+        id: base-spec
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           SPEC_PATH: .github/branch_protection.yml
         run: |
           set -euo pipefail
-          out=/tmp/head_branch_protection.yml
+          out=/tmp/main_branch_protection.yml
           if gh api -H "Accept: application/vnd.github.raw" \
-            "repos/${GITHUB_REPOSITORY}/contents/${SPEC_PATH}?ref=${HEAD_SHA}" > "$out"; then
+            "repos/${GITHUB_REPOSITORY}/contents/${SPEC_PATH}?ref=main" > "$out"; then
             echo "path=$out" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::No ${SPEC_PATH} on the pull request head; auditing the base spec alone."
+            echo "::notice::Could not read ${SPEC_PATH} from main; auditing this branch's spec alone."
             echo "path=" >> "$GITHUB_OUTPUT"
           fi
       - name: Audit
@@ -112,7 +94,7 @@ jobs:
           # carries; on a public repository they answer unauthenticated. No
           # App token, no deployment environment, nothing privileged.
           GH_TOKEN: ${{ github.token }}
-          RECONCILING_SPEC: ${{ steps.head-spec.outputs.path }}
+          RECONCILING_SPEC: ${{ steps.base-spec.outputs.path }}
           # Explicit repo: `gh repo view` inference is fragile under
           # persist-credentials: false and masks a transient 401 as a bogus
           # "could not infer repo" failure.

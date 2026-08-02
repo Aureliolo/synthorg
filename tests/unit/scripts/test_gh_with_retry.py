@@ -101,10 +101,20 @@ def test_transient_exhaustion_returns_75(signature: str) -> None:
 
 
 @_BASH_AVAILABLE
-def test_auth_exhaustion_returns_77_not_75() -> None:
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "HTTP 401: Requires authentication",
+        # Lowercase: TRANSIENT_RE admits this spelling case-insensitively, so
+        # the exhaustion test must too, or it exits 75 and a caller defers an
+        # unverified auth failure as transient.
+        "http 401: requires authentication",
+    ],
+)
+def test_auth_exhaustion_returns_77_not_75(signature: str) -> None:
     # A caller that defers on 75 would report a clean pass it never verified.
     # Auth exhaustion gets its own code so no caller can treat it as soft.
-    result = _run("printf 'HTTP 401: Requires authentication\\n' >&2; exit 1")
+    result = _run(f"printf '{signature}\\n' >&2; exit 1")
     assert result.returncode == 77, result.stderr
     assert "authentication failure persisted" in result.stderr
 

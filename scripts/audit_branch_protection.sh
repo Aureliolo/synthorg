@@ -17,10 +17,14 @@
 #   scripts/audit_branch_protection.sh [--repo owner/name]
 #                                      [--reconciling-spec PATH]
 #
-# --reconciling-spec names a second spec to consult only when the committed
-# one drifts. A pull request whose own spec already matches the live state is
-# the repair for that drift, so the audit reports it instead of failing the
-# branch that fixes it.
+# --reconciling-spec names a second committed spec, consulted only when the
+# primary disagrees with the live state. The alarm is "someone changed the
+# rulesets and no committed spec says so", so it should not fire while the
+# live state still matches a spec that is either already on main or about to
+# be. A PR-time caller passes its branch's spec as the primary and main's as
+# the second: the branch matching live means it repairs a drift, and main
+# matching live means the branch proposes a change to apply after merge.
+# Neither matching is the real alarm.
 #
 # Requirements:
 #   - gh CLI authenticated. The two reads below need only `metadata: read`,
@@ -92,11 +96,23 @@ case "${GITHUB_EVENT_NAME:-}" in
   *) DEFER_ON_TRANSIENT=1 ;;
 esac
 
+# Ruleset ids whose fetch failed for a non-transient reason. Declared before
+# defer_or_fail because the list-call site can reach that function before the
+# per-ruleset loop runs, and `set -u` would abort on an unset array there.
+FAILED_IDS=()
+
 # Emit the deferral verdict for an exhausted (exit 75) read. Auth-shaped
 # exhaustion never reaches here: gh_with_retry.sh exits 77 for that, which
 # falls through to the fail-loud branch at every call site.
 defer_or_fail() {
   local what="$1"
+  # A genuine failure already recorded this run outranks a later transient one.
+  # Deferring here would exit 0 and discard it, reporting a clean audit on a
+  # snapshot known to be incomplete.
+  if [ "${#FAILED_IDS[@]}" -gt 0 ]; then
+    echo "::error::branch-protection audit: ${#FAILED_IDS[@]} ruleset(s) could not be fetched (ids: ${FAILED_IDS[*]}); a later read then exhausted its retries ${what}. Failing on the genuine failure rather than deferring." >&2
+    exit 3
+  fi
   if [ "$DEFER_ON_TRANSIENT" -eq 1 ]; then
     echo "::warning::branch-protection audit deferred: transient GitHub API failure ${what} (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
     exit 0
@@ -188,7 +204,6 @@ RULESETS_DIR=$(mktemp -d)
 # composes the previous cleanup explicitly.
 trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"; rm -rf "$RULESETS_DIR"' EXIT
 
-FAILED_IDS=()
 while read -r id; do
   [ -z "$id" ] && continue
   # As with the list call above, an EX_TEMPFAIL (exit 75) on a per-ruleset read
@@ -251,13 +266,12 @@ if diff -u "$SPEC_TMP" "$LIVE_TMP" >/dev/null; then
   exit 0
 fi
 
-# 3a. The committed spec drifts. Before reporting, ask whether the caller
-# offered a second spec that already reconciles it: a pull request whose own
-# spec matches live is the repair for this drift, not another instance of it,
-# and reddening the branch that fixes the problem trains readers to ignore the
-# alarm. The reconciling spec is DATA (parsed as YAML, compared as JSON), never
-# executed, and it cannot silence a genuine alarm: to pass it must equal the
-# live state, which is exactly the state the audit wants committed.
+# 3a. The primary spec drifts. Before reporting, ask whether the caller offered
+# a second one that the live state does match. That is not the alarm this audit
+# exists for: the live rulesets still agree with a committed spec, so nothing
+# was applied that no one wrote down. The second spec cannot silence a genuine
+# alarm, because to pass it must equal the live state, which is exactly the
+# state the audit wants committed.
 if [ -n "$RECONCILING_SPEC" ]; then
   if [ ! -f "$RECONCILING_SPEC" ]; then
     echo "error: --reconciling-spec not found: $RECONCILING_SPEC" >&2
@@ -270,14 +284,12 @@ if [ -n "$RECONCILING_SPEC" ]; then
   if yq -o=json '.' "$RECONCILING_SPEC" 2>/dev/null \
     | jq -S "$NORMALISE_FILTER" > "$RECONCILING_TMP" 2>/dev/null \
     && diff -u "$RECONCILING_TMP" "$LIVE_TMP" >/dev/null; then
-    echo "OK: ${SPEC_FILE} drifts from the live rulesets, and ${RECONCILING_SPEC} reconciles it."
+    echo "OK: ${SPEC_FILE} differs from the live rulesets, but ${RECONCILING_SPEC} matches them."
     echo
-    echo "The committed spec on the base branch is behind the live state:"
+    echo "The live state still agrees with a committed spec, so nothing was"
+    echo "applied that no one wrote down. The difference:"
     echo
     diff -u "$SPEC_TMP" "$LIVE_TMP" || true
-    echo
-    echo "Merging this change brings the two back into agreement, so this is"
-    echo "reported rather than failed."
     exit 0
   fi
 fi

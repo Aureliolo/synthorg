@@ -1176,6 +1176,40 @@ class TestPullRequestTargetRefs:
         )
         assert len(_scan(tmp_path, self._wf(self._TARGET, steps))) == 1
 
+    def test_pr_data_in_job_env_flagged(self, tmp_path: Path) -> None:
+        # A job-level env reaches every `run:` without appearing in one, so a
+        # step-only scan would call `echo $BRANCH` compliant.
+        content = (
+            f"{self._TARGET}\n{_PERMS}jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+            "    timeout-minutes: 5\n"
+            "    env:\n      BRANCH: ${{ github.head_ref }}\n"
+            "    steps:\n      - run: echo $BRANCH\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "job 'a' `env:`" in violations[0]
+
+    def test_pr_data_in_workflow_env_flagged(self, tmp_path: Path) -> None:
+        content = (
+            f"{self._TARGET}\n{_PERMS}env:\n"
+            "  REF: ${{ github.event.pull_request.head.sha }}\n"
+            "jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+            "    timeout-minutes: 5\n    steps:\n      - run: echo $REF\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "workflow `env:`" in violations[0]
+
+    def test_base_side_env_is_clean(self, tmp_path: Path) -> None:
+        content = (
+            f"{self._TARGET}\n{_PERMS}env:\n  REF: ${{{{ github.sha }}}}\n"
+            "jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+            "    timeout-minutes: 5\n"
+            "    env:\n      BASE: ${{{{ github.event.pull_request.base.sha }}}}\n"
+            "    steps:\n      - run: echo $REF $BASE\n"
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_same_shape_clean_without_the_trigger(self, tmp_path: Path) -> None:
         # Under plain pull_request the head IS the thing under test, and the
         # job holds no base-repository secrets, so none of this is a finding.

@@ -129,7 +129,10 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
 
   if [ "$i" -eq "$ATTEMPTS" ]; then
     cat "$errfile" >&2
-    if grep -qE 'HTTP 401' "$errfile"; then
+    # Case-insensitive to match TRANSIENT_RE, which admitted this failure with
+    # -i. A case-sensitive test here would let a lowercase spelling exhaust as
+    # exit 75, which callers are allowed to defer.
+    if grep -qiE 'HTTP 401' "$errfile"; then
       echo "::error::${LABEL}: authentication failure persisted after ${ATTEMPTS} attempts (last exit ${rc}). This is not the post-job-start auth blip, which clears on the next attempt; check whether the token was revoked or rotated, or lacks the scope for this resource." >&2
       exit "$EXIT_AUTH_EXHAUSTED"
     fi
