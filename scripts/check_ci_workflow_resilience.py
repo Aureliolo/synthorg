@@ -992,28 +992,39 @@ def _composite_uses(data: dict[str, object]) -> list[str]:
 def _load_yaml_mapping(path: Path) -> dict[str, object] | None:
     """Parse *path* as YAML, returning ``None`` unless it is a mapping.
 
-    An unreadable composite action is announced rather than silently
-    treated as declaring nothing. The closures below are what make this
-    gate closed under "calls a consumer"; a file they cannot read drops
-    out of every one of them, so a composite that genuinely downloads an
-    artifact or costs retry budget stops being counted, and the gate
-    reports zero violations for a scope it never saw.
-
     Returns:
         The parsed mapping, or ``None`` when the file is unreadable, not
-        YAML, or not a mapping.
+        YAML, or not a mapping. :func:`_check_action_discovery` is what
+        turns that ``None`` into a violation; this stays quiet so the
+        four fixpoint closures below can call it freely.
     """
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError, UnicodeDecodeError) as exc:
-        print(
-            f"::warning::could not read {path}: {type(exc).__name__}; it is "
-            "excluded from artifact-consumer, sink and ladder-cost tracking, "
-            "so invariants 5 and 6 are not enforced for anything it reaches.",
-            file=sys.stderr,
-        )
+    except OSError, yaml.YAMLError, UnicodeDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _check_action_discovery() -> list[str]:
+    """Report every composite action the closures below cannot read.
+
+    The four fixpoint closures are what make this gate closed under "calls
+    a consumer". A file they cannot parse drops out of all of them, so a
+    composite that genuinely downloads an artifact or costs retry budget
+    stops being counted and the gate reports zero violations for a scope
+    it never saw. Fail-closed, matching :func:`_check_dockerfile_digest_pins`:
+    an unreadable input is a finding, not a warning nobody reads.
+
+    Returns:
+        One message per unreadable or non-mapping action file.
+    """
+    return [
+        f"{_relative_path(path)}: could not be parsed as a YAML mapping, so it"
+        " is invisible to artifact-consumer, sink and ladder-cost tracking and"
+        " invariants 5 and 6 are unenforced for everything it reaches."
+        for path in _iter_action_files()
+        if _load_yaml_mapping(path) is None
+    ]
 
 
 def _artifact_consumer_dirs() -> frozenset[str]:
@@ -1806,7 +1817,7 @@ def _scan_paths(paths: Iterable[Path]) -> int:
     sinks = _tracking_issue_dirs()
     pull_defaults = _pull_action_defaults()
     ladder_costs = _pull_ladder_costs(pull_defaults)
-    for message in _check_dockerfile_digest_pins():
+    for message in (*_check_action_discovery(), *_check_dockerfile_digest_pins()):
         failed = True
         print(message, file=sys.stderr)
     for path in paths:

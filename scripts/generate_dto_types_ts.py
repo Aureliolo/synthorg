@@ -553,9 +553,13 @@ def _print_drift_diff(
 
 def main() -> int:
     """CLI entry point: write, check, or stream to stdout."""
-    pinned_exit: int | None = re_exec_with_fixed_hash_seed()
-    if pinned_exit is not None:
-        return pinned_exit
+    # The pinned hash seed exists to make ``create_app()``'s schema output
+    # byte-stable. A verified export means no app boot, so the re-exec would
+    # buy nothing and cost a second interpreter start on the push budget.
+    if load_verified_schema() is None:
+        pinned_exit: int | None = re_exec_with_fixed_hash_seed()
+        if pinned_exit is not None:
+            return pinned_exit
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument(

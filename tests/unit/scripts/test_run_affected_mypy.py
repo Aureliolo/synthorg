@@ -7,10 +7,12 @@ the private helpers are callable.
 """
 
 import argparse
+import contextlib
 import importlib.util
 import inspect
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -87,6 +89,16 @@ def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
     # the wrong thing.
     monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon, **_kw: None)
     monkeypatch.setattr(_MODULE, "_wait_for_daemon", lambda _daemon: False)
+
+    # The start lock is named from the status file, which for the real
+    # daemons is the developer's own worktree root: unstubbed, a unit run
+    # creates a lock there and can wait out its grace period against a
+    # genuine push happening at the same time.
+    @contextlib.contextmanager
+    def _no_lock(_daemon: object) -> Iterator[bool]:
+        yield True
+
+    monkeypatch.setattr(_MODULE, "_start_lock", _no_lock)
 
 
 def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]

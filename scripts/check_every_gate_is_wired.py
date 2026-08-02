@@ -84,12 +84,15 @@ def _reachable_from_pre_commit() -> set[str]:
     """Return gate stems named by any hook's entry or args."""
     data = yaml.safe_load(_PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
     found: set[str] = set()
-    for repo in data.get("repos", []):
-        for hook in repo.get("hooks", []):
+    # ``or []`` rather than a ``get`` default: an explicit YAML null reaches
+    # the default past ``get``, and iterating it raises rather than reporting
+    # a config this gate could not read.
+    for repo in data.get("repos") or []:
+        for hook in repo.get("hooks") or []:
             text = (
                 str(hook.get("entry", ""))
                 + " "
-                + " ".join(str(arg) for arg in hook.get("args", []))
+                + " ".join(str(arg) for arg in hook.get("args") or [])
             )
             found.update(_GATE_REFERENCE.findall(text))
     return found
@@ -122,7 +125,15 @@ def _reachable_from_ci() -> set[str]:
     """
     found: set[str] = set()
     github = _REPO_ROOT / ".github"
-    for pattern in ("workflows/**/*.yml", "workflows/**/*.yaml", "actions/**/*.yml"):
+    # Both spellings for both trees: GitHub accepts ``action.yaml`` as readily
+    # as ``action.yml``, and a gate invoked only from the spelling this misses
+    # would read as unwired.
+    for pattern in (
+        "workflows/**/*.yml",
+        "workflows/**/*.yaml",
+        "actions/**/*.yml",
+        "actions/**/*.yaml",
+    ):
         for path in github.glob(pattern):
             found.update(
                 _GATE_REFERENCE.findall(

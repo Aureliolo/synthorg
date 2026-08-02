@@ -168,7 +168,12 @@ fi
 #
 # typeguard first: it is the shorter of the two and its result is what the
 # very next test run reads, whereas the mypy graph is only needed at push.
-REWARM_CMD="uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/warm_typeguard_cache.py' --quiet; uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/run_affected_mypy.py' --rewarm"
+#
+# ``--mark-failures`` because this is the detached path: nothing reads the
+# exit code, so without a marker a repeatedly-failing warm is invisible and
+# every test process silently keeps paying full instrumentation. The dmypy
+# half already leaves ``mypy-rewarm-FAILED``; this is its counterpart.
+REWARM_CMD="uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/warm_typeguard_cache.py' --quiet --mark-failures; uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/run_affected_mypy.py' --rewarm"
 if command -v setsid >/dev/null 2>&1; then
     setsid bash -c "${REWARM_CMD}" >"${LOG}" 2>&1 &
 else

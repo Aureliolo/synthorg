@@ -68,7 +68,6 @@ from typing import Final, Literal, NamedTuple
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
-        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -77,11 +76,11 @@ if __package__ in {None, ""}:
         announce_deferral,
         changed_files,
         classify_src_path,
+        hooks_dir,
         merge_base,
     )
 else:
     from scripts._prepush_scope import (
-        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -90,6 +89,7 @@ else:
         announce_deferral,
         changed_files,
         classify_src_path,
+        hooks_dir,
         merge_base,
     )
 
@@ -645,7 +645,9 @@ def _read_lifetime_record(daemon: _Daemon) -> _LifetimeRecord | None:
         return _LifetimeRecord.from_json(
             daemon.lifetime_file.read_text(encoding="utf-8")
         )
-    except OSError:
+    # A marker caught mid-write holds a partial UTF-8 sequence, which is a
+    # decode failure rather than an IO one and would otherwise escape.
+    except OSError, UnicodeDecodeError:
         return None
 
 
@@ -677,7 +679,7 @@ def _dependency_digest() -> str | None:
     """
     try:
         return hashlib.blake2b(
-            (REPO_ROOT / PYPROJECT).with_name("uv.lock").read_bytes(), digest_size=16
+            (REPO_ROOT / "uv.lock").read_bytes(), digest_size=16
         ).hexdigest()
     except OSError:
         return None
@@ -857,7 +859,10 @@ def _check_daemon_locked(daemon: _Daemon) -> int | None:
         # a push for twice the bound the ceiling exists to impose, and the
         # scripts daemon would then start its own from zero.
         remaining = deadline - started
-        if remaining <= 0:
+        # A sub-second remainder truncates to ``timeout=0`` below, which fires
+        # the wedged-server kill against a daemon that was never given a
+        # chance to answer, and reports it as "exceeded 0s".
+        if remaining < 1:
             break
         code = _dmypy(
             daemon,
@@ -1406,30 +1411,11 @@ def _warm() -> int:
 def _rewarm_marker() -> Path | None:
     """Return the path of the failed-re-warm marker, or ``None`` if unknown.
 
-    Resolved via ``git rev-parse --git-path`` so it lands in this worktree's
-    own git dir rather than the main checkout's; a worktree's git dir is
-    ``.git/worktrees/<name>/``, so joining ``.git`` by hand would put every
-    worktree's marker in one shared place.
+    Returns:
+        The marker path, or ``None`` when the hooks directory is unknown.
     """
-    try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "--git-path", "synthorg-hooks"],
-            cwd=_REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=GIT_TIMEOUT_SECONDS,
-        )
-    except OSError, subprocess.SubprocessError:
-        return None
-    if completed.returncode != 0 or not completed.stdout.strip():
-        return None
-    directory = Path(completed.stdout.strip())
-    if not directory.is_absolute():
-        directory = _REPO_ROOT / directory
-    return directory / "mypy-rewarm-FAILED"
+    directory = hooks_dir()
+    return None if directory is None else directory / "mypy-rewarm-FAILED"
 
 
 def report_stale_rewarm_failure() -> None:

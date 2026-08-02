@@ -127,6 +127,29 @@ def git_output(*args: str, strip: bool = True) -> str:
     return result.stdout.strip() if strip else result.stdout
 
 
+def hooks_dir() -> Path | None:
+    """Return this worktree's ``synthorg-hooks`` directory.
+
+    Resolved via ``git rev-parse --git-path`` rather than by joining
+    ``.git`` by hand: a linked worktree's git dir is
+    ``.git/worktrees/<name>/``, so the hand-built path would put every
+    worktree's markers and logs in one shared place, where one worktree's
+    stale-cache warning would fire in all of them.
+
+    Returns:
+        The directory, or ``None`` when git cannot answer (then no marker
+        is written or read, which costs time and never correctness).
+    """
+    try:
+        raw = git_output("rev-parse", "--git-path", "synthorg-hooks")
+    except GitError:
+        return None
+    if not raw:
+        return None
+    directory = Path(raw)
+    return directory if directory.is_absolute() else REPO_ROOT / directory
+
+
 def merge_base() -> str:
     """Find the merge base between HEAD and origin/main.
 

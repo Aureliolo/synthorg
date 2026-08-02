@@ -26,16 +26,30 @@ Usage::
 
     python scripts/warm_typeguard_cache.py
     python scripts/warm_typeguard_cache.py --quiet
+    python scripts/warm_typeguard_cache.py --quiet --mark-failures
 """
 
 import argparse
+import contextlib
 import importlib
 import pkgutil
 import sys
 import time
+from pathlib import Path
 from typing import Final
 
 from typeguard import install_import_hook
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _prepush_scope import hooks_dir  # type: ignore[import-not-found]
+else:
+    from scripts._prepush_scope import hooks_dir
+
+# Read and cleared by ``run_affected_tests.py``: the warm that writes it runs
+# detached, so this is the only route from its failure to the developer who
+# is about to pay for it.
+WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 
 # Below this, the walk plainly did not reach the package: an ImportError
 # swallowed at the root would otherwise leave a silent no-op that still
@@ -99,18 +113,47 @@ def _walk_package(*, quiet: bool) -> tuple[int, list[str]]:
     return sum(1 for name in sys.modules if name.startswith("synthorg")), skipped
 
 
+def _leave_failure_marker(reason: str) -> None:
+    """Record that a detached warm failed, for the next test run to report.
+
+    Detached, nothing reads this process's exit code and nothing reads its
+    log unless already suspicious, so a repeatedly-failing warm is invisible
+    while every test process quietly pays the full instrumentation cost.
+    The dmypy re-warm has the same problem and solves it the same way.
+
+    Args:
+        reason: One line explaining what the warm could not do.
+    """
+    directory = hooks_dir()
+    if directory is None:
+        return
+    with contextlib.suppress(OSError):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / WARM_FAILED_MARKER).write_text(reason, encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Warm the instrumented-bytecode cache; report what it covered."""
     parser = argparse.ArgumentParser(description="Warm typeguard's bytecode cache.")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--mark-failures",
+        action="store_true",
+        help=(
+            "Leave a marker the next test run reports. For the detached "
+            "post-sync warm, whose exit code nothing reads."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if sys.dont_write_bytecode:
-        print(
+        reason = (
             "PYTHONDONTWRITEBYTECODE is set, so nothing can be cached; "
-            "unset it and re-run.",
-            file=sys.stderr,
+            "unset it and re-run.\n"
         )
+        print(reason, file=sys.stderr)
+        if args.mark_failures:
+            _leave_failure_marker(reason)
         return 1
 
     started = time.monotonic()
@@ -120,13 +163,23 @@ def main(argv: list[str] | None = None) -> int:
     elapsed = time.monotonic() - started
 
     if count < _MIN_EXPECTED_MODULES:
-        print(
+        reason = (
             f"only {count} synthorg modules were instrumented, expected at "
             f"least {_MIN_EXPECTED_MODULES}: the warm did not cover the "
-            f"package and every test process will still pay for it.",
-            file=sys.stderr,
+            f"package and every test process will still pay for it.\n"
         )
+        print(reason, file=sys.stderr)
+        if args.mark_failures:
+            _leave_failure_marker(reason)
         return 1
+    if args.mark_failures:
+        # A warm that now succeeds retires the previous failure itself; the
+        # reporter would otherwise only clear it after warning about a state
+        # that no longer holds.
+        directory = hooks_dir()
+        if directory is not None:
+            with contextlib.suppress(OSError):
+                (directory / WARM_FAILED_MARKER).unlink(missing_ok=True)
     if not args.quiet:
         suffix = f", {len(skipped)} unimportable" if skipped else ""
         print(f"typeguard cache warm: {count} modules in {elapsed:.1f}s{suffix}")

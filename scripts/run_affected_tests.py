@@ -42,6 +42,7 @@ etc.  Git command failures fall back to running the full unit suite.
 """
 
 import argparse
+import contextlib
 import math
 import os
 import re
@@ -65,6 +66,17 @@ from typing import Final, Literal
 _PYTEST_FULL_SUITE_TIMEOUT_SECONDS: Final[float] = 12 * 60
 _PYTEST_AFFECTED_TIMEOUT_SECONDS: Final[float] = 6 * 60
 _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
+# ``taskkill /T`` walks the tree and returns; anything slower than this means
+# the kill itself is stuck, and waiting longer on the killer of a hung run
+# only compounds the hang it was called to end.
+_TASKKILL_TIMEOUT_SECONDS: Final[float] = 5.0
+
+# Written by ``warm_typeguard_cache.py --mark-failures``. Duplicated as a
+# literal rather than imported: that module imports typeguard at module
+# level, and pulling it in here would cost this hook the instrumentation it
+# exists to have already paid. Kept in step by
+# ``test_run_affected_tests.py``'s marker-name test.
+_TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 
 # Above this many affected test files the local run stops being a fast screen
 # and becomes a slower duplicate of CI, so the unit run is deferred whole.
@@ -115,6 +127,7 @@ if __package__ in {None, ""}:
         changed_files,
         classify_src_path,
         git_output,
+        hooks_dir,
         merge_base,
     )
 else:
@@ -129,6 +142,7 @@ else:
         changed_files,
         classify_src_path,
         git_output,
+        hooks_dir,
         merge_base,
     )
 
@@ -595,12 +609,22 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     # while the workers are still holding the locks this exists to release.
     try:
         if sys.platform == "win32":
-            subprocess.run(
+            killed = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True,
                 check=False,
-                timeout=5.0,
+                timeout=_TASKKILL_TIMEOUT_SECONDS,
             )
+            if killed.returncode != 0:
+                # taskkill reports refusal through its exit code, not an
+                # exception, so without this the announcement below never
+                # fires for the commonest failure it exists to catch.
+                print(
+                    f"taskkill refused the pytest process tree at pid "
+                    f"{proc.pid} (exit {killed.returncode}); workers may "
+                    "still be running and holding file locks.",
+                    file=sys.stderr,
+                )
         else:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except ProcessLookupError:
@@ -1207,6 +1231,33 @@ def _run_full_suite() -> int:
     return _run_pytest(["tests/unit/"], run_all=True)
 
 
+def _report_stale_typeguard_warm() -> None:
+    """Warn once if the last detached typeguard warm failed, then clear it.
+
+    The warm runs detached after a dependency sync, so its exit code goes
+    nowhere. Without this, a repeatedly-failing warm is invisible and every
+    test process silently pays the full instrumentation cost again: a
+    mysteriously slow suite with no attribution, which is the problem the
+    warm exists to remove reintroduced one layer down. A warning rather
+    than a block, because a cold cache costs time and never correctness.
+    """
+    directory = hooks_dir()
+    if directory is None:
+        return
+    marker = directory / _TYPEGUARD_WARM_FAILED_MARKER
+    if not marker.is_file():
+        return
+    print(
+        "NOTE: the background typeguard cache warm after your last dependency "
+        "sync failed, so every test process here re-instruments the package. "
+        f"See {directory}/mypy-rewarm-last.log; re-run with "
+        "`uv run python scripts/warm_typeguard_cache.py`.",
+        file=sys.stderr,
+    )
+    with contextlib.suppress(OSError):
+        marker.unlink()
+
+
 def main() -> int:
     """Entry point.
 
@@ -1225,6 +1276,7 @@ def main() -> int:
         help="run the whole unit suite with the timing-regression guards armed",
     )
     run = _run_full_suite if parser.parse_args().full else _run_tests
+    _report_stale_typeguard_warm()
 
     try:
         before = _tracked_dirty_paths()

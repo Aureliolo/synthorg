@@ -81,3 +81,46 @@ class TestBytecodeWritingIsRequired:
         monkeypatch.setattr(sys, "dont_write_bytecode", True)
         monkeypatch.setattr(_MODULE, "_walk_package", lambda *, quiet: (3710, []))
         assert _MODULE.main(["--quiet"]) == 1
+
+
+class TestFailureMarker:
+    """The detached warm's exit code goes nowhere, so it leaves a marker."""
+
+    @pytest.fixture
+    def hooks(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+        monkeypatch.setattr(_MODULE, "hooks_dir", lambda: tmp_path)
+        name: str = _MODULE.WARM_FAILED_MARKER
+        return tmp_path / name
+
+    def test_a_failed_warm_leaves_one(
+        self, hooks: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "_walk_package", lambda *, quiet: (3, []))
+        assert _MODULE.main(["--quiet", "--mark-failures"]) == 1
+        assert hooks.is_file()
+
+    def test_a_later_success_retires_it(
+        self, hooks: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Left behind, it warns about a cache that is now warm, and a
+        # warning that fires when nothing is wrong stops being read.
+        hooks.write_text("stale", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_walk_package", lambda *, quiet: (3710, []))
+        assert _MODULE.main(["--quiet", "--mark-failures"]) == 0
+        assert not hooks.exists()
+
+    def test_an_interactive_run_leaves_no_marker(
+        self, hooks: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Without the flag the caller sees the exit code directly, so a
+        # marker would only surface a failure they already handled.
+        monkeypatch.setattr(_MODULE, "_walk_package", lambda *, quiet: (3, []))
+        assert _MODULE.main(["--quiet"]) == 1
+        assert not hooks.exists()
+
+    def test_an_unknown_hooks_directory_is_not_fatal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "hooks_dir", lambda: None)
+        monkeypatch.setattr(_MODULE, "_walk_package", lambda *, quiet: (3, []))
+        assert _MODULE.main(["--quiet", "--mark-failures"]) == 1

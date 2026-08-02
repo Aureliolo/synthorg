@@ -1064,6 +1064,49 @@ class TestDockerfileDigestPins:
         assert check() == []
 
 
+class TestActionDiscovery:
+    """A composite the closures cannot parse is a finding, not a warning."""
+
+    def _check(self) -> list[str]:
+        found: list[str] = _MODULE._check_action_discovery()  # type: ignore[attr-defined]
+        return found
+
+    def test_an_unparseable_action_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Silently dropping it removes the composite from the artifact,
+        # sink and ladder-cost closures, so invariants 5 and 6 stop being
+        # enforced for everything it reaches and the gate still exits 0.
+        broken = tmp_path / "action.yml"
+        broken.write_text("uses: [unclosed\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [broken])
+
+        problems = self._check()
+        assert len(problems) == 1
+        assert "invariants 5 and 6 are unenforced" in problems[0]
+
+    def test_a_non_mapping_action_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        listed = tmp_path / "action.yml"
+        listed.write_text("- not: a mapping\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [listed])
+
+        assert len(self._check()) == 1
+
+    def test_a_readable_action_is_not_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fine = tmp_path / "action.yml"
+        fine.write_text("runs:\n  using: composite\n  steps: []\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [fine])
+
+        assert self._check() == []
+
+    def test_the_live_actions_all_parse(self) -> None:
+        assert self._check() == []
+
+
 class TestScanFileEdgeCases:
     """Error / degenerate inputs are handled, not crashed."""
 

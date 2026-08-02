@@ -459,6 +459,49 @@ class TestStartLock:
         assert _MODULE._lock_is_stale(lock) is False
 
 
+class TestSharedDeadline:
+    """One ceiling across both attempts, without a zero-second last gasp."""
+
+    def test_a_sub_second_remainder_does_not_become_a_zero_timeout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # int() truncates, so passing the remainder through would hand
+        # subprocess a timeout of 0, which expires at once and kills a
+        # server that was never asked anything.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        now = [0.0]
+        monkeypatch.setattr(
+            _MODULE,
+            "time",
+            SimpleNamespace(
+                monotonic=lambda: now[0],
+                time=lambda: now[0],
+                sleep=lambda _seconds: None,
+            ),
+        )
+        monkeypatch.setattr(
+            _MODULE, "_MYPY_TIMEOUT_SECONDS", _MODULE._MYPY_TIMEOUT_SECONDS
+        )
+        timeouts: list[object] = []
+
+        failed: int = _MODULE._DMYPY_FAILED
+
+        def _consume_the_budget(_daemon: object, *_args: str, **kwargs: object) -> int:
+            timeouts.append(kwargs.get("timeout"))
+            # Leave a fraction of a second, then fail so a retry is due.
+            now[0] += _MODULE._MYPY_TIMEOUT_SECONDS - 0.5
+            return failed
+
+        monkeypatch.setattr(_MODULE, "_dmypy", _consume_the_budget)
+        monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+
+        _MODULE._check_daemon(daemon)
+
+        assert 0 not in timeouts, "a zero-second timeout reached subprocess"
+        assert len(timeouts) == 1, "the sub-second remainder bought a second attempt"
+
+
 class TestWedgedServerIsKilled:
     """A timeout kills the client; the server has to be killed too."""
 
@@ -472,7 +515,7 @@ class TestWedgedServerIsKilled:
             subcommand = tuple(argv[argv.index("--status-file") + 2 :])
             issued.append(subcommand)
             if subcommand[0] == "run":
-                raise subprocess.TimeoutExpired(argv, cast(float, kwargs["timeout"]))
+                raise subprocess.TimeoutExpired(argv, cast("float", kwargs["timeout"]))
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)

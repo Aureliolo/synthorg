@@ -643,9 +643,10 @@ repos:
       # an optimisation, not a correctness dependency -- the consumer
       # verifies the export against the sources on disk and rebuilds it
       # itself when they disagree. The triggers deliberately are NOT equal:
-      # the consumer also fires on the generated .gen.ts mirrors and the npm
-      # lockfiles, which cannot change the schema, so widening the producer
-      # to match would boot the app for a dependency bump.
+      # the consumer also fires on the generated .gen.ts mirrors, the npm
+      # lockfiles and the two DTO scripts, none of which can change the
+      # schema, so widening the producer to match would export for a
+      # dependency bump and cost the consumer more than it saves it.
       - id: endpoint-table-in-sync
         name: endpoint-table-in-sync gate (docs/openapi/index.md matches the exported schema)
         entry: bash -c 'uv run python scripts/export_openapi.py && uv run python scripts/generate_endpoint_table.py --check'
@@ -654,7 +655,7 @@ repos:
         # and the export script, and the committed table itself. Without a
         # hook invoking the generator's --check mode, the committed table
         # drifts silently every time a route is added.
-        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(export_openapi|generate_endpoint_table|generate_dto_types_ts|check_dto_types_ts_in_sync|_openapi_export_shared)\.py|docs/openapi/(index\.md|openapi\.json)|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(export_openapi|generate_endpoint_table|_openapi_export_shared)\.py|docs/openapi/(index\.md|openapi\.json)|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
