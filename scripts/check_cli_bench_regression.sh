@@ -2,10 +2,11 @@
 # In-CI A/B benchmark comparison for the Go CLI.
 #
 # Captures bench output for the current PR HEAD and the merge-base
-# against `main`, then runs `benchstat` to detect regressions. Runs
-# both captures on the SAME runner so cross-architecture noise is
-# eliminated entirely -- a stable signal even on shared GitHub-hosted
-# runners.
+# against `main`, then runs `benchstat` to detect regressions. Both
+# sides run on the SAME runner, and their rounds are INTERLEAVED: a
+# shared runner's speed drifts over the minutes a capture takes, and
+# measuring one side to completion before starting the other charges
+# that drift to the diff.
 #
 # Why no committed baseline file:
 #   benchmark numbers vary by ~3-10x between developer machines
@@ -120,22 +121,38 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
-run_benches() {
-    local out_file="$1"
-    : >"${out_file}"
+# Compile one benchmark binary per package into ``$1`` for whatever is
+# checked out. Building both sides up front is what lets the runs be
+# interleaved: the checkouts happen once, before any measurement, rather
+# than between the two halves of it.
+build_bench_binaries() {
+    local out_dir="$1"
+    mkdir -p "${out_dir}"
     for pkg in "${BENCH_PKGS[@]}"; do
-        echo "::group::Benchmarking ${pkg}"
-        # ``-run=^$`` skips regular tests so only Bench* runs. ``-count``
-        # iterates each bench so benchstat has multiple samples to
-        # build its confidence interval on.
-        go -C cli test \
-            -run='^$' \
-            -bench='.' \
-            -benchmem \
-            -count="${BENCH_COUNT}" \
-            "${pkg}" \
-            | tee -a "${out_file}"
-        echo "::endgroup::"
+        go -C cli test -run='^$' -bench='.' -c \
+            -o "${out_dir}/$(basename "${pkg}").test" "${pkg}"
+    done
+}
+
+# Run one round of every package's benchmarks from an already-built set.
+#
+# Launched from inside the package directory because a compiled test
+# binary inherits the caller's working directory, and the compose
+# benchmarks read fixtures through relative paths that only resolve
+# from there.
+run_round() {
+    local bin_dir="$1" out_file="$2"
+    for pkg in "${BENCH_PKGS[@]}"; do
+        local name
+        name="$(basename "${pkg}")"
+        (
+            cd "cli/${pkg#./}" || exit 1
+            "${bin_dir}/${name}.test" \
+                -test.run='^$' \
+                -test.bench='.' \
+                -test.benchmem \
+                -test.count=1
+        ) | tee -a "${out_file}"
     done
 }
 
@@ -180,8 +197,8 @@ ensure_benchstat() {
 
 ensure_benchstat
 
-echo "=== Capturing PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
-run_benches "${NEW_OUT}"
+echo "=== Building PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
+build_bench_binaries "${WORK_DIR}/new"
 
 echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
 # Stash any local tracked changes + untracked files (CI checkout is
@@ -197,11 +214,28 @@ if ! git diff-index --quiet HEAD -- || [[ -n "$(git ls-files --others --exclude-
 fi
 git checkout --quiet "${MERGE_BASE}"
 
-echo "=== Capturing merge-base benchmarks ==="
-run_benches "${OLD_OUT}"
+echo "=== Building merge-base benchmarks ==="
+build_bench_binaries "${WORK_DIR}/old"
 
 echo "=== Restoring HEAD ==="
 git checkout --quiet "${CURRENT_HEAD}"
+
+# Interleaved, not one side then the other. A shared runner's speed
+# drifts over the minutes a full capture takes, and measuring all of
+# HEAD before any of the merge-base charges that drift entirely to the
+# diff: identical `internal/ui` code once read 19% slower than its own
+# merge-base with byte-identical allocations, and passed on the run
+# before. Alternating rounds puts both sides in the same conditions,
+# so what survives is the difference between the binaries.
+echo "=== Capturing ${BENCH_COUNT} interleaved rounds ==="
+: >"${NEW_OUT}"
+: >"${OLD_OUT}"
+for ((round = 1; round <= BENCH_COUNT; round++)); do
+    echo "::group::Round ${round}/${BENCH_COUNT}"
+    run_round "${WORK_DIR}/new" "${NEW_OUT}"
+    run_round "${WORK_DIR}/old" "${OLD_OUT}"
+    echo "::endgroup::"
+done
 
 echo "=== benchstat comparison ==="
 benchstat "${OLD_OUT}" "${NEW_OUT}" | tee "${DIFF_OUT}"
