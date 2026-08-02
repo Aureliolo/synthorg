@@ -181,3 +181,47 @@ func TestBuildIdentityPolicyDoesNotError(t *testing.T) {
 		t.Fatalf("BuildIdentityPolicy() error: %v", err)
 	}
 }
+
+func TestBuildReleaseIdentityPolicyRejectsUnanchoredRegex(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		sanRegex string
+		wantErr  bool
+	}{
+		{
+			"repository_anchored",
+			`^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
+			false,
+		},
+		// Each of these satisfies the extension binding on its own, so
+		// only the pattern check separates them from the accepted form.
+		{
+			"foreign_repository",
+			`^https://github\.com/evil/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
+			true,
+		},
+		{
+			"unanchored_start",
+			`https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
+			true,
+		},
+		{
+			"unanchored_end",
+			`^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)`,
+			true,
+		},
+		{"match_everything", `.*`, true},
+		{"empty", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := BuildReleaseIdentityPolicy(tc.sanRegex)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("BuildReleaseIdentityPolicy(%q) error = %v, wantErr %v",
+					tc.sanRegex, err, tc.wantErr)
+			}
+		})
+	}
+}

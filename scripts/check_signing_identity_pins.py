@@ -56,7 +56,6 @@ import yaml
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _WORKFLOWS_ROOT: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 _ACTIONS_ROOT: Final[Path] = _REPO_ROOT / ".github" / "actions"
-_SCRIPTS_ROOT: Final[Path] = _REPO_ROOT / ".github" / "scripts"
 
 _SELFUPDATE_GO: Final[Path] = (
     _REPO_ROOT / "cli" / "internal" / "selfupdate" / "sigstore.go"
@@ -92,10 +91,17 @@ _COSIGN_INVOCATION: Final[re.Pattern[str]] = re.compile(
     r"[ \t]+(?:sign-blob|sign|attest-blob|attest)(?![\w-])",
 )
 
-# A run: step may delegate to a repo script that signs. The script is read and
-# tested with the same pattern, so renaming the wrapper cannot blind the scan.
+# A run: step may delegate to a repo script that signs, and so may that
+# script. Every helper is read and tested with the same pattern, so neither
+# renaming a wrapper nor adding a layer of them can blind the scan.
+#
+# The match is any repo-relative path whose final directory is a scripts
+# directory, which covers .github/scripts, the repository-root scripts, and
+# any per-component one. It deliberately does not match an absolute path or
+# one rooted in a variable expansion: those name a file the repository does
+# not hold, so reading it would report on something other than what ships.
 _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
-    r"\.github/scripts/([A-Za-z0-9_.-]+\.sh)",
+    r"(?<![\w./-])((?:[A-Za-z0-9_.-]+/)*scripts/[A-Za-z0-9_.-]+\.(?:sh|py))",
 )
 
 # ``uses`` forms that resolve to a composite action inside this repo. GitHub
@@ -103,6 +109,15 @@ _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
 # matched that way; a case variant must not read as a third-party action.
 _LOCAL_ACTION_PREFIX: Final[str] = "./.github/actions/"
 _OWN_REPO_ACTION_PREFIX: Final[str] = "aureliolo/synthorg/.github/actions/"
+
+# The same two forms for a reusable-workflow call, and the extensions GitHub
+# accepts for one. A signer reached through either form or either extension is
+# reached all the same, so the caller count must recognise all of them.
+_WORKFLOW_CALL_PREFIXES: Final[tuple[str, ...]] = (
+    "./.github/workflows/",
+    "aureliolo/synthorg/.github/workflows/",
+)
+_WORKFLOW_EXTENSIONS: Final[frozenset[str]] = frozenset({"yml", "yaml"})
 
 # Workflow stems are embedded in a regex verbatim, so anything outside this
 # alphabet would change the pattern's meaning rather than its text.
@@ -151,12 +166,12 @@ class ScanRoots:
     Attributes:
         workflows: Directory holding workflow files.
         actions: Directory holding this repository's composite actions.
-        scripts: Directory holding shell helpers a ``run:`` step may call.
+        repo: Root the repo-relative script references resolve against.
     """
 
     workflows: Path = _WORKFLOWS_ROOT
     actions: Path = _ACTIONS_ROOT
-    scripts: Path = _SCRIPTS_ROOT
+    repo: Path = _REPO_ROOT
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -274,15 +289,15 @@ def _steps_of(raw: object) -> list[dict[str, object]]:
     return [step for step in raw if isinstance(step, dict)]
 
 
-def _workflow_steps(path: Path, doc: object) -> list[dict[str, object]]:
-    """Return every step in a workflow file.
+def _workflow_jobs(path: Path, doc: object) -> dict[str, object]:
+    """Return the jobs mapping of a workflow file.
 
     Args:
         path: File the document came from, for error messages.
         doc: Parsed document.
 
     Returns:
-        Every step mapping across all jobs.
+        The raw ``jobs:`` mapping.
 
     Raises:
         SigningScanError: The document is not a workflow. A file that parses
@@ -298,8 +313,24 @@ def _workflow_steps(path: Path, doc: object) -> list[dict[str, object]]:
             f"{path}: no 'jobs:' mapping, so its shape is not one this scan understands"
         )
         raise SigningScanError(msg)
+    return jobs
+
+
+def _workflow_steps(path: Path, doc: object) -> list[dict[str, object]]:
+    """Return every step in a workflow file.
+
+    Args:
+        path: File the document came from, for error messages.
+        doc: Parsed document.
+
+    Returns:
+        Every step mapping across all jobs.
+
+    Raises:
+        SigningScanError: The document is not a workflow.
+    """
     steps: list[dict[str, object]] = []
-    for job in jobs.values():
+    for job in _workflow_jobs(path, doc).values():
         if isinstance(job, dict):
             steps.extend(_steps_of(job.get("steps")))
     return steps
@@ -369,31 +400,56 @@ def _resolve_local_action(uses: str, actions_root: Path, origin: Path) -> Path |
     raise SigningScanError(msg)
 
 
-def _run_signs(run: str, origin: Path, roots: ScanRoots) -> bool:
-    """Report whether a ``run:`` body reaches a signing invocation.
+def _text_signs(body: str, origin: Path, roots: ScanRoots, seen: set[Path]) -> bool:
+    """Report whether a shell body reaches a signing invocation.
 
     Args:
-        run: Shell body of the step.
-        origin: File the step came from, for error messages.
+        body: Shell body of a step or of a helper script.
+        origin: File the body came from, for error messages.
         roots: Directories the scan may follow references into.
+        seen: Files already visited, so a helper cycle terminates.
 
     Returns:
-        True when the body signs directly or via a repository script.
+        True when the body signs directly or through a repository script.
 
     Raises:
         SigningScanError: A referenced repository script cannot be read.
     """
-    folded = _executable_text(run)
+    folded = _executable_text(body)
     if _COSIGN_INVOCATION.search(folded):
         return True
-    for script_name in _SCRIPT_REFERENCE.findall(folded):
-        script = roots.scripts / script_name
+    for reference in _SCRIPT_REFERENCE.findall(folded):
+        script = roots.repo / reference
         if not script.is_file():
-            msg = f"{origin}: references {script_name}, which is not in .github/scripts"
+            msg = (
+                f"{origin}: references {reference}, which does not resolve under "
+                f"{roots.repo}"
+            )
             raise SigningScanError(msg)
-        if _COSIGN_INVOCATION.search(_executable_text(_read_text(script))):
+        if _script_signs(script, roots, seen):
             return True
     return False
+
+
+def _script_signs(path: Path, roots: ScanRoots, seen: set[Path]) -> bool:
+    """Report whether a helper script reaches a signing invocation.
+
+    Args:
+        path: Helper script file.
+        roots: Directories the scan may follow references into.
+        seen: Files already visited, so a helper cycle terminates.
+
+    Returns:
+        True when the script, or one it calls, signs.
+
+    Raises:
+        SigningScanError: A file in the walk could not be read.
+    """
+    resolved = path.resolve()
+    if resolved in seen:
+        return False
+    seen.add(resolved)
+    return _text_signs(_read_text(path), path, roots, seen)
 
 
 def _executable_text(shell: str) -> str:
@@ -422,7 +478,7 @@ def _steps_sign(
             if nested is not None and _action_signs(nested, roots, seen):
                 return True
         run = step.get("run")
-        if isinstance(run, str) and _run_signs(run, origin, roots):
+        if isinstance(run, str) and _text_signs(run, origin, roots, seen):
             return True
     return False
 
@@ -469,8 +525,36 @@ def discover_signers(roots: ScanRoots | None = None) -> set[str]:
     return signers
 
 
+def _called_workflow_stem(uses: str) -> str | None:
+    """Return the stem a job-level ``uses:`` calls in this repository.
+
+    Args:
+        uses: Raw ``uses:`` value from a job.
+
+    Returns:
+        The called workflow's stem, or None when the value names a workflow
+        outside this repository.
+    """
+    ref = uses.split("@", 1)[0].strip()
+    lowered = ref.lower()
+    for prefix in _WORKFLOW_CALL_PREFIXES:
+        if lowered.startswith(prefix):
+            name = ref[len(prefix) :]
+            break
+    else:
+        return None
+    stem, _, extension = name.rpartition(".")
+    if not stem or extension.lower() not in _WORKFLOW_EXTENSIONS:
+        return None
+    return stem
+
+
 def calling_workflows(signer: str, roots: ScanRoots | None = None) -> set[str]:
     """Return the stems of workflows that invoke *signer* as a reusable call.
+
+    Reads the parsed job-level ``uses:`` rather than searching the file text,
+    so a path filter or a comment naming the signer is not mistaken for a
+    second caller, and so both file extensions and both reference forms count.
 
     Args:
         signer: Workflow stem of the reusable signer.
@@ -480,16 +564,20 @@ def calling_workflows(signer: str, roots: ScanRoots | None = None) -> set[str]:
         Stems of the workflow files containing a call to it.
 
     Raises:
-        SigningScanError: A workflow file could not be read.
+        SigningScanError: A workflow file could not be read or parsed.
     """
     roots = roots or ScanRoots()
-    needle = f"./.github/workflows/{signer}.yml"
     callers: set[str] = set()
     for path in sorted(roots.workflows.glob("*.y*ml")):
         if path.stem == signer:
             continue
-        if needle in _read_text(path):
-            callers.add(path.stem)
+        for job in _workflow_jobs(path, _load_yaml(path)).values():
+            if not isinstance(job, dict):
+                continue
+            uses = job.get("uses")
+            if isinstance(uses, str) and _called_workflow_stem(uses) == signer:
+                callers.add(path.stem)
+                break
     return callers
 
 

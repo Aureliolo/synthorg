@@ -301,9 +301,14 @@ A reusable workflow in a public repository can be invoked by any repository on
 GitHub, and every caller's build produces the *same* `job_workflow_ref`. The
 SAN therefore names the build recipe, not the build owner. Both policies also
 pin certificate extensions (`SourceRepositoryURI`,
-`SourceRepositoryIdentifier`, `RunnerEnvironment`) via
-`verify.BuildIdentityPolicy`, which is what distinguishes a build this
-repository ran from one that merely used its workflow. The numeric repository
+`SourceRepositoryIdentifier`, `RunnerEnvironment`), which is what
+distinguishes a build this repository ran from one that merely used its
+workflow. Both constructors live in `cli/internal/verify/identity.go` and
+share one builder so the binding cannot diverge between them:
+`verify.BuildIdentityPolicy` for images, which owns its SAN regex, and
+`verify.BuildReleaseIdentityPolicy` for release archives, which takes the
+regex from the self-update package that consumes it and rejects one not
+anchored to this repository's workflow path. The numeric repository
 identifier is pinned alongside the URI because it survives a rename or
 transfer; renaming or transferring this repository would otherwise free the
 pinned URI for someone else to claim, so treat both as fixed for as long as
@@ -316,9 +321,10 @@ tag at an already-signed digest without signing again. Accepting a ref class
 a signer never legitimately produces would only ever help a forger.
 
 `scripts/check_signing_identity_pins.py` derives the signer set from the
-workflow tree, following composite actions and shell helpers, and fails the
-push when a pin and the signers disagree, when a declared signer stops
-signing, or when either constant differs by so much as a character from the
+workflow tree, following composite actions and helper scripts as deep as they
+go, and fails the push when a pin and the signers disagree, when a declared
+signer stops signing, when a signer becomes reachable from a second calling
+workflow, or when either constant differs by so much as a character from the
 pattern its declaration builds. Without it, moving a signing step passes every
 test and breaks `synthorg update` and `synthorg start` for users only after
 release.

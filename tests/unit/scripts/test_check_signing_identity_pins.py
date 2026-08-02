@@ -63,7 +63,7 @@ def _roots(gate: ModuleType, tmp_path: Path) -> object:
     return gate.ScanRoots(
         workflows=tmp_path / "workflows",
         actions=tmp_path / "actions",
-        scripts=tmp_path / "scripts",
+        repo=tmp_path,
     )
 
 
@@ -198,25 +198,76 @@ def test_own_repo_action_prefix_resolves_case_insensitively(
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"pinned"}
 
 
-def test_signing_through_repo_script_counts(gate: ModuleType, tmp_path: Path) -> None:
-    """A run: delegating to a repo shell helper that signs counts.
+@pytest.mark.parametrize(
+    "helper",
+    [
+        pytest.param(".github/scripts/some_wrapper.sh", id="workflow_scripts"),
+        pytest.param("scripts/some_wrapper.sh", id="repo_root_scripts"),
+        pytest.param("scripts/some_wrapper.py", id="python_helper"),
+        pytest.param("cli/scripts/some_wrapper.sh", id="component_scripts"),
+    ],
+)
+def test_signing_through_repo_script_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+    helper: str,
+) -> None:
+    """A run: delegating to a repo helper that signs counts.
 
-    Detection keys on the script's contents, not its name, so renaming the
-    wrapper cannot blind the scan.
+    Detection keys on the script's contents, not its name or which scripts
+    directory holds it, so neither renaming the wrapper nor moving it can
+    blind the scan.
     """
     _write(
-        tmp_path / "scripts" / "some_wrapper.sh",
+        tmp_path / helper,
         """
         #!/usr/bin/env bash
         exec cosign sign-blob "$@"
         """,
     )
-    _workflow(
-        tmp_path,
-        "delegates.yml",
-        "- run: bash .github/scripts/some_wrapper.sh sign-blob checksums.txt",
-    )
+    _workflow(tmp_path, "delegates.yml", f"- run: bash {helper} checksums.txt")
     assert gate.discover_signers(_roots(gate, tmp_path)) == {"delegates"}
+
+
+def test_signing_through_a_chain_of_helpers_counts(
+    gate: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """A helper that delegates to another helper is followed too.
+
+    Stopping at the first script would let one more layer of indirection hide
+    the signing step, which is the same blindness the direct case guards.
+    """
+    _write(
+        tmp_path / "scripts" / "outer.sh",
+        """
+        #!/usr/bin/env bash
+        exec .github/scripts/inner.sh "$@"
+        """,
+    )
+    _write(
+        tmp_path / ".github" / "scripts" / "inner.sh",
+        """
+        #!/usr/bin/env bash
+        exec cosign sign-blob "$@"
+        """,
+    )
+    _workflow(tmp_path, "layered.yml", "- run: bash scripts/outer.sh checksums.txt")
+    assert gate.discover_signers(_roots(gate, tmp_path)) == {"layered"}
+
+
+def test_helper_script_cycle_terminates(gate: ModuleType, tmp_path: Path) -> None:
+    """Two helpers calling each other are walked once, not forever."""
+    for name, other in (("ping", "pong"), ("pong", "ping")):
+        _write(
+            tmp_path / "scripts" / f"{name}.sh",
+            f"""
+            #!/usr/bin/env bash
+            exec scripts/{other}.sh "$@"
+            """,
+        )
+    _workflow(tmp_path, "helper-loops.yml", "- run: bash scripts/ping.sh")
+    assert gate.discover_signers(_roots(gate, tmp_path)) == set()
 
 
 # --------------------------------------------------------------------------
@@ -307,11 +358,44 @@ def test_local_reference_that_does_not_resolve_raises(
         gate.discover_signers(_roots(gate, tmp_path))
 
 
-def test_missing_referenced_script_raises(gate: ModuleType, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "reference",
+    [
+        pytest.param(".github/scripts/gone.sh", id="workflow_scripts"),
+        pytest.param("scripts/gone.py", id="repo_root_scripts"),
+    ],
+)
+def test_missing_referenced_script_raises(
+    gate: ModuleType,
+    tmp_path: Path,
+    reference: str,
+) -> None:
     """A run: naming a repo script that is absent leaves the scan blind."""
-    _workflow(tmp_path, "ghost.yml", "- run: bash .github/scripts/gone.sh")
-    with pytest.raises(gate.SigningScanError, match=r"not in \.github/scripts"):
+    _workflow(tmp_path, "ghost.yml", f"- run: bash {reference}")
+    with pytest.raises(gate.SigningScanError, match="does not resolve under"):
         gate.discover_signers(_roots(gate, tmp_path))
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        pytest.param("/opt/tooling/scripts/sign.sh", id="absolute_path"),
+        pytest.param("vendor/lib/helpers/sign.sh", id="not_a_scripts_directory"),
+    ],
+)
+def test_reference_outside_the_repository_is_not_followed(
+    gate: ModuleType,
+    tmp_path: Path,
+    reference: str,
+) -> None:
+    """Only a repo-relative helper is resolved, and its absence is not fatal.
+
+    A path the repository does not hold names a file the scan cannot read and
+    that ships with nothing, so treating it as a missing helper would fail the
+    gate on a healthy tree.
+    """
+    _workflow(tmp_path, "external.yml", f"- run: bash {reference}")
+    assert gate.discover_signers(_roots(gate, tmp_path)) == set()
 
 
 def test_unparseable_yaml_raises(gate: ModuleType, tmp_path: Path) -> None:
@@ -433,6 +517,49 @@ def test_apko_base_signer_stays_unpinned(gate: ModuleType) -> None:
     assert "reusable-publish-apko-base" not in pinned
 
 
+def _pin(gate: ModuleType, label: str, *stems: str) -> object:
+    """Build a pin admitting *stems*, for exercising the declaration checks."""
+    return gate.Pin(
+        label=label,
+        go_file=gate._VERIFY_GO,
+        const_name="ExpectedSANRegex",
+        signers=tuple(gate.PinnedSigner(stem, gate._MAIN_REF) for stem in stems),
+    )
+
+
+def test_signer_declared_in_two_pins_is_flagged(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One name admitted by both pins lets each artefact class vouch for the other.
+
+    A release archive signed by an image signer would then verify, so the two
+    pins have to stay disjoint.
+    """
+    monkeypatch.setattr(
+        gate,
+        "_PINS",
+        (_pin(gate, "pin A", "shared-signer"), _pin(gate, "pin B", "shared-signer")),
+    )
+    problems = gate._check_declarations({"shared-signer"})
+    assert any("declared in more than one pin" in p for p in problems)
+
+
+def test_pinning_an_unverified_signer_is_flagged(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signer the CLI never verifies must not be admitted by a pin.
+
+    Admitting one widens the trust anchor to an artefact class no user ever
+    checks, so nothing would surface the mistake at install time.
+    """
+    unverified = next(iter(gate._UNVERIFIED_SIGNERS))
+    monkeypatch.setattr(gate, "_PINS", (_pin(gate, "pin A", unverified),))
+    problems = gate._check_declarations({unverified})
+    assert any("never verifies" in p for p in problems)
+
+
 def test_single_caller_invariant_holds_on_the_real_tree(gate: ModuleType) -> None:
     """Each current signer is reachable from exactly one calling workflow.
 
@@ -442,6 +569,101 @@ def test_single_caller_invariant_holds_on_the_real_tree(gate: ModuleType) -> Non
     assert gate._check_single_caller(gate.discover_signers()) == []
     assert gate.calling_workflows("reusable-release-cli") == {"verify-cli"}
     assert gate.calling_workflows("reusable-publish-image") == {"build-images"}
+
+
+def test_second_caller_of_a_signer_is_flagged(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signer reachable from two workflows widens the trust anchor.
+
+    The SAN records the reusable workflow, not who called it, so a second
+    caller on a lower-trust trigger mints the same identity while every pin
+    still reads as correct.
+    """
+    monkeypatch.setattr(
+        gate,
+        "calling_workflows",
+        lambda *_a, **_k: {"verify-cli", "rogue-release"},
+    )
+    problems = gate._check_single_caller(gate.discover_signers())
+    assert problems
+    assert all("every caller inherits its signing identity" in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("filename", "uses"),
+    [
+        pytest.param("signer.yml", "./.github/workflows/signer.yml", id="local_yml"),
+        pytest.param("signer.yaml", "./.github/workflows/signer.yaml", id="local_yaml"),
+        pytest.param(
+            "signer.yml",
+            "Aureliolo/synthorg/.github/workflows/signer.yml@abc123",
+            id="own_repo_pinned",
+        ),
+    ],
+)
+def test_caller_detection_covers_both_forms_and_extensions(
+    gate: ModuleType,
+    tmp_path: Path,
+    filename: str,
+    uses: str,
+) -> None:
+    """Every way of calling a signer counts, because each mints its identity."""
+    _write(
+        tmp_path / "workflows" / filename,
+        """
+        on: {workflow_call: {}}
+        jobs:
+          sign:
+            steps:
+              - run: cosign sign-blob checksums.txt
+        """,
+    )
+    _write(
+        tmp_path / "workflows" / "caller.yml",
+        f"""
+        on: {{push: {{}}}}
+        jobs:
+          release:
+            uses: {uses}
+        """,
+    )
+    assert gate.calling_workflows("signer", _roots(gate, tmp_path)) == {"caller"}
+
+
+def test_signer_named_outside_a_call_is_not_a_caller(
+    gate: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """A path filter naming the signer is not an invocation of it.
+
+    Reading the file as text would count it as a second caller and fail a
+    healthy tree, which is how a gate gets muted.
+    """
+    _write(
+        tmp_path / "workflows" / "signer.yml",
+        """
+        on: {workflow_call: {}}
+        jobs:
+          sign:
+            steps:
+              - run: cosign sign-blob checksums.txt
+        """,
+    )
+    _write(
+        tmp_path / "workflows" / "watcher.yml",
+        """
+        on:
+          push:
+            paths: ["./.github/workflows/signer.yml"]
+        jobs:
+          note:
+            steps:
+              - run: echo changed
+        """,
+    )
+    assert gate.calling_workflows("signer", _roots(gate, tmp_path)) == set()
 
 
 # --------------------------------------------------------------------------

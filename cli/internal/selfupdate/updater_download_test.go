@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -441,6 +442,37 @@ func TestDownloadRefusesWithoutSigstoreBundle(t *testing.T) {
 	}
 }
 
+// cmd/update.go recognises a verification failure with errors.Is so it can
+// point the operator at the reinstall that recovers. A regression to a plain
+// fmt.Errorf would drop that hint while every other assertion still passed,
+// so the wrapping is asserted directly. A malformed bundle is enough: parsing
+// fails before any trusted-root fetch, so this needs no network.
+func TestDownloadWrapsSigstoreVerificationFailure(t *testing.T) {
+	archive := []byte("archive bytes")
+	hash := sha256.Sum256(archive)
+	checksumLine := fmt.Sprintf("%s  %s\n", hex.EncodeToString(hash[:]), assetName())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/asset":
+			_, _ = w.Write(archive)
+		case "/checksums":
+			_, _ = w.Write([]byte(checksumLine))
+		case "/bundle":
+			_, _ = w.Write([]byte("not-a-sigstore-bundle"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := Download(
+		context.Background(), srv.URL+"/asset", srv.URL+"/checksums", srv.URL+"/bundle")
+	if !errors.Is(err, ErrSigstoreVerification) {
+		t.Fatalf("err = %v, want it to wrap ErrSigstoreVerification", err)
+	}
+}
+
 func TestDownloadChecksumMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -505,6 +537,12 @@ func TestCheckFromURL(t *testing.T) {
 	wantChecksumURL := expectedURLPrefix + "v1.0.0/checksums.txt"
 	if result.ChecksumURL != wantChecksumURL {
 		t.Errorf("ChecksumURL = %q, want %q", result.ChecksumURL, wantChecksumURL)
+	}
+	// The bundle URL is part of the contract cmd/update.go hands to
+	// Download, which refuses to install without it.
+	wantBundleURL := expectedURLPrefix + "v1.0.0/checksums.txt.sigstore.json"
+	if result.SigstoreBundURL != wantBundleURL {
+		t.Errorf("SigstoreBundURL = %q, want %q", result.SigstoreBundURL, wantBundleURL)
 	}
 }
 

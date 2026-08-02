@@ -5,6 +5,7 @@ package verify
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
@@ -36,6 +37,12 @@ const (
 	ExpectedSourceRepositoryURI = "https://github.com/Aureliolo/synthorg"
 	ExpectedSourceRepositoryID  = "1168268477"
 	ExpectedRunnerEnvironment   = "github-hosted"
+
+	// expectedSANPrefix is the anchored workflow path every accepted SAN
+	// starts with. BuildReleaseIdentityPolicy checks its caller's pattern
+	// against it, so a SAN regex reaching Fulcio cannot name another
+	// repository however it was assembled.
+	expectedSANPrefix = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/`
 
 	// ExpectedSANRegex matches the image-publishing signing identity: the
 	// workflow holding the signing step, never a caller that invokes it.
@@ -148,6 +155,17 @@ func buildIdentityPolicyFor(sanRegex string) (verify.CertificateIdentity, error)
 
 // BuildReleaseIdentityPolicy creates the identity policy for release archives
 // signed by this repository, for the self-update path.
+//
+// The caller supplies the SAN regex because the release-archive pattern lives
+// with the code that consumes it, but the pattern is checked here rather than
+// trusted: an exported constructor that accepted any regex would let a later
+// caller pass an unanchored or foreign-repository pattern and still satisfy
+// the extension binding.
 func BuildReleaseIdentityPolicy(sanRegex string) (verify.CertificateIdentity, error) {
+	if !strings.HasPrefix(sanRegex, expectedSANPrefix) || !strings.HasSuffix(sanRegex, "$") {
+		return verify.CertificateIdentity{}, fmt.Errorf(
+			"release SAN regex %q must start with %q and end with $",
+			sanRegex, expectedSANPrefix)
+	}
 	return buildIdentityPolicyFor(sanRegex)
 }
