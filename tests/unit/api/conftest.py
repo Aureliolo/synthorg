@@ -969,12 +969,20 @@ async def async_test_client(
     no anyio ``BlockingPortal`` (no extra thread, event loop, or
     ``socket.socketpair``).
 
-    Cost, measured per test on one controller case: pre-test reset 15ms,
-    lifespan startup **909ms**, post-startup reset 1.3ms, restore 0.4ms.
-    The resets are noise; the lifespan is 98% of it, and it is paid to be
-    largely thrown away, since ``_post_startup_reset`` immediately reverts
-    most of what it wired. Anything aiming at this fixture's cost should
-    aim at the startup, not the resets.
+    Cost per test, medians across three controller files after the first
+    test in the process (the first pays roughly 5x for one-off wiring):
+    entering the client 110ms, of which the core ``on_startup`` hook is
+    75ms and its reconcile pass at persistence-connected is 45ms; the two
+    later reconcile passes are 1.7ms each, and the three resets together
+    are 1.4ms.
+
+    Two things follow. The resets are noise, so nothing aimed at this
+    fixture's cost should aim at them. And the reconciler's converged
+    no-op works: the repeat passes are already nearly free. What is not
+    free is the FIRST pass, which activates roughly forty subsystems from
+    scratch on every test, because ``_post_startup_reset`` and
+    ``_restore_app_state`` revert that wiring for isolation. That cost is
+    the price of per-test isolation, not a defect in the startup path.
     """
     async with _async_shared_client(_shared_app, _reset_services) as client:
         yield client
