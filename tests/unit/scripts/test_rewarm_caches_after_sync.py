@@ -131,6 +131,23 @@ def _wait_for_text(path: Path, needle: str, *, window: float) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
+def _rewarm_program() -> str:
+    """Return the shipped ``bash -c`` program text the hook detaches.
+
+    Read out of the script rather than restated here: a copy would keep
+    passing while the line that actually runs regressed.
+    """
+    for line in _SCRIPT.read_text(encoding="utf-8").splitlines():
+        if line.startswith("REWARM_CMD="):
+            body = line.removeprefix("REWARM_CMD=")
+            # Single-quoted, or the repository path is expanded into shell
+            # source before the inner shell ever sees it as an argument.
+            assert body.startswith("'")
+            assert body.endswith("'")
+            return body[1:-1]
+    pytest.fail("no REWARM_CMD assignment in the hook script")
+
+
 def _run(
     envelope: object, tmp_path: Path, *, expect_launch: bool = True
 ) -> tuple[subprocess.CompletedProcess[str], bool]:
@@ -290,5 +307,36 @@ def test_never_interpolates_the_command_into_the_launched_process(
     )
     assert "pwned" not in recorded
     # Both warms launch, and neither argv carries anything from the payload.
+    assert "warm_typeguard_cache.py" in recorded
+    assert "--rewarm" in recorded
+
+
+@_BASH_AVAILABLE
+def test_a_repository_path_holding_a_quote_still_reaches_uv(tmp_path: Path) -> None:
+    """The worktree path is an argument to the detached shell, not source.
+
+    A directory name containing a single quote closes quoted program text,
+    so an interpolated path takes the whole re-warm down before either
+    warm starts, in the one place nothing reads an exit code.
+    """
+    assert _BASH is not None
+    hostile = tmp_path / "it's a worktree"
+    hostile.mkdir()
+    bin_dir = _stub_uv(tmp_path)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    completed = subprocess.run(  # noqa: S603 -- resolved argv, no shell, path is a fixture
+        [_BASH, "-c", _rewarm_program(), "rewarm-caches", str(hostile)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=env,
+        timeout=_TIMEOUT_SECONDS,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    recorded = (tmp_path / "uv-invoked.txt").read_text(encoding="utf-8")
+    assert str(hostile) in recorded
     assert "warm_typeguard_cache.py" in recorded
     assert "--rewarm" in recorded

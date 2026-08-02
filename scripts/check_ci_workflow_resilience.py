@@ -519,66 +519,93 @@ def _check_pull_request_target_refs(
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        # A job whose body is `uses:` passes its `with:` into a called
-        # workflow, which resolves it with this repository's secrets. The
-        # interpolation happens here, so this is the only place it is visible.
+        violations.extend(_check_job_level_with(job_name, job))
+        violations.extend(_check_env_scopes(job_name, job, workflow_env))
+        violations.extend(_check_step_refs(job_name, job))
+    return violations
+
+
+def _check_job_level_with(job_name: str, job: dict[str, object]) -> list[str]:
+    """Return violations for a job-level ``with:`` block.
+
+    A job whose body is ``uses:`` passes its ``with:`` into a called
+    workflow, which resolves it with this repository's secrets. The
+    interpolation happens here, so this is the only place it is visible.
+    """
+    return [
+        f"job '{job_name}': job-level `with:` interpolates '{marker}' under"
+        " pull_request_target. A called reusable workflow resolves it with"
+        " the base repository's secrets."
+        for marker in _pr_head_markers(job.get("with"))
+    ]
+
+
+def _check_env_scopes(
+    job_name: str,
+    job: dict[str, object],
+    workflow_env: object,
+) -> list[str]:
+    """Return violations for the workflow- and job-level ``env:`` blocks.
+
+    Both reach every ``run:`` in the job without appearing in it, so
+    checking step bodies alone leaves ``env: REF: ${{ github.head_ref }}``
+    plus a bare ``echo $REF`` compliant.
+    """
+    violations: list[str] = []
+    for scope, env_block in (
+        ("workflow `env:`", workflow_env),
+        (f"job '{job_name}' `env:`", job.get("env")),
+    ):
+        if env_block is None:
+            continue
         violations.extend(
-            f"job '{job_name}': job-level `with:` interpolates '{marker}' under"
-            " pull_request_target. A called reusable workflow resolves it with"
-            " the base repository's secrets."
-            for marker in _pr_head_markers(job.get("with"))
+            f"job '{job_name}': {scope} interpolates '{marker}' under"
+            " pull_request_target. Pull-request-controlled data must not"
+            " reach a privileged job."
+            for marker in _pr_head_markers(env_block)
         )
-        # Workflow- and job-level env reach every `run:` in the job without
-        # appearing in it, so checking step bodies alone leaves `env: REF:
-        # ${{ github.head_ref }}` plus a bare `echo $REF` compliant.
-        for scope, env_block in (
-            ("workflow `env:`", workflow_env),
-            (f"job '{job_name}' `env:`", job.get("env")),
+    return violations
+
+
+def _check_step_refs(job_name: str, job: dict[str, object]) -> list[str]:
+    """Return violations for each step's ``with:``, ``run:`` and ``env:``."""
+    violations: list[str] = []
+    for index, step in enumerate(_job_steps(job)):
+        context = f"job '{job_name}': '{_step_label(step, index)}'"
+        uses = step.get("uses")
+        with_block = step.get("with")
+        if (
+            isinstance(uses, str)
+            and _is_checkout_action(uses)
+            and isinstance(with_block, dict)
         ):
-            if env_block is None:
+            violations.extend(
+                f"{context}: checkout ref resolves '{marker}' under"
+                " pull_request_target, which runs fork-authored code with"
+                " the base repository's secrets. Check out a base-side ref"
+                " (`main`, or `github.sha`) instead."
+                for marker in _pr_head_markers(with_block.get("ref", ""))
+            )
+        elif isinstance(with_block, dict):
+            # Any other action's inputs: a third-party step taking a
+            # `ref` / `pr-sha` / `head` can resolve fork content itself,
+            # and only the checkout family is recognised above.
+            violations.extend(
+                f"{context}: `with:` interpolates '{marker}' under"
+                " pull_request_target. Pull-request-controlled data must"
+                " not reach a privileged job."
+                for marker in _pr_head_markers(with_block)
+            )
+        for field in ("run", "env"):
+            value = step.get(field)
+            if value is None:
                 continue
             violations.extend(
-                f"job '{job_name}': {scope} interpolates '{marker}' under"
-                " pull_request_target. Pull-request-controlled data must not"
-                " reach a privileged job."
-                for marker in _pr_head_markers(env_block)
+                f"{context}: `{field}:` interpolates '{marker}' under"
+                " pull_request_target. Pull-request-controlled data must"
+                " not reach a privileged job."
+                for marker in _pr_head_markers(value)
             )
-        for index, step in enumerate(_job_steps(job)):
-            context = f"job '{job_name}': '{_step_label(step, index)}'"
-            uses = step.get("uses")
-            with_block = step.get("with")
-            if (
-                isinstance(uses, str)
-                and _is_checkout_action(uses)
-                and isinstance(with_block, dict)
-            ):
-                violations.extend(
-                    f"{context}: checkout ref resolves '{marker}' under"
-                    " pull_request_target, which runs fork-authored code with"
-                    " the base repository's secrets. Check out a base-side ref"
-                    " (`main`, or `github.sha`) instead."
-                    for marker in _pr_head_markers(with_block.get("ref", ""))
-                )
-            elif isinstance(with_block, dict):
-                # Any other action's inputs: a third-party step taking a
-                # `ref` / `pr-sha` / `head` can resolve fork content itself,
-                # and only the checkout family is recognised above.
-                violations.extend(
-                    f"{context}: `with:` interpolates '{marker}' under"
-                    " pull_request_target. Pull-request-controlled data must"
-                    " not reach a privileged job."
-                    for marker in _pr_head_markers(with_block)
-                )
-            for field in ("run", "env"):
-                value = step.get(field)
-                if value is None:
-                    continue
-                violations.extend(
-                    f"{context}: `{field}:` interpolates '{marker}' under"
-                    " pull_request_target. Pull-request-controlled data must"
-                    " not reach a privileged job."
-                    for marker in _pr_head_markers(value)
-                )
     return violations
 
 

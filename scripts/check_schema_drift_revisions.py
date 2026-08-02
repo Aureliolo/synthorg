@@ -272,9 +272,10 @@ async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> st
 def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
     """Invoke ``pg_dump`` inside the running Postgres testcontainer.
 
-    Wraps ``subprocess.TimeoutExpired`` in a :class:`SystemExit` so the
-    drift gate surfaces a clear failure when ``docker exec`` stalls,
-    rather than waiting out the job-level CI timeout.
+    Wraps ``subprocess.TimeoutExpired`` in a
+    :class:`SchemaDriftProvisionError` so the drift gate surfaces a clear
+    failure when ``docker exec`` stalls, rather than waiting out the
+    job-level CI timeout.
     """
     try:
         return subprocess.run(

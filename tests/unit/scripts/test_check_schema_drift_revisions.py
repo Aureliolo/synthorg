@@ -50,6 +50,24 @@ _REVISIONS = {
 }
 
 
+# A quoted identifier is legal SQL that the gate's ``\w+`` name group cannot
+# read, so these stand in for every spelling the name regexes will not see.
+_UNNAMEABLE_FUNCTION = (
+    'CREATE FUNCTION "audit trail"() '  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "RETURNS trigger AS $$ BEGIN END; $$;"
+)
+_UNNAMEABLE_TRIGGER = (
+    'CREATE TRIGGER "on widget" AFTER INSERT ON widget '  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "FOR EACH ROW EXECUTE FUNCTION f();"
+)
+_READABLE_PAIR = (
+    "CREATE FUNCTION touch_widget() "  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "RETURNS trigger AS $$ BEGIN END; $$;\n"
+    "CREATE TRIGGER widget_touched AFTER UPDATE ON widget "  # lint-allow: persistence-boundary -- DDL fixture the gate parses  # noqa: E501
+    "FOR EACH ROW EXECUTE FUNCTION touch_widget();\n"
+)
+
+
 def _seed(directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for name, body in _REVISIONS.items():
@@ -138,3 +156,34 @@ class TestFoldRevisions:
         finally:
             shutil.rmtree(folded, ignore_errors=True)
         assert "package marker" not in body
+
+
+class TestUnreadableTriggerAndFunctionNames:
+    """A name this gate cannot read must stop the run, not vanish.
+
+    The name regex is the only thing that sees trigger and function DDL at
+    all, so an object it cannot name drops out of BOTH sides of the
+    comparison. Skipping it would report "no drift" for an object that was
+    never compared, which is the one outcome worse than a failure.
+    """
+
+    def test_an_unreadable_function_name_is_a_parse_error(self) -> None:
+        with pytest.raises(_MODULE.SchemaDriftParseError) as caught:
+            _MODULE._extract_triggers_and_functions(_UNNAMEABLE_FUNCTION)
+
+        assert "function name" in str(caught.value)
+        assert "audit trail" in str(caught.value)
+
+    def test_an_unreadable_trigger_name_is_a_parse_error(self) -> None:
+        with pytest.raises(_MODULE.SchemaDriftParseError) as caught:
+            _MODULE._extract_triggers_and_functions(_UNNAMEABLE_TRIGGER)
+
+        assert "trigger name" in str(caught.value)
+        assert "on widget" in str(caught.value)
+
+    def test_a_readable_pair_is_extracted(self) -> None:
+        # The negative cases above prove nothing on their own: a matcher
+        # that raised unconditionally would satisfy both.
+        found = _MODULE._extract_triggers_and_functions(_READABLE_PAIR)
+
+        assert set(found) == {"function:touch_widget", "trigger:widget_touched"}

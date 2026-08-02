@@ -23,6 +23,7 @@ Lives apart from ``test_run_affected_mypy.py`` because that module is
 already well past the tests size budget.
 """
 
+import contextlib
 import importlib.util
 import json
 import subprocess
@@ -32,6 +33,8 @@ from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
+
+from tests._shared import FakeCommandResult
 
 pytestmark = pytest.mark.unit
 
@@ -110,7 +113,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
 
     def _fake(daemon: object, *args: str, **_kwargs: object) -> object:
         recorded.append(args)
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return FakeCommandResult(returncode=0)
 
     monkeypatch.setattr(_MODULE, "_dmypy_result", _fake)
     monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
@@ -492,11 +495,54 @@ class TestSharedDeadline:
 
         monkeypatch.setattr(_MODULE, "_dmypy", _consume_the_budget)
         monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+        # An unrecorded pid makes adoption reach a real ``dmypy status``,
+        # and then possibly a real ``stop``, against the developer's daemon.
+        monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
 
         _MODULE._check_daemon(daemon)
 
         assert 0 not in timeouts, "a zero-second timeout reached subprocess"
         assert len(timeouts) == 1, "the sub-second remainder bought a second attempt"
+
+    def test_the_lock_wait_is_charged_against_the_same_ceiling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A deadline opened after the lock hands a run that already spent the
+        # whole grace period waiting a second full allowance on top of it, so
+        # two daemons could hold a push for the ceiling plus both waits.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        now = [0.0]
+        monkeypatch.setattr(
+            _MODULE,
+            "time",
+            SimpleNamespace(
+                monotonic=lambda: now[0],
+                time=lambda: now[0],
+                sleep=lambda _seconds: None,
+            ),
+        )
+        waited = _MODULE._DAEMON_START_GRACE_SECONDS
+
+        @contextlib.contextmanager
+        def _lock_that_waits(_daemon: object) -> Iterator[bool]:
+            now[0] += waited
+            yield True
+
+        timeouts: list[object] = []
+
+        def _record(_daemon: object, *_args: str, **kwargs: object) -> int:
+            timeouts.append(kwargs.get("timeout"))
+            return 0
+
+        monkeypatch.setattr(_MODULE, "_start_lock", _lock_that_waits)
+        monkeypatch.setattr(_MODULE, "_dmypy", _record)
+        monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
+        monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+
+        _MODULE._check_daemon(daemon)
+
+        assert timeouts == [int(_MODULE._MYPY_TIMEOUT_SECONDS - waited)]
 
 
 class TestWedgedServerIsKilled:
@@ -513,7 +559,7 @@ class TestWedgedServerIsKilled:
             issued.append(subcommand)
             if subcommand[0] == "run":
                 raise subprocess.TimeoutExpired(argv, cast("float", kwargs["timeout"]))
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return FakeCommandResult(returncode=0)
 
         monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)
         monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
@@ -545,7 +591,7 @@ class TestWedgedServerIsKilled:
 
         def _fake_run(argv: list[str], **_kwargs: object) -> object:
             issued.append(tuple(argv[argv.index("--status-file") + 2 :]))
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return FakeCommandResult(returncode=0)
 
         monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)
         result = _MODULE._dmypy_result(daemon, "run")

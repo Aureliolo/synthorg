@@ -26,6 +26,7 @@ from tests._shared.initiative_doubles import RecordingReplanTrigger
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
+from tests._shared.process_doubles import FakeCommandResult, FakeProcess
 from tests._shared.recall import recall_request
 from tests._shared.settings_fake import FakeSettingsService
 from tests._shared.work_pipeline import (
@@ -39,7 +40,9 @@ __all__ = [
     "AsgiDict",
     "CapturingErrorLogger",
     "FakeClock",
+    "FakeCommandResult",
     "FakeDockerClient",
+    "FakeProcess",
     "FakeSettingsService",
     "FakeTierBenchmarkScoreProvider",
     "InMemorySecretBackend",

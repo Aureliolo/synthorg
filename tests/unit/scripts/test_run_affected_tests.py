@@ -13,10 +13,11 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+
+from tests._shared import FakeCommandResult, FakeProcess
 
 pytestmark = pytest.mark.unit
 
@@ -1151,9 +1152,9 @@ class TestKillProcessTreeAnnouncesFailure:
         monkeypatch.setattr(
             _MODULE.subprocess,
             "run",
-            lambda *_a, **_k: SimpleNamespace(returncode=128, stdout="", stderr=""),
+            lambda *_a, **_k: FakeCommandResult(returncode=128),
         )
-        _MODULE._kill_process_tree(SimpleNamespace(pid=4242))
+        _MODULE._kill_process_tree(FakeProcess(pid=4242))
 
         assert "taskkill refused" in capsys.readouterr().err
 
@@ -1164,9 +1165,9 @@ class TestKillProcessTreeAnnouncesFailure:
         monkeypatch.setattr(
             _MODULE.subprocess,
             "run",
-            lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+            lambda *_a, **_k: FakeCommandResult(returncode=0),
         )
-        _MODULE._kill_process_tree(SimpleNamespace(pid=4242))
+        _MODULE._kill_process_tree(FakeProcess(pid=4242))
 
         assert capsys.readouterr().err == ""
 

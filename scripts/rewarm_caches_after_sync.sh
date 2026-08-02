@@ -173,11 +173,16 @@ fi
 # exit code, so without a marker a repeatedly-failing warm is invisible and
 # every test process silently keeps paying full instrumentation. The dmypy
 # half already leaves ``mypy-rewarm-FAILED``; this is its counterpart.
-REWARM_CMD="uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/warm_typeguard_cache.py' --quiet --mark-failures; uv run --project '${REPO_ROOT_DIR}' python '${REPO_ROOT_DIR}/scripts/run_affected_mypy.py' --rewarm"
+#
+# The program text is fixed and the repository path arrives as an argument:
+# interpolating it would put a path into shell source, where a single quote
+# in a directory name closes the quoting and the detached shell dies before
+# either warm runs.
+REWARM_CMD='uv run --project "$1" python "$1/scripts/warm_typeguard_cache.py" --quiet --mark-failures; uv run --project "$1" python "$1/scripts/run_affected_mypy.py" --rewarm'
 if command -v setsid >/dev/null 2>&1; then
-    setsid bash -c "${REWARM_CMD}" >"${LOG}" 2>&1 &
+    setsid bash -c "${REWARM_CMD}" rewarm-caches "${REPO_ROOT_DIR}" >"${LOG}" 2>&1 &
 else
-    nohup bash -c "${REWARM_CMD}" >"${LOG}" 2>&1 &
+    nohup bash -c "${REWARM_CMD}" rewarm-caches "${REPO_ROOT_DIR}" >"${LOG}" 2>&1 &
 fi
 REWARM_PID=$!
 printf '%s\n' "${REWARM_PID}" >"${LOCK}"

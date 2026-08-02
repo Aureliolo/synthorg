@@ -829,12 +829,21 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     standalone pre-push hook that must run without importing synthorg, so the
     shared GeneralRetryHandler is not available to it.
     """
+    # Started before the lock is acquired, so waiting out the grace period and
+    # the restarts that precede the first check are charged against the same
+    # ceiling. A deadline opened after the lock would hand a run that already
+    # waited its full allowance on top of the wait.
+    deadline = time.monotonic() + _MYPY_TIMEOUT_SECONDS
     with _start_lock(daemon):
-        return _check_daemon_locked(daemon)
+        return _check_daemon_locked(daemon, deadline)
 
 
-def _check_daemon_locked(daemon: _Daemon) -> int | None:
+def _check_daemon_locked(daemon: _Daemon, deadline: float) -> int | None:
     """Run the daemon check itself, inside the start lock.
+
+    Args:
+        daemon: The daemon to check.
+        deadline: Monotonic instant the whole check must be finished by.
 
     Returns:
         The dmypy exit code, or ``None`` when it gave no verdict.
@@ -845,7 +854,6 @@ def _check_daemon_locked(daemon: _Daemon) -> int | None:
     _reap_orphaned_servers(daemon)
     _adopt_idle_timeout(daemon)
     _drop_stale_graph(daemon)
-    deadline = time.monotonic() + _MYPY_TIMEOUT_SECONDS
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
         if attempt:
