@@ -566,9 +566,29 @@ class TestPassSerialisation:
     """
 
     def _reconciler_that_takes_its_time(
-        self, world: _World, seen: list[int], overlaps: list[int]
+        self,
+        world: _World,
+        seen: list[int],
+        overlaps: list[int],
+        *,
+        entered: threading.Event | None = None,
+        release: threading.Event | None = None,
     ) -> SubsystemReconciler:
-        """Build a reconciler whose one activation is slow enough to collide."""
+        """Build a reconciler whose one activation is slow enough to collide.
+
+        Args:
+            world: Capability source the probes read.
+            seen: Appended to once per activation attempt.
+            overlaps: Appended to whenever two activations run at once.
+            entered: Set once an activation is running, so a caller can start
+                its own pass against the open window instead of guessing.
+            release: Held inside the activation until set, which makes the
+                window last exactly as long as the caller needs rather than a
+                sleep the scheduler is free to overrun.
+
+        Returns:
+            A reconciler over one slow subsystem.
+        """
         guard = threading.Lock()
         inside = 0
 
@@ -579,9 +599,14 @@ class TestPassSerialisation:
                 seen.append(1)
                 if inside > 1:
                     overlaps.append(inside)
-            # Long enough that a second loop asking for a pass lands inside
-            # this window rather than after it.
-            await asyncio.sleep(0.05)
+            if entered is not None:
+                entered.set()
+            if release is None:
+                # Long enough that a second loop asking for a pass lands
+                # inside this window rather than after it.
+                await asyncio.sleep(0.05)
+            else:
+                await asyncio.to_thread(release.wait, 10)
             with guard:
                 inside -= 1
 
@@ -626,7 +651,11 @@ class TestPassSerialisation:
         # event trigger and skips the declines it exists to re-attempt.
         world = _World(CapabilityId.PERSISTENCE)
         seen: list[int] = []
-        reconciler = self._reconciler_that_takes_its_time(world, seen, [])
+        entered = threading.Event()
+        release = threading.Event()
+        reconciler = self._reconciler_that_takes_its_time(
+            world, seen, [], entered=entered, release=release
+        )
         state = _app_state()
         deferred = threading.Event()
 
@@ -635,15 +664,17 @@ class TestPassSerialisation:
 
         holder = threading.Thread(target=_hold_a_pass, daemon=True)
         holder.start()
+        # Which caller gets deferred decides whose retry_declined the repeat
+        # carries, so the window has to be open before the second one asks.
+        assert entered.wait(timeout=10), "the holder never reached its activation"
 
         def _defer() -> None:
             asyncio.run(
                 reconciler.reconcile(state, trigger="resync", retry_declined=True)
             )
             deferred.set()
+            release.set()
 
-        # Started while the holder is inside its slow activation, so this one
-        # is the deferred caller.
         follower = threading.Thread(target=_defer, daemon=True)
         follower.start()
         follower.join(timeout=10)
