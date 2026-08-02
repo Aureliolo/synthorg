@@ -1,6 +1,6 @@
 # SynthOrg Documentation
 
-**An autonomous product studio you operate**: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance.
+**An AI software company that reports to you**: a self-hostable platform where a synthetic organisation of role-based AI agents plans, builds, and proves software under budgets, an oversight mode you set, and a gate on every action.
 
 SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a virtual organisation. The platform, infrastructure, and runtime are built and tested; the agent runtime, multi-agent coordinator, and work pipeline are wired and exercised by deterministic e2e harnesses. Operator-facing maturity and real-provider acceptance are the focus of current work.
 

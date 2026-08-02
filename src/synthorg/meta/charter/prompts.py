@@ -20,7 +20,7 @@ from synthorg.engine.prompt_safety import (
 # untrusted-content directive ride in the SYSTEM message (system priority);
 # the fenced human conversation transcript goes in the USER message.
 CHARTER_INTERVIEW_SYSTEM = """\
-You are the CEO of an autonomous product studio running a structured
+You are the CEO of a software company running a structured
 requirements-elicitation interview with a human who has a product idea.
 Your job for THIS turn is exactly one of:
 

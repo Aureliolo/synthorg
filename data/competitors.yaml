@@ -58,7 +58,7 @@ dimensions:
     description: "Per-agent cost tracking, budget enforcement, optimization"
   - key: security_model
     label: "Security"
-    description: "Progressive trust, audit logs, output scanning, policy rules"
+    description: "Operator-set oversight modes, audit logs, output scanning, policy rules"
   - key: observability
     label: "Observability"
     description: "Structured logging, correlation tracking, redaction"
@@ -104,8 +104,8 @@ competitors:
     slug: synthorg
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
-    source_verified_at: "2026-06-18"
-    description: "An autonomous product studio you operate: a self-hostable platform for synthetic organisations of role-based AI agents. Platform, infrastructure, and subsystem libraries are built and tested; the agent runtime that executes the organisation is in active development."
+    source_verified_at: "2026-08-02"
+    description: "An AI software company that reports to you: a self-hostable platform for synthetic organisations of role-based AI agents, under an oversight mode you set and a gate on every action. Platform, infrastructure, and the agent runtime are built and exercised by deterministic e2e harnesses with a scripted provider; operator-facing maturity and real-provider acceptance are in active development."
     license: "BUSL-1.1"
     language: "Python"
     category: virtual_org
@@ -113,19 +113,19 @@ competitors:
     self_hosted: "true"
     is_synthorg: true
     features:
-      org_structure: {support: planned, note: "Departments, hierarchy, the role reporting graph, HR are modelled and unit-tested as components; exercised once the agent runtime lands (in active development)"}
+      org_structure: {support: partial, note: "Departments, hierarchy, the role reporting graph, and HR are modelled and exercised by a deterministic e2e harness with a scripted provider; real-provider acceptance is in active development"}
       multi_agent: {support: partial, note: "The /coordinate path runs decompose, route, parallel execution, then rollup end to end behind the provider-present switch, exercised by a deterministic e2e harness with a scripted provider; assignment strategies, coordination dispatchers, and conflict resolution ship; real-provider acceptance is in active development"}
-      task_delegation: {support: planned, note: "DAG decomposition, assignment strategies, and delegation chains are implemented and tested; they run via the agent runtime, which is in active development"}
-      memory: {support: planned, note: "Pluggable backends and memory types with hybrid retrieval exist as tested code; the memory pipeline runs only inside a live agent, which is in active development"}
-      tool_use: {support: planned, note: "MCP protocol, sandbox isolation, and invocation tracking are implemented; tool execution runs via the agent runtime (in active development)"}
-      human_in_loop: {support: planned, note: "Approval gates, review workflows, and four autonomy tiers are designed and tested; the approval producer and enforcement run with the agent runtime (in active development)"}
-      budget_tracking: {support: planned, note: "Per-token/per-agent budgets, hierarchical cascades, and model downgrade are implemented and tested; enforced on a live run with the agent runtime (in active development)"}
-      security_model: {support: planned, note: "Rule engine + LLM evaluator, static tool-access levels, audit trail, and output scanning are designed and tested; enforced on a live run with the agent runtime (in active development)"}
+      task_delegation: {support: partial, note: "DAG decomposition, assignment strategies, and delegation chains run through the work pipeline spine end to end, exercised by a deterministic e2e harness with a scripted provider; real-provider acceptance is in active development"}
+      memory: {support: partial, note: "Pluggable backends and memory types with hybrid retrieval are wired into the working loop on a durable substrate, exercised by a deterministic e2e harness; the embedding model is the operator's explicit choice and memory stays off until it resolves"}
+      tool_use: {support: partial, note: "MCP protocol, forced Docker sandbox isolation, and invocation tracking run inside the agent runtime, exercised by a deterministic e2e harness; real-provider acceptance is in active development"}
+      human_in_loop: {support: partial, note: "Approval gates, review workflows, and four operator-set oversight modes run today: a sensitive action parks with no side effect and resumes on a human decision, exercised by a deterministic e2e harness"}
+      budget_tracking: {support: partial, note: "Per-token/per-agent budgets, hierarchical cascades, a pre-flight forecast gate, and a hard run ceiling that parks execution run end to end against real budget components; model auto-downgrade ships disabled by default"}
+      security_model: {support: partial, note: "Rule engine plus LLM evaluator, classified action types, audit trail, and output scanning gate every action and fail closed; the adversarial red-team gate ships off by default"}
       observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP ship and run today"}
-      web_dashboard: {support: partial, note: "React 19 dashboard (org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE) ships and runs, but its org/task/budget views stay empty until the agent runtime (in active development) populates them"}
+      web_dashboard: {support: partial, note: "React 19 dashboard (org chart, tasks, budgets, approvals, workflow editor, setup wizard, WebSocket + SSE) ships and runs; dashboard polish against real workloads is in active development"}
       cli: {support: partial, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
-      production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is not runnable end to end until the agent runtime lands"}
-      workflow_types: {support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity, and ceremony scheduling are implemented and tested; they execute via the agent runtime (in active development)"}
+      production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is pre-alpha and operator-facing onboarding against a real provider has not been exercised end to end by a human"}
+      workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints, velocity, and ceremony scheduling execute through the agent runtime, exercised by a deterministic e2e harness; real-provider acceptance is in active development"}
       template_system: {support: full, note: "Company templates, personality presets, and locale-aware name generation ship and are usable today without the runtime"}
 
   - name: "CrewAI"

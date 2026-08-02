@@ -1,6 +1,6 @@
 # CLAUDE.md: SynthOrg
 
-Framework for synthetic organisations (autonomous AI agents orchestrated as a virtual company). Python 3.14+. BUSL-1.1 to Apache 2.0 after the Change Date. Layout: `src/synthorg/` (src layout), `tests/`, `web/` (React 19), `cli/` (Go binary), `evals/` (golden-company benchmark, out-of-package).
+Framework for synthetic organisations (role-based AI agents run as a supervised company, under an oversight mode the operator sets). Python 3.14+. BUSL-1.1 to Apache 2.0 after the Change Date. Layout: `src/synthorg/` (src layout), `tests/`, `web/` (React 19), `cli/` (Go binary), `evals/` (golden-company benchmark, out-of-package).
 
 Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (`go -C cli`, never `cd cli`). Shell / `cd` / file-write rules: see `~/.claude/rules/common/bash.md`.
 
