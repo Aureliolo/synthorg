@@ -9,7 +9,7 @@ and a Go CLI. The agent runtime, multi-agent coordinator, work pipeline spine,
 intake engine, sandbox lifecycle dispatch, and distributed-path consumers are
 all wired and exercised by deterministic e2e harnesses with a scripted provider
 (no real LLM spend). What remains in flight is the operator-facing maturity that
-turns the wired runtime into a polished autonomous studio, plus real-provider
+turns a wired runtime into something you would leave running, plus real-provider
 acceptance against a live LLM. Progress is tracked openly on the
 [issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
@@ -80,7 +80,7 @@ provider, zero LLM spend, unless noted):
 
 ## In active development
 
-These turn the wired runtime into a polished autonomous studio. The runtime,
+These turn a wired runtime into something you would leave running. The runtime,
 coordinator, intake, work pipeline, sandbox dispatch, and distributed-path
 consumers already run under deterministic harnesses; what remains is
 operator-facing maturity and real-provider acceptance:

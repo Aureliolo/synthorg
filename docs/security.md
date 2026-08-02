@@ -5,7 +5,7 @@ description: Security architecture, hardening measures, and compliance posture o
 
 # Security
 
-SynthOrg is designed to run autonomous AI agents with real tools and real consequences.
+SynthOrg agents act with real tools and real consequences, under an oversight mode you set.
 Security is not an afterthought; it is a core architectural concern woven through
 every layer of the framework, from the application runtime to the CI/CD pipeline
 and container infrastructure.

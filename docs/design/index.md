@@ -1,6 +1,6 @@
 ---
 title: Design Overview
-description: Core vision, design principles, and foundational concepts of SynthOrg, an autonomous product studio for synthetic organisations.
+description: Core vision, design principles, and foundational concepts of SynthOrg, a synthetic organisation that reports to its operator.
 ---
 
 # Design Overview

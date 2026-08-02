@@ -126,6 +126,11 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
         ),
         approval_gate=_approval_gate(),
     )
+    # This leg proves the engine loop runs to completion under a higher
+    # ceiling; it says nothing about how that ceiling got there. Raising
+    # a ceiling moves the forecast row while ``Task.hard_ceiling`` keeps
+    # the intake snapshot, and that hand-off is covered by
+    # ``tests/integration/test_cost_dial_e2e.py``.
     resumed_task = make_e2e_task(identity=identity, title="Resumed run").model_copy(
         update={"hard_ceiling": _RAISED_CEILING, "forecast_id": forecast_id},
     )

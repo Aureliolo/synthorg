@@ -89,8 +89,9 @@ const pageUrl = new URL("/compare/", Astro.site).href;
             Designed to model a complete organisational structure: departments,
             reporting chains, seniority levels, hiring/firing, performance
             tracking, and career progression. Agents are modelled as employees
-            with roles and responsibilities, not just tools. Built and
-            unit-tested as components; exercised once the agent runtime lands.
+            with roles and responsibilities, not just tools. Exercised by
+            deterministic harnesses; real-provider acceptance is in active
+            development.
           </p>
         </div>
 
@@ -117,14 +118,15 @@ const pageUrl = new URL("/compare/", Astro.site).href;
             <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-violet-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
-            <h3 class="text-xl font-semibold">Progressive Security</h3>
+            <h3 class="text-xl font-semibold">Governed Security</h3>
           </div>
           <p class="text-gray-400 leading-relaxed">
-            A designed rule engine combined with LLM-based evaluation, four
-            autonomy tiers (full, semi, supervised, locked), progressive trust
-            scoring, audit trails, and output scanning. Security is designed
-            into the framework from day one, not bolted on; the runtime
-            enforcement activates with the agent runtime (in development).
+            A rule engine combined with LLM-based evaluation, four operator-set
+            oversight modes (full, semi, supervised, locked), audit trails, and
+            output scanning. Autonomy is never granted by an agent to itself:
+            widening is a human act, and a failed governance check keeps the
+            action gated. Security is designed into the framework from day one,
+            not bolted on.
           </p>
         </div>
 
@@ -160,7 +162,7 @@ const pageUrl = new URL("/compare/", Astro.site).href;
         </span>
       </h2>
       <p class="text-gray-400 mb-8">
-        Stand up the SynthOrg platform in minutes and define your company in YAML. The runtime that puts the agents to work is in active development, in the open.
+        Stand up the SynthOrg platform in minutes and define your company in YAML. Acceptance against a real provider is in active development, in the open.
       </p>
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <a href="/get/" class="px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors">

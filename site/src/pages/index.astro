@@ -9,7 +9,7 @@ import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
 import GitHubButton from "../components/GitHubButton.astro";
 
-const description = "An autonomous product studio you operate: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance. Platform built and tested; the agent runtime is in active development.";
+const description = "An AI software company that reports to you: a self-hostable platform where a synthetic organisation of role-based AI agents plans, builds and proves software under budgets, an oversight mode you set, and a gate on every action.";
 
 const siteUrl = Astro.site;
 
@@ -36,7 +36,7 @@ try {
 }
 ---
 
-<Base title="SynthOrg | Autonomous Product Studio" description={description} enableRecaptcha={true}>
+<Base title="SynthOrg | An AI Software Company That Reports To You" description={description} enableRecaptcha={true}>
   <!-- ============================================================ -->
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
@@ -51,18 +51,19 @@ try {
 
       <!-- Headline -->
       <h1 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
-        An autonomous product studio
+        An AI software company
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
-          you operate.
+          that reports to you.
         </span>
       </h1>
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        Describe a product to build, or hand it an existing codebase: a synthetic
+        Describe what to build, or hand over a codebase you already have: a synthetic
         organisation of role-based AI agents, with budgets, memory, and governance,
-        is designed to plan and deliver it. The platform is built and tested; the
-        agent runtime that runs the organisation is in active development, in the open.
+        plans it and builds it. Autonomy is not trust. You set how much runs
+        unattended, every action clears a gate, and done means a build, passing
+        tests, and an independent review.
       </p>
 
       <!-- CTAs -->
@@ -102,7 +103,7 @@ try {
     <div class="max-w-4xl mx-auto text-center">
       <p class="text-sm text-gray-300">
         <span class="font-semibold text-violet-400">Honest status:</span>
-        The platform, infrastructure, and subsystem libraries are built and tested. The autonomous agent runtime that makes the organisation execute work end to end is in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
+        The platform, infrastructure, and the agent runtime are built and exercised by deterministic harnesses with a scripted provider. Operator-facing maturity and acceptance against a real provider are in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
         <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Roadmap</a> ·
         <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Issue tracker</a> ·
         <a href="#contact" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Get in touch</a>
@@ -160,7 +161,7 @@ try {
   <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
-      <p class="text-gray-400 mb-12">The designed, modular, protocol-driven architecture. Every component is pluggable and built as tested code; the agent runtime that drives it end to end is in active development.</p>
+      <p class="text-gray-400 mb-12">The modular, protocol-driven architecture. Every component is pluggable and built as tested code; acceptance against a real provider is in active development.</p>
 
       <ExpandableArchitecture />
 
@@ -179,19 +180,19 @@ try {
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
         Autonomous agents need guardrails. The CI/CD pipeline and container
         infrastructure security below is in place today; the application-runtime
-        guardrails are designed and unit-tested, and become active with the agent
-        runtime (in active development).
+        guardrails gate every action under deterministic harnesses, with
+        real-provider acceptance in active development.
       </p>
 
       <div class="grid md:grid-cols-3 gap-8">
         <!-- Runtime Security -->
         <a href="/docs/security/#application-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128737;</div>
-          <h3 class="text-xl font-semibold mb-3">Runtime Protection <span class="text-xs font-normal text-violet-400">(in active development)</span></h3>
-          <p class="text-gray-400 mb-4">Designed hybrid SecOps: a fail-closed rule-engine fast-path with an LLM evaluator for uncertain cases, classified action types, and four autonomy tiers (full, semi, supervised, locked). Implemented and unit-tested as components; enforced on a live run once the agent runtime lands.</p>
+          <h3 class="text-xl font-semibold mb-3">Runtime Protection</h3>
+          <p class="text-gray-400 mb-4">Hybrid SecOps: a fail-closed rule-engine fast-path with an LLM evaluator for uncertain cases, classified action types, and four operator-set oversight modes (full, semi, supervised, locked). Wired and exercised by deterministic harnesses; not yet run against a real provider.</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>Fail-closed rule engine + LLM fallback evaluator</li>
-            <li>Four autonomy tiers with progressive trust</li>
+            <li>Four oversight modes, widened only by a human</li>
             <li>Output scanning with redaction policies</li>
             <li>Persistent audit trail for every decision</li>
           </ul>
@@ -239,9 +240,9 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Use Cases</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-        The studio is designed for organisations like these. They describe the
-        target shape of a SynthOrg company, not validated end-to-end runs; the
-        agent runtime that executes them is in active development.
+        SynthOrg is built for organisations like these. They describe the target
+        shape of a SynthOrg company, not runs validated against a real provider,
+        which is in active development.
       </p>
 
       <UseCaseCards />

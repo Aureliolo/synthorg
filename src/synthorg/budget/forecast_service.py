@@ -214,6 +214,29 @@ class BudgetForecastService:
                 currency=self._budget_config.currency,
             )
         forecast = await self.get_or_404(forecast_id)
+        current_ceiling = forecast.ceiling_amount
+        if current_ceiling is not None and new_ceiling <= current_ceiling:
+            # A raise that lands at or below the stored ceiling would clear
+            # the halt while enforcement keeps the stricter value it already
+            # holds, leaving the dashboard showing a number no run obeys.
+            msg = (
+                f"new_ceiling {new_ceiling} must be strictly greater than the"
+                f" current ceiling {current_ceiling}; raising cannot lower it"
+            )
+            logger.warning(
+                BUDGET_HARD_CEILING_RAISE_REJECTED,
+                forecast_id=str(forecast_id),
+                reason="ceiling_not_raised",
+                new_ceiling=new_ceiling,
+                current_ceiling=current_ceiling,
+                error_type=RunHardCeilingTooLowError.__name__,
+            )
+            raise RunHardCeilingTooLowError(
+                msg,
+                requested_ceiling=new_ceiling,
+                accumulated_cost=accumulated_cost,
+                currency=self._budget_config.currency,
+            )
         if forecast.halt_context is None:
             msg = (
                 f"Forecast {forecast_id} is not in a halted state; there is"

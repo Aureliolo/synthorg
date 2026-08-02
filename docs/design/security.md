@@ -139,6 +139,24 @@ of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode:
 rules + audit logging only, no LLM path. Hard safety rules (credential exposure, data
 destruction) **never bypass** regardless of autonomy level.
 
+The engine resolves an action in ordered layers. The cheapest and most certain
+run first, and only the last one costs an LLM call:
+
+| Layer | Source | Default |
+|---|---|---|
+| Hard deny | `hard_deny_action_types` | `deploy:production`, `db:admin`, `org:fire` |
+| Fast allow | `auto_approve_action_types` | `code:read`, `docs:write` |
+| Built-in detectors | `RuleEngineConfig` | credential, path-traversal, destructive-op, MCP-destructive-op, and data-leak detectors, each enabled |
+| Custom policy rules | `custom_policies` | empty; operator-authored `SecurityPolicyRule` entries |
+| LLM evaluator | `llm_fallback` | reached only when every preceding layer is undecided |
+
+The detectors are the reason a zero-configuration install is not defenceless:
+`custom_policies` starts empty, so on a fresh org every non-trivial verdict comes
+from the built-in patterns rather than from the preceding operator-authored
+layer. Rule-evaluation failure denies at `CRITICAL` risk; an LLM-evaluator
+failure follows `llm_fallback.on_error`, which defaults to escalation and
+resolves to `DENY` at `HIGH`.
+
 **Integration point** ([Decision Log](../architecture/decisions.md) D5):
 Pluggable `SecurityInterceptionStrategy` protocol. Initial strategy intercepts before every
 tool invocation; slots into existing `ToolInvoker` between permission check and tool

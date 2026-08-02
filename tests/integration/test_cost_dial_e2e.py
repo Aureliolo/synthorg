@@ -45,6 +45,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
@@ -293,13 +294,19 @@ async def test_cost_dial_full_lifecycle() -> None:
     )
     assert run_result.execution_result.termination_reason is TerminationReason.PARKED
 
-    # 6. Operator raises the ceiling; the checker stops raising for
-    #    cost values up to the new line.
-    raised_ceiling_task = _task(hard_ceiling=3.00, forecast_id=forecast_id)
-    resumed_checker = await enforcer.make_budget_checker(
-        raised_ceiling_task,
-        "agent-1",
+    # 6. Operator raises the ceiling on the forecast row, which is the
+    #    only thing a raise touches: nothing rewrites Task.hard_ceiling.
+    #    The resumed run therefore carries the ceiling that parked it and
+    #    must pick the raised one up from the forecast, or it re-parks.
+    await repo.save(
+        repo.rows[forecast_id].model_copy(update={"ceiling_amount": 3.00}),
     )
+    resumed_task = await ceiling_synced_task(
+        task_with_ceiling,
+        cast("Any", repo),  # type: ignore[explicit-any]  # in-memory fake repo stands in for the protocol
+    )
+    assert resumed_task.hard_ceiling == pytest.approx(3.00)
+    resumed_checker = await enforcer.make_budget_checker(resumed_task, "agent-1")
     assert resumed_checker is not None
     assert resumed_checker(_checker_ctx(accumulated_cost=1.50)) is False
 

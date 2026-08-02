@@ -15,7 +15,7 @@ missing repo or a missing forecast id degrades silently.
 """
 
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,15 +27,18 @@ from synthorg.budget.errors import (
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.persistence.cost_forecast_protocol import (
+    CostForecastFilterSpec,
+    CostForecastRepository,
+)
 from tests._shared import as_uuid, sid
-
-if TYPE_CHECKING:
-    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 pytestmark = pytest.mark.unit
 
@@ -70,7 +73,55 @@ class _FakeApprovalGate:
             raise RuntimeError(msg)
 
 
-class _FakeForecastRepo:
+class _ForecastRepoSurface:
+    """The protocol members these doubles never exercise.
+
+    ``ceiling_synced_task`` takes ``CostForecastRepository`` at a typed
+    boundary, so typeguard resolves the whole protocol against whatever
+    is passed. Only ``get`` and ``save`` carry behaviour worth asserting
+    on; the rest exist so the doubles satisfy the protocol.
+    """
+
+    async def delete(self, entity_id: UUID) -> bool:
+        return False
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[Forecast, ...]:
+        return ()
+
+    async def transition_if(
+        self,
+        entity_id: UUID,
+        from_state: ForecastDecision,
+        to_state: ForecastDecision,
+        **updates: object,
+    ) -> bool:
+        return False
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        return False
+
+    async def query(
+        self,
+        filter_spec: CostForecastFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        return ()
+
+    async def count(self, filter_spec: CostForecastFilterSpec) -> int:
+        return 0
+
+
+class _FakeForecastRepo(_ForecastRepoSurface):
     """Async CostForecastRepository double for halt-stamp assertions."""
 
     def __init__(self, forecast: Forecast | None) -> None:
@@ -84,6 +135,18 @@ class _FakeForecastRepo:
 
     async def save(self, entity: Forecast) -> None:
         self.saved.append(entity)
+
+
+class _ExplodingForecastRepo(_ForecastRepoSurface):
+    """CostForecastRepository double whose reads always fail."""
+
+    async def get(self, entity_id: UUID) -> Forecast | None:
+        msg = f"forecast {entity_id} unreadable"
+        raise QueryError(msg)
+
+    async def save(self, entity: Forecast) -> None:
+        msg = f"forecast {entity.forecast_id} unwritable"
+        raise QueryError(msg)
 
 
 class _MockEngine(AgentEngineErrorsMixin):
@@ -140,6 +203,84 @@ def _task() -> Task:
         created_by="op-1",
         hard_ceiling=1.5,
     )
+
+
+@pytest.mark.asyncio
+async def test_raised_forecast_ceiling_reaches_enforcement() -> None:
+    """An operator's raised ceiling overrides the intake task snapshot.
+
+    ``Task.hard_ceiling`` is the value captured at intake and is never
+    rewritten, while ``raise_ceiling`` moves the forecast row. Reading
+    the task alone would re-park a resumed run on the very ceiling that
+    stopped it.
+    """
+    forecast_id = as_uuid("forecast-raised-ceiling")
+    raised = _forecast(forecast_id).model_copy(update={"ceiling_amount": 5.0})
+    repo = cast("CostForecastRepository", _FakeForecastRepo(raised))
+
+    stale = _task().model_copy(update={"forecast_id": forecast_id})
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert stale.hard_ceiling == 1.5
+    assert synced.hard_ceiling == 5.0
+
+
+@pytest.mark.asyncio
+async def test_lower_forecast_ceiling_leaves_the_task_alone() -> None:
+    """A forecast below the snapshot never loosens or tightens the run.
+
+    ``ceiling_synced_task`` exists to carry an operator's raise through to
+    enforcement. Adopting a lower value instead would log it as a raise and
+    hand the run a limit the operator never asked it to obey mid-flight.
+    """
+    forecast_id = as_uuid("forecast-lowered-ceiling")
+    lowered = _forecast(forecast_id).model_copy(update={"ceiling_amount": 0.5})
+    repo = cast("CostForecastRepository", _FakeForecastRepo(lowered))
+
+    stale = _task().model_copy(update={"forecast_id": forecast_id})
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert synced.hard_ceiling == 1.5
+
+
+@pytest.mark.asyncio
+async def test_unlinked_task_skips_the_forecast_read() -> None:
+    """No forecast repo and no forecast id means nothing to reconcile.
+
+    Both are optional at boot, so the guard is the common path for a run
+    that never went through the forecast gate.
+    """
+    plain = _task()
+    repo = cast("CostForecastRepository", _FakeForecastRepo(None))
+
+    assert await ceiling_synced_task(plain, None) is plain
+    assert await ceiling_synced_task(plain, repo) is plain
+
+
+@pytest.mark.asyncio
+async def test_missing_forecast_row_keeps_the_snapshot() -> None:
+    """A linked forecast that no longer resolves leaves the task alone."""
+    repo = cast("CostForecastRepository", _FakeForecastRepo(None))
+    stale = _task().model_copy(update={"forecast_id": as_uuid("forecast-gone")})
+
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert synced.hard_ceiling == 1.5
+
+
+@pytest.mark.asyncio
+async def test_unreadable_forecast_keeps_the_stricter_snapshot() -> None:
+    """A forecast read failure enforces the task snapshot, not no ceiling.
+
+    The snapshot is the lower of the two, so degrading to it re-parks the
+    run rather than letting it spend past a limit nobody raised.
+    """
+    repo = cast("CostForecastRepository", _ExplodingForecastRepo())
+    stale = _task().model_copy(update={"forecast_id": as_uuid("forecast-unreadable")})
+
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert synced.hard_ceiling == 1.5
 
 
 @pytest.mark.asyncio
