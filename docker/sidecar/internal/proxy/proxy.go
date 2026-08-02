@@ -54,6 +54,12 @@ func (p *Proxy) Start() error {
 		return fmt.Errorf("proxy listen: %w", err)
 	}
 	p.listener = ln
+	// The accept loop holds a token of its own for its whole life, so the
+	// counter is never zero while the loop can still add a connection. A
+	// connection accepted during shutdown would otherwise be added after
+	// Wait had already observed zero and returned, leaving its handler
+	// relaying past the drain this promises.
+	p.wg.Add(1)
 	go p.acceptLoop()
 	return nil
 }
@@ -80,6 +86,7 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 }
 
 func (p *Proxy) acceptLoop() {
+	defer p.wg.Done()
 	for {
 		conn, err := p.listener.Accept()
 		if err != nil {

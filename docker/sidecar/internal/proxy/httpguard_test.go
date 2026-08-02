@@ -190,6 +190,85 @@ func TestRelayHTTPGuardedForwardsAllowedAndRefusesRest(t *testing.T) {
 	}
 }
 
+// shortDeadlineConn shrinks whatever read deadline the relay sets, so the idle
+// path can be driven in milliseconds instead of the production timeout. Only
+// the duration changes; the error the relay observes is a real one raised by a
+// real socket, which is the thing under test.
+type shortDeadlineConn struct {
+	net.Conn
+}
+
+func (c shortDeadlineConn) SetReadDeadline(t time.Time) error {
+	if t.IsZero() {
+		return c.Conn.SetReadDeadline(t)
+	}
+	return c.Conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+}
+
+// TestRelayHTTPGuardedSeparatesIdleFromMalformed pins the two ways a read can
+// end without a request. "blocked" means an egress-policy violation, so a
+// connection that merely went quiet must not appear in it, while anything the
+// client actually sent and got wrong still must.
+func TestRelayHTTPGuardedSeparatesIdleFromMalformed(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		send        string
+		wantBlocked bool
+	}{
+		{name: "idle_until_deadline", send: "", wantBlocked: false},
+		{name: "malformed_request", send: "GARBAGE\r\n\r\n", wantBlocked: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			clientConn, guardConn := net.Pipe()
+			defer clientConn.Close()
+			// Neither case ever reaches a forward, so upstream stays idle.
+			upstreamConn, upstreamPeer := net.Pipe()
+			defer upstreamConn.Close()
+			defer upstreamPeer.Close()
+
+			blocked := &recorder{}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer guardConn.Close()
+				guarded := shortDeadlineConn{Conn: guardConn}
+				relayHTTPGuarded(
+					bufio.NewReader(guarded), guarded, upstreamConn,
+					[]string{"/api/v1/gateway/v1"},
+					func(reason, _ string) { blocked.add(reason) },
+				)
+			}()
+
+			if tc.send != "" {
+				_ = clientConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if _, err := clientConn.Write([]byte(tc.send)); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+			}
+
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("relay did not return")
+			}
+
+			reasons := blocked.snapshot()
+			if got := len(reasons) > 0; got != tc.wantBlocked {
+				t.Errorf(
+					"blocked reported = %v (%v), want %v",
+					got, reasons, tc.wantBlocked,
+				)
+			}
+		})
+	}
+}
+
 // TestRelayHTTPGuardedChecksEveryKeepAliveRequest is the smuggling case: the
 // first request is allowed, so a check performed only on connection open
 // would let the second through.

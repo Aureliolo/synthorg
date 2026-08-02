@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -44,7 +45,8 @@ func relayHTTPGuarded(
 		req, err := http.ReadRequest(clientReader)
 		_ = client.SetReadDeadline(time.Time{})
 		if err != nil {
-			if !errors.Is(err, io.EOF) && !isClosedConn(err) {
+			if !errors.Is(err, io.EOF) && !isClosedConn(err) &&
+				!isIdleTimeout(err) {
 				onBlocked("unparseable request", "")
 			}
 			return
@@ -175,4 +177,16 @@ func isClosedConn(err error) bool {
 	return errors.Is(err, net.ErrClosed) ||
 		strings.Contains(err.Error(), "use of closed network connection") ||
 		strings.Contains(err.Error(), "connection reset by peer")
+}
+
+// isIdleTimeout reports whether err is the idle read deadline expiring rather
+// than anything the client sent. A connection that goes quiet between
+// keep-alive requests is ordinary, and "blocked" is the one log line that
+// means an egress-policy violation, so routine idleness must not appear in it.
+func isIdleTimeout(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
