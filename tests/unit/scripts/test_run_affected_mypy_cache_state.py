@@ -1,0 +1,213 @@
+"""Tests for the two ways a mypy daemon costs a push without being wrong.
+
+Both failures share a shape: the daemon still answers, so nothing reports
+a problem, and the cost lands inside whatever ran next.
+
+* A ``uv sync`` invalidates the resident graph without stopping the
+  daemon. dmypy discovers that only once a check is underway and pays a
+  124s cold rebuild inside it, against 1.4s warm.
+* A wedged server outlives the client that timed out against it, so the
+  bounded retry walks back into the same wedge for another full build
+  ceiling rather than getting a fresh daemon.
+
+Lives apart from ``test_run_affected_mypy.py`` because that module is
+already well past the tests size budget.
+"""
+
+import importlib.util
+import json
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _load() -> Any:  # type: ignore[explicit-any]
+    script = _REPO_ROOT / "scripts" / "run_affected_mypy.py"
+    spec = importlib.util.spec_from_file_location("_run_affected_mypy_state", script)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return cast(Any, module)  # type: ignore[explicit-any]
+
+
+_MODULE = _load()
+
+
+def _daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
+    return _MODULE._MAIN_DAEMON._replace(status_file=tmp_path / ".dmypy-main.json")
+
+
+def _running(daemon: Any, pid: int = 4242) -> None:  # type: ignore[explicit-any]
+    daemon.status_file.write_text(f'{{"pid": {pid}}}', encoding="utf-8")
+
+
+def _record_marker(daemon: Any, digest: str | None) -> None:  # type: ignore[explicit-any]
+    """Write the lifetime marker as ``_record_bounded_lifetime`` would."""
+    payload: dict[str, object] = {
+        "pid": 4242,
+        "idle_timeout_seconds": _MODULE._DAEMON_IDLE_TIMEOUT_SECONDS,
+    }
+    if digest is not None:
+        payload["dependency_digest"] = digest
+    daemon.lifetime_file.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.fixture
+def calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    """Record every dmypy subcommand instead of running one."""
+    recorded: list[tuple[str, ...]] = []
+
+    def _fake(daemon: object, *args: str, **_kwargs: object) -> object:
+        recorded.append(args)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake)
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+    return recorded
+
+
+class TestStaleGraphDetection:
+    """A graph built against different dependencies must not be trusted."""
+
+    def test_a_changed_lockfile_stops_the_daemon(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        _record_marker(daemon, "digest-at-start")
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "digest-now")
+        _MODULE._drop_stale_graph(daemon)
+        assert ("stop",) in calls
+
+    def test_an_unchanged_lockfile_leaves_it_alone(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        # The warm daemon is the whole point; restarting a valid one would
+        # charge every push the rebuild this exists to avoid.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        _record_marker(daemon, "same-digest")
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "same-digest")
+        _MODULE._drop_stale_graph(daemon)
+        assert calls == []
+
+    def test_a_daemon_with_no_recorded_digest_is_left_alone(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        # An unvouched daemon belongs to _adopt_idle_timeout; claiming it
+        # here would restart it twice for two different reasons.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        _record_marker(daemon, None)
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "digest-now")
+        _MODULE._drop_stale_graph(daemon)
+        assert calls == []
+
+    def test_an_unreadable_lockfile_asserts_nothing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        # Failing to read uv.lock is not evidence of staleness, and guessing
+        # would restart a perfectly good daemon on every push.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        _record_marker(daemon, "digest-at-start")
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: None)
+        _MODULE._drop_stale_graph(daemon)
+        assert calls == []
+
+    def test_no_daemon_running_means_nothing_to_stop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        _record_marker(daemon, "digest-at-start")
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "digest-now")
+        monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: False)
+        _MODULE._drop_stale_graph(daemon)
+        assert calls == []
+
+    def test_the_digest_is_recorded_when_the_daemon_starts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Without this the check above can never fire.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "recorded-digest")
+        _MODULE._record_bounded_lifetime(daemon)
+        assert _MODULE._recorded_dependency_digest(daemon) == "recorded-digest"
+
+
+class TestWedgedServerIsKilled:
+    """A timeout kills the client; the server has to be killed too."""
+
+    def test_a_timed_out_run_kills_the_server(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        issued: list[tuple[str, ...]] = []
+
+        def _fake_run(argv: list[str], **kwargs: object) -> object:
+            subcommand = tuple(argv[argv.index("--status-file") + 2 :])
+            issued.append(subcommand)
+            if subcommand[0] == "run":
+                raise subprocess.TimeoutExpired(argv, cast(float, kwargs["timeout"]))
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)
+        monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+        assert _MODULE._dmypy_result(daemon, "run") is None
+        assert ("kill",) in issued, "the wedged server was left running"
+
+    def test_a_timed_out_kill_does_not_recurse(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The kill goes through the same helper, so an unguarded retry would
+        # recurse until the stack gave out.
+        daemon = _daemon(tmp_path)
+        issued: list[tuple[str, ...]] = []
+
+        def _always_times_out(argv: list[str], **kwargs: object) -> object:
+            issued.append(tuple(argv[argv.index("--status-file") + 2 :]))
+            raise subprocess.TimeoutExpired(argv, cast(float, kwargs["timeout"]))
+
+        monkeypatch.setattr(_MODULE.subprocess, "run", _always_times_out)
+        monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+        assert _MODULE._dmypy_result(daemon, "run") is None
+        assert issued.count(("kill",)) == 1
+
+    def test_a_clean_run_kills_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        issued: list[tuple[str, ...]] = []
+
+        def _fake_run(argv: list[str], **_kwargs: object) -> object:
+            issued.append(tuple(argv[argv.index("--status-file") + 2 :]))
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)
+        result = _MODULE._dmypy_result(daemon, "run")
+        assert result is not None
+        assert ("kill",) not in issued

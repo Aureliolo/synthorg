@@ -183,7 +183,7 @@ Five PostToolUse hooks run *after* a tool call completes, in two groups.
 
 Three validate the file an `Edit` / `Write` just produced: `check_web_design_system.py` (web design-token compliance on `web/src/` edits), `check_backend_regional_defaults.py` (region / currency neutrality on backend edits), and `run_edit_time_gates.py` (see below).
 
-Two react to a completed `Bash` command and validate nothing: `record_push_throttle.sh` (records a successful `git push` for the throttle window owned by `check_push_throttle.sh`) and `rewarm_mypy_after_sync.sh` (see below). Both are housekeeping rather than gates.
+Two react to a completed `Bash` command and validate nothing: `record_push_throttle.sh` (records a successful `git push` for the throttle window owned by `check_push_throttle.sh`) and `rewarm_caches_after_sync.sh` (see below). Both are housekeeping rather than gates.
 
 All five are agent-time only and excluded from CI parity, for a mechanical reason rather than an explicit exemption: none is registered in `.pre-commit-config.yaml`, so `check_local_ci_parity.py` never enumerates them. That gate's own docstring spells this out only for the PreToolUse case.
 
@@ -207,11 +207,14 @@ The four gates that had no file-scoped entry point gained a `--files` flag for t
 
 One deliberate asymmetry: `check_no_magic_numbers.py`'s whole-tree walk enumerates via `git ls-files` and so sees only tracked files, while `--files` accepts any file that exists. A new module can therefore be flagged at edit time before it has been staged. That changes when a violation surfaces, never the eventual push verdict.
 
-### Post-sync mypy re-warm (housekeeping, not a gate)
+### Post-sync cache re-warm (housekeeping, not a gate)
 
-`scripts/rewarm_mypy_after_sync.sh` is a PostToolUse hook on `Bash`. A `uv sync` rewrites site-packages, which invalidates the resident `dmypy` graph without stopping the daemon; the next check then pays a full cold rebuild (124s against 1.4s warm), and when that check is the pre-push hook a third of the 300s budget is gone before a gate has run.
+`scripts/rewarm_caches_after_sync.sh` is a PostToolUse hook on `Bash`. A `uv sync` rewrites site-packages, which silently invalidates two caches at once, and neither announces itself:
 
-The hook detaches `run_affected_mypy.py --rewarm` so the rebuild happens off the push path, logging to `synthorg-hooks/mypy-rewarm-last.log` alongside the git-hook logs. `--rewarm` refuses unless the main daemon is **already resident**: it restores a warm state that existed and never creates a new one. That guard is what makes the hook safe to run everywhere. The main daemon holds ~2.5GB (the separate `scripts/` daemon, which `--rewarm` never touches, costs roughly half that again), which is why the worktree helper deliberately does not warm at creation, and why this is a post-sync hook rather than a `SessionStart` one: a session-start warm would fire in every worktree a session opens and exhaust the memory a machine running several of them has spare. Only `uv sync` / `uv add` / `uv remove` match; `uv run` (much the most common invocation) does not.
+- the resident `dmypy` graph, without stopping the daemon, so the next check pays a full cold rebuild (124s against 1.4s warm) and a third of the 300s push budget is gone before a gate has run;
+- typeguard's instrumented bytecode, whose cache tag carries typeguard's own version, so a bump strands every cached file. Re-instrumenting `synthorg` costs ~17s per process (measured: `import synthorg.api.app` at 7.5s plain, 24.5s hooked), and a `pytest -n 8` run pays it in all eight workers at once.
+
+The hook detaches both warms so neither lands on the push or test path, logging to `synthorg-hooks/mypy-rewarm-last.log` alongside the git-hook logs. They differ in one way: `warm_typeguard_cache.py` only writes `.pyc` files and holds no memory, so it runs unconditionally, while `run_affected_mypy.py --rewarm` refuses unless the main daemon is **already resident**, restoring a warm state that existed rather than creating a new one. That guard is what makes the hook safe to run everywhere. The main daemon holds ~2.5GB (the separate `scripts/` daemon, which `--rewarm` never touches, costs roughly half that again), which is why the worktree helper deliberately does not warm at creation, and why this is a post-sync hook rather than a `SessionStart` one: a session-start warm would fire in every worktree a session opens and exhaust the memory a machine running several of them has spare. Only `uv sync` / `uv add` / `uv remove` match; `uv run` (much the most common invocation) does not.
 
 Because the rebuild is detached, nothing reads its exit code and nothing reads its log unless told to. A failed rebuild therefore drops a `mypy-rewarm-FAILED` marker that the next ordinary `run_affected_mypy.py` run reports once and clears. That is the same idea as the pre-push `<hook>-FAILED` marker, scaled down to a warning rather than a block: a stale graph costs time, never correctness, so it must not stop anyone working. A lock file (`mypy-rewarm.pid`) keeps two syncs in quick succession from detaching two rebuilds that would queue against the same single-threaded daemon and interleave into the same log.
 

@@ -51,6 +51,7 @@ _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dyna
 _REAL_ADOPT_IDLE_TIMEOUT = _MODULE._adopt_idle_timeout
 _REAL_RECORD_BOUNDED_LIFETIME = _MODULE._record_bounded_lifetime
 _REAL_FORGET_BOUNDED_LIFETIME = _MODULE._forget_bounded_lifetime
+_REAL_DROP_STALE_GRAPH = _MODULE._drop_stale_graph
 # Captured for the same reason: the ``main`` tests replace ``_parse_args``,
 # and the helper that builds their arguments must not re-enter the stub.
 _REAL_PARSE_ARGS = _MODULE._parse_args
@@ -78,6 +79,9 @@ def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
     monkeypatch.setattr(_MODULE, "_record_bounded_lifetime", lambda _daemon: None)
     monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+    # Same reasoning: unstubbed, the staleness check would issue a real
+    # ``dmypy stop`` against the developer's own daemon.
+    monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
 
 
 def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]

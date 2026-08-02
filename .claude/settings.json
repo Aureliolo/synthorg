@@ -163,7 +163,7 @@
           },
           {
             "type": "command",
-            "command": "bash scripts/rewarm_mypy_after_sync.sh",
+            "command": "bash scripts/rewarm_caches_after_sync.sh",
             "timeout": 10000
           }
         ]

@@ -52,6 +52,7 @@ Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), et
 import argparse
 import contextlib
 import csv
+import hashlib
 import json
 import os
 import re
@@ -458,6 +459,7 @@ def _dmypy_result(
     *args: str,
     quiet: bool = False,
     timeout: int = _MYPY_TIMEOUT_SECONDS,
+    kill_on_timeout: bool = True,
 ) -> subprocess.CompletedProcess[str] | None:
     """Run a dmypy subcommand, returning ``None`` if it hung and was killed.
 
@@ -497,12 +499,57 @@ def _dmypy_result(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        # The timeout killed the dmypy CLIENT this call spawned. The server
+        # is a separate process and is still wedged, so retrying would walk
+        # straight back into it for another full ceiling. Kill the server
+        # too, and the retry gets a clean one. ``kill_on_timeout=False`` is
+        # what the kill itself passes, so a kill that also hangs reports
+        # rather than recursing.
+        if kill_on_timeout:
+            print(
+                f"{daemon.label} daemon exceeded {timeout}s; killing the "
+                f"server so the retry starts a fresh one",
+                file=sys.stderr,
+            )
+            _kill_wedged_server(daemon)
+        else:
+            print(
+                f"{daemon.label} daemon exceeded {timeout}s and was killed",
+                file=sys.stderr,
+            )
+        return None
+
+
+def _kill_wedged_server(daemon: _Daemon) -> None:
+    """Hard-kill a daemon whose server stopped answering.
+
+    ``subprocess.run(timeout=...)`` only reaches the client it started; the
+    dmypy server is a separate, still-wedged process holding the status
+    file. Left alone it absorbs every remaining attempt at the full build
+    ceiling each time, so a single hung server could hold a push for hours
+    while printing a remedy nobody is there to run. ``kill`` is issued
+    directly rather than ``stop`` because a graceful stop queues behind the
+    in-flight request that is already stuck.
+
+    Best-effort by design: if the kill fails too, the caller still falls
+    back to a cold check, which is slow but correct.
+    """
+    killed = _dmypy_result(
+        daemon,
+        "kill",
+        quiet=True,
+        timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        kill_on_timeout=False,
+    )
+    if killed is None or killed.returncode != 0:
         print(
-            f"{daemon.label} daemon exceeded {timeout}s and was "
-            f"killed; try: dmypy kill --status-file {daemon.status_file}",
+            f"{daemon.label}: could not kill the wedged server; "
+            f"stop it by hand with: "
+            f"dmypy kill --status-file {daemon.status_file}",
             file=sys.stderr,
         )
-        return None
+        return
+    _forget_bounded_lifetime(daemon)
 
 
 def _dmypy(daemon: _Daemon, *args: str, quiet: bool = False) -> int:
@@ -537,13 +584,48 @@ def _recorded_lifetime_pid(daemon: _Daemon) -> int | None:
     return pid if type(pid) is int else None
 
 
+def _dependency_digest() -> str | None:
+    """Fingerprint the resolved dependency set the graph was built against.
+
+    ``uv.lock`` changes exactly when the installed packages can change, and
+    it is one small file, so hashing it is far cheaper than inspecting
+    site-packages.
+
+    Returns:
+        A hex digest, or None when the lock cannot be read (then staleness
+        is simply not asserted, which is today's behaviour).
+    """
+    try:
+        return hashlib.blake2b(
+            (REPO_ROOT / PYPROJECT).with_name("uv.lock").read_bytes(), digest_size=16
+        ).hexdigest()
+    except OSError:
+        return None
+
+
+def _recorded_dependency_digest(daemon: _Daemon) -> str | None:
+    """Return the dependency digest recorded when this daemon was started."""
+    try:
+        raw = json.loads(daemon.lifetime_file.read_text(encoding="utf-8"))
+    except OSError, json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    recorded = raw.get("dependency_digest")
+    return recorded if isinstance(recorded, str) else None
+
+
 def _record_bounded_lifetime(daemon: _Daemon) -> None:
     """Record that the daemon now listening was started under the bound."""
     pid = _daemon_pid(daemon)
     if pid is None:
         return
     payload = json.dumps(
-        {"pid": pid, "idle_timeout_seconds": _DAEMON_IDLE_TIMEOUT_SECONDS}
+        {
+            "pid": pid,
+            "idle_timeout_seconds": _DAEMON_IDLE_TIMEOUT_SECONDS,
+            "dependency_digest": _dependency_digest(),
+        }
     )
     try:
         daemon.lifetime_file.write_text(payload, encoding="utf-8")
@@ -595,6 +677,41 @@ def _adopt_idle_timeout(daemon: _Daemon) -> None:
     _forget_bounded_lifetime(daemon)
 
 
+def _drop_stale_graph(daemon: _Daemon) -> None:
+    """Stop a daemon whose resident graph predates the installed packages.
+
+    A ``uv sync`` rewrites site-packages without stopping the daemon, so the
+    graph it holds is invalid while the daemon still answers. dmypy notices
+    only once the next check is already underway, and then silently pays the
+    full cold rebuild inside it: measured at 124s against 1.4s warm, i.e. a
+    third of the push budget spent with nothing on screen explaining why.
+
+    Detecting it here turns that into an announced restart before the check
+    starts. The cost is identical (one rebuild either way); what changes is
+    that it is attributable, and that the caller is not left wondering
+    whether the push has hung.
+
+    Only reached when a daemon is actually listening, so this never starts
+    one. A daemon this script has not vouched for carries no recorded digest
+    and is left to ``_adopt_idle_timeout``.
+    """
+    recorded = _recorded_dependency_digest(daemon)
+    if recorded is None:
+        return
+    current = _dependency_digest()
+    if current is None or current == recorded:
+        return
+    if not _daemon_running(daemon):
+        return
+    print(
+        f"{daemon.label} daemon was built against a different uv.lock "
+        "(dependencies changed since it started); restarting it now rather "
+        "than paying the rebuild silently inside the next check."
+    )
+    _dmypy_result(daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS)
+    _forget_bounded_lifetime(daemon)
+
+
 def _check_daemon(daemon: _Daemon) -> int | None:
     """Check *daemon*'s scope, returning ``None`` if it gave no verdict.
 
@@ -622,6 +739,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     shared GeneralRetryHandler is not available to it.
     """
     _adopt_idle_timeout(daemon)
+    _drop_stale_graph(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
         code = _dmypy(

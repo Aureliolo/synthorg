@@ -1,4 +1,4 @@
-"""Unit tests for the ``scripts/rewarm_mypy_after_sync.sh`` PostToolUse hook.
+"""Unit tests for the ``scripts/rewarm_caches_after_sync.sh`` PostToolUse hook.
 
 The script's two pieces of real logic are the command matcher and the
 did-the-sync-succeed guard, and neither has any other backstop: a regression in
@@ -21,7 +21,7 @@ from tests._shared import resolve_bash
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_SCRIPT = _REPO_ROOT / "scripts" / "rewarm_mypy_after_sync.sh"
+_SCRIPT = _REPO_ROOT / "scripts" / "rewarm_caches_after_sync.sh"
 
 _BASH = resolve_bash()
 _BASH_AVAILABLE = pytest.mark.skipif(_BASH is None, reason="bash not available")
@@ -113,6 +113,22 @@ def _wait_for(path: Path, *, window: float) -> bool:
             return True
         time.sleep(_POLL_INTERVAL_SECONDS)
     return path.exists()
+
+
+def _wait_for_text(path: Path, needle: str, *, window: float) -> str:
+    """Return *path*'s contents once it holds *needle*, or when *window* ends.
+
+    The hook chains two warms in one detached shell, so the second only
+    records after the first has finished. Waiting on the file merely
+    existing would read it mid-chain and see only the first.
+    """
+    deadline = time.monotonic() + window
+    while time.monotonic() < deadline:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        if needle in text:
+            return text
+        time.sleep(_POLL_INTERVAL_SECONDS)
+    return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 def _run(
@@ -238,7 +254,7 @@ def test_malformed_payload_warns_rather_than_failing_silently(tmp_path: Path) ->
     completed, launched = _run("not json at all", tmp_path, expect_launch=False)
     assert completed.returncode == 0
     assert not launched
-    assert "rewarm_mypy_after_sync" in completed.stderr
+    assert "rewarm_caches_after_sync" in completed.stderr
 
 
 @_BASH_AVAILABLE
@@ -269,6 +285,10 @@ def test_never_interpolates_the_command_into_the_launched_process(
     assert completed.returncode == 0, completed.stderr
     assert launched
     assert not (tmp_path / "pwned").exists()
-    recorded = (tmp_path / "uv-invoked.txt").read_text(encoding="utf-8")
+    recorded = _wait_for_text(
+        tmp_path / "uv-invoked.txt", "--rewarm", window=_LAUNCH_WAIT_SECONDS
+    )
     assert "pwned" not in recorded
+    # Both warms launch, and neither argv carries anything from the payload.
+    assert "warm_typeguard_cache.py" in recorded
     assert "--rewarm" in recorded

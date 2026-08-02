@@ -615,6 +615,15 @@ jobs:
 
       - uses: ./.github/actions/warm-tree-sitter-cache
 
+      # The suite runs under --typeguard-packages=synthorg, so every module
+      # is AST-rewritten before it can be imported: ~17s per process. The
+      # instrumented bytecode is cached, but __pycache__ is not restored
+      # between runs, so without this every xdist worker in every shard
+      # re-instruments the whole package concurrently. One serial pass here
+      # is read by all of them.
+      - name: Warm the typeguard bytecode cache
+        run: uv run python scripts/warm_typeguard_cache.py --quiet
+
       # Enable user-process core dumps. Ubuntu runners ship with
       # ``ulimit -c 0`` (disabled). With ``-c unlimited`` any SIGSEGV /
       # SIGABRT / SIGBUS that kills a worker leaves a binary core file
