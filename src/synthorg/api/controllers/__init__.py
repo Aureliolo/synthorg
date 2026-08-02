@@ -155,6 +155,7 @@ from synthorg.api.controllers.simulations import SimulationController
 from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.api.controllers.steering import SteeringController
+from synthorg.api.controllers.subsystems import SubsystemsController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
@@ -197,6 +198,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LivenessController,
     ReadinessController,
     HealthController,
+    SubsystemsController,
     MetricsController,
     CapabilitiesController,
     CompanyController,
@@ -466,6 +468,7 @@ __all__ = [
     "SimulationController",
     "SprintController",
     "SsrfViolationController",
+    "SubsystemsController",
     "SubworkflowController",
     "TaskController",
     "TeamController",

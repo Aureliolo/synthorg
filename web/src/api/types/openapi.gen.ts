@@ -5425,6 +5425,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/subsystems": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Subsystems */
+        readonly get: operations["ApiV1SubsystemsSubsystems"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/subworkflows": {
         readonly parameters: {
             readonly query?: never;
@@ -7632,6 +7649,14 @@ export type components = {
         /** ApiResponse[SubmitObjectiveAck] */
         readonly ApiResponse_SubmitObjectiveAck_: {
             readonly data: components["schemas"]["SubmitObjectiveAck"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SubsystemsResponse] */
+        readonly ApiResponse_SubsystemsResponse_: {
+            readonly data: components["schemas"]["SubsystemsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -11036,7 +11061,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -17453,6 +17478,58 @@ export type components = {
              * @default []
              */
             readonly quotas: readonly components["schemas"]["QuotaLimit"][];
+        };
+        /**
+         * SubsystemPhase
+         * @description What the reconciler last observed about a subsystem.
+         *
+         *     ``WAITING`` and ``DISABLED`` are ordinary resting states, not errors: the
+         *     first means a dependency has not arrived yet and the subsystem will come
+         *     up when it does, the second means an operator turned it off.
+         *
+         *     ``BLOCKED`` is the honest answer to a case the declarations cannot model:
+         *     every declared dependency is present, activation ran, and the subsystem
+         *     declined anyway on a condition of its own (memory with no embedding model
+         *     chosen). Reporting that as ``WAITING`` would name no dependency and leave
+         *     an operator with nowhere to look; the subsystem logs the reason.
+         *
+         *     ``DEGRADED`` is up while a requirement it captured is gone. Only a
+         *     subsystem with no ``deactivate`` can rest here: one with a teardown is
+         *     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
+         *     that is not there, which is the drift reading liveness from ``provides``
+         *     exists to prevent.
+         * @enum {string}
+         */
+        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "blocked" | "disabled" | "failed";
+        /** SubsystemReport */
+        readonly SubsystemReport: {
+            /** @description Failure description, when failed */
+            readonly detail: string | null;
+            /** @description Subsystem identifier */
+            readonly name: string;
+            readonly phase: components["schemas"]["SubsystemPhase"];
+            /**
+             * @description Unmet dependencies, when waiting
+             * @default []
+             */
+            readonly waiting_on: readonly string[];
+        };
+        /** SubsystemsResponse */
+        readonly SubsystemsResponse: {
+            /** @description Count in the active phase */
+            readonly active: number;
+            /** @description Count that declined to activate */
+            readonly blocked: number;
+            /** @description Count up with a missing requirement */
+            readonly degraded: number;
+            /** @description Count an operator switched off */
+            readonly disabled: number;
+            /** @description Count whose activation raised */
+            readonly failed: number;
+            /** @description Declared subsystems in activation order */
+            readonly subsystems: readonly components["schemas"]["SubsystemReport"][];
+            /** @description Count waiting on a dependency */
+            readonly waiting: number;
         };
         /** SubtaskDefinition */
         readonly SubtaskDefinition: {
@@ -31220,6 +31297,31 @@ export interface operations {
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SubsystemsSubsystems: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SubsystemsResponse_"];
+                };
+            };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];

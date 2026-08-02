@@ -15,6 +15,7 @@ from synthorg.budget.coordination_metric_models import CoordinationMetrics
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
+    COORD_METRICS_BOUND_CHANGED,
     COORD_METRICS_COLLECTION_COMPLETED,
     COORD_METRICS_STORE_CLEARED,
     COORD_METRICS_VALIDATION_ERROR,
@@ -65,9 +66,38 @@ class CoordinationMetricsStore:
                 error=msg,
             )
             raise ValueError(msg)
-        self._max_entries = max_entries
         self._records: deque[CoordinationMetricsRecord] = deque(
             maxlen=max_entries,
+        )
+
+    def set_max_entries(self, max_entries: int) -> None:
+        """Rebound the ring buffer in place, keeping the newest records.
+
+        A deque's ``maxlen`` is immutable, so the buffer is rebuilt. Rebuilding
+        from the existing records drops the oldest first, which is the eviction
+        order already in force, so a shrink loses exactly what the next writes
+        would have evicted anyway.
+
+        Args:
+            max_entries: New retention bound.
+
+        Raises:
+            ValueError: If *max_entries* < 1.
+        """
+        if max_entries < 1:
+            msg = f"max_entries must be >= 1, got {max_entries}"
+            logger.warning(
+                COORD_METRICS_VALIDATION_ERROR,
+                error=msg,
+            )
+            raise ValueError(msg)
+        previous = self._records.maxlen
+        self._records = deque(self._records, maxlen=max_entries)
+        logger.info(
+            COORD_METRICS_BOUND_CHANGED,
+            previous=previous,
+            current=max_entries,
+            retained=len(self._records),
         )
 
     def clear(self) -> None:

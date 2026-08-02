@@ -1,0 +1,122 @@
+name: Check unit shard balance
+
+# `.test_durations.unit` is a snapshot: every test added since it was recorded
+# is partitioned at the average cost, so the shards drift apart again as the
+# suite grows. Nothing fails while they drift -- they just creep toward the
+# 300s session cap until one crosses it mid-PR, which is how shard 1 came to
+# be 2.3x its siblings. This watches the spread and asks for a refresh before
+# that happens, rather than auto-committing a weekly rewrite of an 8.5k-entry
+# file (the merge noise that retired the previous refresh workflow).
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: unit-shard-balance
+  cancel-in-progress: false
+
+jobs:
+  check-balance:
+    name: Compare unit shard wall-clocks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read    # actions/checkout (to load the tracking-issue action)
+      actions: read     # read the CI run's job timings
+      issues: write     # open / update the tracking issue
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Measure the newest CI run's unit shards
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Balanced shards sit within a few percent of each other. 1.5 is
+          # well clear of that noise and still leaves headroom: at a ~170s
+          # balanced shard, a 1.5x spread is ~255s against a 300s cap.
+          MAX_SPREAD_RATIO: "1.5"
+        run: |
+          set -euo pipefail
+
+          # By filename, not display name: the display name is prose and has
+          # already been rewritten once (ci.yml -> verify-backend.yml,
+          # "CI" -> "Verify - Backend"), which would silently return no runs
+          # and leave this reporting "nothing to measure" forever.
+          run_id=$(gh run list --workflow verify-backend.yml --branch main \
+            --status completed --limit 1 --json databaseId --jq '.[0].databaseId')
+          # `--jq .[0].databaseId` on an empty list prints the string "null",
+          # not nothing, so an empty-string test alone would send that
+          # straight into `actions/runs/null/jobs`.
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "no completed CI run on main; nothing to measure"
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Durations come from the job start/finish stamps rather than the
+          # log, so this never has to parse pytest output. `--slurp` because
+          # `--paginate` emits one document per page: a run with more jobs
+          # than one page holds would otherwise produce several arrays, and
+          # the `--argjson` below would reject the resulting ratio.
+          timings=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+            --paginate --slurp --jq '
+              [ .[] | .jobs[]
+                | select(.name | startswith("Test Unit (shard"))
+                | select(.started_at != null and .completed_at != null)
+                | { name: .name,
+                    seconds: (((.completed_at | fromdateiso8601)
+                             - (.started_at | fromdateiso8601))) } ]')
+
+          count=$(jq 'length' <<<"$timings")
+          if [ "$count" -lt 2 ]; then
+            echo "run $run_id has $count unit shards; nothing to compare"
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          report=$(jq -r 'sort_by(-.seconds) | .[] | "  \(.name): \(.seconds)s"' <<<"$timings")
+          ratio=$(jq -r '(max_by(.seconds).seconds) / ([.[].seconds] | min | if . == 0 then 1 else . end)' <<<"$timings")
+          echo "run $run_id shard spread ratio: $ratio"
+          echo "$report"
+
+          if [ "$(jq -rn --argjson r "$ratio" --argjson m "$MAX_SPREAD_RATIO" '$r > $m')" = "true" ]; then
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+            {
+              echo 'body<<SHARD_BALANCE_EOF'
+              echo "The unit shards have drifted apart by ${ratio}x (ceiling ${MAX_SPREAD_RATIO}x)."
+              echo ""
+              echo "Measured on run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${run_id}:"
+              echo ""
+              echo "$report"
+              echo ""
+              echo "\`.test_durations.unit\` is stale: tests added since it was"
+              echo "recorded are partitioned at the average cost, so the slowest"
+              echo "shard creeps toward the 300s \`--session-timeout\`. Refresh it"
+              echo "from that run and commit the result:"
+              echo ""
+              echo "    make test-durations RUN_ID=${run_id}"
+              echo ""
+              echo "If the spread survives a refresh, one shard holds a genuinely"
+              echo "expensive test rather than an unlucky partition; find it in the"
+              echo "run's \`slowest 20 durations\` block."
+              echo 'SHARD_BALANCE_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: ./.github/actions/post-tracking-issue
+        if: steps.measure.outputs.drifted == 'true'
+        with:
+          title: 'Unit shard durations have drifted'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.measure.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}

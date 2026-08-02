@@ -25,6 +25,10 @@ from synthorg.api.config import ApiConfig
 from synthorg.api.etag import ETagMiddleware
 from synthorg.api.middleware import RequestLoggingMiddleware
 from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
+from synthorg.api.rate_limits.live_global import (
+    LiveRateLimitConfig,
+    RateLimitTier,
+)
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
@@ -354,25 +358,31 @@ def _build_rate_limits(
     if ws_path not in rl_exclude:
         rl_exclude.append(ws_path)
 
-    ip_floor = LitestarRateLimitConfig(
+    # The caps below are the boot fallback, not the enforced value: each
+    # tier reads its cap per request from live state, so an operator can
+    # retune under the load that prompted it.
+    ip_floor = LiveRateLimitConfig(
         rate_limit=(rl.time_unit, rl.floor_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=unauth_identifier,
         store="rate_limit_floor",
+        tier=RateLimitTier.FLOOR,
     )
-    unauth = LitestarRateLimitConfig(
+    unauth = LiveRateLimitConfig(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=unauth_identifier,
         check_throttle_handler=_throttle_when_anonymous,
         store="rate_limit_unauth",
+        tier=RateLimitTier.UNAUTH,
     )
-    auth = LitestarRateLimitConfig(
+    auth = LiveRateLimitConfig(
         rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=_auth_identifier_for_request,
         check_throttle_handler=_throttle_when_authenticated,
         store="rate_limit_auth",
+        tier=RateLimitTier.AUTH,
     )
     return ip_floor, unauth, auth
 

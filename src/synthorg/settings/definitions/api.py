@@ -171,6 +171,25 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="subsystem_resync_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Cadence of the subsystem reconcile sweep. Every other trigger is"
+            " an optimisation; this one is the guarantee, so a dependency that"
+            " arrives with nothing to announce it (a local model server coming"
+            " back up) is still picked up within this window. Read per cycle,"
+            " so a change applies without a restart."
+        ),
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+    )
+)
+
 # ── TLS (bootstrap-only) ────────────────────────────────────────
 
 _r.register(
@@ -334,7 +353,6 @@ _r.register(
         description="Maximum unauthenticated requests per time window (by IP)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1,
         max_value=10000,
     )
@@ -349,7 +367,6 @@ _r.register(
         description="Maximum authenticated requests per time window (by user ID)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=1,
         max_value=100000,
     )
@@ -364,15 +381,12 @@ _r.register(
         description=(
             "Maximum total requests per time window (by IP) across the"
             " whole API, independent of auth. Must be >= both the"
-            " authenticated and unauthenticated per-window caps. Resolves"
-            " through DB > env > YAML > code default; the DB layer is"
-            " rejected at write time because the middleware stack is baked"
-            " at app construction (read_only_post_init=True)."
+            " authenticated and unauthenticated per-window caps, which is"
+            " revalidated on every change: the floor wraps both tiers, so"
+            " a lower one silently caps whichever budget it undercuts."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=1,
         max_value=1000000,
     )
@@ -388,7 +402,6 @@ _r.register(
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         enum_values=("second", "minute", "hour", "day"),
-        restart_required=True,
     )
 )
 
@@ -905,16 +918,12 @@ _r.register(
         description=(
             "Master kill switch for the three-tier global rate"
             " limiter (IP floor + unauthenticated + authenticated)."
-            " Disable only in trusted dev environments.  Resolves"
-            " through DB > env (SYNTHORG_API_RATE_LIMITER_ENABLED)"
-            " > YAML > code default; the DB layer is rejected at"
-            " write time because the middleware stack is baked at"
-            " app construction (read_only_post_init=True)."
+            " Disable only in trusted dev environments. Takes effect on"
+            " the next request; the windows keep running underneath, so"
+            " re-enabling does not hand every caller a fresh budget."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
     )
 )
 

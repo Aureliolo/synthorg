@@ -170,16 +170,13 @@ _r.register(
             " tokens. 32 bytes resolves to 256 bits of entropy and"
             " 43 URL-safe base64 chars.  Resolves through"
             " DB > env (SYNTHORG_SECURITY_AUTH_TOKEN_BYTES) > YAML"
-            " > code default; the DB layer is rejected at write time"
-            " because changing the byte length mid-run would silently"
-            " invalidate existing tokens (a 32-byte token decoded"
-            " under a 64-byte expectation fails verification) --"
-            " ``read_only_post_init=True``."
+            " > code default. Governs how the next token is minted, not"
+            " how an existing one is read: these are opaque strings"
+            " matched by lookup, so tokens already issued keep working"
+            " at whatever width they were minted at."
         ),
         group="Authentication",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=16,
         max_value=64,
     )

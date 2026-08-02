@@ -921,15 +921,15 @@ _r.register(
         type=SettingType.INTEGER,
         default="1000",
         description=(
-            "Backpressure cap on the in-process task-mutation queue."
+            "Admission cap on the in-process task-mutation queue."
             " ``0`` means unbounded. Raise for high-throughput deployments"
             " with many concurrent agents; lower for resource-constrained"
-            " hosts. Read once at TaskEngineConfig construction."
+            " hosts. Applies to the next submitted mutation; lowering it"
+            " below the current depth lets the backlog drain rather than"
+            " discarding mutations already accepted."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=0,
         max_value=1_000_000,
     )

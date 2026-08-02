@@ -637,9 +637,22 @@ jobs:
       # 80% alone; the gate belongs solely to test-coverage-aggregate. Every
       # per-suite arm below carries the same override for the same reason.
       #
-      # --splits/--group come from pytest-split; --durations-path points
-      # at .test_durations.unit (empty {} on first run, falls back to
-      # count-based partition until CI populates real timings).
+      # --splits/--group come from pytest-split, against the tracked
+      # .test_durations.unit. Both halves are load-bearing and neither works
+      # alone.
+      #
+      # --splitting-algorithm least_duration assigns tests INDIVIDUALLY to the
+      # least-loaded group. The default (duration_based_chunks) hands out
+      # CONTIGUOUS chunks of collection order, which put all 4370
+      # tests/unit/api tests in shard 1 and none in shard 4: every one builds
+      # an app, so shard 1 ran 322s against shard 3's 141s for the same test
+      # count, over the --session-timeout below. Chunking can only move that
+      # boundary, never interleave, so no durations file can fix it.
+      #
+      # The durations file is what least_duration greedily packs against;
+      # without it every test weighs the same and the balance is by count.
+      # Refresh it with `make test-durations RUN_ID=<run>`;
+      # unit-shard-balance.yml watches the spread and asks when it drifted.
       #
       # ``-v`` prints every test's nodeid as it starts, so the LAST
       # printed test before ``[gwN] node down`` names the suspect.
@@ -663,6 +676,7 @@ jobs:
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.unit \
+            --splitting-algorithm least_duration \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \

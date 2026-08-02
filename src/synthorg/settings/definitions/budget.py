@@ -155,17 +155,14 @@ _r.register(
         default="10000",
         description=(
             "Maximum coordination-metrics records retained in the"
-            " in-memory ring buffer (oldest evicted first). Sizes a"
-            " fixed-length deque at store construction; sourced from the"
-            " SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES env var >"
-            " default at API-process start. Read-only post-init:"
-            " resizing the buffer at runtime would discard retained"
-            " history, so a change requires a restart."
+            " in-memory ring buffer (oldest evicted first). Applies"
+            " immediately: the buffer is rebuilt at the new bound keeping"
+            " the newest records, so raising it costs no history and"
+            " lowering it drops only what the next writes would have"
+            " evicted."
         ),
         group="Coordination",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         env_var_override="SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES",
         min_value=1,
         max_value=1_000_000,
@@ -383,17 +380,12 @@ _r.register(
         description=(
             "Sliding-window size for single-agent baseline records used"
             " to derive the multi-agent coordination baselines (Ec, O%,"
-            " Ae). Sizes a fixed-length deque at BaselineStore"
-            " construction; sourced from the"
-            " SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE env var > default at"
-            " API-process start. Read-only post-init: resizing the"
-            " window at runtime would discard accumulated baselines, so"
-            " a change requires a restart."
+            " Ae). Applies immediately: the window is rebuilt at the new"
+            " size keeping the newest records, so the baselines stay"
+            " computable across the change."
         ),
         group="Coordination",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         env_var_override="SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE",
         min_value=1,
         max_value=1_000_000,

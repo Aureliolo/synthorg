@@ -36,6 +36,7 @@ from synthorg.api.rate_limits._subject import parse_trusted_networks
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.api.state import AppState
+from synthorg.config.rate_limits import LiveRateLimits
 
 type LifespanHooks = list[Callable[[], Awaitable[None]]]
 
@@ -152,6 +153,19 @@ def build_litestar(  # noqa: PLR0913
     app_state.per_op_limits.set_concurrency_config(api_config.per_op_concurrency)
     if not skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_inflight_store.close]
+
+    # Boot fallback for the global tiers. The middleware reads this per
+    # request, so the settings subscriber can swap the caps without the
+    # Litestar app (whose own config is fixed once built) being rebuilt.
+    app_state.per_op_limits.set_global_config(
+        LiveRateLimits(
+            enabled=api_config.rate_limiter_enabled,
+            floor_max_requests=api_config.rate_limit.floor_max_requests,
+            unauth_max_requests=api_config.rate_limit.unauth_max_requests,
+            auth_max_requests=api_config.rate_limit.auth_max_requests,
+            time_unit=api_config.rate_limit.time_unit.value,
+        )
+    )
 
     trusted_proxies = resolve_api_str_tuple("trusted_proxies")
 

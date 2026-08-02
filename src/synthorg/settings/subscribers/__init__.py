@@ -9,6 +9,9 @@ from synthorg.settings.subscribers.api_bridge_subscriber import (
 from synthorg.settings.subscribers.api_security_headers_subscriber import (
     ApiSecurityHeadersSettingsSubscriber,
 )
+from synthorg.settings.subscribers.auth_token_size_subscriber import (
+    AuthTokenSizeSettingsSubscriber,
+)
 from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
@@ -35,6 +38,12 @@ from synthorg.settings.subscribers.event_stream_history_subscriber import (
 )
 from synthorg.settings.subscribers.github_api_url_subscriber import (
     GithubApiUrlSettingsSubscriber,
+)
+from synthorg.settings.subscribers.global_rate_limit_subscriber import (
+    GlobalRateLimitSettingsSubscriber,
+)
+from synthorg.settings.subscribers.in_memory_bounds_subscriber import (
+    InMemoryBoundsSettingsSubscriber,
 )
 from synthorg.settings.subscribers.knowledge_subscriber import (
     KnowledgeSettingsSubscriber,
@@ -98,6 +107,7 @@ __all__ = [
     "A2AClientSettingsSubscriber",
     "ApiBridgeSettingsSubscriber",
     "ApiSecurityHeadersSettingsSubscriber",
+    "AuthTokenSizeSettingsSubscriber",
     "BackupSettingsSubscriber",
     "BudgetBenchmarkProviderSettingsSubscriber",
     "ChiefOfStaffAlertsSettingsSubscriber",
@@ -108,6 +118,8 @@ __all__ = [
     "EvalLoopSettingsSubscriber",
     "EventStreamHistorySettingsSubscriber",
     "GithubApiUrlSettingsSubscriber",
+    "GlobalRateLimitSettingsSubscriber",
+    "InMemoryBoundsSettingsSubscriber",
     "KnowledgeSettingsSubscriber",
     "MemoryBridgeSettingsSubscriber",
     "MetaSelfImprovementSettingsSubscriber",

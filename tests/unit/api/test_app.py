@@ -1423,12 +1423,11 @@ class TestBuildMiddleware:
         from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        rl_configs: list[LsRL] = [
-            entry.kwargs["config"]
-            for entry in mw
-            if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
-        ]
-        stores = [cfg.store for cfg in rl_configs]
+        # Read through ``getattr``: the stack holds several middleware shapes
+        # and only one carries ``kwargs``, which a type checker cannot narrow
+        # through a ``hasattr`` guard.
+        configs = [getattr(entry, "kwargs", {}).get("config") for entry in mw]
+        stores = [cfg.store for cfg in configs if isinstance(cfg, LsRL)]
         assert stores == [
             "rate_limit_floor",
             "rate_limit_unauth",

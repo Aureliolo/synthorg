@@ -21,6 +21,7 @@ from synthorg.settings.subscribers import (
     A2AClientSettingsSubscriber,
     ApiBridgeSettingsSubscriber,
     ApiSecurityHeadersSettingsSubscriber,
+    AuthTokenSizeSettingsSubscriber,
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
@@ -31,6 +32,8 @@ from synthorg.settings.subscribers import (
     EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
+    GlobalRateLimitSettingsSubscriber,
+    InMemoryBoundsSettingsSubscriber,
     KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
@@ -84,6 +87,13 @@ def _build_settings_dispatcher(
         app_state=app_state,
         settings_service=settings_service,
     )
+    global_rl_sub = GlobalRateLimitSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    auth_token_size_sub = AuthTokenSizeSettingsSubscriber(
+        settings_service=settings_service,
+    )
     api_bridge_sub = ApiBridgeSettingsSubscriber(
         app_state=app_state,
         settings_service=settings_service,
@@ -118,6 +128,8 @@ def _build_settings_dispatcher(
         provider_sub,
         observability_sub,
         per_op_rl_sub,
+        global_rl_sub,
+        auth_token_size_sub,
         api_bridge_sub,
         workers_bridge_sub,
         memory_bridge_sub,
@@ -166,6 +178,10 @@ def _build_settings_dispatcher(
             settings_service=settings_service,
         ),
         EscalationReconnectSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        InMemoryBoundsSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

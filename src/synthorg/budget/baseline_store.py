@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_BASELINE_INSUFFICIENT,
     COORD_METRICS_BASELINE_RECORDED,
+    COORD_METRICS_BASELINE_WINDOW_CHANGED,
 )
 
 logger = get_logger(__name__)
@@ -72,6 +73,33 @@ class BaselineStore:
             raise ValueError(msg)
         self._records: deque[BaselineRecord] = deque(maxlen=window_size)
         self._window_size = window_size
+
+    def set_window_size(self, window_size: int) -> None:
+        """Rebound the sliding window in place, keeping the newest records.
+
+        A deque's ``maxlen`` is immutable, so the window is rebuilt. Rebuilding
+        from the existing records evicts oldest-first, the order already in
+        force, so a shrink loses exactly what the next records would have
+        evicted and the baseline means stay computable throughout.
+
+        Args:
+            window_size: New window size.
+
+        Raises:
+            ValueError: If *window_size* is not positive.
+        """
+        if window_size <= 0:
+            msg = "window_size must be positive"
+            raise ValueError(msg)
+        previous = self._window_size
+        self._records = deque(self._records, maxlen=window_size)
+        self._window_size = window_size
+        logger.info(
+            COORD_METRICS_BASELINE_WINDOW_CHANGED,
+            previous=previous,
+            current=window_size,
+            retained=len(self._records),
+        )
 
     def __len__(self) -> int:
         """Number of records currently in the store.

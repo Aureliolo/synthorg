@@ -272,3 +272,61 @@ class PerOpConcurrencyConfig(BaseModel):
     @classmethod
     def _apply_mirrors(cls, data: object) -> object:
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
+
+type RateLimitWindowUnit = Literal["second", "minute", "hour", "day"]
+
+
+class LiveRateLimits(BaseModel):
+    """The global tier caps, read per request rather than baked at boot.
+
+    Litestar fixes ``max_requests`` on the middleware instance when the app
+    is built, so these were unchangeable for the life of the process. They
+    are the caps an operator most wants to move under exactly the load that
+    made them want to.
+
+    ``rate_limit_exclude_paths`` is deliberately absent. Litestar applies
+    exclusions when the middleware is mounted, not per request, so changing
+    them means rebuilding the middleware stack; that is app reconstruction,
+    and the honest home for it is compose.
+
+    Attributes:
+        enabled: Master switch. When false the tiers pass everything
+            through, while their windows keep running underneath so
+            re-enabling does not hand every caller a fresh budget.
+        floor_max_requests: Per-IP ceiling across the whole API.
+        unauth_max_requests: Per-IP ceiling for anonymous callers.
+        auth_max_requests: Per-user ceiling for authenticated callers.
+        time_unit: Window the caps are counted over.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    enabled: bool = True
+    floor_max_requests: int = Field(ge=1)
+    unauth_max_requests: int = Field(ge=1)
+    auth_max_requests: int = Field(ge=1)
+    time_unit: RateLimitWindowUnit = "minute"
+
+    @model_validator(mode="after")
+    def _floor_covers_both_tiers(self) -> LiveRateLimits:
+        """Keep the floor at or above both user-gated caps.
+
+        The floor wraps both tiers in the middleware stack, so a lower one
+        silently caps whichever budget it undercuts. Checked on every swap,
+        because a live edit is exactly where the pair can drift apart.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: When the floor sits below either tier.
+        """
+        highest = max(self.unauth_max_requests, self.auth_max_requests)
+        if self.floor_max_requests < highest:
+            msg = (
+                f"floor_max_requests={self.floor_max_requests} is below "
+                f"{highest}, so it would cap a tier below its configured value"
+            )
+            raise ValueError(msg)
+        return self
