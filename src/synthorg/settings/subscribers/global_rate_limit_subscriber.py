@@ -5,10 +5,14 @@ Rebuilds ``RateLimitConfig`` from current values and swaps it into
 stores are untouched, so windows already in flight keep counting.
 """
 
-from typing import cast, get_args
+from typing import cast
 
 from synthorg.api.state import AppState
-from synthorg.config.rate_limits import LiveRateLimits, RateLimitWindowUnit
+from synthorg.config.rate_limits import (
+    KNOWN_WINDOWS,
+    LiveRateLimits,
+    RateLimitWindowUnit,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
@@ -21,10 +25,6 @@ from synthorg.settings.service import SettingsService
 logger = get_logger(__name__)
 
 _NAMESPACE = "api"
-# ``RateLimitWindowUnit`` is a PEP 695 alias, so ``get_args`` on the alias
-# itself returns an empty tuple and would reject every window there is,
-# including the one already in force. The members live on ``__value__``.
-_KNOWN_WINDOWS: frozenset[str] = frozenset(get_args(RateLimitWindowUnit.__value__))
 # ``rate_limit_exclude_paths`` is deliberately absent: Litestar applies
 # exclusions when the middleware is mounted, never per request, so no swap
 # can move them. Watching it would rebuild the tiers and log that the limits
@@ -165,7 +165,7 @@ class GlobalRateLimitSettingsSubscriber:
         raw = normalize_ascii_lowercase(
             str(result.value) if result.value is not None else "minute"
         )
-        if raw not in _KNOWN_WINDOWS:
+        if raw not in KNOWN_WINDOWS:
             msg = f"setting api.rate_limit_time_unit={raw!r} is not a known window"
             raise ValueError(msg)
         return cast("RateLimitWindowUnit", raw)

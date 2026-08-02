@@ -372,6 +372,9 @@ async def unwire_steering_service(app_state: AppState) -> None:
     service is steering against a brain nothing else reads. A partial wire,
     not a slice swap, because the cockpit slice also carries the notifier and
     the flight recorder, which this subsystem does not own.
+
+    Args:
+        app_state: Application state holding the cockpit slice.
     """
     from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
 

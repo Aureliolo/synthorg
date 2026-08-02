@@ -107,50 +107,184 @@ def _tracked_sources(repo_root: Path) -> Iterator[Path]:
     yield from sorted((repo_root / _SOURCE_REL).rglob("*.py"))
 
 
-def _import_aliases(tree: ast.AST) -> dict[str, str]:
-    """Map each locally-bound alias to the wiring name it was imported as.
+def _module_of(repo_root: Path, path: Path) -> str:
+    """Return the dotted module name a source file provides.
 
-    ``from x import wire_y as _wy`` binds a second name for the same
-    function, and a call through it is the same second caller the rule
-    exists to catch.
+    Args:
+        repo_root: Repository root the layout is relative to.
+        path: The source file.
+
+    Returns:
+        The dotted name, with a package's ``__init__`` reduced to the package.
+    """
+    parts = list(path.relative_to(repo_root / "src").with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+def _imported_symbols(tree: ast.AST, module: str) -> dict[str, OwnedWiring]:
+    """Map each locally-bound name to the wiring function it was imported as.
+
+    ``from x import wire_y as _wy`` binds a second name for the same function,
+    and a call through it is the same second caller the rule exists to catch.
 
     Args:
         tree: The parsed module.
+        module: Dotted name of the module being parsed, for relative imports.
 
     Returns:
-        ``{local_name: original_name}`` for aliased wiring imports.
+        ``{local_name: OwnedWiring}`` for every imported wiring function.
     """
-    aliases: dict[str, str] = {}
+    symbols: dict[str, OwnedWiring] = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
             continue
+        source = _resolved_import(node, module)
+        if source is None:
+            continue
         for alias in node.names:
-            if alias.asname is not None and _is_wiring_name(alias.name):
-                aliases[alias.asname] = alias.name
-    return aliases
+            if _is_wiring_name(alias.name):
+                symbols[alias.asname or alias.name] = OwnedWiring(
+                    name=alias.name, module=source
+                )
+    return symbols
 
 
-def _called_names(tree: ast.AST) -> Iterator[tuple[str, int, int]]:
-    """Yield ``(name, start_line, end_line)`` for every call in *tree*.
+def _imported_modules(tree: ast.AST, module: str) -> dict[str, str]:
+    """Map each locally-bound name to the module it refers to.
 
-    Covers the three shapes a wiring call can take: a plain name, a name
-    bound by an aliased import, and an attribute on an imported module
-    (``feature_wiring.wire_docs_engine()``). The line span is the call's,
-    not its callee's, so a per-line opt-out marker can sit anywhere in a
-    multi-line call rather than only on its first line.
+    Args:
+        tree: The parsed module.
+        module: Dotted name of the module being parsed, for relative imports.
+
+    Returns:
+        ``{local_name: dotted_module}`` for imports of whole modules, which is
+        what makes ``feature_wiring.wire_docs_engine()`` resolvable.
     """
-    aliases = _import_aliases(tree)
+    modules: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                modules[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            source = _resolved_import(node, module)
+            if source is None:
+                continue
+            for alias in node.names:
+                if not _is_wiring_name(alias.name):
+                    modules[alias.asname or alias.name] = f"{source}.{alias.name}"
+    return modules
+
+
+def _resolved_import(node: ast.ImportFrom, module: str) -> str | None:
+    """Return the absolute module an import statement reads from.
+
+    Args:
+        node: The import statement.
+        module: Dotted name of the module containing it.
+
+    Returns:
+        The absolute dotted module, or ``None`` when it names nothing.
+    """
+    if not node.level:
+        return node.module
+    package = module.split(".")[: -node.level] if module else []
+    tail = node.module.split(".") if node.module else []
+    return ".".join([*package, *tail]) or None
+
+
+def _call_targets(tree: ast.AST, module: str) -> Iterator[tuple[OwnedWiring, int, int]]:
+    """Yield ``(target, start_line, end_line)`` for every resolvable call.
+
+    Covers the shapes a wiring call can take: a name bound by an import,
+    an attribute on an imported module (``feature_wiring.wire_docs_engine()``),
+    and a bare call to a function the same module defines, which is the
+    composite case. Each resolves to the module the function lives in, so a
+    call to an unrelated function of the same name is not mistaken for one.
+    The line span is the call's, not its callee's, so a per-line opt-out
+    marker can sit anywhere in a multi-line call.
+
+    Args:
+        tree: The parsed module.
+        module: Dotted name of the module being parsed.
+
+    Yields:
+        The resolved call target and the line span of the call.
+    """
+    symbols = _imported_symbols(tree, module)
+    modules = _imported_modules(tree, module)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        func = node.func
-        if isinstance(func, ast.Name):
-            name = aliases.get(func.id, func.id)
-        elif isinstance(func, ast.Attribute):
-            name = func.attr
-        else:
+        target = _resolve_callee(node.func, symbols, modules, module)
+        if target is not None:
+            yield target, node.lineno, node.end_lineno or node.lineno
+
+
+def _resolve_callee(
+    func: ast.expr,
+    symbols: dict[str, OwnedWiring],
+    modules: dict[str, str],
+    module: str,
+) -> OwnedWiring | None:
+    """Resolve one call's callee to the wiring function it names.
+
+    Args:
+        func: The callee expression.
+        symbols: Wiring functions imported into this module.
+        modules: Modules imported into this module.
+        module: Dotted name of the module being parsed.
+
+    Returns:
+        The resolved target, or ``None`` when the call names no wiring
+        function or names one this module cannot be shown to reach.
+    """
+    if isinstance(func, ast.Name):
+        imported = symbols.get(func.id)
+        if imported is not None:
+            return imported
+        # Not imported, so a matching name is one this module defines: the
+        # composite that runs several owned wirers in a fixed order.
+        if not _is_wiring_name(func.id):
+            return None
+        return OwnedWiring(name=func.id, module=module)
+    if (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Name)
+        and _is_wiring_name(func.attr)
+    ):
+        source = modules.get(func.value.id)
+        return None if source is None else OwnedWiring(name=func.attr, module=source)
+    return None
+
+
+def _definition_modules(repo_root: Path) -> dict[str, set[str]]:
+    """Map each wiring function name to every module defining one.
+
+    A name defined once anywhere in the tree is unambiguous however it was
+    imported, which matters because a package re-export makes the module a
+    caller imported from differ from the one the registry names.
+
+    Args:
+        repo_root: Repository root to scan.
+
+    Returns:
+        ``{function_name: {defining modules}}``.
+    """
+    definitions: dict[str, set[str]] = {}
+    for path in _tracked_sources(repo_root):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except OSError, SyntaxError:
             continue
-        yield name, node.lineno, node.end_lineno or node.lineno
+        module = _module_of(repo_root, path)
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if _is_wiring_name(node.name):
+                definitions.setdefault(node.name, set()).add(module)
+    return definitions
 
 
 def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
@@ -162,7 +296,8 @@ def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
     Raises:
         ValueError: When the registry cannot be read.
     """
-    owned_names = {entry.name for entry in owned_wiring(repo_root)}
+    owners = {entry.name: entry for entry in owned_wiring(repo_root)}
+    definitions = _definition_modules(repo_root)
     registry_path = (repo_root / _REGISTRY_REL).resolve()
 
     violations: list[Violation] = []
@@ -175,8 +310,9 @@ def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
         except OSError, SyntaxError:
             continue
         lines = source.splitlines()
-        for name, lineno, end_lineno in _called_names(tree):
-            if name not in owned_names:
+        module = _module_of(repo_root, path)
+        for target, lineno, end_lineno in _call_targets(tree, module):
+            if not _is_owned(target, owners, definitions):
                 continue
             span = lines[lineno - 1 : end_lineno]
             if any(_ALLOW_MARKER in line for line in span):
@@ -185,10 +321,38 @@ def scan_repo(repo_root: Path) -> tuple[Violation, ...]:
                 Violation(
                     path=path.relative_to(repo_root).as_posix(),
                     line=lineno,
-                    name=name,
+                    name=target.name,
                 )
             )
     return tuple(sorted(violations, key=lambda v: (v.path, v.line)))
+
+
+def _is_owned(
+    target: OwnedWiring,
+    owners: dict[str, OwnedWiring],
+    definitions: dict[str, set[str]],
+) -> bool:
+    """Report whether a resolved call reaches a registry-owned function.
+
+    A name only one module defines is that function however it was imported,
+    which is what keeps a package re-export from reading as a different
+    function. When several modules define the name, the module the call
+    resolves to decides, so an unrelated namesake is left alone.
+
+    Args:
+        target: The resolved call target.
+        owners: Registry-owned wiring, by function name.
+        definitions: Every module defining each wiring name.
+
+    Returns:
+        ``True`` when this call is a second path to an owned subsystem.
+    """
+    owner = owners.get(target.name)
+    if owner is None:
+        return False
+    if len(definitions.get(target.name, set())) <= 1:
+        return True
+    return target.module == owner.module
 
 
 def main(argv: list[str] | None = None) -> int:

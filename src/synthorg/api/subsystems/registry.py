@@ -605,16 +605,16 @@ async def _activate_fine_tune_orchestrator(app_state: AppState) -> None:
 async def _activate_team_service(app_state: AppState) -> None:
     """Wire the team service."""
     from synthorg.api.lifecycle_helpers.organization_wiring import (  # noqa: PLC0415
-        _wire_team_service,
+        wire_team_service,
     )
 
-    await _wire_team_service(app_state)
+    await wire_team_service(app_state)
 
 
 async def _activate_company_read_service(app_state: AppState) -> None:
     """Wire the company read facade."""
     from synthorg.api.lifecycle_helpers.organization_wiring import (  # noqa: PLC0415
-        _wire_company_read_service,
+        wire_company_read_service,
     )
 
     # Persistence is deliberately absent from ``requires``: company reads
@@ -623,7 +623,7 @@ async def _activate_company_read_service(app_state: AppState) -> None:
     # the same, so renaming the property fails the type check instead of
     # silently reporting every backend disconnected.
     persistence = _persistence(app_state)
-    await _wire_company_read_service(
+    await wire_company_read_service(
         app_state,
         persistence,
         connected=persistence is not None and persistence.is_connected,
@@ -633,7 +633,7 @@ async def _activate_company_read_service(app_state: AppState) -> None:
 async def _activate_role_version_service(app_state: AppState) -> None:
     """Wire the role-version read facade."""
     from synthorg.api.lifecycle_helpers.organization_wiring import (  # noqa: PLC0415
-        _wire_role_version_service,
+        wire_role_version_service,
     )
 
     backend = _persistence(app_state)
@@ -642,7 +642,7 @@ async def _activate_role_version_service(app_state: AppState) -> None:
         # here. Returning leaves the subsystem reading not-active and the
         # next pass retries, which is what every other unmet dependency does.
         return
-    await _wire_role_version_service(app_state, backend)
+    await wire_role_version_service(app_state, backend)
 
 
 async def _activate_plan_item_reply(app_state: AppState) -> None:

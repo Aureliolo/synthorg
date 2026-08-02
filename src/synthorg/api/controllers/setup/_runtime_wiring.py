@@ -123,9 +123,14 @@ async def _reconcile_post_setup(app_state: AppState) -> None:
     Expected degradation does NOT reach here: a subsystem whose dependency is
     absent reads WAITING, not FAILED, exactly as at boot.
 
+    A deferred report is refused for the same reason. Its statuses are a
+    snapshot of a pass still running elsewhere, so no failure in it means only
+    that the pass has not reached that subsystem yet, which is not an answer to
+    the question completion is asking.
+
     Raises:
         SubsystemActivationError: When any subsystem's activation raised, or
-            when the pass itself could not run.
+            when the pass itself could not run or was deferred.
     """
     from synthorg.api.subsystems.errors import (  # noqa: PLC0415
         SubsystemActivationError,
@@ -133,7 +138,8 @@ async def _reconcile_post_setup(app_state: AppState) -> None:
     from synthorg.api.subsystems.runtime import reconcile_subsystems  # noqa: PLC0415
 
     report = await reconcile_subsystems(app_state, trigger="post_setup")
-    failed = report.failed if report is not None else ("<the pass itself>",)
+    ran = report is not None and not report.deferred
+    failed = report.failed if ran and report is not None else ("<the pass itself>",)
     if failed:
         logger.warning(SETUP_FEATURE_REWIRE_FAILED, subsystems=", ".join(failed))
         msg = f"subsystems failed to activate after setup: {', '.join(failed)}"

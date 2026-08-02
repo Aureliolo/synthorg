@@ -74,8 +74,8 @@ def reject_if_read_only(
     msg = (
         f"Setting {definition.namespace}/{definition.key} is set by the"
         f" deployment and cannot be modified at runtime"
-        f" (action={action!r}). Change it in the compose file and recreate"
-        f" the container."
+        f" (action={action!r}). Change it where the process is launched, then"
+        f" restart that process."
     )
     raise SettingReadOnlyError(msg)
 

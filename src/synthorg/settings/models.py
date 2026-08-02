@@ -55,14 +55,14 @@ class SettingDefinition(BaseModel):
         sensitive: Whether the value should be encrypted at rest.
         compose_set: Whether this setting is fixed by the deployment rather
             than editable at runtime. There are exactly two kinds of setting:
-            one the deployment fixes at container creation (bind address,
+            one the deployment fixes when the process starts (bind address,
             certificate paths, image pins, the trust anchors resolved before
             the settings backend exists) and one an operator changes live.
             A ``compose_set`` entry stays in the registry so operators can
             read it through the standard ``/settings`` API; writing it raises
             ``SettingReadOnlyError``, because the process it configures was
-            started with the old value and nothing short of recreating the
-            container can change that.
+            started with the old value and nothing short of restarting that
+            process can change it.
         enum_values: Allowed values when ``type`` is ``ENUM``.
         validator_pattern: Regex pattern for string validation.
         min_value: Minimum for numeric types (inclusive).
@@ -91,7 +91,7 @@ class SettingDefinition(BaseModel):
     compose_set: bool = Field(
         default=False,
         description=(
-            "Fixed by the deployment at container creation; readable through"
+            "Fixed by the deployment when the process starts; readable through"
             " the settings API, but a write is rejected"
         ),
     )

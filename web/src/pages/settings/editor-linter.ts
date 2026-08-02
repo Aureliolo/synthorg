@@ -184,8 +184,8 @@ function composeSetDiagnostics(
         to: pos.to,
         severity: 'error',
         message:
-          `"${ns}.${key}" is fixed by the deployment at container start. ` +
-          'Edit the compose file and recreate the container.',
+          `"${ns}.${key}" is fixed by the deployment when the process starts. ` +
+          'Change it where the process is launched, then restart it.',
       })
     }
   }

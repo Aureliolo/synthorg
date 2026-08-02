@@ -19,6 +19,7 @@ from synthorg.api.rate_limits.live_global import (
     RateLimitTier,
 )
 from synthorg.api.state import AppState
+from synthorg.config.rate_limits import AUTH_ENDPOINT_WINDOW
 from synthorg.core.domain_errors import AccountLockedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -58,7 +59,7 @@ AUTH_RATE_LIMIT_PER_MINUTE: Final[int] = int(
 
 
 _AUTH_RATE_LIMIT = LiveRateLimitConfig(
-    rate_limit=("minute", AUTH_RATE_LIMIT_PER_MINUTE),
+    rate_limit=(AUTH_ENDPOINT_WINDOW, AUTH_RATE_LIMIT_PER_MINUTE),
     tier=RateLimitTier.AUTH_ENDPOINT,
 )
 """Stricter rate limiter for auth endpoints (10 req/min).

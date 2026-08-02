@@ -23,7 +23,7 @@ values are thereafter resolved through the chain above. See
 [Configuration Precedence](../reference/configuration-precedence.md) for the
 full model.
 
-A DB-backed change takes effect immediately. The exception is a setting marked `compose_set=True`, which the deployment fixed when the container was created; the dashboard shows it read-only and a write is rejected rather than stored.
+A DB-backed change takes effect without a restart: a setting its consumer resolves per operation is live on the next call, and one applied by a subscriber lands on the next dispatch poll. The exception is a setting marked `compose_set=True`, which the deployment fixed when the process started; the dashboard shows it read-only and a write is rejected rather than stored.
 
 ## Setting Types
 
@@ -95,7 +95,7 @@ The `api` namespace also carries operator-tunable settings that govern the respo
 | `api.csp_docs_external_origins` | JSON list | `["https://cdn.jsdelivr.net", "https://fonts.scalar.com", "https://proxy.scalar.com"]` | Trusted external origins used to build the relaxed Content-Security-Policy on `/docs/` paths. Override with internally-mirrored hosts when the backend is not allowed to reach the public Scalar CDN. Each origin must match `^https?://[\w.\-:/]+$`; a malformed entry rejects the bridge config and the runtime falls back to defaults with a `WARNING` log. |
 | `api.error_docs_base_url` | STRING | `https://synthorg.io/docs/errors` | Base URL appended with `#<category>` for the RFC 9457 `type` field on every error response. HTTPS-only (`^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$`); userinfo, query, and fragment components are rejected at runtime. |
 
-Both apply immediately: `ApiSecurityHeadersSettingsSubscriber` re-resolves the pair and pushes it onto the module-level state the header builder reads.
+Both apply without a restart: `ApiSecurityHeadersSettingsSubscriber` re-resolves the pair on the next dispatch poll and pushes it onto the module-level state the header builder reads.
 
 The Slack notification sink binds a `SLACK` connection (its `notifications.slack_timeout_seconds` bridge setting is hot-reloadable), and the forge / chat agent tools are configured under the `tools` namespace (`forge_tools_enabled` / `forge_tools_connection`, `chat_tools_enabled` / `chat_tools_connection`), applied on the next runtime rebuild.
 
@@ -147,7 +147,7 @@ A few settings are decided when the container is created and cannot be changed b
 - `tools.sandbox_image` / `sidecar_image` (the CLI pulled and signature-verified these; the container was created against the resolved digest)
 - `observability.tsa_endpoint_freetsa` / `tsa_endpoint_digicert` / `tsa_endpoint_sectigo` (the timestamp trust anchor is resolved before the settings backend exists, and swapping the authority mid audit-chain is security-sensitive)
 
-To change one, edit the compose file (or the environment it reads) and recreate the container. `scripts/check_setting_compose_backed.py` fails any `compose_set` key the shipped compose template does not actually set, so the flag cannot be used to mean "not wired up".
+To change one, edit it where the process is launched (both backend compose files, or the worker launch command for a worker-only key) and restart that process. `scripts/check_setting_compose_backed.py` fails any `compose_set` key the shipped compose template does not actually set, so the flag cannot be used to mean "not wired up".
 
 ## Hot-reloaded Settings
 

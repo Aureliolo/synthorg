@@ -1,9 +1,9 @@
-"""Governance tests for the controls this project made live.
+"""Governance tests for the live security controls.
 
-Each key here was previously fixed at process start, so a write was rejected
-outright and there was nothing to guard. Once the value applies while the
-system runs, relaxing it is one ordinary write, and these pin the direction
-that needs a deliberate confirm + reason + actor.
+Each key here weakens a safeguard when it moves one way: a rate limit lowered,
+a limiter switched off, a token shortened. That direction applies to the
+running system immediately, so these pin the confirm + reason + actor a write
+in it demands, and pin that the tightening direction stays one ordinary write.
 """
 
 from collections.abc import Awaitable, Callable

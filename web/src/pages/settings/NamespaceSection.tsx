@@ -190,7 +190,7 @@ function ComposeSetDisclosure({ entries, rows }: { entries: SettingEntry[]; rows
         <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
           Set by the deployment
           <span className="ml-2 font-normal normal-case">
-            read-only · change in the compose file and recreate the container
+            read-only · change it where the process is launched, then restart it
           </span>
         </span>
       }

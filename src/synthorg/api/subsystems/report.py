@@ -61,11 +61,17 @@ class ReconcileReport:
         deactivated: Names taken down during this pass, and still down at the
             end of it. A rebuild is teardown-then-activate, so it reports as
             activated: naming it here would read as an outage.
+        deferred: Whether the caller's trigger was handed to a pass already in
+            flight rather than run here. The statuses are then a snapshot taken
+            mid-pass, so an absent failure means only that the pass has not
+            reached that subsystem yet. A caller gating on the outcome has to
+            refuse this report; one merely reporting current state can use it.
     """
 
     statuses: tuple[SubsystemStatus, ...]
     activated: tuple[str, ...] = ()
     deactivated: tuple[str, ...] = ()
+    deferred: bool = False
 
     @property
     def failed(self) -> tuple[str, ...]:

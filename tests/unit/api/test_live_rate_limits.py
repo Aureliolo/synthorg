@@ -6,6 +6,7 @@ actually moves and that the tiers stay coherent while it does.
 """
 
 from contextlib import AbstractContextManager
+from typing import Final
 
 import litestar
 import pytest
@@ -31,14 +32,20 @@ from synthorg.config.schema import RootConfig
 # without any signal here beyond this pin.
 _REVIEWED_LITESTAR_VERSION = "2.24.0"
 
+# Named once so a tier's expectation cannot drift from the value built for it.
+_FLOOR_CAP: Final[int] = 1000
+_UNAUTH_CAP: Final[int] = 20
+_AUTH_CAP: Final[int] = 600
+_AUTH_ENDPOINT_CAP: Final[int] = 10
+
 
 def _limits(
     *,
     enabled: bool = True,
-    floor_max_requests: int = 1000,
-    unauth_max_requests: int = 20,
-    auth_max_requests: int = 600,
-    auth_endpoint_max_requests: int = 10,
+    floor_max_requests: int = _FLOOR_CAP,
+    unauth_max_requests: int = _UNAUTH_CAP,
+    auth_max_requests: int = _AUTH_CAP,
+    auth_endpoint_max_requests: int = _AUTH_ENDPOINT_CAP,
 ) -> LiveRateLimits:
     return LiveRateLimits(
         enabled=enabled,
@@ -56,10 +63,10 @@ class TestTierSelection:
     @pytest.mark.parametrize(
         ("tier", "expected"),
         [
-            (RateLimitTier.FLOOR, 1000),
-            (RateLimitTier.UNAUTH, 20),
-            (RateLimitTier.AUTH, 600),
-            (RateLimitTier.AUTH_ENDPOINT, 10),
+            (RateLimitTier.FLOOR, _FLOOR_CAP),
+            (RateLimitTier.UNAUTH, _UNAUTH_CAP),
+            (RateLimitTier.AUTH, _AUTH_CAP),
+            (RateLimitTier.AUTH_ENDPOINT, _AUTH_ENDPOINT_CAP),
         ],
     )
     def test_each_tier_reads_its_own_cap(
@@ -98,6 +105,32 @@ class TestFloorInvariant:
         # operator can set and the stack can never reach.
         with pytest.raises(ValidationError):
             _limits(floor_max_requests=100, auth_endpoint_max_requests=600)
+
+    def test_a_credential_cap_stricter_per_second_is_allowed(self) -> None:
+        # The credential throttle always counts over a minute, so under a
+        # per-second floor its larger number is the smaller rate: 10 a second
+        # leaves room for 600 a minute, and refusing 20 would block a policy
+        # that is stricter than the floor it is compared against.
+        limits = LiveRateLimits(
+            floor_max_requests=_AUTH_ENDPOINT_CAP,
+            unauth_max_requests=_AUTH_ENDPOINT_CAP,
+            auth_max_requests=_AUTH_ENDPOINT_CAP,
+            auth_endpoint_max_requests=_UNAUTH_CAP,
+            time_unit="second",
+        )
+        assert limits.auth_endpoint_max_requests == _UNAUTH_CAP
+
+    def test_a_credential_cap_above_an_hourly_floor_is_refused(self) -> None:
+        # The other direction: an hourly floor works out under 17 a minute,
+        # so a credential cap of 20 a minute could never be reached.
+        with pytest.raises(ValidationError):
+            LiveRateLimits(
+                floor_max_requests=_FLOOR_CAP,
+                unauth_max_requests=_UNAUTH_CAP,
+                auth_max_requests=_AUTH_CAP,
+                auth_endpoint_max_requests=_UNAUTH_CAP,
+                time_unit="hour",
+            )
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

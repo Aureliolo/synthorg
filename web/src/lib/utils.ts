@@ -17,6 +17,10 @@ export const FOCUS_RING =
  * token, preserving both. Prevents a caller-supplied `aria-describedby`
  * from silently dropping the component's own hint/error ids so screen
  * readers continue to receive the validation text.
+ *
+ * For IDREFS attributes only (`aria-describedby`, `aria-labelledby`,
+ * `aria-owns`). An IDREF attribute such as `aria-errormessage` takes one
+ * id, and a list there resolves to nothing at all.
  */
 export function mergeAriaToken(
   incoming: string | undefined,

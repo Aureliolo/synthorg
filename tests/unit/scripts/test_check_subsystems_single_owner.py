@@ -140,6 +140,46 @@ class TestScan:
         )
         assert scan_repo(_write_repo(tmp_path, caller=caller)) == ()
 
+    def test_a_namesake_in_another_module_is_left_alone(self, tmp_path: Path) -> None:
+        # Two modules can define a ``wire_thing``; only the one the registry
+        # activates is owned, and flagging the other reports a subsystem
+        # relationship that does not exist.
+        root = _write_repo(tmp_path)
+        (root / "src/synthorg/tools/thing_wiring.py").parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        (root / "src/synthorg/tools/thing_wiring.py").write_text(
+            _WIRING, encoding="utf-8"
+        )
+        (root / "src/synthorg/api/other.py").write_text(
+            "from synthorg.tools.thing_wiring import wire_thing\n"
+            "\n"
+            "async def boot(app_state: object) -> None:\n"
+            "    await wire_thing(app_state)\n",
+            encoding="utf-8",
+        )
+        assert scan_repo(root) == ()
+
+    def test_a_re_export_of_the_owned_function_is_flagged(self, tmp_path: Path) -> None:
+        # Importing through the package rather than the defining module is the
+        # same function, so routing around the gate that way must not work.
+        root = _write_repo(tmp_path)
+        (root / "src/synthorg/api/lifecycle_helpers/__init__.py").write_text(
+            "from synthorg.api.lifecycle_helpers.thing_wiring import wire_thing\n"
+            "\n"
+            '__all__ = ["wire_thing"]\n',
+            encoding="utf-8",
+        )
+        (root / "src/synthorg/api/other.py").write_text(
+            "from synthorg.api.lifecycle_helpers import wire_thing\n"
+            "\n"
+            "async def boot(app_state: object) -> None:\n"
+            "    await wire_thing(app_state)\n",
+            encoding="utf-8",
+        )
+        flagged = {violation.path for violation in scan_repo(root)}
+        assert "src/synthorg/api/other.py" in flagged
+
     def test_a_teardown_is_not_owned_wiring(self, tmp_path: Path) -> None:
         # ``unwire_thing`` contains "wire" but is the teardown half, which the
         # registry calls from its own deactivate adapter.
