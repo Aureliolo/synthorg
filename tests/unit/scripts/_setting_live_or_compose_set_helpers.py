@@ -14,6 +14,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 """Project root for the real-repo smoke test."""
 
+_RUNTIME_BUILDER_REL = "workers/runtime_builder.py"
+"""Seed of the construction closure; the gate fails closed without it."""
+
 # A registry declaring no spec at all is a scan the gate refuses to trust, so
 # the default carries one that reaches nothing the fixtures register.
 _INERT_REGISTRY = """
@@ -44,6 +47,7 @@ def make_repo(
     subscribers: dict[str, str] | None = None,
     registry: str | None = None,
     web: dict[str, str] | None = None,
+    omit_runtime_builder: bool = False,
 ) -> Path:
     """Create a minimal fake-synthorg tree the gate can scan.
 
@@ -55,6 +59,9 @@ def make_repo(
         registry: Body of ``api/subsystems/registry.py``; a registry whose one
             spec touches nothing the fixture registers when omitted.
         web: Path relative to ``web/src/`` to file body.
+        omit_runtime_builder: Leave out the module the construction closure is
+            seeded from, so a test can exercise the fail-closed path. Otherwise
+            an inert one is written unless *sources* supplies its own.
 
     Returns:
         The repo root (``tmp_path`` itself).
@@ -71,7 +78,10 @@ def make_repo(
         _write(definitions_dir / name, body)
     for name, body in (subscribers or {}).items():
         _write(subscribers_dir / name, body)
-    for rel, body in (sources or {}).items():
+    supplied = sources or {}
+    if not omit_runtime_builder and _RUNTIME_BUILDER_REL not in supplied:
+        _write(src_root / _RUNTIME_BUILDER_REL, runtime_builder_module())
+    for rel, body in supplied.items():
         _write(src_root / rel, body)
     for rel, body in (web or {}).items():
         _write(tmp_path / "web" / "src" / rel, body)

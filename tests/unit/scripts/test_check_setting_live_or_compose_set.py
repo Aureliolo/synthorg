@@ -482,7 +482,16 @@ class TestConstructionPath:
     ) -> None:
         root = _repo(
             tmp_path,
-            sources={"workers/_engine_assembly.py": _BUILD, _CONSUMER: _READ},
+            sources={
+                "workers/_engine_assembly.py": _BUILD,
+                # Without this the assembly module is an ordinary consumer, so
+                # the assertion would pass on two live reads and keep passing
+                # even if the precedence it names stopped working.
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers._engine_assembly"
+                ),
+                _CONSUMER: _READ,
+            },
         )
         assert scan_repo(root) == []
 
@@ -707,6 +716,18 @@ class TestDefinitionScanning:
                 "",
                 "SUBSYSTEMS: tuple[SubsystemSpec, ...] = ()",
             ),
+        )
+        assert main(["--repo-root", str(root)]) == 2
+
+    def test_a_missing_runtime_builder_fails_closed(self, tmp_path: Path) -> None:
+        # The construction path is derived from this module's imports, so if it
+        # is renamed the closure empties and every assembly read looks live:
+        # the gate would then pass exactly the settings it exists to catch.
+        root = make_repo(
+            tmp_path,
+            definitions={"engine.py": definitions_module(registration("knob"))},
+            sources={"workers/_engine_assembly.py": _BUILD},
+            omit_runtime_builder=True,
         )
         assert main(["--repo-root", str(root)]) == 2
 

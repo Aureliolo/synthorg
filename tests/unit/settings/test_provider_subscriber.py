@@ -249,10 +249,10 @@ class TestProviderSubscriberRebuild:
         """
         import synthorg.workers.runtime_builder as runtime_builder_mod
 
-        calls: list[int] = []
+        calls: list[str] = []
 
         async def _reload(_state: object, *, trigger: str = "") -> None:
-            calls.append(1)
+            calls.append(trigger)
             if len(calls) == 1:
                 msg = "reload boom"
                 raise RuntimeError(msg)
@@ -281,7 +281,9 @@ class TestProviderSubscriberRebuild:
         # Swap rolled back to the original registry, and the runtime was
         # re-healed (a second reload) so engine + slice stay consistent.
         assert state.slice(ProvidersStateSlice).registry is old_registry
-        assert len(calls) == 2
+        # The two reloads are distinguishable in the logs: the rollback names
+        # itself, so a heal is never mistaken for the write that failed.
+        assert calls == ["provider-registry", "provider-registry-rollback"]
 
     async def test_runtime_reload_failure_rolls_back_to_unset_registry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -294,10 +296,10 @@ class TestProviderSubscriberRebuild:
         """
         import synthorg.workers.runtime_builder as runtime_builder_mod
 
-        calls: list[int] = []
+        calls: list[str] = []
 
         async def _reload(_state: object, *, trigger: str = "") -> None:
-            calls.append(1)
+            calls.append(trigger)
             if len(calls) == 1:
                 msg = "reload boom"
                 raise RuntimeError(msg)
@@ -324,7 +326,9 @@ class TestProviderSubscriberRebuild:
             await sub.on_settings_changed("providers", "retry_max_attempts")
         # Rolled back to the unset state, not left on the swapped registry.
         assert state.slice(ProvidersStateSlice).registry is None
-        assert len(calls) == 2
+        # The two reloads are distinguishable in the logs: the rollback names
+        # itself, so a heal is never mistaken for the write that failed.
+        assert calls == ["provider-registry", "provider-registry-rollback"]
 
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""

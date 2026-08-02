@@ -216,19 +216,25 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 
 **Rebase-first (mandatory, runs BEFORE the refill arithmetic below).** A rate-limit marker means the ping path is closed, not that the review path is. CodeRabbit's own limit message names two continuations: an `@coderabbitai review` comment, or "push new commits to this PR". Inside the window the ping is *rejected rather than queued*, and the rejection becomes the newest marker, which resets the perceived refill window and leaves the loop busy but not progressing. A push does not go through the limiter at all: a new head SHA triggers an auto-review.
 
-So on any rate-limit marker, check for an owed rebase first:
+**Authorisation and blast radius.** The rewrite is confined to the PR branch this loop was invoked on, which the operator named when they started the loop; that invocation is the authorisation. The rule may never rewrite `main` or any base branch, never rewrite a branch other than `state.pr`'s head, and never use bare `--force`. If any of those three is what the situation calls for, stop and ask instead.
+
+So on any rate-limit marker, check for an owed rebase first. Both commands must succeed:
 
 ```bash
-git fetch origin main
-git rev-list --count HEAD..origin/main
+git fetch origin main || exit 1
+BEHIND="$(git rev-list --count HEAD..origin/main)" || exit 1
 ```
 
-| Count | Action |
-|---|---|
-| Non-zero | `git rebase origin/main`, re-run any gate the newly-merged code could affect, then `git push --force-with-lease` (the rebase rewrote history, which is the one sanctioned case for it). Do **NOT** also ping: the push already triggers the review, and a ping on top is one trigger more than needed. Append history `{round, action: "rate_limit_rebase_push", head_sha: <new sha>, rebased_onto: <main sha>}`. Schedule the NORMAL `cadence_seconds`, not the refill window, since a review is now inbound. |
-| Zero | No rebase owed. Fall through to the refill arithmetic below. |
+A failed `fetch` leaves `origin/main` stale and a failed `rev-list` yields no count. Treating either as zero would skip an owed rebase and fall through to the ping path, which is the branch this rule exists to avoid, so a non-zero exit is recorded as `{round, action: "ancestry_check_failed", detail: <stderr>}` and retried on the next tick rather than read as "nothing owed".
 
-This is not a trick played on the limiter. The branch has to be rebased before it can merge, and the `check push rebased` pre-push hook blocks a push from a branch that is behind, so the rebase is work already owed; spending it during the wait buys the review for free and triggers no more reviews than necessary. A stacked PR is the exception ([[coderabbit_skips_stacked_pr_auto_review]]): it gets no auto-review on a new head at all, so there the ping is unavoidable and this shortcut does not apply.
+| Condition | Action |
+|---|---|
+| Ancestry check failed | Record and retry next tick. Do **not** infer a count. |
+| `BEHIND` non-zero AND the PR targets a base other than the default branch (a stacked PR) | Do **not** rebase-push for the review. A stacked PR gets no auto-review on a new head ([[coderabbit_skips_stacked_pr_auto_review]]), so the push would rewrite history and buy nothing. Fall through to the refill arithmetic and the ping path. |
+| `BEHIND` non-zero, not stacked | `git rebase origin/main`, re-run any gate the newly-merged code could affect, then `git push --force-with-lease` (the rebase rewrote history, which is the one sanctioned case for it). Do **NOT** also ping: the push already triggers the review, and a ping on top is one trigger more than needed. Append history `{round, action: "rate_limit_rebase_push", head_sha: <new sha>, rebased_onto: <main sha>}`. Schedule the NORMAL `cadence_seconds`, not the refill window, since a review is now inbound. |
+| `BEHIND` zero | No rebase owed. Fall through to the refill arithmetic below. |
+
+This is not a trick played on the limiter. The branch has to be rebased before it can merge, and the `check push rebased` pre-push hook blocks a push from a branch that is behind, so the rebase is work already owed; spending it during the wait buys the review for free and triggers no more reviews than necessary.
 
 **Refill-time parsing (only when no rebase was owed).** CodeRabbit states the refill ETA in one of two wordings, and both must be matched: `Refill in <N> minutes (and <M> seconds)?` and `Next review available in: <N> minutes`. Parse against the rolling-summary comment's `created_at` (or `updated_at` if the comment was edited after the limit was hit) to compute an absolute `refill_at_iso` in UTC. Regex: `/(?:Refill in|Next review available in:?)\s*\**\s*(?:(\d+)\s*minutes?(?:\s*(?:and)?\s*(\d+)\s*seconds?)?|(\d+)\s*seconds?)/i` -- tolerate the Markdown bold markers CodeRabbit wraps the number in. If parsing succeeds:
 

@@ -596,8 +596,17 @@ def construction_modules(repo_root: Path) -> frozenset[str]:
         Repository-relative paths whose every read is construction-path.
 
     Raises:
-        GateSourceError: If a module in the closure cannot be read or parsed.
+        GateSourceError: If a module in the closure cannot be read or parsed,
+            or if the seed module is absent. An empty closure would put every
+            assembly read in the live set, which passes the settings the gate
+            exists to catch.
     """
+    if not (repo_root / _RUNTIME_BUILD_REL).is_file():
+        message = (
+            f"{_RUNTIME_BUILD_REL}: module not found, so the construction path"
+            " could not be derived"
+        )
+        raise GateSourceError(message)
     seen: set[str] = set()
     pending = [_RUNTIME_BUILD_REL]
     while pending:

@@ -1074,7 +1074,7 @@ class TestMCPCatalogController:
         from synthorg.api.controllers.mcp_catalog import _reload_bridge_best_effort
         from synthorg.workers import runtime_builder
 
-        async def _boom(_app_state: object) -> None:
+        async def _boom(_app_state: object, *, trigger: str = "") -> None:
             msg = "rebuild failed"
             raise RuntimeError(msg)
 
@@ -1091,7 +1091,7 @@ class TestMCPCatalogController:
         from synthorg.api.controllers.mcp_catalog import _reload_bridge_best_effort
         from synthorg.workers import runtime_builder
 
-        async def _oom(_app_state: object) -> None:
+        async def _oom(_app_state: object, *, trigger: str = "") -> None:
             raise MemoryError
 
         monkeypatch.setattr(runtime_builder, "reload_runtime_services", _oom)
