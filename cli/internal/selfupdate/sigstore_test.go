@@ -116,14 +116,18 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestExpectedSANRegexAcceptsBothReleaseWorkflowNames(t *testing.T) {
+func TestExpectedSANRegexAcceptsBothReleaseSignerNames(t *testing.T) {
 	re := regexp.MustCompile(expectedSANRegex)
 
 	valid := []string{
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3-rc.1",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3+build.4",
-		// Releases cut under the retired workflow name stay updatable.
+		// Read off live published releases: every bundle from
+		// v0.9.4-dev.82 onward carries the reusable signer.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v0.9.4-dev.85",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3-rc.1",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3+build.4",
+		// Releases cut under the retired signer stay updatable.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v0.9.3",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.2.3",
 	}
 	for _, ref := range valid {
@@ -138,13 +142,19 @@ func TestExpectedSANRegexRejectsNonReleaseIdentities(t *testing.T) {
 
 	invalid := []string{
 		// Branch refs never sign a release, retired name included.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/heads/main",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/heads/main",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/pull/1/merge",
-		// The image workflow must not be able to sign CLI archives.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/pull/1/merge",
+		// verify-cli.yml calls the reusable signer and runs no signing
+		// step of its own, so no certificate can ever carry it.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
+		// An image signer must not be able to vouch for a CLI archive.
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v1.2.3",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v1.2.3",
-		"https://github.com/evil/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-verify-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v1.2.3",
+		"https://github.com/evil/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-reusable-release-cli.yml@refs/tags/v1.2.3",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli-evil.yml@refs/tags/v1.2.3",
 		"",
 	}
 	for _, ref := range invalid {

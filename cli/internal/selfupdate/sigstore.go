@@ -21,16 +21,22 @@ import (
 const (
 	// expectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	expectedIssuer = "https://token.actions.githubusercontent.com"
-	// expectedSANRegex matches the CLI release workflow identity for this
+	// expectedSANRegex matches the CLI release signing identity for this
 	// repo, on semver tag pushes only.
 	//
-	// Both verify-cli.yml and its former name cli.yml are accepted: keyless
-	// signing derives the SAN from the workflow file path, so a release
-	// bundle keeps the name in force when it was cut. Dropping the old name
-	// would make every already-published release unverifiable, stranding
-	// anyone updating from one. The tag-only ref anchor means admitting the
-	// retired name grants nothing a default-branch writer lacks.
-	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(verify-cli|cli)\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
+	// Keyless signing derives the SAN from job_workflow_ref, which for a
+	// workflow_call job is the reusable workflow's own path rather than the
+	// caller's. The signing steps live in reusable-release-cli.yml, so that
+	// is the identity on every bundle cut from it; verify-cli.yml only
+	// grants scopes and passes inputs, and can never appear on a
+	// certificate.
+	//
+	// cli.yml signed every release through v0.9.3 and stays accepted
+	// because a published signature cannot be re-minted: dropping the name
+	// would leave the stable channel unable to verify the release it is
+	// pinned to. The tag-only ref anchor means admitting a retired name
+	// grants nothing a default-branch writer lacks.
+	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(reusable-release-cli|cli)\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
 )
 
 // tufFetchTimeout bounds the TUF metadata fetch for the trusted root. Set

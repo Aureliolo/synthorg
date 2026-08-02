@@ -118,6 +118,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
 | `check_setting_compose_backed.py` | push | `settings/definitions/` + compose template + worker launch | full | no | none | keep |
+| `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |

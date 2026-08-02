@@ -287,6 +287,19 @@ grant token scopes; they run no signing step of their own. Moving one back
 inline would silently drop that artifact to L2, so the split is load-bearing
 rather than tidiness.
 
+That split also decides what the CLI will accept. Keyless signing derives the
+certificate SAN from `job_workflow_ref`, which for a `workflow_call` job is
+the reusable workflow's own path rather than the caller's, so the SAN regexes
+compiled into the binary (`cli/internal/selfupdate/sigstore.go` for release
+archives, `cli/internal/verify/identity.go` for images) name the files in the
+table above and never the callers. A pin also keeps the name that signed the
+current stable release, because a published signature cannot be re-minted and
+dropping it would leave those artifacts permanently unverifiable.
+`scripts/check_signing_identity_pins.py` derives the signer set from the
+workflow tree and fails the push when a pin and the signers disagree: without
+it, moving a signing step passes every test and breaks `synthorg update` and
+`synthorg start` for users only after release.
+
 The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
 as the `verify-signatures` gate after every publish and requires **both** a
 cosign signature and a provenance attestation for each pushed digest; an image

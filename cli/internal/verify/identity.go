@@ -17,18 +17,28 @@ const (
 	// ExpectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	ExpectedIssuer = "https://token.actions.githubusercontent.com"
 
-	// ExpectedSANRegex matches the image-publishing workflow identity from
+	// ExpectedSANRegex matches the image-publishing signing identity from
 	// the SynthOrg repo on version tags or the main branch. Only accepts
-	// signatures from that workflow -- not from arbitrary workflows or
-	// feature branches.
+	// signatures from a workflow that actually signs -- not from arbitrary
+	// workflows or feature branches.
 	//
-	// Both build-images.yml and its former name docker.yml are accepted:
-	// keyless signing derives the SAN from the workflow file path, so an
-	// image keeps the name in force when it was published. Dropping the
-	// old name would strand every image published before the rename, which
-	// a pinned tag can still install today.
+	// Keyless signing derives the SAN from job_workflow_ref, which for a
+	// workflow_call job is the reusable workflow's own path rather than the
+	// caller's. The signing steps live in reusable-publish-image.yml
+	// (backend, sandbox, sidecar, fine-tune) and its loaded-image sibling
+	// (web); build-images.yml only grants scopes and passes inputs, and can
+	// never appear on a certificate. Retagging re-points a tag at an
+	// already-signed digest without signing again, so a release-tagged
+	// image carries the heads/main identity of the build it was cut from.
 	//
-	// Accepting the retired name costs nothing: the ref alternation admits
+	// reusable-publish-apko-base.yml is absent deliberately: it signs the
+	// apko base layers, which ImageNames() does not list, so the CLI never
+	// verifies one.
+	//
+	// docker.yml signed every image through v0.9.3 and stays accepted
+	// because a published signature cannot be re-minted: dropping the name
+	// would leave the stable channel unable to verify the images it pins.
+	// Accepting a retired name costs nothing: the ref alternation admits
 	// only heads/main and version tags, so minting a certificate under the
 	// old path would require restoring that file on the default branch,
 	// which already implies write access.
@@ -39,7 +49,7 @@ const (
 	// aureliolo/synthorg-*. Overriding RegistryHost/ImageRepoPrefix makes
 	// verification impossible (no matching SAN), which is why custom
 	// registry deployments run with signature verification disabled.
-	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(build-images|docker)\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
+	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(reusable-publish-image-loaded|reusable-publish-image|docker)\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
 )
 
 // Tunable registry + timeout values. Populated by Configure at program

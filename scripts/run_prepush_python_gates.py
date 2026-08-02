@@ -98,6 +98,7 @@ def _default_jobs() -> int:
 _GATES: tuple[str, ...] = (
     "check_orphan_fixtures",
     "check_license_compat",
+    "check_signing_identity_pins",
     "check_no_stdlib_logging",
     "check_no_stubs",
     "check_no_engine_worker_swallow",
