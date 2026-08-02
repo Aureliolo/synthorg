@@ -637,20 +637,12 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
-      - id: dto-types-ts-in-sync
-        name: dto-types-ts-in-sync gate (web/src/api/types/*.gen.ts matches Pydantic DTOs via OpenAPI)
-        entry: uv run python scripts/check_dto_types_ts_in_sync.py
-        language: system
-        # Trigger on every Pydantic source the OpenAPI schema reads
-        # from (api DTOs, core enums and shared types), the generator
-        # and gate themselves, the schema export script, the RFC 9457
-        # enricher, every committed output, npm lock files, and this
-        # config. A backend DTO edit that does not regenerate the
-        # mirrors fails the gate before the diff ships.
-        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(generate_dto_types_ts|check_dto_types_ts_in_sync|export_openapi)\.py|src/synthorg/api/openapi\.py|web/src/api/types/(openapi|dtos|enum-values)\.gen\.ts|web/package\.json|web/package-lock\.json|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-commit, pre-push]
-
+      # Declared before dto-types-ts-in-sync, and triggered on a superset of
+      # its sources, because this hook exports the OpenAPI schema that the
+      # one below consumes: running the producer first turns that hook's own
+      # app boot into a file read. Ordering is an optimisation, not a
+      # correctness dependency -- the consumer verifies the export against
+      # the sources on disk and rebuilds it itself when they disagree.
       - id: endpoint-table-in-sync
         name: endpoint-table-in-sync gate (docs/openapi/index.md matches the exported schema)
         entry: bash -c 'uv run python scripts/export_openapi.py && uv run python scripts/generate_endpoint_table.py --check'
@@ -659,7 +651,21 @@ repos:
         # and the export script, and the committed table itself. Without a
         # hook invoking the generator's --check mode, the committed table
         # drifts silently every time a route is added.
-        files: ^(src/synthorg/api/controllers/.*\.py|src/synthorg/api/openapi\.py|scripts/(export_openapi|generate_endpoint_table)\.py|docs/openapi/(index\.md|openapi\.json)|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(export_openapi|generate_endpoint_table|generate_dto_types_ts|check_dto_types_ts_in_sync|_openapi_export_shared)\.py|docs/openapi/(index\.md|openapi\.json)|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: dto-types-ts-in-sync
+        name: dto-types-ts-in-sync gate (web/src/api/types/*.gen.ts matches Pydantic DTOs via OpenAPI)
+        entry: uv run python scripts/check_dto_types_ts_in_sync.py
+        language: system
+        # Trigger on every Pydantic source the OpenAPI schema reads
+        # from (api DTOs, core enums and shared types), the generator
+        # and gate themselves, the schema export script and its shared
+        # half, the RFC 9457 enricher, every committed output, npm lock
+        # files, and this config. A backend DTO edit that does not
+        # regenerate the mirrors fails the gate before the diff ships.
+        files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(generate_dto_types_ts|check_dto_types_ts_in_sync|export_openapi|_openapi_export_shared)\.py|web/src/api/types/(openapi|dtos|enum-values)\.gen\.ts|web/package\.json|web/package-lock\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

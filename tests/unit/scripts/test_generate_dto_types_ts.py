@@ -22,14 +22,9 @@ import pytest
 from tests._shared import JsonDict
 
 
-def _import_script() -> ModuleType:
-    script = (
-        Path(__file__).resolve().parents[3] / "scripts" / "generate_dto_types_ts.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "generate_dto_types_ts",
-        script,
-    )
+def _import_script(stem: str = "generate_dto_types_ts") -> ModuleType:
+    script = Path(__file__).resolve().parents[3] / "scripts" / f"{stem}.py"
+    spec = importlib.util.spec_from_file_location(stem, script)
     assert spec is not None
     assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -38,6 +33,7 @@ def _import_script() -> ModuleType:
 
 
 gen = _import_script()
+shared = _import_script("_openapi_export_shared")
 from tests.unit.scripts.fixtures.dto_codegen_fixture_schema import (  # noqa: E402
     FIXTURE_SCHEMA,
 )
@@ -115,7 +111,7 @@ class TestHermeticEnv:
     ) -> None:
         for key in self._KEYS:
             monkeypatch.delenv(key, raising=False)
-        with gen._hermetic_env():
+        with shared.hermetic_env():
             assert os.environ["SYNTHORG_DB_PATH"] == ":memory:"
             assert os.environ["SYNTHORG_PAGINATION_CURSOR_SECRET"]
         for key in self._KEYS:
@@ -129,7 +125,7 @@ class TestHermeticEnv:
         operator_db = str(tmp_path / "operator.db")
         monkeypatch.setenv("SYNTHORG_DB_PATH", operator_db)
         monkeypatch.setenv("SYNTHORG_DATABASE_URL", "postgresql://operator")
-        with gen._hermetic_env():
+        with shared.hermetic_env():
             # Operator-pinned values stay; the helper does not stomp them.
             assert os.environ["SYNTHORG_DB_PATH"] == operator_db
             assert os.environ["SYNTHORG_DATABASE_URL"] == "postgresql://operator"
@@ -144,7 +140,7 @@ class TestHermeticEnv:
             monkeypatch.delenv(key, raising=False)
 
         def _raise_inside_hermetic() -> None:
-            with gen._hermetic_env():
+            with shared.hermetic_env():
                 assert os.environ["SYNTHORG_DB_PATH"] == ":memory:"
                 msg = "boom"
                 raise RuntimeError(msg)

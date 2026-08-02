@@ -41,22 +41,31 @@ Usage::
 """
 
 import argparse
-import contextlib
 import difflib
-import inspect
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final
 
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _openapi_export_shared import (  # type: ignore[import-not-found]
+        as_dict,
+        build_openapi_schema,
+        load_verified_schema,
+        re_exec_with_fixed_hash_seed,
+    )
+else:
+    from scripts._openapi_export_shared import (
+        as_dict,
+        build_openapi_schema,
+        load_verified_schema,
+        re_exec_with_fixed_hash_seed,
+    )
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 WEB_DIR: Final[Path] = REPO_ROOT / "web"
@@ -90,116 +99,6 @@ _MONOMORPHISED: Final[re.Pattern[str]] = re.compile(
 # Strip the JSON-Schema $ref namespace prefix to recover a bare
 # ``components.schemas`` key.
 _COMPONENT_REF_PREFIX: Final[str] = "#/components/schemas/"
-
-
-_HERMETIC_ENV_KEYS: Final[tuple[str, ...]] = (
-    "SYNTHORG_DB_PATH",
-    "SYNTHORG_DATABASE_URL",
-    "SYNTHORG_PAGINATION_CURSOR_SECRET",
-)
-
-
-@contextlib.contextmanager
-def _hermetic_env() -> Iterator[None]:
-    """Apply the deterministic OpenAPI-export env, then restore.
-
-    Replicates ``scripts/export_openapi.py``'s env contract: in-memory
-    SQLite backend with a stable pagination cursor secret. Snapshots
-    the original presence/value of each variable up-front and restores
-    on exit (success or error) so the mutation is scoped to the
-    ``with`` block, not leaked to anything that imports this module.
-
-    Honours an operator-pinned ``SYNTHORG_DB_PATH``: if set, the
-    function leaves both ``SYNTHORG_DB_PATH`` and
-    ``SYNTHORG_DATABASE_URL`` untouched (matching the prior
-    "operator wins" behaviour).
-    """
-    snapshot = {key: os.environ.get(key) for key in _HERMETIC_ENV_KEYS}
-    try:
-        if "SYNTHORG_DB_PATH" not in os.environ:
-            os.environ["SYNTHORG_DB_PATH"] = ":memory:"
-            os.environ.pop("SYNTHORG_DATABASE_URL", None)
-        os.environ.setdefault(
-            "SYNTHORG_PAGINATION_CURSOR_SECRET",
-            "openapi-export-stable-cursor-secret-not-a-real-secret",
-        )
-        yield
-    finally:
-        for key, original in snapshot.items():
-            if original is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = original
-
-
-def _collect_strenum_classes() -> dict[str, type]:
-    """Map ``ClassName`` to the actual StrEnum subclass across synthorg.
-
-    The walk inspects every loaded ``synthorg.*`` module rather than a
-    pinned list so a new enum landing under any subpackage is picked
-    up automatically. Conflicts (two distinct classes sharing a name)
-    drop the entry to avoid a silent wrong mapping.
-    """
-    name_to_class: dict[str, type] = {}
-    conflicts: set[str] = set()
-    for module in list(sys.modules.values()):
-        module_name = getattr(module, "__name__", "")
-        if not isinstance(module_name, str) or not module_name.startswith(
-            "synthorg.",
-        ):
-            continue
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name, None)
-            if (
-                not isinstance(attr, type)
-                or attr is StrEnum
-                or not issubclass(attr, StrEnum)
-            ):
-                continue
-            existing = name_to_class.get(attr_name)
-            if existing is None:
-                name_to_class[attr_name] = attr
-            elif existing is not attr:
-                conflicts.add(attr_name)
-    for name in conflicts:
-        name_to_class.pop(name, None)
-    return name_to_class
-
-
-def _as_dict(value: object) -> dict[str, object]:
-    """Narrow an arbitrary JSON value to a string-keyed dict (``{}`` if not)."""
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _normalise_enum_descriptions(schema: dict[str, object]) -> dict[str, object]:
-    """Override string-enum schema descriptions with class docstrings.
-
-    Litestar's schema generation occasionally substitutes an enum
-    class's docstring with a parameter-name-derived title (e.g.
-    ``Seniority level`` instead of the full class docstring); the
-    choice is process-state-dependent and produces byte drift across
-    otherwise-identical generator runs. Replacing the description
-    with the class's own docstring (or removing it when the class has
-    none) makes the export byte-stable.
-    """
-    name_to_class = _collect_strenum_classes()
-    schemas = _as_dict(_as_dict(schema.get("components")).get("schemas"))
-    for schema_name, defn in schemas.items():
-        if not isinstance(defn, dict):
-            continue
-        if defn.get("type") != "string" or not defn.get("enum"):
-            continue
-        cls = name_to_class.get(schema_name)
-        if cls is None:
-            continue
-        docstring = inspect.getdoc(cls)
-        if docstring:
-            defn["description"] = docstring
-        else:
-            defn.pop("description", None)
-    return schema
 
 
 def _harvest_refs_under(subtree: object, targets: set[str]) -> None:
@@ -292,7 +191,7 @@ def _promote_response_defaults_to_required(
     re-runs are byte-stable for the drift gate.
     """
     paths = schema.get("paths", {})
-    schemas = _as_dict(_as_dict(schema.get("components")).get("schemas"))
+    schemas = as_dict(as_dict(schema.get("components")).get("schemas"))
     request_refs = _collect_ref_targets(paths, "requestBody", schemas)
     response_refs = _collect_ref_targets(paths, "responses", schemas)
     request_only_names = request_refs - response_refs
@@ -322,35 +221,28 @@ def _promote_response_defaults_to_required(
 
 
 def export_openapi_schema() -> dict[str, object]:
-    """Boot the app and return the enriched OpenAPI schema dict.
+    """Return the enriched OpenAPI schema, reusing a verified export.
 
-    Mirrors ``scripts/export_openapi.py`` step-for-step so the codegen
-    and the public ``docs/openapi/openapi.json`` see the same schema.
-    Additionally normalises string-enum descriptions to break a
-    Litestar schema-cache non-determinism (see
-    :func:`_normalise_enum_descriptions`) and promotes defaulted
-    response-side properties into ``required[]`` so generated
-    TypeScript matches the wire reality (see
-    :func:`_promote_response_defaults_to_required`).
+    ``scripts/export_openapi.py`` produces the same schema for the
+    published ``docs/openapi/openapi.json``, so booting the app a second
+    time here answered a question already answered. That artefact is
+    reused only when :func:`~_openapi_export_shared.load_verified_schema`
+    can prove it was derived from the sources currently on disk;
+    otherwise the app is booted exactly as before. Reuse is therefore an
+    optimisation that cannot turn into a stale pass.
 
-    The hermetic env (in-memory SQLite + stable cursor secret) is
-    scoped to this call via :func:`_hermetic_env`, so an in-process
-    caller's environment is never permanently mutated.
+    ``_promote_response_defaults_to_required`` stays here rather than in
+    the producer: it reshapes the schema for what ``openapi-typescript``
+    needs, and the published document must keep describing the wire
+    contract rather than the codegen's view of it.
+
+    Returns:
+        The schema the TypeScript codegen renders from.
     """
-    with _hermetic_env():
-        # Defer imports so unit tests can patch this function without
-        # paying the app-boot cost.
-        from synthorg.api.app import create_app
-        from synthorg.api.openapi import inject_rfc9457_responses
-
-        app = create_app()
-        enriched = inject_rfc9457_responses(app.openapi_schema.to_schema())
-        # inject_rfc9457_responses returns dict[str, JsonValue]; widen to the
-        # mutable dict[str, object] our normalisers operate on (dict value
-        # types are invariant, so this needs an explicit cast).
-        schema = cast("dict[str, object]", enriched)
-        schema = _normalise_enum_descriptions(schema)
-        return _promote_response_defaults_to_required(schema)
+    reused = load_verified_schema()
+    if reused is not None:
+        return _promote_response_defaults_to_required(reused)
+    return _promote_response_defaults_to_required(build_openapi_schema())
 
 
 def run_openapi_typescript(schema_path: Path) -> str:
@@ -461,7 +353,7 @@ def render_dtos(schema: dict[str, object]) -> str:
     Returns:
         The full ``dtos.gen.ts`` contents (header + import + aliases).
     """
-    components = _as_dict(_as_dict(schema.get("components")).get("schemas"))
+    components = as_dict(as_dict(schema.get("components")).get("schemas"))
     lines: list[str] = []
     seen_aliases: set[str] = set()
     for name in sorted(components):
@@ -522,7 +414,7 @@ def render_enum_values(schema: dict[str, object]) -> str:
     string-typed enums with a clean PascalCase title, and emits one
     ``*_VALUES`` tuple plus a derived type per entry. Sorted output.
     """
-    components = _as_dict(_as_dict(schema.get("components")).get("schemas"))
+    components = as_dict(as_dict(schema.get("components")).get("schemas"))
     blocks: list[str] = []
     for name in sorted(components):
         if not _PASCAL_CASE.match(name):
@@ -659,32 +551,9 @@ def _print_drift_diff(
         )
 
 
-def _re_exec_with_fixed_hash_seed() -> int | None:
-    """Re-exec with ``PYTHONHASHSEED=0`` when the caller did not pin it.
-
-    Litestar's OpenAPI schema generation surfaces hash-seed-dependent
-    output (a StrEnum's ``description`` flips between the class
-    docstring and the parameter-name fallback depending on which
-    controller registered the schema first). Pinning the hash seed
-    serialises that ordering so the gate sees byte-identical output
-    every run. Returns the child's exit code when a re-exec happened,
-    or ``None`` to signal that the current process is the pinned run.
-    """
-    if os.environ.get("PYTHONHASHSEED") == "0":
-        return None
-    env = {**os.environ, "PYTHONHASHSEED": "0"}
-    result = subprocess.run(
-        [sys.executable, *sys.argv],
-        env=env,
-        check=False,
-        cwd=str(Path.cwd()),
-    )
-    return result.returncode
-
-
 def main() -> int:
     """CLI entry point: write, check, or stream to stdout."""
-    pinned_exit = _re_exec_with_fixed_hash_seed()
+    pinned_exit: int | None = re_exec_with_fixed_hash_seed()
     if pinned_exit is not None:
         return pinned_exit
     parser = argparse.ArgumentParser(description=__doc__)

@@ -127,6 +127,9 @@ _site/
 # into the built site as static assets)
 docs/openapi/reference.html
 docs/openapi/openapi.json
+# Records what the schema above was derived from, so a second consumer can
+# tell a current export from one left behind by an earlier tree state.
+docs/openapi/.export-state.json
 
 # Intermediate i18n string catalog built by scripts/extract_web_strings.py
 # from web/src/. Regenerated on demand; not source-of-truth.
