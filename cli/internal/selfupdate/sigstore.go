@@ -18,26 +18,6 @@ import (
 	ociverify "github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
-const (
-	// expectedSANRegex matches the CLI release signing identity: the
-	// workflow holding the signing step, never a caller that invokes it.
-	// Tag refs only, because a release archive is only ever cut from a v*
-	// tag. verify-cli.yml delegates to the signer and cannot appear on a
-	// certificate.
-	//
-	// cli.yml is the retired signer, bounded to the versions it actually
-	// signed so it cannot vouch for a release that does not exist yet. Its
-	// signatures cannot be re-minted, and the path that still needs it is
-	// real: a binary built from source reports version "dev", which the
-	// updater always treats as out of date, so it verifies the current
-	// stable release, and that release carries this name.
-	//
-	// The SAN is only half the identity. Repository binding lives in
-	// verify.BuildReleaseIdentityPolicy, because a reusable workflow's SAN
-	// is shared by every caller on GitHub.
-	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:reusable-release-cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?|cli\.yml@refs/tags/v0\.(?:[0-8]\.[0-9]+|9\.[0-3])(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?)$`
-)
-
 // tufFetchTimeout bounds the TUF metadata fetch for the trusted root. Set
 // by Configure; defaults to 30s.
 var tufFetchTimeout = 30 * time.Second
@@ -77,7 +57,7 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	}
 
 	// Build identity policy -- must match GitHub Actions OIDC from our repo.
-	certID, err := ociverify.BuildReleaseIdentityPolicy(expectedSANRegex)
+	certID, err := ociverify.BuildReleaseIdentityPolicy()
 	if err != nil {
 		return fmt.Errorf("creating certificate identity: %w", err)
 	}

@@ -2,7 +2,6 @@ package selfupdate
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -123,71 +122,13 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestExpectedSANRegexSatisfiesThePolicyGuard(t *testing.T) {
+func TestVerifySigstoreBundleUsesTheReleaseIdentity(t *testing.T) {
 	t.Parallel()
-	// BuildReleaseIdentityPolicy refuses a pattern not anchored to this
-	// repository's workflow path, and verifySigstoreBundle passes it this
-	// constant. Loosening one without the other would only surface as a
-	// failed update on an installed binary.
-	if _, err := ociverify.BuildReleaseIdentityPolicy(expectedSANRegex); err != nil {
-		t.Fatalf("BuildReleaseIdentityPolicy(expectedSANRegex) error: %v", err)
-	}
-}
-
-func TestExpectedSANRegex(t *testing.T) {
-	t.Parallel()
-	re := regexp.MustCompile(expectedSANRegex)
-	const wfPrefix = "https://github.com/Aureliolo/synthorg/.github/workflows/"
-
-	tests := []struct {
-		name string
-		san  string
-		want bool
-	}{
-		// Read off a live published release bundle.
-		{"reusable_signer_dev_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v0.9.4-dev.85", true},
-		{"reusable_signer_release_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3", true},
-		{"reusable_signer_prerelease", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3-rc.1", true},
-		{"reusable_signer_build_metadata", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3+build.4", true},
-
-		// The retired signer stays accepted only for the versions it
-		// actually signed, so it cannot vouch for a future release.
-		{"retired_signer_last_version", wfPrefix + "cli.yml@refs/tags/v0.9.3", true},
-		{"retired_signer_older_minor", wfPrefix + "cli.yml@refs/tags/v0.8.9", true},
-		{"retired_signer_prerelease", wfPrefix + "cli.yml@refs/tags/v0.9.1-rc.1", true},
-		{"retired_signer_beyond_its_history", wfPrefix + "cli.yml@refs/tags/v0.9.4", false},
-		// The bound is a character class, not a numeric comparison, so the
-		// two neighbours that decide whether it holds are a trailing extra
-		// digit and a two-digit minor.
-		{"retired_signer_trailing_digit", wfPrefix + "cli.yml@refs/tags/v0.9.30", false},
-		{"retired_signer_two_digit_minor", wfPrefix + "cli.yml@refs/tags/v0.10.0", false},
-		{"retired_signer_future_major", wfPrefix + "cli.yml@refs/tags/v1.2.3", false},
-
-		// A release archive is only ever cut from a tag.
-		{"reusable_signer_main", wfPrefix + "reusable-release-cli.yml@refs/heads/main", false},
-		{"retired_signer_main", wfPrefix + "cli.yml@refs/heads/main", false},
-		{"pull_ref", wfPrefix + "reusable-release-cli.yml@refs/pull/1/merge", false},
-
-		// verify-cli.yml delegates to the signer and runs no signing step,
-		// so no certificate can ever carry it.
-		{"caller_verify_cli", wfPrefix + "verify-cli.yml@refs/tags/v1.2.3", false},
-
-		// An image signer must not vouch for a CLI archive.
-		{"image_signer", wfPrefix + "reusable-publish-image.yml@refs/tags/v1.2.3", false},
-		{"image_caller", wfPrefix + "build-images.yml@refs/tags/v1.2.3", false},
-		{"retired_image_signer", wfPrefix + "docker.yml@refs/tags/v1.2.3", false},
-
-		{"foreign_owner", "https://github.com/evil/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3", false},
-		{"prefix_hijack", wfPrefix + "evil-reusable-release-cli.yml@refs/tags/v1.2.3", false},
-		{"suffix_hijack", wfPrefix + "reusable-release-cli-evil.yml@refs/tags/v1.2.3", false},
-		{"empty", "", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := re.MatchString(tc.san); got != tc.want {
-				t.Errorf("MatchString(%q) = %v, want %v", tc.san, got, tc.want)
-			}
-		})
+	// The pattern this path verifies against lives in the verify package,
+	// which owns both trust anchors; its acceptance table is asserted
+	// there. What belongs here is that the self-update path can build the
+	// policy at all, since a failure to do so refuses every update.
+	if _, err := ociverify.BuildReleaseIdentityPolicy(); err != nil {
+		t.Fatalf("BuildReleaseIdentityPolicy() error: %v", err)
 	}
 }

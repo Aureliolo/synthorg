@@ -1,11 +1,12 @@
 // Package verify provides container image signature and SLSA provenance
-// verification using sigstore-go and go-containerregistry.
+// verification using sigstore-go and go-containerregistry, and holds the
+// signing identities the CLI trusts for both artefact classes it verifies:
+// the images it runs and the release archives it installs.
 package verify
 
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
@@ -38,12 +39,6 @@ const (
 	ExpectedSourceRepositoryID  = "1168268477"
 	ExpectedRunnerEnvironment   = "github-hosted"
 
-	// expectedSANPrefix is the anchored workflow path every accepted SAN
-	// starts with. BuildReleaseIdentityPolicy checks its caller's pattern
-	// against it, so a SAN regex reaching Fulcio cannot name another
-	// repository however it was assembled.
-	expectedSANPrefix = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/`
-
 	// ExpectedSANRegex matches the image-publishing signing identity: the
 	// workflow holding the signing step, never a caller that invokes it.
 	// docs/security.md maps each reusable workflow to what it signs.
@@ -69,6 +64,25 @@ const (
 	// verification impossible (no matching SAN), which is why custom
 	// registry deployments run with signature verification disabled.
 	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:reusable-publish-image-loaded\.yml@refs/heads/main|reusable-publish-image\.yml@refs/heads/main|docker\.yml@refs/heads/main)$`
+
+	// ExpectedReleaseSANRegex matches the CLI release signing identity, on
+	// the same terms as ExpectedSANRegex and for the same reasons. Tag refs
+	// only, because a release archive is only ever cut from a v* tag;
+	// verify-cli.yml delegates to the signer and cannot appear on a
+	// certificate.
+	//
+	// cli.yml is the retired signer, bounded to the versions it actually
+	// signed so it cannot vouch for a release that does not exist yet. Its
+	// signatures cannot be re-minted, and the path that still needs it is
+	// real: a binary built from source reports version "dev", which the
+	// updater always treats as out of date, so it verifies the current
+	// stable release, and that release carries this name.
+	//
+	// It lives here, beside the pattern for the other artefact class, rather
+	// than in the package that consumes it. Both are trust anchors of the
+	// same kind, and a constructor that took one as an argument would be a
+	// constructor whose caller decides what the binary trusts.
+	ExpectedReleaseSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:reusable-release-cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?|cli\.yml@refs/tags/v0\.(?:[0-8]\.[0-9]+|9\.[0-3])(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?)$`
 )
 
 // Tunable registry + timeout values. Populated by Configure at program
@@ -156,16 +170,13 @@ func buildIdentityPolicyFor(sanRegex string) (verify.CertificateIdentity, error)
 // BuildReleaseIdentityPolicy creates the identity policy for release archives
 // signed by this repository, for the self-update path.
 //
-// The caller supplies the SAN regex because the release-archive pattern lives
-// with the code that consumes it, but the pattern is checked here rather than
-// trusted: an exported constructor that accepted any regex would let a later
-// caller pass an unanchored or foreign-repository pattern and still satisfy
-// the extension binding.
-func BuildReleaseIdentityPolicy(sanRegex string) (verify.CertificateIdentity, error) {
-	if !strings.HasPrefix(sanRegex, expectedSANPrefix) || !strings.HasSuffix(sanRegex, "$") {
-		return verify.CertificateIdentity{}, fmt.Errorf(
-			"release SAN regex %q must start with %q and end with $",
-			sanRegex, expectedSANPrefix)
-	}
-	return buildIdentityPolicyFor(sanRegex)
+// It takes no argument on purpose. A caller-supplied SAN regex cannot be
+// validated into safety by inspecting parts of it: a pattern carrying a
+// second top-level alternative naming an unapproved workflow still opens with
+// the repository prefix and still closes with the anchor, so a prefix-and-
+// suffix check passes it, and the repository extensions do not help when both
+// alternatives name this repository. Compiling the pattern in leaves nothing
+// for a later caller to decide.
+func BuildReleaseIdentityPolicy() (verify.CertificateIdentity, error) {
+	return buildIdentityPolicyFor(ExpectedReleaseSANRegex)
 }

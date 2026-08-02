@@ -182,46 +182,103 @@ func TestBuildIdentityPolicyDoesNotError(t *testing.T) {
 	}
 }
 
-func TestBuildReleaseIdentityPolicyRejectsUnanchoredRegex(t *testing.T) {
+func TestBuildReleaseIdentityPolicyDoesNotError(t *testing.T) {
 	t.Parallel()
+	_, err := BuildReleaseIdentityPolicy()
+	if err != nil {
+		t.Fatalf("BuildReleaseIdentityPolicy() error: %v", err)
+	}
+}
+
+func TestExpectedReleaseSANRegex(t *testing.T) {
+	t.Parallel()
+	re := regexp.MustCompile(ExpectedReleaseSANRegex)
+
 	tests := []struct {
-		name     string
-		sanRegex string
-		wantErr  bool
+		name string
+		san  string
+		want bool
 	}{
-		{
-			"repository_anchored",
-			`^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
-			false,
-		},
-		// Each of these satisfies the extension binding on its own, so
-		// only the pattern check separates them from the accepted form.
-		{
-			"foreign_repository",
-			`^https://github\.com/evil/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
-			true,
-		},
-		{
-			"unanchored_start",
-			`https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)$`,
-			true,
-		},
-		{
-			"unanchored_end",
-			`^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:x\.yml@refs/heads/main)`,
-			true,
-		},
-		{"match_everything", `.*`, true},
-		{"empty", "", true},
+		// Read off a live published release bundle.
+		{"reusable_signer_dev_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v0.9.4-dev.85", true},
+		{"reusable_signer_release_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3", true},
+		{"reusable_signer_prerelease", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3-rc.1", true},
+		{"reusable_signer_build_metadata", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3+build.4", true},
+
+		// The retired signer stays accepted only for the versions it
+		// actually signed, so it cannot vouch for a future release.
+		{"retired_signer_last_version", wfPrefix + "cli.yml@refs/tags/v0.9.3", true},
+		{"retired_signer_older_minor", wfPrefix + "cli.yml@refs/tags/v0.8.9", true},
+		{"retired_signer_prerelease", wfPrefix + "cli.yml@refs/tags/v0.9.1-rc.1", true},
+		{"retired_signer_beyond_its_history", wfPrefix + "cli.yml@refs/tags/v0.9.4", false},
+		// The bound is a character class, not a numeric comparison, so the
+		// two neighbours that decide whether it holds are a trailing extra
+		// digit and a two-digit minor.
+		{"retired_signer_trailing_digit", wfPrefix + "cli.yml@refs/tags/v0.9.30", false},
+		{"retired_signer_two_digit_minor", wfPrefix + "cli.yml@refs/tags/v0.10.0", false},
+		{"retired_signer_future_major", wfPrefix + "cli.yml@refs/tags/v1.2.3", false},
+
+		// A release archive is only ever cut from a tag.
+		{"reusable_signer_main", wfPrefix + "reusable-release-cli.yml@refs/heads/main", false},
+		{"retired_signer_main", wfPrefix + "cli.yml@refs/heads/main", false},
+		{"pull_ref", wfPrefix + "reusable-release-cli.yml@refs/pull/1/merge", false},
+
+		// verify-cli.yml delegates to the signer and runs no signing step,
+		// so no certificate can ever carry it.
+		{"caller_verify_cli", wfPrefix + "verify-cli.yml@refs/tags/v1.2.3", false},
+
+		// An image signer must not vouch for a CLI archive.
+		{"image_signer", wfPrefix + "reusable-publish-image.yml@refs/tags/v1.2.3", false},
+		{"image_caller", wfPrefix + "build-images.yml@refs/tags/v1.2.3", false},
+		{"retired_image_signer", wfPrefix + "docker.yml@refs/tags/v1.2.3", false},
+
+		{"foreign_owner", "https://github.com/evil/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3", false},
+		{"prefix_hijack", wfPrefix + "evil-reusable-release-cli.yml@refs/tags/v1.2.3", false},
+		{"suffix_hijack", wfPrefix + "reusable-release-cli-evil.yml@refs/tags/v1.2.3", false},
+		{"empty", "", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := BuildReleaseIdentityPolicy(tc.sanRegex)
-			if (err != nil) != tc.wantErr {
-				t.Errorf("BuildReleaseIdentityPolicy(%q) error = %v, wantErr %v",
-					tc.sanRegex, err, tc.wantErr)
+			if got := re.MatchString(tc.san); got != tc.want {
+				t.Errorf("MatchString(%q) = %v, want %v", tc.san, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestNeitherPinAdmitsTheOthersSigner(t *testing.T) {
+	t.Parallel()
+	// The two anchors now sit in one file, so a pattern edited into the
+	// wrong constant would compile and pass its own table. Each artefact
+	// class must reject every workflow the other admits: an image signer
+	// vouching for a release archive is the failure the split prevents.
+	image := regexp.MustCompile(ExpectedSANRegex)
+	release := regexp.MustCompile(ExpectedReleaseSANRegex)
+
+	imageSANs := []string{
+		wfPrefix + "reusable-publish-image.yml@refs/heads/main",
+		wfPrefix + "reusable-publish-image-loaded.yml@refs/heads/main",
+		wfPrefix + "docker.yml@refs/heads/main",
+	}
+	releaseSANs := []string{
+		wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3",
+		wfPrefix + "cli.yml@refs/tags/v0.9.3",
+	}
+	for _, san := range imageSANs {
+		if !image.MatchString(san) {
+			t.Errorf("image pin rejects its own signer %q", san)
+		}
+		if release.MatchString(san) {
+			t.Errorf("release pin admits image signer %q", san)
+		}
+	}
+	for _, san := range releaseSANs {
+		if !release.MatchString(san) {
+			t.Errorf("release pin rejects its own signer %q", san)
+		}
+		if image.MatchString(san) {
+			t.Errorf("image pin admits release signer %q", san)
+		}
 	}
 }

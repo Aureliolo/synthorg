@@ -290,9 +290,10 @@ rather than tidiness.
 That split also decides what the CLI will accept. Keyless signing derives the
 certificate SAN from `job_workflow_ref`, which for a `workflow_call` job is
 the reusable workflow's own path rather than the caller's, so the SAN regexes
-compiled into the binary (`cli/internal/selfupdate/sigstore.go` for release
-archives, `cli/internal/verify/identity.go` for images) name the files in the
-table above and never the callers. A pin also keeps the name that signed the
+compiled into the binary (`ExpectedReleaseSANRegex` for release archives,
+`ExpectedSANRegex` for images, both in `cli/internal/verify/identity.go`) name
+the files in the table above and never the callers. A pin also keeps the name
+that signed the
 current stable release, because a published signature cannot be re-minted and
 dropping it would leave those artifacts permanently unverifiable.
 
@@ -303,12 +304,15 @@ SAN therefore names the build recipe, not the build owner. Both policies also
 pin certificate extensions (`SourceRepositoryURI`,
 `SourceRepositoryIdentifier`, `RunnerEnvironment`), which is what
 distinguishes a build this repository ran from one that merely used its
-workflow. Both constructors live in `cli/internal/verify/identity.go` and
-share one builder so the binding cannot diverge between them:
-`verify.BuildIdentityPolicy` for images, which owns its SAN regex, and
-`verify.BuildReleaseIdentityPolicy` for release archives, which takes the
-regex from the self-update package that consumes it and rejects one not
-anchored to this repository's workflow path. The numeric repository
+workflow. Both patterns and both constructors live in
+`cli/internal/verify/identity.go`, sharing one builder so the binding cannot
+diverge between them: `verify.BuildIdentityPolicy` for images and
+`verify.BuildReleaseIdentityPolicy` for release archives. Neither takes a
+pattern from its caller. A supplied regex cannot be validated into safety by
+inspecting parts of it, because one carrying a second top-level alternative
+for an unapproved workflow still opens with the repository prefix and still
+closes with the anchor, and the extensions below do not separate the two when
+both alternatives name this repository. The numeric repository
 identifier is pinned alongside the URI because it survives a rename or
 transfer; renaming or transferring this repository would otherwise free the
 pinned URI for someone else to claim, so treat both as fixed for as long as

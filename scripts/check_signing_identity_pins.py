@@ -3,9 +3,9 @@
 
 The CLI refuses any release archive or container image whose Sigstore
 certificate fails a policy compiled into the binary. Half of that policy is a
-SAN regex (``expectedSANRegex`` in ``cli/internal/selfupdate/sigstore.go`` for
-release archives, ``ExpectedSANRegex`` in ``cli/internal/verify/identity.go``
-for images). Keyless signing derives the SAN from ``job_workflow_ref``, which
+SAN regex; both live in ``cli/internal/verify/identity.go``
+(``ExpectedReleaseSANRegex`` for release archives, ``ExpectedSANRegex`` for
+images). Keyless signing derives the SAN from ``job_workflow_ref``, which
 for a ``workflow_call`` job is the reusable workflow's own path rather than
 the caller's, so those regexes name the workflow that runs the signing step.
 Move a signing step to another file and the pin silently stops matching
@@ -57,10 +57,14 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _WORKFLOWS_ROOT: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 _ACTIONS_ROOT: Final[Path] = _REPO_ROOT / ".github" / "actions"
 
-_SELFUPDATE_GO: Final[Path] = (
-    _REPO_ROOT / "cli" / "internal" / "selfupdate" / "sigstore.go"
-)
 _VERIFY_GO: Final[Path] = _REPO_ROOT / "cli" / "internal" / "verify" / "identity.go"
+
+# This repository, as GitHub spells it. Every prefix below is built from it so
+# a rename or transfer changes one line. Leaving them independent would let a
+# rename update the SAN pins while a caller reference kept the old owner: the
+# scan would then find no callers and report a clean tree, which is the one
+# outcome this gate must never produce silently.
+_REPO_SLUG: Final[str] = "Aureliolo/synthorg"
 
 # Signing steps are matched on parsed ``uses``/``run`` values only. Matching
 # raw file text would count a step *name* like "Verify cosign signatures" as a
@@ -108,14 +112,14 @@ _SCRIPT_REFERENCE: Final[re.Pattern[str]] = re.compile(
 # treats owner and repository case-insensitively, so the own-repo form is
 # matched that way; a case variant must not read as a third-party action.
 _LOCAL_ACTION_PREFIX: Final[str] = "./.github/actions/"
-_OWN_REPO_ACTION_PREFIX: Final[str] = "aureliolo/synthorg/.github/actions/"
+_OWN_REPO_ACTION_PREFIX: Final[str] = f"{_REPO_SLUG.lower()}/.github/actions/"
 
 # The same two forms for a reusable-workflow call, and the extensions GitHub
 # accepts for one. A signer reached through either form or either extension is
 # reached all the same, so the caller count must recognise all of them.
 _WORKFLOW_CALL_PREFIXES: Final[tuple[str, ...]] = (
     "./.github/workflows/",
-    "aureliolo/synthorg/.github/workflows/",
+    f"{_REPO_SLUG.lower()}/.github/workflows/",
 )
 _WORKFLOW_EXTENSIONS: Final[frozenset[str]] = frozenset({"yml", "yaml"})
 
@@ -124,7 +128,7 @@ _WORKFLOW_EXTENSIONS: Final[frozenset[str]] = frozenset({"yml", "yaml"})
 _SAFE_STEM: Final[re.Pattern[str]] = re.compile(r"\A[a-z0-9-]+\Z")
 
 _PATTERN_PREFIX: Final[str] = (
-    r"^https://github\.com/Aureliolo/synthorg/\.github/workflows/"
+    rf"^https://github\.com/{re.escape(_REPO_SLUG)}/\.github/workflows/"
 )
 
 # Ref classes a certificate may carry. A release archive is only ever cut from
@@ -209,9 +213,9 @@ class Pin:
 
 _PINS: Final[tuple[Pin, ...]] = (
     Pin(
-        label="release-archive pin (cli/internal/selfupdate/sigstore.go)",
-        go_file=_SELFUPDATE_GO,
-        const_name="expectedSANRegex",
+        label="release-archive pin (cli/internal/verify/identity.go)",
+        go_file=_VERIFY_GO,
+        const_name="ExpectedReleaseSANRegex",
         signers=(
             PinnedSigner("reusable-release-cli", _SEMVER_TAG),
             PinnedSigner(
@@ -672,12 +676,17 @@ def _check_declarations(signers: set[str]) -> list[str]:
 
 
 def _check_single_caller(signers: set[str]) -> list[str]:
-    """Require each current signer to be reachable from one workflow only.
+    """Require each current signer to be reachable from exactly one workflow.
 
     A reusable signer's SAN says nothing about which caller invoked it, so
     every workflow able to call one inherits the trust anchor. Keeping that to
     a single, ref-gated caller is what stops a lower-trust trigger from
     reaching the same identity.
+
+    Zero callers fails too. A reusable workflow that signs but nothing invokes
+    either is unreachable, or the scan stopped recognising the form its caller
+    uses, and the second case is how this check would pass while seeing
+    nothing at all.
     """
     problems = []
     for pin in _PINS:
@@ -685,7 +694,13 @@ def _check_single_caller(signers: set[str]) -> list[str]:
             if signer.retired_reason or signer.workflow not in signers:
                 continue
             callers = calling_workflows(signer.workflow)
-            if len(callers) > 1:
+            if not callers:
+                problems.append(
+                    f"{pin.label}: {signer.workflow}.yml signs but no workflow "
+                    f"calls it; either it is unreachable, or the call form it is "
+                    f"invoked through is one this scan no longer recognises",
+                )
+            elif len(callers) > 1:
                 problems.append(
                     f"{pin.label}: {signer.workflow}.yml is called by "
                     f"{', '.join(sorted(callers))}; every caller inherits its "

@@ -510,6 +510,23 @@ def test_retired_name_that_still_signs_is_flagged(
     assert not any("docker.yml signs but is classified nowhere" in p for p in problems)
 
 
+def test_every_repository_prefix_comes_from_one_slug(gate: ModuleType) -> None:
+    """A rename must not update the SAN pins while a caller form keeps the old owner.
+
+    The three prefixes spell the same repository in three notations, and only
+    the SAN one fails loudly when it drifts: a stale caller prefix makes
+    calling_workflows return nothing, which reads as a satisfied invariant.
+    """
+    slug = gate._REPO_SLUG
+    san_prefix = rf"^https://github\.com/{slug}/\.github/workflows/"
+    action_prefix = f"{slug.lower()}/.github/actions/"
+    call_prefix = f"{slug.lower()}/.github/workflows/"
+
+    assert san_prefix == gate._PATTERN_PREFIX
+    assert action_prefix == gate._OWN_REPO_ACTION_PREFIX
+    assert call_prefix in gate._WORKFLOW_CALL_PREFIXES
+
+
 def test_apko_base_signer_stays_unpinned(gate: ModuleType) -> None:
     """The base-layer signer is discovered but must never be admitted."""
     assert "reusable-publish-apko-base" in gate.discover_signers()
@@ -571,6 +588,20 @@ def test_single_caller_invariant_holds_on_the_real_tree(gate: ModuleType) -> Non
     assert gate.calling_workflows("reusable-publish-image") == {"build-images"}
 
 
+def _current_signers(gate: ModuleType) -> set[str]:
+    """The pinned current signers, without consulting the workflow tree.
+
+    Derived from the declarations rather than discovery so a rename in the
+    tree cannot empty the set and turn a negative test into a vacuous pass.
+    """
+    return {
+        signer.workflow
+        for pin in gate._PINS
+        for signer in pin.signers
+        if not signer.retired_reason
+    }
+
+
 def test_second_caller_of_a_signer_is_flagged(
     gate: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -586,9 +617,25 @@ def test_second_caller_of_a_signer_is_flagged(
         "calling_workflows",
         lambda *_a, **_k: {"verify-cli", "rogue-release"},
     )
-    problems = gate._check_single_caller(gate.discover_signers())
+    problems = gate._check_single_caller(_current_signers(gate))
     assert problems
     assert all("every caller inherits its signing identity" in p for p in problems)
+
+
+def test_signer_with_no_caller_is_flagged(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seeing no callers at all is a broken scan, not a satisfied invariant.
+
+    A caller-form the scan stopped recognising (a rename, a new reference
+    style) empties every result, and a check that only rejects two or more
+    would read that as every signer being properly scoped.
+    """
+    monkeypatch.setattr(gate, "calling_workflows", lambda *_a, **_k: set())
+    problems = gate._check_single_caller(_current_signers(gate))
+    assert problems
+    assert all("no workflow calls it" in p for p in problems)
 
 
 @pytest.mark.parametrize(
