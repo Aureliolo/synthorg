@@ -282,6 +282,24 @@ providers:
     base_url: "http://host.docker.internal:11434"
 ```
 
+This is the **backend** container reaching a service on the host, and on Linux
+Engine it needs the alias to exist: Docker Desktop injects
+`host.docker.internal`, plain Engine does not. Add it to the backend service
+yourself there:
+
+```yaml
+services:
+  backend:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+Do not confuse it with the same hostname in the OpenHands loop's two endpoint
+settings. Those point the other way, from a spawned loop container back at the
+API's published port, and that container gets the alias explicitly (the loop
+wiring adds `host.docker.internal:host-gateway`), so it resolves on Engine too
+without any host configuration.
+
 ---
 
 ## Image Verification

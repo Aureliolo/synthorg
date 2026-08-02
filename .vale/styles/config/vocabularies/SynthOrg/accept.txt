@@ -29,6 +29,7 @@ mcp
 nats
 oauth
 onw
+openhands
 opencode
 opentelemetry
 otel

@@ -1,6 +1,6 @@
 # Retry Patterns
 
-Five retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all five would either obscure the semantics or expose so many knobs that the abstraction is worse than five small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
+Six retry-pattern families live in the codebase. They are intentionally distinct: a single helper that tried to cover all six would either obscure the semantics or expose so many knobs that the abstraction is worse than six small ones. Use this page when you are about to add a retry loop and want to know which pattern fits.
 
 The canonical helper for transient-I/O backoff is `synthorg.core.resilience.GeneralRetryHandler`; its module docstring carries the same carve-out list mirrored here, so a developer reading the helper sees the same boundaries.
 
@@ -101,6 +101,16 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 - `src/synthorg/tools/publish/publish_tools.py` (via `tools/publish/_base.py::_dispatch_guarded`): the destructive push and the read-only inspector egress once; a `PublishRateLimitedError` surfaces `retry_after_seconds` rather than retrying a push in-tool.
 - `src/synthorg/tools/external_api/`: the pre-existing governed tool this pattern generalises.
 
+## Pattern F -- Bounded readiness poll
+
+**When**: waiting for a state transition that some other process performs, under a wall-clock deadline. Nothing here failed and nothing is being re-attempted: the operation succeeded, and the loop is observing until the observed thing becomes ready or the deadline expires. `GeneralRetryHandler` is the wrong tool because there is no failing call to wrap and no attempt budget to spend; the budget is time, and the exit condition is a predicate on external state, not the absence of an exception.
+
+**How**: `while clock.time() < deadline:` around a cheap state read, with a fixed `asyncio.sleep(poll_interval)` between reads and a typed error raised on deadline expiry. Cleanup of the thing being waited on belongs to the caller, on every exit path including cancellation.
+
+**Sites**:
+
+- `src/synthorg/tools/sandbox/docker_sandbox_sidecar.py` `_wait_sidecar_healthy`: polls the sidecar container's health status until Docker reports it healthy or the deadline expires, so the sandbox never joins a namespace whose egress enforcement has not finished coming up.
+
 ## Decision tree
 
 | If your loop is...                                                  | Reach for                            |
@@ -111,7 +121,8 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | Sync code in a stdlib `logging.Handler` thread, or a `scripts/` CI gate that cannot import `synthorg.core` | Inline loop (Pattern C/Sync)         |
 | Unbounded background consumer polling a bus channel for the process lifetime | Inline poll loop (Pattern D)         |
 | A governed one-shot agent tool (write or sensitive-connection read gated; other reads fast-allow) | No loop; surface the error (Pattern E) |
-| None of the above                                                   | Stop and ask before adding a sixth family |
+| Waiting under a deadline for state someone else transitions, nothing having failed | Bounded readiness poll (Pattern F)   |
+| None of the above                                                   | Stop and ask before adding a seventh family (the table has more rows than families: Pattern C has two sub-cases) |
 
 ## Adding a new retry site
 

@@ -403,7 +403,13 @@ def _build_openhands_loop(
             loop cannot reach its gateway / MCP boundaries).
     """
     if openhands_loop_deps is None:
-        msg = "OpenHands loop selected but its runtime deps are not wired"
+        # The wiring pass already named the unmet piece; pointing at that
+        # record beats a bare "not wired" on a failed task, which otherwise
+        # sends whoever triages it hunting through unrelated boot logs.
+        msg = (
+            "OpenHands loop selected but its runtime deps are not wired; the "
+            "most recent execution.loop.unavailable log names the missing piece"
+        )
         raise OpenHandsUnavailableError(msg)
     return OpenHandsLoop(
         config=openhands_loop_config or OpenHandsLoopConfig(),

@@ -11,6 +11,11 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
     CONFIG_VALIDATION_FAILED,
 )
+from synthorg.tools.sandbox._config_entries import (
+    colon_pair,
+    reject_entry,
+    validate_host_port,
+)
 from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
@@ -29,9 +34,6 @@ logger = get_logger(__name__)
 CONTAINER_WORKSPACE: Final[str] = "/workspace"
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
-_MIN_PORT = 1
-_MAX_PORT: Final[int] = 65535
-_HOST_PORT_PARTS: Final[int] = 2
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown
@@ -74,6 +76,7 @@ class DockerSandboxConfig(BaseModel):
         network: Default Docker network mode.
         network_overrides: Per-category network mode overrides.
         allowed_hosts: Host:port allowlist for network filtering.
+        extra_hosts: Extra ``name:target`` /etc/hosts entries.
         dns_allowed: Allow outbound DNS when ``allowed_hosts`` restricts
             network.  Default ``True`` (needed for hostname resolution).
             Set to ``False`` to require IP addresses in ``allowed_hosts``.
@@ -118,6 +121,24 @@ class DockerSandboxConfig(BaseModel):
     allowed_hosts: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Host:port allowlist for network filtering",
+    )
+    extra_hosts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Extra 'name:target' /etc/hosts entries for the container, e.g."
+            " 'host.docker.internal:host-gateway' so an egress-pinned"
+            " container can reach a service published on the host"
+        ),
+    )
+    allowed_paths: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "'host:port=/prefix' entries narrowing an allowed destination to"
+            " those URL path prefixes, enforced per HTTP request by the"
+            " sidecar. Needed whenever a permitted host:port also serves"
+            " routes the container must not reach; repeat the host:port to"
+            " grant several prefixes"
+        ),
     )
     dns_allowed: bool = Field(
         default=True,
@@ -409,52 +430,65 @@ class DockerSandboxConfig(BaseModel):
             ValueError: If an argument fails domain validation.
         """
         for entry in self.allowed_hosts:
-            parts = entry.split(":")
-            if len(parts) != _HOST_PORT_PARTS:
-                msg = (
-                    f"allowed_hosts entry {entry!r} must use "
-                    "'host:port' format (exactly one ':'); "
-                    "IPv6 addresses are not supported"
+            validate_host_port(entry, field="allowed_hosts")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_extra_hosts(self) -> Self:
+        """Validate that extra_hosts entries use ``name:target`` format.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        for entry in self.extra_hosts:
+            colon_pair(
+                entry,
+                field="extra_hosts",
+                shape="'name:target', e.g. 'host.docker.internal:host-gateway'",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_allowed_paths(self) -> Self:
+        """Validate ``allowed_paths`` entries and pin them to a permitted host.
+
+        A rule for a destination that is not in ``allowed_hosts`` grants
+        nothing and silently reads as protection, so it is rejected rather
+        than ignored.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an entry is malformed or names an unlisted host.
+        """
+        for entry in self.allowed_paths:
+            host_port, _, prefix = entry.partition("=")
+            if not prefix.startswith("/"):
+                reject_entry(
+                    "allowed_paths",
+                    f"allowed_paths entry {entry!r} must use"
+                    " 'host:port=/prefix' (the prefix starting with '/')",
                 )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
+            if "," in prefix:
+                # The entries are handed to the sidecar as one comma-separated
+                # variable, so a comma inside a prefix would split it into two
+                # malformed rules there.
+                reject_entry(
+                    "allowed_paths",
+                    f"prefix in {entry!r} must not contain a comma:"
+                    " the sidecar receives these entries comma-separated",
                 )
-                raise ValueError(msg)
-            host, port_str = parts
-            if not host or host == "*":
-                msg = (
-                    f"host part of {entry!r} must be a hostname "
-                    "or IP (not empty or wildcard)"
+            validate_host_port(host_port, field="allowed_paths")
+            if host_port not in self.allowed_hosts:
+                reject_entry(
+                    "allowed_paths",
+                    f"allowed_paths entry {entry!r} narrows {host_port!r},"
+                    " which is not in allowed_hosts, so it grants nothing",
                 )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg)
-            try:
-                port = int(port_str)
-            except ValueError as exc:
-                msg = f"port {port_str!r} in {entry!r} is not a valid integer"
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg) from exc
-            if port < _MIN_PORT or port > _MAX_PORT:
-                msg = (
-                    f"port {port} in {entry!r} must be "
-                    f"between {_MIN_PORT} and {_MAX_PORT}"
-                )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="allowed_hosts",
-                    reason=msg,
-                )
-                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

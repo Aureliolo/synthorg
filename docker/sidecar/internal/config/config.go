@@ -20,9 +20,24 @@ type HostPort struct {
 	Port uint16
 }
 
+// PathRule narrows an allowed host:port to a set of URL path prefixes.
+//
+// A host:port allowlist is the whole story only when the destination serves
+// exactly one thing. It is not when several routes share one process: the
+// backend publishes the LLM gateway and the credentialed-MCP endpoint on the
+// same port as its authentication, metrics and webhook routes, so allowing
+// that host:port at layer 4 allows all of them. A rule here says "on this
+// destination, only these path prefixes", enforced per request.
+type PathRule struct {
+	Host   string
+	Port   uint16
+	Prefix string
+}
+
 // Config holds the parsed sidecar configuration.
 type Config struct {
 	AllowedHosts    []HostPort
+	AllowedPaths    []PathRule
 	AllowAll        bool
 	DNSAllowed      bool
 	LoopbackAllowed bool
@@ -44,44 +59,30 @@ func Load() (Config, error) {
 		ResolveInterval: 30,
 	}
 
-	cfg.AdminToken = strings.TrimSpace(os.Getenv("SIDECAR_ADMIN_TOKEN"))
-	if cfg.AdminToken == "" {
-		return Config{}, fmt.Errorf("SIDECAR_ADMIN_TOKEN is required")
+	token, err := loadAdminToken()
+	if err != nil {
+		return Config{}, err
 	}
-	if len(cfg.AdminToken) < minAdminTokenLength {
-		return Config{}, fmt.Errorf(
-			"SIDECAR_ADMIN_TOKEN must be at least %d characters", minAdminTokenLength)
-	}
+	cfg.AdminToken = token
 
 	if v := os.Getenv("SIDECAR_ALLOWED_HOSTS"); v != "" {
 		cfg.AllowedHosts = parseAllowedHosts(v)
+	}
+
+	if v := os.Getenv("SIDECAR_ALLOWED_PATHS"); v != "" {
+		rules, err := parseAllowedPaths(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("SIDECAR_ALLOWED_PATHS: %w", err)
+		}
+		cfg.AllowedPaths = rules
 	}
 
 	cfg.DNSAllowed = parseBool(os.Getenv("SIDECAR_DNS_ALLOWED"), true)
 	cfg.LoopbackAllowed = parseBool(os.Getenv("SIDECAR_LOOPBACK_ALLOWED"), true)
 	cfg.AllowAll = parseBool(os.Getenv("SIDECAR_ALLOW_ALL"), false)
 
-	if v := os.Getenv("SIDECAR_HEALTH_PORT"); v != "" {
-		p, err := parsePort(v)
-		if err != nil {
-			return Config{}, fmt.Errorf("SIDECAR_HEALTH_PORT: %w", err)
-		}
-		cfg.HealthPort = p
-	}
-
-	if v := os.Getenv("SIDECAR_PROXY_PORT"); v != "" {
-		p, err := parsePort(v)
-		if err != nil {
-			return Config{}, fmt.Errorf("SIDECAR_PROXY_PORT: %w", err)
-		}
-		cfg.ProxyPort = p
-	}
-
-	if cfg.HealthPort == cfg.ProxyPort {
-		return Config{}, fmt.Errorf(
-			"SIDECAR_HEALTH_PORT (%d) and SIDECAR_PROXY_PORT (%d) must differ",
-			cfg.HealthPort, cfg.ProxyPort,
-		)
+	if err := loadPorts(&cfg); err != nil {
+		return Config{}, err
 	}
 
 	if v := os.Getenv("SIDECAR_LOG_LEVEL"); v != "" {
@@ -125,6 +126,76 @@ func parseAllowedHosts(raw string) []HostPort {
 		hosts = append(hosts, HostPort{Host: host, Port: uint16(port)})
 	}
 	return hosts
+}
+
+// loadAdminToken reads and validates the rule-mutation guard token.
+func loadAdminToken() (string, error) {
+	token := strings.TrimSpace(os.Getenv("SIDECAR_ADMIN_TOKEN"))
+	if token == "" {
+		return "", fmt.Errorf("SIDECAR_ADMIN_TOKEN is required")
+	}
+	if len(token) < minAdminTokenLength {
+		return "", fmt.Errorf(
+			"SIDECAR_ADMIN_TOKEN must be at least %d characters", minAdminTokenLength)
+	}
+	return token, nil
+}
+
+// loadPorts resolves the health and proxy ports, which must differ: they are
+// separate listeners, and sharing one would leave whichever bound second dead.
+func loadPorts(cfg *Config) error {
+	if v := os.Getenv("SIDECAR_HEALTH_PORT"); v != "" {
+		p, err := parsePort(v)
+		if err != nil {
+			return fmt.Errorf("SIDECAR_HEALTH_PORT: %w", err)
+		}
+		cfg.HealthPort = p
+	}
+	if v := os.Getenv("SIDECAR_PROXY_PORT"); v != "" {
+		p, err := parsePort(v)
+		if err != nil {
+			return fmt.Errorf("SIDECAR_PROXY_PORT: %w", err)
+		}
+		cfg.ProxyPort = p
+	}
+	if cfg.HealthPort == cfg.ProxyPort {
+		return fmt.Errorf(
+			"SIDECAR_HEALTH_PORT (%d) and SIDECAR_PROXY_PORT (%d) must differ",
+			cfg.HealthPort, cfg.ProxyPort,
+		)
+	}
+	return nil
+}
+
+// parseAllowedPaths parses "host:port=/prefix" entries, comma separated.
+// Repeat the host:port to grant it more than one prefix. A malformed entry
+// is an error rather than a skip: silently dropping one would widen the
+// destination back to every route it serves, which is the opposite of what
+// the caller asked for.
+func parseAllowedPaths(raw string) ([]PathRule, error) {
+	var rules []PathRule
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		hostPart, prefix, found := strings.Cut(entry, "=")
+		if !found {
+			return nil, fmt.Errorf("entry %q is not host:port=/prefix", entry)
+		}
+		prefix = strings.TrimSpace(prefix)
+		if !strings.HasPrefix(prefix, "/") {
+			return nil, fmt.Errorf("prefix %q must start with '/'", prefix)
+		}
+		hosts := parseAllowedHosts(strings.TrimSpace(hostPart))
+		if len(hosts) != 1 {
+			return nil, fmt.Errorf("entry %q has no valid host:port", entry)
+		}
+		rules = append(rules, PathRule{
+			Host: hosts[0].Host, Port: hosts[0].Port, Prefix: prefix,
+		})
+	}
+	return rules, nil
 }
 
 func parseBool(val string, defaultVal bool) bool {

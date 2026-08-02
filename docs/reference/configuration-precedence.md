@@ -502,9 +502,22 @@ through `app_state.security_runtime_config`, which the
 `SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
 The same guardrail covers four more namespaces: `engine` (the completion-oracle
-keys), `tools` (MCP sandbox isolation, the credentialed-MCP grant, and each
-destructive tool family's enable + targets), `output_style` (disable, shadow,
-exemptions, pack swap), and `providers` (`gateway_enabled`).
+keys, plus the three loop-routing keys `loop_auto_select_enabled`,
+`default_loop_type` and `loop_complexity_overrides`, where naming the sandboxed
+loop is the weakening direction), `tools` (MCP sandbox isolation, the
+credentialed-MCP grant, `openhands_enabled`, and each destructive tool family's
+enable + targets), `output_style` (disable, shadow, exemptions, pack swap), and
+`providers` (`gateway_enabled`).
+
+Three of those toggles ship **on** (`providers.gateway_enabled`,
+`tools.openhands_enabled`, `tools.credentialed_mcp_enabled`), which changes what
+the guardrail treats as a decision. An unset key resolves to the registered
+default, so writing `true` over it restates the running posture and is
+unguarded; only an explicit stored `false` returning to `true` reopens the
+surface and needs confirm+reason+actor. The corollary is that the guardrail is a
+live-write control, not an upgrade-time one: a deployment that never wrote an
+explicit row inherits the new default on its next boot with no prompt, so a
+default flip on any of these belongs in the release notes.
 
 `integrations.webhook_receipt_retention_days` is governed for a different reason:
 it relaxes no boundary, but **shortening** the window has the next sweep destroy

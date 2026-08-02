@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"strings"
@@ -65,7 +66,7 @@ func (s *Server) Start() error {
 
 	tcpLn, err := net.Listen("tcp", "127.0.0.1:53")
 	if err != nil {
-		udpConn.Close()
+		_ = udpConn.Close()
 		return fmt.Errorf("dns tcp listen: %w", err)
 	}
 	s.tcpLn = tcpLn
@@ -93,10 +94,10 @@ func (s *Server) Stop() {
 		close(s.done)
 	}
 	if s.udpConn != nil {
-		s.udpConn.Close()
+		_ = s.udpConn.Close()
 	}
 	if s.tcpLn != nil {
-		s.tcpLn.Close()
+		_ = s.tcpLn.Close()
 	}
 	s.wg.Wait()
 }
@@ -170,8 +171,13 @@ func (s *Server) handleTCP(conn net.Conn) {
 		return
 	}
 
-	// Write response with length prefix -- use full writes.
-	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(resp)))
+	// Write response with length prefix -- use full writes. The prefix is a
+	// uint16 by RFC 1035, so a response that cannot be described by one is
+	// undeliverable rather than silently truncated to its low 16 bits.
+	if len(resp) > math.MaxUint16 {
+		return
+	}
+	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(resp))) //nolint:gosec // bounded by the MaxUint16 check above
 	if _, err := conn.Write(lenBuf[:]); err != nil {
 		return
 	}
@@ -181,11 +187,11 @@ func (s *Server) handleTCP(conn net.Conn) {
 }
 
 func (s *Server) processQuery(query []byte) []byte {
-	hostname := extractQueryHostname(query)
+	hostname := ExtractQueryHostname(query)
 	if hostname == "" {
 		// Can't parse -- return NXDOMAIN instead of forwarding
 		// to prevent unparseable queries from bypassing the allowlist.
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 
 	// When DNS is disabled (SIDECAR_DNS_ALLOWED=0), deny all queries
@@ -195,7 +201,7 @@ func (s *Server) processQuery(query []byte) []byte {
 		if s.logger != nil {
 			s.logger.Info("dns.query.denied", "host", hostname, "reason", "dns disabled")
 		}
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 
 	if s.al.IsAllowedHostname(hostname) {
@@ -208,29 +214,29 @@ func (s *Server) processQuery(query []byte) []byte {
 	if s.logger != nil {
 		s.logger.Info("dns.query.denied", "host", hostname, "reason", "not in allowlist")
 	}
-	return buildNXDOMAIN(query)
+	return BuildNXDOMAIN(query)
 }
 
 func (s *Server) forwardToUpstream(query []byte) []byte {
 	if s.upstream == "" {
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 
 	conn, err := net.DialTimeout("udp", s.upstream, dnsDialTimeout)
 	if err != nil {
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(dnsDialTimeout))
 
 	if _, err := conn.Write(query); err != nil {
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil {
-		return buildNXDOMAIN(query)
+		return BuildNXDOMAIN(query)
 	}
 	resp := make([]byte, n)
 	copy(resp, buf[:n])
@@ -240,10 +246,6 @@ func (s *Server) forwardToUpstream(query []byte) []byte {
 // ExtractQueryHostname extracts the queried hostname from a DNS query.
 // Returns empty string if the query can't be parsed.
 func ExtractQueryHostname(query []byte) string {
-	return extractQueryHostname(query)
-}
-
-func extractQueryHostname(query []byte) string {
 	// DNS header is 12 bytes.
 	if len(query) < 13 {
 		return ""
@@ -272,10 +274,6 @@ func extractQueryHostname(query []byte) string {
 
 // BuildNXDOMAIN creates a minimal NXDOMAIN response for the given query.
 func BuildNXDOMAIN(query []byte) []byte {
-	return buildNXDOMAIN(query)
-}
-
-func buildNXDOMAIN(query []byte) []byte {
 	if len(query) < 12 {
 		return nil
 	}

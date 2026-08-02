@@ -24,8 +24,9 @@ func RepoPrefix() string {
 // current install actually pulls, given its feature flags:
 //
 //   - backend and web are always included.
-//   - sandbox and sidecar are included when sandbox is true (sidecar runs
-//     alongside sandbox and is pulled by the same code path).
+//   - sandbox, sidecar and openhands are included when sandbox is true
+//     (all three are spawned by the backend over the Docker socket, which
+//     the sandbox flag mounts, and are pulled by the same code path).
 //   - fine-tune-<variant> is included when fineTuning is true, where
 //     variant is "gpu" (default) or "cpu" per FineTuningVariant.
 //
@@ -36,7 +37,7 @@ func RepoPrefix() string {
 func ServiceNames(sandbox, fineTuning bool, fineTuneVariant string) []string {
 	names := []string{"backend", "web"}
 	if sandbox {
-		names = append(names, "sandbox", "sidecar")
+		names = append(names, "sandbox", "sidecar", "openhands")
 	}
 	if fineTuning {
 		names = append(names, verify.FineTuneServiceName(fineTuneVariant))

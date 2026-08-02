@@ -38,7 +38,10 @@ func main() {
 	}
 
 	// Build allowlist from config.
-	al := allowlist.New(cfg.AllowedHosts, cfg.LoopbackAllowed, cfg.ResolveInterval, cfg.AllowAll)
+	al := allowlist.NewWithPaths(
+		cfg.AllowedHosts, cfg.AllowedPaths,
+		cfg.LoopbackAllowed, cfg.ResolveInterval, cfg.AllowAll,
+	)
 	al.Start()
 
 	// Start DNS server.

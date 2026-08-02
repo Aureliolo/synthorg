@@ -29,6 +29,7 @@ from synthorg.engine.openhands.config import (
 from synthorg.engine.openhands.container_runtime import SandboxStreamer
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_LOOP_UNAVAILABLE
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
@@ -41,6 +42,12 @@ _OPENHANDS_CPU_LIMIT: Final[float] = 2.0
 _OPENHANDS_PIDS_LIMIT: Final[int] = 512
 _DEFAULT_HTTP_PORT: Final[int] = 80
 _DEFAULT_HTTPS_PORT: Final[int] = 443
+# The loop container runs on the default bridge, not the compose network, so
+# no service name resolves inside it. This alias is what lets the shipped
+# endpoint defaults ("http://host.docker.internal:<published-port>/...") reach
+# the API, and Docker Desktop's own injection is not portable to Linux Engine.
+_HOST_GATEWAY_ALIAS: Final[tuple[str, ...]] = ("host.docker.internal:host-gateway",)
+_MASTER_KEY: Final[str] = "tools.openhands_enabled"
 
 
 async def build_openhands_loop_config(app_state: AppState) -> OpenHandsLoopConfig:
@@ -67,9 +74,10 @@ async def build_openhands_loop_deps_or_none(
     slice rather than built anew. The conversation factory is the container
     runtime bound to a dedicated sandbox whose egress is pinned to exactly
     the gateway + credentialed-MCP hosts. Returns ``None`` (logging the
-    missing piece) when the signer is unset or either endpoint does not
-    resolve to a host, leaving the loop unavailable (it fails loud only if
-    selected) so sandbox egress is never created without a host allowlist.
+    missing piece) when the operator turned the capability off, the signer is
+    unset, or either endpoint does not resolve to a host, leaving the loop
+    unavailable (it fails loud only if selected) so sandbox egress is never
+    created without a host allowlist.
 
     Returns:
         The wired dependencies, or ``None`` when the boundary is unwired.
@@ -79,44 +87,42 @@ async def build_openhands_loop_deps_or_none(
         build_container_conversation,
     )
 
-    signer = app_state.slice(GatewayStateSlice).signer
     resolver = config_resolver_of(app_state)
     gateway_base_url = await resolver.get_str("providers", "gateway_base_url")
     mcp_base_url = await resolver.get_str("tools", "credentialed_mcp_base_url")
-    # Require each endpoint to resolve to a host, not merely be non-empty: a
-    # malformed URL (e.g. a missing scheme) parses to an empty host, which
-    # would collapse the egress allowlist and leave DockerSandbox._needs_sidecar
-    # unable to enable enforcement. Fail closed so sandbox egress is never
-    # created without a host allowlist.
-    gateway_host = _host_port(gateway_base_url)
-    mcp_host = _host_port(mcp_base_url)
-    if signer is None or not gateway_host or not mcp_host:
-        logger.warning(
-            EXECUTION_LOOP_UNAVAILABLE,
-            loop_type="openhands",
-            missing=_missing_pieces(signer, gateway_host, mcp_host),
-            note="OpenHands loop stays unavailable until every piece is wired to "
-            "a resolvable host (egress cannot be pinned without a host:port)",
-        )
+    missing = _missing_pieces(
+        enabled=await resolver.get_bool("tools", "openhands_enabled"),
+        signer=app_state.slice(GatewayStateSlice).signer,
+        gateway_host=_pinnable_host(gateway_base_url),
+        mcp_host=_pinnable_host(mcp_base_url),
+    )
+    if missing:
+        # An operator who turned the capability off is not looking at a
+        # misconfiguration, so it reports at INFO with a note that matches the
+        # cause. This runs on every watched-settings rebuild, most of which
+        # have nothing to do with the loop.
+        _log_unavailable(missing, disabled_by_choice=missing == (_MASTER_KEY,))
         return None
 
-    idle = await resolver.get_float("tools", "openhands_idle_timeout_seconds")
-    max_runtime = await resolver.get_float("tools", "openhands_max_runtime_seconds")
-    ttl = await resolver.get_int("providers", "gateway_token_ttl_seconds")
-    if max_runtime >= ttl:
-        logger.warning(
-            EXECUTION_LOOP_UNAVAILABLE,
-            loop_type="openhands",
-            note="openhands_max_runtime_seconds is not below the gateway bearer "
-            "TTL; a long run could outlive its token before the wall-clock cap "
-            "ends it. Lower the cap or raise providers.gateway_token_ttl_seconds",
-            max_runtime_seconds=max_runtime,
-            token_ttl_seconds=ttl,
-        )
+    timings = await _resolve_timings(resolver)
+    if timings is None:
+        return None
+    idle, max_runtime = timings
+
     sandbox = await _build_openhands_sandbox(app_state, gateway_base_url, mcp_base_url)
     factory = functools.partial(
         build_container_conversation, sandbox, idle, max_runtime
     )
+    # Re-read the signer rather than reusing the one read before the awaits
+    # above: a gateway rebuild in that window installs a new one, and a loop
+    # holding the old signer mints bearers the gateway no longer verifies.
+    signer = app_state.slice(GatewayStateSlice).signer
+    if signer is None:
+        _log_unavailable(
+            ("gateway_signer",),
+            note="the gateway signer went away while the loop was being wired",
+        )
+        return None
     return OpenHandsLoopDeps(
         build_conversation=factory,
         signer=signer,
@@ -126,7 +132,80 @@ async def build_openhands_loop_deps_or_none(
     )
 
 
+def _pinnable_host(url: str) -> str:
+    """Return the ``host:port`` this endpoint can be egress-pinned to.
+
+    Both halves of the pin have to be derivable or the pin is not what it
+    claims. A URL with no host leaves the allowlist empty, so enforcement
+    never switches on. A URL with no path leaves the narrowing with nothing
+    to name, and since the two endpoints share one host, the other endpoint's
+    prefix would then be the only rule on it: this one would sit inside the
+    host allowlist yet be refused per request. Failing closed here reports a
+    misconfiguration instead of shipping an endpoint that cannot be reached.
+
+    Returns:
+        The ``host:port``, or ``""`` when either half is missing.
+    """
+    host = _host_port(url)
+    return host if host and _url_path(url) else ""
+
+
+def _log_unavailable(
+    missing: tuple[str, ...],
+    *,
+    disabled_by_choice: bool = False,
+    note: str | None = None,
+) -> None:
+    """Report the loop as unavailable, naming what is unmet."""
+    log = logger.info if disabled_by_choice else logger.warning
+    log(
+        EXECUTION_LOOP_UNAVAILABLE,
+        loop_type="openhands",
+        missing=missing,
+        note=note
+        or (
+            "OpenHands loop is switched off"
+            if disabled_by_choice
+            else "OpenHands loop stays unavailable until every piece is wired to "
+            "a resolvable host (egress cannot be pinned without a host:port)"
+        ),
+    )
+
+
+async def _resolve_timings(
+    resolver: ConfigResolverProtocol,
+) -> tuple[float, float] | None:
+    """Resolve the idle and wall-clock caps, rejecting a cap above the bearer TTL.
+
+    A run that outlives its bearer dies on a mid-run 401 from the gateway,
+    which reads as an auth fault rather than the misconfiguration it is, so
+    the pair fails closed here like every other unmet piece.
+
+    Returns:
+        ``(idle_seconds, max_runtime_seconds)``, or ``None`` when the cap is
+        not below the gateway bearer TTL.
+    """
+    idle = await resolver.get_float("tools", "openhands_idle_timeout_seconds")
+    max_runtime = await resolver.get_float("tools", "openhands_max_runtime_seconds")
+    ttl = await resolver.get_int("providers", "gateway_token_ttl_seconds")
+    if max_runtime >= ttl:
+        logger.warning(
+            EXECUTION_LOOP_UNAVAILABLE,
+            loop_type="openhands",
+            missing=("tools.openhands_max_runtime_seconds",),
+            note="openhands_max_runtime_seconds must be below the gateway bearer "
+            "TTL, or a long run outlives its token before the wall-clock cap "
+            "ends it. Lower the cap or raise providers.gateway_token_ttl_seconds",
+            max_runtime_seconds=max_runtime,
+            token_ttl_seconds=ttl,
+        )
+        return None
+    return idle, max_runtime
+
+
 def _missing_pieces(
+    *,
+    enabled: bool,
     signer: object | None,
     gateway_host: str,
     mcp_host: str,
@@ -135,11 +214,15 @@ def _missing_pieces(
 
     A blank host covers both an unset URL and a set-but-unparseable one (no
     scheme / no host), so the reported setting name points the operator at the
-    value to fix in either case.
+    value to fix in either case. An operator who turned the capability off gets
+    that named as the single cause rather than a list of endpoints they never
+    asked to wire.
 
     Returns:
         The names of the missing pieces (empty when all are wired).
     """
+    if not enabled:
+        return (_MASTER_KEY,)
     missing: list[str] = []
     if signer is None:
         missing.append("gateway_signer")
@@ -181,6 +264,8 @@ async def _build_openhands_sandbox(
         image=image,
         network="bridge",
         allowed_hosts=allowed_hosts,
+        allowed_paths=_egress_path_rules(gateway_base_url, mcp_base_url),
+        extra_hosts=_HOST_GATEWAY_ALIAS,
         mount_mode="rw",
         memory_limit=_OPENHANDS_MEMORY_LIMIT,
         cpu_limit=_OPENHANDS_CPU_LIMIT,
@@ -191,6 +276,39 @@ async def _build_openhands_sandbox(
         workspace=agent_workspace_root_of(app_state),
         clock=app_state.clock,
     )
+
+
+def _egress_path_rules(
+    gateway_base_url: str,
+    mcp_base_url: str,
+) -> tuple[str, ...]:
+    """Derive the per-request path narrowing for the two endpoint URLs.
+
+    Both endpoints live in the same backend process, so they share one
+    ``host:port`` and a host allowlist alone would also grant every other
+    route that process serves, including the ones authentication is
+    deliberately excluded from. Naming each endpoint's own path prefix
+    makes the sidecar refuse the rest per request.
+
+    Returns:
+        Sorted ``host:port=/prefix`` entries, one per reachable endpoint.
+    """
+    rules = {
+        f"{_host_port(url)}={_url_path(url)}"
+        for url in (gateway_base_url, mcp_base_url)
+        if _host_port(url) and _url_path(url)
+    }
+    return tuple(sorted(rules))
+
+
+def _url_path(url: str) -> str:
+    """Extract the path component of a URL, without a trailing slash.
+
+    Returns:
+        The path, or ``""`` when the URL carries none.
+    """
+    path = urlparse(url).path.rstrip("/")
+    return path if path.startswith("/") else ""
 
 
 def _egress_allowlist(

@@ -77,6 +77,14 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "openhands_image"),
         ("tools", "openhands_idle_timeout_seconds"),
         ("tools", "openhands_max_runtime_seconds"),
+        # The capability master and the two endpoints decide whether
+        # ``build_openhands_loop_deps_or_none`` returns deps at all, and the
+        # endpoints are additionally baked into the sandbox egress allowlist.
+        # All three are read inside the rebuild, so without them here an
+        # operator wiring the loop sees no change until an unrelated rebuild.
+        ("tools", "openhands_enabled"),
+        ("tools", "credentialed_mcp_base_url"),
+        ("providers", "gateway_base_url"),
         # The boot engine captures the memory backend by value, so replacing
         # the backend (which the memory_backend subsystem does on any of
         # these) leaves the engine reading and writing through the instance

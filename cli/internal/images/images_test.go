@@ -24,12 +24,12 @@ func TestServiceNames(t *testing.T) {
 		want       []string
 	}{
 		{"minimal", false, false, "", []string{"backend", "web"}},
-		{"with sandbox", true, false, "", []string{"backend", "web", "sandbox", "sidecar"}},
+		{"with sandbox", true, false, "", []string{"backend", "web", "sandbox", "sidecar", "openhands"}},
 		{"fine-tune gpu", false, true, "gpu", []string{"backend", "web", "fine-tune-gpu"}},
 		{"fine-tune cpu", false, true, "cpu", []string{"backend", "web", "fine-tune-cpu"}},
 		{"fine-tune default variant", false, true, "", []string{"backend", "web", "fine-tune-gpu"}},
-		{"full gpu", true, true, "gpu", []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu"}},
-		{"full cpu", true, true, "cpu", []string{"backend", "web", "sandbox", "sidecar", "fine-tune-cpu"}},
+		{"full gpu", true, true, "gpu", []string{"backend", "web", "sandbox", "sidecar", "openhands", "fine-tune-gpu"}},
+		{"full cpu", true, true, "cpu", []string{"backend", "web", "sandbox", "sidecar", "openhands", "fine-tune-cpu"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -133,5 +133,5 @@ func (m *DNATManager) installRule(ctx context.Context, rule string) error {
 // This is Linux-specific and requires the connection to have been
 // redirected by an iptables DNAT rule.
 func GetOriginalDst(conn net.Conn) (ip string, port uint16, err error) {
-	return getOriginalDst(conn)
+	return lookupOriginalDst(conn)
 }

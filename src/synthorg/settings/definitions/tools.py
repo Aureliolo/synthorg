@@ -1020,14 +1020,18 @@ _r.register(
         namespace=SettingNamespace.TOOLS,
         key="credentialed_mcp_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Enable the credentialed-tool MCP server so an embedded harness can"
-            " call the governed forge / chat tools over MCP. Off by default."
-            " Enabling exposes credentialed actions to the harness, so the"
-            " deliberate confirm+reason+actor guardrail applies to the enable"
-            " transition. Re-read live per request; the connection approval"
-            " gate still parks every write."
+            " call the governed forge / chat tools over MCP. On by default,"
+            " because a bundled harness attaches this endpoint unconditionally"
+            " and cannot build its agent without it. Reachable does not mean"
+            " permitted: the server grants exactly what"
+            " tools.credentialed_mcp_capabilities lists, which is nothing until"
+            " an operator names a capability, and the connection approval gate"
+            " still parks every write. Turning it off and back on reopens that"
+            " surface, so that transition takes the deliberate"
+            " confirm+reason+actor guardrail. Re-read live per request."
         ),
         group="Credentialed MCP",
         level=SettingLevel.ADVANCED,
@@ -1060,10 +1064,12 @@ _r.register(
         default="",
         description=(
             "Sandbox-reachable base URL of the credentialed-tool MCP server the"
-            " embedded harness connects to. Point it at the mounted"
-            " mcp-gateway route, e.g."
-            " 'http://host.internal:8000/api/v1/mcp-gateway' (the runtime"
-            " appends '/mcp'). Empty leaves the OpenHands loop unavailable: it"
+            " embedded harness connects to: the mounted mcp-gateway route, to"
+            " which the runtime appends '/mcp'. Both compose deployments set it"
+            " to http://host.docker.internal:<published-port>/api/v1/mcp-gateway"
+            " and give the loop container a matching host-gateway alias, so a"
+            " standard install needs no hand configuration. The registered"
+            " default is empty, which leaves the OpenHands loop unavailable: it"
             " fails loud when selected rather than reaching an unset endpoint."
             " Set together with providers.gateway_base_url."
         ),
@@ -1072,10 +1078,34 @@ _r.register(
     )
 )
 
-# ── OpenHands sandbox image + run behaviour ──────────────────────
+# ── OpenHands loop capability, image + run behaviour ──────────────
 # The image bundles openhands-sdk + openhands-tools (never the main
 # venv). Egress from the container is pinned by the sandbox sidecar to
 # exactly the gateway + credentialed-MCP hosts.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Ship the OpenHands execution loop in this deployment. On by"
+            " default: the image is published, both compose deployments resolve"
+            " its gateway + credentialed-MCP endpoints, and the CLI verifies"
+            " and pins it alongside the sandbox, so the loop is available"
+            " without hand configuration. Availability is not routing: nothing"
+            " runs through it until engine.loop_auto_select_enabled is on and a"
+            " complexity band names 'openhands'. Turning this off leaves the"
+            " loop unavailable, which fails loud only if selected; turning it"
+            " back on reopens a sandbox egress path, so that transition takes"
+            " the deliberate confirm+reason+actor guardrail. Re-read on a"
+            " runtime rebuild, so a change applies without a restart."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+    )
+)
 
 _r.register(
     SettingDefinition(

@@ -20,7 +20,7 @@ type sockaddrInet4 struct {
 	Zero   [8]byte
 }
 
-func getOriginalDst(conn net.Conn) (string, uint16, error) {
+func lookupOriginalDst(conn net.Conn) (string, uint16, error) {
 	tcpConn, ok := conn.(*net.TCPConn)
 	if !ok {
 		return "", 0, fmt.Errorf("not a TCP connection")

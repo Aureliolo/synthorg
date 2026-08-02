@@ -18,34 +18,169 @@ This module runs only inside ``docker/openhands`` (which bundles
 ``openhands-sdk`` + ``openhands-tools``); it is never imported by the app.
 """
 
+import io
 import json
+import os
 import sys
+import traceback
 from pathlib import PurePosixPath
+from typing import TextIO, cast, override
 from uuid import UUID
+
+_REDACTED = "***"
+
+
+class _SecretScrubbingStream(io.TextIOBase):
+    """A text stream that masks the run bearer in everything written to it.
+
+    Everything the SDK's dependency closure writes to stderr reaches the
+    host, which logs it into the app's structured pipeline. The host's
+    pattern-based scrubber cannot recognise this token (a quoted value in a
+    Python repr matches none of its shapes), and the container is the only
+    place that knows it verbatim, so the mask belongs here, on the way out.
+    Masking per write is sound for line-oriented writers; a token deliberately
+    split across two ``write`` calls would survive, which is why the token
+    never reaches this stream from our own code.
+    """
+
+    def __init__(self, wrapped: TextIO) -> None:
+        super().__init__()
+        self._wrapped = wrapped
+        self._secret = ""
+
+    def bind_secret(self, secret: str) -> None:
+        """Start masking *secret* in subsequent writes."""
+        self._secret = secret
+
+    def scrub(self, text: str) -> str:
+        """Mask the bound secret in *text*.
+
+        Returns:
+            *text* with every occurrence of the bound secret replaced.
+        """
+        return text.replace(self._secret, _REDACTED) if self._secret else text
+
+    @override
+    def write(self, s: str, /) -> int:
+        """Write *s* with the bound secret masked.
+
+        Returns:
+            The number of characters accepted.
+        """
+        self._wrapped.write(self.scrub(s))
+        return len(s)
+
+    @override
+    def flush(self) -> None:
+        """Flush the wrapped stream."""
+        self._wrapped.flush()
+
+    @override
+    def fileno(self) -> int:
+        """Return the wrapped stream's descriptor.
+
+        Returns:
+            The underlying file descriptor.
+        """
+        return self._wrapped.fileno()
+
+    @override
+    def writable(self) -> bool:
+        """Report the stream as writable.
+
+        Returns:
+            Always ``True``.
+        """
+        return True
+
+
+# Claim the real stdout as the private event channel, then point BOTH
+# ``sys.stdout`` and ``sys.stderr`` at a scrubbing wrapper over stderr, BEFORE
+# importing the SDK. stdout is a parsed protocol: the host reads one JSON event
+# per line, and the SDK's console visualizer or any stray print in its large
+# dependency closure would interleave prose with those lines. This covers every
+# Python-level writer; a spawned tool writing straight to fd 1 is not rerouted
+# by it, which is what the container contract test exercises against the real
+# image. The scrubbing wrapper is the single chokepoint that keeps the run
+# bearer out of the host's log sink no matter which library does the writing.
+_EVENTS = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8")
+_DIAGNOSTICS = _SecretScrubbingStream(sys.stderr)
+sys.stderr = cast("TextIO", _DIAGNOSTICS)
+sys.stdout = cast("TextIO", _DIAGNOSTICS)
 
 # The tools import is load-bearing: it registers the ``terminal`` /
 # ``file_editor`` executors into the SDK tool registry by import side effect.
-import openhands.tools  # noqa: F401
-from openhands.sdk import LLM, Agent, Conversation, Tool
-from openhands.sdk.event import (
+import openhands.tools  # noqa: E402, F401
+from openhands.sdk import LLM, Agent, Conversation, Tool  # noqa: E402
+from openhands.sdk.event import (  # noqa: E402
     ActionEvent,
     AgentErrorEvent,
     MessageEvent,
     ObservationEvent,
 )
-from openhands.sdk.mcp.config import MCPServer
+from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
 
+# Latch so the missing-cost-shape diagnostic is written once per run.
+_COST_SHAPE_REPORTED: set[str] = set()
+
+# SDK events the adapter deliberately does not forward: lifecycle, streaming
+# and telemetry that carry no turn, no action and no cost. Matched by class
+# NAME rather than isinstance so the container never fails to start because
+# the SDK dropped one, and so a RENAMED event falls through to "unmapped"
+# instead of being silently absorbed. Naming them is what lets anything
+# outside the set mean "the SDK grew something the adapter should map".
+_IGNORED_EVENT_NAMES: frozenset[str] = frozenset(
+    {
+        "ACPToolCallEvent",
+        "CondensationSummaryEvent",
+        "ConversationStateUpdateEvent",
+        "HookExecutionEvent",
+        "InterruptEvent",
+        "LLMCompletionLogEvent",
+        "PauseEvent",
+        "StreamingDeltaEvent",
+        "SystemPromptEvent",
+        "TokenEvent",
+    }
+)
+
+# LiteLLM routes by a provider prefix on the model name, and the SDK hands
+# ``model`` to it verbatim (``litellm_call_kwargs`` returns it unchanged for
+# any non-OpenHands model), so an unprefixed SynthOrg model id resolves to no
+# provider and the call fails before it reaches ``base_url``. This prefix names
+# the WIRE PROTOCOL, not a vendor: it means "an OpenAI-compatible proxy at
+# api_base", which is exactly what the SynthOrg gateway is. The gateway binds
+# the real (provider, model) from the run bearer's claims and ignores the
+# request's model field entirely, so nothing here selects a vendor.
+_PROXY_MODEL_PREFIX = "litellm_proxy/"
+
+
+def _routed_model(model: str) -> str:
+    """Prefix a model id so LiteLLM routes it to the gateway's base URL.
+
+    The test is the proxy prefix itself, never "does this id contain a
+    slash": catalog ids routinely carry a vendor-shaped namespace, and
+    treating one as already-routed sends the call to that vendor's real
+    endpoint instead of the gateway, escaping the run's binding and budget.
+
+    Returns:
+        The model id carrying an OpenAI-compatible proxy provider prefix.
+    """
+    if model.startswith(_PROXY_MODEL_PREFIX):
+        return model
+    return f"{_PROXY_MODEL_PREFIX}{model}"
+
 
 def _emit(payload: dict[str, object]) -> None:
-    """Write one normalized event as a JSON line to stdout."""
-    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
-    sys.stdout.flush()
+    """Write one normalized event as a JSON line to the event channel."""
+    _EVENTS.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    _EVENTS.flush()
 
 
-def _safe_error_text(exc: Exception, *, secret: str) -> str:
+def _safe_error_text(exc: Exception) -> str:
     """Render an exception for emission with the run bearer scrubbed out.
 
     The container holds the per-run gateway token (used as the LLM api key and
@@ -56,10 +191,9 @@ def _safe_error_text(exc: Exception, *, secret: str) -> str:
     rule, which this image-only module cannot import).
 
     Returns:
-        ``"<ErrorType>: <message>"`` with any occurrence of *secret* masked.
+        ``"<ErrorType>: <message>"`` with the run bearer masked.
     """
-    text = f"{type(exc).__name__}: {exc}"
-    return text.replace(secret, "***") if secret else text
+    return _DIAGNOSTICS.scrub(f"{type(exc).__name__}: {exc}")
 
 
 def _text_of(event: object) -> str:
@@ -85,8 +219,28 @@ def _text_of(event: object) -> str:
 def _normalize(event: object) -> dict[str, object] | None:
     """Map one SDK event onto the adapter's normalized JSON shape.
 
+    An event that is neither adapter-relevant nor in the known-ignored set is
+    reported as ``unmapped`` carrying its class name: the host logs that at
+    WARNING, so an SDK upgrade that introduces or renames an event surfaces as
+    a visible protocol skew rather than a silently missing turn.
+
     Returns:
-        The normalized event dict, or ``None`` for a non-adapter event.
+        The normalized event dict, or ``None`` for a known-ignored event.
+    """
+    turn = _normalize_turn(event)
+    if turn is not None:
+        return turn
+    name = type(event).__name__
+    if name in _IGNORED_EVENT_NAMES:
+        return None
+    return {"kind": "unmapped", "text": name}
+
+
+def _normalize_turn(event: object) -> dict[str, object] | None:
+    """Map one adapter-relevant SDK event onto its normalized shape.
+
+    Returns:
+        The normalized event dict, or ``None`` for any other event class.
     """
     if isinstance(event, ActionEvent):
         return {
@@ -99,7 +253,9 @@ def _normalize(event: object) -> dict[str, object] | None:
     if isinstance(event, MessageEvent):
         return {"kind": "message", "text": _text_of(event)}
     if isinstance(event, AgentErrorEvent):
-        return {"kind": "error", "text": _text_of(event)}
+        # Scrubbed like every other outbound text: an SDK error carries
+        # request context, and this path never reaches _safe_error_text.
+        return {"kind": "error", "text": _DIAGNOSTICS.scrub(_text_of(event))}
     return None
 
 
@@ -110,7 +266,7 @@ def _build_agent(spec: dict[str, object]) -> Agent:
         The configured SDK ``Agent``.
     """
     llm = LLM(
-        model=spec["model"],
+        model=_routed_model(str(spec["model"])),
         api_key=spec["gateway_token"],
         base_url=spec["gateway_base_url"],
         usage_id=_LLM_USAGE_ID,
@@ -130,11 +286,33 @@ def _build_agent(spec: dict[str, object]) -> Agent:
 def _accumulated_cost(conversation: object) -> float:
     """Read the conversation's running accumulated cost, best-effort.
 
+    The total lives on the COMBINED metrics, not on ``ConversationStats``
+    itself (the SDK reads it the same way for its own budget check), so
+    reaching for the attribute directly silently yields zero on every event
+    and flatlines the host's per-turn cost attribution.
+
     Returns:
         The accumulated cost, or ``0.0`` when unavailable.
     """
     stats = getattr(conversation, "conversation_stats", None)
-    return float(getattr(stats, "accumulated_cost", 0.0) or 0.0)
+    combined = getattr(stats, "get_combined_metrics", None)
+    metrics = combined() if callable(combined) else None
+    cost = getattr(metrics, "accumulated_cost", None)
+    if cost is None:
+        # Zero is indistinguishable from "this run cost nothing", and the
+        # host's per-task budget kill reads this number, so a shape the
+        # contract test does not reproduce has to leave a trace rather than
+        # silently disarming the cap. Once per run: this is called on every
+        # event, and a broken shape stays broken for the whole run, so
+        # repeating it would bury the rest of the container's diagnostics.
+        if not _COST_SHAPE_REPORTED:
+            _COST_SHAPE_REPORTED.add("reported")
+            sys.stderr.write(
+                f"accumulated cost unavailable: stats={type(stats).__name__} "
+                f"metrics={type(metrics).__name__}\n"
+            )
+        return 0.0
+    return float(cost or 0.0)
 
 
 def _run(spec: dict[str, object]) -> None:
@@ -151,11 +329,6 @@ def _run(spec: dict[str, object]) -> None:
     def _callback(event: object) -> None:
         normalized = _normalize(event)
         if normalized is None:
-            # An SDK event outside the four adapter-relevant classes is not
-            # forwarded, but log it to stderr (the host captures container
-            # stderr at DEBUG) so a new/unhandled event type is discoverable
-            # rather than vanishing without a trace.
-            sys.stderr.write(f"unrecognized SDK event: {type(event).__name__}\n")
             return
         conversation = holder.get("conversation")
         if conversation is not None:
@@ -174,6 +347,7 @@ def _run(spec: dict[str, object]) -> None:
         conversation_id=UUID(str(spec["conversation_id"])),
         max_iteration_per_run=int(str(spec["max_turns"])),
         callbacks=[_callback],
+        visualizer=None,
     )
     holder["conversation"] = conversation
     conversation.send_message(spec["task_prompt"])
@@ -187,22 +361,27 @@ def main() -> int:
     Returns:
         ``0`` on success, ``1`` on any failure (reported as an error line).
     """
-    # Capture the bearer up front (default empty) so the error path can scrub
-    # it even when a failure happens before / during spec parsing.
-    secret = ""
     try:
         line = sys.stdin.readline()
         if not line.strip():
             _emit({"kind": "error", "text": "empty run spec on stdin"})
             return 1
         spec = json.loads(line)
-        secret = str(spec.get("gateway_token", "")) if isinstance(spec, dict) else ""
+        # Bind before the first SDK call, so every subsequent diagnostic
+        # write from any library is masked on its way to the host.
+        if isinstance(spec, dict):
+            _DIAGNOSTICS.bind_secret(str(spec.get("gateway_token", "")))
         _run(spec)
     except Exception as exc:  # noqa: BLE001 -- container boundary: report, don't crash silently
-        _emit({"kind": "error", "text": _safe_error_text(exc, secret=secret)})
+        # The emitted line carries only "<Type>: <message>"; without the
+        # traceback a rare failure leaves nothing to debug from. It goes to
+        # the scrubbing stream, which masks a bearer echoed by a frame.
+        sys.stderr.write(traceback.format_exc())
+        _emit({"kind": "error", "text": _safe_error_text(exc)})
         return 1
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with _EVENTS:
+        raise SystemExit(main())

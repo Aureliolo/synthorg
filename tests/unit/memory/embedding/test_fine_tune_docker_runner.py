@@ -26,6 +26,7 @@ from synthorg.memory.errors import (
     FineTuneCancelledError,
     FineTuneStageExecutionError,
 )
+from tests._shared import FakeDockerClient
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -156,11 +157,11 @@ class FakeContainers(aiodocker.containers.DockerContainers):
         return self.fake_container
 
 
-class FakeDocker(aiodocker.Docker):
+class FakeDocker(FakeDockerClient):
     """Client double: no socket, no session (skips the real ``__init__``)."""
 
     def __init__(self, containers: FakeContainers) -> None:
-        self.containers = containers
+        super().__init__(containers)
         self.closed = False
 
     @override
