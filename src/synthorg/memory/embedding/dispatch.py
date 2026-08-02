@@ -13,23 +13,8 @@ import asyncio
 import math
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from functools import cache
 from typing import Final
-
-from litellm.exceptions import (
-    APIConnectionError as LiteLLMConnectionError,
-)
-from litellm.exceptions import (
-    InternalServerError as LiteLLMInternalError,
-)
-from litellm.exceptions import (
-    RateLimitError as LiteLLMRateLimit,
-)
-from litellm.exceptions import (
-    ServiceUnavailableError as LiteLLMUnavailable,
-)
-from litellm.exceptions import (
-    Timeout as LiteLLMTimeout,
-)
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -65,18 +50,44 @@ RETRY_CAP_SECONDS: Final[float] = 8.0
 #: long as the provider cared to keep the socket open.
 DEFAULT_EMBED_TIMEOUT_SECONDS: Final[float] = 60.0
 
-# LiteLLM's own transient exception types. A deterministic fault
-# (auth, bad request, model-not-found, content policy) is NOT here: it
-# repeats identically, so retrying it only burns the backoff budget on
-# the read + write hot path and masks the real cause behind a generic
-# retry-exhausted error. Mirrors the completion driver's own mapping.
-RETRYABLE_EMBEDDING_ERRORS: Final[tuple[type[Exception], ...]] = (
-    LiteLLMRateLimit,
-    LiteLLMTimeout,
-    LiteLLMUnavailable,
-    LiteLLMInternalError,
-    LiteLLMConnectionError,
-)
+
+@cache
+def _retryable_embedding_errors() -> tuple[type[Exception], ...]:
+    """LiteLLM's own transient exception types.
+
+    A deterministic fault (auth, bad request, model-not-found, content
+    policy) is NOT here: it repeats identically, so retrying it only burns
+    the backoff budget on the read + write hot path and masks the real
+    cause behind a generic retry-exhausted error. Mirrors the completion
+    driver's own mapping.
+
+    Resolved on first use rather than at import. This module sits on the
+    import path of ``synthorg.api.app`` (via the memory embedder, reached
+    from the meeting conflict detector), and importing litellm costs ~2.5s,
+    which every app boot, every cold-import test and every xdist worker's
+    collection was paying to build a tuple used by one ``isinstance``. The
+    only route to that check runs through ``probe.py``, which already
+    defers its own ``from litellm import aembedding``, so litellm is
+    always loaded by the time an error needs classifying.
+
+    Returns:
+        The exception types worth another attempt.
+    """
+    from litellm.exceptions import (  # noqa: PLC0415 -- deferred: ~2.5s cold
+        APIConnectionError,
+        InternalServerError,
+        RateLimitError,
+        ServiceUnavailableError,
+        Timeout,
+    )
+
+    return (
+        RateLimitError,
+        Timeout,
+        ServiceUnavailableError,
+        InternalServerError,
+        APIConnectionError,
+    )
 
 
 def format_model_ref(provider: str, model: str) -> str:
@@ -98,7 +109,7 @@ def is_retryable_embedding_error(exc: Exception) -> bool:
     Returns:
         ``True`` when the call should be retried.
     """
-    return isinstance(exc, RETRYABLE_EMBEDDING_ERRORS)
+    return isinstance(exc, _retryable_embedding_errors())
 
 
 def _embedding_retry_after(exc: Exception) -> float | None:
@@ -222,7 +233,6 @@ async def record_embedding_cost(
 __all__ = [
     "DEFAULT_EMBED_TIMEOUT_SECONDS",
     "PROVIDER_MODEL_SEPARATOR",
-    "RETRYABLE_EMBEDDING_ERRORS",
     "RETRY_BASE_SECONDS",
     "RETRY_CAP_SECONDS",
     "RETRY_MAX_ATTEMPTS",

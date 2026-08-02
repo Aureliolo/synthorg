@@ -44,6 +44,7 @@ Covers all ten invariants:
 """
 
 import importlib.util
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -77,11 +78,42 @@ _MODULE = _load_script_module()
 _PERMS = "permissions: {}\n"
 
 
-def _scan(tmp_path: Path, content: str) -> list[str]:
-    """Write content to a tmp .yml file and return the violation messages."""
+@cache
+def _repo_scan_context() -> tuple[object, object, object, object]:
+    """Resolve the four whole-tree lookups ``_scan_file`` would recompute.
+
+    Each walks and parses every composite action under ``.github/actions``.
+    Left to the default, this module's ~80 cases redo all four per case,
+    which was ~35s of the file's ~43s. The gate itself hoists them once per
+    run for the same reason; this mirrors that in the tests rather than
+    caching inside the script, where two cases deliberately repoint
+    ``_REPO_ROOT`` and a cache would quietly answer for the wrong tree.
+    """
+    consumers = _MODULE._artifact_consumer_dirs()  # type: ignore[attr-defined]
+    sinks = _MODULE._tracking_issue_dirs()  # type: ignore[attr-defined]
+    pull_defaults = _MODULE._pull_action_defaults()  # type: ignore[attr-defined]
+    ladder_costs = _MODULE._pull_ladder_costs(pull_defaults)  # type: ignore[attr-defined]
+    return consumers, sinks, pull_defaults, ladder_costs
+
+
+def _scan(tmp_path: Path, content: str, *, fresh: bool = False) -> list[str]:
+    """Write content to a tmp .yml file and return the violation messages.
+
+    Args:
+        tmp_path: Directory to write the workflow into.
+        content: The workflow YAML under test.
+        fresh: Resolve the whole-tree lookups from scratch instead of reusing
+            the cached ones. Required by any case that repoints
+            ``_REPO_ROOT`` / ``_ACTIONS_ROOT``: the cache answers for the
+            real repository, which is precisely what such a case is not
+            asking about.
+    """
     target = tmp_path / "wf.yml"
     target.write_text(content, encoding="utf-8")
-    violations: list[str] = _MODULE._scan_file(target)  # type: ignore[attr-defined]
+    context: tuple[object, ...] = () if fresh else _repo_scan_context()
+    violations: list[str] = _MODULE._scan_file(  # type: ignore[attr-defined]
+        target, *context
+    )
     return violations
 
 
@@ -1540,7 +1572,7 @@ class TestScheduleNotifiers:
                 "report_stalled", _STALL_ONLY, uses="./.github/actions/wrap-issue"
             )
         )
-        assert _scan(tmp_path, content) == []
+        assert _scan(tmp_path, content, fresh=True) == []
 
 
 class TestMain:
