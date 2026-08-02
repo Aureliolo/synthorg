@@ -597,7 +597,7 @@ deployment that never wrote an explicit row inherits the new default on its
 next boot with no prompt, so a default flip on any of these belongs in the
 release notes.
 
-Seven guardrailed `tools` keys are also frozen `construction-only` in
+Seven `tools` keys this guardrail covers are also frozen `construction-only` in
 `scripts/setting_live_or_compose_set_baseline.txt`: `mcp_sandbox_enabled`,
 `mcp_sandbox_network`, `mcp_sandbox_cpus`, `mcp_sandbox_memory_limit`,
 `mcp_sandbox_pids_limit`, `forge_tools_enabled` and `chat_tools_enabled`. The
