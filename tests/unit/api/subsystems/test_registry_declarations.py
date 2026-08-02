@@ -38,7 +38,10 @@ def _declared_settings(spec: SubsystemSpec) -> tuple[str, ...]:
 
 def test_the_shipped_declarations_order() -> None:
     """No cycle, no capability with two owners, no rebuild without a teardown."""
-    assert len(order_subsystems(SUBSYSTEMS)) == len(SUBSYSTEMS)
+    # Ordered against the shipped probes, as the reconciler does. Handing it
+    # no probes would make every ambient requirement read as unowned, which
+    # is a different assertion than this one.
+    assert len(order_subsystems(SUBSYSTEMS, _PROBED)) == len(SUBSYSTEMS)
 
 
 @pytest.mark.parametrize("spec", SUBSYSTEMS, ids=_IDS)
