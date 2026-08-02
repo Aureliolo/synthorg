@@ -93,6 +93,21 @@ class TestOrdering:
         with pytest.raises(SubsystemGraphInvalidError, match=reason):
             SubsystemReconciler((spec,), _all_capabilities(world))
 
+    def test_an_unowned_requirement_is_refused_with_no_probes_either(self) -> None:
+        # With no probes at all, every requirement no subsystem owns is
+        # unprobed, so skipping the check because the probe set is empty is
+        # exactly the case that fails open: the consumer activates as though
+        # the dependency were there.
+        world = _World()
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match="no capability probes"):
+            SubsystemReconciler((spec,), ())
+
     def test_provider_is_ordered_before_its_consumer(self) -> None:
         world = _World()
         consumer = SubsystemSpec(

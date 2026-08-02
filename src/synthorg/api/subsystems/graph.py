@@ -57,8 +57,7 @@ def order_subsystems(
         providers[spec.provides] = spec.name
 
     _reject_invalid_enabled_by(pending)
-    if probed:
-        _reject_unprobed_requirements(pending, providers, probed)
+    _reject_unprobed_requirements(pending, providers, probed)
 
     ordered: list[SubsystemSpec] = []
     satisfied: set[CapabilityId] = set()
