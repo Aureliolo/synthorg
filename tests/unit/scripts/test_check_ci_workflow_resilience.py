@@ -35,10 +35,12 @@ Covers all ten invariants:
   stages and ``${...}`` build args are exempt.
 * No job floats on a rolling runner alias, with the one documented matrix
   exemption.
-* A scheduled workflow routes BOTH failure and non-completion to a tracking
-  issue, via one notifier or two. The bare ``on:`` key is asserted to parse
-  as the YAML-1.1 boolean, because a trigger check that missed it would
-  pass every real workflow forever while looking correct.
+* A scheduled workflow routes failure and non-completion to two DIFFERENT
+  tracking-issue sinks, judged per watched job, so neither a single broad
+  notifier nor a union across jobs can stand in for real coverage. The
+  admission predicate is asserted directly as exact tuples rather than
+  through the composed message, and the bare ``on:`` key is asserted to
+  parse as the YAML-1.1 boolean.
 """
 
 import importlib.util
@@ -1088,80 +1090,214 @@ class TestRunnerPinned:
         }
 
 
-def _scheduled(notifiers: str, *, on_key: str = "on") -> str:
-    """Build a scheduled workflow with a worker job plus ``notifiers``.
-
-    ``on_key`` exists so the YAML-1.1 boolean-key path can be exercised
-    against the quoted spelling as well as the bare one.
-    """
+def _worker(name: str) -> str:
+    """A plain watched job named ``name``."""
     return (
-        f"{on_key}:\n"
-        "  schedule:\n"
-        "    - cron: 0 7 * * 1\n"
-        "jobs:\n"
-        "  worker:\n"
+        f"  {name}:\n"
         "    runs-on: ubuntu-24.04\n"
         "    timeout-minutes: 15\n"
         "    steps:\n"
-        "      - run: true\n" + notifiers
+        "      - run: true\n"
     )
 
 
-def _notifier(name: str, condition: str) -> str:
-    """A job reaching the tracking-issue composite under ``condition``."""
+def _scheduled(
+    notifiers: str, *, on_key: str = "on", extra_job: str | None = None
+) -> str:
+    """Build a scheduled workflow with watched job(s) plus ``notifiers``.
+
+    ``on_key`` exists so the YAML-1.1 boolean-key path can be exercised
+    against the quoted spelling as well as the bare one. ``extra_job`` adds a
+    second watched job, so per-job coverage can be told apart from a union
+    across every notifier in the file.
+    """
+    jobs = _worker("worker") + (_worker(extra_job) if extra_job else "")
+    return f"{on_key}:\n  schedule:\n    - cron: 0 7 * * 1\njobs:\n{jobs}{notifiers}"
+
+
+def _notifier(
+    name: str,
+    condition: str,
+    *,
+    needs: str = "worker",
+    uses: str = "./.github/actions/post-tracking-issue",
+) -> str:
+    """A job reaching the tracking-issue sink under ``condition``."""
     return (
         f"  {name}:\n"
-        "    needs: worker\n"
+        f"    needs: {needs}\n"
         f"    if: {condition}\n"
         "    runs-on: ubuntu-24.04\n"
         "    timeout-minutes: 5\n"
         "    steps:\n"
         "      - uses: actions/checkout@abc\n"
-        "      - uses: ./.github/actions/post-tracking-issue\n"
+        f"      - uses: {uses}\n"
     )
 
 
-_FAILURE_ONLY = "always() && needs.worker.result == 'failure'"
-_STALL_ONLY = (
-    "always() && needs.worker.result != 'success'"
-    " && needs.worker.result != 'failure'"
-    " && needs.worker.result != 'skipped'"
+def _cond(*clauses: str) -> str:
+    """Join result clauses into an ``always()``-guarded condition."""
+    return " && ".join(("always()", *clauses))
+
+
+_FAILURE_ONLY = _cond("needs.worker.result == 'failure'")
+_STALL_ONLY = _cond(
+    "needs.worker.result != 'success'",
+    "needs.worker.result != 'failure'",
+    "needs.worker.result != 'skipped'",
 )
-_BOTH = (
-    "always() && needs.worker.result != 'success' && needs.worker.result != 'skipped'"
-)
+_BOTH = _cond("needs.worker.result != 'success'", "needs.worker.result != 'skipped'")
+
+_NO_SINK = "has no .github/actions/post-tracking-issue job"
+_SAME_SINK = "routes failure and non-completion to the same sink"
+_NAMES_NO_JOB = "no notifier condition names a `needs.<job>.result`"
+
+
+class TestAdmits:
+    """The pure predicate behind invariant 10, asserted as exact tuples.
+
+    Driven directly rather than through the composed English message, so a
+    reworded violation cannot quietly turn these into vacuous substring
+    checks.
+    """
+
+    @pytest.mark.parametrize(
+        ("equals", "not_equals", "expected"),
+        [
+            ({"failure"}, set(), (True, False)),
+            ({"cancelled"}, set(), (False, True)),
+            (set(), {"success", "skipped"}, (True, True)),
+            (set(), {"success"}, (True, True)),
+            (set(), {"success", "failure", "skipped"}, (False, True)),
+            (set(), {"success", "cancelled"}, (True, False)),
+            (set(), set(), (False, False)),
+            ({"success"}, set(), (False, False)),
+        ],
+    )
+    def test_admission(
+        self, equals: set[str], not_equals: set[str], expected: tuple[bool, bool]
+    ) -> None:
+        admission = _MODULE._admits(equals, not_equals)  # type: ignore[attr-defined]
+        assert (admission.failure, admission.stall) == expected
+
+
+class TestResultComparisons:
+    """Comparisons are bound to the job each one names."""
+
+    def test_two_jobs_do_not_pool_their_literals(self) -> None:
+        # The bug this prevents: an unbound scan would union both jobs'
+        # literals and report full coverage for each.
+        condition = _cond(
+            "needs.alpha.result == 'failure'", "needs.beta.result == 'cancelled'"
+        )
+        grouped = _MODULE._result_comparisons(condition)  # type: ignore[attr-defined]
+        assert set(grouped) == {"alpha", "beta"}
+        assert grouped["alpha"] == ({"failure"}, set())
+        assert grouped["beta"] == ({"cancelled"}, set())
+
+    def test_double_quoted_literals_are_not_recognised(self) -> None:
+        # GitHub expressions require single quotes, so a double-quoted
+        # comparison is invalid config. Reading nothing makes it fail closed.
+        assert (
+            _MODULE._result_comparisons(  # type: ignore[attr-defined]
+                'always() && needs.worker.result == "failure"'
+            )
+            == {}
+        )
 
 
 class TestScheduleNotifiers:
-    """Invariant 10: a cron run reports both failure and non-completion."""
+    """Invariant 10: failure and non-completion reach two different sinks."""
 
-    def test_failure_only_notifier_flagged(self, tmp_path: Path) -> None:
-        violations = _scan(tmp_path, _scheduled(_notifier("r", _FAILURE_ONLY)))
+    @pytest.mark.parametrize(
+        ("condition", "present", "absent"),
+        [
+            (_FAILURE_ONLY, "non-completion", "failure"),
+            (_STALL_ONLY, "failure", "non-completion"),
+        ],
+    )
+    def test_one_sided_notifier_flagged(
+        self, tmp_path: Path, condition: str, present: str, absent: str
+    ) -> None:
+        # The negative assertion is what makes this precise: without it, a
+        # regression that dropped BOTH halves would still contain `present`
+        # and pass, which is exactly the case each parameter guards.
+        violations = _scan(tmp_path, _scheduled(_notifier("r", condition)))
         assert len(violations) == 1
-        assert "non-completion" in violations[0]
+        assert present in violations[0]
+        assert absent not in violations[0]
 
-    def test_stall_only_notifier_flagged(self, tmp_path: Path) -> None:
-        violations = _scan(tmp_path, _scheduled(_notifier("r", _STALL_ONLY)))
+    def test_one_notifier_covering_both_is_flagged(self, tmp_path: Path) -> None:
+        # The C1 shape: a single broad-complement sink catches cancellation
+        # under whatever title it carries, so a stalled run is filed as the
+        # finding that title asserts.
+        violations = _scan(tmp_path, _scheduled(_notifier("r", _BOTH)))
         assert len(violations) == 1
-        assert "failure" in violations[0]
-
-    def test_complement_form_covers_both(self, tmp_path: Path) -> None:
-        assert _scan(tmp_path, _scheduled(_notifier("r", _BOTH))) == []
+        assert _SAME_SINK in violations[0]
+        assert "'r'" in violations[0]
 
     def test_two_jobs_split_the_coverage(self, tmp_path: Path) -> None:
-        # The shape this gate exists to permit: a stalled run measured
-        # nothing, so it gets its own sink rather than being filed under a
-        # title that asserts a finding.
         content = _scheduled(
             _notifier("report_failure", _FAILURE_ONLY)
             + _notifier("report_stalled", _STALL_ONLY)
         )
         assert _scan(tmp_path, content) == []
 
+    def test_a_broad_sink_paired_with_a_stall_sink_passes(self, tmp_path: Path) -> None:
+        # Two distinct sinks exist, so a distinct pair is selectable even
+        # though the first also admits cancellation.
+        content = _scheduled(
+            _notifier("broad", _BOTH) + _notifier("report_stalled", _STALL_ONLY)
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_or_joined_cross_job_condition(self, tmp_path: Path) -> None:
+        # The maint-ghcr.yml shape, pinned here rather than relying on the
+        # live-tree self-check, which would vanish if that file changed.
+        content = _scheduled(
+            _notifier(
+                "report_failure",
+                _cond(
+                    "( needs.worker.result == 'failure'"
+                    " || needs.second.result == 'failure' )"
+                ),
+                needs="[worker, second]",
+            )
+            + _notifier(
+                "report_stalled",
+                _cond(
+                    "( needs.worker.result == 'cancelled'"
+                    " || needs.second.result == 'cancelled' )"
+                ),
+                needs="[worker, second]",
+            ),
+            extra_job="second",
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_a_second_watched_job_is_judged_independently(self, tmp_path: Path) -> None:
+        # Union-across-notifiers alone would pass this: one sink covers
+        # worker's failure, another covers second's stall, and every label
+        # appears somewhere. Per-job binding is what catches the two
+        # outcomes that reach nobody.
+        content = _scheduled(
+            _notifier("report_failure", _FAILURE_ONLY)
+            + _notifier(
+                "report_stalled",
+                _cond("needs.second.result == 'cancelled'"),
+                needs="second",
+            ),
+            extra_job="second",
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 2
+        assert any("'worker'" in v and "non-completion" in v for v in violations)
+        assert any("'second'" in v and "failure" in v for v in violations)
+
     def test_no_notifier_at_all_flagged(self, tmp_path: Path) -> None:
         violations = _scan(tmp_path, _scheduled(""))
         assert len(violations) == 1
-        assert "no .github/actions/post-tracking-issue job" in violations[0]
+        assert _NO_SINK in violations[0]
 
     def test_unscheduled_workflow_needs_no_notifier(self, tmp_path: Path) -> None:
         content = (
@@ -1176,24 +1312,31 @@ class TestScheduleNotifiers:
         # True. Reading only data["on"] would match no real workflow and the
         # invariant would pass everything forever while looking correct.
         assert True in yaml.safe_load(_scheduled(""))
-        violations = _scan(tmp_path, _scheduled(""))
-        assert len(violations) == 1
+        assert len(_scan(tmp_path, _scheduled(""))) == 1
 
     def test_quoted_on_key_is_read_as_a_trigger(self, tmp_path: Path) -> None:
-        violations = _scan(tmp_path, _scheduled("", on_key='"on"'))
-        assert len(violations) == 1
+        assert len(_scan(tmp_path, _scheduled("", on_key='"on"'))) == 1
+
+    def test_list_form_on_is_not_a_schedule_trigger(self, tmp_path: Path) -> None:
+        # `schedule` carries its cron entries, so it cannot appear in the
+        # list form. A gate that accepted it there would carry a branch no
+        # input can reach.
+        content = (
+            "on: [push, workflow_dispatch]\njobs:\n  worker:\n"
+            "    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
+            "    steps:\n      - run: true\n"
+        )
+        assert _scan(tmp_path, content) == []
 
     def test_unrecognised_expression_fails_closed(self, tmp_path: Path) -> None:
         # `failure()` admits failure in GitHub's semantics, but this gate
-        # models two idioms only. Crediting an expression it cannot read
-        # would hand out coverage on trust.
+        # models explicit result comparisons only. Crediting an expression
+        # it cannot read would hand out coverage on trust.
         violations = _scan(tmp_path, _scheduled(_notifier("r", "failure()")))
         assert len(violations) == 1
-        assert "failure" in violations[0]
-        assert "non-completion" in violations[0]
+        assert _NAMES_NO_JOB in violations[0]
 
     def test_a_non_notifier_job_does_not_count(self, tmp_path: Path) -> None:
-        # A job that merely runs on failure but files nothing is not a sink.
         content = _scheduled(
             "  bystander:\n"
             "    needs: worker\n"
@@ -1205,7 +1348,43 @@ class TestScheduleNotifiers:
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
-        assert "no .github/actions/post-tracking-issue job" in violations[0]
+        assert _NO_SINK in violations[0]
+
+    def test_a_neighbour_of_the_sink_is_not_a_sink(self, tmp_path: Path) -> None:
+        # Substring matching would credit this and silently under-enforce.
+        content = _scheduled(
+            _notifier(
+                "r", _FAILURE_ONLY, uses="./.github/actions/post-tracking-issue-v2"
+            )
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_SINK in violations[0]
+
+    def test_filing_through_a_wrapper_composite_counts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A sink reached through a local composite is still a sink; without
+        # the fixpoint closure the wrapper would hide it and the gate would
+        # report a correctly-routed workflow as routing nothing.
+        actions = tmp_path / ".github" / "actions"
+        (actions / "post-tracking-issue").mkdir(parents=True)
+        wrapper = actions / "wrap-issue"
+        wrapper.mkdir()
+        (wrapper / "action.yml").write_text(
+            "runs:\n  using: composite\n  steps:\n"
+            "    - uses: ./.github/actions/post-tracking-issue\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_ACTIONS_ROOT", actions)
+        content = _scheduled(
+            _notifier("report_failure", _FAILURE_ONLY)
+            + _notifier(
+                "report_stalled", _STALL_ONLY, uses="./.github/actions/wrap-issue"
+            )
+        )
+        assert _scan(tmp_path, content) == []
 
 
 class TestMain:

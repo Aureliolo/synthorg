@@ -134,29 +134,32 @@ hardening they carry cannot silently regress:
    returning. ``_ROLLING_RUNNER_EXEMPT`` carries the one matrix whose
    purpose is running on whatever GitHub ships as latest.
 
-10. **A scheduled workflow routes BOTH failure and non-completion to a
-    tracking issue.** Nothing watches a cron run: no reviewer waits on it
-    and no PR turns red, so whatever it fails to report is simply not
-    known. Two distinct outcomes therefore need a sink. A job that FAILS
-    is the obvious one. A job that never finished -- cancelled, or reaped
-    at ``timeout-minutes`` -- is the one that gets missed, because it
-    looks like nothing happened, and the last real result ages silently
-    while the schedule appears to still be running.
+10. **A scheduled workflow routes failure and non-completion to two
+    DIFFERENT tracking-issue sinks.** Nothing watches a cron run: no
+    reviewer waits on it and no PR turns red, so whatever it fails to
+    report is simply not known. Two distinct outcomes therefore need a
+    sink. A job that FAILS is the obvious one. A job that never finished
+    -- cancelled, or reaped at ``timeout-minutes`` -- is the one that
+    gets missed, because it looks like nothing happened, and the last
+    real result ages silently while the schedule appears to still run.
 
-    Routing both does NOT mean routing them together. A stalled run
-    measured nothing, so filing it under a title that asserts a finding
-    ("External link rot", "Agent eval regression") reports something
-    never observed. One job admitting both, or two jobs with separate
-    titles, both satisfy this; the titles are not compared.
+    They must not share a sink. A stalled run measured nothing, so a
+    single notifier catching both files a cancellation under a title
+    that asserts a finding ("Secret scan regression") -- reporting a
+    result the run never produced, at that title's priority. Requiring
+    two distinct jobs is what makes the neutral title reachable; the
+    titles themselves are not compared, because no check can judge
+    whether a string asserts a finding.
 
-    Admission is read from the ``if:`` text of each job that reaches the
-    ``post-tracking-issue`` composite, recognising the two idioms in use:
-    an ``== '<result>'`` equality, and the ``!= 'success' && !=
-    'skipped'`` complement (which admits failure and cancellation both,
-    unless it also excludes ``!= 'failure'``). An expression written some
-    other way is not understood and must adopt one of these -- the gate
-    fails closed rather than guessing at an expression grammar it only
-    partly models.
+    Admission is read per watched job from the ``if:`` text of every job
+    reaching the ``post-tracking-issue`` composite. ``needs.<job>.result
+    == '<result>'`` admits that result; ``!= 'success'`` admits failure
+    and cancellation both, minus whatever it separately excludes. Each
+    comparison is bound to the job it names, so a notifier watching one
+    job cannot vouch for another. An expression written some other way
+    is not understood and must adopt one of these -- the gate fails
+    closed rather than guessing at an expression grammar it only partly
+    models.
 
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
@@ -183,7 +186,7 @@ import re
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 
 import yaml
 
@@ -302,80 +305,184 @@ _IF_KEY: Final[str] = "if"
 # than the string "on". Reading data["on"] therefore misses every real
 # workflow file, and a trigger check written that way passes everything
 # forever while looking correct.
-_ON_KEYS: Final[tuple[object, ...]] = ("on", True)
+_ON_KEYS: Final[frozenset[str | bool]] = frozenset({"on", True})
 
 _RESULT_FAILURE: Final[str] = "failure"
 _RESULT_SUCCESS: Final[str] = "success"
-_RESULT_SKIPPED: Final[str] = "skipped"
 _RESULT_CANCELLED: Final[str] = "cancelled"
 
+# Bound to the job each comparison names. An unbound `.result` match would let
+# a notifier watching one job vouch for a sibling it never mentions.
+_RESULT_EQ: Final[re.Pattern[str]] = re.compile(
+    r"needs\.([A-Za-z0-9_-]+)\.result\s*==\s*'([a-z_]+)'"
+)
+_RESULT_NE: Final[re.Pattern[str]] = re.compile(
+    r"needs\.([A-Za-z0-9_-]+)\.result\s*!=\s*'([a-z_]+)'"
+)
 
-def _result_comparisons(condition: str) -> tuple[set[str], set[str]]:
-    """Return the ``needs.*.result`` literals compared by equality / inequality.
+_MIN_DISTINCT_SINKS: Final[int] = 2
+
+
+class _Admission(NamedTuple):
+    """Which outcomes of one watched job a notifier condition admits."""
+
+    failure: bool
+    stall: bool
+
+
+def _result_comparisons(condition: str) -> dict[str, tuple[set[str], set[str]]]:
+    """Group a condition's result comparisons by the job each one names.
 
     Args:
         condition: The raw ``if:`` expression text of a job.
 
     Returns:
-        ``(equals, not_equals)``, the result literals the expression compares
-        with ``==`` and with ``!=`` respectively.
+        Watched job name mapped to ``(equals, not_equals)``, the result
+        literals that job is compared against with ``==`` and with ``!=``.
     """
-    equals = set(re.findall(r"\.result\s*==\s*'([a-z_]+)'", condition))
-    not_equals = set(re.findall(r"\.result\s*!=\s*'([a-z_]+)'", condition))
-    return equals, not_equals
+    grouped: dict[str, tuple[set[str], set[str]]] = {}
+    for pattern, index in ((_RESULT_EQ, 0), (_RESULT_NE, 1)):
+        for job_name, literal in pattern.findall(condition):
+            grouped.setdefault(job_name, (set(), set()))[index].add(literal)
+    return grouped
 
 
-def _admits(condition: str) -> tuple[bool, bool]:
-    """Return whether a notifier condition admits failure and non-completion.
+def _admits(equals: set[str], not_equals: set[str]) -> _Admission:
+    """Return which outcomes one watched job's comparisons admit.
 
-    Only the two idioms the repository uses are modelled: an explicit
-    ``== '<result>'``, and the ``!= 'success' && != 'skipped'`` complement.
-    Anything else reads as admitting neither, so an unrecognised expression
-    fails the gate rather than being credited with coverage it may not have.
+    ``!= 'success'`` admits every non-success outcome, so it covers failure
+    and cancellation both, minus whatever the condition separately excludes.
+    Anything the two idioms do not describe admits nothing, so an
+    unrecognised expression fails the gate rather than being credited with
+    coverage it may not have.
 
     Args:
-        condition: The raw ``if:`` expression text of a notifier job.
+        equals: Result literals this job is compared against with ``==``.
+        not_equals: Result literals this job is compared against with ``!=``.
 
     Returns:
-        ``(admits_failure, admits_stall)``.
+        The outcomes admitted for that job.
     """
-    equals, not_equals = _result_comparisons(condition)
-    # The complement idiom: everything that is not a clean pass and not a
-    # deliberate skip. It covers both outcomes unless it explicitly carves
-    # one back out, which is how a stall-only sink is written.
-    complement = _RESULT_SUCCESS in not_equals and _RESULT_SKIPPED in not_equals
-    admits_failure = _RESULT_FAILURE in equals or (
-        complement and _RESULT_FAILURE not in not_equals
+    complement = _RESULT_SUCCESS in not_equals
+    return _Admission(
+        failure=_RESULT_FAILURE in equals
+        or (complement and _RESULT_FAILURE not in not_equals),
+        stall=_RESULT_CANCELLED in equals
+        or (complement and _RESULT_CANCELLED not in not_equals),
     )
-    admits_stall = _RESULT_CANCELLED in equals or (
-        complement and _RESULT_CANCELLED not in not_equals
-    )
-    return admits_failure, admits_stall
 
 
-def _is_notifier_job(job: dict[str, object]) -> bool:
-    """Return whether a job reaches the ``post-tracking-issue`` composite."""
+def _reaches_tracking_issue(uses: str, sinks: frozenset[str]) -> bool:
+    """Return whether a ``uses:`` reference reaches the tracking-issue sink.
+
+    Matched on the resolved action id rather than by substring, so a NEIGHBOUR
+    of the composite (``./.github/actions/post-tracking-issue-v2``) is not
+    mistaken for it and silently credited as a sink. The ``./`` strip and the
+    ``/``-anchored suffix mirror ``_is_checkout_action``: both the local and
+    the fork-qualified reference forms have to resolve.
+    """
+    action = _action_id(uses).removeprefix("./").rstrip("/")
+    return any(action == sink or action.endswith(f"/{sink}") for sink in sinks)
+
+
+def _tracking_issue_dirs() -> frozenset[str]:
+    """Return every local action directory that reaches the tracking issue.
+
+    Closed under "calls a filer" by fixpoint, exactly as
+    ``_artifact_consumer_dirs`` is. A notifier that files through a wrapper
+    composite rather than calling ``post-tracking-issue`` itself is still a
+    sink; without the closure the wrapper would hide it and the gate would
+    report a workflow as routing nothing while it routes correctly.
+    """
+    calls: dict[str, set[str]] = {}
+    filers: set[str] = {_TRACKING_ISSUE_ACTION}
+    for path in _iter_action_files():
+        data = _load_yaml_mapping(path)
+        if data is None:
+            continue
+        directory = _relative_path(path.parent)
+        used = _composite_uses(data)
+        calls[directory] = {
+            local
+            for local in (_local_action_dir(ref) for ref in used)
+            if local is not None
+        }
+    settled = False
+    while not settled:
+        settled = True
+        for directory, targets in calls.items():
+            if directory not in filers and targets & filers:
+                filers.add(directory)
+                settled = False
+    return frozenset(filers)
+
+
+def _is_notifier_job(job: dict[str, object], sinks: frozenset[str]) -> bool:
+    """Return whether a job reaches the tracking-issue sink, directly or not."""
     return any(
-        _TRACKING_ISSUE_ACTION in str(step.get("uses", "")) for step in _job_steps(job)
+        isinstance(step.get("uses"), str)
+        and _reaches_tracking_issue(str(step["uses"]), sinks)
+        for step in _job_steps(job)
     )
 
 
 def _has_schedule_trigger(data: dict[str, object]) -> bool:
     """Return whether the workflow declares a ``schedule:`` trigger.
 
-    Walks the mapping rather than indexing it: one of the keys being matched
-    is genuinely a bool (see ``_ON_KEYS``), which no lookup on a ``str``-keyed
-    mapping can express. Iterating compares whatever keys are actually there,
-    so the bool arrives on its own without a cast or a silencing comment.
+    Walks the mapping rather than indexing it, because of the key type
+    ``_ON_KEYS`` documents; iterating compares whatever keys are there, so
+    the bool arrives without a cast or a silencing comment.
+
+    Only the mapping form of ``on:`` is inspected. A ``schedule`` trigger
+    carries its own ``cron:`` entries, so it cannot appear in the list form
+    (``on: [push, schedule]`` is not valid workflow config); accepting it
+    there would be a branch no input can reach.
     """
-    for key, triggers in data.items():
-        if key not in _ON_KEYS:
-            continue
-        if isinstance(triggers, dict) and _SCHEDULE_KEY in triggers:
-            return True
-        if isinstance(triggers, list) and _SCHEDULE_KEY in triggers:
-            return True
-    return False
+    return any(
+        key in _ON_KEYS and isinstance(triggers, dict) and _SCHEDULE_KEY in triggers
+        for key, triggers in data.items()
+    )
+
+
+def _sink_problems(watched: dict[str, dict[str, _Admission]]) -> list[str]:
+    """Return the per-watched-job coverage failures across a workflow.
+
+    Args:
+        watched: Watched job name mapped to notifier job name mapped to the
+            outcomes that notifier admits for it.
+
+    Returns:
+        One message per watched job that is not fully routed.
+    """
+    problems: list[str] = []
+    for job_name in sorted(watched):
+        by_notifier = watched[job_name]
+        failure_sinks = {n for n, a in by_notifier.items() if a.failure}
+        stall_sinks = {n for n, a in by_notifier.items() if a.stall}
+        missing = [
+            label
+            for label, sinks in (
+                ("failure", failure_sinks),
+                ("non-completion (cancelled / timed out)", stall_sinks),
+            )
+            if not sinks
+        ]
+        if missing:
+            problems.append(
+                f"job '{job_name}' routes no tracking issue for"
+                f" {' and '.join(missing)}; a run ending that way reports to"
+                " nobody"
+            )
+        elif len(failure_sinks | stall_sinks) < _MIN_DISTINCT_SINKS:
+            sink = next(iter(failure_sinks))
+            problems.append(
+                f"job '{job_name}' routes failure and non-completion to the"
+                f" same sink ('{sink}'), so a cancelled or timed-out run files"
+                " that sink's title. A stalled run measured nothing: narrow"
+                " this one to `== 'failure'` and add a second notifier with an"
+                " outcome-neutral title"
+            )
+    return problems
 
 
 def _check_schedule_notifiers(
@@ -393,10 +500,11 @@ def _check_schedule_notifiers(
     """
     if not _has_schedule_trigger(data):
         return []
+    sinks = _tracking_issue_dirs()
     notifiers = {
         str(name): job
         for name, job in jobs.items()
-        if isinstance(job, dict) and _is_notifier_job(job)
+        if isinstance(job, dict) and _is_notifier_job(job, sinks)
     }
     if not notifiers:
         return [
@@ -406,33 +514,22 @@ def _check_schedule_notifiers(
                 " and non-completion somewhere"
             )
         ]
-    covers_failure = False
-    covers_stall = False
-    for job in notifiers.values():
-        admits_failure, admits_stall = _admits(str(job.get(_IF_KEY, "")))
-        covers_failure = covers_failure or admits_failure
-        covers_stall = covers_stall or admits_stall
-    missing = [
-        label
-        for label, covered in (
-            ("failure", covers_failure),
-            ("non-completion (cancelled / timed out)", covers_stall),
-        )
-        if not covered
-    ]
-    if not missing:
-        return []
-    names = ", ".join(sorted(notifiers))
-    return [
-        (
-            "scheduled workflow routes no tracking issue for"
-            f" {' and '.join(missing)} (notifier jobs: {names});"
-            " a run ending that way reports to nobody. Admit it in an"
-            " existing notifier, or add one with its own title -- a stalled"
-            " run measured nothing, so it must not be filed under a title"
-            " asserting a finding"
-        )
-    ]
+    watched: dict[str, dict[str, _Admission]] = {}
+    for notifier_name, job in notifiers.items():
+        condition = str(job.get(_IF_KEY, ""))
+        for job_name, (equals, nots) in _result_comparisons(condition).items():
+            watched.setdefault(job_name, {})[notifier_name] = _admits(equals, nots)
+    if not watched:
+        names = ", ".join(sorted(notifiers))
+        return [
+            (
+                "no notifier condition names a `needs.<job>.result` (notifier"
+                f" jobs: {names}), so nothing states which outcomes reach a"
+                " tracking issue. Compare the watched job's result explicitly"
+                " rather than relying on `failure()`"
+            )
+        ]
+    return _sink_problems(watched)
 
 
 def _iter_workflow_files() -> Iterable[Path]:

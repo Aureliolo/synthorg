@@ -199,24 +199,21 @@ jobs:
     needs: [config, cleanup]
     # Scheduled only: a manual dispatch is watched by whoever triggered it.
     #
-    # `cancelled` reports too. It was excluded as "just the 120-minute
-    # backfill cap", but that cap is reachable only from a dispatch, which
-    # this job already ignores. On the weekly schedule a cancellation is a
-    # hang, a stall or a timeout, and excluding it meant a prune that never
-    # finished alerted nobody, week after week, since nothing else watches
-    # this workflow.
+    # `config` is watched alongside `cleanup`. It gates `cleanup`, so a
+    # `config` failure skips `cleanup`, leaving its result neither `failure`
+    # nor `cancelled` -- the one weekly run that most needs a tracking issue
+    # would open none if only `cleanup` were checked.
     #
-    # `config` is checked too. It gates `cleanup`, so a `config` failure
-    # skips `cleanup`, leaving its result neither `failure` nor `cancelled`
-    # and skipping this job as well -- the one weekly run that most needs a
-    # tracking issue would open none.
+    # Both are matched on `== 'failure'` alone. A prune that never finished
+    # refused no version and deleted nothing, so the digest this body quotes
+    # would not exist; report-stalled owns that outcome under a title that
+    # claims no finding.
     if: >-
       always()
       && github.event_name == 'schedule'
       && (
-        needs.config.result != 'success'
+        needs.config.result == 'failure'
         || needs.cleanup.result == 'failure'
-        || needs.cleanup.result == 'cancelled'
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -270,4 +267,54 @@ jobs:
           labels: 'automation:ci-health,type:ci,prio:low'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished prune
+    needs: [config, cleanup]
+    # Both watched jobs get the complement of the three settled results, so
+    # a result GitHub adds later still lands somewhere rather than falling
+    # through both sinks. `skipped` is excluded on `cleanup` because a
+    # `config` failure legitimately skips it, and that path is already
+    # reported by report-failure via `config`.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && (
+        (
+          needs.config.result != 'success'
+          && needs.config.result != 'failure'
+          && needs.config.result != 'skipped'
+        )
+        || (
+          needs.cleanup.result != 'success'
+          && needs.cleanup.result != 'failure'
+          && needs.cleanup.result != 'skipped'
+        )
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'GHCR prune not completing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          subject: 'The weekly GHCR prune'
+          not-measured: 'no version was refused and no version was deleted'
+          guidance: >-
+            Check the run's step timings against the cleanup job's 120-minute
+            budget. Unlike a failed prune this leaves no refused digest to
+            quote, so there is no repair command to run; the prune is
+            idempotent, so a genuinely transient stall clears on the next
+            weekly run while stale dev versions accumulate meanwhile.
+          result: ${{ needs.cleanup.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}

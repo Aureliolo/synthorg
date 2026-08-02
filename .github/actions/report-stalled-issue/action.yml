@@ -1,0 +1,95 @@
+name: 'Report a stalled scheduled run'
+
+description: |
+  File or update a tracking issue for a scheduled job that never finished.
+
+  A run reaped at `timeout-minutes`, or cancelled, measured nothing. Filing it
+  under a title that asserts a finding ("Secret scan regression") would report a
+  result the run never produced, so every caller passes a separate, outcome-
+  neutral title here and keeps its finding-asserting sink on `result == 'failure'`
+  alone. Enforced by invariant 10 of scripts/check_ci_workflow_resilience.py.
+
+  The body wording is fixed by this action rather than by each caller, so the
+  "nothing was measured" framing cannot drift between workflows; callers supply
+  only the subject, what went unmeasured, and what to check.
+
+inputs:
+  title:
+    description: 'Issue title. Must NOT assert a finding: the run produced none.'
+    required: true
+
+  labels:
+    description: 'Comma-separated labels for the tracking issue.'
+    required: true
+
+  subject:
+    description: 'What did not finish, e.g. "The weekly gitleaks scan".'
+    required: true
+
+  not-measured:
+    description: >-
+      What consequently went unobserved, phrased to complete "...: <value>,
+      because the run never completed", e.g. "no secrets were scanned for".
+    required: true
+
+  guidance:
+    description: 'What an operator should check first, e.g. which timeout to inspect.'
+    required: true
+
+  result:
+    description: 'The watched job result, i.e. needs.<job>.result.'
+    required: true
+
+  run-url:
+    description: 'Link to the run that stalled.'
+    required: true
+
+  gh-token:
+    description: 'Token with issues: write, forwarded to post-tracking-issue.'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compose body
+      id: body
+      shell: bash
+      env:
+        SUBJECT: ${{ inputs.subject }}
+        NOT_MEASURED: ${{ inputs.not-measured }}
+        GUIDANCE: ${{ inputs.guidance }}
+        RESULT: ${{ inputs.result }}
+        RUN_URL: ${{ inputs.run-url }}
+      run: |
+        set -euo pipefail
+        # Randomised delimiter, matching maint-ghcr.yml's Highlights step.
+        # Unlike a single workflow's own step, this action cannot see what a
+        # future caller passes as `subject` / `guidance`, so a fixed marker
+        # would depend on every present and future call site staying
+        # single-line. A line equal to the marker would close the heredoc
+        # early and let the rest be read as further $GITHUB_OUTPUT entries.
+        DELIM="STALLED_ISSUE_BODY_$(openssl rand -hex 12)"
+        {
+          printf 'body<<%s\n' "$DELIM"
+          cat <<EOF
+        ${SUBJECT} did not finish at $(date -u +%Y-%m-%dT%H:%M:%SZ); the job
+        ended as \`${RESULT}\`.
+
+        Run: ${RUN_URL}
+
+        This is NOT a report of a finding: ${NOT_MEASURED}, because the run
+        never completed. Treat it as this schedule going dark: the last real
+        result is now ageing while the workflow still appears to be running.
+
+        ${GUIDANCE}
+        EOF
+          printf '%s\n' "$DELIM"
+        } >> "$GITHUB_OUTPUT"
+
+    - uses: ./.github/actions/post-tracking-issue
+      with:
+        title: ${{ inputs.title }}
+        labels: ${{ inputs.labels }}
+        body: ${{ steps.body.outputs.body }}
+        pin: 'false'
+        gh-token: ${{ inputs.gh-token }}

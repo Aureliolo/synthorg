@@ -235,11 +235,14 @@ jobs:
     # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
     # failures from a debugging branch shouldn't open repo-wide CI-health
     # issues; the operator already sees the run output directly.
+    #
+    # `== 'failure'` and not the non-success complement: a cancelled or
+    # timed-out scan exercised nothing, and this title asserts the scan
+    # plumbing broke. That outcome goes to report-stalled.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && needs.zap-scan.result != 'success'
-      && needs.zap-scan.result != 'skipped'
+      && needs.zap-scan.result == 'failure'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -279,4 +282,40 @@ jobs:
           labels: 'automation:ci-health,type:ci,prio:medium'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished scan
+    needs: zap-scan
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.zap-scan.result != 'success'
+      && needs.zap-scan.result != 'failure'
+      && needs.zap-scan.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'DAST scan not completing'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          subject: 'The weekly ZAP DAST scan'
+          not-measured: 'no endpoint was probed and no finding was ruled out'
+          guidance: >-
+            Check the run's step timings against the scan job's 45-minute
+            budget; a backend image that never becomes healthy stalls the
+            scan rather than failing it.
+          result: ${{ needs.zap-scan.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}

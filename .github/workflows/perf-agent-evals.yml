@@ -115,20 +115,10 @@ jobs:
   report-stalled:
     name: Open / update tracking issue on an unfinished run
     needs: agent-evals
-    # Kept out of the regression sink above deliberately: a run that never
-    # finished measured nothing, so filing it as "Agent eval regression"
-    # would assert a quality change the suite never observed, and the
-    # narrow `== 'failure'` gate there stays narrow.
-    #
-    # A separate sink rather than no sink, because the nightly is otherwise
-    # unwatched: a suite that stops completing looks identical to one that
-    # keeps passing, and the last real score ages silently night after
-    # night. `cancel-in-progress: false` means this is a timeout or a
-    # manual cancel, not concurrency eviction.
-    #
-    # Stated as the complement of the three settled outcomes rather than
-    # `== 'cancelled'`, so a result GitHub adds later still lands here
-    # instead of falling through both sinks unnoticed.
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    # `cancel-in-progress: false` means this is a timeout or a manual
+    # cancel, never concurrency eviction.
     if: >-
       always()
       && github.event_name == 'schedule'
@@ -138,43 +128,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
-      issues: write     # gh issue create / comment / pin
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Compose body
-        id: body
-        env:
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          RESULT: ${{ needs.agent-evals.result }}
-        run: |
-          set -euo pipefail
-          {
-            echo 'body<<TRACKING_ISSUE_BODY_EOF'
-            cat <<EOF
-          The nightly agent-evals run did not finish at $(date -u +%Y-%m-%dT%H:%M:%SZ);
-          the job ended as \`${RESULT}\`.
-
-          Run: ${RUN_URL}
-
-          This is NOT a regression report: no scores were produced, because
-          the suite never completed. Treat it as the nightly going dark.
-          The likely cause is the 60-minute job timeout, which a slow or
-          hanging provider call can reach; a manual cancellation looks the
-          same from here. Check the run's step timings before raising
-          \`timeout-minutes\` on the eval job.
-          EOF
-            echo 'TRACKING_ISSUE_BODY_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: ./.github/actions/post-tracking-issue
+      - uses: ./.github/actions/report-stalled-issue
         with:
           title: 'Agent evals not completing'
           labels: 'automation:ci-health,type:ci,prio:medium'
-          body: ${{ steps.body.outputs.body }}
-          pin: 'false'
+          subject: 'The nightly agent-evals run'
+          not-measured: 'no score was produced, so none can have regressed'
+          guidance: >-
+            Check the run's step timings against the eval job's 60-minute
+            budget before raising it; a hanging provider call reaches that
+            cap without ever erroring.
+          result: ${{ needs.agent-evals.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}

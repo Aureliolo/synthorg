@@ -304,7 +304,7 @@ Control-by-control mapping against GitHub's *Security hardening for GitHub Actio
 | Every job bounded by `timeout-minutes` | Met | `check_ci_workflow_resilience.py` invariant 1 |
 | Required checks cannot silently stop gating | Met | `check_ci_rollup_complete.py` |
 | Runner images pinned, not rolling | Met | `check_ci_workflow_resilience.py` invariant 9 |
-| A scheduled run that fails or never finishes reaches a human | Met | `check_ci_workflow_resilience.py` invariant 10 |
+| A scheduled run that fails or never finishes reaches a human, under separate titles | Met | `check_ci_workflow_resilience.py` invariant 10 |
 | Base images resolved by digest | Met | `check_ci_workflow_resilience.py` invariant 8 |
 | Artefacts signed and provenance-attested | Met | `scripts/check_image_signatures.py` (signature **and** SLSA provenance) |
 | Self-hosted runners | Not applicable | GitHub-hosted only |
