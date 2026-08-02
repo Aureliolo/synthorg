@@ -182,12 +182,15 @@ function findDirectYamlKey(
 ): { from: number; to: number } | null {
   const childIndent = firstChildIndent(block)
   if (childIndent === null) return null
-  const direct = new RegExp(`^ {${childIndent}}["']?${escapeRegex(key)}["']?\\s*:`)
+  // The prefix is captured rather than assumed to be the indent: a quoted
+  // key would otherwise start the highlight on its opening quote.
+  const direct = new RegExp(`^( {${childIndent}}["']?)${escapeRegex(key)}["']?\\s*:`)
   let consumed = 0
   for (const line of block) {
     if (endsBlock(line, consumed)) return null
-    if (direct.test(line)) {
-      const offset = base + consumed + childIndent
+    const match = direct.exec(line)
+    if (match) {
+      const offset = base + consumed + (match[1]?.length ?? 0)
       return { from: offset, to: offset + key.length }
     }
     consumed += line.length + 1
