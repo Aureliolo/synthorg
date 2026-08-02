@@ -214,7 +214,7 @@ async def test_raised_forecast_ceiling_reaches_enforcement() -> None:
     the task alone would re-park a resumed run on the very ceiling that
     stopped it.
     """
-    forecast_id = uuid4()
+    forecast_id = as_uuid("forecast-raised-ceiling")
     raised = _forecast(forecast_id).model_copy(update={"ceiling_amount": 5.0})
     repo = cast("CostForecastRepository", _FakeForecastRepo(raised))
 
@@ -226,6 +226,49 @@ async def test_raised_forecast_ceiling_reaches_enforcement() -> None:
 
 
 @pytest.mark.asyncio
+async def test_lower_forecast_ceiling_leaves_the_task_alone() -> None:
+    """A forecast below the snapshot never loosens or tightens the run.
+
+    ``ceiling_synced_task`` exists to carry an operator's raise through to
+    enforcement. Adopting a lower value instead would log it as a raise and
+    hand the run a limit the operator never asked it to obey mid-flight.
+    """
+    forecast_id = as_uuid("forecast-lowered-ceiling")
+    lowered = _forecast(forecast_id).model_copy(update={"ceiling_amount": 0.5})
+    repo = cast("CostForecastRepository", _FakeForecastRepo(lowered))
+
+    stale = _task().model_copy(update={"forecast_id": forecast_id})
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert synced.hard_ceiling == 1.5
+
+
+@pytest.mark.asyncio
+async def test_unlinked_task_skips_the_forecast_read() -> None:
+    """No forecast repo and no forecast id means nothing to reconcile.
+
+    Both are optional at boot, so the guard is the common path for a run
+    that never went through the forecast gate.
+    """
+    plain = _task()
+    repo = cast("CostForecastRepository", _FakeForecastRepo(None))
+
+    assert await ceiling_synced_task(plain, None) is plain
+    assert await ceiling_synced_task(plain, repo) is plain
+
+
+@pytest.mark.asyncio
+async def test_missing_forecast_row_keeps_the_snapshot() -> None:
+    """A linked forecast that no longer resolves leaves the task alone."""
+    repo = cast("CostForecastRepository", _FakeForecastRepo(None))
+    stale = _task().model_copy(update={"forecast_id": as_uuid("forecast-gone")})
+
+    synced = await ceiling_synced_task(stale, repo)
+
+    assert synced.hard_ceiling == 1.5
+
+
+@pytest.mark.asyncio
 async def test_unreadable_forecast_keeps_the_stricter_snapshot() -> None:
     """A forecast read failure enforces the task snapshot, not no ceiling.
 
@@ -233,7 +276,7 @@ async def test_unreadable_forecast_keeps_the_stricter_snapshot() -> None:
     run rather than letting it spend past a limit nobody raised.
     """
     repo = cast("CostForecastRepository", _ExplodingForecastRepo())
-    stale = _task().model_copy(update={"forecast_id": uuid4()})
+    stale = _task().model_copy(update={"forecast_id": as_uuid("forecast-unreadable")})
 
     synced = await ceiling_synced_task(stale, repo)
 

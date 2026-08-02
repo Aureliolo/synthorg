@@ -223,6 +223,25 @@ async def test_raise_ceiling_below_accumulated_raises() -> None:
     assert repo.saved == []
 
 
+async def test_raise_ceiling_below_current_ceiling_raises() -> None:
+    """A raise that lowers the stored ceiling is rejected, not persisted.
+
+    Clearing the halt at a lower number would leave the dashboard showing a
+    ceiling enforcement never adopts, because the run keeps the stricter
+    value it already holds.
+    """
+    forecast = _halted_forecast()
+    repo = _FakeForecastRepo(forecast)
+    service = _service(repo)
+    with pytest.raises(RunHardCeilingTooLowError):
+        await service.raise_ceiling(
+            forecast.forecast_id,
+            new_ceiling=1.0,
+            accumulated_cost=0.5,
+        )
+    assert repo.saved == []
+
+
 async def test_raise_ceiling_clears_halt() -> None:
     forecast = _halted_forecast()
     repo = _FakeForecastRepo(forecast)

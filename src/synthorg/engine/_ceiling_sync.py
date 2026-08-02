@@ -8,6 +8,8 @@ task would re-park a resumed run on the ceiling that stopped it.
 
 # module-kind: code
 
+from typing import Final
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.observability import get_logger, safe_error_description
@@ -17,6 +19,13 @@ from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 logger = get_logger(__name__)
 
+_CEILING_TOLERANCE: Final[float] = 1e-9
+"""Below this, two stored amounts are the same ceiling.
+
+Both values are floats round-tripped through persistence, so an exact
+``==`` would treat representation noise as an operator decision.
+"""
+
 
 async def ceiling_synced_task(
     task: Task,
@@ -24,9 +33,10 @@ async def ceiling_synced_task(
 ) -> Task:
     """Return *task* carrying the operator's current hard ceiling.
 
-    A forecast that cannot be read leaves the task snapshot in place: the
-    stale ceiling is the lower of the two, so the run parks again rather
-    than spending past a limit nobody raised.
+    Only a strictly higher forecast ceiling is adopted. A forecast that
+    cannot be read, or that sits at or below the snapshot, leaves the
+    task alone: enforcement then keeps the stricter of the two, so the
+    run parks again rather than spending past a limit nobody raised.
 
     Args:
         task: The task about to be enforced against.
@@ -34,7 +44,7 @@ async def ceiling_synced_task(
 
     Returns:
         The task, with ``hard_ceiling`` refreshed when the linked
-        forecast carries a different one.
+        forecast carries a higher one.
     """
     if repo is None or task.forecast_id is None:
         return task
@@ -53,7 +63,11 @@ async def ceiling_synced_task(
         return task
     if forecast is None or forecast.ceiling_amount is None:
         return task
-    if forecast.ceiling_amount == task.hard_ceiling:
+    snapshot = task.hard_ceiling
+    if (
+        snapshot is not None
+        and forecast.ceiling_amount - snapshot <= _CEILING_TOLERANCE
+    ):
         return task
     logger.debug(
         BUDGET_HARD_CEILING_RAISED,
