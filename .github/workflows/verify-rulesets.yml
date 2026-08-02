@@ -1,80 +1,78 @@
 name: Verify - Rulesets
 
-# Catch ruleset drift while a PR is open, rather than on the first push to
-# main after it merges.
+# Catch ruleset drift while a PR is open.
 #
-# verify-backend.yml's `branch-protection-audit` covers the same ground but
-# only on push-to-main, because reading live rulesets needs `administration:
-# read` -- a scope GITHUB_TOKEN cannot hold -- so it needs the release-bot App
-# token from the main-restricted `release` environment. Its PR-time
-# counterpart, check_branch_protection_spec_changed.sh, only asks whether THIS
-# PR edits the spec. Neither half sees the opposite direction: a ruleset
-# applied to the live repository and never written into the spec. That gap put
-# main red on the merge that followed, with the PR itself green throughout.
+# The audit runs in two directions and neither half alone sees both:
+# verify-backend.yml's `branch-protection-audit` compares the live rulesets
+# against the committed spec, but only on push to main, so a ruleset applied
+# in Settings -> Rules and never written into the spec stays invisible until
+# the next merge. check_branch_protection_spec_changed.sh runs at PR time but
+# only asks whether THIS PR edits the spec. This job closes the gap: it runs
+# the live-vs-committed comparison on every PR.
 #
-# `pull_request_target` closes it without widening anything:
+# It reads main's tree, never the PR's, for two reasons that happen to point
+# the same way. The spec that the live rulesets are supposed to match is the
+# one on main: comparing the PR's own spec would mark every legitimate
+# spec-editing PR as drifted, because this repo deliberately applies ruleset
+# changes AFTER merge (a required context main does not yet produce would
+# block every other open PR). And reading main's script rather than the PR's
+# means no pull-request-authored code runs here at all.
 #
-#   - `github.ref` is the BASE branch ref, so the `release` environment's
-#     main-only deployment-branch policy is satisfied as it stands. No
-#     environment change, no new place the App key is reachable.
-#   - the workflow definition comes from the base branch, so a PR cannot
-#     rewrite this job to do something else with that token.
-#   - the audit compares main's committed spec against the live rulesets, so
-#     the job reads NO pull-request-controlled content at all. That is what
-#     makes this trigger safe here, and it is load-bearing: checking out the
-#     PR head would hand a fork's code the App token.
-#
-# Comparing the base spec rather than the PR's also keeps the deliberate
-# "apply spec changes AFTER merge" ordering intact. A PR that edits the spec
-# does not affect this job; check_branch_protection_spec_changed.sh still
-# reports that direction on the PR.
+# Advisory by design: this is not in `protect-main`'s required_status_checks,
+# so it reports drift rather than blocking a merge. Promoting it would need
+# the context added to the spec and posted by release-cut.yml on the release
+# PR (see check_ci_rollup_complete.py).
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+  # Drift is corrected in Settings -> Rules, which fires no workflow event, so
+  # without this a red PR stays red until someone pushes to it.
+  workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   branch-protection-drift:
     name: Ruleset drift audit
-    # Fork gate: a fork PR cannot reach the `release` environment's secrets,
-    # so the job would fail on a missing token rather than on drift.
-    if: '!github.event.repository.fork'
+    # release-please PRs carry no spec change and get the same short-circuit
+    # every other verify-backend.yml job gives them.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || !(startsWith(github.head_ref, 'release-please--')
+           && github.event.pull_request.user.login == 'synthorg-repo-bot[bot]')
     runs-on: ubuntu-24.04
-    # Matches verify-backend.yml's audit job: the yq install carries its own
-    # ~5-minute curl retry budget and every ruleset read retries, so the job
-    # needs headroom for the ladder rather than a tight cap.
+    # The yq install carries a ~5-minute curl retry budget and every ruleset
+    # read has its own retry ladder, so the job needs headroom for both rather
+    # than a cap tight enough to kill one mid-retry.
     timeout-minutes: 15
-    environment: release
     permissions:
       contents: read
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          # The BASE commit, never the PR head. Under pull_request_target the
-          # default checkout is already the base; naming it makes the property
-          # this job's safety rests on explicit rather than incidental.
-          ref: ${{ github.event.pull_request.base.sha }}
+          # main, not the PR head and not the PR's base commit. The base
+          # commit would diff a stale spec against current live state on any
+          # PR not rebased since the spec last changed, reporting drift that
+          # does not exist.
+          ref: main
+          sparse-checkout: |
+            .github
+            scripts
           persist-credentials: false
-      - name: Release runner setup
-        id: setup
-        uses: ./.github/actions/release-runner-setup
-        with:
-          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
-          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
-          # Read-only audit of the GitHub rulesets API; metadata:read is
-          # the minimum scope sufficient for that surface.
-          permission-metadata: read
+      # Inlined rather than using .github/actions/install-yq, which the two
+      # verify-backend.yml callers share: this job runs main's tree, so it
+      # cannot resolve a local action that only exists on the branch under
+      # test, and would break on the very PR that introduced one.
       - name: Install yq
         env:
-          # The tag is not a pin, because a release asset can be replaced
-          # under an existing tag; the digest is what pins it.
+          # A release asset can be replaced under an existing tag, so the tag
+          # alone is not a pin; the digest is.
           # renovate: datasource=github-releases depName=mikefarah/yq
           YQ_VERSION: v4.45.1
           YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
@@ -88,14 +86,18 @@ jobs:
           yq --version
       - name: Audit
         env:
-          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          # The rulesets endpoints need `metadata: read`, which GITHUB_TOKEN
+          # carries; on a public repository they answer unauthenticated. No
+          # App token, no deployment environment, nothing privileged.
+          GH_TOKEN: ${{ github.token }}
           # Explicit repo: `gh repo view` inference is fragile under
           # persist-credentials: false and masks a transient 401 as a bogus
           # "could not infer repo" failure.
           GH_REPO: ${{ github.repository }}
           # Four attempts absorb a transient GitHub API window that outlasts a
           # single retry; the job timeout above leaves the accumulated backoff
-          # room so it cannot be killed mid-ladder. Sustained degradation past
-          # the budget defers via exit 75 rather than reporting false drift.
+          # room so it cannot be killed mid-ladder. On a pull_request run an
+          # exhausted ladder FAILS rather than deferring, because there is no
+          # guaranteed re-audit before the PR merges.
           GH_RETRY_ATTEMPTS: 4
         run: bash scripts/audit_branch_protection.sh

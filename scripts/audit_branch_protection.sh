@@ -17,12 +17,16 @@
 #   scripts/audit_branch_protection.sh [--repo owner/name]
 #
 # Requirements:
-#   - gh CLI authenticated with `administration:read` (fine-grained PAT)
-#     or `repo` (classic PAT).
+#   - gh CLI authenticated. The two reads below need only `metadata: read`,
+#     which a GitHub App installation token and GITHUB_TOKEN both carry; on a
+#     PUBLIC repository the rulesets endpoints answer unauthenticated
+#     altogether, so no elevated scope is involved. A PRIVATE repository is
+#     the case that needs `administration: read` (fine-grained PAT) or `repo`
+#     (classic PAT).
 #   - jq >= 1.6 and yq (Mike Farah's Go yq) >= 4.0 on PATH.
 #
-# This runs as a CI continue-on-error advisory; promote it to blocking
-# once the spec has demonstrated a sustained zero-drift run history.
+# Detected drift fails the calling step; no caller runs this under
+# continue-on-error.
 
 set -euo pipefail
 
@@ -65,8 +69,31 @@ if [ -z "$REPO" ]; then
   exit 2
 fi
 
+# Whether an exhausted retry ladder may report a pass it never verified.
+# Deferring is sound only where the audit re-runs on its own: a push-to-main
+# run is followed by the next push. A pull_request run has no such follow-up,
+# because the normal path from green to merged is a single squash with no
+# further event, so an unverified PR would merge behind a clean check.
+case "${GITHUB_EVENT_NAME:-}" in
+  pull_request|pull_request_target) DEFER_ON_TRANSIENT=0 ;;
+  *) DEFER_ON_TRANSIENT=1 ;;
+esac
+
+# Emit the deferral verdict for an exhausted (exit 75) read. Auth-shaped
+# exhaustion never reaches here: gh_with_retry.sh exits 77 for that, which
+# falls through to the fail-loud branch at every call site.
+defer_or_fail() {
+  local what="$1"
+  if [ "$DEFER_ON_TRANSIENT" -eq 1 ]; then
+    echo "::warning::branch-protection audit deferred: transient GitHub API failure ${what} (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
+    exit 0
+  fi
+  echo "::error::branch-protection audit could not read the live rulesets (${what}) after the full retry budget. Failing rather than reporting an unverified pass: this run has no guaranteed re-audit before merge. Re-run the job once the API recovers." >&2
+  exit 1
+}
+
 # Retry-wrap the read-only rulesets API calls: a transient GitHub 401/5xx on
-# this post-merge audit must not redden the main CI run. Resolve the shared
+# the post-merge audit must not redden the main CI run. Resolve the shared
 # helper relative to this script so it works from any cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GH_RETRY="${SCRIPT_DIR}/../.github/scripts/gh_with_retry.sh"
@@ -124,15 +151,15 @@ trap 'rm -f "$LIVE_TMP" "$SPEC_TMP"' EXIT
 SPEC_TMP=$(mktemp)
 
 # A transient-exhaustion (EX_TEMPFAIL, exit 75) from the read-only retry
-# helper must DEFER this audit, not redden CI -- the live state is simply
-# unreadable this run and self-heals on the next push/dispatch. Real failures
-# (any other non-zero) still abort. ``|| rc=$?`` keeps ``set -e`` from aborting
-# before the 75 branch can run.
+# helper defers this audit only where a later run is guaranteed; see
+# defer_or_fail. Real failures (any other non-zero, including the exit 77
+# auth-exhaustion the helper reserves for a revoked or under-scoped token)
+# still abort. ``|| rc=$?`` keeps ``set -e`` from aborting before the branch
+# below can run.
 rc=0
 IDS=$("$GH_RETRY" "rulesets list" gh api "repos/${REPO}/rulesets" --paginate --jq '.[].id') || rc=$?
 if [ "$rc" -eq 75 ]; then
-  echo "::warning::branch-protection audit deferred: transient GitHub API failure listing rulesets (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
-  exit 0
+  defer_or_fail "listing rulesets"
 elif [ "$rc" -ne 0 ]; then
   echo "error: failed to list rulesets (exit ${rc})" >&2
   exit "$rc"
@@ -152,13 +179,12 @@ FAILED_IDS=()
 while read -r id; do
   [ -z "$id" ] && continue
   # As with the list call above, an EX_TEMPFAIL (exit 75) on a per-ruleset read
-  # defers the whole audit rather than treating an unreadable snapshot as drift;
-  # any other non-zero is a genuine fetch failure that aborts via FAILED_IDS.
+  # never treats an unreadable snapshot as drift; any other non-zero is a
+  # genuine fetch failure that aborts via FAILED_IDS.
   rc=0
   "$GH_RETRY" "ruleset ${id}" gh api "repos/${REPO}/rulesets/${id}" > "${RULESETS_DIR}/${id}.json" 2>"${RULESETS_DIR}/${id}.err" || rc=$?
   if [ "$rc" -eq 75 ]; then
-    echo "::warning::branch-protection audit deferred: transient GitHub API failure reading ruleset ${id} (EX_TEMPFAIL); will re-audit on the next push or manual dispatch." >&2
-    exit 0
+    defer_or_fail "reading ruleset ${id}"
   elif [ "$rc" -ne 0 ]; then
     FAILED_IDS+=("$id")
   fi

@@ -1,10 +1,15 @@
 """Unit tests for the ``gh_with_retry.sh`` transient-retry wrapper.
 
-The helper wraps an arbitrary command with bounded retry and a three-way
+The helper wraps an arbitrary command with bounded retry and a four-way
 exit contract:
 
 * ``exit 0``  -- success; wrapped stdout re-emitted, wrapped stderr forwarded.
 * ``exit 75`` -- EX_TEMPFAIL: a *transient* failure that exhausted its retries.
+* ``exit 77`` -- an AUTH-shaped failure that exhausted its retries. Retrying a
+  401 is right (the Actions auth service emits one on a job's first call), but
+  surviving the whole ladder is a different thing: a revoked installation or a
+  rotated key persists. Callers may defer on 75; 77 exists so none of them can
+  defer on that.
 * ``exit <rc>`` -- a definitive 4xx OR any non-transient failure, bubbled with
   the wrapped command's own exit code (never masked as 75).
 
@@ -84,7 +89,6 @@ def test_definitive_4xx_fails_fast_with_original_code(code: str) -> None:
 @pytest.mark.parametrize(
     "signature",
     [
-        "HTTP 401: Requires authentication",
         "HTTP 503: Service Unavailable",
         "HTTP 429: rate limit",
         "request canceled (Client.Timeout exceeded)",
@@ -94,6 +98,30 @@ def test_definitive_4xx_fails_fast_with_original_code(code: str) -> None:
 def test_transient_exhaustion_returns_75(signature: str) -> None:
     result = _run(f"printf '{signature}\\n' >&2; exit 1", attempts=1)
     assert result.returncode == 75, result.stderr
+
+
+@_BASH_AVAILABLE
+def test_auth_exhaustion_returns_77_not_75() -> None:
+    # A caller that defers on 75 would report a clean pass it never verified.
+    # Auth exhaustion gets its own code so no caller can treat it as soft.
+    result = _run("printf 'HTTP 401: Requires authentication\\n' >&2; exit 1")
+    assert result.returncode == 77, result.stderr
+    assert "authentication failure persisted" in result.stderr
+
+
+@_BASH_AVAILABLE
+def test_auth_blip_still_retries_and_recovers(tmp_path: Path) -> None:
+    # The retry itself is unchanged: 401 stays in the transient allowlist, so
+    # the first-call blip this helper exists for still clears on attempt 2.
+    marker = tmp_path / "attempted"
+    wrapped = (
+        f"if [ -f '{marker.as_posix()}' ]; then printf 'OUT\\n'; exit 0; fi; "
+        f"touch '{marker.as_posix()}'; "
+        "printf 'HTTP 401: Requires authentication\\n' >&2; exit 1"
+    )
+    result = _run(wrapped, attempts=3)
+    assert result.returncode == 0, result.stderr
+    assert "OUT" in result.stdout
 
 
 @_BASH_AVAILABLE

@@ -71,6 +71,12 @@ def _load_script_module() -> object:
 _MODULE = _load_script_module()
 
 
+# Invariant 11 requires a top-level permissions block on every workflow, so
+# every fixture that is not exercising that invariant carries one; otherwise
+# each would pick up an unrelated violation and mask the one under test.
+_PERMS = "permissions: {}\n"
+
+
 def _scan(tmp_path: Path, content: str) -> list[str]:
     """Write content to a tmp .yml file and return the violation messages."""
     target = tmp_path / "wf.yml"
@@ -85,15 +91,18 @@ def _job(
     timeout: bool = True,
     minutes: int = 5,
     permissions: str | None = "actions: read",
+    top: str = _PERMS,
 ) -> str:
     """Build a one-job workflow whose ``steps:`` is ``steps``.
 
     The job grants ``actions: read`` by default so a fixture that happens to
     download an artifact still isolates the invariant under test; pass
     ``permissions=None`` to exercise invariant 5's permission half. ``minutes``
-    sets the budget invariant 6 measures a pull ladder against.
+    sets the budget invariant 6 measures a pull ladder against. ``top`` is the
+    workflow-level block invariant 11 requires; override it to exercise scope
+    inheritance, since a second top-level key would simply replace this one.
     """
-    head = "jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+    head = f"{top}jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
     if timeout:
         head += f"    timeout-minutes: {minutes}\n"
     if permissions is not None:
@@ -219,13 +228,13 @@ class TestTimeout:
     def test_reusable_call_job_exempt(self, tmp_path: Path) -> None:
         # A job whose body is a top-level ``uses:`` string cannot set
         # timeout-minutes; it must not be flagged.
-        content = "jobs:\n  a:\n    uses: ./.github/workflows/other.yml\n"
+        content = f"{_PERMS}jobs:\n  a:\n    uses: ./.github/workflows/other.yml\n"
         assert _scan(tmp_path, content) == []
 
     def test_null_uses_still_timeout_checked(self, tmp_path: Path) -> None:
         # A malformed bare ``uses:`` (parses to None) is NOT a real
         # reusable-call job, so it must still be timeout-checked.
-        content = "jobs:\n  a:\n    uses:\n"
+        content = f"{_PERMS}jobs:\n  a:\n    uses:\n"
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
         assert "no timeout-minutes" in violations[0]
@@ -575,16 +584,20 @@ class TestArtifactDownloads:
         assert _scan(tmp_path, _job("      - run: true\n", permissions=None)) == []
 
     def test_workflow_level_permissions_are_inherited(self, tmp_path: Path) -> None:
-        content = "permissions:\n  actions: read\n" + _job(
-            _checkout() + _download(), permissions=None
+        content = _job(
+            _checkout() + _download(),
+            permissions=None,
+            top="permissions:\n  actions: read\n",
         )
         assert _scan(tmp_path, content) == []
 
     def test_job_block_overrides_rather_than_merges(self, tmp_path: Path) -> None:
         # GitHub replaces the workflow-level block wholesale, so a job that
         # declares any scope and omits `actions` has genuinely dropped it.
-        content = "permissions:\n  actions: read\n" + _job(
-            _checkout() + _download(), permissions="contents: read"
+        content = _job(
+            _checkout() + _download(),
+            permissions="contents: read",
+            top="permissions:\n  actions: read\n",
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
@@ -1026,7 +1039,7 @@ class TestScanFileEdgeCases:
 
     def test_non_dict_job_value_skipped(self, tmp_path: Path) -> None:
         content = (
-            "jobs:\n  broken: null\n"
+            f"{_PERMS}jobs:\n  broken: null\n"
             "  ok:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
             "    steps: []\n"
         )
@@ -1039,7 +1052,7 @@ class TestRunnerPinned:
     @staticmethod
     def _one_job(runs_on: str) -> str:
         return (
-            f"jobs:\n  a:\n    runs-on: {runs_on}\n"
+            f"{_PERMS}jobs:\n  a:\n    runs-on: {runs_on}\n"
             "    timeout-minutes: 5\n    steps: []\n"
         )
 
@@ -1090,6 +1103,95 @@ class TestRunnerPinned:
         }
 
 
+class TestTopLevelPermissions:
+    """Invariant 11: no workflow inherits the repository default token scope."""
+
+    _JOB = (
+        "jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+        "    timeout-minutes: 5\n    steps: []\n"
+    )
+
+    def test_missing_block_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, self._JOB)
+        assert len(violations) == 1
+        assert "permissions" in violations[0]
+
+    def test_empty_block_is_clean(self, tmp_path: Path) -> None:
+        # `permissions: {}` parses to a falsy dict, so a truthiness test would
+        # reject exactly the value the invariant asks for.
+        assert _scan(tmp_path, f"permissions: {{}}\n{self._JOB}") == []
+
+    def test_populated_block_is_clean(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, f"permissions:\n  contents: read\n{self._JOB}") == []
+
+
+class TestPullRequestTargetRefs:
+    """Invariant 12: a pull_request_target job never resolves PR-head content."""
+
+    @staticmethod
+    def _wf(trigger: str, steps: str) -> str:
+        return (
+            f"{trigger}\n{_PERMS}jobs:\n  a:\n    runs-on: ubuntu-24.04\n"
+            f"    timeout-minutes: 5\n    steps:\n{steps}"
+        )
+
+    _TARGET = "on:\n  pull_request_target:\n    branches: [main]"
+    _SAFE = "on:\n  pull_request:\n    branches: [main]"
+    _HEAD_CHECKOUT = (
+        "      - uses: actions/checkout@abc\n"
+        "        with:\n"
+        "          ref: ${{ github.event.pull_request.head.sha }}\n"
+    )
+
+    def test_head_sha_checkout_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, self._wf(self._TARGET, self._HEAD_CHECKOUT))
+        assert len(violations) == 1
+        assert "pull_request_target" in violations[0]
+
+    def test_head_ref_checkout_flagged(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n"
+            "          ref: ${{ github.head_ref }}\n"
+        )
+        assert len(_scan(tmp_path, self._wf(self._TARGET, steps))) == 1
+
+    def test_base_ref_checkout_clean(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: actions/checkout@abc\n        with:\n          ref: main\n"
+        )
+        assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
+
+    def test_pr_data_in_run_body_flagged(self, tmp_path: Path) -> None:
+        steps = "      - run: echo ${{ github.event.pull_request.head.label }}\n"
+        violations = _scan(tmp_path, self._wf(self._TARGET, steps))
+        assert len(violations) == 1
+        assert "run" in violations[0]
+
+    def test_pr_data_in_step_env_flagged(self, tmp_path: Path) -> None:
+        steps = (
+            "      - env:\n"
+            "          BRANCH: ${{ github.head_ref }}\n"
+            "        run: echo hi\n"
+        )
+        assert len(_scan(tmp_path, self._wf(self._TARGET, steps))) == 1
+
+    def test_same_shape_clean_without_the_trigger(self, tmp_path: Path) -> None:
+        # Under plain pull_request the head IS the thing under test, and the
+        # job holds no base-repository secrets, so none of this is a finding.
+        assert _scan(tmp_path, self._wf(self._SAFE, self._HEAD_CHECKOUT)) == []
+
+    def test_list_form_trigger_detected(self, tmp_path: Path) -> None:
+        trigger = "on: [push, pull_request_target]"
+        assert len(_scan(tmp_path, self._wf(trigger, self._HEAD_CHECKOUT))) == 1
+
+    def test_quoted_on_key_detected(self, tmp_path: Path) -> None:
+        # Bare `on:` parses to the boolean True under YAML 1.1; the quoted
+        # spelling must reach the same check.
+        trigger = '"on":\n  pull_request_target:\n    branches: [main]'
+        assert len(_scan(tmp_path, self._wf(trigger, self._HEAD_CHECKOUT))) == 1
+
+
 def _worker(name: str) -> str:
     """A plain watched job named ``name``."""
     return (
@@ -1112,7 +1214,10 @@ def _scheduled(
     across every notifier in the file.
     """
     jobs = _worker("worker") + (_worker(extra_job) if extra_job else "")
-    return f"{on_key}:\n  schedule:\n    - cron: 0 7 * * 1\njobs:\n{jobs}{notifiers}"
+    return (
+        f"{on_key}:\n  schedule:\n    - cron: 0 7 * * 1\n"
+        f"{_PERMS}jobs:\n{jobs}{notifiers}"
+    )
 
 
 def _notifier(
@@ -1301,7 +1406,7 @@ class TestScheduleNotifiers:
 
     def test_unscheduled_workflow_needs_no_notifier(self, tmp_path: Path) -> None:
         content = (
-            "on:\n  workflow_dispatch:\njobs:\n  worker:\n"
+            f"on:\n  workflow_dispatch:\n{_PERMS}jobs:\n  worker:\n"
             "    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
             "    steps:\n      - run: true\n"
         )
@@ -1322,7 +1427,7 @@ class TestScheduleNotifiers:
         # list form. A gate that accepted it there would carry a branch no
         # input can reach.
         content = (
-            "on: [push, workflow_dispatch]\njobs:\n  worker:\n"
+            f"on: [push, workflow_dispatch]\n{_PERMS}jobs:\n  worker:\n"
             "    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n"
             "    steps:\n      - run: true\n"
         )

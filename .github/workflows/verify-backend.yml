@@ -1825,29 +1825,13 @@ jobs:
           path: web/playwright-report
           if-no-files-found: ignore
 
-  # ── Branch-protection drift audit ──
-  # Compares live rulesets against .github/branch_protection.yml. Runs on
-  # push to main and workflow_dispatch only (it needs the release-env App
-  # token, which PRs and forks lack), so it is a post-merge alarm rather
-  # than a pre-merge gate. Blocking: detected drift fails the Audit step
-  # and turns the main-branch CI run red.
-  #
-  # Authentication: the GitHub rulesets REST API requires a token with
-  # ``administration: read`` scope. GITHUB_TOKEN cannot be granted that
-  # scope via workflow permissions, so the job mints a fresh
-  # ``synthorg-repo-bot`` App installation token via the shared
-  # ``release-runner-setup`` composite. The App's scope is already
-  # Contents RW + PRs RW + Metadata R (see docs/reference/github-
-  # environments.md); rulesets are accessible to any installation with
-  # metadata read, which is sufficient for this read-only audit.
-  # PR-time half of the ruleset audit. The full audit below needs
-  # `administration: read` to fetch the live rulesets, a scope GITHUB_TOKEN
-  # cannot hold, so it needs the App token from the main-restricted `release`
-  # environment and can only run post-merge. That covers out-of-band UI edits.
-  # This job needs no token and covers the other case: a PR changed the spec,
-  # so the live ruleset will need applying at merge. Advisory, because applying
-  # it BEFORE merge would block every other open PR on a context main does not
-  # yet produce.
+  # ── Branch-protection spec change ──
+  # PR-time half of the ruleset audit. Covers the case where a PR changes the
+  # spec, so the live ruleset will need applying at merge. Advisory, because
+  # applying it BEFORE merge would block every other open PR on a context main
+  # does not yet produce. The opposite direction, a ruleset applied live and
+  # never committed, is covered by verify-rulesets.yml at PR time and by
+  # branch-protection-audit below on push to main.
   branch-protection-spec:
     name: Branch-protection spec change
     needs: changes
@@ -1864,48 +1848,36 @@ jobs:
           fetch-depth: "0"
           persist-credentials: false
       - name: Install yq
-        env:
-          # SHA-256 of yq_linux_amd64 v4.45.1. A release asset can be replaced
-          # under an existing tag, so the tag alone is not a pin; every other
-          # input in this tree (action SHAs, image digests, tool versions) is
-          # pinned and this download was the remaining gap.
-          # renovate: datasource=github-releases depName=mikefarah/yq
-          YQ_VERSION: v4.45.1
-          YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
-        run: |
-          set -euo pipefail
-          # 60s of retries, not 300: this job's timeout is 5 minutes, so a
-          # 300s download budget could consume the whole of it and leave
-          # nothing for the version check and the spec-change script below.
-          curl -sSfL --connect-timeout 15 --retry 5 --retry-all-errors --retry-max-time 60 \
-            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
-            -o /tmp/yq
-          echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
-          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
-          # check_branch_protection_spec_changed.sh reads the required contexts
-          # under `2>/dev/null || true`, so an unusable binary yields an empty
-          # list and a summary that quietly claims the spec requires nothing.
-          # Prove the binary runs before that step trusts its output.
-          yq --version
+        uses: ./.github/actions/install-yq
+        with:
+          # 60s of retries, not the 300s default: this job's timeout is 5
+          # minutes, so a 300s download budget could consume the whole of it
+          # and leave nothing for the spec-change script below.
+          connect-timeout: "15"
+          retry: "5"
+          retry-max-time: "60"
       - name: Report spec change
         env:
           BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: bash scripts/check_branch_protection_spec_changed.sh
 
+  # ── Branch-protection drift audit ──
+  # Compares live rulesets against .github/branch_protection.yml on push to
+  # main and on ad-hoc workflow_dispatch. verify-rulesets.yml runs the same
+  # audit at PR time; this run is the post-merge backstop. Blocking: detected
+  # drift fails the Audit step and turns the main-branch CI run red.
+  #
+  # Authentication: the rulesets REST API needs only `metadata: read`, which
+  # GITHUB_TOKEN carries (and on a public repository the endpoints answer
+  # unauthenticated). No App token and no deployment environment are involved.
+  # `administration: read` is the PRIVATE-repository requirement and does not
+  # apply here.
   branch-protection-audit:
     name: Branch-protection drift audit
-    # Accept push-to-main (informational) AND workflow_dispatch from
-    # main so the audit can be triggered ad-hoc. The ``release`` environment's branch policy
-    # also restricts deploys to main, so allowing this job to attempt
-    # a deploy from a non-main ref would surface a noisy "deployment
-    # was rejected" annotation on every CI run dispatched against a
-    # release-please branch (the standard nudge used by release-cut.yml
-    # to trigger CI on App-token-authored PRs). Gate at the if: check
-    # so non-main dispatches simply skip this job.
+    # Gate at the if: so a dispatch from a non-main ref simply skips.
     #
-    # Fork gate: skip in forks. The audit needs the release-bot App
-    # token (env-scoped secret on `release`) and a fork won't have it.
-    # ci-preflight reports the missing setup separately.
+    # Fork gate: skip in forks. A fork carries none of these rulesets, so the
+    # audit would report the whole spec as drift.
     #
     # Precedence: `&&` binds tighter than `||`, so the inner
     # parentheses around `(push || dispatch)` are required to keep
@@ -1922,55 +1894,33 @@ jobs:
     # minutes leaves room for the 4-attempt retry ladder to ride out a transient
     # GitHub API window without the backoff accumulating into a timeout kill.
     timeout-minutes: 15
-    environment: release
     permissions:
       contents: read
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
+          sparse-checkout: |
+            .github
+            scripts
           persist-credentials: false
-      - name: Release runner setup
-        id: setup
-        uses: ./.github/actions/release-runner-setup
-        with:
-          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
-          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
-          # Read-only audit of the GitHub rulesets API; metadata:read is
-          # the minimum scope sufficient for that surface.
-          permission-metadata: read
       - name: Install yq
-        env:
-          # See the spec-change job's Install yq step: the tag is not a pin,
-          # because a release asset can be replaced under an existing tag.
-          # renovate: datasource=github-releases depName=mikefarah/yq
-          YQ_VERSION: v4.45.1
-          YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
-        run: |
-          set -euo pipefail
-          # yq (Mike Farah) -- Go binary, no runtime deps.  Retry on
-          # transient GitHub-releases CDN flakes.
-          curl -sSfL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
-            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
-            -o /tmp/yq
-          echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
-          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
-          yq --version
+        uses: ./.github/actions/install-yq
       - name: Audit
         env:
-          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           # Pass the repo explicitly so the script never depends on
           # `gh repo view` inference, which is fragile under
           # persist-credentials: false (and masked a transient 401 as a
           # bogus "could not infer repo" failure).
           GH_REPO: ${{ github.repository }}
-          # Retry budget for this read-only, best-effort audit: it makes a
-          # rulesets-list call plus one fetch per ruleset, each retried by
-          # gh_with_retry.sh. Four attempts absorb a transient GitHub API window
-          # that outlasts a single retry; the 15-minute job timeout above gives
-          # the accumulated backoff room so it cannot be killed mid-ladder.
-          # Sustained degradation past the budget still defers via exit 75 (the
-          # audit's designed re-audit-next-push path).
+          # Retry budget for this read-only audit: it makes a rulesets-list
+          # call plus one fetch per ruleset, each retried by gh_with_retry.sh.
+          # Four attempts absorb a transient GitHub API window that outlasts a
+          # single retry; the 15-minute job timeout above gives the accumulated
+          # backoff room so it cannot be killed mid-ladder. On this push-to-main
+          # run, sustained degradation defers via exit 75, because the next push
+          # re-audits; a pull_request run fails instead.
           GH_RETRY_ATTEMPTS: 4
         run: bash scripts/audit_branch_protection.sh
 

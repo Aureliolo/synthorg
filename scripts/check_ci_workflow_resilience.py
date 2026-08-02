@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces ten invariants across the CI definitions so the resilience
+Enforces twelve invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -161,6 +161,24 @@ hardening they carry cannot silently regress:
     closed rather than guessing at an expression grammar it only partly
     models.
 
+11. **Every workflow declares a top-level ``permissions:`` block.** Without
+    one a workflow inherits the repository default token scope, broader
+    than any job here needs, and the omission is invisible: the run simply
+    succeeds with more authority than it declared. ``permissions: {}`` is
+    the compliant empty case, so membership is tested rather than
+    truthiness.
+
+12. **A ``pull_request_target`` job never resolves pull-request-head
+    content.** That trigger runs with the base repository's secrets and is
+    reachable by any fork PR, so a job under it must not resolve anything
+    from the pull request's head: not as the checkout ref, which would run
+    fork code beside those secrets, and not as data interpolated into a
+    ``run:`` body or a step ``env:`` value. Nothing else enforces this:
+    zizmor's ``dangerous-triggers`` fires on the trigger itself and is
+    silenced per file in ``.github/.zizmor.yml``, so once a workflow is
+    allowlisted for having the safe shape, nothing rechecks that it still
+    has it.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
@@ -300,6 +318,15 @@ _TIMEOUT_KEY: Final[str] = "timeout-minutes"
 
 _TRACKING_ISSUE_DIR: Final[str] = ".github/actions/post-tracking-issue"
 _SCHEDULE_KEY: Final[str] = "schedule"
+_PR_TARGET_KEY: Final[str] = "pull_request_target"
+# Expressions that resolve to pull-request-head content. `github.head_ref` is
+# the branch name and the head SHA/repo fields are the rest; either one used
+# as a checkout ref under pull_request_target puts fork code beside the base
+# repository's secrets.
+_PR_HEAD_MARKERS: Final[tuple[str, ...]] = (
+    "github.event.pull_request.head",
+    "github.head_ref",
+)
 _IF_KEY: Final[str] = "if"
 # PyYAML parses YAML 1.1, where a bare `on:` key is the boolean True rather
 # than the string "on". Reading data["on"] therefore misses every real
@@ -440,6 +467,103 @@ def _has_schedule_trigger(data: dict[str, object]) -> bool:
         key in _ON_KEYS and isinstance(triggers, dict) and _SCHEDULE_KEY in triggers
         for key, triggers in data.items()
     )
+
+
+def _has_pull_request_target(data: dict[str, object]) -> bool:
+    """Return whether the workflow declares a ``pull_request_target`` trigger.
+
+    Both the mapping form and the list form (``on: [push,
+    pull_request_target]``) are accepted; unlike ``schedule`` this trigger
+    carries no required sub-keys, so the list form is valid config.
+    """
+    for key, triggers in data.items():
+        if key not in _ON_KEYS:
+            continue
+        if isinstance(triggers, dict) and _PR_TARGET_KEY in triggers:
+            return True
+        if isinstance(triggers, list) and _PR_TARGET_KEY in triggers:
+            return True
+        if triggers == _PR_TARGET_KEY:
+            return True
+    return False
+
+
+def _pr_head_markers(value: object) -> list[str]:
+    """Return the PR-head expressions appearing in ``value``."""
+    text = str(value)
+    return [marker for marker in _PR_HEAD_MARKERS if marker in text]
+
+
+def _check_pull_request_target_refs(
+    data: dict[str, object],
+    jobs: dict[str, object],
+) -> list[str]:
+    """Return violations where a ``pull_request_target`` job reads PR content.
+
+    Invariant 12. ``pull_request_target`` runs with the base repository's
+    secrets and is reachable by any fork PR, so a job under it must not
+    resolve anything from the pull request's head: not as the ref it checks
+    out (which would execute fork code beside those secrets) and not as data
+    interpolated into a ``run:`` body or a step ``env:`` value.
+
+    Nothing else enforces this. zizmor's ``dangerous-triggers`` fires on the
+    trigger itself and is carried in ``.github/.zizmor.yml``'s ignore list
+    per file, so once a workflow is allowlisted for having the safe shape,
+    nothing rechecks that it still has it.
+    """
+    if not _has_pull_request_target(data):
+        return []
+    violations: list[str] = []
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        for index, step in enumerate(_job_steps(job)):
+            context = f"job '{job_name}': '{_step_label(step, index)}'"
+            uses = step.get("uses")
+            with_block = step.get("with")
+            if (
+                isinstance(uses, str)
+                and _is_checkout_action(uses)
+                and isinstance(with_block, dict)
+            ):
+                violations.extend(
+                    f"{context}: checkout ref resolves '{marker}' under"
+                    " pull_request_target, which runs fork-authored code with"
+                    " the base repository's secrets. Check out a base-side ref"
+                    " (`main`, or `github.sha`) instead."
+                    for marker in _pr_head_markers(with_block.get("ref", ""))
+                )
+            for field in ("run", "env"):
+                value = step.get(field)
+                if value is None:
+                    continue
+                violations.extend(
+                    f"{context}: `{field}:` interpolates '{marker}' under"
+                    " pull_request_target. Pull-request-controlled data must"
+                    " not reach a privileged job."
+                    for marker in _pr_head_markers(value)
+                )
+    return violations
+
+
+def _check_top_level_permissions(data: dict[str, object]) -> list[str]:
+    """Return a violation when the workflow omits a top-level ``permissions``.
+
+    Invariant 11. Without the key a workflow inherits the repository default
+    token scope, which is broader than any job here needs, and the omission is
+    invisible: the run simply succeeds with more authority than it declared.
+    Membership is tested rather than truthiness, because the compliant value
+    is ``permissions: {}``, which is falsy.
+    """
+    if "permissions" in data:
+        return []
+    return [
+        (
+            "no top-level `permissions:` block, so every job inherits the"
+            " repository default token scope. Declare `permissions: {}` and"
+            " grant per job."
+        )
+    ]
 
 
 def _sink_problems(watched: dict[str, dict[str, _Admission]]) -> list[str]:
@@ -1550,6 +1674,8 @@ def _scan_file(
         violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
         violations.extend(_check_runner_pinned(name, rel_path, job))
     violations.extend(_check_schedule_notifiers(data, jobs, sinks))
+    violations.extend(_check_top_level_permissions(data))
+    violations.extend(_check_pull_request_target_refs(data, jobs))
     return violations
 
 

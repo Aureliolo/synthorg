@@ -504,15 +504,36 @@ immutable` for long-lived caching, and documentation endpoints (`/docs/*`)
 allow brief client and proxy caching since they serve public, non-user-specific
 content.
 
-### Branch Protection
+### Branch and tag protection
 
-The `protect-main` ruleset enforces:
+Four rulesets are declared in `.github/branch_protection.yml`:
 
-- **Signed commits** required
-- **No direct pushes**: all changes via pull request
-- **1 approving review** required (stale reviews dismissed on push)
-- **`ci-pass` status check** required before merge
-- **No branch deletion** or non-fast-forward pushes
+- **`default`** (every ref): signed commits, and code-quality scanning.
+- **`protect-main`**: no direct pushes, no branch deletion, no
+  non-fast-forward pushes, signed commits, and the required status checks
+  listed in the spec (`CI Pass`, `CLI Pass`, `Docker Pass`, the two CodSpeed
+  contexts and `Lighthouse Pass`), pinned to the GitHub Actions app by
+  `integration_id`.
+- **`protect-main-reviews`**: 1 approving review, stale reviews dismissed on
+  push.
+- **`protect-release-tags`** (`refs/tags/v*`): restricts tag **creation** and
+  **update**. This one is a signing control, not a workflow-hygiene control.
+  A `v*` tag may point at any commit in history and GitHub runs a workflow
+  from the *tagged* tree, so push access to any branch plus the ability to
+  create a tag was enough to resurrect a retired signing workflow at its old
+  path and mint a certificate under a SAN the CLI still admits. The
+  certificate-extension binding described above cannot distinguish that
+  build, because it genuinely is this repository on a GitHub-hosted runner;
+  the ruleset is what closes it. Deletion is left unrestricted so
+  `release-finalize.yml`'s orphan-dev-tag sweep keeps working, which accepts
+  erasure of a published tag as a cost but not forgery, since re-pushing the
+  name is a creation.
+
+`scripts/audit_branch_protection.sh` diffs the live rulesets against that
+spec: `verify-rulesets.yml` runs it on every PR, and `verify-backend.yml`
+runs it again on push to main. The audit strips `bypass_actors` on both
+sides, so which actors bypass `protect-release-tags` is deliberately outside
+its scope and needs periodic review by hand.
 
 ---
 

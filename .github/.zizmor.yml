@@ -7,14 +7,8 @@ rules:
   dangerous-triggers:
     ignore:
       # pull_request_target is required for CLA enforcement (needs write
-      # access to commit signatures). Mitigated: checkout uses ref: main
-      # (not PR head), no untrusted input in run: steps.
+      # access to commit signatures). Mitigated: the pull_request_target job
+      # (cla-check) checks out nothing at all, and no untrusted input reaches
+      # a run: step. The file's only checkout belongs to cla-sign, which
+      # triggers on issue_comment and pins ref: main.
       - repo-cla.yml
-      # pull_request_target is required to audit ruleset drift while a PR is
-      # open: reading live rulesets needs the release-bot App token, whose
-      # environment only admits refs/heads/main, and pull_request_target is
-      # the only PR-time event whose github.ref is that. Mitigated the same
-      # way: checkout pins the BASE commit, and the job compares main's
-      # committed spec against the live rulesets, so no PR-controlled content
-      # reaches it -- not as code, and not as data.
-      - verify-rulesets.yml
