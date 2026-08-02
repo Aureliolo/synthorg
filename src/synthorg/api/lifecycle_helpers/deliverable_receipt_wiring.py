@@ -13,7 +13,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 logger = get_logger(__name__)
 
 
-async def _wire_deliverable_receipts(app_state: AppState) -> None:
+async def wire_deliverable_receipts(app_state: AppState) -> None:
     """Wire the deliverable-receipts service once persistence + docs exist.
 
     Gated on a connected persistence backend and a wired docs service

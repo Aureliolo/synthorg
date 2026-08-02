@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
-from synthorg.config.rate_limits import AUTH_ENDPOINT_WINDOW, exceeds_window_rate
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -228,6 +227,12 @@ class RateLimitConfig(BaseModel):
         regress to the floor cap.  Require operators to size the
         floor above both user-gated caps.
 
+        ``auth_endpoint_max_requests`` is deliberately outside this rule.
+        It counts over a fixed minute while these tiers follow
+        ``time_unit``, so the numbers are not comparable, and it is a
+        ceiling on attacker attempts rather than a budget anyone needs to
+        reach: an outer tier clipping it lower only tightens the bound.
+
         Returns:
             ``Self`` instance.
 
@@ -248,25 +253,6 @@ class RateLimitConfig(BaseModel):
                 f" >= unauth_max_requests={self.unauth_max_requests} so"
                 " the unauthenticated per-IP budget is reachable"
                 " (the IP floor wraps the unauthenticated tier)."
-            )
-            raise ValueError(msg)
-        # The credential tier counts over a fixed minute whatever the general
-        # window is, so it is the one comparison the raw counts cannot make.
-        # Checked here as well as on the live swap: a deployment that boots an
-        # unreachable credential cap would otherwise only learn of it the
-        # first time an operator edited one of the pair.
-        if exceeds_window_rate(
-            cap=self.auth_endpoint_max_requests,
-            cap_window=AUTH_ENDPOINT_WINDOW,
-            floor=self.floor_max_requests,
-            floor_window=self.time_unit.value,
-        ):
-            msg = (
-                f"auth_endpoint_max_requests={self.auth_endpoint_max_requests}"
-                f" per {AUTH_ENDPOINT_WINDOW} is a higher rate than"
-                f" floor_max_requests={self.floor_max_requests} per"
-                f" {self.time_unit.value}, so the credential budget is"
-                " unreachable (the IP floor wraps the credential endpoints)."
             )
             raise ValueError(msg)
         return self

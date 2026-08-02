@@ -197,10 +197,15 @@ class SubsystemReconciler:
             return requested
 
     def _release_pass(self) -> None:
-        """Give the pass claim back after a pass raised."""
+        """Give the pass claim back after a pass raised.
+
+        A queued follow-up is kept. The caller that queued it already has its
+        deferred report and will not ask again, so dropping it here loses
+        exactly the signal this hand-off exists to carry, and it would be lost
+        because an unrelated subsystem raised. The next claim runs it.
+        """
         with self._pass_guard:
             self._pass_in_flight = False
-            self._follow_up = None
 
     def _lock_for_current_loop(self) -> asyncio.Lock:
         """Return the pass lock, rebuilt if the running loop changed.

@@ -357,6 +357,15 @@ async def _activate_self_improvement(app_state: AppState) -> None:
     await wire_meta_apply(app_state)
 
 
+async def _deactivate_self_improvement(app_state: AppState) -> None:
+    """Take the self-improvement apply path down."""
+    from synthorg.api.lifecycle_helpers.meta_apply_wiring import (  # noqa: PLC0415
+        unwire_meta_apply,
+    )
+
+    await unwire_meta_apply(app_state)
+
+
 async def _activate_chief_of_staff_chat(app_state: AppState) -> None:
     """Wire the Chief-of-Staff chat surface."""
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
@@ -560,9 +569,9 @@ async def _activate_plan_dispatcher(app_state: AppState) -> None:
 
 async def _activate_steering_service(app_state: AppState) -> None:
     """Wire the mid-flight steering service."""
-    from synthorg.api._app_wiring import _wire_steering_service  # noqa: PLC0415
+    from synthorg.api._app_wiring import wire_steering_service  # noqa: PLC0415
 
-    await _wire_steering_service(
+    await wire_steering_service(
         app_state,
         provider_registry=_registry(app_state),
     )
@@ -578,10 +587,10 @@ async def _deactivate_steering_service(app_state: AppState) -> None:
 async def _activate_deliverable_receipts(app_state: AppState) -> None:
     """Wire the deliverable-receipts service."""
     from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (  # noqa: PLC0415
-        _wire_deliverable_receipts,
+        wire_deliverable_receipts,
     )
 
-    await _wire_deliverable_receipts(app_state)
+    await wire_deliverable_receipts(app_state)
 
 
 async def _deactivate_deliverable_receipts(app_state: AppState) -> None:
@@ -596,10 +605,10 @@ async def _deactivate_deliverable_receipts(app_state: AppState) -> None:
 async def _activate_fine_tune_orchestrator(app_state: AppState) -> None:
     """Wire the embedding fine-tune orchestrator."""
     from synthorg.api.lifecycle_helpers.finetune_wiring import (  # noqa: PLC0415
-        _wire_fine_tune_orchestrator,
+        wire_fine_tune_orchestrator,
     )
 
-    await _wire_fine_tune_orchestrator(app_state)
+    await wire_fine_tune_orchestrator(app_state)
 
 
 async def _activate_team_service(app_state: AppState) -> None:
@@ -661,10 +670,10 @@ async def _activate_plan_item_reply(app_state: AppState) -> None:
 async def _activate_analytics_collector(app_state: AppState) -> None:
     """Configure the cross-deployment analytics collector role."""
     from synthorg.api.lifecycle_helpers.meta_wiring import (  # noqa: PLC0415
-        _wire_analytics_collector,
+        wire_analytics_collector,
     )
 
-    await _wire_analytics_collector(si_config=await _si_config(app_state))
+    await wire_analytics_collector(si_config=await _si_config(app_state))
 
 
 async def _activate_eval_loop(app_state: AppState) -> None:
@@ -882,6 +891,7 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.SELF_IMPROVEMENT,
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_self_improvement,
+        deactivate=_deactivate_self_improvement,
     ),
     SubsystemSpec(
         name="chief_of_staff_chat",

@@ -200,7 +200,7 @@ function findDirectYamlKey(
 
 /** Whether this line starts a new top-level key, ending the block. */
 function endsBlock(line: string, consumed: number): boolean {
-  return consumed > 0 && Boolean(line.trim()) && indentOf(line) === 0
+  return consumed > 0 && !isYamlFiller(line) && indentOf(line) === 0
 }
 
 /** Leading-space count of a line. */
@@ -208,10 +208,23 @@ function indentOf(line: string): number {
   return line.length - line.trimStart().length
 }
 
+/**
+ * Whether a line carries no YAML structure.
+ *
+ * Comments are skipped everywhere the block is measured: a top-level one
+ * between the namespace header and its keys would otherwise end the block
+ * early, and one indented differently from the real keys would set the child
+ * indent nothing then matches. Either way the diagnostic disappears silently.
+ */
+function isYamlFiller(line: string): boolean {
+  const content = line.trim()
+  return !content || content.startsWith('#')
+}
+
 /** Indent of the block's first content line, or null when it has none. */
 function firstChildIndent(block: readonly string[]): number | null {
   for (const line of block) {
-    if (!line.trim()) continue
+    if (isYamlFiller(line)) continue
     const indent = indentOf(line)
     if (indent === 0) return null
     return indent

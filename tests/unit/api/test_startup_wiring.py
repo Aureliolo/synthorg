@@ -30,7 +30,7 @@ from synthorg.api.lifecycle_helpers.conversational_wiring import (
     _guard_conversational_persistence,
 )
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
-    _wire_fine_tune_orchestrator,
+    wire_fine_tune_orchestrator,
 )
 from synthorg.api.lifecycle_helpers.startup_steps import _publish_red_team_runtime
 from synthorg.api.lifecycle_runner_support import _wire_task_activity_observer
@@ -576,7 +576,7 @@ class TestWireFineTuneOrchestrator:
     async def test_skips_when_persistence_absent(self) -> None:
         state = _make_state()
 
-        await _wire_fine_tune_orchestrator(state)
+        await wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
 
@@ -603,7 +603,7 @@ class TestWireFineTuneOrchestrator:
         )
 
         with structlog.testing.capture_logs() as captured:
-            await _wire_fine_tune_orchestrator(state)
+            await wire_fine_tune_orchestrator(state)
 
         orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
         assert isinstance(orchestrator, FineTuneOrchestrator)
@@ -635,7 +635,7 @@ class TestWireFineTuneOrchestrator:
         )
 
         with structlog.testing.capture_logs() as captured:
-            await _wire_fine_tune_orchestrator(state)
+            await wire_fine_tune_orchestrator(state)
 
         orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
         assert isinstance(orchestrator, FineTuneOrchestrator)
@@ -664,7 +664,7 @@ class TestWireFineTuneOrchestrator:
         )
 
         with structlog.testing.capture_logs() as captured:
-            await _wire_fine_tune_orchestrator(state)
+            await wire_fine_tune_orchestrator(state)
 
         orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
         assert isinstance(orchestrator, FineTuneOrchestrator)
@@ -688,7 +688,7 @@ class TestWireFineTuneOrchestrator:
             slices={PersistenceStateSlice: {"backend": fake}},
         )
 
-        await _wire_fine_tune_orchestrator(state)
+        await wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is existing
         fake.fine_tune_runs.mark_interrupted.assert_not_awaited()
@@ -699,7 +699,7 @@ class TestWireFineTuneOrchestrator:
         )
 
         with structlog.testing.capture_logs() as captured:
-            await _wire_fine_tune_orchestrator(state)
+            await wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
         skipped = [
@@ -715,7 +715,7 @@ class TestWireFineTuneOrchestrator:
         state = _make_state(slices={PersistenceStateSlice: {"backend": fake}})
 
         with structlog.testing.capture_logs() as captured:
-            await _wire_fine_tune_orchestrator(state)
+            await wire_fine_tune_orchestrator(state)
 
         # A wiring failure leaves the controllers to 501 rather than
         # poisoning startup.

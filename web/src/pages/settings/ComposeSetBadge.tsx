@@ -20,7 +20,7 @@ export function ComposeSetBadge({ className }: ComposeSetBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning',
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-micro font-medium bg-warning/10 text-warning',
         className,
       )}
       title="Set by the deployment; change it where the process is launched, then restart it"

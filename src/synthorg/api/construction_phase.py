@@ -507,7 +507,7 @@ def build_construction_services(
 
     # The cockpit-channel steering notifier closes over the channels plugin
     # (a construction-phase artifact) and is parked on the cockpit slice so
-    # ``_wire_steering_service`` can inject it once the steering service wires
+    # ``wire_steering_service`` can inject it once the steering service wires
     # after the project brain connects.
     from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
 

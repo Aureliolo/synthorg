@@ -237,7 +237,7 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     query/seek service, then installs them on ``AppState`` for the
     cockpit controllers and MCP tools. Requires a connected persistence
     backend (for the frame store) plus a task engine. The steering
-    service wires separately in ``_wire_steering_service`` once the
+    service wires separately in ``wire_steering_service`` once the
     project brain is up (it records directives through the brain).
     """
     from synthorg.engine.state import EngineStateSlice, task_engine_of  # noqa: PLC0415
@@ -303,7 +303,7 @@ def _try_wire_cockpit(app_state: AppState) -> None:
         )
 
 
-async def _wire_steering_service(
+async def wire_steering_service(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
@@ -523,5 +523,5 @@ __all__ = [
     "_wire_cockpit_services",
     "_wire_cost_dial_services",
     "_wire_environment_service",
-    "_wire_steering_service",
+    "wire_steering_service",
 ]

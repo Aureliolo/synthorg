@@ -101,6 +101,20 @@ def _canned_settings(values: dict[tuple[str, str], str]) -> SettingsService:
     return canned
 
 
+def _running_limits() -> LiveRateLimits:
+    """A valid tier config standing in for the one already serving traffic.
+
+    Returns:
+        The config a refusal has to leave in place.
+    """
+    return LiveRateLimits(
+        floor_max_requests=900,
+        unauth_max_requests=100,
+        auth_max_requests=100,
+        auth_endpoint_max_requests=10,
+    )
+
+
 def _bound_of(store: object) -> int | None:
     """Read a deque-backed store's live bound.
 
@@ -317,13 +331,18 @@ class TestGlobalRateLimit:
     ) -> None:
         # Collapsing an unrecognised value to ``False`` would switch the
         # limiter off, which is the one outcome worth refusing outright.
+        # Asserted against a limiter that was already running: an assertion
+        # that the config is still absent would hold just as well if the
+        # refusal had cleared one.
         canned = _canned_settings({("api", "rate_limiter_enabled"): "yes"})
         sub, state = self._wired(settings, reads_through=canned)
+        previous = _running_limits()
+        state.per_op_limits.set_global_config(previous)
 
         with pytest.raises(ValueError, match="not a valid boolean"):
             await sub.on_settings_changed("api", "rate_limiter_enabled")
 
-        assert state.per_op_limits.global_config is None
+        assert state.per_op_limits.global_config is previous
 
     async def test_an_unknown_window_is_refused(
         self, settings: SettingsService
@@ -339,11 +358,13 @@ class TestGlobalRateLimit:
             }
         )
         sub, state = self._wired(settings, reads_through=canned)
+        previous = _running_limits()
+        state.per_op_limits.set_global_config(previous)
 
         with pytest.raises(ValueError, match="not a known window"):
             await sub.on_settings_changed("api", "rate_limit_time_unit")
 
-        assert state.per_op_limits.global_config is None
+        assert state.per_op_limits.global_config is previous
 
 
 class TestCompressionThreshold:

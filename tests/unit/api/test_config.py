@@ -72,24 +72,10 @@ class TestApiConfig:
             RateLimitConfig(max_requests=100)  # type: ignore[call-arg]
 
     def test_rate_limit_time_unit_values(self) -> None:
-        # The credential tier always counts over a minute, so widening the
-        # general window without raising the floor makes the floor the
-        # binding limit on it. Sized per window here so the assertion is
-        # about the accepted units rather than about that invariant.
-        floors = {
-            RateLimitTimeUnit.SECOND: 1,
-            RateLimitTimeUnit.MINUTE: 10,
-            RateLimitTimeUnit.HOUR: 600,
-            RateLimitTimeUnit.DAY: 14400,
-        }
+        # Every unit is accepted on the shipped caps: the window moves what
+        # they all count over, so it never puts a pair out of order.
         for unit in RateLimitTimeUnit:
-            floor = floors[unit]
-            rl = RateLimitConfig(
-                time_unit=unit,
-                floor_max_requests=floor,
-                unauth_max_requests=floor,
-                auth_max_requests=floor,
-            )
+            rl = RateLimitConfig(time_unit=unit)
             assert rl.time_unit == unit
 
     def test_rate_limit_frozen(self) -> None:

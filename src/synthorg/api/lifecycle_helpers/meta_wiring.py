@@ -408,7 +408,7 @@ async def _wire_org_inflection_monitor(
     logger.info(API_APP_STARTUP, service="org_inflection_monitor", note="wired")
 
 
-async def _wire_analytics_collector(
+async def wire_analytics_collector(
     *,
     si_config: SelfImprovementConfig,
 ) -> None:
