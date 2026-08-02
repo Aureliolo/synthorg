@@ -24,11 +24,8 @@ from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.bookkeeping import ReconcileBook
-from synthorg.api.subsystems.graph import (
-    is_active,
-    missing_capabilities,
-    order_subsystems,
-)
+from synthorg.api.subsystems.graph import order_subsystems
+from synthorg.api.subsystems.liveness import is_active, missing_capabilities
 from synthorg.api.subsystems.report import ReconcileReport, SubsystemStatus
 from synthorg.api.subsystems.spec import (
     Capability,

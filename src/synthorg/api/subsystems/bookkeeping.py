@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from synthorg.api.state import AppState
-from synthorg.api.subsystems.graph import (
+from synthorg.api.subsystems.liveness import (
     capability_fingerprint,
     settings_drift,
     settings_fingerprint,
