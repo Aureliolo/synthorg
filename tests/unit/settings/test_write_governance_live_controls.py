@@ -1,9 +1,9 @@
 """Governance tests for the live security controls.
 
-Each key here weakens a safeguard when it moves one way: a rate limit lowered,
-a limiter switched off, a token shortened. That direction applies to the
-running system immediately, so these pin the confirm + reason + actor a write
-in it demands, and pin that the tightening direction stays one ordinary write.
+Each key here weakens a safeguard when it moves one way: a rate-limit budget
+raised, a limiter switched off, a token shortened. That direction applies to
+the running system immediately, so these pin the confirm + reason + actor a
+write in it demands, and pin that tightening stays one ordinary write.
 """
 
 from collections.abc import Awaitable, Callable

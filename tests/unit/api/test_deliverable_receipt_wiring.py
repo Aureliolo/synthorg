@@ -1,6 +1,6 @@
 """Wiring tests for the deliverable-receipt startup helper.
 
-Regression guard for the red-team signal: ``_wire_deliverable_receipts``
+Regression guard for the red-team signal: ``wire_deliverable_receipts``
 must thread the red-team report store published on
 ``SecurityStateSlice`` into ``build_deliverable_receipt_service`` so a
 completed deliverable's receipt can snapshot the run's red-team findings.
@@ -14,7 +14,7 @@ from collections.abc import Callable
 import pytest
 
 from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
-    _wire_deliverable_receipts,
+    wire_deliverable_receipts,
 )
 from synthorg.api.state import AppState
 from synthorg.deliverable_receipts.service import DeliverableReceiptService
@@ -57,7 +57,7 @@ def _app_state(*, red_team_reports: InMemoryRedTeamReportRepository | None) -> A
     """Build a thin app state with persistence + docs wired and the slice set.
 
     Returns:
-        An ``AppState`` ready for ``_wire_deliverable_receipts``.
+        An ``AppState`` ready for ``wire_deliverable_receipts``.
     """
     return make_app_state(
         persistence=mock_of[PersistenceBackend](),
@@ -78,7 +78,7 @@ async def test_wiring_threads_red_team_repo_into_factory(
     repo = InMemoryRedTeamReportRepository()
     app_state = _app_state(red_team_reports=repo)
 
-    await _wire_deliverable_receipts(app_state)
+    await wire_deliverable_receipts(app_state)
 
     assert captured["redteam_reports"] is repo
     assert app_state.slice(DeliverableReceiptStateSlice).service is not None
@@ -92,7 +92,7 @@ async def test_wiring_passes_none_when_no_red_team_store(
     monkeypatch.setattr(_FACTORY_TARGET, _capture_factory(captured))
     app_state = _app_state(red_team_reports=None)
 
-    await _wire_deliverable_receipts(app_state)
+    await wire_deliverable_receipts(app_state)
 
     assert captured["redteam_reports"] is None
 

@@ -83,6 +83,29 @@ class TestScope:
 
         assert reads == []
 
+    async def test_a_window_only_write_reads_nothing(self) -> None:
+        # The window changes what every cap counts over without changing any
+        # of them, and the caps it moves are all judged against each other in
+        # the same unit. A rule reaching for it here judged the shipped
+        # defaults and refused a write that altered no budget at all.
+        reads: list[tuple[str, str]] = []
+
+        async def _get_current(namespace: str, key: str) -> str | None:
+            reads.append((namespace, key))
+            return None
+
+        def _get_default(namespace: str, key: str) -> str | None:
+            reads.append((namespace, key))
+            return None
+
+        await enforce_cross_field_rules(
+            [("api", "rate_limit_time_unit", "hour")],
+            get_current=_get_current,
+            get_default=_get_default,
+        )
+
+        assert reads == []
+
 
 class TestFloorCoversEveryTier:
     async def test_a_tier_above_the_floor_is_refused(self) -> None:
@@ -92,38 +115,12 @@ class TestFloorCoversEveryTier:
     async def test_a_tier_equal_to_the_floor_is_allowed(self) -> None:
         await _enforce([("api", "rate_limit_auth_max_requests", "1000")])
 
-    async def test_the_credential_throttle_is_covered_too(self) -> None:
-        # It is route middleware on /auth/*, and the app-wide floor sits in
-        # front of it, so it is bounded by the floor like every other tier.
-        with pytest.raises(SettingValidationError, match="auth_endpoint"):
-            await _enforce([("api", "rate_limit_auth_endpoint_max_requests", "5000")])
-
-    async def test_the_credential_throttle_is_judged_as_a_rate(self) -> None:
-        # It always counts over a minute while the floor follows the general
-        # window, so under a per-second floor its larger number is the smaller
-        # rate: 1000 a second leaves room for far more than 5000 a minute, and
-        # refusing this would block a policy stricter than what it wraps.
-        await _enforce(
-            [("api", "rate_limit_auth_endpoint_max_requests", "5000")],
-            stored={("api", "rate_limit_time_unit"): "second"},
-        )
-
-    async def test_a_credential_cap_above_an_hourly_floor_is_refused(self) -> None:
-        # An hourly floor of 1000 works out under 17 a minute, so a credential
-        # cap of 20 a minute is a number the stack can never reach.
-        with pytest.raises(SettingValidationError, match="auth_endpoint"):
-            await _enforce(
-                [("api", "rate_limit_auth_endpoint_max_requests", "20")],
-                stored={("api", "rate_limit_time_unit"): "hour"},
-            )
-
-    async def test_an_unresolvable_window_judges_no_credential_cap(self) -> None:
-        # With no window there is no rate to compare, and the per-field
-        # validator owns a window value that names nothing.
-        await _enforce(
-            [("api", "rate_limit_auth_endpoint_max_requests", "5000")],
-            stored={("api", "rate_limit_time_unit"): "fortnight"},
-        )
+    async def test_the_credential_throttle_is_exempt(self) -> None:
+        # It counts over a fixed minute while the floor follows the general
+        # window, so the two numbers are not comparable. It is also a ceiling
+        # on attacker attempts rather than a budget anyone needs to reach: an
+        # outer tier clipping it lower only tightens the bound.
+        await _enforce([("api", "rate_limit_auth_endpoint_max_requests", "5000")])
 
     async def test_lowering_the_floor_under_a_stored_tier_is_refused(self) -> None:
         # The write names the floor, not the tier: the invariant is about the

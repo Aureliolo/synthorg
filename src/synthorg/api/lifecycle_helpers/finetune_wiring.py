@@ -14,7 +14,7 @@ from synthorg.settings.model_ref import parse_model_ref
 logger = get_logger(__name__)
 
 
-async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
+async def wire_fine_tune_orchestrator(app_state: AppState) -> None:
     """Wire the embedding fine-tune orchestrator once persistence exists.
 
     Best-effort and gated on a connected persistence backend that implements

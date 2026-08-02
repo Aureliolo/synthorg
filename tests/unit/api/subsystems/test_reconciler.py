@@ -606,7 +606,11 @@ class TestPassSerialisation:
                 # inside this window rather than after it.
                 await asyncio.sleep(0.05)
             else:
-                await asyncio.to_thread(release.wait, 10)
+                # Asserted, not discarded: if a change stops the follower
+                # deferring, it blocks here until the timeout and the test
+                # would still see two attempts, passing after a stall.
+                released = await asyncio.to_thread(release.wait, 10)
+                assert released, "the activation window was never released"
             with guard:
                 inside -= 1
 

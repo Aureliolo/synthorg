@@ -87,6 +87,9 @@ async def unwire_docs_engine(app_state: AppState) -> None:
     value, so once that backend is replaced this slice points at an engine
     reading through the instance that was disconnected. Clearing it is what
     lets the reconciler read the subsystem as down and build a new one.
+
+    Args:
+        app_state: Application state that owns the docs engine slice.
     """
     from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
 

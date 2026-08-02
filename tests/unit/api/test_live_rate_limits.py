@@ -87,7 +87,7 @@ class TestTierSelection:
 
 @pytest.mark.unit
 class TestFloorInvariant:
-    """The floor wraps every tier, so it may never sit below one."""
+    """The floor wraps every windowed tier, so it may never sit below one."""
 
     def test_a_floor_below_a_tier_is_refused(self) -> None:
         # Accepting this would silently cap the authenticated budget at
@@ -99,38 +99,18 @@ class TestFloorInvariant:
         limits = _limits(floor_max_requests=600, auth_max_requests=600)
         assert limits.floor_max_requests == limits.auth_max_requests
 
-    def test_a_floor_below_the_credential_throttle_is_refused(self) -> None:
-        # The credential throttle is route middleware, and the app-wide
-        # floor sits in front of it: a cap above the floor is a number the
-        # operator can set and the stack can never reach.
-        with pytest.raises(ValidationError):
-            _limits(floor_max_requests=100, auth_endpoint_max_requests=600)
-
-    def test_a_credential_cap_stricter_per_second_is_allowed(self) -> None:
-        # The credential throttle always counts over a minute, so under a
-        # per-second floor its larger number is the smaller rate: 10 a second
-        # leaves room for 600 a minute, and refusing 20 would block a policy
-        # that is stricter than the floor it is compared against.
-        limits = LiveRateLimits(
-            floor_max_requests=_AUTH_ENDPOINT_CAP,
-            unauth_max_requests=_AUTH_ENDPOINT_CAP,
-            auth_max_requests=_AUTH_ENDPOINT_CAP,
-            auth_endpoint_max_requests=_UNAUTH_CAP,
-            time_unit="second",
+    def test_the_credential_throttle_is_exempt(self) -> None:
+        # It counts over a fixed minute while every other tier follows the
+        # general window, so the two numbers are not comparable. It is also a
+        # ceiling on attacker attempts rather than a budget anyone needs to
+        # reach: an outer tier clipping it lower only tightens the bound.
+        limits = _limits(
+            floor_max_requests=_UNAUTH_CAP,
+            unauth_max_requests=_UNAUTH_CAP,
+            auth_max_requests=_UNAUTH_CAP,
+            auth_endpoint_max_requests=_AUTH_CAP,
         )
-        assert limits.auth_endpoint_max_requests == _UNAUTH_CAP
-
-    def test_a_credential_cap_above_an_hourly_floor_is_refused(self) -> None:
-        # The other direction: an hourly floor works out under 17 a minute,
-        # so a credential cap of 20 a minute could never be reached.
-        with pytest.raises(ValidationError):
-            LiveRateLimits(
-                floor_max_requests=_FLOOR_CAP,
-                unauth_max_requests=_UNAUTH_CAP,
-                auth_max_requests=_AUTH_CAP,
-                auth_endpoint_max_requests=_UNAUTH_CAP,
-                time_unit="hour",
-            )
+        assert limits.auth_endpoint_max_requests == _AUTH_CAP
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

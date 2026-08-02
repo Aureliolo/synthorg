@@ -154,6 +154,16 @@ describe('validateSchema compose-set awareness', () => {
     expect(diagnostics[0]!.from).toBe(text.lastIndexOf('"server_port"'))
   })
 
+  it('looks past a top-level comment inside the namespace block', () => {
+    // A comment at column 0 is not a new top-level key, and one indented
+    // differently from the real keys is not the block's child indent.
+    const text = 'api:\n# operator note\n    # indented note\n  server_port: "9000"'
+    const parsed = { api: { server_port: '9000' } }
+    const diagnostics = validateSchema(parsed, schema, text, 'yaml')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.from).toBe(text.lastIndexOf('server_port'))
+  })
+
   it('marks the direct key, not a deeper one of the same name in YAML', () => {
     const text = 'api:\n  timeout:\n    server_port: "1"\n  server_port: "9000"'
     const parsed = { api: { timeout: { server_port: '1' }, server_port: '9000' } }
