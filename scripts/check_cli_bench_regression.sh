@@ -232,8 +232,16 @@ echo "=== Capturing ${BENCH_COUNT} interleaved rounds ==="
 : >"${OLD_OUT}"
 for ((round = 1; round <= BENCH_COUNT; round++)); do
     echo "::group::Round ${round}/${BENCH_COUNT}"
-    run_round "${WORK_DIR}/new" "${NEW_OUT}"
-    run_round "${WORK_DIR}/old" "${OLD_OUT}"
+    # Which side runs first alternates too: measuring one of them first in
+    # every round hands it whatever the runner was doing at the start of a
+    # round, which is the same systematic bias one round smaller.
+    if ((round % 2)); then
+        run_round "${WORK_DIR}/new" "${NEW_OUT}"
+        run_round "${WORK_DIR}/old" "${OLD_OUT}"
+    else
+        run_round "${WORK_DIR}/old" "${OLD_OUT}"
+        run_round "${WORK_DIR}/new" "${NEW_OUT}"
+    fi
     echo "::endgroup::"
 done
 
