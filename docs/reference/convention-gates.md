@@ -53,8 +53,8 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_dto_types_ts_in_sync.py` | commit+push | `api/` + `core/` + `*.gen.ts` | full | no | none | keep |
 | `check_dual_backend_test_parity.py` | push | persistence protocols + conformance | full | no | `dual_backend_parity_baseline.txt` | keep |
 | `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
-| `check_every_gate_is_wired.py` | push | `scripts/check_*.py` vs every wiring source | full | no | `unwired_gate_allowlist.yaml` | keep |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |
+| `check_every_gate_is_wired.py` | push | `scripts/check_*.py` vs every wiring source | full | no | `unwired_gate_allowlist.yaml` | add |
 | `check_feature_index_freshness.py` | push | `src/synthorg/` + `data/*.json` | full | no | none | keep |
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_forbidden_literals.py` | push | `src/synthorg/` | full | no | none | keep |
