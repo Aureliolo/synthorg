@@ -10,6 +10,10 @@ a problem, and the cost lands inside whatever ran next.
   bounded retry walks back into the same wedge for another full build
   ceiling rather than getting a fresh daemon.
 
+The fingerprint only pre-empts the staleness it can see, so the third
+group covers the rest: a rebuild that happens anyway is at least named,
+because a 162s check and a 2s check look identical from outside.
+
 Lives apart from ``test_run_affected_mypy.py`` because that module is
 already well past the tests size budget.
 """
@@ -157,6 +161,47 @@ class TestStaleGraphDetection:
         monkeypatch.setattr(_MODULE, "_dependency_digest", lambda: "recorded-digest")
         _MODULE._record_bounded_lifetime(daemon)
         assert _MODULE._recorded_dependency_digest(daemon) == "recorded-digest"
+
+
+class TestRebuildIsReported:
+    """The fingerprint pre-empts one staleness trigger; there are others."""
+
+    def test_a_slow_check_is_named_a_rebuild(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _MODULE._report_if_rebuilt(_daemon(tmp_path), _MODULE._REBUILD_REPORT_SECONDS)
+        assert "full graph rebuild" in capsys.readouterr().err
+
+    def test_a_warm_check_says_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Every ordinary push takes this path, so a banner here would be
+        # noise that trains the reader past the one that matters.
+        _MODULE._report_if_rebuilt(
+            _daemon(tmp_path), _MODULE._REBUILD_REPORT_SECONDS - 0.01
+        )
+        assert capsys.readouterr().err == ""
+
+    def test_the_dmypy_call_itself_is_what_gets_timed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # The threshold is only reachable if the elapsed span actually
+        # brackets the check; a clock read on the wrong side of it would
+        # leave the report permanently silent and nothing else would say so.
+        daemon = _daemon(tmp_path)
+        _running(daemon)
+        ticks = iter([0.0, _MODULE._REBUILD_REPORT_SECONDS + 1.0])
+        monkeypatch.setattr(
+            _MODULE, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+        )
+
+        assert _MODULE._check_daemon(daemon) == 0
+        assert calls[-1][:1] == ("run",)
+        assert "full graph rebuild" in capsys.readouterr().err
 
 
 class TestWedgedServerIsKilled:

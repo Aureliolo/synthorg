@@ -156,6 +156,12 @@ _CHECK_COMPLETED_CODES: Final[frozenset[int]] = frozenset({0, 1})
 # cold fallback that a genuinely broken daemon needs.
 _DAEMON_ATTEMPTS: Final[int] = 2
 
+# Past this, a daemon check was a rebuild rather than an answer. A warm
+# full-tree check measures ~1.4-4s; a cold rebuild measures 120-160s. The
+# threshold sits far above the former and far below the latter, so it can
+# neither cry wolf on a slow-but-warm machine nor miss a real rebuild.
+_REBUILD_REPORT_SECONDS: Final[float] = 30.0
+
 # Opt out of the daemon for a single run. CI is opted out unconditionally: a
 # fresh container pays the multi-minute cold build and is then discarded before
 # any warm run repays it.
@@ -742,6 +748,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     _drop_stale_graph(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
+        started = time.monotonic()
         code = _dmypy(
             daemon,
             "run",
@@ -751,6 +758,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
             *daemon.paths,
             *daemon.extra,
         )
+        _report_if_rebuilt(daemon, time.monotonic() - started)
         if code in _CHECK_COMPLETED_CODES:
             _record_bounded_lifetime(daemon)
             if attempt:
@@ -767,6 +775,37 @@ def _check_daemon(daemon: _Daemon) -> int | None:
         file=sys.stderr,
     )
     return None
+
+
+def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> None:
+    """Say so when a daemon check clearly rebuilt rather than answered.
+
+    ``_drop_stale_graph`` can only pre-empt the staleness it knows how to
+    fingerprint. A resident graph goes stale for other reasons too: a
+    branch switch or rebase rewrites every source mtime, a mypy config
+    change makes dmypy restart itself, and site-packages can move without
+    ``uv.lock`` moving. One such push was measured at 162s in this hook
+    with ``uv.lock`` untouched since hours before the daemon started, and
+    it took a dozen probes to establish that afterwards, because the
+    rebuild is indistinguishable from a slow check from the outside.
+
+    Enumerating every trigger is not tractable; naming the cost is. A warm
+    check is seconds, so anything past the threshold below is a rebuild,
+    and saying so turns an unexplained slow push into a labelled event
+    with an obvious remedy.
+    """
+    if elapsed < _REBUILD_REPORT_SECONDS:
+        return
+    print(
+        f"{daemon.label} daemon took {elapsed:.0f}s: that is a full graph"
+        " rebuild, not a check. Its resident graph was stale for a reason"
+        " the uv.lock fingerprint does not cover (a rebase or branch"
+        " switch rewrites every source mtime; a mypy config change makes"
+        " dmypy restart itself). The graph is warm again now, so the next"
+        " push pays seconds; `make typecheck-warm` pre-pays it off the"
+        " push budget.",
+        file=sys.stderr,
+    )
 
 
 def _daemon_running(daemon: _Daemon) -> bool:
