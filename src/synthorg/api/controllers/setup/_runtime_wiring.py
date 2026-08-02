@@ -138,11 +138,20 @@ async def _reconcile_post_setup(app_state: AppState) -> None:
     from synthorg.api.subsystems.runtime import reconcile_subsystems  # noqa: PLC0415
 
     report = await reconcile_subsystems(app_state, trigger="post_setup")
-    ran = report is not None and not report.deferred
-    failed = report.failed if ran and report is not None else ("<the pass itself>",)
-    if failed:
-        logger.warning(SETUP_FEATURE_REWIRE_FAILED, subsystems=", ".join(failed))
-        msg = f"subsystems failed to activate after setup: {', '.join(failed)}"
+    if report is None or report.deferred:
+        # Kept apart from the failure list below: a pass that never ran is a
+        # different fault from a subsystem that raised, and folding it in as a
+        # pseudo-name told the operator a subsystem called "the pass itself"
+        # had failed.
+        deferred = "was deferred to a pass already in flight"
+        reason = deferred if report else "could not run"
+        logger.warning(SETUP_FEATURE_REWIRE_FAILED, pass_outcome=reason)
+        msg = f"the reconcile pass after setup {reason}, so nothing was verified"
+        raise SubsystemActivationError(msg)
+    if report.failed:
+        failed = ", ".join(report.failed)
+        logger.warning(SETUP_FEATURE_REWIRE_FAILED, subsystems=failed)
+        msg = f"subsystems failed to activate after setup: {failed}"
         raise SubsystemActivationError(msg)
 
 
