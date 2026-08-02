@@ -78,19 +78,77 @@ function findJsonKeyPosition(
     }
     return null
   }
-  // Searching for a key within a namespace -- find the namespace first,
-  // then search for the key within its scope to avoid false matches
-  // in other namespaces with the same key name.
-  const nsPattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:\\s*\\{`)
-  const nsMatch = nsPattern.exec(text)
-  const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
-  const keyPattern = new RegExp(`"${escapeRegex(key)}"\\s*:`)
-  keyPattern.lastIndex = 0
-  const sub = text.slice(searchFrom)
-  const keyMatch = keyPattern.exec(sub)
-  if (keyMatch) {
-    const offset = searchFrom + keyMatch.index
-    return { from: offset, to: offset + key.length + 2 }
+  // Bounded to the namespace object and to its DIRECT children. A search
+  // that ran on from the namespace would stop at the first `"key":` anywhere
+  // after it, so a nested object carrying the same name -- or the same key
+  // under a later namespace -- would take the highlight from the setting the
+  // operator actually edited.
+  const body = jsonNamespaceBody(text, namespace)
+  if (!body) return null
+  const offset = findDirectJsonKey(text, body, key)
+  return offset === null ? null : { from: offset, to: offset + key.length + 2 }
+}
+
+/** Span of a namespace object's body, brace-balanced and string-aware. */
+function jsonNamespaceBody(
+  text: string,
+  namespace: string,
+): { start: number; end: number } | null {
+  const nsMatch = new RegExp(`"${escapeRegex(namespace)}"\\s*:\\s*\\{`).exec(text)
+  if (!nsMatch) return null
+  const start = nsMatch.index + nsMatch[0].length
+  let depth = 1
+  let index = start
+  while (index < text.length) {
+    if (text[index] === '"') {
+      index = endOfJsonString(text, index)
+      continue
+    }
+    depth += jsonDepthDelta(text[index])
+    if (depth === 0) return { start, end: index }
+    index += 1
+  }
+  return null
+}
+
+/** How one character moves JSON nesting depth. */
+function jsonDepthDelta(ch: string | undefined): number {
+  if (ch === '{' || ch === '[') return 1
+  if (ch === '}' || ch === ']') return -1
+  return 0
+}
+
+/** Index just past the closing quote of the string starting at `open`. */
+function endOfJsonString(text: string, open: number): number {
+  let index = open + 1
+  while (index < text.length) {
+    if (text[index] === '\\') {
+      index += 2
+      continue
+    }
+    if (text[index] === '"') return index + 1
+    index += 1
+  }
+  return text.length
+}
+
+/** Offset of `key` as a direct child of the namespace body, else null. */
+function findDirectJsonKey(
+  text: string,
+  body: { start: number; end: number },
+  key: string,
+): number | null {
+  const direct = new RegExp(`^"${escapeRegex(key)}"\\s*:`)
+  let depth = 0
+  let index = body.start
+  while (index < body.end) {
+    if (text[index] === '"') {
+      if (depth === 0 && direct.test(text.slice(index))) return index
+      index = endOfJsonString(text, index)
+      continue
+    }
+    depth += jsonDepthDelta(text[index])
+    index += 1
   }
   return null
 }
@@ -104,26 +162,56 @@ function findYamlKeyPosition(
   namespace: string,
   key?: string,
 ): { from: number; to: number } | null {
+  const nsMatch = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm').exec(text)
+  if (!nsMatch) return null
   if (!key) {
-    // Searching for a namespace (top-level, no indentation)
-    const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
-    const match = pattern.exec(text)
-    if (match) {
-      return { from: match.index, to: match.index + namespace.length }
-    }
-    return null
+    return { from: nsMatch.index, to: nsMatch.index + namespace.length }
   }
-  // Searching for a key within a namespace -- find the namespace line first,
-  // then search for the indented key after it.
-  const nsPattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
-  const nsMatch = nsPattern.exec(text)
-  const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
-  const sub = text.slice(searchFrom)
-  const keyPattern = new RegExp(`^(\\s+)["']?${escapeRegex(key)}["']?\\s*:`, 'm')
-  const keyMatch = keyPattern.exec(sub)
-  if (keyMatch) {
-    const offset = searchFrom + keyMatch.index + (keyMatch[1]?.length ?? 0)
-    return { from: offset, to: offset + key.length }
+  // Bounded to the namespace block and to the one indent level directly
+  // under it: a deeper key of the same name belongs to another setting's
+  // value, and highlighting it would point the operator at the wrong line.
+  const searchFrom = nsMatch.index + nsMatch[0].length
+  return findDirectYamlKey(text.slice(searchFrom).split('\n'), key, searchFrom)
+}
+
+/** Offset of `key` at the block's own child indent, else null. */
+function findDirectYamlKey(
+  block: readonly string[],
+  key: string,
+  base: number,
+): { from: number; to: number } | null {
+  const childIndent = firstChildIndent(block)
+  if (childIndent === null) return null
+  const direct = new RegExp(`^ {${childIndent}}["']?${escapeRegex(key)}["']?\\s*:`)
+  let consumed = 0
+  for (const line of block) {
+    if (endsBlock(line, consumed)) return null
+    if (direct.test(line)) {
+      const offset = base + consumed + childIndent
+      return { from: offset, to: offset + key.length }
+    }
+    consumed += line.length + 1
+  }
+  return null
+}
+
+/** Whether this line starts a new top-level key, ending the block. */
+function endsBlock(line: string, consumed: number): boolean {
+  return consumed > 0 && Boolean(line.trim()) && indentOf(line) === 0
+}
+
+/** Leading-space count of a line. */
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length
+}
+
+/** Indent of the block's first content line, or null when it has none. */
+function firstChildIndent(block: readonly string[]): number | null {
+  for (const line of block) {
+    if (!line.trim()) continue
+    const indent = indentOf(line)
+    if (indent === 0) return null
+    return indent
   }
   return null
 }

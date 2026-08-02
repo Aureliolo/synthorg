@@ -141,4 +141,24 @@ describe('validateSchema compose-set awareness', () => {
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]!.message).toContain('api.server_port')
   })
+
+  it('marks the direct key, not a nested one of the same name in JSON', () => {
+    // ``timeout`` holds an object that also has a ``server_port``. A search
+    // that ran on from the namespace would stop at the nested one and put
+    // the error on a line the operator did not edit.
+    const text =
+      '{"api": {"timeout": {"server_port": "1"}, "server_port": "9000"}}'
+    const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
+    const diagnostics = validateSchema(parsed, schema, text, 'json')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.from).toBe(text.lastIndexOf('"server_port"'))
+  })
+
+  it('marks the direct key, not a deeper one of the same name in YAML', () => {
+    const text = 'api:\n  timeout:\n    server_port: "1"\n  server_port: "9000"'
+    const parsed = { api: { timeout: { server_port: '1' }, server_port: '9000' } }
+    const diagnostics = validateSchema(parsed, schema, text, 'yaml')
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.from).toBe(text.lastIndexOf('server_port'))
+  })
 })

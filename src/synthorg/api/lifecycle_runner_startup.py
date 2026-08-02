@@ -275,7 +275,8 @@ async def _reconcile_once_persistence_is_connected(app_state: AppState) -> None:
     report = await reconcile_subsystems(app_state, trigger="persistence_connected")
     if report is not None and not report.deferred:
         return
-    msg = "the reconcile pass at persistence-connected did not run"
+    reason = "was deferred to a pass already in flight" if report else "could not run"
+    msg = f"the reconcile pass at persistence-connected {reason}"
     raise SubsystemActivationError(msg)
 
 
