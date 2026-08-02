@@ -317,6 +317,13 @@ error's `retryable` signal and its discriminating code (see
   enumerating which connection names exist by probing secret-reveal
   error codes. This uniform-404 is deliberate; do not "fix" it into a
   more specific code, which would re-introduce the enumeration leak.
+- **Intentional uniform-404 (narrow-door override).** The chat question
+  endpoints (`/meta/chat/questions/{approval_id}/...`) raise
+  `ResourceNotFoundError` (404, `RESOURCE_NOT_FOUND`) both for an unknown
+  approval id and for an id that exists but is not a parked agent question.
+  A distinct code would advertise which approval ids exist, and would
+  invite the narrow door to be used as a generic approve-anything endpoint
+  bypassing the mandatory rejection reason and the option-pick contract.
 
 Each handler:
 

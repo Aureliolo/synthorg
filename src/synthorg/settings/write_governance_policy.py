@@ -154,6 +154,22 @@ _ENGINE_AUTO_SELECT_KEY: Final[str] = "loop_auto_select_enabled"
 _ENGINE_DEFAULT_LOOP_KEY: Final[str] = "default_loop_type"
 _ENGINE_COMPLEXITY_OVERRIDES_KEY: Final[str] = "loop_complexity_overrides"
 _SANDBOXED_LOOP_TYPE: Final[str] = "openhands"
+
+# The standing ask directive and the two tools that carry a question are the
+# only in-run path by which an agent defers a material, hard-to-reverse choice
+# to a human. Turning any of them off removes that deferral, which relaxes the
+# running verification posture the same way disabling the completion oracle
+# does, so the disabling direction routes through the deliberate guardrail.
+# Editing the operator-authored extra directives is deliberately unguarded: the
+# standing directive underneath cannot be removed that way.
+_ENGINE_ASK_POLICY_KEY: Final[str] = "ask_policy_enabled"
+_ENGINE_CLARIFICATION_KEY: Final[str] = "clarification_enabled"
+_ENGINE_SCOPING_KEY: Final[str] = "scoping_enabled"
+_ENGINE_ASK_KEYS: Final[frozenset[str]] = frozenset(
+    {_ENGINE_ASK_POLICY_KEY, _ENGINE_CLARIFICATION_KEY, _ENGINE_SCOPING_KEY}
+)
+_ENGINE_ASK_ENABLED_DEFAULT: Final[str] = "true"
+
 _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _ENGINE_ORACLE_DISABLE_KEY,
@@ -163,6 +179,7 @@ _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _ENGINE_AUTO_SELECT_KEY,
         _ENGINE_DEFAULT_LOOP_KEY,
         _ENGINE_COMPLEXITY_OVERRIDES_KEY,
+        *_ENGINE_ASK_KEYS,
     }
 )
 # Registered default for the enable toggle, consulted when the key is unset so
@@ -449,7 +466,12 @@ def _sandboxed_loop_routes(value: str | None) -> frozenset[str]:
 
 
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
-    """Return whether an ``engine.*`` oracle or middleware change relaxes posture."""
+    """Return whether an ``engine.*`` oracle, middleware or ask change relaxes it."""
+    if key in _ENGINE_ASK_KEYS:
+        currently_on = current is None or compare_ci(
+            current, _ENGINE_ASK_ENABLED_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
     if key == _ENGINE_MIDDLEWARE_KEY:
         currently_on = current is None or compare_ci(
             current, _ENGINE_MIDDLEWARE_DEFAULT

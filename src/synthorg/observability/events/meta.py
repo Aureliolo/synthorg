@@ -213,6 +213,17 @@ META_CHAT_STREAM_FAILED: Final[str] = "meta.chat.stream_failed"
 # ``reason`` records which it was for enumeration-probe triage.
 META_CHAT_CONVERSATION_ACCESS_DENIED: Final[str] = "meta.chat.conversation_denied"
 
+# Emitted at INFO when a parked agent question is answered or declined from
+# the conversation rather than the Approvals queue. The audit-relevant events
+# still come from the shared decision write; this only records which door.
+META_CHAT_QUESTION_ANSWERED: Final[str] = "meta.chat.question_answered"
+
+# Emitted at WARNING when a question decision targets an id that is unknown or
+# is an approval that is not a parked question. Both surface an identical 404
+# so an arbitrary approval id cannot be probed through this narrow door; the
+# server-side ``reason`` records which it was.
+META_CHAT_QUESTION_NOT_FOUND: Final[str] = "meta.chat.question_not_found"
+
 # -- Learning-curve endpoint -----------------------------------------------
 
 # Emitted at DEBUG when ``GET /learning/curve`` serves the benchmark

@@ -141,18 +141,21 @@ Key design decisions:
   gate through `complete_review`.
 
 Beyond the review pipeline, the lifecycle exposes additional human gates that all
-route through the same `signal_resume_intent` approvals-resume path, each off by
-default: the **plan-approval gate** (`ApprovalSource.PLAN_REVIEW`,
-`coordination.plan_approval_required`) persists a decomposed team plan as a durable,
-versioned, human-editable `Plan` entity and parks an approval referencing it before
-any team builds, so an operator can review, rework, or send the plan back for changes
-through the `/plans` API and Plan Review workspace before approving (see
-[Plan Review](plan-review.md)); the **mid-task clarification pause** (`AWAITING_INPUT`,
-`engine.clarification_enabled`) lets an agent ask a human an open-ended question; and
-the **project-decision gate** (`engine.scoping_enabled`) puts a mid-build implementation
-fork to a human, who picks structurally from the agent-supplied options (each with a
-tradeoff writeup, one recommended) and records the choice as a project-brain `DECISION`
-entry.
+route through the same `signal_resume_intent` approvals-resume path. The
+**plan-approval gate** (`ApprovalSource.PLAN_REVIEW`,
+`coordination.plan_approval_required`, off by default) persists a decomposed team plan
+as a durable, versioned, human-editable `Plan` entity and parks an approval referencing
+it before any team builds, so an operator can review, rework, or send the plan back for
+changes through the `/plans` API and Plan Review workspace before approving (see
+[Plan Review](plan-review.md)). The other two are **on by default**, because an agent
+that cannot proceed without a human's answer should ask rather than guess: the
+**mid-task clarification pause** (`AWAITING_INPUT`, `engine.clarification_enabled`) lets
+an agent ask a human an open-ended question, and the **project-decision gate**
+(`engine.scoping_enabled`) puts a mid-build implementation fork to a human, who picks
+structurally from the agent-supplied options (each with a tradeoff writeup, one
+recommended) and records the choice as a project-brain `DECISION` entry. Both carry a
+declared reversibility and are answerable in the unified conversation as well as in the
+approvals queue (see [The Org Asks](org-questions.md)).
 
 ## Intake Engine
 

@@ -166,6 +166,51 @@ class TestCompanyAgentsJsonValidator:
             validator([{"name": "alice", "role": "  "}])
 
 
+class TestAskPolicyExtraDirectivesJsonValidator:
+    """Write-time validation for ``engine.ask_policy_extra_directives``."""
+
+    @pytest.fixture
+    def validator(self) -> _Validator:
+        v = get_json_validator("engine", "ask_policy_extra_directives")
+        assert v is not None, "ask_policy_extra_directives validator missing"
+        return v
+
+    def test_accepts_empty_array(self, validator: _Validator) -> None:
+        validator([])
+
+    def test_accepts_a_scoped_directive(self, validator: _Validator) -> None:
+        validator(
+            [
+                {
+                    "id": "x_eng",
+                    "text": "Ask before a schema change.",
+                    "scope": "Engineering",
+                    "scope_kind": "department",
+                }
+            ]
+        )
+
+    def test_rejects_non_array_payload(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="must be a JSON array"):
+            validator({"id": "x", "text": "y"})
+
+    def test_rejects_missing_text(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="not a valid directive"):
+            validator([{"id": "x"}])
+
+    def test_rejects_blank_text(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="not a valid directive"):
+            validator([{"id": "x", "text": "   "}])
+
+    def test_rejects_unknown_scope_kind(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="not a valid directive"):
+            validator([{"id": "x", "text": "y", "scope": "z", "scope_kind": "team"}])
+
+    def test_rejects_inconsistent_scope_pairing(self, validator: _Validator) -> None:
+        with pytest.raises(ValueError, match="not a valid directive"):
+            validator([{"id": "x", "text": "y", "scope": "all", "scope_kind": "role"}])
+
+
 class TestDeepNestingGuards:
     """The post-parse (``_reject_deep_nesting``) and pre-parse
     (``reject_raw_json_over_depth``) depth guards.

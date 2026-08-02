@@ -616,8 +616,8 @@ class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
 
     def test_template_version_frozen(self) -> None:
-        """PROMPT_TEMPLATE_VERSION is '1.1.0' after strategy section addition."""
-        assert PROMPT_TEMPLATE_VERSION == "1.1.0"
+        """PROMPT_TEMPLATE_VERSION is '1.2.0' after the ask-policy section."""
+        assert PROMPT_TEMPLATE_VERSION == "1.2.0"
 
     def test_template_version_in_result(
         self,

@@ -256,10 +256,43 @@ def _validate_output_style_exemptions(value: object) -> None:
             raise ValueError(msg) from exc
 
 
+def _validate_ask_policy_directives(value: object) -> None:
+    """Reject an ``engine.ask_policy_extra_directives`` payload of the wrong shape.
+
+    Rejected at write time (visible to the operator) rather than silently
+    dropped at the next rebuild. Each entry is re-validated as the same
+    :class:`~synthorg.engine.ask_policy.models.AskDirective` the prompt build
+    parses, so write-time and runtime contracts cannot drift.
+
+    Raises:
+        ValueError: If the payload is not a JSON array, or any entry fails
+            ``AskDirective`` validation (unknown ``scope_kind``, blank field, a
+            ``scope`` / ``scope_kind`` pairing that cannot match, etc.).
+    """
+    from synthorg.engine.ask_policy.models import AskDirective  # noqa: PLC0415
+
+    if not isinstance(value, list):
+        msg = (
+            "engine/ask_policy_extra_directives must be a JSON array of "
+            "directive objects"
+        )
+        raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+    for idx, entry in enumerate(value):
+        try:
+            AskDirective.model_validate(entry)
+        except (ValueError, TypeError) as exc:
+            msg = (
+                f"engine/ask_policy_extra_directives[{idx}] is not a valid "
+                f"directive: {exc}"
+            )
+            raise ValueError(msg) from exc
+
+
 _JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[object], None]]] = {
     ("api", "csp_docs_external_origins"): _validate_csp_docs_external_origins,
     ("company", "departments"): _validate_company_departments,
     ("company", "agents"): _validate_company_agents,
+    ("engine", "ask_policy_extra_directives"): _validate_ask_policy_directives,
     ("output_style", "exemptions"): _validate_output_style_exemptions,
 }
 

@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel, QuestionReversibility
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
@@ -114,6 +114,13 @@ class RequestProjectDecisionArgs(BaseModel):
             "The options to choose between, each with a title, a writeup of "
             "its tradeoffs, and whether you recommend it (at least two, "
             "exactly one recommended, unique ids)."
+        ),
+    )
+    reversibility: QuestionReversibility = Field(
+        description=(
+            "Whether the choice behind this decision is 'reversible' (a quick "
+            "edit undoes it) or 'hard_to_reverse' (undoing it costs real "
+            "rework). Required: judging it is part of deciding to ask."
         ),
     )
 
@@ -247,7 +254,9 @@ class RequestProjectDecisionTool(BaseTool):
         if store_error is not None:
             return store_error
 
-        return self._build_success(approval_id, question, args.options)
+        return self._build_success(
+            approval_id, question, args.options, args.reversibility
+        )
 
     def _build_evidence(
         self, approval_id: str, args: RequestProjectDecisionArgs, now: datetime
@@ -310,6 +319,7 @@ class RequestProjectDecisionTool(BaseTool):
                 "clarification": "true",
                 "decision": "true",
                 "options": json.dumps(option_titles),
+                "reversibility": args.reversibility.value,
             },
         )
         try:
@@ -335,6 +345,7 @@ class RequestProjectDecisionTool(BaseTool):
         approval_id: str,
         question: str,
         options: tuple[DecisionOption, ...],
+        reversibility: QuestionReversibility,
     ) -> ToolExecutionResult:
         """Build the success result with parking + decision metadata.
 
@@ -365,5 +376,6 @@ class RequestProjectDecisionTool(BaseTool):
                 "approval_id": approval_id,
                 "action_type": _DECISION_ACTION_TYPE,
                 "risk_level": ApprovalRiskLevel.LOW.value,
+                "reversibility": reversibility.value,
             },
         )

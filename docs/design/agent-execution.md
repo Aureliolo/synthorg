@@ -432,6 +432,12 @@ each model tier.
 | **standard** | medium | Description + style + traits | 200              | Included     | Nested list         | Summary  |
 | **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
 
+The `Autonomy` column selects the verbosity tier for two sections at once. The
+standing "ask rather than guess" directive is tiered on the same axis as the
+autonomy instructions and keyed on the same resolved autonomy level, so a
+downgraded model gets a terser instruction rather than losing the instruction.
+See [The Org Asks](org-questions.md).
+
 ### Personality Trimming
 
 When the personality section exceeds `max_personality_tokens`, progressive

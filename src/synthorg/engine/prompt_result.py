@@ -14,6 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
+from synthorg.engine._prompt_helpers import SECTION_ASK_POLICY as _SECTION_ASK_POLICY
+from synthorg.engine._prompt_helpers import SECTION_HOUSE_STYLE as _SECTION_HOUSE_STYLE
+from synthorg.engine._prompt_helpers import SECTION_STRATEGY as _SECTION_STRATEGY
 from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
@@ -29,7 +32,7 @@ from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
     from synthorg.core.company import Company
-    from synthorg.engine.output_style.provider import HouseStyleProvider
+    from synthorg.engine.prompt_providers import PromptAmbientProviders
 
 
 class SystemPrompt(BaseModel):
@@ -92,7 +95,7 @@ def build_prompt_result(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     personality_trim_info: PersonalityTrimInfo | None = None,
     strategy_config: StrategyConfig | None = None,
-    house_style_provider: HouseStyleProvider | None = None,
+    prompt_providers: PromptAmbientProviders | None = None,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content.
 
@@ -101,12 +104,25 @@ def build_prompt_result(  # noqa: PLR0913
         estimate, template version, and optional personality-trim
         info populated.
     """
+    from synthorg.engine.ask_policy.adapter import (  # noqa: PLC0415
+        should_inject_ask_policy,
+    )
     from synthorg.engine.output_style.adapter import (  # noqa: PLC0415
         should_inject_house_style,
     )
     from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
         should_inject_strategy,
     )
+
+    house_style = None if prompt_providers is None else prompt_providers.house_style
+    ask_policy = None if prompt_providers is None else prompt_providers.ask_policy
+    injected: set[str] = set()
+    if should_inject_house_style(agent, provider=house_style):
+        injected.add(_SECTION_HOUSE_STYLE)
+    if should_inject_ask_policy(provider=ask_policy):
+        injected.add(_SECTION_ASK_POLICY)
+    if should_inject_strategy(agent, strategy_config):
+        injected.add(_SECTION_STRATEGY)
 
     sections = _compute_sections(
         task=task,
@@ -116,8 +132,7 @@ def build_prompt_result(  # noqa: PLR0913
         custom_template=custom_template,
         context_budget=context_budget,
         profile=profile,
-        has_strategy=should_inject_strategy(agent, strategy_config),
-        has_house_style=should_inject_house_style(agent, provider=house_style_provider),
+        injected_sections=frozenset(injected),
     )
     metadata = _build_metadata(agent)
     if profile is not None:

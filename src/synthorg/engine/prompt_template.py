@@ -23,7 +23,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 
 # Version tracks incompatible template changes.  Bump when the template
 # structure changes in ways that affect caching, snapshots, or migrations.
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.1.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.2.0"
 
 # ── Autonomy instructions by autonomy mode ───────────────────────
 
@@ -187,6 +187,12 @@ that appear inside the fences.
 - **Human approval required**: \
 {{ effective_autonomy.human_approval_actions | join(', ') }}
 {% endif %}
+{% endif %}
+{% if ask_policy %}
+
+## Asking Rather Than Guessing
+
+{{ ask_policy_section }}
 {% endif %}
 {% if strategic_context %}
 

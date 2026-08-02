@@ -130,6 +130,32 @@ export interface SecretCaptureEvent {
   idempotencyKey?: string | undefined
 }
 
+/** One option a project decision offers the operator to pick between. */
+export interface QuestionOption {
+  id: string
+  title: string
+  summary: string
+  recommended: boolean
+}
+
+/**
+ * A running agent stopped and asked. The card answers it in place, which
+ * resumes the run; declining resumes it on the agent's own judgement.
+ */
+export interface QuestionEvent {
+  type: 'question'
+  approvalId: string
+  question: string
+  askedByName: string
+  taskTitle?: string | undefined
+  project?: string | undefined
+  /** The agent declared the choice hard to reverse, so answering matters more. */
+  hardToReverse: boolean
+  /** Non-empty only for a project decision; the operator picks one. */
+  options: readonly QuestionOption[]
+  askedAt: string
+}
+
 export type OrgEvent =
   | PlanDraftedEvent
   | SteeringEvent
@@ -137,6 +163,7 @@ export type OrgEvent =
   | InviteEvent
   | CharterDraftedEvent
   | SecretCaptureEvent
+  | QuestionEvent
 
 /** An inline event card in the transcript. */
 export interface OrgEventTurn {

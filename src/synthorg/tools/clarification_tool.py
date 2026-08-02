@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel, QuestionReversibility
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
@@ -46,6 +46,13 @@ class RequestClarificationArgs(BaseModel):
     question: NotBlankStr = Field(
         max_length=4096,
         description="The clarifying question to put to the human",
+    )
+    reversibility: QuestionReversibility = Field(
+        description=(
+            "Whether the choice behind this question is 'reversible' (a quick "
+            "edit undoes it) or 'hard_to_reverse' (undoing it costs real "
+            "rework). Required: judging it is part of deciding to ask."
+        ),
     )
 
 
@@ -126,16 +133,19 @@ class RequestClarificationTool(BaseTool):
         question = args.question.strip()
         approval_id = str(uuid4())
 
-        store_error = await self._persist_item(approval_id, question)
+        store_error = await self._persist_item(
+            approval_id, question, args.reversibility
+        )
         if store_error is not None:
             return store_error
 
-        return self._build_success(approval_id, question)
+        return self._build_success(approval_id, question, args.reversibility)
 
     async def _persist_item(
         self,
         approval_id: str,
         question: str,
+        reversibility: QuestionReversibility,
     ) -> ToolExecutionResult | None:
         """Create and persist the clarification approval item.
 
@@ -162,7 +172,11 @@ class RequestClarificationTool(BaseTool):
                 source=ApprovalSource.PARKED_CONTEXT,
                 created_at=datetime.now(UTC),
                 task_id=self._task_id,
-                metadata={"source": "request_clarification", "clarification": "true"},
+                metadata={
+                    "source": "request_clarification",
+                    "clarification": "true",
+                    "reversibility": reversibility.value,
+                },
             )
             await self._approval_store.add(item)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -185,6 +199,7 @@ class RequestClarificationTool(BaseTool):
         self,
         approval_id: str,
         question: str,
+        reversibility: QuestionReversibility,
     ) -> ToolExecutionResult:
         """Build the success result with parking + clarification metadata.
 
@@ -211,5 +226,6 @@ class RequestClarificationTool(BaseTool):
                 "approval_id": approval_id,
                 "action_type": _CLARIFY_ACTION_TYPE,
                 "risk_level": ApprovalRiskLevel.LOW.value,
+                "reversibility": reversibility.value,
             },
         )

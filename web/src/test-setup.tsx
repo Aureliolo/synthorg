@@ -6,6 +6,7 @@ import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
 import { useOrgConversationStore } from '@/stores/org-conversation'
+import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { resetMessageIds } from '@/pages/chat/message-id'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { usePlanCommentsStore } from '@/stores/planComments'
@@ -111,6 +112,10 @@ afterEach(() => {
   // so it must be cleared between tests or a prior test's messages leak into
   // the next render.
   useOrgConversationStore.getState().resetAll()
+  // The open-questions store holds the parked questions the chat page renders
+  // (plus its refetch-coalescing flags) in module scope, so a prior test's
+  // questions would otherwise appear in the next render.
+  useOrgQuestionsStore.getState().reset()
   resetMessageIds()
 })
 

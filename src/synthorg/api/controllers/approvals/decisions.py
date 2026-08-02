@@ -15,20 +15,14 @@ from pydantic import BaseModel
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
-from synthorg.api.controllers.approvals._decision_resolution import (
-    record_chosen_option,
-    resolve_decision_reason,
+from synthorg.api.controllers.approvals._decide import (
+    apply_approval,
+    apply_rejection,
 )
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
-from synthorg.api.controllers.approvals._notify import (
-    _decided_attribution,
-    _publish_approval_event,
-    _resolve_decision,
-    _save_decision_and_notify,
-)
+from synthorg.api.controllers.approvals._notify import _publish_approval_event
 from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
-    _get_approval_or_404,
     _resolve_urgency_thresholds,
     _to_approval_response,
 )
@@ -46,7 +40,6 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
@@ -286,49 +279,12 @@ class ApprovalsDecisionsController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_approve() -> dict[str, object]:
-            item = await _get_approval_or_404(app_state, approval_id)
-            _resolve_decision(request, item, approval_id)
-            decided_by, decided_by_user_id = _decided_attribution()
-            decision_reason = resolve_decision_reason(
-                item, chosen_option_id=data.chosen_option_id, comment=data.comment
-            )
-            now = datetime.now(UTC)
-            previous_status = item.status
-            update: dict[str, object] = {
-                "status": ApprovalStatus.APPROVED,
-                "decided_at": now,
-                "decided_by": decided_by,
-                "decision_reason": decision_reason,
-            }
-            # A decided decision fork records the operator's structured pick on
-            # the evidence package so downstream reads surface it without
-            # parsing the derived reason string.
-            chosen_evidence = record_chosen_option(
-                item, chosen_option_id=data.chosen_option_id
-            )
-            if chosen_evidence is not None:
-                update["evidence_package"] = chosen_evidence
-            updated = item.model_copy(update=update)
-            # ``_save_decision_and_notify`` emits the
-            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-            # persistence write succeeds, so a downstream notification or
-            # resume-signal failure cannot strand the row in a decided
-            # state without a corresponding transition entry. The log
-            # uses ``decided_by_user_id`` (not username) to keep the
-            # observability stream free of human-readable identifiers. It
-            # returns the enriched response (built once for the WS publish)
-            # so the review context is not resolved a second time here.
-            response_obj = await _save_decision_and_notify(
+            response_obj = await apply_approval(
                 app_state,
                 request,
                 approval_id,
-                updated,
-                approved=True,
-                decided_by=decided_by,
-                decided_by_user_id=decided_by_user_id,
-                previous_status=previous_status,
-                decision_reason=decision_reason,
-                ws_event=WsEventType.APPROVAL_APPROVED,
+                comment=data.comment,
+                chosen_option_id=data.chosen_option_id,
             )
             return response_obj.model_dump(mode="json")
 
@@ -386,35 +342,8 @@ class ApprovalsDecisionsController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_reject() -> dict[str, object]:
-            item = await _get_approval_or_404(app_state, approval_id)
-            _resolve_decision(request, item, approval_id)
-            decided_by, decided_by_user_id = _decided_attribution()
-            now = datetime.now(UTC)
-            previous_status = item.status
-            updated = item.model_copy(
-                update={
-                    "status": ApprovalStatus.REJECTED,
-                    "decided_at": now,
-                    "decided_by": decided_by,
-                    "decision_reason": data.reason,
-                },
-            )
-            # ``_save_decision_and_notify`` emits the
-            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-            # persistence write succeeds (see the approve branch above for
-            # the rationale) and returns the enriched response built once for
-            # the WS publish, so the context is not resolved a second time.
-            response_obj = await _save_decision_and_notify(
-                app_state,
-                request,
-                approval_id,
-                updated,
-                approved=False,
-                decided_by=decided_by,
-                decided_by_user_id=decided_by_user_id,
-                previous_status=previous_status,
-                decision_reason=data.reason,
-                ws_event=WsEventType.APPROVAL_REJECTED,
+            response_obj = await apply_rejection(
+                app_state, request, approval_id, reason=data.reason
             )
             return response_obj.model_dump(mode="json")
 

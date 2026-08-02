@@ -19,6 +19,11 @@ export interface ChatInputAreaProps {
   inputDisabled?: boolean
   label: string
   placeholder: string
+  /**
+   * Accessible name for the send button. Override when a page renders more
+   * than one send box, so the two do not share one accessible name.
+   */
+  sendLabel?: string
   /** Visible rows for the multiline field. Default 2. */
   rows?: number
   className?: string
@@ -38,6 +43,7 @@ export function ChatInputArea({
   inputDisabled = false,
   label,
   placeholder,
+  sendLabel = 'Send message',
   rows = 2,
   className,
 }: ChatInputAreaProps) {
@@ -82,7 +88,7 @@ export function ChatInputArea({
         size="sm"
         onClick={onSend}
         disabled={!value.trim() || disabled || inputDisabled}
-        aria-label="Send message"
+        aria-label={sendLabel}
       >
         <Send className="h-4 w-4" />
       </Button>

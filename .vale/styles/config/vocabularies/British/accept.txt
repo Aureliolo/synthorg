@@ -58,6 +58,8 @@
 (?i)recognises
 (?i)recognising
 (?i)recognisable
+(?i)unrecognised
+(?i)unrecognisable
 (?i)optimise
 (?i)optimised
 (?i)optimiser

@@ -105,6 +105,22 @@
       ]
     },
     {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/engine/ask_policy",
+      "ghost_wired_symbols": [
+        "rebuild_and_bind_ask_policy",
+        "AskPolicySettingsSubscriber"
+      ],
+      "mcp_tool_names": [],
+      "name": "ask_policy",
+      "protocol_exports": [
+        "AskPolicyProvider"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": []
+    },
+    {
       "controllers": [
         "BackupController"
       ],
@@ -934,6 +950,7 @@
         "MetaEvolutionController",
         "MetaAlertsController",
         "TurnController",
+        "ChatQuestionsController",
         "ConversationHistoryController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -1495,6 +1512,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-01T13:55:59.028019Z",
+  "generated_at": "2026-08-02T16:00:20.250303Z",
   "schema_version": 1
 }

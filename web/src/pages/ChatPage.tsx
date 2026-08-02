@@ -1,5 +1,5 @@
 import { History, MessagesSquare, Plus, Square } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
@@ -11,7 +11,9 @@ import { useOrgConversationStore } from '@/stores/org-conversation'
 import { CharterSidePanel } from './chat/CharterSidePanel'
 import { ConversationHistoryDrawer } from './chat/ConversationHistoryDrawer'
 import { OrgChatTranscript } from './chat/OrgChatTranscript'
+import { toQuestionTurns } from './chat/question-turns'
 import { useOrgConversation } from './chat/use-org-conversation'
+import { useOrgQuestions } from './chat/use-org-questions'
 
 const INPUT_LABEL = 'Message the organisation'
 const INPUT_PLACEHOLDER =
@@ -122,22 +124,35 @@ function Composer({
 
 export default function ChatPage() {
   const conv = useOrgConversation()
+  const questions = useOrgQuestions()
   const activeIntent = useOrgConversationStore((s) => s.activeIntent)
   const [historyOpen, setHistoryOpen] = useState(false)
   const showCharterPanel = activeIntent === 'charter'
-  const hasConversation = conv.messages.length > 0
+  // Question cards are derived here, never pushed into the conversation store:
+  // startNew / hydrate reset that store, which would silently delete a
+  // still-open question. They render after the transcript, which is how a chat
+  // reads, and their presence alone is enough to open the thread: the org has
+  // spoken, so the "talk to your organisation" empty state would be wrong.
+  const messages = useMemo(
+    () => [...conv.messages, ...toQuestionTurns(questions.questions)],
+    [conv.messages, questions.questions],
+  )
+  const hasConversation = messages.length > 0
 
   const thread = (
     <div className="flex min-h-0 flex-1 flex-col gap-section-gap">
       {hasConversation ? (
         <OrgChatTranscript
-          messages={conv.messages}
+          messages={messages}
           sending={conv.sending}
           autoScroll={conv.autoScroll}
           resolvingInvites={conv.resolvingInvites}
           onResolveInvite={conv.resolveInvite}
           onSubmitSecretCaptures={conv.submitSecretCaptures}
           onRetry={conv.retry}
+          resolvingQuestions={questions.resolving}
+          onAnswerQuestion={questions.answer}
+          onDeclineQuestion={questions.decline}
         />
       ) : (
         <EmptyConversation onSelect={conv.setInput} disabled={conv.sending} />

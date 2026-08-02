@@ -118,6 +118,7 @@ SECTION_SKILLS: Final[str] = "skills"
 SECTION_AUTHORITY: Final[str] = "authority"
 SECTION_ORG_POLICIES: Final[str] = "org_policies"
 SECTION_AUTONOMY: Final[str] = "autonomy"
+SECTION_ASK_POLICY: Final[str] = "ask_policy"
 SECTION_TASK: Final[str] = "task"
 SECTION_COMPANY: Final[str] = "company"
 SECTION_TOOLS: Final[str] = "tools"
@@ -427,6 +428,11 @@ def build_core_context(
         "can_delegate_to": authority.can_delegate_to,
         "budget_limit": authority.budget_limit,
         "autonomy_instructions": autonomy_map[autonomy_mode],
+        # The resolved pair itself, so the ask-policy adapter keys its directive
+        # off exactly what the Autonomy section rendered from rather than
+        # re-deriving it and risking the two sections disagreeing.
+        "autonomy_mode": autonomy_mode,
+        "autonomy_detail_level": autonomy_detail,
         # Profile-driven template flags.
         "personality_mode": personality_mode,
         "include_org_policies": include_org_policies,
@@ -490,7 +496,7 @@ def build_metadata(agent: AgentIdentity) -> dict[str, str]:
     }
 
 
-def compute_sections(  # noqa: PLR0913
+def compute_sections(
     *,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...] = (),
@@ -499,8 +505,7 @@ def compute_sections(  # noqa: PLR0913
     custom_template: bool = False,
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
-    has_strategy: bool = False,
-    has_house_style: bool = False,
+    injected_sections: frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
@@ -517,8 +522,10 @@ def compute_sections(  # noqa: PLR0913
         custom_template: Whether a custom template is being used.
         context_budget: Formatted context budget indicator string.
         profile: Prompt profile controlling section inclusion.
-        has_strategy: Whether strategic analysis sections are present.
-        has_house_style: Whether the house-style section is present.
+        injected_sections: Names of the provider-driven optional sections the
+            build injected (house style, ask policy, strategy). One set rather
+            than a flag per section, so a fourth injectable layer does not widen
+            this signature again.
 
     Returns:
         Tuple of section names that are included.
@@ -529,14 +536,18 @@ def compute_sections(  # noqa: PLR0913
         SECTION_IDENTITY,
         SECTION_PERSONALITY,
     ]
-    if has_house_style:
+    if SECTION_HOUSE_STYLE in injected_sections:
         sections.append(SECTION_HOUSE_STYLE)
     sections.extend((SECTION_SKILLS, SECTION_AUTHORITY))
     if org_policies and include_policies:
         sections.append(SECTION_ORG_POLICIES)
     # Autonomy follows org_policies in the template.
     sections.append(SECTION_AUTONOMY)
-    if has_strategy:
+    # The ask directive is the exception to the autonomy licence, so it renders
+    # directly after it.
+    if SECTION_ASK_POLICY in injected_sections:
+        sections.append(SECTION_ASK_POLICY)
+    if SECTION_STRATEGY in injected_sections:
         sections.append(SECTION_STRATEGY)
     if task is not None:
         sections.append(SECTION_TASK)

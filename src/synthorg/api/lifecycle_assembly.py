@@ -24,6 +24,7 @@ from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.feature_composition import compose_feature_slices
 from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_helpers.ask_policy_wiring import wire_ask_policy
 from synthorg.api.lifecycle_helpers.feature_lifecycle import (
     build_feature_lifecycle_runner,
 )
@@ -200,9 +201,11 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     async def _wire_features() -> None:
         # Every optional feature engine is declared in the subsystem registry
         # and brought up by the reconcile passes around this hook. What is
-        # left here is the output-style policy, which has no dependency that
-        # can arrive late: it is read from settings and installed once.
+        # left here is the output-style policy and the ask policy, neither of
+        # which has a dependency that can arrive late: both are read from
+        # settings and installed once.
         await wire_output_style_policy(app_state)
+        await wire_ask_policy(app_state)
 
     # ``_compose_feature_slices`` runs FIRST so every feature's empty state
     # slice exists before any wiring hook (including the persistence-phase
