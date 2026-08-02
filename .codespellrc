@@ -23,10 +23,13 @@ uri-ignore-words-list = doesnt
 # content-delta pair reassembles to "hello", so ``hel`` is deliberate, not a typo.
 # Kept here (codespell-only) rather than the shared Vale vocab so Vale is unaffected.
 ignore-words-list = hel
-# ``/FO`` is the Windows ``tasklist`` output-format flag, which codespell reads as
-# a misspelling of "of". Scoped to the flag spelling rather than added to
-# ignore-words-list: a bare ``fo`` genuinely is a typo everywhere else in the
-# tree, and a word-level entry would suppress it repo-wide to satisfy one flag.
-ignore-regex = /FO\b
+# Two literals that are deliberate where they appear and typos everywhere else,
+# so each is scoped to the exact spelling rather than added to
+# ignore-words-list, which would suppress it repo-wide to satisfy one site.
+# ``/FO`` is the Windows ``tasklist`` output-format flag, which codespell reads
+# as a misspelling of "of". ``scirpt:`` is the mistyped YAML key a gate test
+# feeds its allowlist to prove a malformed entry is reported rather than
+# silently dropped; spelling it correctly would test nothing.
+ignore-regex = /FO\b|scirpt:
 quiet-level = 3
 check-hidden = false

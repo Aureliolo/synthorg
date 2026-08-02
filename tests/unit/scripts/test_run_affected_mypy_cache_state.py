@@ -15,7 +15,7 @@ reports a problem, and the cost lands inside whatever ran next.
   a 36MB daemon called warm next to a 2577MB one nothing referenced, and
   the check that followed rebuilt for 140s.
 
-The fingerprint only pre-empts the staleness it can see, so one group
+The fingerprint only catches the staleness it can see, so one group
 covers the rest: a rebuild that happens anyway is at least named, because
 a 162s check and a 2s check look identical from outside.
 
@@ -203,7 +203,7 @@ class TestStaleGraphDetection:
 
 
 class TestRebuildIsReported:
-    """The fingerprint pre-empts one staleness trigger; there are others."""
+    """The fingerprint catches one staleness trigger; there are others."""
 
     def test_a_slow_check_is_named_a_rebuild(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
