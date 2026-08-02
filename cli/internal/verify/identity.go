@@ -106,7 +106,7 @@ var (
 // listed because the signer signs both and local-image discovery must
 // recognize either suffix.
 func ImageNames() []string {
-	return []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu", "fine-tune-cpu"}
+	return []string{"backend", "web", "sandbox", "openhands", "sidecar", "fine-tune-gpu", "fine-tune-cpu"}
 }
 
 // BuildVerifier creates a Sigstore verifier using the public good trusted

@@ -41,6 +41,11 @@ _OPENHANDS_CPU_LIMIT: Final[float] = 2.0
 _OPENHANDS_PIDS_LIMIT: Final[int] = 512
 _DEFAULT_HTTP_PORT: Final[int] = 80
 _DEFAULT_HTTPS_PORT: Final[int] = 443
+# The loop container runs on the default bridge, not the compose network, so
+# no service name resolves inside it. This alias is what lets the shipped
+# endpoint defaults ("http://host.docker.internal:<published-port>/...") reach
+# the API, and Docker Desktop's own injection is not portable to Linux Engine.
+_HOST_GATEWAY_ALIAS: Final[tuple[str, ...]] = ("host.docker.internal:host-gateway",)
 
 
 async def build_openhands_loop_config(app_state: AppState) -> OpenHandsLoopConfig:
@@ -67,9 +72,10 @@ async def build_openhands_loop_deps_or_none(
     slice rather than built anew. The conversation factory is the container
     runtime bound to a dedicated sandbox whose egress is pinned to exactly
     the gateway + credentialed-MCP hosts. Returns ``None`` (logging the
-    missing piece) when the signer is unset or either endpoint does not
-    resolve to a host, leaving the loop unavailable (it fails loud only if
-    selected) so sandbox egress is never created without a host allowlist.
+    missing piece) when the operator turned the capability off, the signer is
+    unset, or either endpoint does not resolve to a host, leaving the loop
+    unavailable (it fails loud only if selected) so sandbox egress is never
+    created without a host allowlist.
 
     Returns:
         The wired dependencies, or ``None`` when the boundary is unwired.
@@ -81,6 +87,7 @@ async def build_openhands_loop_deps_or_none(
 
     signer = app_state.slice(GatewayStateSlice).signer
     resolver = config_resolver_of(app_state)
+    enabled = await resolver.get_bool("tools", "openhands_enabled")
     gateway_base_url = await resolver.get_str("providers", "gateway_base_url")
     mcp_base_url = await resolver.get_str("tools", "credentialed_mcp_base_url")
     # Require each endpoint to resolve to a host, not merely be non-empty: a
@@ -90,11 +97,16 @@ async def build_openhands_loop_deps_or_none(
     # created without a host allowlist.
     gateway_host = _host_port(gateway_base_url)
     mcp_host = _host_port(mcp_base_url)
-    if signer is None or not gateway_host or not mcp_host:
+    if not enabled or signer is None or not gateway_host or not mcp_host:
         logger.warning(
             EXECUTION_LOOP_UNAVAILABLE,
             loop_type="openhands",
-            missing=_missing_pieces(signer, gateway_host, mcp_host),
+            missing=_missing_pieces(
+                enabled=enabled,
+                signer=signer,
+                gateway_host=gateway_host,
+                mcp_host=mcp_host,
+            ),
             note="OpenHands loop stays unavailable until every piece is wired to "
             "a resolvable host (egress cannot be pinned without a host:port)",
         )
@@ -127,6 +139,8 @@ async def build_openhands_loop_deps_or_none(
 
 
 def _missing_pieces(
+    *,
+    enabled: bool,
     signer: object | None,
     gateway_host: str,
     mcp_host: str,
@@ -135,11 +149,15 @@ def _missing_pieces(
 
     A blank host covers both an unset URL and a set-but-unparseable one (no
     scheme / no host), so the reported setting name points the operator at the
-    value to fix in either case.
+    value to fix in either case. An operator who turned the capability off gets
+    that named as the single cause rather than a list of endpoints they never
+    asked to wire.
 
     Returns:
         The names of the missing pieces (empty when all are wired).
     """
+    if not enabled:
+        return ("tools.openhands_enabled",)
     missing: list[str] = []
     if signer is None:
         missing.append("gateway_signer")
@@ -181,6 +199,7 @@ async def _build_openhands_sandbox(
         image=image,
         network="bridge",
         allowed_hosts=allowed_hosts,
+        extra_hosts=_HOST_GATEWAY_ALIAS,
         mount_mode="rw",
         memory_limit=_OPENHANDS_MEMORY_LIMIT,
         cpu_limit=_OPENHANDS_CPU_LIMIT,

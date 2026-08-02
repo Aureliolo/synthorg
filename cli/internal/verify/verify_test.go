@@ -77,14 +77,14 @@ func TestNewImageRef(t *testing.T) {
 
 func TestBuildImageRefsWithSandbox(t *testing.T) {
 	refs := BuildImageRefs("0.3.0", true, false, "")
-	if len(refs) != 4 {
-		t.Fatalf("got %d refs, want 4", len(refs))
+	if len(refs) != 5 {
+		t.Fatalf("got %d refs, want 5", len(refs))
 	}
 	names := make([]string, len(refs))
 	for i, r := range refs {
 		names[i] = r.Name()
 	}
-	want := []string{"backend", "web", "sandbox", "sidecar"}
+	want := []string{"backend", "web", "sandbox", "sidecar", "openhands"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
@@ -104,19 +104,24 @@ func TestBuildImageRefsWithoutSandbox(t *testing.T) {
 		if r.Name() == "sidecar" {
 			t.Error("sidecar should not be included when sandbox disabled")
 		}
+		// The OpenHands loop container is spawned over the same Docker
+		// socket the sandbox flag mounts, so it cannot run without it.
+		if r.Name() == "openhands" {
+			t.Error("openhands should not be included when sandbox disabled")
+		}
 	}
 }
 
 func TestBuildImageRefsWithFineTuningGPU(t *testing.T) {
 	refs := BuildImageRefs("0.3.0", true, true, "gpu")
-	if len(refs) != 5 {
-		t.Fatalf("got %d refs, want 5", len(refs))
+	if len(refs) != 6 {
+		t.Fatalf("got %d refs, want 6", len(refs))
 	}
 	names := make([]string, len(refs))
 	for i, r := range refs {
 		names[i] = r.Name()
 	}
-	want := []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu"}
+	want := []string{"backend", "web", "sandbox", "sidecar", "openhands", "fine-tune-gpu"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
@@ -126,21 +131,21 @@ func TestBuildImageRefsWithFineTuningGPU(t *testing.T) {
 
 func TestBuildImageRefsWithFineTuningCPU(t *testing.T) {
 	refs := BuildImageRefs("0.3.0", true, true, "cpu")
-	if len(refs) != 5 {
-		t.Fatalf("got %d refs, want 5", len(refs))
+	if len(refs) != 6 {
+		t.Fatalf("got %d refs, want 6", len(refs))
 	}
-	if refs[4].Name() != "fine-tune-cpu" {
-		t.Errorf("refs[4].Name() = %q, want %q", refs[4].Name(), "fine-tune-cpu")
+	if refs[5].Name() != "fine-tune-cpu" {
+		t.Errorf("refs[5].Name() = %q, want %q", refs[5].Name(), "fine-tune-cpu")
 	}
 }
 
 func TestBuildImageRefsFineTuningDefaultsToGPU(t *testing.T) {
 	refs := BuildImageRefs("0.3.0", true, true, "")
-	if len(refs) != 5 {
-		t.Fatalf("got %d refs, want 5", len(refs))
+	if len(refs) != 6 {
+		t.Fatalf("got %d refs, want 6", len(refs))
 	}
-	if refs[4].Name() != "fine-tune-gpu" {
-		t.Errorf("empty variant should default to gpu, got %q", refs[4].Name())
+	if refs[5].Name() != "fine-tune-gpu" {
+		t.Errorf("empty variant should default to gpu, got %q", refs[5].Name())
 	}
 }
 

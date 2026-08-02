@@ -73,12 +73,17 @@ never as a half-open stream.
 
 ## Settings
 
-All under the `providers` namespace, off by default, hot-reloadable:
-`gateway_enabled`, `gateway_token_ttl_seconds`, `gateway_base_url` (the
-sandbox-reachable app address handed to the harness). Enabling the gateway
-opens an egress path, so the `providers.gateway_enabled` `false -> true`
-transition routes through the deliberate confirm+reason+actor guardrail in
-`settings/write_governance.py`.
+All under the `providers` namespace, hot-reloadable: `gateway_enabled`,
+`gateway_token_ttl_seconds`, `gateway_base_url` (the sandbox-reachable app
+address handed to the harness, which both compose deployments set from the
+published backend port). `gateway_enabled` ships **on**, because
+`tools.openhands_enabled` does and a wired loop whose every call 503s is not a
+capability; the route carries no ambient authority, authenticating only with a
+per-run signed bearer. Turning it back on after it was explicitly turned off
+reopens an egress path, so that `false -> true` transition still routes through
+the deliberate confirm+reason+actor guardrail in
+`settings/write_governance.py`. An unset value is the shipped posture rather
+than a decision to reopen, so it is not treated as a transition.
 
 ## Wiring
 

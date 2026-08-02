@@ -44,6 +44,13 @@ _RETENTION_NEVER_SWEEP: Final[str] = "0"
 # it (closing the egress) tightens and is unguarded.
 _GATEWAY_ENABLED_KEY: Final[str] = "gateway_enabled"
 
+# Shipping the OpenHands loop means an egress-pinned container reaching the
+# gateway and the credentialed-MCP surface, so re-enabling it after an explicit
+# disable is guarded on the same terms as the gateway itself. Both ship ON, so
+# for both the guarded transition is a stored ``false`` returning to ``true``:
+# an unset value is already the running posture, not a decision to reopen.
+_OPENHANDS_ENABLED_KEY: Final[str] = "openhands_enabled"
+
 # Output-style keys whose change relaxes the running guardrail: disabling the
 # whole policy, switching every rule to shadow (surface but never block), adding
 # a sanctioned exemption (which lets an agent legitimately emit an
@@ -177,7 +184,7 @@ _TOOL_FAMILY_ENABLED_KEYS: Final[frozenset[str]] = frozenset(
 _TOOL_FAMILY_TARGETS_KEYS: Final[frozenset[str]] = frozenset(
     {_DEPLOY_TOOLS_TARGETS_KEY, _PUBLISH_TOOLS_TARGETS_KEY}
 )
-_MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+_TOOLS_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _MCP_SANDBOX_ENABLED_KEY,
         _MCP_SANDBOX_NETWORK_KEY,
@@ -188,6 +195,7 @@ _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _DEPLOY_TOOLS_TARGETS_KEY,
         _PUBLISH_TOOLS_ENABLED_KEY,
         _PUBLISH_TOOLS_TARGETS_KEY,
+        _OPENHANDS_ENABLED_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -245,8 +253,24 @@ def _is_capability_widening(current: str | None, new: str) -> bool:
     return bool(_capability_patterns(new) - _capability_patterns(current))
 
 
-def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> bool:
-    """Return whether a ``tools.*`` MCP sandbox change relaxes isolation."""
+def _is_default_on_capability_reenable(current: str | None, new: str) -> bool:
+    """Return whether an explicitly-disabled default-on capability is re-enabled.
+
+    An unset current resolves to the registered default (on), so the first
+    write of ``true`` restates what is already running rather than opening
+    anything. Only a stored ``false`` returning to ``true`` reopens the path.
+
+    Returns:
+        ``True`` when the transition reopens the capability.
+    """
+    currently_off = current is not None and not compare_ci(current, "true")
+    return currently_off and compare_ci(new, "true")
+
+
+def _is_tools_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether a ``tools.*`` change relaxes isolation or blast radius."""
+    if key == _OPENHANDS_ENABLED_KEY:
+        return _is_default_on_capability_reenable(current, new)
     if key == _CREDENTIALED_MCP_ENABLED_KEY:
         # Default is "false" (off); enabling exposes credentialed actions.
         currently_off = current is None or not compare_ci(current, "true")
@@ -458,9 +482,7 @@ def _is_integrations_weakening(key: str, *, current: str | None, new: str) -> bo
 def _is_providers_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``providers.*`` change relaxes posture."""
     if key == _GATEWAY_ENABLED_KEY:
-        # Default is "false" (off); enabling opens the egress path.
-        currently_off = current is None or not compare_ci(current, "true")
-        return currently_off and compare_ci(new, "true")
+        return _is_default_on_capability_reenable(current, new)
     return False
 
 
@@ -471,7 +493,7 @@ def is_guarded(namespace: str, key: str) -> bool:
     if namespace == _ENGINE_NS:
         return key in _ENGINE_GUARDED_KEYS
     if namespace == _TOOLS_NS:
-        return key in _MCP_SANDBOX_GUARDED_KEYS
+        return key in _TOOLS_GUARDED_KEYS
     if namespace == _OUTPUT_STYLE_NS:
         return key in _OUTPUT_STYLE_GUARDED_KEYS
     if namespace == _PROVIDERS_NS:
@@ -518,7 +540,7 @@ def is_weakening(namespace: str, key: str, *, current: str | None, new: str) -> 
     if namespace == _ENGINE_NS:
         return _is_engine_weakening(key, current=current, new=new)
     if namespace == _TOOLS_NS:
-        return _is_mcp_sandbox_weakening(key, current=current, new=new)
+        return _is_tools_weakening(key, current=current, new=new)
     if namespace == _OUTPUT_STYLE_NS:
         return _is_output_style_weakening(key, current=current, new=new)
     if namespace == _API_NS:

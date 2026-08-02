@@ -31,11 +31,12 @@ async def test_enabling_gateway_without_governance_is_rejected() -> None:
         )
 
 
-async def test_enabling_gateway_from_unset_is_rejected() -> None:
-    with pytest.raises(SecurityToggleConfirmationRequiredError):
-        await enforce_security_write_governance(
-            [_ENABLE], governance=None, get_current=_current(None)
-        )
+async def test_enabling_gateway_from_unset_is_unguarded() -> None:
+    # The gateway ships on, so an unset value is already the running posture:
+    # writing "true" restates it rather than opening anything.
+    await enforce_security_write_governance(
+        [_ENABLE], governance=None, get_current=_current(None)
+    )
 
 
 async def test_enabling_gateway_with_governance_is_allowed() -> None:
@@ -47,6 +48,35 @@ async def test_enabling_gateway_with_governance_is_allowed() -> None:
 async def test_disabling_gateway_is_unguarded() -> None:
     await enforce_security_write_governance(
         [_DISABLE], governance=None, get_current=_current("true")
+    )
+
+
+_OPENHANDS_ENABLE = ("tools", "openhands_enabled", "true")
+_OPENHANDS_DISABLE = ("tools", "openhands_enabled", "false")
+
+
+async def test_reenabling_openhands_without_governance_is_rejected() -> None:
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [_OPENHANDS_ENABLE], governance=None, get_current=_current("false")
+        )
+
+
+async def test_enabling_openhands_from_unset_is_unguarded() -> None:
+    await enforce_security_write_governance(
+        [_OPENHANDS_ENABLE], governance=None, get_current=_current(None)
+    )
+
+
+async def test_reenabling_openhands_with_governance_is_allowed() -> None:
+    await enforce_security_write_governance(
+        [_OPENHANDS_ENABLE], governance=_SATISFIED, get_current=_current("false")
+    )
+
+
+async def test_disabling_openhands_is_unguarded() -> None:
+    await enforce_security_write_governance(
+        [_OPENHANDS_DISABLE], governance=None, get_current=_current("true")
     )
 
 

@@ -87,9 +87,6 @@ _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _PROJECTS_SUBDIR: Final[str] = "projects"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
-# Cap structured-log stderr captures so a stream of binary output from
-# inside a container cannot blow up our logging pipeline.
-_MAX_STDERR_LOG_CHARS: Final[int] = 200
 
 
 def _to_posix_bind_path(path: Path) -> str:
@@ -621,6 +618,12 @@ class DockerSandbox(
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges"],
         }
+        # Docker rejects ExtraHosts on a container joining another's network
+        # namespace, which inherits that namespace owner's /etc/hosts. When a
+        # sidecar enforces egress the aliases go on the sidecar instead (see
+        # _create_sidecar), so setting them here as well would fail creation.
+        if self._config.extra_hosts and not self._needs_sidecar():
+            host_config["ExtraHosts"] = list(self._config.extra_hosts)
         runtime = self._resolve_runtime(category)
         if runtime is not None:
             host_config["Runtime"] = runtime

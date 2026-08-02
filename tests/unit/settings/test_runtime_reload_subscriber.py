@@ -62,6 +62,19 @@ class TestProtocol:
         assert ("engine", "completion_oracle_min_stakes") in watched
         assert ("engine", "completion_oracle_reviewer_model_tier") in watched
 
+    def test_watched_keys_cover_every_openhands_deps_input(self) -> None:
+        # ``build_openhands_loop_deps_or_none`` reads each of these inside the
+        # rebuild and then holds the result for the engine's lifetime, so a key
+        # missing here is an operator edit that reaches no run.
+        sub, _ = _make_subscriber()
+        watched = sub.watched_keys
+        assert ("tools", "openhands_enabled") in watched
+        assert ("tools", "openhands_image") in watched
+        assert ("tools", "openhands_idle_timeout_seconds") in watched
+        assert ("tools", "openhands_max_runtime_seconds") in watched
+        assert ("tools", "credentialed_mcp_base_url") in watched
+        assert ("providers", "gateway_base_url") in watched
+
 
 class TestReload:
     @pytest.mark.parametrize(
@@ -78,6 +91,9 @@ class TestReload:
             ("engine", "completion_oracle_shadow_mode"),
             ("engine", "completion_oracle_min_stakes"),
             ("engine", "completion_oracle_reviewer_model_tier"),
+            ("tools", "openhands_enabled"),
+            ("tools", "credentialed_mcp_base_url"),
+            ("providers", "gateway_base_url"),
         ],
     )
     async def test_watched_change_triggers_reload(

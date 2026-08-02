@@ -18,30 +18,54 @@ from synthorg.workers._openhands_wiring import (
 pytestmark = pytest.mark.unit
 
 
+def _pieces(
+    *,
+    enabled: bool = True,
+    signer: object | None = None,
+    gateway: str = "http://gw",
+    mcp: str = "http://mcp",
+) -> tuple[str, ...]:
+    """Call ``_missing_pieces`` with the wired-and-enabled case as the baseline.
+
+    Returns:
+        The names of the missing pieces for this combination.
+    """
+    return _missing_pieces(
+        enabled=enabled,
+        signer=object() if signer is None else signer,
+        gateway_host=gateway,
+        mcp_host=mcp,
+    )
+
+
 def test_missing_pieces_empty_when_all_wired() -> None:
-    assert _missing_pieces(object(), "http://gw", "http://mcp") == ()
+    assert _pieces() == ()
 
 
 def test_missing_pieces_names_absent_signer() -> None:
-    assert _missing_pieces(None, "http://gw", "http://mcp") == ("gateway_signer",)
+    assert _missing_pieces(
+        enabled=True, signer=None, gateway_host="http://gw", mcp_host="http://mcp"
+    ) == ("gateway_signer",)
 
 
 def test_missing_pieces_names_blank_endpoints() -> None:
-    assert _missing_pieces(object(), "", "http://mcp") == (
-        "providers.gateway_base_url",
-    )
-    assert _missing_pieces(object(), "http://gw", "") == (
-        "tools.credentialed_mcp_base_url",
-    )
+    assert _pieces(gateway="") == ("providers.gateway_base_url",)
+    assert _pieces(mcp="") == ("tools.credentialed_mcp_base_url",)
 
 
 def test_missing_pieces_reports_every_absent_piece() -> None:
     # A cold boot with nothing wired names all three so the log is actionable.
-    assert _missing_pieces(None, "", "") == (
+    assert _missing_pieces(enabled=True, signer=None, gateway_host="", mcp_host="") == (
         "gateway_signer",
         "providers.gateway_base_url",
         "tools.credentialed_mcp_base_url",
     )
+
+
+def test_missing_pieces_names_only_the_master_when_disabled() -> None:
+    # An operator who turned the capability off gets that named as the single
+    # cause, not a list of endpoints they never asked to wire.
+    assert _pieces(enabled=False, gateway="", mcp="") == ("tools.openhands_enabled",)
 
 
 def test_host_port_infers_scheme_default_ports() -> None:

@@ -32,6 +32,7 @@ _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
 _MAX_PORT: Final[int] = 65535
 _HOST_PORT_PARTS: Final[int] = 2
+_HOST_ALIAS_PARTS: Final[int] = 2
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown
@@ -74,6 +75,7 @@ class DockerSandboxConfig(BaseModel):
         network: Default Docker network mode.
         network_overrides: Per-category network mode overrides.
         allowed_hosts: Host:port allowlist for network filtering.
+        extra_hosts: Extra ``name:target`` /etc/hosts entries.
         dns_allowed: Allow outbound DNS when ``allowed_hosts`` restricts
             network.  Default ``True`` (needed for hostname resolution).
             Set to ``False`` to require IP addresses in ``allowed_hosts``.
@@ -118,6 +120,14 @@ class DockerSandboxConfig(BaseModel):
     allowed_hosts: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Host:port allowlist for network filtering",
+    )
+    extra_hosts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Extra 'name:target' /etc/hosts entries for the container, e.g."
+            " 'host.docker.internal:host-gateway' so an egress-pinned"
+            " container can reach a service published on the host"
+        ),
     )
     dns_allowed: bool = Field(
         default=True,
@@ -452,6 +462,32 @@ class DockerSandboxConfig(BaseModel):
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
                     field="allowed_hosts",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_extra_hosts(self) -> Self:
+        """Validate that extra_hosts entries use ``name:target`` format.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
+        for entry in self.extra_hosts:
+            parts = entry.split(":")
+            if len(parts) != _HOST_ALIAS_PARTS or not all(parts):
+                msg = (
+                    f"extra_hosts entry {entry!r} must use 'name:target'"
+                    " format (exactly one ':', neither side empty), e.g."
+                    " 'host.docker.internal:host-gateway'"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="extra_hosts",
                     reason=msg,
                 )
                 raise ValueError(msg)

@@ -44,12 +44,16 @@ USER 0
 # Isolated venv + hash-pinned closure so the SDK deps never mingle with the
 # app runtime and every build resolves the identical, audited dependency set.
 COPY docker/openhands/requirements.lock /opt/openhands/requirements.lock
-COPY docker/openhands/run_task.py /opt/openhands/run_task.py
 RUN python3 -m venv "${OPENHANDS_VENV}" \
     && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --upgrade pip \
     && "${OPENHANDS_VENV}/bin/pip" install --no-cache-dir --require-hashes \
         -r /opt/openhands/requirements.lock \
     && chown -R 10001:10001 /opt/openhands
+
+# After the closure, not before: the entrypoint changes far more often than the
+# lockfile, and copying it first made every edit re-resolve and reinstall all
+# ~338 packages.
+COPY --chown=10001:10001 docker/openhands/run_task.py /opt/openhands/run_task.py
 
 WORKDIR /workspace
 USER 10001

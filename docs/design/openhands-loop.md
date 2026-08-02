@@ -68,7 +68,11 @@ venv: it runs only inside the container.
   serialises the run spec to one JSON line on the container's `stdin`, and
   parses the structured JSON event stream from its `stdout`. Depends on a
   narrow protocol, not the concrete backend, so the engine stays off the
-  sandbox internals.
+  sandbox internals. `stdout` is a **protocol, not a log**: the entrypoint
+  claims the real descriptor as a private event channel and redirects
+  everything else to `stderr`, so neither the SDK's console visualizer nor a
+  stray print anywhere in its dependency closure can interleave prose with the
+  event lines.
 - `errors.py`: `OpenHandsLoopError` / `OpenHandsRuntimeError` /
   `OpenHandsUnavailableError`.
 
@@ -84,7 +88,13 @@ standard streams (no in-container HTTP server):
   bearer + base URL), `Agent` (native tools + the credentialed-MCP server
   over streamable-http) and a `LocalConversation` (persisting state under
   the workspace, keyed by the conversation id), and streams each agent
-  event as one structured JSON line on `stdout`.
+  event as one structured JSON line on `stdout`. The model id is prefixed for
+  LiteLLM routing before it reaches the SDK: LiteLLM dispatches on a provider
+  prefix and the SDK forwards the name verbatim, so a bare SynthOrg model id
+  resolves to no provider and never reaches `base_url` at all. The prefix
+  names the wire protocol (an OpenAI-compatible proxy at `api_base`), which is
+  what the gateway is; the real `(provider, model)` still comes from the run
+  bearer's claims, and the gateway ignores the request's `model` field.
 - The host-side `DockerSandbox.stream_container_task` spawns the container
   with `stdin`/`stdout` attached, writes the spec, and yields each `stdout`
   line. Egress is pinned by the network sidecar to exactly the gateway +
@@ -142,20 +152,67 @@ excluded: the stream model does not use it.) This keeps
 behind the `SandboxStreamer` protocol, so the main venv never imports the
 SDK.
 
+## Operational reachability
+
+The capability ships **on** (`tools.openhands_enabled`, which carries
+`providers.gateway_enabled` with it), and everything it needs is provided
+rather than left for an operator to discover:
+
+- **The image is built and published** by `build-images.yml` alongside the
+  other five (`build-openhands` / `build-openhands-publish` / `retag-openhands`,
+  signed and verified like the rest). It has no apko base of its own: the
+  Dockerfile takes `ARG BASE_IMAGE` and builds `FROM` the sandbox base, so
+  `build-sandbox-base` is also gated on the `openhands` paths filter.
+- **Both endpoints resolve with no hand configuration.** `docker/compose.yml`
+  and the CLI template set `SYNTHORG_PROVIDERS_GATEWAY_BASE_URL` and
+  `SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL` from the published backend port
+  and API prefix. The registered defaults stay empty, so a deployment that
+  publishes no such address still fails closed rather than guessing.
+- **The container can reach them.** It runs on the default bridge, not the
+  compose network, so no service name resolves inside it; the wiring gives it
+  a `host.docker.internal:host-gateway` alias. Because an egress-pinned
+  container joins the sidecar's network namespace (and reads *its*
+  `/etc/hosts`, Docker refusing `ExtraHosts` on the joining container), the
+  alias is applied to the sidecar, and to the container itself only when no
+  sidecar is involved.
+- **The CLI treats it like the sidecar**: verified, digest-pinned, pulled,
+  updated and pruned whenever the sandbox is enabled, which is also the
+  precondition for the Docker socket the backend spawns it through.
+
 ## Selection
 
 The loop is chosen per task-complexity through the existing loop-selection
 path, with `"openhands"` registered in the loop registry and both
-known/buildable frozensets. Selection is off by default: the boot wiring
-builds an `AutoLoopConfig` only when `engine.loop_auto_select_enabled` is
-set, from the default complexity rules merged with
-`engine.loop_complexity_overrides` and the `engine.default_loop_type`
-fallback, so an operator can route any complexity (or every unmatched
-task) to OpenHands for an A/B. The registry factory requires
-`OpenHandsLoopDeps`; without them it fails loud, so an unwired deployment
-can never silently fall back to a different loop.
+known/buildable frozensets. **Availability is not routing.** Selection is off
+by default: the boot wiring builds an `AutoLoopConfig` only when
+`engine.loop_auto_select_enabled` is set, from the default complexity rules
+merged with `engine.loop_complexity_overrides` and the
+`engine.default_loop_type` fallback, and no default rule names `openhands`. An
+operator routes a complexity band (or every unmatched task) to it explicitly;
+which band, if any, should route there by default is the promotion decision
+the A/B harness exists to answer. The registry factory requires
+`OpenHandsLoopDeps`; without them it fails loud, so an unwired deployment can
+never silently fall back to a different loop.
 
 The scored comparison against the native loops, and the promotion
 recommendation it feeds into those settings, is the
 [inner-loop A/B harness](loop-ab-harness.md). An unwired OpenHands runtime
 surfaces there as an explicitly unavailable row rather than a missing one.
+
+## Proving the container protocol
+
+`tests/integration/engine/test_openhands_container_contract.py` runs the built
+image against a local OpenAI-compatible stub (plus the minimal MCP endpoint the
+agent needs to build at all), with zero provider spend. It serialises the spec
+with the production `_spec_line` and parses every stdout line with the
+production `_parse_event`, so image/adapter drift fails there rather than in a
+live run, and it asserts the spec parse, the event stream, the cost-delta
+arithmetic, termination, and the bearer scrub. It runs inside the
+`build-openhands` job because that is the only place the freshly built image is
+reachable on a pull request.
+
+Asserting that every adapter-relevant kind appears is also the drift detector
+for `_normalize`, which maps SDK events by `isinstance` against four classes: a
+rename upstream shows up as a missing kind rather than a line on stderr nobody
+reads. The env-gated live smoke stays the end-to-end check against a real
+gateway and a real model.

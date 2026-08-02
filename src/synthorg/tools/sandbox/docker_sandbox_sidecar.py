@@ -97,24 +97,32 @@ class DockerSandboxSidecarMixin(ABC):
         nano_cpus = int(limits.docker_sidecar_cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.sidecar_tmpfs_size},noexec,nosuid"
 
+        # The sandbox container joins this container's network namespace and
+        # therefore reads THIS container's /etc/hosts, so an alias the sandbox
+        # needs has to be declared here. Docker rejects ExtraHosts on the
+        # joining container outright.
+        host_config: dict[str, object] = {
+            "NetworkMode": "bridge",
+            "CapDrop": ["ALL"],
+            "CapAdd": ["NET_ADMIN"],
+            "ReadonlyRootfs": True,
+            "Tmpfs": {
+                "/tmp": tmpfs_spec,  # noqa: S108
+                "/run": "size=1m,nosuid",
+            },
+            "Memory": memory_bytes,
+            "NanoCpus": nano_cpus,
+            "PidsLimit": limits.docker_sidecar_max_pids,
+            "AutoRemove": False,
+            "SecurityOpt": ["no-new-privileges"],
+        }
+        if self._config.extra_hosts:
+            host_config["ExtraHosts"] = list(self._config.extra_hosts)
+
         config: dict[str, object] = {
             "Image": self._config.sidecar_image,
             "Env": env_list,
-            "HostConfig": {
-                "NetworkMode": "bridge",
-                "CapDrop": ["ALL"],
-                "CapAdd": ["NET_ADMIN"],
-                "ReadonlyRootfs": True,
-                "Tmpfs": {
-                    "/tmp": tmpfs_spec,  # noqa: S108
-                    "/run": "size=1m,nosuid",
-                },
-                "Memory": memory_bytes,
-                "NanoCpus": nano_cpus,
-                "PidsLimit": limits.docker_sidecar_max_pids,
-                "AutoRemove": False,
-                "SecurityOpt": ["no-new-privileges"],
-            },
+            "HostConfig": host_config,
         }
 
         try:

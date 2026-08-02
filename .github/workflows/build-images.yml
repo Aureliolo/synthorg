@@ -62,6 +62,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend == 'true' && steps.rp.outputs.is_release_please != 'true' }}
       sandbox: ${{ steps.filter.outputs.sandbox == 'true' && steps.rp.outputs.is_release_please != 'true' }}
+      openhands: ${{ steps.filter.outputs.openhands == 'true' && steps.rp.outputs.is_release_please != 'true' }}
       sidecar: ${{ steps.filter.outputs.sidecar == 'true' && steps.rp.outputs.is_release_please != 'true' }}
       fine-tune: ${{ steps.filter.outputs.fine-tune == 'true' && steps.rp.outputs.is_release_please != 'true' }}
       web: ${{ steps.filter.outputs.web == 'true' && steps.rp.outputs.is_release_please != 'true' }}
@@ -119,6 +120,26 @@ jobs:
               - '.github/actions/publish-image/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - 'scripts/cis-scan.sh'
+            # docker/sandbox/** is in scope because the OpenHands Dockerfile
+            # builds FROM the sandbox apko base. The engine package and the
+            # contract test are in scope because that test runs in this
+            # image's build job and drives the production spec/event codecs.
+            openhands:
+              - 'docker/openhands/**'
+              - 'docker/sandbox/**'
+              - 'src/synthorg/engine/openhands/**'
+              - 'tests/integration/engine/test_openhands_container_contract.py'
+              - '.dockerignore'
+              - '.github/workflows/build-images.yml'
+              - '.github/actions/build-apko-base/**'
+              - '.github/actions/build-scan-image/**'
+              - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-apko-base/**'
+              - '.github/actions/publish-image/**'
+              - '.github/actions/publish-image-loaded/**'
+              - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-python-uv/**'
               - 'scripts/cis-scan.sh'
             sidecar:
               - 'docker/sidecar/**'
@@ -344,13 +365,18 @@ jobs:
       artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
       tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
 
+  # Also gated on the openhands filter: the OpenHands image builds FROM this
+  # base, so a docker/openhands-only diff still has to produce it or
+  # build-openhands has no `FROM` to resolve.
   build-sandbox-base:
     name: Build Sandbox Base (apko)
     needs: [version, changes, validate-compose]
     if: >-
       !cancelled() && needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
-      (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true')
+      (needs.changes.result == 'skipped' ||
+        needs.changes.outputs.sandbox == 'true' ||
+        needs.changes.outputs.openhands == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -884,13 +910,17 @@ jobs:
       tarball-name: web.tar
       enable-arm64: true
 
+  # The explicit `changes` gate is load-bearing now that the base also builds
+  # for an openhands-only diff: without it, every OpenHands change would drag a
+  # full sandbox build and Trivy scan along for source that did not move.
   build-sandbox:
     name: Build Sandbox (${{ matrix.arch }})
-    needs: [version, build-sandbox-base, build-sandbox-base-publish]
+    needs: [version, changes, build-sandbox-base, build-sandbox-base-publish]
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
       !startsWith(github.ref, 'refs/tags/v') &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.sandbox == 'true') &&
       needs.build-sandbox-base.result == 'success' &&
       (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
@@ -941,6 +971,92 @@ jobs:
     uses: ./.github/workflows/reusable-publish-image.yml
     with:
       image-name: sandbox
+      app-version: ${{ needs.version.outputs.app_version }}
+
+  # No apko base of its own: docker/openhands/Dockerfile takes ARG BASE_IMAGE
+  # and builds FROM the sandbox base, so it consumes build-sandbox-base's
+  # outputs exactly the way build-sandbox does.
+  build-openhands:
+    name: Build OpenHands (${{ matrix.arch }})
+    needs: [version, changes, build-sandbox-base, build-sandbox-base-publish]
+    if: >-
+      !cancelled() &&
+      needs.version.result == 'success' &&
+      !startsWith(github.ref, 'refs/tags/v') &&
+      (needs.changes.result == 'skipped' || needs.changes.outputs.openhands == 'true') &&
+      needs.build-sandbox-base.result == 'success' &&
+      (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    # Above the sandbox's 30: this image layers a ~338-package hash-pinned pip
+    # closure on top of the same base, and the amd64 leg also runs the
+    # container contract test.
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.version.outputs.arches) }}
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Build and scan openhands image
+        id: image
+        uses: ./.github/actions/build-scan-image
+        with:
+          image-name: openhands
+          platform: ${{ matrix.arch }}
+          display-name: OpenHands
+          dockerfile: docker/openhands/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-sandbox-base
+          base-image-tag: ${{ needs.build-sandbox-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-sandbox-base-publish.outputs.digest }}
+          base-image-artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
+          base-image-tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
+          trivy-version: ${{ env.TRIVY_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The contract test runs HERE rather than in a job of its own because
+      # this is the only place the image is reachable on a pull request:
+      # build-scan-image loads it into the runner's daemon on PR events and
+      # uploads a tarball only on non-PR events, so a downstream job would have
+      # nothing to pull. One arch is enough: it proves the stdin/stdout
+      # protocol, not architecture coverage.
+      - name: Set up Python
+        if: matrix.arch == 'amd64'
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Container contract test (no provider spend)
+        if: matrix.arch == 'amd64'
+        env:
+          SYNTHORG_OPENHANDS_IMAGE: ${{ steps.image.outputs.ref }}
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run python -m pytest -n0 \
+            tests/integration/engine/test_openhands_container_contract.py -v
+
+  build-openhands-publish:
+    name: Publish OpenHands
+    needs: [version, build-openhands]
+    if: >-
+      !cancelled() &&
+      needs.build-openhands.result == 'success' &&
+      github.ref == 'refs/heads/main'
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/reusable-publish-image.yml
+    with:
+      image-name: openhands
       app-version: ${{ needs.version.outputs.app_version }}
 
   build-sidecar:
@@ -1219,6 +1335,35 @@ jobs:
           app-version: ${{ needs.version.outputs.app_version }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
+  retag-openhands:
+    name: Retag OpenHands
+    needs: [version]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !cancelled() &&
+      needs.version.result == 'success'
+    runs-on: ubuntu-24.04
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.retag.outputs.digest }}
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - id: retag
+        uses: ./.github/actions/publish-image-retag
+        with:
+          image-name: openhands
+          app-version: ${{ needs.version.outputs.app_version }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
   retag-sidecar:
     name: Retag Sidecar
     needs: [version]
@@ -1366,11 +1511,13 @@ jobs:
       - build-backend-publish
       - build-web-publish
       - build-sandbox-publish
+      - build-openhands-publish
       - build-sidecar-publish
       - build-fine-tune-publish
       - retag-backend
       - retag-web
       - retag-sandbox
+      - retag-openhands
       - retag-sidecar
       - retag-fine-tune
     # Two event paths feed this gate:
@@ -1412,12 +1559,14 @@ jobs:
           (needs.build-backend-publish.result != 'skipped' ||
             needs.build-web-publish.result != 'skipped' ||
             needs.build-sandbox-publish.result != 'skipped' ||
+            needs.build-openhands-publish.result != 'skipped' ||
             needs.build-sidecar-publish.result != 'skipped' ||
             needs.build-fine-tune-publish.result != 'skipped')) ||
         (startsWith(github.ref, 'refs/tags/v') &&
           (needs.retag-backend.result != 'skipped' ||
             needs.retag-web.result != 'skipped' ||
             needs.retag-sandbox.result != 'skipped' ||
+            needs.retag-openhands.result != 'skipped' ||
             needs.retag-sidecar.result != 'skipped' ||
             needs.retag-fine-tune.result != 'skipped'))
       )
@@ -1504,6 +1653,7 @@ jobs:
       - retag-backend
       - retag-web
       - retag-sandbox
+      - retag-openhands
       - retag-sidecar
       - retag-fine-tune
       - verify-signatures
@@ -1513,6 +1663,7 @@ jobs:
       needs.retag-backend.result == 'success' &&
       needs.retag-web.result == 'success' &&
       needs.retag-sandbox.result == 'success' &&
+      needs.retag-openhands.result == 'success' &&
       needs.retag-sidecar.result == 'success' &&
       needs.retag-fine-tune.result == 'success' &&
       needs.verify-signatures.result == 'success'
@@ -1566,6 +1717,7 @@ jobs:
           BACKEND_DIGEST: ${{ needs.retag-backend.outputs.digest }}
           WEB_DIGEST: ${{ needs.retag-web.outputs.digest }}
           SANDBOX_DIGEST: ${{ needs.retag-sandbox.outputs.digest }}
+          OPENHANDS_DIGEST: ${{ needs.retag-openhands.outputs.digest }}
           SIDECAR_DIGEST: ${{ needs.retag-sidecar.outputs.digest }}
           FINE_TUNE_GPU_DIGEST: ${{ steps.ft-digests.outputs.gpu }}
           FINE_TUNE_CPU_DIGEST: ${{ steps.ft-digests.outputs.cpu }}
@@ -1573,8 +1725,8 @@ jobs:
           set -euo pipefail
 
           # Validate required inputs
-          if [ -z "$TAG" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ] || [ -z "$SIDECAR_DIGEST" ]; then
-            echo "::error::Missing required values: TAG='$TAG' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST' SIDECAR_DIGEST='$SIDECAR_DIGEST'"
+          if [ -z "$TAG" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ] || [ -z "$OPENHANDS_DIGEST" ] || [ -z "$SIDECAR_DIGEST" ]; then
+            echo "::error::Missing required values: TAG='$TAG' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST' OPENHANDS_DIGEST='$OPENHANDS_DIGEST' SIDECAR_DIGEST='$SIDECAR_DIGEST'"
             exit 1
           fi
 
@@ -1621,6 +1773,7 @@ jobs:
           | Backend | `docker pull ghcr.io/aureliolo/synthorg-backend:VERSION_PH` |
           | Web | `docker pull ghcr.io/aureliolo/synthorg-web:VERSION_PH` |
           | Sandbox | `docker pull ghcr.io/aureliolo/synthorg-sandbox:VERSION_PH` |
+          | OpenHands | `docker pull ghcr.io/aureliolo/synthorg-openhands:VERSION_PH` |
           | Sidecar | `docker pull ghcr.io/aureliolo/synthorg-sidecar:VERSION_PH` |
           | Fine-Tune (GPU) | `docker pull ghcr.io/aureliolo/synthorg-fine-tune-gpu:VERSION_PH` |
           | Fine-Tune (CPU) | `docker pull ghcr.io/aureliolo/synthorg-fine-tune-cpu:VERSION_PH` |
@@ -1634,6 +1787,7 @@ jobs:
           | Backend | `BACKEND_DIGEST_PH` |
           | Web | `WEB_DIGEST_PH` |
           | Sandbox | `SANDBOX_DIGEST_PH` |
+          | OpenHands | `OPENHANDS_DIGEST_PH` |
           | Sidecar | `SIDECAR_DIGEST_PH` |
           | Fine-Tune (GPU) | `FINE_TUNE_GPU_DIGEST_PH` |
           | Fine-Tune (CPU) | `FINE_TUNE_CPU_DIGEST_PH` |
@@ -1658,6 +1812,7 @@ jobs:
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-openhands@OPENHANDS_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sidecar@SIDECAR_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune-gpu@FINE_TUNE_GPU_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune-cpu@FINE_TUNE_CPU_DIGEST_PH -R Aureliolo/synthorg
@@ -1668,7 +1823,7 @@ jobs:
           <summary>SBOMs (CycloneDX JSON)</summary>
 
           Attached to this release as artifacts:
-          \`sbom-backend.cdx.json\` | \`sbom-web.cdx.json\` | \`sbom-sandbox.cdx.json\` | \`sbom-sidecar.cdx.json\` | \`sbom-fine-tune-gpu.cdx.json\` | \`sbom-fine-tune-cpu.cdx.json\`
+          \`sbom-backend.cdx.json\` | \`sbom-web.cdx.json\` | \`sbom-sandbox.cdx.json\` | \`sbom-openhands.cdx.json\` | \`sbom-sidecar.cdx.json\` | \`sbom-fine-tune-gpu.cdx.json\` | \`sbom-fine-tune-cpu.cdx.json\`
           </details>
           BLOCK
           )
@@ -1677,6 +1832,7 @@ jobs:
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
+          IMAGES=${IMAGES//OPENHANDS_DIGEST_PH/$OPENHANDS_DIGEST}
           IMAGES=${IMAGES//SIDECAR_DIGEST_PH/$SIDECAR_DIGEST}
           IMAGES=${IMAGES//FINE_TUNE_GPU_DIGEST_PH/$FINE_TUNE_GPU_DIGEST}
           IMAGES=${IMAGES//FINE_TUNE_CPU_DIGEST_PH/$FINE_TUNE_CPU_DIGEST}
@@ -1700,7 +1856,7 @@ jobs:
   docker-pass:
     name: Docker Pass
     if: always()
-    needs: [changes, version, validate-compose, build-backend-base, build-backend-base-publish, build-sandbox-base, build-sandbox-base-publish, build-sidecar-base, build-sidecar-base-publish, build-fine-tune-base, build-fine-tune-base-publish, build-backend, build-backend-publish, build-web-assets, build-web, build-web-publish, build-sandbox, build-sandbox-publish, build-sidecar, build-sidecar-publish, build-fine-tune, build-fine-tune-publish, retag-backend, retag-web, retag-sandbox, retag-sidecar, retag-fine-tune, verify-signatures, update-release]
+    needs: [changes, version, validate-compose, build-backend-base, build-backend-base-publish, build-sandbox-base, build-sandbox-base-publish, build-sidecar-base, build-sidecar-base-publish, build-fine-tune-base, build-fine-tune-base-publish, build-backend, build-backend-publish, build-web-assets, build-web, build-web-publish, build-sandbox, build-sandbox-publish, build-openhands, build-openhands-publish, build-sidecar, build-sidecar-publish, build-fine-tune, build-fine-tune-publish, retag-backend, retag-web, retag-sandbox, retag-openhands, retag-sidecar, retag-fine-tune, verify-signatures, update-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
@@ -1726,6 +1882,8 @@ jobs:
             ${{ needs.build-web-publish.result }}
             ${{ needs.build-sandbox.result }}
             ${{ needs.build-sandbox-publish.result }}
+            ${{ needs.build-openhands.result }}
+            ${{ needs.build-openhands-publish.result }}
             ${{ needs.build-sidecar.result }}
             ${{ needs.build-sidecar-publish.result }}
             ${{ needs.build-fine-tune.result }}
@@ -1733,6 +1891,7 @@ jobs:
             ${{ needs.retag-backend.result }}
             ${{ needs.retag-web.result }}
             ${{ needs.retag-sandbox.result }}
+            ${{ needs.retag-openhands.result }}
             ${{ needs.retag-sidecar.result }}
             ${{ needs.retag-fine-tune.result }}
             ${{ needs.verify-signatures.result }}

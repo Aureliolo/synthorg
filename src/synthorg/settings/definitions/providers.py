@@ -329,15 +329,19 @@ _r.register(
         namespace=SettingNamespace.PROVIDERS,
         key="gateway_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Enable the OpenAI-compatible LLM gateway: an in-process HTTP"
             " surface that fronts the provider registry so an embedded coding"
             " harness (OpenHands) can route its LLM calls through SynthOrg's"
             " cost attribution, Explicit Provider Binding, hard token budget"
-            " and secret-redacted logging. Off by default. Enabling opens an"
-            " egress path, so the deliberate confirm+reason+actor guardrail"
-            " applies to the enable transition. Re-read live per request, so"
+            " and secret-redacted logging. On by default, because"
+            " tools.openhands_enabled is: a wired loop whose every call 503s is"
+            " not a capability. The route carries no ambient authority; it"
+            " authenticates with a per-run signed bearer and rejects anything"
+            " else. Re-enabling after an explicit disable reopens the egress"
+            " path, so that transition takes the deliberate"
+            " confirm+reason+actor guardrail. Re-read live per request, so"
             " toggling takes effect on the next call without a restart."
         ),
         group="Gateway",
@@ -375,12 +379,16 @@ _r.register(
         default="",
         description=(
             "OpenAI-compatible base URL the in-sandbox harness uses to reach"
-            " the LLM gateway (the app address reachable through the sandbox"
-            " sidecar egress allowlist, including the mounted gateway route,"
-            " e.g. http://host.docker.internal:8000/api/v1/gateway/v1 so the"
-            " client resolves .../v1/chat/completions). Empty by default,"
-            " which leaves the OpenHands execution loop unavailable until an"
-            " operator sets a reachable address. Re-read live."
+            " the LLM gateway: the app address reachable through the sandbox"
+            " sidecar egress allowlist, including the mounted gateway route, so"
+            " the client resolves .../v1/chat/completions. Both compose"
+            " deployments set it to"
+            " http://host.docker.internal:<published-port>/api/v1/gateway/v1"
+            " and give the loop container a matching host-gateway alias, so a"
+            " standard install needs no hand configuration. The registered"
+            " default is empty, which leaves the OpenHands execution loop"
+            " unavailable (it fails loud only if selected) on any deployment"
+            " that publishes no such address. Re-read live."
         ),
         group="Gateway",
         level=SettingLevel.ADVANCED,

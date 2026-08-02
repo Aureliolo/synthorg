@@ -19,30 +19,60 @@ This module runs only inside ``docker/openhands`` (which bundles
 """
 
 import json
+import os
 import sys
 from pathlib import PurePosixPath
 from uuid import UUID
 
+# Claim the real stdout as the private event channel, then point ``sys.stdout``
+# at stderr for everything else, BEFORE importing the SDK. stdout is a parsed
+# protocol: the host reads one JSON event per line. The SDK's console visualizer
+# and any stray print in its ~338-package closure would otherwise interleave
+# prose with those lines. Disabling the visualizer (below) removes the known
+# writer; this removes the whole class, so protocol integrity does not depend on
+# a third-party library choosing not to print.
+_EVENTS = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8")
+sys.stdout = sys.stderr
+
 # The tools import is load-bearing: it registers the ``terminal`` /
 # ``file_editor`` executors into the SDK tool registry by import side effect.
-import openhands.tools  # noqa: F401
-from openhands.sdk import LLM, Agent, Conversation, Tool
-from openhands.sdk.event import (
+import openhands.tools  # noqa: E402, F401
+from openhands.sdk import LLM, Agent, Conversation, Tool  # noqa: E402
+from openhands.sdk.event import (  # noqa: E402
     ActionEvent,
     AgentErrorEvent,
     MessageEvent,
     ObservationEvent,
 )
-from openhands.sdk.mcp.config import MCPServer
+from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
 
+# LiteLLM routes by a provider prefix on the model name, and the SDK hands
+# ``model`` to it verbatim (``litellm_call_kwargs`` returns it unchanged for
+# any non-OpenHands model), so an unprefixed SynthOrg model id resolves to no
+# provider and the call fails before it reaches ``base_url``. This prefix names
+# the WIRE PROTOCOL, not a vendor: it means "an OpenAI-compatible proxy at
+# api_base", which is exactly what the SynthOrg gateway is. The gateway binds
+# the real (provider, model) from the run bearer's claims and ignores the
+# request's model field entirely, so nothing here selects a vendor.
+_PROXY_MODEL_PREFIX = "litellm_proxy/"
+
+
+def _routed_model(model: str) -> str:
+    """Prefix a model id so LiteLLM routes it to the gateway's base URL.
+
+    Returns:
+        The model id carrying an OpenAI-compatible proxy provider prefix.
+    """
+    return model if "/" in model else f"{_PROXY_MODEL_PREFIX}{model}"
+
 
 def _emit(payload: dict[str, object]) -> None:
-    """Write one normalized event as a JSON line to stdout."""
-    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
-    sys.stdout.flush()
+    """Write one normalized event as a JSON line to the event channel."""
+    _EVENTS.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    _EVENTS.flush()
 
 
 def _safe_error_text(exc: Exception, *, secret: str) -> str:
@@ -110,7 +140,7 @@ def _build_agent(spec: dict[str, object]) -> Agent:
         The configured SDK ``Agent``.
     """
     llm = LLM(
-        model=spec["model"],
+        model=_routed_model(str(spec["model"])),
         api_key=spec["gateway_token"],
         base_url=spec["gateway_base_url"],
         usage_id=_LLM_USAGE_ID,
@@ -130,11 +160,18 @@ def _build_agent(spec: dict[str, object]) -> Agent:
 def _accumulated_cost(conversation: object) -> float:
     """Read the conversation's running accumulated cost, best-effort.
 
+    The total lives on the COMBINED metrics, not on ``ConversationStats``
+    itself (the SDK reads it the same way for its own budget check), so
+    reaching for the attribute directly silently yields zero on every event
+    and flatlines the host's per-turn cost attribution.
+
     Returns:
         The accumulated cost, or ``0.0`` when unavailable.
     """
     stats = getattr(conversation, "conversation_stats", None)
-    return float(getattr(stats, "accumulated_cost", 0.0) or 0.0)
+    combined = getattr(stats, "get_combined_metrics", None)
+    metrics = combined() if callable(combined) else None
+    return float(getattr(metrics, "accumulated_cost", 0.0) or 0.0)
 
 
 def _run(spec: dict[str, object]) -> None:
@@ -174,6 +211,7 @@ def _run(spec: dict[str, object]) -> None:
         conversation_id=UUID(str(spec["conversation_id"])),
         max_iteration_per_run=int(str(spec["max_turns"])),
         callbacks=[_callback],
+        visualizer=None,
     )
     holder["conversation"] = conversation
     conversation.send_message(spec["task_prompt"])

@@ -66,6 +66,9 @@ services:
       SYNTHORG_PROVIDERS_CASSETTE_PATH: "${SYNTHORG_PROVIDERS_CASSETTE_PATH:-}"
       SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"
       SYNTHORG_SIDECAR_IMAGE: "ghcr.io/aureliolo/synthorg-sidecar:latest"
+      SYNTHORG_OPENHANDS_IMAGE: "ghcr.io/aureliolo/synthorg-openhands:latest"
+      SYNTHORG_PROVIDERS_GATEWAY_BASE_URL: "${SYNTHORG_PROVIDERS_GATEWAY_BASE_URL:-http://host.docker.internal:3001${SYNTHORG_API_API_PREFIX:-/api/v1}/gateway/v1}"
+      SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL: "${SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL:-http://host.docker.internal:3001${SYNTHORG_API_API_PREFIX:-/api/v1}/mcp-gateway}"
     security_opt:
       - no-new-privileges:true
     cap_drop:

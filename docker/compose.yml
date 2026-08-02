@@ -149,6 +149,16 @@ services:
       SYNTHORG_SANDBOX_IMAGE: "${SYNTHORG_SANDBOX_IMAGE:-}"
       SYNTHORG_SIDECAR_IMAGE: "${SYNTHORG_SIDECAR_IMAGE:-}"
       SYNTHORG_FINE_TUNE_IMAGE: "${SYNTHORG_FINE_TUNE_IMAGE:-}"
+      SYNTHORG_OPENHANDS_IMAGE: "${SYNTHORG_OPENHANDS_IMAGE:-}"
+      # The OpenHands loop container runs on the default bridge network, not
+      # synthorg-net, so it reaches the API through the host rather than by
+      # compose service name: the loop gives its container a
+      # `host.docker.internal:host-gateway` alias and these two point at the
+      # published port. Derived from the same values the bind above uses, so a
+      # standard deployment needs no hand configuration. The container appends
+      # `/mcp` to the MCP base itself.
+      SYNTHORG_PROVIDERS_GATEWAY_BASE_URL: "${SYNTHORG_PROVIDERS_GATEWAY_BASE_URL:-http://host.docker.internal:${BACKEND_PORT:-3001}${SYNTHORG_API_API_PREFIX:-/api/v1}/gateway/v1}"
+      SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL: "${SYNTHORG_TOOLS_CREDENTIALED_MCP_BASE_URL:-http://host.docker.internal:${BACKEND_PORT:-3001}${SYNTHORG_API_API_PREFIX:-/api/v1}/mcp-gateway}"
     # Image sets USER 65532 in the Dockerfile; no compose override
     # needed.
     security_opt:
