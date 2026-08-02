@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from typing import Final, Literal, NoReturn, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -10,6 +10,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
     CONFIG_VALIDATION_FAILED,
+)
+from synthorg.tools.sandbox._config_entries import (
+    colon_pair,
+    reject_entry,
+    validate_host_port,
 )
 from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
@@ -29,71 +34,12 @@ logger = get_logger(__name__)
 CONTAINER_WORKSPACE: Final[str] = "/workspace"
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
-_MIN_PORT = 1
-_MAX_PORT: Final[int] = 65535
-_COLON_PAIR_PARTS: Final[int] = 2
 
 # Docker tmpfs size syntax: positive integer, optional k/m/g suffix
 # (case-insensitive).  Rejects leading zeros, negatives, and unknown
 # suffixes so malformed values fail at config-load time rather than
 # surfacing as opaque Docker API errors at container creation.
 _TMPFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[kmg]?$", re.IGNORECASE)
-
-
-def _reject_entry(field: str, msg: str) -> NoReturn:
-    """Log a rejected config entry and raise.
-
-    Raises:
-        ValueError: Always, carrying *msg*.
-    """
-    logger.warning(CONFIG_VALIDATION_FAILED, field=field, reason=msg)
-    raise ValueError(msg)
-
-
-def _colon_pair(entry: str, *, field: str, shape: str) -> tuple[str, str]:
-    """Split a ``left:right`` entry, rejecting any other shape.
-
-    Returns:
-        The left and right halves.
-
-    Raises:
-        ValueError: If the entry is not exactly two non-empty halves.
-    """
-    parts = entry.split(":")
-    if len(parts) != _COLON_PAIR_PARTS or not all(parts):
-        _reject_entry(
-            field,
-            f"{field} entry {entry!r} must use {shape} (exactly one ':',"
-            " neither side empty); IPv6 addresses are not supported",
-        )
-    return parts[0], parts[1]
-
-
-def _validate_host_port(entry: str, *, field: str) -> None:
-    """Validate a ``host:port`` entry, rejecting wildcards and bad ports.
-
-    Only IPv4 addresses and hostnames are supported; the sidecar's
-    transparent proxy cannot express an IPv6 destination.
-
-    Raises:
-        ValueError: If the entry is malformed or the port is out of range.
-    """
-    host, port_str = _colon_pair(entry, field=field, shape="'host:port'")
-    if host == "*":
-        _reject_entry(
-            field, f"host part of {entry!r} must be a hostname or IP, not a wildcard"
-        )
-    try:
-        port = int(port_str)
-    except ValueError as exc:
-        msg = f"port {port_str!r} in {entry!r} is not a valid integer"
-        logger.warning(CONFIG_VALIDATION_FAILED, field=field, reason=msg)
-        raise ValueError(msg) from exc
-    if port < _MIN_PORT or port > _MAX_PORT:
-        _reject_entry(
-            field,
-            f"port {port} in {entry!r} must be between {_MIN_PORT} and {_MAX_PORT}",
-        )
 
 
 def _default_sandbox_image() -> str:
@@ -484,7 +430,7 @@ class DockerSandboxConfig(BaseModel):
             ValueError: If an argument fails domain validation.
         """
         for entry in self.allowed_hosts:
-            _validate_host_port(entry, field="allowed_hosts")
+            validate_host_port(entry, field="allowed_hosts")
         return self
 
     @model_validator(mode="after")
@@ -498,7 +444,7 @@ class DockerSandboxConfig(BaseModel):
             ValueError: If an argument fails domain validation.
         """
         for entry in self.extra_hosts:
-            _colon_pair(
+            colon_pair(
                 entry,
                 field="extra_hosts",
                 shape="'name:target', e.g. 'host.docker.internal:host-gateway'",
@@ -522,14 +468,14 @@ class DockerSandboxConfig(BaseModel):
         for entry in self.allowed_paths:
             host_port, _, prefix = entry.partition("=")
             if not prefix.startswith("/"):
-                _reject_entry(
+                reject_entry(
                     "allowed_paths",
                     f"allowed_paths entry {entry!r} must use"
                     " 'host:port=/prefix' (the prefix starting with '/')",
                 )
-            _validate_host_port(host_port, field="allowed_paths")
+            validate_host_port(host_port, field="allowed_paths")
             if host_port not in self.allowed_hosts:
-                _reject_entry(
+                reject_entry(
                     "allowed_paths",
                     f"allowed_paths entry {entry!r} narrows {host_port!r},"
                     " which is not in allowed_hosts, so it grants nothing",
