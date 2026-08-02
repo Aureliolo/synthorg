@@ -97,6 +97,24 @@ async def wire_meta_apply(app_state: AppState) -> None:
         )
 
 
+async def unwire_meta_apply(app_state: AppState) -> None:
+    """Drop the self-improvement service so the next pass rebuilds it.
+
+    The service selects its strategies and appliers from the config when it is
+    constructed, so ``code_modification_enabled`` reaches the running loop only
+    through a rebuild: without one the write lands, the dashboard reports it,
+    and the loop keeps the set it started with. Clearing the slice is also what
+    the reconciler reads as the subsystem being down.
+
+    Args:
+        app_state: Application state holding the meta slice.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, self_improvement_service=None)
+    logger.info(API_APP_STARTUP, service="self_improvement", note="unwired")
+
+
 async def _wire(app_state: AppState) -> None:
     from synthorg.approval.state import approval_store_of  # noqa: PLC0415
     from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
@@ -444,4 +462,4 @@ async def _wire_department_service(
     return service
 
 
-__all__ = ["wire_meta_apply"]
+__all__ = ["unwire_meta_apply", "wire_meta_apply"]

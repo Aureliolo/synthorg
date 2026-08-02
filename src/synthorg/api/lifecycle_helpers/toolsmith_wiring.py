@@ -290,11 +290,9 @@ async def wire_toolsmith(
         return
     if persistence is None or app_state.slice(PersistenceStateSlice).backend is None:
         return
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
+    from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
 
-    si_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
+    si_config = await self_improvement_config_of(app_state)
     try:
         runtime = _build_toolsmith_runtime(
             si_config=si_config,

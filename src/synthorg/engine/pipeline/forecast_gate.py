@@ -34,7 +34,11 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
+from synthorg.engine.pipeline.models import (
+    PipelineAttachments,
+    WorkItem,
+    WorkPipelineResult,
+)
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
@@ -167,7 +171,7 @@ class ForecastGate:
         """
         return await self._work_pipeline.continue_from_intake(work_item, task)
 
-    def attach_narrator(self, narrator: RunNarrator) -> None:
+    def attach_narrator(self, narrator: RunNarrator | None) -> None:
         """Forward the narrator to the wrapped pipeline (decorator passthrough)."""
         self._work_pipeline.attach_narrator(narrator)
 
@@ -182,6 +186,15 @@ class ForecastGate:
     def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
         """Forward the plan-review panel to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_plan_review_panel(panel)
+
+    @property
+    def attachments(self) -> PipelineAttachments:
+        """Report the wrapped pipeline's attachments (decorator passthrough).
+
+        Returns:
+            The wrapped pipeline's :class:`PipelineAttachments`.
+        """
+        return self._work_pipeline.attachments
 
     async def _gated_dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
         """Run the forecast-gated dispatch branches.

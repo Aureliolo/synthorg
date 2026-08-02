@@ -133,7 +133,6 @@ from synthorg.api.controllers.providers.tier_assignments import (
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
-from synthorg.api.controllers.restart import RestartController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.risk_overrides import RiskOverrideController
 from synthorg.api.controllers.role_versions import RoleVersionController
@@ -155,6 +154,7 @@ from synthorg.api.controllers.simulations import SimulationController
 from synthorg.api.controllers.sprints import SprintController
 from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.api.controllers.steering import SteeringController
+from synthorg.api.controllers.subsystems import SubsystemsController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
@@ -197,6 +197,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LivenessController,
     ReadinessController,
     HealthController,
+    SubsystemsController,
     MetricsController,
     CapabilitiesController,
     CompanyController,
@@ -301,7 +302,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ScalingController,
     TrainingController,
     MetaController,
-    RestartController,
     MetaEvolutionController,
     MetaAlertsController,
     TurnController,
@@ -449,7 +449,6 @@ __all__ = [
     "ReadinessController",
     "ReportsController",
     "RequestController",
-    "RestartController",
     "ReviewController",
     "RiskOverrideController",
     "RoleVersionController",
@@ -466,6 +465,7 @@ __all__ = [
     "SimulationController",
     "SprintController",
     "SsrfViolationController",
+    "SubsystemsController",
     "SubworkflowController",
     "TaskController",
     "TeamController",

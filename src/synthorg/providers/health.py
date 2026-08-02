@@ -325,13 +325,15 @@ class ProviderHealthTracker:
     ) -> bool:
         """Return True when no tracked provider is currently DOWN.
 
-        Used by the /readyz probe to gate traffic. Providers whose
+        Reported on the health surface, never used to gate traffic:
+        a third-party outage is the same for every replica, so draining
+        on it turns a degraded feature into a total one. Providers whose
         recent call window contains too many failures derive a
         :attr:`ProviderHealthStatus.DOWN` status; any single one of
         those flips the reachability bit. ``DEGRADED`` providers stay
         reachable because partial traffic is preferable to a full
         outage; ``UNKNOWN`` (no recent calls) is also treated as
-        reachable so a fresh boot never reports unready before the
+        reachable so a fresh boot never reports unreachable before the
         first provider call lands.
         """
         summaries = await self.get_all_summaries(now=now)

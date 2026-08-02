@@ -5,8 +5,9 @@ A change to a watched ``observability.*`` key re-resolves the
 ``app_state.bridge_config``, and live-applies the HTTP batch knobs onto every
 installed ``HttpBatchHandler``. A change to
 ``audit_chain_signing_timeout_seconds`` additionally pushes the new timeout
-onto every live ``AuditChainSink``. The per-preset TSA endpoints stay
-``restart_required`` and are deliberately not watched. Tests assert the swap,
+onto every live ``AuditChainSink``. The per-preset TSA endpoints are
+compose-set trust anchors and are deliberately not watched. Tests assert the
+swap,
 the conditional signing-timeout apply, the resolver-failure retention, and the
 unexpected-pair no-op.
 """
@@ -83,7 +84,7 @@ class TestProtocol:
         assert ("observability", _SIGNING_KEY) in watched
 
     def test_tsa_endpoints_are_not_watched(self) -> None:
-        """TSA endpoints stay restart-bound, so watching them would be dead."""
+        """TSA endpoints are compose-set, so watching them would be dead."""
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
         for preset in ("freetsa", "digicert", "sectigo"):

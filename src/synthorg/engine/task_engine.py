@@ -55,6 +55,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_TIMEOUT,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_DIED,
+    TASK_ENGINE_MAX_QUEUE_SIZE_SET,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_NOT_RUNNING,
     TASK_ENGINE_OBSERVER_LOOP_DIED,
@@ -101,12 +102,14 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._message_bus = message_bus
         self._config = config or TaskEngineConfig()
         self._clock: Clock = clock if clock is not None else SystemClock()
-        # Eager init: ``submit`` may enqueue mutations before the
-        # processing task is spawned; the queue must exist for the
-        # atomic check-and-put in ``submit`` to work safely.
+        # Eager init: ``submit`` may enqueue before the processing task is
+        # spawned. Unbounded on purpose, with the cap enforced in ``submit``
+        # under ``_admission_lock``, so an operator can resize it without
+        # swapping the queue the processing loop is parked on.
         # fmt: off
-        self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue(maxsize=self._config.max_queue_size)  # lint-allow: loop-bound-init -- see.  # noqa: E501
+        self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue()  # lint-allow: loop-bound-init -- see.  # noqa: E501
         # fmt: on
+        self._max_queue_size = self._config.max_queue_size
         self._versions = VersionTracker()
         self._timings = TaskTimingTracker()
         self._spans = TaskSpanTracker()
@@ -140,8 +143,33 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._unrestartable: bool = False
         logger.debug(
             TASK_ENGINE_CREATED,
-            max_queue_size=self._config.max_queue_size,
+            max_queue_size=self._max_queue_size,
             publish_snapshots=self._config.publish_snapshots,
+        )
+
+    def set_max_queue_size(self, max_queue_size: int) -> None:
+        """Change the admission cap on pending mutations.
+
+        Takes effect on the next ``submit``. Lowering it below the current
+        depth admits nothing new until the backlog drains rather than
+        discarding mutations already accepted.
+
+        Args:
+            max_queue_size: New admission cap; ``0`` means unbounded.
+
+        Raises:
+            ValueError: If *max_queue_size* is negative.
+        """
+        if max_queue_size < 0:
+            msg = f"max_queue_size must be >= 0, got {max_queue_size}"
+            raise ValueError(msg)
+        previous = self._max_queue_size
+        self._max_queue_size = max_queue_size
+        logger.info(
+            TASK_ENGINE_MAX_QUEUE_SIZE_SET,
+            previous=previous,
+            current=max_queue_size,
+            depth=self._queue.qsize(),
         )
 
     # -- Observers ---------------------------------------------------------
@@ -286,7 +314,7 @@ class TaskEngine(TaskEngineLoopsMixin):
                 self._running = True
             logger.info(
                 TASK_ENGINE_STARTED,
-                max_queue_size=self._config.max_queue_size,
+                max_queue_size=self._max_queue_size,
             )
 
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
@@ -491,9 +519,9 @@ class TaskEngine(TaskEngineLoopsMixin):
                     raise TaskEngineNotRunningError(msg)
 
                 envelope = _MutationEnvelope(mutation=mutation)
-                try:
-                    self._queue.put_nowait(envelope)
-                except asyncio.QueueFull:
+                # ``0`` is the registered "unbounded" value, matching the
+                # asyncio.Queue maxsize convention this check replaced.
+                if 0 < self._max_queue_size <= self._queue.qsize():
                     logger.warning(
                         TASK_ENGINE_QUEUE_FULL,
                         mutation_type=mutation.mutation_type,
@@ -501,7 +529,8 @@ class TaskEngine(TaskEngineLoopsMixin):
                         queue_size=self._queue.qsize(),
                     )
                     msg = "TaskEngine queue is full"
-                    raise TaskEngineQueueFullError(msg) from None
+                    raise TaskEngineQueueFullError(msg)
+                self._queue.put_nowait(envelope)
 
             result = await envelope.future
             span.set_attribute("mutation.success", result.success)

@@ -29,17 +29,33 @@ _BASELINE_WINDOW_KEY: str = "baseline_window_size"
 
 
 def _resolve_baseline_window_size() -> int:
-    """Resolve ``budget.baseline_window_size`` at boot.
+    """Resolve the initial ``budget.baseline_window_size``.
 
-    Cat-2 boot knob (``read_only_post_init``): the ``BaselineStore``
-    sliding window is sized once at construction, so the value is
-    sourced env > registered default via the bootstrap resolver (a
-    runtime change requires a restart).
+    Sizes the window the first time the store is built; later operator edits
+    reach the live store through ``InMemoryBoundsSettingsSubscriber``.
 
     Returns:
         The resolved baseline sliding-window size.
     """
     return resolve_init_int(SettingNamespace.BUDGET, _BASELINE_WINDOW_KEY)
+
+
+def _baseline_store(app_state: AppState) -> BaselineStore:
+    """Return the shared baseline window, creating it on first use.
+
+    The window lives on the coordination slice rather than inside the
+    collector so a runtime rebuild reuses the accumulated single-agent
+    baselines instead of starting the comparison from empty.
+
+    Returns:
+        The shared ``BaselineStore``.
+    """
+    existing = app_state.slice(CoordinationStateSlice).baseline_store
+    if existing is not None:
+        return existing
+    store = BaselineStore(window_size=_resolve_baseline_window_size())
+    app_state.wire(CoordinationStateSlice, baseline_store=store)
+    return store
 
 
 def _construct_coordination_collector(
@@ -62,12 +78,11 @@ def _construct_coordination_collector(
     """
     if app_state.slice(BudgetStateSlice).cost_tracker is None:
         return None
-    baseline_store = BaselineStore(window_size=_resolve_baseline_window_size())
     return CoordinationMetricsCollector(
         config=app_state.config.coordination_metrics,
         cost_tracker=cost_tracker_of(app_state),
         message_bus=app_state.slice(CommunicationStateSlice).message_bus,
-        baseline_store=baseline_store,
+        baseline_store=_baseline_store(app_state),
         metrics_store=app_state.slice(CoordinationStateSlice).metrics_store,
         clock=app_state.clock,
     )

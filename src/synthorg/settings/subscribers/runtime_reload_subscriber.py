@@ -34,6 +34,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("external_api", "enabled"),
         ("external_api", "provider_type"),
         ("coordination", "enable_coordination_middleware"),
+        ("engine", "enable_agent_middleware"),
         # The coordinator builds eagerly and hard-requires a non-blank
         # decomposition model, so setting it must rebuild the coordinator
         # live: without this, first-run setup writes the model AFTER a
@@ -46,6 +47,11 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # the next rebuild rather than waiting for an unrelated one or a restart.
         ("memory", "planning_memory_recall_enabled"),
         ("memory", "planning_memory_digest_budget"),
+        # The procedural proposer bakes its sampling parameters and skill-file
+        # directory in at construction, inside the boot engine.
+        ("memory", "procedural_temperature"),
+        ("memory", "procedural_max_tokens"),
+        ("memory", "procedural_skill_md_directory"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
         # The tool registry and the planning-agent grant bake in the native
@@ -56,6 +62,35 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "web_search_provider"),
         ("tools", "web_search_connection"),
         ("tools", "web_search_max_results"),
+        # The tool registry resolves the desktop session's driver and screen
+        # geometry into the DesktopTool it builds, so an edit reaches a
+        # session only through a rebuild.
+        ("tools", "desktop_driver"),
+        ("tools", "desktop_screen_width"),
+        ("tools", "desktop_screen_height"),
+        ("tools", "desktop_image_pin"),
+        ("tools", "browser_image_pin"),
+        # The auto-loop's container image and its two lifetime budgets are
+        # resolved once, when the loop dependencies are built, and then held
+        # on the engine for its lifetime. Without a rebuild the operator's
+        # edit reaches no run at all.
+        ("tools", "openhands_image"),
+        ("tools", "openhands_idle_timeout_seconds"),
+        ("tools", "openhands_max_runtime_seconds"),
+        # The boot engine captures the memory backend by value, so replacing
+        # the backend (which the memory_backend subsystem does on any of
+        # these) leaves the engine reading and writing through the instance
+        # that was just disconnected. Rebuilding it here is what makes the
+        # replacement reach an agent rather than only the slice.
+        ("memory", "backend"),
+        ("memory", "embedder_model"),
+        ("memory", "embedder_dims"),
+        ("memory", "consolidation_interval"),
+        # Both are resolved into the boot AgentEngine when
+        # ``build_runtime_services`` (re)builds it, so an edit reaches a run
+        # only through a rebuild.
+        ("engine", "clarification_enabled"),
+        ("engine", "scoping_enabled"),
         # Auto-review + the completion oracle are wired into the runtime on a
         # rebuild: the pipeline is (re)built by ``build_runtime_services`` and
         # the oracle gates are re-attached to the review-gate service, so an

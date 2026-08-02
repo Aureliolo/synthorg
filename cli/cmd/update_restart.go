@@ -107,7 +107,10 @@ func restartHealthTimeout() time.Duration {
 // when the backend passed the health check.
 func waitAndAnnounceRestart(ctx context.Context, uiOut *ui.UI, state config.State) bool {
 	sp := uiOut.StartSpinner("Waiting for backend to become healthy...")
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
+	// Liveness, not readiness: an optional dependency that is not back yet
+	// (a local model server, say) must not read as a failed update. The
+	// dependency check below reports that separately without failing.
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", state.BackendPort)
 	healthTimeout := restartHealthTimeout()
 	tun := GetGlobalOpts(ctx).Tunables
 	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
@@ -115,15 +118,22 @@ func waitAndAnnounceRestart(ctx context.Context, uiOut *ui.UI, state config.Stat
 		return false
 	}
 	sp.Success("Backend healthy")
+	dependenciesReady := warnIfDependenciesDegraded(ctx, state, uiOut)
 	uiOut.Blank()
-	// Mirror the "Ready" banner that `start` prints so a post-update restart
-	// surfaces the same dashboard + API endpoints. localhost is correct: the
-	// restarted stack publishes these ports on the operator's own host.
+	// Mirror the banner that `start` prints, title included, so a post-update
+	// restart surfaces the same dashboard + API endpoints and never claims
+	// "Ready" directly under a warning that a dependency is not. localhost is
+	// correct: the restarted stack publishes these ports on the operator's
+	// own host.
 	readyLines := []string{
 		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
 		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),
 	}
-	uiOut.Box("Ready", readyLines)
+	boxTitle := "Started"
+	if dependenciesReady {
+		boxTitle = "Ready"
+	}
+	uiOut.Box(boxTitle, readyLines)
 	uiOut.Blank()
 	uiOut.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
 	return true

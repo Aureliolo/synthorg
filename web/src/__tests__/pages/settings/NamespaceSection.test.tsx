@@ -18,8 +18,7 @@ function makeEntry(
       group: 'Server',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -41,42 +40,72 @@ const rowProps = {
 }
 
 describe('NamespaceSection runtime partition', () => {
-  it('keeps restart_required inline and moves read_only_post_init into Advanced', () => {
+  const mixedEntries = [
+    makeEntry({ key: 'live_key', value: 'live-val' }),
+    makeEntry({ key: 'fixed_key', value: 'fixed-val', compose_set: true }),
+  ]
+
+  it('keeps live settings inline and moves compose-set ones into the disclosure', () => {
     render(
       <NamespaceSection
         displayName="Api"
         icon={null}
         hideHeader
-        entries={[
-          makeEntry({ key: 'restart_key', value: 'restart-val', restart_required: true }),
-          makeEntry({ key: 'readonly_key', value: 'readonly-val', read_only_post_init: true }),
-        ]}
+        entries={mixedEntries}
         {...rowProps}
       />,
     )
 
-    // A restart_required setting is DB-writable, so it renders inline.
-    expect(screen.getByDisplayValue('restart-val')).toBeInTheDocument()
-    // The genuinely read-only setting sits in the collapsed Advanced disclosure,
-    // so its row is not in the DOM until the disclosure is expanded.
-    expect(screen.queryByDisplayValue('readonly-val')).not.toBeInTheDocument()
-    expect(screen.getByText(/Advanced/)).toBeInTheDocument()
+    // A live setting is DB-writable, so it renders inline.
+    expect(screen.getByDisplayValue('live-val')).toBeInTheDocument()
+    // The compose-set setting sits in the collapsed disclosure, so its row is
+    // not in the DOM until the disclosure is expanded.
+    expect(screen.queryByDisplayValue('fixed-val')).not.toBeInTheDocument()
+    expect(screen.getByText(/Set by the deployment/)).toBeInTheDocument()
   })
 
-  it('shows no Advanced disclosure when there are no read-only settings', () => {
+  it('shows no compose-set disclosure when every setting is live', () => {
     render(
       <NamespaceSection
         displayName="Api"
         icon={null}
         hideHeader
-        entries={[
-          makeEntry({ key: 'restart_key', value: 'restart-val', restart_required: true }),
-        ]}
+        entries={[makeEntry({ key: 'live_key', value: 'live-val' })]}
         {...rowProps}
       />,
     )
 
-    expect(screen.getByDisplayValue('restart-val')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('live-val')).toBeInTheDocument()
+    expect(screen.queryByText(/Set by the deployment/)).not.toBeInTheDocument()
+  })
+
+  it('expands the compose-set disclosure while a search is active', () => {
+    render(
+      <NamespaceSection
+        displayName="Api"
+        icon={null}
+        hideHeader
+        entries={mixedEntries}
+        {...rowProps}
+        highlightQuery="fixed"
+      />,
+    )
+
+    // A match inside a collapsed disclosure would otherwise be invisible.
+    expect(screen.getByDisplayValue('fixed-val')).toBeInTheDocument()
+  })
+
+  it('does not collide with the page-level Advanced skill-level toggle', () => {
+    render(
+      <NamespaceSection
+        displayName="Api"
+        icon={null}
+        hideHeader
+        entries={mixedEntries}
+        {...rowProps}
+      />,
+    )
+
     expect(screen.queryByText(/Advanced/)).not.toBeInTheDocument()
   })
 })

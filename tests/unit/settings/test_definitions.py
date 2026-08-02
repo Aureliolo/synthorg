@@ -41,25 +41,25 @@ class TestDefinitionsLoading:
             )
             assert defn.group.strip(), f"Blank group for {defn.namespace}/{defn.key}"
 
-    def test_read_only_post_init_serialised_in_model_dump(self) -> None:
-        """``read_only_post_init`` is part of the API wire contract.
+    def test_compose_set_serialised_in_model_dump(self) -> None:
+        """``compose_set`` is part of the API wire contract.
 
         The dashboard's ``SettingDefinition`` TypeScript interface relies
         on the flag being present in every serialised definition so it
-        can disable post-init-readonly inputs. Pin the field's presence
+        can block edits to compose-set inputs. Pin the field's presence
         here so a missing-field regression would fail collection rather
         than silently re-enable 22 fields.
         """
         registry = get_registry()
         sample = next(iter(registry.list_all()))
         dumped = sample.model_dump()
-        assert "read_only_post_init" in dumped
-        assert isinstance(dumped["read_only_post_init"], bool)
+        assert "compose_set" in dumped
+        assert isinstance(dumped["compose_set"], bool)
         # At least one definition in the registry should have the
         # flag set: drains the "always-false" failure mode where the
         # field exists but never carries True.
-        assert any(d.read_only_post_init for d in registry.list_all()), (
-            "expected at least one read_only_post_init=True setting "
+        assert any(d.compose_set for d in registry.list_all()), (
+            "expected at least one compose_set=True setting "
             "in the registered definitions"
         )
 

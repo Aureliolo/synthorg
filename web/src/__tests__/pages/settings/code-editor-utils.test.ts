@@ -20,8 +20,7 @@ function makeEntry(overrides: Partial<SettingEntry['definition']> & { value?: st
       group: 'Execution',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -127,12 +126,56 @@ describe('buildChanges', () => {
 
   it('flags env-sourced keys', () => {
     const entryLookup = new Map<string, SettingEntry>([
-      ['api/retries', makeEntry({ namespace: 'api', key: 'retries', source: 'env' })],
+      [
+        'api/retries',
+        makeEntry({ namespace: 'api', key: 'retries', source: 'env', value: '5' }),
+      ],
     ])
+    // The entry value matches `original`: the real caller derives one from the
+    // other (entriesToObject), so a fixture where they disagree describes a
+    // state the app cannot reach.
     const original = { api: { retries: '5' } }
     const parsed = { api: { retries: '10' } }
     const { envKeys } = buildChanges(parsed, original, entryLookup)
     expect(envKeys).toEqual(['api/retries'])
+  })
+
+  it('flags compose-set keys separately from env-sourced ones', () => {
+    const entryLookup = new Map<string, SettingEntry>([
+      [
+        'api/server_port',
+        makeEntry({
+          namespace: 'api',
+          key: 'server_port',
+          compose_set: true,
+          source: 'env',
+          value: '8000',
+        }),
+      ],
+    ])
+    const original = { api: { server_port: '8000' } }
+    const parsed = { api: { server_port: '9000' } }
+    const { changes, envKeys, composeSetKeys } = buildChanges(parsed, original, entryLookup)
+    expect(composeSetKeys).toEqual(['api/server_port'])
+    expect(envKeys).toEqual([])
+    expect(changes.size).toBe(0)
+  })
+
+  it('does not block a save on unedited env-sourced or compose-set keys', () => {
+    const entryLookup = new Map<string, SettingEntry>([
+      ['api/retries', makeEntry({ namespace: 'api', key: 'retries', source: 'env' })],
+      [
+        'api/server_port',
+        makeEntry({ namespace: 'api', key: 'server_port', compose_set: true, value: '8000' }),
+      ],
+      ['api/timeout', makeEntry({ namespace: 'api', key: 'timeout', value: '30' })],
+    ])
+    const original = { api: { retries: '10', server_port: '8000', timeout: '30' } }
+    const parsed = { api: { retries: '10', server_port: '8000', timeout: '60' } }
+    const { changes, envKeys, composeSetKeys } = buildChanges(parsed, original, entryLookup)
+    expect(envKeys).toEqual([])
+    expect(composeSetKeys).toEqual([])
+    expect(changes.get('api/timeout')).toBe('60')
   })
 
   it('returns empty changes when values are unchanged', () => {

@@ -50,7 +50,7 @@ func TestClassifyDoctor(t *testing.T) {
 			wantContains: []string{"backend unreachable"},
 		},
 		{
-			name: "backend unhealthy status code",
+			name: "backend serving with an unresolved dependency",
 			report: diagnostics.Report{
 				HealthStatus:      "503",
 				ComposeFileExists: true,
@@ -58,7 +58,18 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: []string{"HTTP 503"},
+			wantContains: []string{"dependency not ready", "HTTP 503"},
+		},
+		{
+			name: "backend genuinely unhealthy",
+			report: diagnostics.Report{
+				HealthStatus:      "500",
+				ComposeFileExists: true,
+				ComposeFileValid:  boolPtr(true),
+			},
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: []string{"backend unhealthy", "HTTP 500"},
 		},
 		{
 			name: "container starting is warning",
@@ -238,6 +249,120 @@ func TestClassifyDoctor(t *testing.T) {
 				if !found {
 					t.Errorf("classifyDoctor() issues %v missing expected substring %q", gotIssues, want)
 				}
+			}
+		})
+	}
+}
+
+// TestClassifyDoctorIssue pins the pattern table's order. It is
+// first-match-wins over substrings, and the health messages all carry
+// "unhealthy", so a containers row evaluated first would claim them:
+// the operator would be offered a container restart that cannot fix a
+// backend health failure, and `doctor --checks=health --fix` would drop
+// the issue entirely because it was filed under the wrong category.
+func TestClassifyDoctorIssue(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		issue        string
+		wantKind     doctorIssueKind
+		wantCategory string
+	}{
+		{
+			name:         "dependency not ready is an unfixable health issue",
+			issue:        "backend serving, dependency not ready (HTTP 503)",
+			wantKind:     doctorIssueUnfixable,
+			wantCategory: "health",
+		},
+		{
+			name:         "backend unhealthy is an unfixable health issue",
+			issue:        "backend unhealthy (HTTP 500)",
+			wantKind:     doctorIssueUnfixable,
+			wantCategory: "health",
+		},
+		{
+			name:         "backend unreachable is an unfixable health issue",
+			issue:        "backend unreachable",
+			wantKind:     doctorIssueUnfixable,
+			wantCategory: "health",
+		},
+		{
+			// The container error is `<name> <status>`, so a container
+			// literally named `backend` collides with the health message
+			// on everything but the "(HTTP" suffix. This one IS restartable.
+			name:         "an unhealthy backend container is a restart candidate",
+			issue:        "backend unhealthy",
+			wantKind:     doctorIssueRestart,
+			wantCategory: "containers",
+		},
+		{
+			name:         "an exited container is a restart candidate",
+			issue:        "web exited",
+			wantKind:     doctorIssueRestart,
+			wantCategory: "containers",
+		},
+		{
+			name:         "a starting container is not fixable by restarting",
+			issue:        "sandbox still starting",
+			wantKind:     doctorIssueUnfixable,
+			wantCategory: "containers",
+		},
+		{
+			name:         "a missing compose file is regenerable",
+			issue:        "compose.yml not found",
+			wantKind:     doctorIssueComposeFix,
+			wantCategory: "compose",
+		},
+		{
+			name:         "anything unmatched falls back to the catch-all",
+			issue:        "something nobody anticipated",
+			wantKind:     doctorIssueUnfixable,
+			wantCategory: "errors",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := classifyDoctorIssue(tc.issue)
+			if got.kind != tc.wantKind {
+				t.Errorf("classifyDoctorIssue(%q).kind = %v, want %v", tc.issue, got.kind, tc.wantKind)
+			}
+			if got.category != tc.wantCategory {
+				t.Errorf("classifyDoctorIssue(%q).category = %q, want %q", tc.issue, got.category, tc.wantCategory)
+			}
+		})
+	}
+}
+
+// TestDoctorHealthError covers every branch of the status-to-message
+// mapping, including the default arm the 503 case used to shadow.
+func TestDoctorHealthError(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		status   string
+		wantIs   bool
+		contains string
+	}{
+		{status: "200", wantIs: false},
+		{status: "", wantIs: false},
+		{status: "unreachable", wantIs: true, contains: "backend unreachable"},
+		{status: "503", wantIs: true, contains: "dependency not ready"},
+		{status: "500", wantIs: true, contains: "backend unhealthy"},
+		{status: "404", wantIs: true, contains: "backend unhealthy"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.status, func(t *testing.T) {
+			t.Parallel()
+			got, isErr := doctorHealthError(tc.status)
+			if isErr != tc.wantIs {
+				t.Fatalf("doctorHealthError(%q) reported %v, want %v", tc.status, isErr, tc.wantIs)
+			}
+			if tc.contains != "" && !strings.Contains(got, tc.contains) {
+				t.Errorf("doctorHealthError(%q) = %q, want it to contain %q", tc.status, got, tc.contains)
 			}
 		})
 	}

@@ -18,6 +18,7 @@ from synthorg.settings.errors import SettingsEncryptionError
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 
 def _row(
@@ -44,7 +45,6 @@ def _plain_def() -> SettingDefinition:
         description="test",
         group="test",
         sensitive=False,
-        restart_required=False,
         enum_values=(),
         min_value=None,
         max_value=None,
@@ -61,7 +61,6 @@ def _sensitive_def() -> SettingDefinition:
         description="test",
         group="test",
         sensitive=True,
-        restart_required=False,
         enum_values=(),
         min_value=None,
         max_value=None,
@@ -71,8 +70,7 @@ def _sensitive_def() -> SettingDefinition:
 
 @pytest.fixture
 def mock_repo() -> AsyncMock:
-    repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=None)
+    repo: AsyncMock = mock_of[SettingsRepository](get=AsyncMock(return_value=None))
     return repo
 
 

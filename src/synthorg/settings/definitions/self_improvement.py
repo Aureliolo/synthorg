@@ -4,9 +4,10 @@ The self-improvement meta-loop lets the system rewrite itself (config,
 prompts, architecture, code, tools), so every switch here defaults off.
 The meta-loop re-reads these flags live (the master switch and strategy
 toggles per cycle, the toolsmith gate per proposal, the models per call),
-so toggling one takes effect with no restart. The single exception is
-``code_modification_enabled``: enabling self-modifying code reads GitHub
-credentials and validates them at startup, so it stays ``restart_required``.
+so toggling one takes effect at once. ``code_modification_enabled`` also
+requires GitHub credentials in the structural blob; without them the next
+load refuses the config and falls back with the flag forced off, which is
+the failure an operator sees rather than a silently un-applied switch.
 These flags overlay onto :class:`~synthorg.meta.config.SelfImprovementConfig`
 at load time and are the single source of truth for the flags and models
 below. The deep structural tuning (schedule, rollout, regression, guards)
@@ -22,16 +23,12 @@ _NS = SettingNamespace.SELF_IMPROVEMENT
 _GROUP = "Self-Improvement"
 
 
-def _flag(key: str, description: str, *, restart_required: bool = False) -> None:
+def _flag(key: str, description: str) -> None:
     """Register an off-by-default self-improvement flag.
 
     Args:
         key: The setting key within the self-improvement namespace.
         description: Human-readable description for the /settings UI.
-        restart_required: Whether enabling the flag needs a restart. Only
-            ``code_modification_enabled`` sets this (it validates GitHub
-            credentials at startup); every other flag is read live by the
-            meta-loop and takes effect without a restart.
     """
     _r.register(
         SettingDefinition(
@@ -42,7 +39,6 @@ def _flag(key: str, description: str, *, restart_required: bool = False) -> None
             description=description,
             group=_GROUP,
             level=SettingLevel.ADVANCED,
-            restart_required=restart_required,
         )
     )
 
@@ -87,9 +83,8 @@ _flag(
 _flag(
     "code_modification_enabled",
     "Allow code-modification proposals when the meta-loop is on. Requires"
-    " GitHub credentials, validated at startup, so a change is"
-    " restart-required.",
-    restart_required=True,
+    " GitHub credentials in the meta.self_improvement blob; without them"
+    " the next config load refuses and forces this back off.",
 )
 _flag(
     "tool_creation_enabled",

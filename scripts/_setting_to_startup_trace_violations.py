@@ -340,7 +340,7 @@ def _detect_violation(
     First matcher to produce a violation wins; remaining matchers
     are skipped.
     """
-    if setting.read_only_post_init:
+    if setting.compose_set:
         return None
     if setting.has_suppression:
         return None

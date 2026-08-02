@@ -135,21 +135,6 @@ export async function mockApiRoutes(page: Page) {
     }),
   )
 
-  // Pending-restart notice. Mounted by the settings page, which reads
-  // ``pending.length``; the catch-all's ``data: []`` has no ``pending``, so
-  // the section's error boundary swallows the whole page rather than the
-  // banner.
-  await page.route('**/api/v1/meta/restart', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: { pending: [], supervised: false },
-        error: null,
-        error_detail: null,
-      },
-    }),
-  )
-
   // Readiness -- returns the full ``ApiResponse<ReadinessStatus>``
   // envelope so the dashboard's ``unwrap()`` call gets the expected
   // ``data`` shape (a bare ``{ status: 'ok' }`` response would fail

@@ -51,53 +51,42 @@ _r.register(
 )
 
 _r.register(
-    # lint-allow: restart-required -- baked into the frozen
-    # ProceduralMemoryConfig the proposer holds; a change applies on the
-    # next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="procedural_temperature",
         type=SettingType.FLOAT,
         default="0.3",
         description=(
-            "Sampling temperature for the procedural proposer. Baked into"
-            " the proposer config at startup, so a change applies on the"
-            " next restart."
+            "Sampling temperature for the procedural proposer. The proposer"
+            " holds it, so a change applies on the runtime rebuild it"
+            " triggers."
         ),
         group="Procedural",
         level=SettingLevel.ADVANCED,
         min_value=0.0,
         max_value=2.0,
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- baked into the frozen
-    # ProceduralMemoryConfig the proposer holds; a change applies on the
-    # next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="procedural_max_tokens",
         type=SettingType.INTEGER,
         default="1500",
         description=(
-            "Response token budget for the procedural proposer. Baked into"
-            " the proposer config at startup, so a change applies on the"
-            " next restart."
+            "Response token budget for the procedural proposer. The proposer"
+            " holds it, so a change applies on the runtime rebuild it"
+            " triggers."
         ),
         group="Procedural",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=32_000,
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- baked into the frozen
-    # ProceduralMemoryConfig the pipeline holds; a change applies on the
-    # next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="procedural_skill_md_directory",
@@ -107,11 +96,11 @@ _r.register(
             "Directory for SKILL.md materialisation. When set, accepted"
             " proposals are also written as portable Markdown files for"
             " git-native versioning. Empty keeps skills in the memory"
-            " backend only. Baked in at startup, so a change applies on"
-            " the next restart."
+            " backend only. The path must be inside a mounted volume to"
+            " survive the container; a change applies on the runtime"
+            " rebuild it triggers."
         ),
         group="Procedural",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )

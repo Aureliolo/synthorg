@@ -356,9 +356,16 @@ type doctorIssuePattern struct {
 var doctorIssuePatterns = []doctorIssuePattern{
 	{allSubstrings: []string{"compose.yml"}, anySubstring: []string{"not found", "invalid"}, kind: doctorIssueComposeFix, category: "compose"},
 	{anySubstring: []string{"port conflict"}, kind: doctorIssueUnfixable, category: "compose"},
+	// Ahead of the container rules, because the containers row claims
+	// anything carrying "unhealthy" and every backend-health message does:
+	// "backend unhealthy (HTTP 500)" filed under containers would be
+	// offered as a restart that cannot fix it, and would vanish entirely
+	// from `doctor --checks=health --fix`. The "(HTTP" is load-bearing: a
+	// container named `backend` in the unhealthy state produces the string
+	// "backend unhealthy" exactly, and that one IS a restart candidate.
+	{anySubstring: []string{"dependency not ready", "backend unreachable", "backend unhealthy (HTTP"}, kind: doctorIssueUnfixable, category: "health"},
 	{anySubstring: []string{"unhealthy", "exited"}, kind: doctorIssueRestart, category: "containers"},
 	{anySubstring: []string{"still starting", "no containers"}, kind: doctorIssueUnfixable, category: "containers"},
-	{anySubstring: []string{"backend unreachable", "backend unhealthy"}, kind: doctorIssueUnfixable, category: "health"},
 	{anySubstring: []string{": available", ": missing", "digest"}, kind: doctorIssueUnfixable, category: "images"},
 }
 
@@ -486,6 +493,12 @@ func doctorHealthError(status string) (string, bool) {
 		return "", false
 	case "unreachable":
 		return "backend unreachable", true
+	case "503":
+		// Serving, but a dependency it owns is not ready. Distinct from an
+		// unhealthy backend: the API answers and the dashboard works, so
+		// restarting fixes nothing and the operator needs to know which
+		// dependency rather than that a number came back.
+		return "backend serving, dependency not ready (HTTP 503)", true
 	default:
 		return fmt.Sprintf("backend unhealthy (HTTP %s)", status), true
 	}
@@ -652,6 +665,12 @@ func renderDoctorHealth(out *ui.UI, r diagnostics.Report) {
 		out.Success(fmt.Sprintf("Backend healthy (HTTP %s)", r.HealthStatus))
 	case "unreachable":
 		out.Error("Backend unreachable")
+	case "503":
+		out.Warn("Backend serving, but a dependency is not ready")
+		out.HintNextStep(
+			"Subsystems waiting on a missing dependency come up on their own " +
+				"once it appears; the dashboard names which one.",
+		)
 	default:
 		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %s)", r.HealthStatus))
 	}

@@ -69,7 +69,6 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "admin.backup_create": (5, 3600),
     "admin.backup_delete": (10, 3600),
     "admin.backup_restore": (3, 3600),
-    "admin.restart": (5, 3600),
     # agents
     "agents.autonomy_change": (10, 60),
     "agents.create": (10, 60),
@@ -169,6 +168,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # dashboard polls it every 15s per open tab. Bounded per user rather than per
     # IP so many tabs behind one NAT do not starve each other.
     "health.detail": (60, 60),
+    # Reads already-computed reconciler state without probing anything, so it
+    # is far cheaper than the detail endpoint, but it is still per user: the
+    # dashboard polls it alongside the health popover.
+    "health.subsystems": (120, 60),
     # integrations (health controller)
     "integrations.health_aggregate": (30, 60),
     "integrations.health_single": (60, 60),

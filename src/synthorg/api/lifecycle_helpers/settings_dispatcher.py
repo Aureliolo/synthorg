@@ -21,23 +21,25 @@ from synthorg.settings.subscribers import (
     A2AClientSettingsSubscriber,
     ApiBridgeSettingsSubscriber,
     ApiSecurityHeadersSettingsSubscriber,
+    AuthTokenSizeSettingsSubscriber,
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
     ChiefOfStaffAlertsSettingsSubscriber,
-    CosCharterModelSettingsSubscriber,
-    DirectMcpActorSettingsSubscriber,
+    CompressionSettingsSubscriber,
     EngineTimeoutEnforcementSettingsSubscriber,
     EscalationReconnectSettingsSubscriber,
     EvalLoopSettingsSubscriber,
     EventStreamHistorySettingsSubscriber,
+    FlightRecorderSettingsSubscriber,
     GithubApiUrlSettingsSubscriber,
+    GlobalRateLimitSettingsSubscriber,
+    InMemoryBoundsSettingsSubscriber,
     KnowledgeSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MetaSelfImprovementSettingsSubscriber,
     NotificationsBridgeSettingsSubscriber,
     ObservabilityBridgeSettingsSubscriber,
     ObservabilitySettingsSubscriber,
-    OperatorConsoleSettingsSubscriber,
     OutputStyleSettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
@@ -46,6 +48,8 @@ from synthorg.settings.subscribers import (
     SecurityBridgeSettingsSubscriber,
     SecurityTimeoutSettingsSubscriber,
     SimulationsSettingsSubscriber,
+    SubsystemReconcileSettingsSubscriber,
+    TelemetrySettingsSubscriber,
     ToolsBridgeSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
     WsAuthLimitsSettingsSubscriber,
@@ -84,6 +88,13 @@ def _build_settings_dispatcher(
         app_state=app_state,
         settings_service=settings_service,
     )
+    global_rl_sub = GlobalRateLimitSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    auth_token_size_sub = AuthTokenSizeSettingsSubscriber(
+        settings_service=settings_service,
+    )
     api_bridge_sub = ApiBridgeSettingsSubscriber(
         app_state=app_state,
         settings_service=settings_service,
@@ -118,6 +129,8 @@ def _build_settings_dispatcher(
         provider_sub,
         observability_sub,
         per_op_rl_sub,
+        global_rl_sub,
+        auth_token_size_sub,
         api_bridge_sub,
         workers_bridge_sub,
         memory_bridge_sub,
@@ -139,6 +152,15 @@ def _build_settings_dispatcher(
         NotificationsBridgeSettingsSubscriber(
             app_state=app_state,
             config=config,
+            settings_service=settings_service,
+        ),
+        # Ahead of the runtime reload, and load-bearing: both watch the
+        # memory keys, and the reload captures the memory backend by value.
+        # Reloading first would rebuild the engine against the instance the
+        # reconciler is about to disconnect, leaving every agent reading
+        # through a dead backend with nothing left to trigger another pass.
+        SubsystemReconcileSettingsSubscriber(
+            app_state=app_state,
             settings_service=settings_service,
         ),
         RuntimeReloadSettingsSubscriber(
@@ -169,6 +191,22 @@ def _build_settings_dispatcher(
             app_state=app_state,
             settings_service=settings_service,
         ),
+        InMemoryBoundsSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        FlightRecorderSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        CompressionSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        TelemetrySettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
         A2AClientSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
@@ -180,18 +218,6 @@ def _build_settings_dispatcher(
         research_sub,
         knowledge_sub,
         simulations_sub,
-        CosCharterModelSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        DirectMcpActorSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
-        OperatorConsoleSettingsSubscriber(
-            app_state=app_state,
-            settings_service=settings_service,
-        ),
         OutputStyleSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,

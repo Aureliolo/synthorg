@@ -96,8 +96,7 @@ _r.register(
         ),
         group="NATS",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         # Override the auto-derived ``SYNTHORG_COMMUNICATION_NATS_URL``
         # with the established operator-facing name ``SYNTHORG_NATS_URL``.
         # The Docker-compose template, the local-dev shell setup, and
@@ -212,13 +211,13 @@ _r.register(
         default="10000",
         description=(
             "Maximum delegation records retained in the in-memory store before"
-            " FIFO eviction. Resolved at construction (env > code default) and"
-            " passed as the store's max_records; restart-required because the"
-            " bounded deque maxlen is fixed at construction."
+            " FIFO eviction. Applies immediately: the buffer is rebuilt at the"
+            " new bound keeping the newest records, so raising it costs no"
+            " history and lowering it drops only what the next writes would"
+            " have evicted."
         ),
         group="Delegation",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=100,
         max_value=1_000_000,
     )
@@ -232,13 +231,13 @@ _r.register(
         default="256",
         description=(
             "Maximum events buffered per subscriber queue before backpressure"
-            " kicks in. Resolved at construction (env > code default) and passed"
-            " as the EventStreamHub's max_queue_size; restart-required because"
-            " per-subscriber asyncio.Queue maxsize is fixed at construction."
+            " kicks in. Applies to subscribers opened after the change; one"
+            " already streaming keeps the queue it was given, because an"
+            " asyncio.Queue cannot be rebounded and replacing it would drop"
+            " whatever that consumer had buffered."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=16,
         max_value=10000,
     )

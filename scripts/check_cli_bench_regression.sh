@@ -2,10 +2,11 @@
 # In-CI A/B benchmark comparison for the Go CLI.
 #
 # Captures bench output for the current PR HEAD and the merge-base
-# against `main`, then runs `benchstat` to detect regressions. Runs
-# both captures on the SAME runner so cross-architecture noise is
-# eliminated entirely -- a stable signal even on shared GitHub-hosted
-# runners.
+# against `main`, then runs `benchstat` to detect regressions. Both
+# sides run on the SAME runner, and their rounds are INTERLEAVED: a
+# shared runner's speed drifts over the minutes a capture takes, and
+# measuring one side to completion before starting the other charges
+# that drift to the diff.
 #
 # Why no committed baseline file:
 #   benchmark numbers vary by ~3-10x between developer machines
@@ -120,22 +121,38 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
-run_benches() {
-    local out_file="$1"
-    : >"${out_file}"
+# Compile one benchmark binary per package into ``$1`` for whatever is
+# checked out. Building both sides up front is what lets the runs be
+# interleaved: the checkouts happen once, before any measurement, rather
+# than between the two halves of it.
+build_bench_binaries() {
+    local out_dir="$1"
+    mkdir -p "${out_dir}"
     for pkg in "${BENCH_PKGS[@]}"; do
-        echo "::group::Benchmarking ${pkg}"
-        # ``-run=^$`` skips regular tests so only Bench* runs. ``-count``
-        # iterates each bench so benchstat has multiple samples to
-        # build its confidence interval on.
-        go -C cli test \
-            -run='^$' \
-            -bench='.' \
-            -benchmem \
-            -count="${BENCH_COUNT}" \
-            "${pkg}" \
-            | tee -a "${out_file}"
-        echo "::endgroup::"
+        go -C cli test -run='^$' -bench='.' -c \
+            -o "${out_dir}/$(basename "${pkg}").test" "${pkg}"
+    done
+}
+
+# Run one round of every package's benchmarks from an already-built set.
+#
+# Launched from inside the package directory because a compiled test
+# binary inherits the caller's working directory, and the compose
+# benchmarks read fixtures through relative paths that only resolve
+# from there.
+run_round() {
+    local bin_dir="$1" out_file="$2"
+    for pkg in "${BENCH_PKGS[@]}"; do
+        local name
+        name="$(basename "${pkg}")"
+        (
+            cd "cli/${pkg#./}" || exit 1
+            "${bin_dir}/${name}.test" \
+                -test.run='^$' \
+                -test.bench='.' \
+                -test.benchmem \
+                -test.count=1
+        ) | tee -a "${out_file}"
     done
 }
 
@@ -180,28 +197,54 @@ ensure_benchstat() {
 
 ensure_benchstat
 
-echo "=== Capturing PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
-run_benches "${NEW_OUT}"
-
-echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
-# Stash any local tracked changes + untracked files (CI checkout is
-# clean, but defend against local invocation -- a dirty working tree
-# would otherwise either block ``git checkout`` or leak local edits
-# into the merge-base baseline run, poisoning the comparison).
-# ``stash push --include-untracked`` actually mutates the working
-# tree (clean state) and pushes onto the stash stack so ``stash pop``
-# in the EXIT trap restores everything.
+# Stash any local tracked changes + untracked files BEFORE either build
+# (CI checkout is clean, but defend against local invocation). Building
+# HEAD over a dirty tree would compile uncommitted edits and label them
+# PR HEAD, comparing work in progress against the merge-base; and a dirty
+# tree would block the checkout below in any case. ``stash push
+# --include-untracked`` mutates the working tree and pushes onto the
+# stash stack so ``stash pop`` in the EXIT trap restores everything.
 if ! git diff-index --quiet HEAD -- || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
     git stash push --include-untracked --quiet -m 'cli-bench: pre-baseline-capture'
     STASHED=1
 fi
+
+echo "=== Building PR HEAD benchmarks (${CURRENT_HEAD:0:8}) ==="
+build_bench_binaries "${WORK_DIR}/new"
+
+echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
 git checkout --quiet "${MERGE_BASE}"
 
-echo "=== Capturing merge-base benchmarks ==="
-run_benches "${OLD_OUT}"
+echo "=== Building merge-base benchmarks ==="
+build_bench_binaries "${WORK_DIR}/old"
 
 echo "=== Restoring HEAD ==="
 git checkout --quiet "${CURRENT_HEAD}"
+
+# Interleaved, not one side then the other. A shared runner's speed
+# drifts over the minutes a full capture takes, and measuring all of
+# HEAD before any of the merge-base charges that drift entirely to the
+# diff: identical `internal/ui` code once read 19% slower than its own
+# merge-base with byte-identical allocations, and passed on the run
+# before. Alternating rounds puts both sides in the same conditions,
+# so what survives is the difference between the binaries.
+echo "=== Capturing ${BENCH_COUNT} interleaved rounds ==="
+: >"${NEW_OUT}"
+: >"${OLD_OUT}"
+for ((round = 1; round <= BENCH_COUNT; round++)); do
+    echo "::group::Round ${round}/${BENCH_COUNT}"
+    # Which side runs first alternates too: measuring one of them first in
+    # every round hands it whatever the runner was doing at the start of a
+    # round, which is the same systematic bias one round smaller.
+    if ((round % 2)); then
+        run_round "${WORK_DIR}/new" "${NEW_OUT}"
+        run_round "${WORK_DIR}/old" "${OLD_OUT}"
+    else
+        run_round "${WORK_DIR}/old" "${OLD_OUT}"
+        run_round "${WORK_DIR}/new" "${NEW_OUT}"
+    fi
+    echo "::endgroup::"
+done
 
 echo "=== benchstat comparison ==="
 benchstat "${OLD_OUT}" "${NEW_OUT}" | tee "${DIFF_OUT}"
@@ -224,6 +267,14 @@ fi
 # slowdowns. The regex tolerates any number of integer + fractional
 # digits ("+15%", "+15.3%", "+1234.56%") so a benchstat output-format
 # tweak does not silently mute the gate.
+#
+# benchstat prints one section per metric. `sec/op` and `allocs/op` are
+# read; `B/op` is not. Byte volume on these benchmarks is the size of the
+# artefact produced, not how the code behaves: adding an environment
+# variable to the compose template makes every rendered file larger, which
+# is the feature working rather than a regression. The allocation COUNT
+# still gates, so a rewrite that allocates per element instead of once is
+# caught at the same threshold.
 REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BENCHES}" '
     BEGIN {
         # Build a lookup set from the space-separated exclusion list
@@ -232,6 +283,13 @@ REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BE
         for (i = 1; i <= n; i++) {
             if (excl_arr[i] != "") excl[excl_arr[i]] = 1
         }
+        metric = "sec/op"
+    }
+    # A metric header names its column twice and carries "vs base".
+    /vs base/ {
+        metric = ($0 ~ /allocs\/op/) ? "allocs/op" : \
+                 ($0 ~ /B\/op/) ? "B/op" : "sec/op"
+        next
     }
     # Skip header rows + blank lines.
     /^[[:space:]]*$/ { next }
@@ -239,6 +297,7 @@ REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BE
     /^pkg:/ { next }
     /^geomean/ { next }
     {
+        if (metric == "B/op") next
         # Strip the trailing -N (GOMAXPROCS) suffix so the bench name
         # matches the EXCLUDED_BENCHES list shape ("ResolveTunables"
         # not "ResolveTunables-4").

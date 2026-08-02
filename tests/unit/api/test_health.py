@@ -5,13 +5,16 @@ binary outcome and uptime only, never the component topology and never the
 build version. Both live behind authentication on ``/health``.
 """
 
+import asyncio
 from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.config import ApiConfig
 from synthorg.api.controllers._health_probes import (
     TelemetryStatus,
     memory_readiness,
@@ -21,6 +24,7 @@ from synthorg.api.controllers._health_probes import (
 )
 from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
+from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.health import (
     ProviderHealthRecord,
@@ -511,12 +515,13 @@ class TestResolveTelemetryStatus:
 
 @pytest.mark.unit
 class TestReadinessProviders:
-    """``/readyz`` reports 503 when any provider is in DOWN state.
+    """Provider reachability is reported, never gated on.
 
-    DEGRADED and UNKNOWN providers stay reachable; only DOWN providers
-    flip the gate. Wired through ``ProviderHealthTracker.are_all_reachable``.
-    Asserts the gate outcome only; the ``providers`` component value is an
-    authenticated ``/health`` concern.
+    Every replica reaches the same third-party endpoint, so draining on a
+    provider outage drains all of them at once and takes down the dashboard
+    an operator would repoint the provider from. Asserts the gate outcome
+    only; the ``providers`` component value is an authenticated ``/health``
+    concern.
     """
 
     async def test_empty_tracker_reports_ready(self) -> None:
@@ -528,7 +533,7 @@ class TestReadinessProviders:
             assert response.status_code == 200
             assert response.json()["data"]["status"] == "ok"
 
-    async def test_down_provider_flips_readiness_to_503(self) -> None:
+    async def test_down_provider_leaves_readiness_ok(self) -> None:
         tracker = ProviderHealthTracker()
         # 6 failures, 0 successes => 100% error rate => DOWN (>=50%).
         now = datetime.now(UTC)
@@ -542,12 +547,16 @@ class TestReadinessProviders:
                     error_message=f"simulated failure {i}",
                 ),
             )
+        # The signal still exists; it just does not gate. A deployment whose
+        # only provider is unreachable still serves the dashboard, which is
+        # where an operator goes to repoint it.
+        assert await tracker.are_all_reachable() is False
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
             response = await client.get("/api/v1/readyz")
-            assert response.status_code == 503
-            assert response.json()["data"]["status"] == "unavailable"
+            assert response.status_code == 200
+            assert response.json()["data"]["status"] == "ok"
 
     async def test_degraded_provider_stays_reachable(self) -> None:
         tracker = ProviderHealthTracker()
@@ -574,6 +583,35 @@ class TestReadinessProviders:
             )
         async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
+        ) as client:
+            response = await client.get("/api/v1/readyz")
+            assert response.status_code == 200
+            assert response.json()["data"]["status"] == "ok"
+
+    async def test_a_stalled_provider_probe_leaves_readiness_ok(self) -> None:
+        # Excluding providers from the roll-up is not enough on its own: run
+        # inside the gating fan-out, a probe that never returns expires the
+        # shared budget and produces the same 503 by another route. The gate
+        # must be decided by the dependencies this process owns, whatever the
+        # provider probe is doing.
+        class _StalledTracker(ProviderHealthTracker):
+            @override
+            async def are_all_reachable(
+                self,
+                *,
+                now: datetime | None = None,
+            ) -> bool:
+                await asyncio.Event().wait()
+                raise AssertionError  # pragma: no cover - never reached
+
+        # A short budget so the stall is bounded by the probe's own timeout
+        # rather than by the default an operator would run in production.
+        config = RootConfig(
+            company_name="test",
+            api=ApiConfig(readiness_probe_timeout_seconds=0.2),
+        )
+        async with LoopAsyncClient(
+            create_app(config=config, provider_health_tracker=_StalledTracker()),
         ) as client:
             response = await client.get("/api/v1/readyz")
             assert response.status_code == 200

@@ -141,13 +141,13 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Event Stream | `/events` | 2 routes under Event Stream. |
 | Experiments | `/experiments/{experiment}` | 3 routes under Experiments. |
 | Gateway | `/gateway/v1/chat/completions, /mcp-gateway/mcp` | 2 routes under Gateway. |
-| Health | `/healthz, /readyz` | 3 routes under Health. |
+| Health | `/healthz, /readyz` | 4 routes under Health. |
 | Integrations | `/integrations, /connections, /oauth, /webhooks` | 27 routes under Integrations. |
 | Interrupts | `/interrupts` | 2 routes under Interrupts. |
 | Knowledge | `/knowledge` | Knowledge endpoint. |
 | Learning | `/learning/curve` | Learning endpoint. |
 | Memory Admin | `/admin/memory` | 13 routes under Memory Admin. |
-| Meta | `/meta` | 17 routes under Meta. |
+| Meta | `/meta` | 16 routes under Meta. |
 | Meta Alerts | `/meta/alerts` | Meta Alerts endpoint. |
 | Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
 | Meta Chat | `/meta/chat/conversations` | 2 routes under Meta Chat. |

@@ -6,61 +6,21 @@ slice once persistence (and, where required, a provider) is connected;
 all are best-effort + idempotent (an already-set slice field
 short-circuits), so a re-entered lifespan never double-wires and a
 missing collaborator leaves its controllers to 503 rather than poisoning
-startup. ``wire_features_on_startup`` runs them in dependency order.
+startup. Each is one subsystem's ``activate`` in
+:mod:`synthorg.api.subsystems.registry`, ordered by the capability graph its
+declaration builds rather than by a fixed call sequence.
 """
 
 from typing import TYPE_CHECKING
 
-from synthorg.api._app_wiring import _wire_steering_service
 from synthorg.api.app_builders import build_chief_of_staff_chat
-from synthorg.api.lifecycle_helpers.charter_wiring import _wire_charter_engine
-from synthorg.api.lifecycle_helpers.conversational_wiring import (
-    wire_chief_of_staff_proposer,
-    wire_conversational_plan_dispatcher,
-    wire_conversational_write_path,
-    wire_group_chat_service,
-)
-from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
-    _wire_deliverable_receipts,
-)
-from synthorg.api.lifecycle_helpers.finetune_wiring import (
-    _wire_fine_tune_orchestrator,
-)
-from synthorg.api.lifecycle_helpers.kanban_wiring import wire_kanban_board
-from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engine
-from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
-from synthorg.api.lifecycle_helpers.meta_wiring import (
-    _wire_ab_test_repo,
-    _wire_alert_repo,
-    _wire_analytics_collector,
-    _wire_analytics_service,
-    _wire_experiment_service,
-    _wire_org_inflection_monitor,
-    _wire_reports_service,
-)
-from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
-from synthorg.api.lifecycle_helpers.organization_wiring import (
-    wire_organization_read_services,
-)
-from synthorg.api.lifecycle_helpers.plan_review_wiring import (
-    wire_plan_review_gate,
-    wire_plan_review_services,
-)
-from synthorg.api.lifecycle_helpers.project_brain_wiring import wire_project_brain
-from synthorg.api.lifecycle_helpers.project_rollup_wiring import (
-    wire_project_rollup_service,
-)
-from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
-from synthorg.api.lifecycle_helpers.sprint_wiring import wire_sprint_service
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
@@ -118,6 +78,23 @@ async def _wire_docs_engine(app_state: AppState) -> None:
         )
     )
     logger.info(API_APP_STARTUP, service="docs_engine", note="wired")
+
+
+async def unwire_docs_engine(app_state: AppState) -> None:
+    """Drop the docs engine so the next pass rebuilds it.
+
+    The docs service and its memory facade both hold the memory backend by
+    value, so once that backend is replaced this slice points at an engine
+    reading through the instance that was disconnected. Clearing it is what
+    lets the reconciler read the subsystem as down and build a new one.
+
+    Args:
+        app_state: Application state that owns the docs engine slice.
+    """
+    from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
+
+    app_state.swap_slice(DocsStateSlice())
+    logger.info(API_APP_STARTUP, service="docs_engine", note="unwired")
 
 
 async def _wire_custom_rules_service(app_state: AppState) -> None:
@@ -458,149 +435,3 @@ async def _wire_chief_of_staff_chat(
     if chat_backend is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_chat=chat_backend)
         logger.info(API_APP_STARTUP, service="chief_of_staff_chat", note="wired")
-
-
-async def wire_features_on_startup(
-    app_state: AppState,
-    *,
-    provider_registry: ProviderRegistry | None,
-    persistence: PersistenceBackend | None,
-    cost_tracker: CostTrackerProtocol | None,
-    effective_approval_store: ApprovalStoreProtocol,
-) -> None:
-    """Run every optional feature-engine wire in dependency order."""
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
-    # Load the self-improvement config ONCE for the whole feature-wiring
-    # pass and thread it into every sibling helper; the slice is rewritten
-    # at runtime by ``/setup``, so this boot snapshot is not cached there.
-    si_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
-    await _wire_docs_engine(app_state)
-    await wire_project_brain(app_state)
-    await _wire_steering_service(app_state, provider_registry=provider_registry)
-    await wire_knowledge_engine(app_state, provider_registry=provider_registry)
-    await _wire_custom_rules_service(app_state)
-    await _wire_budget_versions_service(app_state)
-    await _wire_deliverable_receipts(app_state)
-    await _wire_fine_tune_orchestrator(app_state)
-    await _wire_research_engine(app_state, provider_registry=provider_registry)
-    await _wire_charter_engine(
-        app_state,
-        provider_registry=provider_registry,
-        persistence=persistence,
-        cost_tracker=cost_tracker,
-        si_config=si_config,
-    )
-    await _wire_meta_features(
-        app_state,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        effective_approval_store=effective_approval_store,
-        si_config=si_config,
-    )
-    # After meta wiring: the settings-composed config resolver + org-mutation
-    # service exist, so the organization read facades (company + role version)
-    # can project the durable org surface.
-    await wire_organization_read_services(app_state, persistence)
-    await wire_run_narrator(
-        app_state,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        si_config=si_config,
-    )
-    try:
-        await wire_chief_of_staff_proposer(
-            app_state,
-            provider_registry=provider_registry,
-            persistence=persistence,
-            cost_tracker=cost_tracker,
-            effective_approval_store=effective_approval_store,
-            si_config=si_config,
-        )
-    except ServiceUnavailableError as exc:
-        # A propose/invite misconfiguration (e.g. enabled over a persistent
-        # SQLite ApprovalStore) makes the guard raise. Degrade to an unwired
-        # proposer (the controller 503s) rather than failing the whole ASGI
-        # startup and taking every other feature down with it. Any OTHER
-        # exception is a genuine wiring fault and must fail the boot rather
-        # than silently leaving the proposer unwired.
-        logger.warning(
-            API_APP_STARTUP,
-            service="chief_of_staff_proposer",
-            note="proposer wiring blocked; degrading to unwired",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-    # After the proposer: the refinement router wraps it and attaches to
-    # the work pipeline so team-bound work with no definition of done is
-    # refined rather than blocked by the coordinator's clarification gate.
-    await wire_refinement_router(app_state)
-    # Opt-in human plan-approval gate: when enabled, splittable team work is
-    # parked for approval before it builds. No-op unless the setting is on.
-    await wire_plan_review_gate(app_state)
-    # Plan-review provider-backed services: the stakeholder review panel (reviews
-    # a gated plan before the human sees it) and the conversational reply service
-    # (answers an operator's plan-item comment inline). Both no-op without a
-    # provider; gated live per request/comment.
-    await wire_plan_review_services(
-        app_state,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-    )
-    # Attach the plan dispatcher to the proposer now the pipeline is up, so a
-    # conversational work brief drafts one plan into Plan Review.
-    await wire_conversational_plan_dispatcher(app_state)
-    # Sprint service: runs real sprints for agile_kanban orgs. Wired before
-    # the board so the board's advisory sprint gate has its dependency.
-    await wire_sprint_service(app_state)
-    # Initiative rollup: advances a plan and its project as their tasks pass
-    # the review gate, so a greenlit objective can actually reach COMPLETED.
-    await wire_project_rollup_service(app_state)
-    # Kanban board service: projects tasks onto the org's board and drives
-    # column moves. Wired whenever the task engine + persistence exist.
-    await wire_kanban_board(app_state)
-    await wire_group_chat_service(
-        app_state,
-        provider_registry=provider_registry,
-        persistence=persistence,
-        cost_tracker=cost_tracker,
-        si_config=si_config,
-    )
-    await wire_conversational_write_path(app_state, si_config=si_config)
-
-
-async def _wire_meta_features(
-    app_state: AppState,
-    *,
-    provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTrackerProtocol | None,
-    effective_approval_store: ApprovalStoreProtocol,
-    si_config: SelfImprovementConfig,
-) -> None:
-    """Wire the signals facade, its read-views, and chief-of-staff chat.
-
-    Ordered: signals first (the analytics / reports / inflection views layer
-    on top of it), then the cross-deployment collector role and the
-    chief-of-staff chat backend.
-    """
-    await _wire_signals_service(
-        app_state,
-        effective_approval_store=effective_approval_store,
-    )
-    await _wire_analytics_service(app_state)
-    await _wire_reports_service(app_state)
-    await _wire_experiment_service(app_state)
-    await _wire_ab_test_repo(app_state)
-    await _wire_alert_repo(app_state)
-    await wire_meta_apply(app_state)
-    await _wire_org_inflection_monitor(app_state, si_config=si_config)
-    await _wire_analytics_collector(si_config=si_config)
-    await _wire_chief_of_staff_chat(
-        app_state,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        si_config=si_config,
-    )

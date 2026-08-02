@@ -71,6 +71,7 @@ from synthorg.workers._classification_assembly import build_classification
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
 from synthorg.workers._memory_assembly import (
     build_memory_injection_strategy_or_none,
+    resolved_procedural_config,
     wiki_exporter_or_none,
 )
 from synthorg.workers._openhands_wiring import (
@@ -505,7 +506,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         detector_timeout_seconds=classification_detector_timeout_seconds,
     )
     return AgentEngine(
-        agent_middleware_chain=build_agent_middleware_chain_or_none(
+        agent_middleware_chain=await build_agent_middleware_chain_or_none(
             app_state,
             error_taxonomy_config=error_taxonomy_config,
         ),
@@ -558,7 +559,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         # learns, so a second run of the same objective starts from
         # nothing. The engine re-reads the capture switch per task, so
         # this is the boot fallback rather than the live value.
-        procedural_memory_config=app_state.config.memory.procedural,
+        procedural_memory_config=await resolved_procedural_config(app_state),
         distillation_capture_enabled=await config_resolver_of(app_state).get_bool(
             "memory", "distillation_capture_enabled"
         ),

@@ -25,7 +25,6 @@ _r.register(
         " top-tier reasoning-capable model -- not a small/cheap one.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -41,7 +40,6 @@ _r.register(
         ),
         group="Charter",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -54,7 +52,6 @@ _r.register(
         description="Sampling temperature for charter-interview turns.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -67,7 +64,6 @@ _r.register(
         description="Token budget for one charter-interview turn.",
         group="Charter",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -84,6 +80,5 @@ _r.register(
         ),
         group="Charter",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )

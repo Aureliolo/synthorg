@@ -47,7 +47,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "SteeringService",
         "build_steering_inbox",
         "build_supersession_proposer",
-        "build_flight_recorder_sink",
+        "LiveFlightRecorderSink",
     ),
     depends_on=(),
 )

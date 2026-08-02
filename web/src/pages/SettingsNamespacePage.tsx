@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router'
 import { ArrowLeft, Settings } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -12,11 +12,9 @@ import { useSearchParamState } from '@/hooks/use-search-param-state'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { useDashboardPrefs } from '@/stores/dashboard-prefs'
-import { useRestartStore } from '@/stores/restart'
 import { ROUTES } from '@/router/routes'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
-import { RestartBanner } from './settings/RestartBanner'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap } from './settings/utils'
@@ -126,14 +124,8 @@ export default function SettingsNamespacePage() {
     dirtyValues,
     handleValueChange,
     handleDiscard,
-    handleSave: baseSave,
+    handleSave,
   } = useSettingsDirtyState(entries, updateSetting)
-  // Re-read rather than count locally: the backend decides what a restart
-  // would apply, from the writes it has not read yet.
-  const handleSave = useCallback(async () => {
-    await baseSave()
-    await useRestartStore.getState().refresh()
-  }, [baseSave])
   const ns = resolveNamespace(namespace)
 
   const filteredEntries = useMemo(
@@ -160,8 +152,6 @@ export default function SettingsNamespacePage() {
       <SettingsBackHeader title={`${displayName} Settings`}>
         <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
       </SettingsBackHeader>
-
-      <RestartBanner />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load settings namespace" description={error} />

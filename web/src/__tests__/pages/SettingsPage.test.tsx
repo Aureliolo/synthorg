@@ -21,8 +21,7 @@ function makeSetting(overrides: Partial<SettingEntry['definition']> & { value?: 
       group: 'Server',
       level: 'basic',
       sensitive: false,
-      restart_required: false,
-      read_only_post_init: false,
+      compose_set: false,
       env_var_override: null,
       enum_values: [],
       validator_pattern: null,
@@ -78,7 +77,7 @@ const mockEntries: SettingEntry[] = [
 ]
 
 const mockUpdateSetting = vi.fn().mockResolvedValue({
-  definition: { namespace: 'api', key: 'server_port', type: 'int', default: '3001', description: 'Server bind port', group: 'Server', level: 'basic', sensitive: false, restart_required: false, read_only_post_init: false, env_var_override: null, enum_values: [], validator_pattern: null, min_value: 1, max_value: 65535 },
+  definition: { namespace: 'api', key: 'server_port', type: 'int', default: '3001', description: 'Server bind port', group: 'Server', level: 'basic', sensitive: false, compose_set: false, env_var_override: null, enum_values: [], validator_pattern: null, min_value: 1, max_value: 65535 },
   value: '3001', source: 'db', updated_at: null,
 })
 const mockResetSetting = vi.fn().mockResolvedValue(undefined)

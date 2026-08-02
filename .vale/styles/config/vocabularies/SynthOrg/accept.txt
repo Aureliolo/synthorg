@@ -686,6 +686,7 @@ reactively
 reassignable
 rebalancing
 rebased
+rebuild_on_change
 recommender
 recommenders
 recorded_at
@@ -721,6 +722,7 @@ rescan
 research_autonomous
 research_lab
 resumability
+resync
 retag
 retention_days
 retryable

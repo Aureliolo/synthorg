@@ -38,17 +38,15 @@ code default.
 Examples: `observability.root_log_level`, `observability.log_level_console`,
 `api.lifecycle_cleanup_enabled`, `engine.timeout_enforcement_enabled`.
 
-### Category 2: Read-only post-init
+### Category 2: Compose-set
 
-Registered with `read_only_post_init=True` (which implies
-`restart_required=True`). The DB lookup is bypassed on reads, and
+Registered with `compose_set=True`. The DB lookup is bypassed on reads, and
 `SettingsService.set()`, `set_many()`, and `delete()` raise
-`SettingReadOnlyError` so an operator does not believe a runtime
-override took effect when the running process keeps the boot-time value.
-`delete_namespace()` does not raise: a read-only key in the target
-namespace is logged as a WARNING (`reason="read_only_post_init_swept"`)
-and skipped, so it cannot hold the writable overrides the operator wants
-to clear hostage.
+`SettingReadOnlyError` rather than store a value the running process will
+never read. `delete_namespace()` does not raise: a compose-set key in the
+target namespace is logged as a WARNING (`reason="compose_set_swept"`) and
+skipped, so it cannot hold the writable overrides the operator wants to clear
+hostage.
 
 For these entries the precedence chain collapses to **env > default**.
 The DB step is bypassed on reads (`get`, `get_namespace`, `get_all`,
@@ -61,11 +59,10 @@ running value, sourced from the env var or registered default at
 first read.
 
 The DB-bypass branch lives in `src/synthorg/settings/service.py`
-inside `get()` (the `if not definition.read_only_post_init:` guard
-around the `_resolve_db` call) and is mirrored in
-`_resolve_with_db_lookup` for batch reads (the `if
-definition.read_only_post_init: db_hit = None` short-circuit before
-the DB row is consulted).
+inside `get()` (the `if not definition.compose_set:` guard around the
+`_resolve_db` call) and is mirrored in `_resolve_with_db_lookup` for
+batch reads (the `if definition.compose_set: db_hit = None`
+short-circuit before the DB row is consulted).
 
 Examples: `api.server_port`, `api.server_host`, `api.api_prefix`,
 `communication.nats_url`, `workers.count`, `observability.log_directory`,
@@ -115,19 +112,19 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 |---|---|---|
 | `observability.root_log_level` | `SYNTHORG_OBSERVABILITY_ROOT_LOG_LEVEL` | Standard mutable. |
 | `observability.log_level_console` | `SYNTHORG_LOG_LEVEL` | Mutable; overrides the console sink only. |
-| `telemetry.enabled` | `SYNTHORG_TELEMETRY_ENABLED` | Mutable; the collector reads the env var at boot for the fast-path, then honours runtime DB mutations on the next process restart. |
+| `telemetry.enabled` | `SYNTHORG_TELEMETRY_ENABLED` | Mutable; the collector reads the env var at boot for the fast-path, and a DB write applies at once through `TelemetrySettingsSubscriber`. |
 | `engine.timeout_enforcement_enabled` | `SYNTHORG_ENGINE_TIMEOUT_ENFORCEMENT_ENABLED` | Mutable kill-switch. |
 | `providers.model_refresh_mode` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_MODE` | Config discriminator for the periodic model-refresh subsystem (`off` / `manual_only` / `detect_only` / `reconcile_recommend`); `off` is the safe default. The scheduler re-reads it every tick (fail-safe to `off`), so mode changes apply without a restart. |
 | `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Re-read by the scheduler each tick (like the mode), so a change applies on the next cycle without a restart. |
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
 | `chief_of_staff.propose_enabled` | `SYNTHORG_CHIEF_OF_STAFF_PROPOSE_ENABLED` | On-by-default conversational capability; live-gated per request via `ensure_feature_enabled` (no restart). The siblings `explain_chat_enabled` / `group_chat_enabled` / `routing_enabled` behave the same. |
 | `chief_of_staff.alerts_enabled` | `SYNTHORG_CHIEF_OF_STAFF_ALERTS_ENABLED` | Off-by-default autonomous capability (also: `learning_enabled` / `narrative_enabled` / `invite_enabled`). No restart: `alerts_enabled` is started/stopped live by `ChiefOfStaffAlertsSettingsSubscriber`; the others are gated per cycle/turn. Each additionally requires the persona master switch `self_improvement.chief_of_staff_enabled`. |
-| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. `DirectMcpActorSettingsSubscriber` rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed guarantee moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
+| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. The subsystem reconciler rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed guarantee moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
 | `chief_of_staff.chat_model` | `SYNTHORG_CHIEF_OF_STAFF_CHAT_MODEL` | Per-feature model for conversational turns (also `propose_model` / `routing_model` / `narrative_model`); read live per LLM call, no restart. Auto-filled at setup-complete when left blank. |
 | `knowledge.enabled` | `SYNTHORG_KNOWLEDGE_ENABLED` | On-by-default knowledge substrate; ghost-wired at boot and live-gated per request at the knowledge tools (no restart). The `knowledge.synthesis_model` / `knowledge.synthesis_provider` / `knowledge.synthesis_synthesizer` / `knowledge.synthesis_max_chunks` keys rebuild + swap the synthesiser via a subscriber; `knowledge.synthesis_enabled` remains live-gated at the entrypoint. |
 | `research.enabled` | `SYNTHORG_RESEARCH_ENABLED` | On-by-default research pipeline; ghost-wired at boot and live-gated per request at the research tools (no restart). The model lives in `research.model` (auto-filled at setup-complete); model / provider / strategy / threshold keys rebuild + swap the service via a subscriber. |
 | `self_improvement.enabled` | `SYNTHORG_SELF_IMPROVEMENT_ENABLED` | Off-by-default self-modification master switch; read live per cycle by `run_cycle` (with `engine.evolution_enabled`), so toggling it applies with no restart. The strategy toggles (`config_tuning_enabled` / `architecture_proposals_enabled` / `prompt_tuning_enabled`), `tool_creation_enabled` (+ its allowlist), and the analysis / code-mod models are likewise live. |
-| `self_improvement.code_modification_enabled` | `SYNTHORG_SELF_IMPROVEMENT_CODE_MODIFICATION_ENABLED` | Off-by-default self-modifying code; **`restart_required`** (KEEP). `validate_prerequisites()` verifies GitHub credentials only at startup and the strategy + `CodeApplier` are built at boot, so enabling it requires a deliberate redeploy. |
+| `self_improvement.code_modification_enabled` | `SYNTHORG_SELF_IMPROVEMENT_CODE_MODIFICATION_ENABLED` | Off-by-default self-modifying code; read live per cycle through the feature overlay. It additionally requires GitHub credentials in the `meta.self_improvement` blob: without them the next config load refuses and forces the flag back off, which is the failure an operator sees rather than a silently un-applied switch. |
 | `providers.tool_call_feedback_enabled` | `SYNTHORG_PROVIDERS_TOOL_CALL_FEEDBACK_ENABLED` | Master switch for the runtime tool-call failure feedback loop (default `true`). Re-read live per observation by the `ToolCallFeedbackTracker`, so toggling it on/off applies without a restart while the sink stays installed. |
 | `providers.tool_call_failure_threshold` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_THRESHOLD` | Decayed-score threshold (1..20, default 3) at which a model is downgraded (`tool_calls_verified=False`). Re-read on each failure. |
 | `providers.tool_call_failure_decay_half_life_seconds` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_DECAY_HALF_LIFE_SECONDS` | Half-life (60s..86400s, default 3600s) over which a failure's weight halves, so a transient blip decays away rather than permanently downgrading a capable model. Re-read on each failure. |
@@ -141,12 +138,10 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `api.api_prefix` | `SYNTHORG_API_API_PREFIX` | Same. |
 | `api.cors_allowed_origins` | `SYNTHORG_API_CORS_ALLOWED_ORIGINS` | Same. JSON-encoded list. |
 | `api.trusted_proxies` | `SYNTHORG_API_TRUSTED_PROXIES` | Same. JSON-encoded list. |
-| `api.rate_limiter_enabled` | `SYNTHORG_API_RATE_LIMITER_ENABLED` | Same. Bool token (`true`/`false`/`1`/`0`/`yes`/`no`). |
 | `communication.nats_url` | `SYNTHORG_NATS_URL` | Read once by the bus driver at startup. |
-| `workers.count` | `SYNTHORG_WORKERS` | Read at worker-process boot AND by the worker pool builder. |
+| `workers.count` | `SYNTHORG_WORKERS` | A launch argument of the separate worker process, passed by `synthorg worker start`. |
 | `observability.log_directory` | `SYNTHORG_LOG_DIR` | Path-traversal validated at the boot site. |
-| `budget.coordination_metrics_max_entries` | `SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES` | Sizes the coordination-metrics ring buffer at boot. |
-| `budget.baseline_window_size` | `SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE` | Sizes the single-agent baseline window at `BaselineStore` construction. |
+| `observability.tsa_endpoint_freetsa` | `SYNTHORG_OBSERVABILITY_TSA_ENDPOINT_FREETSA` | Timestamp-authority trust anchor, resolved during `configure_logging` before the DB-backed resolver exists. |
 
 ### Category 3 examples (env only; no registry entry)
 
@@ -198,10 +193,14 @@ exactly one env var name per setting.
    module. The env-var override is auto-derived as
    `SYNTHORG_<NAMESPACE>_<KEY>`; supply `env_var_override=` if an
    operator-facing name predates the rule.
-3. **Category 2 (init-time read-only but operator-visible):** register
-   with `restart_required=True` and `read_only_post_init=True`. The
-   `SettingsService` rejects runtime mutation and bypasses the DB on
-   reads.
+3. **Category 2 (fixed by the deployment but operator-visible):**
+   register with `compose_set=True`, and add the env var in the same
+   change to **both** backend compose sources
+   (`cli/internal/compose/compose.yml.tmpl` and `docker/compose.yml`),
+   or to `cli/cmd/worker_start.go` for a setting only the worker reads:
+   the `SettingsService` rejects runtime mutation and bypasses the DB
+   on reads, and `check_setting_compose_backed.py` fails a claim the
+   deployment does not actually back.
 4. **Category 3 (bootstrap secret):** do **not** register. Read the
    env var directly at the boot site and document the env var on
    [environment-variables.md](environment-variables.md). Capture into
@@ -419,25 +418,40 @@ The pattern has four pieces:
    `_WATCHED` is asserted to exist on the bridge model so a typo or
    rename surfaces at import, not on the next operator hot-reload.
 
-Use this pattern when the setting is hot-reloadable
-(`restart_required=False`) but per-request resolver lookup would add
-overhead or coupling. For restart-required knobs (e.g.
-`ws_auth_timeout_seconds`) the simpler `set_*()` pattern in
-`_apply_bridge_config` is sufficient.
+Use this pattern when per-request resolver lookup would add overhead or
+coupling. Where a single live object owns the value (e.g.
+`ws_auth_timeout_seconds`), the simpler `set_*()` pattern in
+`_apply_bridge_config` plus a subscriber is sufficient.
 
 ## Bootstrap-wiring trace (ghost-wired settings gate)
 
 A registered setting whose consuming machinery exists but is never instantiated at boot is **ghost-wired**: the value resolves cleanly through the precedence chain, but no code path that reads it ever runs in default config. The standing gate `scripts/check_setting_to_startup_trace.py` (pre-push and CI) detects two ghost-service patterns and matches settings to them via three matchers. The full mechanics, the suppression marker, and the baseline-file contract have their own reference: [Bootstrap-Wiring Trace (Ghost-Wired Settings Gate)](bootstrap-wiring-trace.md).
 
-## Restart-required justification gate
+## Compose-set or live
 
-A setting flagged `restart_required=True` (or `read_only_post_init=True`,
-which implies it) is **skipped by the settings-change dispatcher**
-(`settings/dispatcher.py`): the operator edit lands in the DB but no
-subscriber runs, so the running process keeps the boot value. The audit
-behind #2514 found the large majority of those flags were immutable by
-omission, not necessity, and converted the per-request / per-tick knobs to
-hot-reloadable using the existing seams:
+A **registered** setting is either fixed when a process starts or changeable
+while the system runs. There is no third category, and therefore no restart
+control and no pending-restart state: a `compose_set=True` definition rejects a
+write and is shown read-only in the dashboard, and everything else applies
+immediately through one of the seams below.
+
+This is a statement about the settings registry, not about every value the
+process reads. The Category 3 bootstrap secrets above are pure environment and
+are never registered: they are consumed before a settings backend exists, so
+they have no definition to carry the flag and no write path to reject.
+
+`compose_set` is reserved for what a running process genuinely cannot change
+about itself: the bind address and TLS material uvicorn already opened, the
+sandbox image the CLI pulled and verified, the RFC 3161 trust anchors resolved
+before the settings backend exists, the Litestar middleware exclusion lists
+applied at mount time. `scripts/check_setting_compose_backed.py` (pre-push +
+CI) requires the shipped tooling to actually pass each one's environment
+variable, so the label cannot decay into "we did not wire this up": a backend
+`compose_set` key missing from either `cli/internal/compose/compose.yml.tmpl`
+or `docker/compose.yml`, or a worker-only one missing from
+`cli/cmd/worker_start.go`, fails the gate.
+
+Everything else is live, through whichever seam its consumer allows:
 
 - a per-request / per-call `ConfigResolver.get_*()` read (e.g.
   `api.max_meeting_context_keys`, `api.readiness_probe_timeout_seconds`,
@@ -464,17 +478,14 @@ hot-reloadable using the existing seams:
   `coordination.enable_coordination_middleware`,
   `budget.benchmark_provider` / `model_tier_overrides`, and the
   `simulations.verification_review_enabled` / `verification_grader` /
-  `verification_decomposer` pipeline rebuild).
-
-`scripts/check_setting_restart_required_justified.py` (pre-push + CI) keeps
-this from regressing: every restart-bound definition must either carry a
-per-line `# lint-allow: restart-required -- <reason>` marker on its
-`register(...)` block, or sit on the baseline
-`scripts/setting_restart_required_baseline.txt` (the genuine OS / transport /
-security-sensitive keeps, e.g. the TSA timestamp-authority endpoints baked
-into `TsaClient` at construction). It fails when a new unjustified
-restart-bound setting appears and warns (passing) on a stale baseline entry.
-Regenerate the baseline (rare, explicit approval) with `--update-baseline`.
+  `verification_decomposer` pipeline rebuild);
+- a `settings=` declaration on a `SubsystemSpec`, which puts the key in the
+  watched set so a write to it triggers a reconcile pass. That alone does not
+  replace a running subsystem: `rebuild_on_change=True` is what makes the pass
+  tear the subsystem down and activate it again. `memory_backend` declares
+  both, which is why `memory.embedder_model` and its siblings reconnect the
+  memory backend on the spot. See
+  [Subsystem Reconciliation](../design/subsystem-reconciliation.md).
 
 ### Security toggle write guardrail
 

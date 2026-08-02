@@ -15,6 +15,12 @@ export interface SettingFieldProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean | undefined
+  /**
+   * Ids of the row's notice paragraphs, carried by the control itself so a
+   * screen reader announces why it is disabled at the moment it is focused,
+   * not only when focus first enters the surrounding group.
+   */
+  describedBy?: string | undefined
 }
 
 function parseArrayItems(value: string): string[] {
@@ -90,23 +96,21 @@ function ArraySettingField({
   value,
   onChange,
   disabled,
-}: {
-  value: string
-  onChange: (value: string) => void
-  disabled?: boolean | undefined
-}) {
+  describedBy,
+}: Omit<SettingFieldProps, 'definition'>) {
   const items = useMemo(() => parseArrayItems(value), [value])
   return (
     <TagInput
       value={items}
       onChange={(next) => onChange(JSON.stringify(next))}
       disabled={disabled}
+      describedBy={describedBy}
       placeholder="Add item..."
     />
   )
 }
 
-function BoolField({ value, onChange, disabled }: Omit<SettingFieldProps, 'definition'>) {
+function BoolField({ value, onChange, disabled, describedBy }: Omit<SettingFieldProps, 'definition'>) {
   const checked = value.toLowerCase() === 'true' || value === '1'
   return (
     <ToggleField
@@ -114,16 +118,26 @@ function BoolField({ value, onChange, disabled }: Omit<SettingFieldProps, 'defin
       checked={checked}
       onChange={(v) => onChange(v ? 'true' : 'false')}
       disabled={disabled}
+      describedBy={describedBy}
     />
   )
 }
 
-function EnumField({ definition, value, onChange, disabled }: SettingFieldProps) {
+function EnumField({ definition, value, onChange, disabled, describedBy }: SettingFieldProps) {
   const options: SelectOption[] = definition.enum_values.map((v) => ({ value: v, label: v }))
-  return <SelectField label="" options={options} value={value} onChange={onChange} disabled={disabled} />
+  return (
+    <SelectField
+      label=""
+      options={options}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      describedBy={describedBy}
+    />
+  )
 }
 
-function JsonField({ value, onChange, disabled }: Omit<SettingFieldProps, 'definition'>) {
+function JsonField({ value, onChange, disabled, describedBy }: Omit<SettingFieldProps, 'definition'>) {
   const [error, setError] = useState<string | null>(null)
   return (
     <InputField
@@ -143,12 +157,13 @@ function JsonField({ value, onChange, disabled }: Omit<SettingFieldProps, 'defin
         }
       }}
       disabled={disabled}
+      aria-describedby={describedBy}
       error={error}
     />
   )
 }
 
-function TextSettingField({ definition, value, onChange, disabled }: SettingFieldProps) {
+function TextSettingField({ definition, value, onChange, disabled, describedBy }: SettingFieldProps) {
   const [error, setError] = useState<string | null>(null)
   const inputType = useMemo(() => fieldInputType(definition), [definition])
   const displayValue = useMemo(() => stripTrailingZeros(definition, value), [definition, value])
@@ -163,25 +178,27 @@ function TextSettingField({ definition, value, onChange, disabled }: SettingFiel
       }}
       onBlur={() => setError(validateValue(value, definition))}
       disabled={disabled}
+      aria-describedby={describedBy}
       error={error}
     />
   )
 }
 
-export function SettingField({ definition, value, onChange, disabled }: SettingFieldProps) {
+export function SettingField({ definition, value, onChange, disabled, describedBy }: SettingFieldProps) {
   const compositeKey = `${definition.namespace}/${definition.key}`
+  const shared = { value, onChange, disabled, describedBy }
 
   if (definition.type === 'bool') {
-    return <BoolField value={value} onChange={onChange} disabled={disabled} />
+    return <BoolField {...shared} />
   }
   if (definition.type === 'enum' && definition.enum_values.length > 0) {
-    return <EnumField definition={definition} value={value} onChange={onChange} disabled={disabled} />
+    return <EnumField definition={definition} {...shared} />
   }
   if (SIMPLE_ARRAY_SETTINGS.has(compositeKey)) {
-    return <ArraySettingField value={value} onChange={onChange} disabled={disabled} />
+    return <ArraySettingField {...shared} />
   }
   if (definition.type === 'json') {
-    return <JsonField value={value} onChange={onChange} disabled={disabled} />
+    return <JsonField {...shared} />
   }
   if (definition.type === 'model_ref') {
     return (
@@ -189,9 +206,10 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
         value={value}
         onChange={onChange}
         disabled={disabled}
+        describedBy={describedBy}
         settingKey={compositeKey}
       />
     )
   }
-  return <TextSettingField definition={definition} value={value} onChange={onChange} disabled={disabled} />
+  return <TextSettingField definition={definition} {...shared} />
 }

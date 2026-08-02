@@ -113,7 +113,7 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # the research subsystem's wiring.
     "src/synthorg/research/",
     # deliverable_receipts/ is reached at boot via
-    # api/lifecycle_helpers/feature_wiring.py::_wire_deliverable_receipts
+    # api/lifecycle_helpers/feature_wiring.py::wire_deliverable_receipts
     # (build_deliverable_receipt_service); counting its factory construction
     # lets the manifest track the provenance-receipt wiring.
     "src/synthorg/deliverable_receipts/",

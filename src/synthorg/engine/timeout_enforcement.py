@@ -2,13 +2,12 @@
 
 The ``engine.timeout_enforcement_enabled`` setting lets a dev operator
 disable engine timeouts globally for step-through debugging.  The flag
-is a **standard mutable setting** (not ``read_only_post_init``); the
-module caches the resolved value purely as a hot-path optimisation so
-the detector / classifier / evaluation gates can decide between a
-real ``asyncio.timeout`` and a ``contextlib.nullcontext`` without
-touching the resolver on every coroutine entry.  An operator change
-takes effect on the next call to :func:`set_timeout_enforcement_enabled`
-(currently invoked once at startup; runtime hot-reload is a follow-up).
+is live; the module caches the resolved value purely as a hot-path
+optimisation so the detector / classifier / evaluation gates can decide
+between a real ``asyncio.timeout`` and a ``contextlib.nullcontext``
+without touching the resolver on every coroutine entry.  The
+engine-timeout subscriber pushes an operator change onto the cache
+through :func:`set_timeout_enforcement_enabled`.
 
 The startup hook in :mod:`synthorg.api.lifecycle_helpers` calls
 :func:`set_timeout_enforcement_enabled` once after resolving the

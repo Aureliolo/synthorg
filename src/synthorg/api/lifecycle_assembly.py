@@ -27,7 +27,6 @@ from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers.feature_lifecycle import (
     build_feature_lifecycle_runner,
 )
-from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
 from synthorg.api.lifecycle_helpers.output_style_wiring import (
     wire_output_style_policy,
 )
@@ -39,9 +38,7 @@ from synthorg.api.lifecycle_helpers.startup_steps import (
     resolve_runtime_security_settings,
     wire_brownfield_intake,
 )
-from synthorg.api.lifecycle_helpers.toolsmith_wiring import wire_toolsmith
 from synthorg.api.state import AppState
-from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.backup.service import BackupService
 from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.reports import ReportGenerator
@@ -87,7 +84,6 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     connection_catalog: ConnectionCatalog | None,
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
-    approval_store: ApprovalStoreProtocol,
     performance_tracker: PerformanceTracker | None,
     notification_dispatcher: NotificationDispatcher,
 ) -> tuple[LifespanHooks, LifespanHooks]:
@@ -107,9 +103,8 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
             creates ``SettingsService`` after persistence connects.
         effective_config: Root configuration.
         connection_catalog: Integration connection catalog (runtime services).
-        provider_registry: Provider registry (feature wiring + toolsmith).
-        cost_tracker: Cost tracker (feature wiring + report service).
-        approval_store: Approval queue store (feature wiring + toolsmith).
+        provider_registry: Provider registry (persisted-config reload).
+        cost_tracker: Cost tracker (report service).
         performance_tracker: Performance tracker (report service).
         notification_dispatcher: Notification dispatcher (HTTP sink start-up).
 
@@ -165,27 +160,12 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
         await migrate_embedded_provider_keys(app_state)
 
-    async def _wire_evolution_outcomes() -> None:
-        from synthorg.api.lifecycle_helpers.evolution_outcomes_wiring import (  # noqa: PLC0415
-            wire_evolution_outcomes,
+    async def _reconcile_subsystems() -> None:
+        from synthorg.api.subsystems.runtime import (  # noqa: PLC0415
+            reconcile_subsystems,
         )
 
-        await wire_evolution_outcomes(app_state)
-
-    async def _wire_memory_backend() -> None:
-        from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
-            wire_memory_backend,
-        )
-        from synthorg.api.lifecycle_helpers.org_memory_wiring import (  # noqa: PLC0415
-            wire_org_memory_backend,
-        )
-
-        await wire_memory_backend(app_state)
-        # The org layer wires here rather than with the other features
-        # because runtime services read it while assembling an agent's
-        # recall and its Knowledge-Architect tools. Wired after them it
-        # is still None at the only moment anything asks for it.
-        await wire_org_memory_backend(app_state)
+        await reconcile_subsystems(app_state, trigger="boot")
 
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)
@@ -218,13 +198,10 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
             provider_registry = reloaded
 
     async def _wire_features() -> None:
-        await wire_features_on_startup(
-            app_state,
-            provider_registry=provider_registry,
-            persistence=persistence,
-            cost_tracker=cost_tracker,
-            effective_approval_store=approval_store,
-        )
+        # Every optional feature engine is declared in the subsystem registry
+        # and brought up by the reconcile passes around this hook. What is
+        # left here is the output-style policy, which has no dependency that
+        # can arrive late: it is read from settings and installed once.
         await wire_output_style_policy(app_state)
 
     # ``_compose_feature_slices`` runs FIRST so every feature's empty state
@@ -238,16 +215,16 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # catalog so the resolver does not reject the stored config.
         _migrate_provider_credentials,
         _reload_provider_registry,
-        # Build the durable evolution-outcome store BEFORE runtime services
-        # so the engine evolution loop reads it as its outcome sink, and
-        # before signals wiring so the aggregator shares the same store.
-        _wire_evolution_outcomes,
-        # Agent and org memory must exist BEFORE runtime services: the
-        # engine reads MemoryStateSlice eagerly at construction, so a
-        # backend wired any later never reaches an agent.
-        _wire_memory_backend,
+        # Memory, org memory and the evolution-outcome store must exist
+        # BEFORE runtime services: the engine reads their slices eagerly at
+        # construction, so anything wired later never reaches an agent.
+        _reconcile_subsystems,
         _install_runtime_services,
         _wire_features,
+        # Runtime services bring up the work pipeline, which several
+        # subsystems wait on. Running the same pass again costs nothing when
+        # nothing moved, and is the whole reason a second call is safe.
+        _reconcile_subsystems,
         _wire_brownfield_intake,
     ]
 
@@ -300,92 +277,18 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         )
         app_state.wire(BudgetStateSlice, report_service=report_service)
 
-    async def _wire_toolsmith() -> None:
-        await wire_toolsmith(
-            app_state,
-            provider_registry=provider_registry,
-            persistence=persistence,
-            approval_store=approval_store,
-            cost_tracker=cost_tracker,
-        )
+    # Held in the closure rather than on the subsystems slice: the scheduler
+    # imports the reconcile entry point, which reads that slice, so parking
+    # it there would close an import cycle.
+    from synthorg.api.subsystems.resync import (  # noqa: PLC0415
+        SubsystemResyncScheduler,
+    )
 
-    startup = [*startup, _wire_toolsmith]
-
-    async def _wire_model_refresh() -> None:
-        from synthorg.api.lifecycle_helpers.model_refresh_wiring import (  # noqa: PLC0415
-            wire_model_refresh,
-        )
-
-        await wire_model_refresh(app_state)
-
-    startup = [*startup, _wire_model_refresh]
-
-    async def _wire_tool_call_feedback() -> None:
-        from synthorg.api.lifecycle_helpers.tool_call_feedback_wiring import (  # noqa: PLC0415
-            wire_tool_call_feedback,
-        )
-
-        await wire_tool_call_feedback(app_state)
-
-    startup = [*startup, _wire_tool_call_feedback]
-
-    async def _wire_eval_loop() -> None:
-        from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
-            wire_eval_loop,
-        )
-
-        await wire_eval_loop(app_state, provider_registry=provider_registry)
-
-    startup = [*startup, _wire_eval_loop]
-
-    async def _wire_pruning() -> None:
-        from synthorg.api.lifecycle_helpers.pruning_wiring import (  # noqa: PLC0415
-            wire_pruning,
-        )
-
-        await wire_pruning(app_state)
-
-    startup = [*startup, _wire_pruning]
-
-    async def _wire_scaling() -> None:
-        from synthorg.api.lifecycle_helpers.scaling_wiring import (  # noqa: PLC0415
-            wire_scaling,
-        )
-
-        await wire_scaling(app_state)
-
-    startup = [*startup, _wire_scaling]
-
-    async def _wire_quota_poller() -> None:
-        from synthorg.api.lifecycle_helpers.budget_wiring import (  # noqa: PLC0415
-            wire_quota_poller,
-        )
-
-        await wire_quota_poller(app_state)
-
-    startup = [*startup, _wire_quota_poller]
-
-    async def _wire_risk_override_service() -> None:
-        from synthorg.api.lifecycle_helpers.security_wiring import (  # noqa: PLC0415
-            wire_risk_override_service,
-        )
-
-        await wire_risk_override_service(
-            app_state,
-            approval_timeout_config=effective_config.config.approval_timeout,
-            approval_timeout_scheduler=approval_timeout_scheduler,
-        )
-
-    startup = [*startup, _wire_risk_override_service]
-
-    async def _wire_strategy_context() -> None:
-        from synthorg.api.lifecycle_helpers.strategy_context_wiring import (  # noqa: PLC0415
-            wire_strategy_context,
-        )
-
-        await wire_strategy_context(app_state)
-
-    startup = [*startup, _wire_strategy_context]
+    resync_scheduler = SubsystemResyncScheduler(
+        app_state,
+        interval_seconds=effective_config.api.subsystem_resync_interval_seconds,
+    )
+    startup = [*startup, resync_scheduler.start]
 
     async def _start_construction_dispatcher() -> None:
         # Bring up the construction-phase dispatcher's HTTP-bearing sinks under
@@ -419,5 +322,10 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     feature_lifecycle_runner = build_feature_lifecycle_runner()
     startup = [*startup, feature_lifecycle_runner.start_all]
     shutdown = [feature_lifecycle_runner.stop_all, *shutdown]
+
+    # Ahead of the feature runner, so nothing is left that could wire a
+    # subsystem back up. A sweep firing between the two teardowns would
+    # reactivate against feature hooks that have already stopped.
+    shutdown = [resync_scheduler.stop, *shutdown]
 
     return startup, shutdown

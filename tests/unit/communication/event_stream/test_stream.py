@@ -94,6 +94,15 @@ class TestEventStreamHub:
         assert kept.id == "evt-001"  # first event kept, second dropped
         assert queue.empty()
 
+    def test_a_live_queue_bound_below_one_is_refused(self) -> None:
+        hub = EventStreamHub(max_queue_size=8)
+        # The constructor refuses the same value. A live write is the path an
+        # operator actually takes, so accepting it here would leave the only
+        # reachable route to an unusable queue as the guarded one.
+        with pytest.raises(ValueError, match="max_queue_size must be >= 1"):
+            hub.set_max_queue_size(0)
+        assert hub._max_queue_size == 8
+
     async def test_publish_raw_convenience(self) -> None:
         hub = EventStreamHub()
         queue = await hub.subscribe("session-abc")

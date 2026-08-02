@@ -237,7 +237,7 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     query/seek service, then installs them on ``AppState`` for the
     cockpit controllers and MCP tools. Requires a connected persistence
     backend (for the frame store) plus a task engine. The steering
-    service wires separately in ``_wire_steering_service`` once the
+    service wires separately in ``wire_steering_service`` once the
     project brain is up (it records directives through the brain).
     """
     from synthorg.engine.state import EngineStateSlice, task_engine_of  # noqa: PLC0415
@@ -303,7 +303,7 @@ def _try_wire_cockpit(app_state: AppState) -> None:
         )
 
 
-async def _wire_steering_service(
+async def wire_steering_service(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
@@ -363,6 +363,23 @@ async def _wire_steering_service(
         ),
     )
     logger.info(API_APP_STARTUP, service="steering", note="wired")
+
+
+async def unwire_steering_service(app_state: AppState) -> None:
+    """Drop the steering service so the next pass rebuilds it.
+
+    It holds the project brain by value, so once the brain is replaced this
+    service is steering against a brain nothing else reads. A partial wire,
+    not a slice swap, because the cockpit slice also carries the notifier and
+    the flight recorder, which this subsystem does not own.
+
+    Args:
+        app_state: Application state holding the cockpit slice.
+    """
+    from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
+
+    app_state.wire(CockpitStateSlice, steering_service=None)
+    logger.info(API_APP_STARTUP, service="steering", note="unwired")
 
 
 async def _build_steering_proposer(
@@ -506,5 +523,5 @@ __all__ = [
     "_wire_cockpit_services",
     "_wire_cost_dial_services",
     "_wire_environment_service",
-    "_wire_steering_service",
+    "wire_steering_service",
 ]

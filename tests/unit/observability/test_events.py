@@ -341,6 +341,7 @@ class TestEventConstants:
             "database",
             "meta",
             "sub_constraint",
+            "subsystem",
             "telemetry",
             "terminal",
             "training",

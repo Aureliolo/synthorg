@@ -36,6 +36,7 @@ from synthorg.api.rate_limits._subject import parse_trusted_networks
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.api.state import AppState
+from synthorg.config.rate_limits import LiveRateLimits
 
 type LifespanHooks = list[Callable[[], Awaitable[None]]]
 
@@ -153,7 +154,32 @@ def build_litestar(  # noqa: PLR0913
     if not skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_inflight_store.close]
 
+    # Boot fallback for the global tiers. The middleware reads this per
+    # request, so the settings subscriber can swap the caps without the
+    # Litestar app (whose own config is fixed once built) being rebuilt.
+    app_state.per_op_limits.set_global_config(
+        LiveRateLimits(
+            enabled=api_config.rate_limiter_enabled,
+            floor_max_requests=api_config.rate_limit.floor_max_requests,
+            unauth_max_requests=api_config.rate_limit.unauth_max_requests,
+            auth_max_requests=api_config.rate_limit.auth_max_requests,
+            auth_endpoint_max_requests=(
+                api_config.rate_limit.auth_endpoint_max_requests
+            ),
+            time_unit=api_config.rate_limit.time_unit.value,
+        )
+    )
+
     trusted_proxies = resolve_api_str_tuple("trusted_proxies")
+
+    # Retained as well as handed to Litestar: the compression middleware reads
+    # ``minimum_size`` off this object per response, so the settings subscriber
+    # retunes the threshold by mutating it.
+    compression_config = CompressionConfig(
+        backend="brotli",
+        minimum_size=resolve_api_int("compression_minimum_size_bytes"),
+    )
+    app_state.compression.install(compression_config)
 
     return Litestar(
         route_handlers=[api_router, *root_handlers],
@@ -184,10 +210,7 @@ def build_litestar(  # noqa: PLR0913
             allow_headers=list(api_config.cors.allow_headers),
             allow_credentials=api_config.cors.allow_credentials,
         ),
-        compression_config=CompressionConfig(
-            backend="brotli",
-            minimum_size=resolve_api_int("compression_minimum_size_bytes"),
-        ),
+        compression_config=compression_config,
         # Must be >= artifact API max payload (50 MB) so endpoint-level
         # validation can enforce exact storage limits.
         request_max_body_size=resolve_api_int("request_max_body_size_bytes"),

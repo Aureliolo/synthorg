@@ -195,8 +195,7 @@ _r.register(
         ),
         group="Cassette",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        compose_set=True,
     )
 )
 
@@ -401,7 +400,6 @@ _r.register(
         ),
         group="Cassette",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+        compose_set=True,
     )
 )
