@@ -724,6 +724,7 @@ research_lab
 resumability
 resync
 retag
+retagging
 retention_days
 retryable
 review_gate
@@ -880,6 +881,7 @@ unsourced
 untaken
 untrusted
 untyped
+unvalidated
 unwired
 updated_since
 uppercased

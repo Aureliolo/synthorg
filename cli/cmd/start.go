@@ -308,7 +308,7 @@ func startContainers(ctx context.Context, cmd *cobra.Command, info docker.Info, 
 
 func verifyAndPullStartImages(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
 	if GetGlobalOpts(ctx).SkipVerify {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		errOut.WarnAlways("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		out.Blank()
 		return pullAllImages(ctx, cmd, info, safeDir, state, out)
 	}

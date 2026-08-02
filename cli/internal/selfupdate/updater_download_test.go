@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -411,12 +412,64 @@ func TestDownloadWithMockServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
+	archiveData, checksumData, err := fetchVerifiedArchive(
+		context.Background(), srv.Client(), srv.URL+"/asset", srv.URL+"/checksums")
 	if err != nil {
-		t.Fatalf("Download: %v", err)
+		t.Fatalf("fetchVerifiedArchive: %v", err)
+	}
+	if string(checksumData) != checksumLine {
+		t.Errorf("checksumData = %q, want %q", checksumData, checksumLine)
+	}
+	binary, err := extractBinary(archiveData)
+	if err != nil {
+		t.Fatalf("extractBinary: %v", err)
 	}
 	if string(binary) != string(binaryContent) {
 		t.Errorf("downloaded binary = %q, want %q", binary, binaryContent)
+	}
+}
+
+// A release without a Sigstore bundle is refused outright: the checksums
+// travel the same channel as the archive, so they establish integrity but
+// never origin.
+func TestDownloadRefusesWithoutSigstoreBundle(t *testing.T) {
+	_, err := Download(context.Background(), "https://example.com/a", "https://example.com/c", "")
+	if err == nil {
+		t.Fatal("expected refusal when no sigstore bundle is present")
+	}
+	if !strings.Contains(err.Error(), "sigstore bundle") {
+		t.Errorf("error = %v, want it to name the missing sigstore bundle", err)
+	}
+}
+
+// cmd/update.go recognises a verification failure with errors.Is so it can
+// point the operator at the reinstall that recovers. A regression to a plain
+// fmt.Errorf would drop that hint while every other assertion still passed,
+// so the wrapping is asserted directly. A malformed bundle is enough: parsing
+// fails before any trusted-root fetch, so this needs no network.
+func TestDownloadWrapsSigstoreVerificationFailure(t *testing.T) {
+	archive := []byte("archive bytes")
+	hash := sha256.Sum256(archive)
+	checksumLine := fmt.Sprintf("%s  %s\n", hex.EncodeToString(hash[:]), assetName())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/asset":
+			_, _ = w.Write(archive)
+		case "/checksums":
+			_, _ = w.Write([]byte(checksumLine))
+		case "/bundle":
+			_, _ = w.Write([]byte("not-a-sigstore-bundle"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := Download(
+		context.Background(), srv.URL+"/asset", srv.URL+"/checksums", srv.URL+"/bundle")
+	if !errors.Is(err, ErrSigstoreVerification) {
+		t.Fatalf("err = %v, want it to wrap ErrSigstoreVerification", err)
 	}
 }
 
@@ -437,7 +490,8 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
+	_, _, err := fetchVerifiedArchive(
+		context.Background(), srv.Client(), srv.URL+"/asset", srv.URL+"/checksums")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -449,6 +503,7 @@ func TestCheckFromURL(t *testing.T) {
 		Assets: []Asset{
 			{Name: assetName(), BrowserDownloadURL: expectedURLPrefix + "v1.0.0/" + assetName()},
 			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v1.0.0/checksums.txt"},
+			{Name: "checksums.txt.sigstore.json", BrowserDownloadURL: expectedURLPrefix + "v1.0.0/checksums.txt.sigstore.json"},
 			{Name: "other_file.txt", BrowserDownloadURL: "https://example.com/other"},
 		},
 	}
@@ -482,6 +537,12 @@ func TestCheckFromURL(t *testing.T) {
 	wantChecksumURL := expectedURLPrefix + "v1.0.0/checksums.txt"
 	if result.ChecksumURL != wantChecksumURL {
 		t.Errorf("ChecksumURL = %q, want %q", result.ChecksumURL, wantChecksumURL)
+	}
+	// The bundle URL is part of the contract cmd/update.go hands to
+	// Download, which refuses to install without it.
+	wantBundleURL := expectedURLPrefix + "v1.0.0/checksums.txt.sigstore.json"
+	if result.SigstoreBundURL != wantBundleURL {
+		t.Errorf("SigstoreBundURL = %q, want %q", result.SigstoreBundURL, wantBundleURL)
 	}
 }
 

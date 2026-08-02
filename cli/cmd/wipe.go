@@ -388,7 +388,7 @@ func (wc *wipeContext) startContainers() error {
 // untouched (matching the start path's behaviour).
 func (wc *wipeContext) verifyAndPin() error {
 	if GetGlobalOpts(wc.ctx).SkipVerify {
-		wc.errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		wc.errOut.WarnAlways("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		return nil
 	}
 

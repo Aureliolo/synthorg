@@ -2,7 +2,6 @@ package selfupdate
 
 import (
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -10,9 +9,12 @@ import (
 	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	protodsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
+
+	ociverify "github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
 func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
+	t.Parallel()
 	statement := slsaStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
@@ -36,6 +38,7 @@ func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
+	t.Parallel()
 	statement := slsaStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
@@ -63,6 +66,7 @@ func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
+	t.Parallel()
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
 			DsseEnvelope: &protodsse.Envelope{
@@ -82,6 +86,7 @@ func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceNoDSSE(t *testing.T) {
+	t.Parallel()
 	// Bundle with message signature (not DSSE) -- should pass silently.
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_MessageSignature{
@@ -101,6 +106,7 @@ func TestAssertSLSAProvenanceNoDSSE(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
+	t.Parallel()
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
 			DsseEnvelope: &protodsse.Envelope{
@@ -116,40 +122,13 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestExpectedSANRegexAcceptsBothReleaseWorkflowNames(t *testing.T) {
-	re := regexp.MustCompile(expectedSANRegex)
-
-	valid := []string{
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3-rc.1",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3+build.4",
-		// Releases cut under the retired workflow name stay updatable.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.2.3",
-	}
-	for _, ref := range valid {
-		if !re.MatchString(ref) {
-			t.Errorf("SAN regex should match %q", ref)
-		}
-	}
-}
-
-func TestExpectedSANRegexRejectsNonReleaseIdentities(t *testing.T) {
-	re := regexp.MustCompile(expectedSANRegex)
-
-	invalid := []string{
-		// Branch refs never sign a release, retired name included.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/pull/1/merge",
-		// The image workflow must not be able to sign CLI archives.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v1.2.3",
-		"https://github.com/evil/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-verify-cli.yml@refs/tags/v1.2.3",
-		"",
-	}
-	for _, ref := range invalid {
-		if re.MatchString(ref) {
-			t.Errorf("SAN regex should NOT match %q", ref)
-		}
+func TestVerifySigstoreBundleUsesTheReleaseIdentity(t *testing.T) {
+	t.Parallel()
+	// The pattern this path verifies against lives in the verify package,
+	// which owns both trust anchors; its acceptance table is asserted
+	// there. What belongs here is that the self-update path can build the
+	// policy at all, since a failure to do so refuses every update.
+	if _, err := ociverify.BuildReleaseIdentityPolicy(); err != nil {
+		t.Fatalf("BuildReleaseIdentityPolicy() error: %v", err)
 	}
 }

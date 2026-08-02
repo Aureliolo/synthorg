@@ -287,6 +287,52 @@ grant token scopes; they run no signing step of their own. Moving one back
 inline would silently drop that artifact to L2, so the split is load-bearing
 rather than tidiness.
 
+That split also decides what the CLI will accept. Keyless signing derives the
+certificate SAN from `job_workflow_ref`, which for a `workflow_call` job is
+the reusable workflow's own path rather than the caller's, so the SAN regexes
+compiled into the binary (`ExpectedReleaseSANRegex` for release archives,
+`ExpectedSANRegex` for images, both in `cli/internal/verify/identity.go`) name
+the files in the table above and never the callers. A pin also keeps the name
+that signed the
+current stable release, because a published signature cannot be re-minted and
+dropping it would leave those artifacts permanently unverifiable.
+
+The SAN is only half the identity, and on its own it would be the wrong half.
+A reusable workflow in a public repository can be invoked by any repository on
+GitHub, and every caller's build produces the *same* `job_workflow_ref`. The
+SAN therefore names the build recipe, not the build owner. Both policies also
+pin certificate extensions (`SourceRepositoryURI`,
+`SourceRepositoryIdentifier`, `RunnerEnvironment`), which is what
+distinguishes a build this repository ran from one that merely used its
+workflow. Both patterns and both constructors live in
+`cli/internal/verify/identity.go`, sharing one builder so the binding cannot
+diverge between them: `verify.BuildIdentityPolicy` for images and
+`verify.BuildReleaseIdentityPolicy` for release archives. Neither takes a
+pattern from its caller. A supplied regex cannot be validated into safety by
+inspecting parts of it, because one carrying a second top-level alternative
+for an unapproved workflow still opens with the repository prefix and still
+closes with the anchor, and the extensions below do not separate the two when
+both alternatives name this repository. The numeric repository
+identifier is pinned alongside the URI because it survives a rename or
+transfer; renaming or transferring this repository would otherwise free the
+pinned URI for someone else to claim, so treat both as fixed for as long as
+published artifacts must stay verifiable.
+
+Ref classes are pinned per signer rather than shared. A release archive is
+only ever cut from a `v*` tag; an image is only ever signed on a push to
+`main`, because every publish job is gated to main and retagging re-points a
+tag at an already-signed digest without signing again. Accepting a ref class
+a signer never legitimately produces would only ever help a forger.
+
+`scripts/check_signing_identity_pins.py` derives the signer set from the
+workflow tree, following composite actions and helper scripts as deep as they
+go, and fails the push when a pin and the signers disagree, when a declared
+signer stops signing, when a signer becomes reachable from a second calling
+workflow, or when either constant differs by so much as a character from the
+pattern its declaration builds. Without it, moving a signing step passes every
+test and breaks `synthorg update` and `synthorg start` for users only after
+release.
+
 The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
 as the `verify-signatures` gate after every publish and requires **both** a
 cosign signature and a provenance attestation for each pushed digest; an image

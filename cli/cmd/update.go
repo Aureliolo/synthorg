@@ -348,6 +348,17 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
 		sp.Error("Download failed")
+		// A signature failure is not something the running binary can
+		// resolve: the identity it trusts is compiled in, so once that pin
+		// stops matching what releases carry, every future update fails
+		// identically. Name the way out, or the operator is left with an
+		// unverified manual download as the obvious workaround.
+		if errors.Is(err, selfupdate.ErrSigstoreVerification) {
+			out.HintError(fmt.Sprintf(
+				"This binary cannot verify the current release. Reinstall from "+
+					"%s/releases/latest to pick up the identity it was signed under.",
+				version.RepoURL))
+		}
 		return fmt.Errorf("downloading update: %w", err)
 	}
 	sp.Success("Download complete")
@@ -717,7 +728,7 @@ func verifyAndPinForUpdate(ctx context.Context, info docker.Info, state config.S
 	updatedState.ImageTag = tag
 
 	if GetGlobalOpts(ctx).SkipVerify {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		errOut.WarnAlways("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		if err := writeOrPatchCompose(updatedState, nil, safeDir, preserveCompose); err != nil {
 			return nil, err
 		}
