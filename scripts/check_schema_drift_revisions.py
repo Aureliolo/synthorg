@@ -107,17 +107,10 @@ deterministic failure three times or never retrying a blip at all.
 """
 
 
-class SchemaDriftError(Exception):
-    """Base for every way this gate fails other than finding drift.
-
-    Deliberately not a :class:`synthorg.core.domain_errors.DomainError`:
-    that base exists to carry the RFC 9457 status, category and
-    ``ErrorCode`` the API exception handler puts on a response, and
-    ``check_error_code_uniqueness.py`` binds each code to exactly one
-    subclass. A gate that exits with a code and prints findings has no
-    client to answer, so a taxonomy code here would name a condition
-    that can never reach one.
-    """
+class SchemaDriftError(
+    Exception
+):  # lint-allow: domain-error-hierarchy -- gate-internal error; never leaves this script
+    """Base for every way this gate fails other than finding drift."""
 
 
 class SchemaDriftProvisionError(SchemaDriftError):
