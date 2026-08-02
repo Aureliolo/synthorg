@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces nine invariants across the CI definitions so the resilience
+Enforces ten invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -134,6 +134,33 @@ hardening they carry cannot silently regress:
    returning. ``_ROLLING_RUNNER_EXEMPT`` carries the one matrix whose
    purpose is running on whatever GitHub ships as latest.
 
+10. **A scheduled workflow routes failure and non-completion to two
+    DIFFERENT tracking-issue sinks.** Nothing watches a cron run: no
+    reviewer waits on it and no PR turns red, so whatever it fails to
+    report is simply not known. Two distinct outcomes therefore need a
+    sink. A job that FAILS is the obvious one. A job that never finished
+    -- cancelled, or reaped at ``timeout-minutes`` -- is the one that
+    gets missed, because it looks like nothing happened, and the last
+    real result ages silently while the schedule appears to still run.
+
+    They must not share a sink. A stalled run measured nothing, so a
+    single notifier catching both files a cancellation under a title
+    that asserts a finding ("Secret scan regression") -- reporting a
+    result the run never produced, at that title's priority. Requiring
+    two distinct jobs is what makes the neutral title reachable; the
+    titles themselves are not compared, because no check can judge
+    whether a string asserts a finding.
+
+    Admission is read per watched job from the ``if:`` text of every job
+    reaching the ``post-tracking-issue`` composite. ``needs.<job>.result
+    == '<result>'`` admits that result; ``!= 'success'`` admits failure
+    and cancellation both, minus whatever it separately excludes. Each
+    comparison is bound to the job it names, so a notifier watching one
+    job cannot vouch for another. An expression written some other way
+    is not understood and must adopt one of these -- the gate fails
+    closed rather than guessing at an expression grammar it only partly
+    models.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
@@ -159,7 +186,7 @@ import re
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 
 import yaml
 
@@ -270,6 +297,237 @@ _EXCLUDED: Final[dict[str, str]] = {
 }
 
 _TIMEOUT_KEY: Final[str] = "timeout-minutes"
+
+_TRACKING_ISSUE_DIR: Final[str] = ".github/actions/post-tracking-issue"
+_SCHEDULE_KEY: Final[str] = "schedule"
+_IF_KEY: Final[str] = "if"
+# PyYAML parses YAML 1.1, where a bare `on:` key is the boolean True rather
+# than the string "on". Reading data["on"] therefore misses every real
+# workflow file, and a trigger check written that way passes everything
+# forever while looking correct.
+_ON_KEYS: Final[frozenset[str | bool]] = frozenset({"on", True})
+
+_RESULT_FAILURE: Final[str] = "failure"
+_RESULT_SUCCESS: Final[str] = "success"
+_RESULT_CANCELLED: Final[str] = "cancelled"
+
+# Bound to the job each comparison names. An unbound `.result` match would let
+# a notifier watching one job vouch for a sibling it never mentions.
+_RESULT_EQ: Final[re.Pattern[str]] = re.compile(
+    r"needs\.([A-Za-z0-9_-]+)\.result\s*==\s*'([a-z_]+)'"
+)
+_RESULT_NE: Final[re.Pattern[str]] = re.compile(
+    r"needs\.([A-Za-z0-9_-]+)\.result\s*!=\s*'([a-z_]+)'"
+)
+
+_MIN_DISTINCT_SINKS: Final[int] = 2
+
+
+class _Admission(NamedTuple):
+    """Which outcomes of one watched job a notifier condition admits."""
+
+    failure: bool
+    stall: bool
+
+
+def _result_comparisons(condition: str) -> dict[str, tuple[set[str], set[str]]]:
+    """Group a condition's result comparisons by the job each one names.
+
+    Args:
+        condition: The raw ``if:`` expression text of a job.
+
+    Returns:
+        Watched job name mapped to ``(equals, not_equals)``, the result
+        literals that job is compared against with ``==`` and with ``!=``.
+    """
+    grouped: dict[str, tuple[set[str], set[str]]] = {}
+    for pattern, index in ((_RESULT_EQ, 0), (_RESULT_NE, 1)):
+        for job_name, literal in pattern.findall(condition):
+            grouped.setdefault(job_name, (set(), set()))[index].add(literal)
+    return grouped
+
+
+def _admits(equals: set[str], not_equals: set[str]) -> _Admission:
+    """Return which outcomes one watched job's comparisons admit.
+
+    ``!= 'success'`` admits every non-success outcome, so it covers failure
+    and cancellation both, minus whatever the condition separately excludes.
+    Anything the two idioms do not describe admits nothing, so an
+    unrecognised expression fails the gate rather than being credited with
+    coverage it may not have.
+
+    Args:
+        equals: Result literals this job is compared against with ``==``.
+        not_equals: Result literals this job is compared against with ``!=``.
+
+    Returns:
+        The outcomes admitted for that job.
+    """
+    complement = _RESULT_SUCCESS in not_equals
+    return _Admission(
+        failure=_RESULT_FAILURE in equals
+        or (complement and _RESULT_FAILURE not in not_equals),
+        stall=_RESULT_CANCELLED in equals
+        or (complement and _RESULT_CANCELLED not in not_equals),
+    )
+
+
+def _reaches_tracking_issue(uses: str, sinks: frozenset[str]) -> bool:
+    """Return True when a step files a tracking issue, directly or not.
+
+    Resolved to a directory rather than matched by substring, so a NEIGHBOUR
+    of the composite (``./.github/actions/post-tracking-issue-v2``) is not
+    mistaken for it and silently credited as a sink.
+    """
+    directory = _local_action_dir(uses)
+    return directory is not None and directory in sinks
+
+
+def _tracking_issue_dirs() -> frozenset[str]:
+    """Return every local action directory that reaches the tracking issue.
+
+    Closed under "calls a filer" by fixpoint, exactly as
+    ``_artifact_consumer_dirs`` is. A notifier that files through a wrapper
+    composite rather than calling ``post-tracking-issue`` itself is still a
+    sink; without the closure the wrapper would hide it and the gate would
+    report a workflow as routing nothing while it routes correctly.
+    """
+    calls: dict[str, set[str]] = {}
+    filers: set[str] = {_TRACKING_ISSUE_DIR}
+    for path in _iter_action_files():
+        data = _load_yaml_mapping(path)
+        if data is None:
+            continue
+        directory = _relative_path(path.parent)
+        used = _composite_uses(data)
+        calls[directory] = {
+            local
+            for local in (_local_action_dir(ref) for ref in used)
+            if local is not None
+        }
+    settled = False
+    while not settled:
+        settled = True
+        for directory, targets in calls.items():
+            if directory not in filers and targets & filers:
+                filers.add(directory)
+                settled = False
+    return frozenset(filers)
+
+
+def _is_notifier_job(job: dict[str, object], sinks: frozenset[str]) -> bool:
+    """Return whether a job reaches the tracking-issue sink, directly or not."""
+    return any(
+        isinstance(step.get("uses"), str)
+        and _reaches_tracking_issue(str(step["uses"]), sinks)
+        for step in _job_steps(job)
+    )
+
+
+def _has_schedule_trigger(data: dict[str, object]) -> bool:
+    """Return whether the workflow declares a ``schedule:`` trigger.
+
+    Walks the mapping rather than indexing it, because of the key type
+    ``_ON_KEYS`` documents; iterating compares whatever keys are there, so
+    the bool arrives without a cast or a silencing comment.
+
+    Only the mapping form of ``on:`` is inspected. A ``schedule`` trigger
+    carries its own ``cron:`` entries, so it cannot appear in the list form
+    (``on: [push, schedule]`` is not valid workflow config); accepting it
+    there would be a branch no input can reach.
+    """
+    return any(
+        key in _ON_KEYS and isinstance(triggers, dict) and _SCHEDULE_KEY in triggers
+        for key, triggers in data.items()
+    )
+
+
+def _sink_problems(watched: dict[str, dict[str, _Admission]]) -> list[str]:
+    """Return the per-watched-job coverage failures across a workflow.
+
+    Args:
+        watched: Watched job name mapped to notifier job name mapped to the
+            outcomes that notifier admits for it.
+
+    Returns:
+        One message per watched job that is not fully routed.
+    """
+    problems: list[str] = []
+    for job_name in sorted(watched):
+        by_notifier = watched[job_name]
+        failure_sinks = {n for n, a in by_notifier.items() if a.failure}
+        stall_sinks = {n for n, a in by_notifier.items() if a.stall}
+        missing = [
+            label
+            for label, sinks in (
+                ("failure", failure_sinks),
+                ("non-completion (cancelled / timed out)", stall_sinks),
+            )
+            if not sinks
+        ]
+        if missing:
+            problems.append(
+                f"job '{job_name}' routes no tracking issue for"
+                f" {' and '.join(missing)}; a run ending that way reports to"
+                " nobody"
+            )
+        elif len(failure_sinks | stall_sinks) < _MIN_DISTINCT_SINKS:
+            sink = next(iter(failure_sinks))
+            problems.append(
+                f"job '{job_name}' routes failure and non-completion to the"
+                f" same sink ('{sink}'), so a cancelled or timed-out run files"
+                " that sink's title. A stalled run measured nothing: narrow"
+                " this one to `== 'failure'` and add a second notifier with an"
+                " outcome-neutral title"
+            )
+    return problems
+
+
+def _check_schedule_notifiers(
+    data: dict[str, object], jobs: dict[str, object], sinks: frozenset[str]
+) -> list[str]:
+    """Check invariant 10 for one workflow file.
+
+    Args:
+        data: The parsed workflow mapping.
+        jobs: The workflow's ``jobs`` mapping.
+        sinks: Local action directories that reach the tracking issue.
+
+    Returns:
+        Violation messages, empty when the workflow is compliant or carries
+        no ``schedule:`` trigger.
+    """
+    if not _has_schedule_trigger(data):
+        return []
+    notifiers = {
+        str(name): job
+        for name, job in jobs.items()
+        if isinstance(job, dict) and _is_notifier_job(job, sinks)
+    }
+    if not notifiers:
+        return [
+            (
+                f"scheduled workflow has no {_TRACKING_ISSUE_DIR} job;"
+                " a cron run nobody watches must be able to report failure"
+                " and non-completion somewhere"
+            )
+        ]
+    watched: dict[str, dict[str, _Admission]] = {}
+    for notifier_name, job in notifiers.items():
+        condition = str(job.get(_IF_KEY, ""))
+        for name, (equals, not_equals) in _result_comparisons(condition).items():
+            watched.setdefault(name, {})[notifier_name] = _admits(equals, not_equals)
+    if not watched:
+        names = ", ".join(sorted(notifiers))
+        return [
+            (
+                "no notifier condition names a `needs.<job>.result` (notifier"
+                f" jobs: {names}), so nothing states which outcomes reach a"
+                " tracking issue. Compare the watched job's result explicitly"
+                " rather than relying on `failure()`"
+            )
+        ]
+    return _sink_problems(watched)
 
 
 def _iter_workflow_files() -> Iterable[Path]:
@@ -1242,7 +1500,11 @@ def _check_runner_pinned(
     ]
 
 
-def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]:
+def _scan_file(
+    path: Path,
+    consumers: frozenset[str] | None = None,
+    sinks: frozenset[str] | None = None,
+) -> list[str]:
     """Return all violation messages for one workflow file.
 
     Args:
@@ -1250,6 +1512,8 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         consumers: Local action directories that reach an artifact download.
             Computed on demand when omitted; ``_scan_paths`` passes the one
             it resolved so a whole-tree run walks the actions tree once.
+        sinks: Local action directories that reach the tracking issue,
+            resolved once by ``_scan_paths`` for the same reason.
 
     Returns:
         Violation messages, empty when the file is compliant.
@@ -1257,6 +1521,8 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
     rel_path = _relative_path(path)
     if consumers is None:
         consumers = _artifact_consumer_dirs()
+    if sinks is None:
+        sinks = _tracking_issue_dirs()
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -1283,6 +1549,7 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
         violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
         violations.extend(_check_runner_pinned(name, rel_path, job))
+    violations.extend(_check_schedule_notifiers(data, jobs, sinks))
     return violations
 
 
@@ -1360,13 +1627,14 @@ def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
     consumers = _artifact_consumer_dirs()
+    sinks = _tracking_issue_dirs()
     for message in _check_dockerfile_digest_pins():
         failed = True
         print(message, file=sys.stderr)
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
-        violations = _scan_file(path, consumers)
+        violations = _scan_file(path, consumers, sinks)
         if not violations:
             continue
         failed = True
@@ -1383,7 +1651,9 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             " wrapped action through its wrapper rather than upstream,"
             " give every artifact-consuming job both `actions: read` and an"
             " explicit github-token, consume every resilient-pull local-tag"
-            " from a `run:` step, and digest-pin every Dockerfile reference."
+            " from a `run:` step, digest-pin every Dockerfile reference, and"
+            " route both failure and non-completion of a scheduled workflow"
+            " to a tracking issue."
             " To exclude an action deliberately,"
             " add it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
             " with a reason.",

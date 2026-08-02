@@ -13,6 +13,9 @@ name: Maint - Link Rot
 # the same issue sink the security workflows use. A human triages and
 # closes the issue.
 #
+# A run that never finished goes to report-stalled instead, under a title
+# claiming no finding: it probed no link, so it observed no rot.
+#
 # Config is the shared ``lychee.toml``: its ``exclude`` list suppresses
 # anti-bot (403) and rate-limit (429) hosts that are live in a browser,
 # so they never file a bogus issue here. It also exempts research-paper
@@ -136,4 +139,41 @@ jobs:
           labels: 'automation:ci-health,type:ci,prio:low'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished check
+    needs: lychee-external
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.lychee-external.result != 'success'
+      && needs.lychee-external.result != 'failure'
+      && needs.lychee-external.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'Link check not completing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          subject: 'The weekly external link check'
+          not-measured: 'no link was probed, so none was found broken'
+          guidance: >-
+            Check the run's step timings against the lychee job's 15-minute
+            budget. A single black-holing host stalls the whole check, so
+            excluding it in `lychee.toml` is usually the fix rather than
+            raising the timeout.
+          result: ${{ needs.lychee-external.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}

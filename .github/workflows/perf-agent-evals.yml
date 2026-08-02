@@ -111,3 +111,41 @@ jobs:
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
           gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished run
+    needs: agent-evals
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    # `cancel-in-progress: false` means this is a timeout or a manual
+    # cancel, never concurrency eviction.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.agent-evals.result != 'success'
+      && needs.agent-evals.result != 'failure'
+      && needs.agent-evals.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'Agent evals not completing'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          subject: 'The nightly agent-evals run'
+          not-measured: 'no score was produced, so none can have regressed'
+          guidance: >-
+            Check the run's step timings against the eval job's 60-minute
+            budget before raising it; a hanging provider call reaches that
+            cap without ever erroring.
+          result: ${{ needs.agent-evals.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          gh-token: ${{ github.token }}

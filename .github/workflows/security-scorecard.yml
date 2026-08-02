@@ -51,11 +51,14 @@ jobs:
     # Only the schedule path gets the issue sink. Push runs already
     # surface as commit checks on main; workflow_dispatch is visible to
     # the triggerer.
+    #
+    # `== 'failure'` and not the non-success complement: a cancelled or
+    # timed-out scan produced no score, and this title asserts the score
+    # regressed. That outcome goes to report-stalled.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && needs.scorecard.result != 'success'
-      && needs.scorecard.result != 'skipped'
+      && needs.scorecard.result == 'failure'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -95,4 +98,40 @@ jobs:
           labels: 'automation:ci-health,type:ci,prio:low'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished scan
+    needs: scorecard
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.scorecard.result != 'success'
+      && needs.scorecard.result != 'failure'
+      && needs.scorecard.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'Scorecard scan not completing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          subject: 'The weekly OSSF Scorecard scan'
+          not-measured: 'no score was produced, so none can have regressed'
+          guidance: >-
+            Check the run's step timings against the scan job's 20-minute
+            budget; an OSSF endpoint that hangs rather than erroring reads
+            the same as a genuine stall from here.
+          result: ${{ needs.scorecard.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}

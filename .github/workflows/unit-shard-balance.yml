@@ -120,3 +120,91 @@ jobs:
           body: ${{ steps.measure.outputs.body }}
           pin: 'false'
           gh-token: ${{ github.token }}
+
+  report-failure:
+    name: Open / update tracking issue on schedule failure
+    needs: check-balance
+    # `== 'failure'` alone: the drift issue above is filed by the job itself
+    # on what it measured, so this sink is for the measurement breaking --
+    # a gh API error, or an unparseable timings document. A run that never
+    # finished measured nothing at all and goes to report-stalled.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.check-balance.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RESULT: ${{ needs.check-balance.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          The weekly unit shard balance check failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) with result \`$RESULT\`.
+
+          Run: ${RUN_URL}
+
+          The shards are unmeasured while this is broken, so \`.test_durations.unit\`
+          can go stale without anything asking for a refresh. Likely cause: the
+          \`gh run list\` / \`gh api\` lookup of the newest \`verify-backend.yml\` run,
+          or a job-name change that stops \`Test Unit (shard\` matching.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'Unit shard balance check failing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished check
+    needs: check-balance
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.check-balance.result != 'success'
+      && needs.check-balance.result != 'failure'
+      && needs.check-balance.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'Unit shard balance check not completing'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          subject: 'The weekly unit shard balance check'
+          not-measured: 'no shard wall-clock was read, so no spread can have drifted'
+          guidance: >-
+            Check the run's step timings against the check job's 10-minute
+            budget; `gh api --paginate` over a run with many jobs is the part
+            that grows, so a stall there reads the same as a hung endpoint.
+          result: ${{ needs.check-balance.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          gh-token: ${{ github.token }}

@@ -258,11 +258,15 @@ jobs:
     # Only the schedule path gets the issue sink. Manual `workflow_dispatch`
     # failures from a debugging branch shouldn't open repo-wide CI-health
     # issues; the operator already sees the run output directly.
+    #
+    # `== 'failure'` and not the non-success complement: the body below
+    # sends the reader to `--log-failed` for a failing step, which a
+    # cancelled or timed-out run does not have. That outcome goes to
+    # report-stalled.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && needs.update-lockfiles.result != 'success'
-      && needs.update-lockfiles.result != 'skipped'
+      && needs.update-lockfiles.result == 'failure'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -313,4 +317,42 @@ jobs:
           labels: 'automation:ci-health,type:ci,prio:medium'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
+          gh-token: ${{ github.token }}
+
+  report-stalled:
+    name: Open / update tracking issue on an unfinished update
+    needs: update-lockfiles
+    # The complement of the three settled results, so a result GitHub adds
+    # later still lands somewhere rather than falling through both sinks.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.update-lockfiles.result != 'success'
+      && needs.update-lockfiles.result != 'failure'
+      && needs.update-lockfiles.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/report-stalled-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-stalled-issue
+        with:
+          title: 'apko lockfile update not completing'
+          labels: 'automation:ci-health,type:ci,prio:medium'
+          subject: 'The weekly apko lockfile update'
+          not-measured: 'no lockfile was regenerated and no package drift was detected'
+          guidance: >-
+            There is no failing step to read: check the run's step timings
+            against the update job's 15-minute budget instead. A stalled
+            releases-CDN download and a hung `apko lock` look the same here.
+            Base images go stale while this persists, exactly as they do
+            when the job fails outright.
+          result: ${{ needs.update-lockfiles.result }}
+          run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}
