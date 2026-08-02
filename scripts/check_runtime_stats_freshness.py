@@ -27,10 +27,11 @@ Exit codes
 
 Flags
 -----
-* ``--skip-network`` -- bypass fetchers that shell out to
-  ``pytest --collect-only`` (``tests``). Pre-push uses this so
-  developers do not pay the collection cost on every push; CI runs
-  without the flag to perform the full check.
+* ``--skip-network`` -- bypass the fetchers that are too slow to pay on
+  every push: ``tests`` (shells out to ``pytest --collect-only``) and
+  ``providers_via_litellm`` (imports litellm, ~2.5s). Pre-push uses this
+  so developers do not pay either cost on every push; CI runs without the
+  flag to perform the full check.
 """
 
 import argparse
@@ -54,11 +55,12 @@ _YAML_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
 # orthogonal to the per-stat drift check below.
 _STALE_AFTER_DAYS: Final[int] = 14
 
-# Fetchers whose source call is a subprocess to ``pytest --collect-only``.
-# Skipped under ``--skip-network`` so developers can pre-push without
-# paying the collection cost; CI runs without the flag and covers every
-# fetcher.
-_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests"})
+# Fetchers too slow to pay on every push. ``tests`` shells out to
+# ``pytest --collect-only``; ``providers_via_litellm`` does no I/O at all
+# but imports litellm, measured at ~2.5s, which is the same cost to a
+# developer either way. Both are skipped under ``--skip-network``; CI runs
+# without the flag and covers every fetcher.
+_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "providers_via_litellm"})
 
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_runtime_stats.py"
 

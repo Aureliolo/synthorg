@@ -1644,6 +1644,8 @@ def _scan_file(
     path: Path,
     consumers: frozenset[str] | None = None,
     sinks: frozenset[str] | None = None,
+    pull_defaults: tuple[int, int] | None = None,
+    ladder_costs: dict[str, int] | None = None,
 ) -> list[str]:
     """Return all violation messages for one workflow file.
 
@@ -1654,6 +1656,8 @@ def _scan_file(
             it resolved so a whole-tree run walks the actions tree once.
         sinks: Local action directories that reach the tracking issue,
             resolved once by ``_scan_paths`` for the same reason.
+        pull_defaults: Retry defaults declared by each composite action.
+        ladder_costs: Worst-case ladder seconds per composite action.
 
     Returns:
         Violation messages, empty when the file is compliant.
@@ -1663,6 +1667,10 @@ def _scan_file(
         consumers = _artifact_consumer_dirs()
     if sinks is None:
         sinks = _tracking_issue_dirs()
+    if pull_defaults is None:
+        pull_defaults = _pull_action_defaults()
+    if ladder_costs is None:
+        ladder_costs = _pull_ladder_costs(pull_defaults)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -1676,8 +1684,6 @@ def _scan_file(
     if not isinstance(jobs, dict):
         return _scan_composite_action(data, rel_path, consumers)
     permissions = data.get("permissions")
-    pull_defaults = _pull_action_defaults()
-    ladder_costs = _pull_ladder_costs(pull_defaults)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -1768,15 +1774,20 @@ def _check_dockerfile_digest_pins() -> list[str]:
 def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
+    # Resolved once for the whole run. Each of these walks and parses every
+    # composite action, so recomputing them per file made a 34-workflow scan
+    # re-read the 25 action files 34 times over.
     consumers = _artifact_consumer_dirs()
     sinks = _tracking_issue_dirs()
+    pull_defaults = _pull_action_defaults()
+    ladder_costs = _pull_ladder_costs(pull_defaults)
     for message in _check_dockerfile_digest_pins():
         failed = True
         print(message, file=sys.stderr)
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
-        violations = _scan_file(path, consumers, sinks)
+        violations = _scan_file(path, consumers, sinks, pull_defaults, ladder_costs)
         if not violations:
             continue
         failed = True

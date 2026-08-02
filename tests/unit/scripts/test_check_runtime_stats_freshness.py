@@ -268,6 +268,9 @@ class TestSkipNetworkFlag:
             return _trap
 
         fetchers["tests"] = _make_trap("tests", "subprocess pytest")
+        fetchers["providers_via_litellm"] = _make_trap(
+            "providers_via_litellm", "import litellm"
+        )
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main(["--skip-network"]) == 0
         assert called == []
@@ -275,17 +278,18 @@ class TestSkipNetworkFlag:
 
 @pytest.mark.unit
 class TestNetworkStatsInventory:
-    """``_NETWORK_STATS`` covers every subprocess-backed fetcher."""
+    """``_NETWORK_STATS`` covers every fetcher too slow to run per push."""
 
     def test_network_stats_subset_of_fetchers(self) -> None:
         unknown = check._NETWORK_STATS - set(gen._FETCHERS)
         assert not unknown, f"_NETWORK_STATS references unknown stats: {unknown}"
 
-    def test_network_stats_includes_subprocess_fetchers(self) -> None:
-        # Hard-pin the known network-backed stats; if the generator
-        # adds another subprocess fetcher, this test enforces a
-        # deliberate decision on whether to add it to the network set.
-        expected = frozenset({"tests"})
+    def test_network_stats_includes_the_slow_fetchers(self) -> None:
+        # Hard-pin the set; if the generator adds another slow fetcher,
+        # this test forces a deliberate decision on whether it belongs.
+        # providers_via_litellm does no I/O, but importing litellm costs
+        # ~2.5s, which is the same money out of the push budget.
+        expected = frozenset({"tests", "providers_via_litellm"})
         assert expected == check._NETWORK_STATS
 
 

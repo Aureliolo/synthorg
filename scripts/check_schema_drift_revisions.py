@@ -657,6 +657,37 @@ def _wrap_schema_as_revisions(schema_text: str) -> Path:
     return tmp_dir
 
 
+def _fold_revisions(revisions_path: Path) -> Path:
+    """Concatenate every revision into one synthetic revision, in order.
+
+    yoyo commits once per migration, and each commit is an fsync against a
+    real file, so applying the revisions one at a time costs far more in
+    transaction overhead than the DDL itself: measured at 27.5s for the
+    SQLite set against 1.4s for the same statements applied together, for
+    a byte-identical schema dump.
+
+    This is the same trick :func:`_wrap_schema_as_revisions` already plays
+    on the declared side, so both halves of the comparison are now built
+    the same way. What the gate asserts is the schema the revisions
+    *accumulate to*; that each revision also applies cleanly in isolation
+    is a migration-correctness property, and it is the real ``migrate_apply``
+    in the conformance suite and at app startup that proves it.
+
+    Returns:
+        A temp directory holding the single folded revision. The caller
+        deletes it.
+    """
+    folded = Path(tempfile.mkdtemp(prefix="drift-folded-"))
+    bodies = [
+        path.read_text(encoding="utf-8")
+        for path in sorted(revisions_path.glob("*.sql"))
+    ]
+    (folded / "00000000000000_folded.sql").write_text(
+        "\n".join(bodies), encoding="utf-8"
+    )
+    return folded
+
+
 async def _dump_via_yoyo(
     backend: BackendName,
     revisions_path: Path,
@@ -666,6 +697,27 @@ async def _dump_via_yoyo(
     if backend == "sqlite":
         return await _dump_sqlite_schema(revisions_path)
     return await _dump_postgres_schema(revisions_path, postgres_image)
+
+
+async def _dump_accumulated(
+    backend: BackendName,
+    revisions_path: Path,
+    postgres_image: str,
+) -> str:
+    """Dump the schema the revisions accumulate to.
+
+    SQLite folds the revisions into one transaction (see
+    :func:`_fold_revisions`). Postgres does not: some DDL there is not
+    transactional, so folding could change what actually runs, and that
+    arm's cost is dominated by starting a container anyway.
+    """
+    if backend != "sqlite":
+        return await _dump_via_yoyo(backend, revisions_path, postgres_image)
+    folded = _fold_revisions(revisions_path)
+    try:
+        return await _dump_via_yoyo(backend, folded, postgres_image)
+    finally:
+        shutil.rmtree(folded, ignore_errors=True)
 
 
 async def _main(backend: BackendName, postgres_image: str) -> int:
@@ -685,7 +737,7 @@ async def _main(backend: BackendName, postgres_image: str) -> int:
         declared_sql = await _dump_via_yoyo(backend, declared_tmp, postgres_image)
     finally:
         shutil.rmtree(declared_tmp, ignore_errors=True)
-    actual_sql = await _dump_via_yoyo(backend, revisions_path, postgres_image)
+    actual_sql = await _dump_accumulated(backend, revisions_path, postgres_image)
 
     declared_tables, declared_indexes = parse_schema(declared_sql, backend)
     actual_tables, actual_indexes = parse_schema(actual_sql, backend)
