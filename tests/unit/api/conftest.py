@@ -963,11 +963,18 @@ async def async_test_client(
     """Yield a portal-free async client wrapping the shared app.
 
     The expensive ``create_app()`` runs once per worker. Each test
-    re-runs the idempotent lifespan startup (~90ms) and the per-test
-    state reset; shutdown is skipped (``_skip_lifecycle_shutdown``). The
-    lifespan and every request run on the test's own pytest-asyncio loop,
-    so there is no anyio ``BlockingPortal`` (no extra thread, event loop,
-    or ``socket.socketpair``).
+    re-runs the idempotent lifespan startup and the per-test state reset;
+    shutdown is skipped (``_skip_lifecycle_shutdown``). The lifespan and
+    every request run on the test's own pytest-asyncio loop, so there is
+    no anyio ``BlockingPortal`` (no extra thread, event loop, or
+    ``socket.socketpair``).
+
+    Cost, measured per test on one controller case: pre-test reset 15ms,
+    lifespan startup **909ms**, post-startup reset 1.3ms, restore 0.4ms.
+    The resets are noise; the lifespan is 98% of it, and it is paid to be
+    largely thrown away, since ``_post_startup_reset`` immediately reverts
+    most of what it wired. Anything aiming at this fixture's cost should
+    aim at the startup, not the resets.
     """
     async with _async_shared_client(_shared_app, _reset_services) as client:
         yield client
