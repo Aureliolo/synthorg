@@ -68,6 +68,31 @@ def _all_capabilities(world: _World) -> tuple[Capability, ...]:
 class TestOrdering:
     """Activation order comes from the declarations, not a written sequence."""
 
+    @pytest.mark.parametrize(
+        ("gate", "reason"),
+        [
+            ("knowledge.enabld", "not a registered"),
+            ("enabled", "not a registered"),
+            ("memory.backend", "a gate is on or off"),
+        ],
+        ids=["misspelled-key", "no-namespace", "not-a-boolean"],
+    )
+    def test_a_gate_that_can_never_read_as_off_is_refused(
+        self, gate: str, reason: str
+    ) -> None:
+        # An unresolvable gate reads as enabled, which is the right default
+        # for a subsystem that declares none and the wrong one for a typo:
+        # the operator switches it off, the write lands, and nothing changes.
+        world = _World()
+        spec = SubsystemSpec(
+            name="knowledge",
+            provides=CapabilityId.KNOWLEDGE_ENGINE,
+            activate=_installs(world, "knowledge", CapabilityId.KNOWLEDGE_ENGINE),
+            enabled_by=gate,
+        )
+        with pytest.raises(SubsystemGraphInvalidError, match=reason):
+            SubsystemReconciler((spec,), _all_capabilities(world))
+
     def test_provider_is_ordered_before_its_consumer(self) -> None:
         world = _World()
         consumer = SubsystemSpec(

@@ -57,8 +57,9 @@ class SubsystemStatus:
     Attributes:
         name: The subsystem's stable identifier.
         phase: Its resting state after the pass.
-        waiting_on: Unmet requirements, populated only for ``WAITING``. Names
-            every missing capability, not just the first.
+        waiting_on: Unmet requirements, populated for ``WAITING`` and for
+            ``DEGRADED``, which is up with a requirement gone. Names every
+            missing capability, not just the first.
         detail: Redacted failure description, populated only for ``FAILED``.
     """
 

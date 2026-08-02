@@ -130,6 +130,21 @@ class TestMerging:
         merged = merge_reports([report], root)
         assert set(merged.durations) == {"tests/unit/a/test_one.py::test_slow"}
 
+    @pytest.mark.parametrize("time_value", ["NaN", "Infinity", "-Infinity"])
+    def test_a_non_finite_duration_is_refused(
+        self, tmp_path: Path, time_value: str
+    ) -> None:
+        # NaN compares false against the minimum, so it would slip past the
+        # threshold and partition a shard against a number that is not one.
+        root = _tree(tmp_path, "tests/unit/a/test_one.py")
+        report = _write(
+            tmp_path,
+            "junit.xml",
+            _report(("tests.unit.a.test_one", "test_a", time_value)),
+        )
+        with pytest.raises(ValueError, match="non-finite"):
+            merge_reports([report], root)
+
     def test_a_missing_module_is_tolerated_as_drift(self, tmp_path: Path) -> None:
         # A report predates a rename, or was recorded on a branch carrying
         # tests this tree lacks. A stale entry among a healthy suite is

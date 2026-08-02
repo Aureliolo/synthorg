@@ -25,6 +25,7 @@ filesystem; anything after it is the class chain.
 
 import argparse
 import json
+import math
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -103,8 +104,9 @@ def durations_from_report(path: Path, repo_root: Path) -> MergedDurations:
         The per-test durations, plus what could not be resolved.
 
     Raises:
-        ValueError: When the file cannot be parsed. A missing shard would
-            drop a quarter of the suite back to count-based partitioning.
+        ValueError: When the file cannot be parsed, or a case carries a
+            non-finite time. A missing shard would drop a quarter of the
+            suite back to count-based partitioning.
     """
     try:
         tree = ET.parse(path)  # noqa: S314 -- CI-generated report, not user input
@@ -125,7 +127,13 @@ def durations_from_report(path: Path, repo_root: Path) -> MergedDurations:
             result.unresolved.add(classname)
             continue
         module, classes = resolved
-        seconds = float(case.get("time") or 0.0)
+        raw_seconds = case.get("time") or "0"
+        seconds = float(raw_seconds)
+        if not math.isfinite(seconds):
+            # NaN compares false against the floor below, so it would enter
+            # the map and partition a shard against a number that is not one.
+            msg = f"{path}: test case {name!r} has a non-finite time {raw_seconds!r}"
+            raise ValueError(msg)
         if seconds < _MIN_RECORDED_SECONDS:
             continue
         nodeid = "::".join([module, *classes, name])

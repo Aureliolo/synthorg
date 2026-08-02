@@ -32,7 +32,8 @@ def order_subsystems(
 
     Raises:
         SubsystemGraphInvalidError: On a duplicate name, a duplicate
-            ``provides``, an unprobed requirement, or a cycle.
+            ``provides``, an ``enabled_by`` that names no boolean setting, an
+            unprobed requirement, or a cycle.
     """
     pending = list(specs)
     probed = set(known)
@@ -55,6 +56,7 @@ def order_subsystems(
             raise SubsystemGraphInvalidError(msg)
         providers[spec.provides] = spec.name
 
+    _reject_invalid_enabled_by(pending)
     if probed:
         _reject_unprobed_requirements(pending, providers, probed)
 
@@ -79,6 +81,48 @@ def order_subsystems(
         ready_names = {spec.name for spec in ready}
         remaining = [spec for spec in remaining if spec.name not in ready_names]
     return tuple(ordered)
+
+
+def _reject_invalid_enabled_by(specs: Sequence[SubsystemSpec]) -> None:
+    """Refuse a gate that can never read as off.
+
+    ``_enabled`` resolves ``namespace.key`` against the boot config and treats
+    anything it cannot find as enabled, which is the right default for a
+    subsystem that declares no gate and the wrong one for a typo: an operator
+    switches the subsystem off, the write lands, and the gate keeps reading
+    true forever. The declaration is the only place that can tell those apart,
+    so it is checked here.
+
+    Args:
+        specs: The declared subsystems.
+
+    Raises:
+        SubsystemGraphInvalidError: On an entry that is not ``namespace.key``,
+            names no registered setting, or names one that is not a boolean.
+    """
+    import synthorg.settings.definitions  # noqa: F401, PLC0415 -- registers them
+    from synthorg.settings.enums import SettingType  # noqa: PLC0415
+    from synthorg.settings.registry import get_registry  # noqa: PLC0415
+
+    registry = get_registry()
+    for spec in specs:
+        if spec.enabled_by is None:
+            continue
+        namespace, separator, key = spec.enabled_by.partition(".")
+        definition = registry.get(namespace, key) if separator else None
+        if definition is None:
+            msg = (
+                f"Subsystem {spec.name!r} is gated by {spec.enabled_by!r}, which "
+                "is not a registered 'namespace.key'; the gate would read as on "
+                "no matter what an operator sets"
+            )
+            raise SubsystemGraphInvalidError(msg)
+        if definition.type is not SettingType.BOOLEAN:
+            msg = (
+                f"Subsystem {spec.name!r} is gated by {spec.enabled_by!r}, which "
+                f"is a {definition.type.value} setting; a gate is on or off"
+            )
+            raise SubsystemGraphInvalidError(msg)
 
 
 def _reject_unprobed_requirements(
