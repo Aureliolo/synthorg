@@ -45,6 +45,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
@@ -138,17 +139,9 @@ class _InMemoryForecastRepo:
 class _EngineHost(AgentEngineErrorsMixin):
     """Host for the engine error mixin under test."""
 
-    def __init__(
-        self,
-        *,
-        approval_gate: object | None,
-        cost_forecast_repo: object | None = None,
-    ) -> None:
+    def __init__(self, *, approval_gate: object | None) -> None:
         self._approval_gate = approval_gate
         self._cost_tracker = None
-        self._cost_forecast_repo = cast(  # type: ignore[explicit-any]  # in-memory fake repo stands in for the protocol
-            "Any", cost_forecast_repo
-        )
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -287,10 +280,7 @@ async def test_cost_dial_full_lifecycle() -> None:
     async def _park_ok(**_: object) -> None:
         return None
 
-    engine = _EngineHost(
-        approval_gate=SimpleNamespace(park_context=_park_ok),
-        cost_forecast_repo=repo,
-    )
+    engine = _EngineHost(approval_gate=SimpleNamespace(park_context=_park_ok))
     run_result = cast(  # type: ignore[explicit-any]  # engine internal returns a dynamic resume payload
         "Any",
         await engine._handle_budget_error(
@@ -311,7 +301,10 @@ async def test_cost_dial_full_lifecycle() -> None:
     await repo.save(
         repo.rows[forecast_id].model_copy(update={"ceiling_amount": 3.00}),
     )
-    resumed_task = await engine._ceiling_synced_task(task_with_ceiling)
+    resumed_task = await ceiling_synced_task(
+        task_with_ceiling,
+        cast("Any", repo),  # type: ignore[explicit-any]  # in-memory fake repo stands in for the protocol
+    )
     assert resumed_task.hard_ceiling == pytest.approx(3.00)
     resumed_checker = await enforcer.make_budget_checker(resumed_task, "agent-1")
     assert resumed_checker is not None

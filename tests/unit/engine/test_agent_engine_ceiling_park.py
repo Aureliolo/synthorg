@@ -15,7 +15,7 @@ missing repo or a missing forecast id degrades silently.
 """
 
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,13 +30,15 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.persistence.cost_forecast_protocol import (
+    CostForecastFilterSpec,
+    CostForecastRepository,
+)
 from tests._shared import as_uuid, sid
-
-if TYPE_CHECKING:
-    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
 pytestmark = pytest.mark.unit
 
@@ -71,7 +73,55 @@ class _FakeApprovalGate:
             raise RuntimeError(msg)
 
 
-class _FakeForecastRepo:
+class _ForecastRepoSurface:
+    """The protocol members these doubles never exercise.
+
+    ``ceiling_synced_task`` takes ``CostForecastRepository`` at a typed
+    boundary, so typeguard resolves the whole protocol against whatever
+    is passed. Only ``get`` and ``save`` carry behaviour worth asserting
+    on; the rest exist so the doubles satisfy the protocol.
+    """
+
+    async def delete(self, entity_id: UUID) -> bool:
+        return False
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[Forecast, ...]:
+        return ()
+
+    async def transition_if(
+        self,
+        entity_id: UUID,
+        from_state: ForecastDecision,
+        to_state: ForecastDecision,
+        **updates: object,
+    ) -> bool:
+        return False
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        return False
+
+    async def query(
+        self,
+        filter_spec: CostForecastFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        return ()
+
+    async def count(self, filter_spec: CostForecastFilterSpec) -> int:
+        return 0
+
+
+class _FakeForecastRepo(_ForecastRepoSurface):
     """Async CostForecastRepository double for halt-stamp assertions."""
 
     def __init__(self, forecast: Forecast | None) -> None:
@@ -87,7 +137,7 @@ class _FakeForecastRepo:
         self.saved.append(entity)
 
 
-class _ExplodingForecastRepo:
+class _ExplodingForecastRepo(_ForecastRepoSurface):
     """CostForecastRepository double whose reads always fail."""
 
     async def get(self, entity_id: UUID) -> Forecast | None:
@@ -166,11 +216,10 @@ async def test_raised_forecast_ceiling_reaches_enforcement() -> None:
     """
     forecast_id = uuid4()
     raised = _forecast(forecast_id).model_copy(update={"ceiling_amount": 5.0})
-    repo = _FakeForecastRepo(raised)
+    repo = cast("CostForecastRepository", _FakeForecastRepo(raised))
 
-    engine = _MockEngine(approval_gate=None, cost_forecast_repo=repo)
     stale = _task().model_copy(update={"forecast_id": forecast_id})
-    synced = await engine._ceiling_synced_task(stale)
+    synced = await ceiling_synced_task(stale, repo)
 
     assert stale.hard_ceiling == 1.5
     assert synced.hard_ceiling == 5.0
@@ -183,13 +232,10 @@ async def test_unreadable_forecast_keeps_the_stricter_snapshot() -> None:
     The snapshot is the lower of the two, so degrading to it re-parks the
     run rather than letting it spend past a limit nobody raised.
     """
-    engine = _MockEngine(
-        approval_gate=None,
-        cost_forecast_repo=_ExplodingForecastRepo(),
-    )
+    repo = cast("CostForecastRepository", _ExplodingForecastRepo())
     stale = _task().model_copy(update={"forecast_id": uuid4()})
 
-    synced = await engine._ceiling_synced_task(stale)
+    synced = await ceiling_synced_task(stale, repo)
 
     assert synced.hard_ceiling == 1.5
 

@@ -21,6 +21,7 @@ from synthorg.engine._agent_engine_types import (
     ResearchToolFactoryProvider,
     StructureMapToolFactoryProvider,
 )
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine._stream_progress import (
     make_turn_observer,
     publish_run_started,
@@ -832,7 +833,7 @@ class AgentEngine(
             budget_checker: BudgetChecker | None
             if self._budget_enforcer:
                 budget_checker = await self._budget_enforcer.make_budget_checker(
-                    await self._ceiling_synced_task(task),
+                    await ceiling_synced_task(task, self._cost_forecast_repo),
                     agent_id,
                     project_id=task.project,
                     project_budget=project_budget,
