@@ -197,17 +197,24 @@ func TestFetchJSON_atCapSucceeds(t *testing.T) {
 	}
 }
 
-func TestCheckDevFromURL(t *testing.T) {
+// releaseAssets builds the asset set a published release carries: the
+// platform archive, its checksums, and the Sigstore bundle that
+// authenticates them. The bundle is not optional -- findAssets refuses a
+// release without it -- so a fixture omitting it is not a real release.
+func releaseAssets(tag string) []Asset {
 	asset := assetName()
+	base := expectedURLPrefix + tag + "/"
+	return []Asset{
+		{Name: asset, BrowserDownloadURL: base + asset},
+		{Name: "checksums.txt", BrowserDownloadURL: base + "checksums.txt"},
+		{Name: "checksums.txt.sigstore.json", BrowserDownloadURL: base + "checksums.txt.sigstore.json"},
+	}
+}
+
+func TestCheckDevFromURL(t *testing.T) {
 	releases := []devRelease{
-		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/checksums.txt"},
-		}},
-		{TagName: "v0.4.6", Prerelease: false, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.6/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.6/checksums.txt"},
-		}},
+		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: releaseAssets("v0.4.7-dev.3")},
+		{TagName: "v0.4.6", Prerelease: false, Assets: releaseAssets("v0.4.6")},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -227,16 +234,9 @@ func TestCheckDevFromURL(t *testing.T) {
 }
 
 func TestCheckDevFromURLPrefersStable(t *testing.T) {
-	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/checksums.txt"},
-		}},
-		{TagName: "v0.4.7", Prerelease: false, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7/checksums.txt"},
-		}},
+		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: releaseAssets("v0.4.7-dev.3")},
+		{TagName: "v0.4.7", Prerelease: false, Assets: releaseAssets("v0.4.7")},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -276,16 +276,9 @@ func TestCheckDevFromURLAllDrafts(t *testing.T) {
 func TestCheckDevFromURLMalformedFirstTag(t *testing.T) {
 	// A malformed dev tag appearing first must not become the baseline and
 	// suppress valid dev tags that follow.
-	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.5.0-dev.NaN", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.NaN/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.NaN/checksums.txt"},
-		}},
-		{TagName: "v0.5.0-dev.3", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.3/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.3/checksums.txt"},
-		}},
+		{TagName: "v0.5.0-dev.NaN", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.NaN")},
+		{TagName: "v0.5.0-dev.3", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.3")},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -308,28 +301,12 @@ func TestCheckDevFromURLOutOfOrder(t *testing.T) {
 	// GitHub API may return releases out of version order when drafts are
 	// published asynchronously. selectBestRelease must compare by version,
 	// not rely on list position.
-	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.5.0-dev.9", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.9/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.9/checksums.txt"},
-		}},
-		{TagName: "v0.5.0-dev.8", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.8/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.8/checksums.txt"},
-		}},
-		{TagName: "v0.5.0-dev.11", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.11/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.11/checksums.txt"},
-		}},
-		{TagName: "v0.5.0-dev.10", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.10/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.10/checksums.txt"},
-		}},
-		{TagName: "v0.4.9", Prerelease: false, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.9/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.9/checksums.txt"},
-		}},
+		{TagName: "v0.5.0-dev.9", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.9")},
+		{TagName: "v0.5.0-dev.8", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.8")},
+		{TagName: "v0.5.0-dev.11", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.11")},
+		{TagName: "v0.5.0-dev.10", Prerelease: true, Assets: releaseAssets("v0.5.0-dev.10")},
+		{TagName: "v0.4.9", Prerelease: false, Assets: releaseAssets("v0.4.9")},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -350,16 +327,9 @@ func TestCheckDevFromURLOutOfOrder(t *testing.T) {
 
 func TestCheckDevFromURLOutOfOrderStable(t *testing.T) {
 	// Stable releases may also appear out of order.
-	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.4.8", Prerelease: false, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.8/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.8/checksums.txt"},
-		}},
-		{TagName: "v0.4.9", Prerelease: false, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.9/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.9/checksums.txt"},
-		}},
+		{TagName: "v0.4.8", Prerelease: false, Assets: releaseAssets("v0.4.8")},
+		{TagName: "v0.4.9", Prerelease: false, Assets: releaseAssets("v0.4.9")},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

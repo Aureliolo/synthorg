@@ -3,69 +3,163 @@ package verify
 import (
 	"regexp"
 	"testing"
+
+	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 )
 
-func TestExpectedSANRegexMatchesValidRefs(t *testing.T) {
+// wfPrefix is the workflow-path prefix every legitimate signing identity
+// from this repository shares.
+const wfPrefix = "https://github.com/Aureliolo/synthorg/.github/workflows/"
+
+func TestExpectedSANRegex(t *testing.T) {
+	t.Parallel()
 	re := regexp.MustCompile(ExpectedSANRegex)
 
-	valid := []string{
-		// Read off live published images: backend, sandbox, sidecar and
-		// both fine-tune variants carry the first identity, web the
-		// second, each under the heads/main ref of the build a release
-		// tag was retagged from.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image-loaded.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image-loaded.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v0.3.0-rc.1",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v1.2.3+build.456",
-		// Images published under the retired signer stay verifiable.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/main",
+	tests := []struct {
+		name string
+		san  string
+		want bool
+	}{
+		// Read off live published images. Every one carries heads/main,
+		// including release-tagged images, because retagging re-points a
+		// tag at an already-signed digest without signing again.
+		{"reusable_publish_image_main", wfPrefix + "reusable-publish-image.yml@refs/heads/main", true},
+		{"reusable_publish_image_loaded_main", wfPrefix + "reusable-publish-image-loaded.yml@refs/heads/main", true},
+		{"retired_docker_main", wfPrefix + "docker.yml@refs/heads/main", true},
+
+		// Publish jobs are gated to main, so no image can legitimately
+		// carry a tag ref; accepting one would only ever help a forger.
+		{"reusable_publish_image_tag", wfPrefix + "reusable-publish-image.yml@refs/tags/v1.2.3", false},
+		{"retired_docker_tag", wfPrefix + "docker.yml@refs/tags/v0.9.3", false},
+
+		// Callers grant scopes and delegate; no certificate carries them.
+		{"caller_build_images", wfPrefix + "build-images.yml@refs/heads/main", false},
+		{"caller_verify_cli", wfPrefix + "verify-cli.yml@refs/heads/main", false},
+
+		// The release-archive signer must not vouch for an image.
+		{"release_archive_signer", wfPrefix + "reusable-release-cli.yml@refs/heads/main", false},
+		{"retired_release_archive_signer", wfPrefix + "cli.yml@refs/tags/v0.9.3", false},
+
+		// Base layers are outside ImageNames(), so their signer must not
+		// vouch for a service image.
+		{"apko_base_signer", wfPrefix + "reusable-publish-apko-base.yml@refs/heads/main", false},
+
+		// A workflow whose name merely contains an accepted one.
+		{"prefix_hijack", wfPrefix + "evil-reusable-publish-image.yml@refs/heads/main", false},
+		{"suffix_hijack", wfPrefix + "reusable-publish-image-evil.yml@refs/heads/main", false},
+		{"loaded_suffix_hijack", wfPrefix + "reusable-publish-image-loaded-evil.yml@refs/heads/main", false},
+
+		{"foreign_owner", "https://github.com/evil/synthorg/.github/workflows/reusable-publish-image.yml@refs/heads/main", false},
+		{"foreign_repo", "https://github.com/Aureliolo/other-repo/.github/workflows/reusable-publish-image.yml@refs/heads/main", false},
+		{"foreign_host", "https://example.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/heads/main", false},
+		{"userinfo_trick", "https://github.com@evil.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/heads/main", false},
+		{"feature_branch", wfPrefix + "reusable-publish-image.yml@refs/heads/feature/evil", false},
+		{"pull_ref", wfPrefix + "reusable-publish-image.yml@refs/pull/1/merge", false},
+		{"empty", "", false},
+		{"garbage", "random-string", false},
 	}
-	for _, ref := range valid {
-		if !re.MatchString(ref) {
-			t.Errorf("SAN regex should match %q", ref)
-		}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := re.MatchString(tc.san); got != tc.want {
+				t.Errorf("MatchString(%q) = %v, want %v", tc.san, got, tc.want)
+			}
+		})
 	}
 }
 
-func TestExpectedSANRegexRejectsInvalidRefs(t *testing.T) {
-	re := regexp.MustCompile(ExpectedSANRegex)
-
-	invalid := []string{
-		"https://github.com/evil/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/other-repo/.github/workflows/reusable-publish-image.yml@refs/tags/v0.3.0",
-		"https://example.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/heads/feature/evil",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/feature/evil",
-		// Callers grant scopes and pass inputs; they run no signing step,
-		// so no certificate ever carries them and admitting one would be
-		// unreachable trust surface.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v0.3.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.0.0",
-		// The CLI release signer must not be able to vouch for an image.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.0.0",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.0.0",
-		// Base layers are outside ImageNames(), so their signer must not
-		// vouch for a service image.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-apko-base.yml@refs/heads/main",
-		// A workflow whose name merely contains an accepted one.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-reusable-publish-image.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image-evil.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image-loaded-evil.yml@refs/heads/main",
-		"",
-		"random-string",
+// TestBuildIdentityPolicyBindsRepository covers what the SAN cannot express.
+// A public reusable workflow may be called from any repository on GitHub, and
+// the caller's build mints a certificate carrying this repository's workflow
+// path as its SAN. Only the repository-binding extensions separate a build we
+// ran from one that merely used our workflow as its recipe, so a SAN-only
+// policy would accept an artefact signed by a stranger.
+func TestBuildIdentityPolicyBindsRepository(t *testing.T) {
+	t.Parallel()
+	certID, err := BuildIdentityPolicy()
+	if err != nil {
+		t.Fatalf("BuildIdentityPolicy() error: %v", err)
 	}
-	for _, ref := range invalid {
-		if re.MatchString(ref) {
-			t.Errorf("SAN regex should NOT match %q", ref)
-		}
+	trustedSAN := wfPrefix + "reusable-publish-image.yml@refs/heads/main"
+
+	tests := []struct {
+		name    string
+		ext     certificate.Extensions
+		wantErr bool
+	}{
+		{
+			name: "this_repository",
+			ext: certificate.Extensions{
+				Issuer:                     ExpectedIssuer,
+				SourceRepositoryURI:        ExpectedSourceRepositoryURI,
+				SourceRepositoryIdentifier: ExpectedSourceRepositoryID,
+				RunnerEnvironment:          ExpectedRunnerEnvironment,
+			},
+		},
+		{
+			name: "foreign_caller_identical_san",
+			ext: certificate.Extensions{
+				Issuer:                     ExpectedIssuer,
+				SourceRepositoryURI:        "https://github.com/attacker/repo",
+				SourceRepositoryIdentifier: "999999999",
+				RunnerEnvironment:          ExpectedRunnerEnvironment,
+			},
+			wantErr: true,
+		},
+		{
+			// The numeric id is pinned so a rename or transfer that frees
+			// the URI cannot be used to reclaim the identity.
+			name: "matching_uri_wrong_repository_id",
+			ext: certificate.Extensions{
+				Issuer:                     ExpectedIssuer,
+				SourceRepositoryURI:        ExpectedSourceRepositoryURI,
+				SourceRepositoryIdentifier: "999999999",
+				RunnerEnvironment:          ExpectedRunnerEnvironment,
+			},
+			wantErr: true,
+		},
+		{
+			name: "self_hosted_runner",
+			ext: certificate.Extensions{
+				Issuer:                     ExpectedIssuer,
+				SourceRepositoryURI:        ExpectedSourceRepositoryURI,
+				SourceRepositoryIdentifier: ExpectedSourceRepositoryID,
+				RunnerEnvironment:          "self-hosted",
+			},
+			wantErr: true,
+		},
+		{
+			name: "wrong_issuer",
+			ext: certificate.Extensions{
+				Issuer:                     "https://token.actions.example.com",
+				SourceRepositoryURI:        ExpectedSourceRepositoryURI,
+				SourceRepositoryIdentifier: ExpectedSourceRepositoryID,
+				RunnerEnvironment:          ExpectedRunnerEnvironment,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			summary := certificate.Summary{
+				CertificateIssuer:      tc.ext.Issuer,
+				SubjectAlternativeName: trustedSAN,
+				Extensions:             tc.ext,
+			}
+			err := certID.Verify(summary)
+			if tc.wantErr && err == nil {
+				t.Error("Verify() = nil, want rejection")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Verify() = %v, want nil", err)
+			}
+		})
 	}
 }
 
 func TestImageNamesContainsExpectedServices(t *testing.T) {
+	t.Parallel()
 	expected := map[string]bool{"backend": false, "web": false, "sandbox": false, "sidecar": false, "fine-tune-gpu": false, "fine-tune-cpu": false}
 	for _, name := range ImageNames() {
 		if _, ok := expected[name]; !ok {
@@ -81,6 +175,7 @@ func TestImageNamesContainsExpectedServices(t *testing.T) {
 }
 
 func TestBuildIdentityPolicyDoesNotError(t *testing.T) {
+	t.Parallel()
 	_, err := BuildIdentityPolicy()
 	if err != nil {
 		t.Fatalf("BuildIdentityPolicy() error: %v", err)

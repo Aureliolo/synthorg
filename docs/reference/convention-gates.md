@@ -118,9 +118,9 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
 | `check_setting_compose_backed.py` | push | `settings/definitions/` + compose template + worker launch | full | no | none | keep |
-| `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
+| `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `.github/scripts/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
 | `check_subsystems_single_owner.py` | push | `api/subsystems/registry.py` + `src/synthorg/` | full | no | none | add |
@@ -133,7 +133,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->108<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->109<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

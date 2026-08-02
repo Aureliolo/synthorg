@@ -245,6 +245,19 @@ func (u *UI) Warn(msg string) {
 	u.printLine(u.warn, u.icon(IconWarning, PlainIconWarning), msg)
 }
 
+// WarnAlways prints a warning that survives --quiet.
+//
+// For warnings whose whole value is that they cannot be lost: a scripted
+// pipeline running with --quiet that never sees them would proceed against
+// unverified artefacts with no record either way. Still suppressed in JSON
+// mode, where human text on stdout would corrupt the document.
+func (u *UI) WarnAlways(msg string) {
+	if u.jsonMode {
+		return
+	}
+	u.printLine(u.warn, u.icon(IconWarning, PlainIconWarning), msg)
+}
+
 // Error prints an error status line (red).
 // Visible in quiet mode (--quiet = errors only). Suppressed in JSON mode
 // to avoid leaking human text into JSON stdout.

@@ -61,6 +61,13 @@ var (
 // transport blip, and retrying it only burns budget on the same rejection.
 var errDisallowedRedirect = errors.New("disallowed redirect")
 
+// ErrSigstoreVerification marks a release whose signature did not verify, so
+// callers can recognise it with errors.Is rather than matching message text.
+// The distinction matters to the caller: the trusted identity is compiled
+// into the binary, so this failure is the one an update cannot recover from
+// by retrying.
+var ErrSigstoreVerification = errors.New("sigstore verification failed")
+
 // checkRedirectHost validates that each redirect hop stays within
 // AllowedDownloadHosts. This prevents a compromised redirect chain
 // from opening connections to internal hosts before the post-response
@@ -105,7 +112,7 @@ type CheckResult struct {
 	UpdateAvail     bool
 	AssetURL        string
 	ChecksumURL     string
-	SigstoreBundURL string // Sigstore bundle for checksums.txt (optional)
+	SigstoreBundURL string // Sigstore bundle authenticating checksums.txt
 }
 
 // CheckForChannel queries GitHub for the appropriate release based on channel.
@@ -500,31 +507,57 @@ func compareSemver(a, b string) (int, error) {
 	return 0, nil
 }
 
-func findAssets(release Release) (assetURL, checksumURL, bundleURL string, err error) {
-	archiveName := assetName()
+// Asset names a release publishes alongside each platform archive. Both are
+// load-bearing for the install: the checksums establish integrity and the
+// bundle establishes origin.
+const (
+	checksumsAssetName      = "checksums.txt"
+	sigstoreBundleAssetName = "checksums.txt.sigstore.json"
+)
+
+// releaseAssetURL returns the download URL of the asset named want, or an
+// empty string when the release does not publish it.
+//
+// A URL outside the expected release path is an error rather than a miss:
+// treating it as absent would let a crafted asset list silently drop an
+// artefact the caller requires.
+func releaseAssetURL(release Release, want string) (string, error) {
 	for _, a := range release.Assets {
-		switch a.Name {
-		case archiveName:
-			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return "", "", "", fmt.Errorf("asset URL %q does not match expected prefix", a.BrowserDownloadURL)
-			}
-			assetURL = a.BrowserDownloadURL
-		case "checksums.txt":
-			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return "", "", "", fmt.Errorf("checksum URL %q does not match expected prefix", a.BrowserDownloadURL)
-			}
-			checksumURL = a.BrowserDownloadURL
-		case "checksums.txt.sigstore.json":
-			if strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				bundleURL = a.BrowserDownloadURL
-			}
+		if a.Name != want {
+			continue
 		}
+		if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
+			return "", fmt.Errorf("%s URL %q does not match expected prefix", want, a.BrowserDownloadURL)
+		}
+		return a.BrowserDownloadURL, nil
+	}
+	return "", nil
+}
+
+func findAssets(release Release) (assetURL, checksumURL, bundleURL string, err error) {
+	if assetURL, err = releaseAssetURL(release, assetName()); err != nil {
+		return "", "", "", err
+	}
+	if checksumURL, err = releaseAssetURL(release, checksumsAssetName); err != nil {
+		return "", "", "", err
+	}
+	if bundleURL, err = releaseAssetURL(release, sigstoreBundleAssetName); err != nil {
+		return "", "", "", err
 	}
 	if assetURL == "" {
 		return "", "", "", fmt.Errorf("no release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	if checksumURL == "" {
-		return "", "", "", fmt.Errorf("no checksums.txt found in release assets")
+		return "", "", "", fmt.Errorf("no %s found in release assets", checksumsAssetName)
+	}
+	// The checksums file travels the same channel as the archive, so a
+	// checksum alone proves nothing about origin. Treating the bundle as
+	// optional would let anyone who can shape the asset list downgrade the
+	// install to unauthenticated by simply omitting it.
+	if bundleURL == "" {
+		return "", "", "", fmt.Errorf(
+			"no %s found in release assets -- refusing to install an unverifiable binary",
+			sigstoreBundleAssetName)
 	}
 	return assetURL, checksumURL, bundleURL, nil
 }
@@ -538,39 +571,53 @@ func Download(ctx context.Context, assetURL, checksumURL, bundleURL string) ([]b
 		return nil, fmt.Errorf("no checksum file found in release assets -- refusing to install unverified binary")
 	}
 
+	// Sigstore verification is the only check that establishes origin; the
+	// checksum only establishes integrity against a file fetched over the
+	// same channel. Refuse up front rather than spending a download on an
+	// archive that could not be authenticated afterwards.
+	if bundleURL == "" {
+		return nil, fmt.Errorf("no sigstore bundle for this release -- refusing to install an unverifiable binary")
+	}
+
 	client := &http.Client{
 		Timeout:       httpTimeout,
 		CheckRedirect: checkRedirectHost,
 	}
 
-	// Download binary archive.
-	archiveData, err := httpGetWithClient(ctx, client, assetURL, maxBinaryBytes)
+	archiveData, checksumData, err := fetchVerifiedArchive(ctx, client, assetURL, checksumURL)
 	if err != nil {
-		return nil, fmt.Errorf("downloading release: %w", err)
-	}
-
-	// Download and verify checksum.
-	checksumData, err := httpGetWithClient(ctx, client, checksumURL, maxAPIResponseBytes)
-	if err != nil {
-		return nil, fmt.Errorf("downloading checksums: %w", err)
-	}
-	if err := verifyChecksum(archiveData, checksumData, assetName()); err != nil {
 		return nil, err
 	}
 
-	// Sigstore bundle verification (optional but recommended).
-	if bundleURL != "" {
-		bundleData, err := httpGetWithClient(ctx, client, bundleURL, maxAPIResponseBytes)
-		if err != nil {
-			return nil, fmt.Errorf("downloading sigstore bundle: %w", err)
-		}
-		if err := verifySigstoreBundle(checksumData, bundleData); err != nil {
-			return nil, fmt.Errorf("sigstore verification failed: %w", err)
-		}
+	bundleData, err := httpGetWithClient(ctx, client, bundleURL, maxAPIResponseBytes)
+	if err != nil {
+		return nil, fmt.Errorf("downloading sigstore bundle: %w", err)
+	}
+	if err := verifySigstoreBundle(checksumData, bundleData); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrSigstoreVerification, err)
 	}
 
 	// Extract binary from archive.
 	return extractBinary(archiveData)
+}
+
+// fetchVerifiedArchive downloads the release archive and its checksums file
+// and verifies the archive against it. Both are returned because the
+// checksums still need authenticating in their own right: on their own they
+// establish integrity, not origin.
+func fetchVerifiedArchive(ctx context.Context, client *http.Client, assetURL, checksumURL string) ([]byte, []byte, error) {
+	archiveData, err := httpGetWithClient(ctx, client, assetURL, maxBinaryBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("downloading release: %w", err)
+	}
+	checksumData, err := httpGetWithClient(ctx, client, checksumURL, maxAPIResponseBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("downloading checksums: %w", err)
+	}
+	if err := verifyChecksum(archiveData, checksumData, assetName()); err != nil {
+		return nil, nil, err
+	}
+	return archiveData, checksumData, nil
 }
 
 // Replace swaps the current binary with the new one.

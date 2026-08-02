@@ -411,12 +411,33 @@ func TestDownloadWithMockServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
+	archiveData, checksumData, err := fetchVerifiedArchive(
+		context.Background(), srv.Client(), srv.URL+"/asset", srv.URL+"/checksums")
 	if err != nil {
-		t.Fatalf("Download: %v", err)
+		t.Fatalf("fetchVerifiedArchive: %v", err)
+	}
+	if string(checksumData) != checksumLine {
+		t.Errorf("checksumData = %q, want %q", checksumData, checksumLine)
+	}
+	binary, err := extractBinary(archiveData)
+	if err != nil {
+		t.Fatalf("extractBinary: %v", err)
 	}
 	if string(binary) != string(binaryContent) {
 		t.Errorf("downloaded binary = %q, want %q", binary, binaryContent)
+	}
+}
+
+// A release without a Sigstore bundle is refused outright: the checksums
+// travel the same channel as the archive, so they establish integrity but
+// never origin.
+func TestDownloadRefusesWithoutSigstoreBundle(t *testing.T) {
+	_, err := Download(context.Background(), "https://example.com/a", "https://example.com/c", "")
+	if err == nil {
+		t.Fatal("expected refusal when no sigstore bundle is present")
+	}
+	if !strings.Contains(err.Error(), "sigstore bundle") {
+		t.Errorf("error = %v, want it to name the missing sigstore bundle", err)
 	}
 }
 
@@ -437,7 +458,8 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
+	_, _, err := fetchVerifiedArchive(
+		context.Background(), srv.Client(), srv.URL+"/asset", srv.URL+"/checksums")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -449,6 +471,7 @@ func TestCheckFromURL(t *testing.T) {
 		Assets: []Asset{
 			{Name: assetName(), BrowserDownloadURL: expectedURLPrefix + "v1.0.0/" + assetName()},
 			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v1.0.0/checksums.txt"},
+			{Name: "checksums.txt.sigstore.json", BrowserDownloadURL: expectedURLPrefix + "v1.0.0/checksums.txt.sigstore.json"},
 			{Name: "other_file.txt", BrowserDownloadURL: "https://example.com/other"},
 		},
 	}

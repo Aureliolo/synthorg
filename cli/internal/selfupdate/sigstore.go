@@ -19,24 +19,23 @@ import (
 )
 
 const (
-	// expectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
-	expectedIssuer = "https://token.actions.githubusercontent.com"
-	// expectedSANRegex matches the CLI release signing identity for this
-	// repo, on semver tag pushes only.
-	//
-	// Keyless signing derives the SAN from job_workflow_ref, which for a
-	// workflow_call job is the reusable workflow's own path rather than the
-	// caller's. The signing steps live in reusable-release-cli.yml, so that
-	// is the identity on every bundle cut from it; verify-cli.yml only
-	// grants scopes and passes inputs, and can never appear on a
+	// expectedSANRegex matches the CLI release signing identity: the
+	// workflow holding the signing step, never a caller that invokes it.
+	// Tag refs only, because a release archive is only ever cut from a v*
+	// tag. verify-cli.yml delegates to the signer and cannot appear on a
 	// certificate.
 	//
-	// cli.yml signed every release through v0.9.3 and stays accepted
-	// because a published signature cannot be re-minted: dropping the name
-	// would leave the stable channel unable to verify the release it is
-	// pinned to. The tag-only ref anchor means admitting a retired name
-	// grants nothing a default-branch writer lacks.
-	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(reusable-release-cli|cli)\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
+	// cli.yml is the retired signer, bounded to the versions it actually
+	// signed so it cannot vouch for a release that does not exist yet. Its
+	// signatures cannot be re-minted, and the path that still needs it is
+	// real: a binary built from source reports version "dev", which the
+	// updater always treats as out of date, so it verifies the current
+	// stable release, and that release carries this name.
+	//
+	// The SAN is only half the identity. Repository binding lives in
+	// verify.BuildReleaseIdentityPolicy, because a reusable workflow's SAN
+	// is shared by every caller on GitHub.
+	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/(?:reusable-release-cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?|cli\.yml@refs/tags/v0\.(?:[0-8]\.[0-9]+|9\.[0-3])(?:-[0-9A-Za-z.\-]+)?(?:\+[0-9A-Za-z.\-]+)?)$`
 )
 
 // tufFetchTimeout bounds the TUF metadata fetch for the trusted root. Set
@@ -78,10 +77,7 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	}
 
 	// Build identity policy -- must match GitHub Actions OIDC from our repo.
-	certID, err := verify.NewShortCertificateIdentity(
-		expectedIssuer, "",
-		"", expectedSANRegex,
-	)
+	certID, err := ociverify.BuildReleaseIdentityPolicy(expectedSANRegex)
 	if err != nil {
 		return fmt.Errorf("creating certificate identity: %w", err)
 	}

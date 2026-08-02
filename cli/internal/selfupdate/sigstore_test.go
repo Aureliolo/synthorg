@@ -13,6 +13,7 @@ import (
 )
 
 func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
+	t.Parallel()
 	statement := slsaStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
@@ -36,6 +37,7 @@ func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
+	t.Parallel()
 	statement := slsaStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
@@ -63,6 +65,7 @@ func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
+	t.Parallel()
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
 			DsseEnvelope: &protodsse.Envelope{
@@ -82,6 +85,7 @@ func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceNoDSSE(t *testing.T) {
+	t.Parallel()
 	// Bundle with message signature (not DSSE) -- should pass silently.
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_MessageSignature{
@@ -101,6 +105,7 @@ func TestAssertSLSAProvenanceNoDSSE(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
+	t.Parallel()
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
 			DsseEnvelope: &protodsse.Envelope{
@@ -116,50 +121,55 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestExpectedSANRegexAcceptsBothReleaseSignerNames(t *testing.T) {
+func TestExpectedSANRegex(t *testing.T) {
+	t.Parallel()
 	re := regexp.MustCompile(expectedSANRegex)
+	const wfPrefix = "https://github.com/Aureliolo/synthorg/.github/workflows/"
 
-	valid := []string{
-		// Read off live published releases: every bundle from
-		// v0.9.4-dev.82 onward carries the reusable signer.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v0.9.4-dev.85",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3-rc.1",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3+build.4",
-		// Releases cut under the retired signer stay updatable.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v0.9.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.2.3",
-	}
-	for _, ref := range valid {
-		if !re.MatchString(ref) {
-			t.Errorf("SAN regex should match %q", ref)
-		}
-	}
-}
+	tests := []struct {
+		name string
+		san  string
+		want bool
+	}{
+		// Read off a live published release bundle.
+		{"reusable_signer_dev_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v0.9.4-dev.85", true},
+		{"reusable_signer_release_tag", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3", true},
+		{"reusable_signer_prerelease", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3-rc.1", true},
+		{"reusable_signer_build_metadata", wfPrefix + "reusable-release-cli.yml@refs/tags/v1.2.3+build.4", true},
 
-func TestExpectedSANRegexRejectsNonReleaseIdentities(t *testing.T) {
-	re := regexp.MustCompile(expectedSANRegex)
+		// The retired signer stays accepted only for the versions it
+		// actually signed, so it cannot vouch for a future release.
+		{"retired_signer_last_version", wfPrefix + "cli.yml@refs/tags/v0.9.3", true},
+		{"retired_signer_older_minor", wfPrefix + "cli.yml@refs/tags/v0.8.9", true},
+		{"retired_signer_prerelease", wfPrefix + "cli.yml@refs/tags/v0.9.1-rc.1", true},
+		{"retired_signer_beyond_its_history", wfPrefix + "cli.yml@refs/tags/v0.9.4", false},
+		{"retired_signer_future_major", wfPrefix + "cli.yml@refs/tags/v1.2.3", false},
 
-	invalid := []string{
-		// Branch refs never sign a release, retired name included.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli.yml@refs/pull/1/merge",
-		// verify-cli.yml calls the reusable signer and runs no signing
-		// step of its own, so no certificate can ever carry it.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/verify-cli.yml@refs/tags/v1.2.3",
-		// An image signer must not be able to vouch for a CLI archive.
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-publish-image.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/build-images.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v1.2.3",
-		"https://github.com/evil/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/evil-reusable-release-cli.yml@refs/tags/v1.2.3",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/reusable-release-cli-evil.yml@refs/tags/v1.2.3",
-		"",
+		// A release archive is only ever cut from a tag.
+		{"reusable_signer_main", wfPrefix + "reusable-release-cli.yml@refs/heads/main", false},
+		{"retired_signer_main", wfPrefix + "cli.yml@refs/heads/main", false},
+		{"pull_ref", wfPrefix + "reusable-release-cli.yml@refs/pull/1/merge", false},
+
+		// verify-cli.yml delegates to the signer and runs no signing step,
+		// so no certificate can ever carry it.
+		{"caller_verify_cli", wfPrefix + "verify-cli.yml@refs/tags/v1.2.3", false},
+
+		// An image signer must not vouch for a CLI archive.
+		{"image_signer", wfPrefix + "reusable-publish-image.yml@refs/tags/v1.2.3", false},
+		{"image_caller", wfPrefix + "build-images.yml@refs/tags/v1.2.3", false},
+		{"retired_image_signer", wfPrefix + "docker.yml@refs/tags/v1.2.3", false},
+
+		{"foreign_owner", "https://github.com/evil/synthorg/.github/workflows/reusable-release-cli.yml@refs/tags/v1.2.3", false},
+		{"prefix_hijack", wfPrefix + "evil-reusable-release-cli.yml@refs/tags/v1.2.3", false},
+		{"suffix_hijack", wfPrefix + "reusable-release-cli-evil.yml@refs/tags/v1.2.3", false},
+		{"empty", "", false},
 	}
-	for _, ref := range invalid {
-		if re.MatchString(ref) {
-			t.Errorf("SAN regex should NOT match %q", ref)
-		}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := re.MatchString(tc.san); got != tc.want {
+				t.Errorf("MatchString(%q) = %v, want %v", tc.san, got, tc.want)
+			}
+		})
 	}
 }

@@ -295,10 +295,33 @@ archives, `cli/internal/verify/identity.go` for images) name the files in the
 table above and never the callers. A pin also keeps the name that signed the
 current stable release, because a published signature cannot be re-minted and
 dropping it would leave those artifacts permanently unverifiable.
+
+The SAN is only half the identity, and on its own it would be the wrong half.
+A reusable workflow in a public repository can be invoked by any repository on
+GitHub, and every caller's build produces the *same* `job_workflow_ref`. The
+SAN therefore names the build recipe, not the build owner. Both policies also
+pin certificate extensions (`SourceRepositoryURI`,
+`SourceRepositoryIdentifier`, `RunnerEnvironment`) via
+`verify.BuildIdentityPolicy`, which is what distinguishes a build this
+repository ran from one that merely used its workflow. The numeric repository
+identifier is pinned alongside the URI because it survives a rename or
+transfer; renaming or transferring this repository would otherwise free the
+pinned URI for someone else to claim, so treat both as fixed for as long as
+published artifacts must stay verifiable.
+
+Ref classes are pinned per signer rather than shared. A release archive is
+only ever cut from a `v*` tag; an image is only ever signed on a push to
+`main`, because every publish job is gated to main and retagging re-points a
+tag at an already-signed digest without signing again. Accepting a ref class
+a signer never legitimately produces would only ever help a forger.
+
 `scripts/check_signing_identity_pins.py` derives the signer set from the
-workflow tree and fails the push when a pin and the signers disagree: without
-it, moving a signing step passes every test and breaks `synthorg update` and
-`synthorg start` for users only after release.
+workflow tree, following composite actions and shell helpers, and fails the
+push when a pin and the signers disagree, when a declared signer stops
+signing, or when either constant differs by so much as a character from the
+pattern its declaration builds. Without it, moving a signing step passes every
+test and breaks `synthorg update` and `synthorg start` for users only after
+release.
 
 The claim is enforced, not asserted. `scripts/check_image_signatures.py` runs
 as the `verify-signatures` gate after every publish and requires **both** a
