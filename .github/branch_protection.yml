@@ -122,3 +122,36 @@ rulesets:
             - merge
             - squash
             - rebase
+
+  - name: protect-release-tags
+    target: tag
+    enforcement: active
+    conditions:
+      ref_name:
+        include:
+          - "refs/tags/v*"
+        exclude: []
+    rules:
+      # A v* tag may point at any commit in history, and GitHub runs a
+      # workflow from the tagged tree rather than from main. Push access to
+      # any branch plus the ability to create a tag was therefore enough to
+      # resurrect a retired signing workflow at its old path and mint a
+      # release certificate under a name the CLI still admits -- the one
+      # attack the certificate-extension binding in
+      # cli/internal/verify/identity.go cannot see, because such a build
+      # genuinely is this repository on a GitHub-hosted runner.
+      #
+      # `update` alone would leave delete-then-recreate open, so both rules
+      # are required to close the path.
+      - type: creation
+      - type: update
+      # Deletion is deliberately unrestricted. release-finalize.yml's
+      # orphan-dev-tag sweep deletes tags under `github.token`, and GitHub
+      # does not accept the built-in Actions integration as a repo-level
+      # bypass actor, so restricting deletion would break that sweep while
+      # gaining nothing: recreating a deleted tag is already blocked by the
+      # creation rule above.
+      #
+      # Bypass actors (the release-bot App and the admin role) are not
+      # declared here because the audit script strips `bypass_actors` on
+      # both sides (see the header).
