@@ -1412,6 +1412,39 @@ class TestBuildMiddleware:
         # break get_authenticated_user_id() in those layers.
         assert isinstance(mw[3], AuthContextMiddleware)
 
+    def test_tiers_are_mounted_even_when_the_flag_starts_false(
+        self,
+        root_config: RootConfig,
+    ) -> None:
+        # ``api.rate_limiter_enabled`` applies while the system runs, so the
+        # stack has to carry the tiers whatever the process started with.
+        # Mounting conditionally would make the setting live in the
+        # disable direction only: an operator who booted with it off could
+        # turn it back on, see the write accepted, and have no middleware in
+        # the stack to enforce it.
+        from litestar.middleware.rate_limit import (
+            RateLimitConfig as LsRL,
+        )
+
+        from synthorg.api.middleware_factory import _build_middleware
+
+        disabled = root_config.api.model_copy(update={"rate_limiter_enabled": False})
+        # By store name rather than stack length: a change that swapped a tier
+        # for some other middleware would keep the length and lose the tier.
+        # Read through ``getattr``: the stack holds several middleware shapes
+        # and only one carries ``kwargs``, which a type checker cannot narrow
+        # through a ``hasattr`` guard.
+        configs = [
+            getattr(entry, "kwargs", {}).get("config")
+            for entry in _build_middleware(disabled)
+        ]
+        stores = [cfg.store for cfg in configs if isinstance(cfg, LsRL)]
+        assert stores == [
+            "rate_limit_floor",
+            "rate_limit_unauth",
+            "rate_limit_auth",
+        ]
+
     def test_three_rate_limiters_have_distinct_stores(
         self,
         root_config: RootConfig,

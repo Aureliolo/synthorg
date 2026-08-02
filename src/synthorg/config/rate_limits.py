@@ -7,7 +7,7 @@ the ``settings/`` subsystem free of imports from ``synthorg.api`` (a
 prohibited upward dependency).
 """
 
-from typing import ClassVar, Final, Literal, NoReturn
+from typing import ClassVar, Final, Literal, NoReturn, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -276,6 +276,24 @@ class PerOpConcurrencyConfig(BaseModel):
 
 type RateLimitWindowUnit = Literal["second", "minute", "hour", "day"]
 
+KNOWN_WINDOWS: Final[frozenset[str]] = frozenset(
+    get_args(RateLimitWindowUnit.__value__)
+)
+"""Every window a stored ``rate_limit_time_unit`` may name.
+
+``RateLimitWindowUnit`` is a PEP 695 alias, so ``get_args`` on the alias
+itself returns an empty tuple and would reject every window there is,
+including the one already in force. The members live on ``__value__``.
+"""
+
+AUTH_ENDPOINT_WINDOW: Final[RateLimitWindowUnit] = "minute"
+"""Window the credential throttle counts over, whatever the general one uses.
+
+It is a brute-force bound, so widening the general window must not widen it.
+Declared here so the middleware that mounts it and the docs that describe it
+name one value rather than two copies of the same literal.
+"""
+
 
 class LiveRateLimits(BaseModel):
     """The global tier caps, read per request rather than baked at boot.
@@ -297,6 +315,10 @@ class LiveRateLimits(BaseModel):
         floor_max_requests: Per-IP ceiling across the whole API.
         unauth_max_requests: Per-IP ceiling for anonymous callers.
         auth_max_requests: Per-user ceiling for authenticated callers.
+        auth_endpoint_max_requests: Per-IP ceiling on the credential
+            endpoints. Neither ``enabled`` nor ``time_unit`` reaches it: it
+            is a brute-force bound, so turning the general limiter off or
+            widening its window must not relax it.
         time_unit: Window the caps are counted over.
     """
 
@@ -306,21 +328,31 @@ class LiveRateLimits(BaseModel):
     floor_max_requests: int = Field(ge=1)
     unauth_max_requests: int = Field(ge=1)
     auth_max_requests: int = Field(ge=1)
+    auth_endpoint_max_requests: int = Field(ge=1)
     time_unit: RateLimitWindowUnit = "minute"
 
     @model_validator(mode="after")
-    def _floor_covers_both_tiers(self) -> LiveRateLimits:
-        """Keep the floor at or above both user-gated caps.
+    def _floor_covers_every_tier(self) -> LiveRateLimits:
+        """Keep the floor at or above every inner cap.
 
-        The floor wraps both tiers in the middleware stack, so a lower one
-        silently caps whichever budget it undercuts. Checked on every swap,
-        because a live edit is exactly where the pair can drift apart.
+        The floor is app-wide middleware, so it wraps both user-gated tiers
+        and a lower one silently caps whichever budget it undercuts. Checked
+        on every swap, because a live edit is exactly where the set can drift
+        apart.
+
+        ``auth_endpoint_max_requests`` is deliberately outside this rule. It
+        counts over a fixed minute while these tiers follow ``time_unit``, so
+        the numbers are not comparable, and it is a ceiling on attacker
+        attempts rather than a budget anyone needs to reach: an outer tier
+        that clips it lower only tightens the bound. Judging it here would
+        refuse valid configurations, the shipped defaults among them once the
+        window is an hour or a day.
 
         Returns:
             The validated config.
 
         Raises:
-            ValueError: When the floor sits below either tier.
+            ValueError: When the floor sits below either user-gated tier.
         """
         highest = max(self.unauth_max_requests, self.auth_max_requests)
         if self.floor_max_requests < highest:

@@ -53,15 +53,16 @@ class SettingDefinition(BaseModel):
         group: UI grouping label (e.g. ``"Limits"``).
         level: Visibility level for progressive disclosure.
         sensitive: Whether the value should be encrypted at rest.
-        restart_required: Whether changes require a restart.
-        read_only_post_init: Whether the setting is sourced exclusively
-            from the environment at process startup and rejects mutation
-            via ``SettingsService.set()`` and friends.  The registry
-            entry exists for discoverability so operators can introspect
-            the value through the standard /settings API; mutation
-            through that surface raises ``SettingReadOnlyError``.
-            Always implies ``restart_required=True``; the cross-field
-            validator enforces the implication.
+        compose_set: Whether this setting is fixed by the deployment rather
+            than editable at runtime. There are exactly two kinds of setting:
+            one the deployment fixes when the process starts (bind address,
+            certificate paths, image pins, the trust anchors resolved before
+            the settings backend exists) and one an operator changes live.
+            A ``compose_set`` entry stays in the registry so operators can
+            read it through the standard ``/settings`` API; writing it raises
+            ``SettingReadOnlyError``, because the process it configures was
+            started with the old value and nothing short of restarting that
+            process can change it.
         enum_values: Allowed values when ``type`` is ``ENUM``.
         validator_pattern: Regex pattern for string validation.
         min_value: Minimum for numeric types (inclusive).
@@ -87,15 +88,11 @@ class SettingDefinition(BaseModel):
         default=False,
         description="Encrypt at rest and mask in UI",
     )
-    restart_required: bool = Field(
-        default=False,
-        description="Change takes effect after restart",
-    )
-    read_only_post_init: bool = Field(
+    compose_set: bool = Field(
         default=False,
         description=(
-            "Sourced from environment at startup; mutation via"
-            " SettingsService is rejected. Implies restart_required=True."
+            "Fixed by the deployment when the process starts; readable through"
+            " the settings API, but a write is rejected"
         ),
     )
     env_var_override: NotBlankStr | None = Field(
@@ -137,27 +134,15 @@ class SettingDefinition(BaseModel):
             ``model_validator(mode="after")`` contract).
 
         Raises:
-            ValueError: If an ENUM setting has empty ``enum_values``;
-                ``read_only_post_init`` is set without
-                ``restart_required``; a numeric bound is invalid or
-                non-finite; ``min_value`` exceeds ``max_value``;
-                ``validator_pattern`` is not a valid regex; or the
-                default value fails any of these constraints.
+            ValueError: If an ENUM setting has empty ``enum_values``; a
+                numeric bound is invalid or non-finite; ``min_value``
+                exceeds ``max_value``; ``validator_pattern`` is not a valid
+                regex; or the default value fails any of these constraints.
         """
         if self.type == SettingType.ENUM and not self.enum_values:
             msg = (
                 f"ENUM setting {self.namespace}/{self.key}"
                 f" requires non-empty enum_values"
-            )
-            raise ValueError(msg)
-        if self.read_only_post_init and not self.restart_required:
-            # read_only_post_init implies the value is baked in at boot;
-            # callers will hit confusing UX if they see it succeed at
-            # registration but reject mutation later. Force the implied
-            # invariant so misconfiguration fails at definition time.
-            msg = (
-                f"Setting {self.namespace}/{self.key} marked"
-                f" read_only_post_init must also set restart_required=True"
             )
             raise ValueError(msg)
         _check_numeric_field(self.min_value, "min_value", self.type)
@@ -346,24 +331,6 @@ class SettingValue(BaseModel):
         default=None,
         description="ISO 8601 timestamp (DB values only)",
     )
-
-
-class PendingRestartSetting(BaseModel):
-    """A restart-required setting written since the process last booted.
-
-    Attributes:
-        namespace: Setting namespace.
-        key: Setting key within the namespace.
-        description: Human-readable description of what the setting does.
-        updated_at: ISO 8601 timestamp of the write that is not in effect yet.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    namespace: SettingNamespace = Field(description="Setting namespace")
-    key: NotBlankStr = Field(description="Setting key within namespace")
-    description: NotBlankStr = Field(description="What the setting does")
-    updated_at: NotBlankStr = Field(description="ISO 8601 timestamp of the write")
 
 
 class SettingEntry(BaseModel):

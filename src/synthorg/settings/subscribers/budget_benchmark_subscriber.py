@@ -3,9 +3,7 @@
 Rebuilds the cost-dial benchmark-score provider + Pareto analyzer when an
 operator edits ``budget.benchmark_provider`` or ``budget.model_tier_overrides``,
 then reloads runtime services so the engine routing strategy (which reads the
-slice provider at engine-build time) picks up the new provider. Both settings
-were ``read_only_post_init`` before this conversion; they now resolve through
-the live chain.
+slice provider at engine-build time) picks up the new provider.
 """
 
 from synthorg.api.state import AppState

@@ -1,6 +1,6 @@
 import { createContext, use, useCallback, useId, useMemo, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, mergeAriaToken } from '@/lib/utils'
 
 interface BaseFieldProps {
   label: string
@@ -72,26 +72,6 @@ export function PasswordVisibilityGroup({ children }: { children: React.ReactNod
   )
 }
 
-/**
- * Merge a caller-supplied ARIA id token list with a component-managed
- * token, preserving both. Prevents caller overrides via ``...domProps``
- * from silently dropping the component's ``hintId``/``errorId`` so
- * screen readers continue to receive the validation text.
- */
-function mergeAriaToken(
-  incoming: string | undefined,
-  managed: string | undefined,
-): string | undefined {
-  const tokens = new Set<string>()
-  if (incoming) {
-    for (const token of incoming.split(/\s+/)) {
-      if (token) tokens.add(token)
-    }
-  }
-  if (managed) tokens.add(managed)
-  if (tokens.size === 0) return undefined
-  return [...tokens].join(' ')
-}
 
 function buildInputClasses({
   hasError,
@@ -292,10 +272,9 @@ function _buildInputProps(args: BuildInputPropsArgs): React.InputHTMLAttributes<
     id: ids.id,
     type: isPassword && visible ? 'text' : type,
     'aria-invalid': hasError ? true : (domProps['aria-invalid'] ?? false),
-    'aria-errormessage': mergeAriaToken(
-      domProps['aria-errormessage'],
-      hasError ? ids.errorId : undefined,
-    ),
+    // IDREF, not IDREFS: the component's own message wins while it has an
+    // error, and the caller's id applies otherwise.
+    'aria-errormessage': hasError ? ids.errorId : domProps['aria-errormessage'],
     'aria-describedby': mergeAriaToken(
       domProps['aria-describedby'],
       hint && !hasError ? ids.hintId : undefined,
@@ -399,10 +378,7 @@ function TextareaVariant(props: TextareaProps) {
         ref={ref}
         {...domProps}
         aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
-        aria-errormessage={mergeAriaToken(
-          domProps['aria-errormessage'],
-          hasError ? errorId : undefined,
-        )}
+        aria-errormessage={hasError ? errorId : domProps['aria-errormessage']}
         aria-describedby={mergeAriaToken(
           domProps['aria-describedby'],
           hint && !hasError ? hintId : undefined,

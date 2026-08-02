@@ -46,9 +46,10 @@ optional dependency answered: /api/v1/readyz may still return 503,
 in which case start warns that a dependency is not ready, points at
 the dashboard or 'synthorg doctor' to find out which, and exits 0
 anyway, because the dashboard that fixes them is already running.
-Pass --no-pull to skip the pull when iterating locally, --no-detach
-to stream logs in the foreground, or --dry-run to print the docker
-commands the run would issue without executing them.`,
+Only the backend failing to come up fails the command. Pass --no-pull
+to skip the pull when iterating locally, --no-detach to stream logs in
+the foreground, or --dry-run to print the docker commands the run
+would issue without executing them.`,
 	Example: `  synthorg start              # pull, verify, and start
   synthorg start --no-pull    # start without pulling images
   synthorg start --dry-run    # preview what would happen
@@ -459,10 +460,16 @@ func warnIfDependenciesDegraded(ctx context.Context, state config.State, out *ui
 	readyURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
 	if err != nil {
+		out.Warn("Could not build the readiness probe; skipping the dependency check.")
 		return false
 	}
 	resp, err := health.HTTPClient().Do(req)
 	if err != nil {
+		// The liveness probe passed moments ago, so a failure here means
+		// the backend went away in between. Staying silent would render
+		// that identically to a healthy stack.
+		out.Warn("Backend stopped answering between the liveness and readiness probes.")
+		out.HintNextStep("Run 'synthorg status' or 'synthorg logs backend' to see why.")
 		return false
 	}
 	defer func() { _ = resp.Body.Close() }()

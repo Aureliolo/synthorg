@@ -19,3 +19,18 @@ class SubsystemGraphInvalidError(DomainError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     error_code: ClassVar[ErrorCode] = ErrorCode.SUBSYSTEM_GRAPH_INVALID
     status_code: ClassVar[int] = 500
+
+
+class SubsystemActivationError(DomainError):
+    """A subsystem's activation raised during a pass whose caller cannot proceed.
+
+    The reconciler records a failed activation and carries on, which is right
+    for a sweep. A caller answering a one-shot question ("is this deployment
+    configured?") raises this instead, so a fault is reported rather than
+    written over.
+    """
+
+    default_message: ClassVar[str] = "Subsystem activation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBSYSTEM_ACTIVATION_FAILED
+    status_code: ClassVar[int] = 500

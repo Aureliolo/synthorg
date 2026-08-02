@@ -4,7 +4,7 @@ import type { SettingEntry } from '@/api/types/settings'
 import { useFlash } from '@/hooks/useFlash'
 import { SECURITY_SENSITIVE_SETTINGS } from '@/pages/settings/settings-constants'
 import { SourceBadge } from './SourceBadge'
-import { RestartBadge } from './RestartBadge'
+import { ComposeSetBadge } from './ComposeSetBadge'
 import { SettingField } from './SettingField'
 
 export interface SettingRowProps {
@@ -50,7 +50,7 @@ function formatKey(key: string, namespace?: string): string {
 interface RowFlags {
   displayValue: string
   isEnvLocked: boolean
-  isReadOnlyPostInit: boolean
+  isComposeSet: boolean
   isDisabled: boolean
   isSecuritySensitive: boolean
 }
@@ -62,13 +62,13 @@ function computeRowFlags(
   controllerDisabled: boolean | undefined,
 ): RowFlags {
   const isEnvLocked = entry.source === 'env'
-  const isReadOnlyPostInit = entry.definition.read_only_post_init
+  const isComposeSet = entry.definition.compose_set
   const compositeKey = `${entry.definition.namespace}/${entry.definition.key}`
   return {
     displayValue: dirtyValue ?? entry.value,
     isEnvLocked,
-    isReadOnlyPostInit,
-    isDisabled: isEnvLocked || saving || controllerDisabled === true || isReadOnlyPostInit,
+    isComposeSet,
+    isDisabled: isEnvLocked || saving || controllerDisabled === true || isComposeSet,
     isSecuritySensitive: SECURITY_SENSITIVE_SETTINGS.has(compositeKey),
   }
 }
@@ -81,8 +81,8 @@ interface NoticeIds {
 
 function buildDescribedBy(flags: RowFlags, ids: NoticeIds): string {
   return [
-    flags.isEnvLocked ? ids.env : null,
-    flags.isReadOnlyPostInit && !flags.isEnvLocked ? ids.readonly : null,
+    flags.isEnvLocked && !flags.isComposeSet ? ids.env : null,
+    flags.isComposeSet ? ids.readonly : null,
     flags.isSecuritySensitive ? ids.security : null,
   ]
     .filter((id): id is string => id !== null)
@@ -92,14 +92,16 @@ function buildDescribedBy(flags: RowFlags, ids: NoticeIds): string {
 function SettingRowNotices({ flags, ids }: { flags: RowFlags; ids: NoticeIds }) {
   return (
     <>
-      {flags.isEnvLocked && (
+      {flags.isEnvLocked && !flags.isComposeSet && (
         <p id={ids.env} className="text-micro text-warning">
           Value set by environment variable (read-only)
         </p>
       )}
-      {flags.isReadOnlyPostInit && !flags.isEnvLocked && (
+      {/* A deployment passes these as environment variables, so the generic
+          env notice would hide the one that says how to change them. */}
+      {flags.isComposeSet && (
         <p id={ids.readonly} className="text-micro text-warning">
-          Read-only after startup. Configure via environment variable or YAML before launch.
+          Set by the deployment. Change it where the process is launched, then restart it.
         </p>
       )}
       {flags.isSecuritySensitive && (
@@ -126,7 +128,7 @@ function SettingRowLabel({
           {highlightText(formatKey(definition.key, definition.namespace), highlightQuery)}
         </span>
         <SourceBadge source={source} />
-        {definition.restart_required && <RestartBadge />}
+        {definition.compose_set && <ComposeSetBadge />}
       </div>
       <p className="text-xs text-text-secondary">
         {highlightText(definition.description, highlightQuery)}
@@ -170,7 +172,7 @@ export function SettingRow({
       data-setting-key={compositeKey}
       className={cn(
         'grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card max-[639px]:grid-cols-1',
-        'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
+        'transition-all duration-[var(--so-transition-dim)] hover:bg-card-hover hover:-translate-y-px',
         controllerDisabled && 'opacity-50 cursor-not-allowed',
       )}
       style={flashStyle}
@@ -181,19 +183,17 @@ export function SettingRow({
         <SettingRowNotices flags={flags} ids={ids} />
       </div>
 
-      {/* Field wrapper carries aria-describedby so the warning paragraphs
-          are announced together with the control, even when disabled. */}
-      <div
-        className="w-full max-w-56 shrink-0 sm:w-56"
-        role="group"
-        aria-label={fieldLabel}
-        aria-describedby={describedByIds || undefined}
-      >
+      {/* The control itself carries aria-describedby: a group-level
+          description is announced only when focus enters the group, so a
+          keyboard user landing straight on the input would otherwise never
+          hear why it is disabled. */}
+      <div className="w-full max-w-56 shrink-0 sm:w-56" role="group" aria-label={fieldLabel}>
         <SettingField
           definition={definition}
           value={flags.displayValue}
           onChange={onChange}
           disabled={flags.isDisabled}
+          describedBy={describedByIds || undefined}
         />
       </div>
     </div>

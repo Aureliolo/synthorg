@@ -659,17 +659,23 @@ patterns -- DO NOT flag a setting as unwired unless you have ruled out ALL of:
    chain -- not unwired.
 5. **Subscriber pattern**: settings/subscribers/ registrations that listen for
    changes to a key.
-6. **Bootstrap-only / read-only-post-init**: settings registered with
-   read_only_post_init=True or marked bootstrap-only are intentionally not in
-   bridge configs (they're registered for /settings discoverability only). DO
-   NOT flag these.
+6. **Compose-set**: settings registered with compose_set=True are supplied by
+   the deployment when the process starts and are intentionally not in bridge
+   configs (they're registered for /settings discoverability only). DO NOT
+   flag these.
 
 VERIFICATION REQUIREMENT: before flagging a setting as unwired, you MUST run at
-least three searches to rule out all six patterns above:
+least five searches to rule out all six patterns above:
   - Grep for the literal "<namespace>.<key>" string across src/synthorg/
   - Grep for the field name in src/synthorg/config/ (Pydantic config models)
   - Grep for the namespace in ConfigResolver methods (any get_<area>_config /
     get_<area>_bridge_config method)
+  - Grep the key AND its namespace across src/synthorg/settings/subscribers/: a
+    subscriber can name it in a watched-keys tuple built from parts, so neither
+    of the searches above is guaranteed to see it (nothing else detects
+    pattern 5)
+  - Read the setting's own SettingDefinition in settings/definitions/ and check
+    for compose_set=True (nothing above detects pattern 6)
 
 If any of those searches find a consumer, the setting is NOT unwired -- skip it.
 

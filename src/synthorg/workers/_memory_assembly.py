@@ -10,6 +10,8 @@ reviewable on its own.
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
@@ -18,6 +20,7 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.injection_factory import build_memory_injection_strategy
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.reformulation import (
     LLMQueryReformulator,
@@ -33,11 +36,19 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.shared_store import OrgSharedKnowledgeStore
 from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.structured_text import complete_text
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 # The reformulation and sufficiency prompts are self-contained (they
@@ -223,7 +234,48 @@ def build_memory_injection_strategy_or_none(
     )
 
 
+async def resolved_procedural_config(app_state: AppState) -> ProceduralMemoryConfig:
+    """Return the procedural-memory config with the operator's current values.
+
+    The proposer bakes the sampling parameters and the skill-file directory in
+    at construction, and the boot config mirrors the directory from the
+    environment only, so reading it alone would ignore a dashboard edit.
+
+    Args:
+        app_state: Application state carrying the boot config + resolver.
+
+    Returns:
+        The boot config with the resolved values applied.
+    """
+    namespace = SettingNamespace.MEMORY.value
+    resolver = config_resolver_of(app_state)
+    booted = app_state.config.memory.procedural
+    directory = await resolver.get_str(namespace, "procedural_skill_md_directory")
+    resolved = booted.model_dump() | {
+        "temperature": await resolver.get_float(namespace, "procedural_temperature"),
+        "max_tokens": await resolver.get_int(namespace, "procedural_max_tokens"),
+        # An empty read is the documented "keep skills in the backend only",
+        # and the field is NotBlankStr, so the sentinel maps to unset.
+        "skill_md_directory": directory or None,
+    }
+    try:
+        # Revalidated rather than copied in: model_copy skips validation
+        # entirely, so a value outside the field's bounds (an env override is
+        # never checked at write time) would reach the proposer as config the
+        # model itself declares impossible.
+        return ProceduralMemoryConfig.model_validate(resolved)
+    except ValidationError as exc:
+        logger.warning(
+            PROCEDURAL_MEMORY_CONFIG_RESOLVE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="resolved procedural settings are out of bounds; keeping boot config",
+        )
+        return booted
+
+
 __all__ = [
     "build_memory_injection_strategy_or_none",
+    "resolved_procedural_config",
     "wiki_exporter_or_none",
 ]

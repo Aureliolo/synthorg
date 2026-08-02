@@ -713,6 +713,7 @@ def _api_get_side_effect(
     defaults = {
         ("api", "rate_limit_unauth_max_requests"): "20",
         ("api", "rate_limit_auth_max_requests"): "6000",
+        ("api", "rate_limit_auth_endpoint_max_requests"): "10",
         ("api", "rate_limit_time_unit"): "minute",
         ("api", "jwt_expiry_minutes"): "60",
         ("api", "min_password_length"): "12",
@@ -740,6 +741,7 @@ class TestGetApiConfig:
         result = await resolver.get_api_config()
 
         assert result.rate_limit.unauth_max_requests == 20
+        assert result.rate_limit.auth_endpoint_max_requests == 10
         assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
         assert result.auth.jwt_expiry_minutes == 60
         assert result.auth.min_password_length == 12
@@ -850,6 +852,7 @@ class TestGetApiConfig:
             defaults = {
                 ("api", "rate_limit_unauth_max_requests"): "20",
                 ("api", "rate_limit_auth_max_requests"): "6000",
+                ("api", "rate_limit_auth_endpoint_max_requests"): "10",
                 ("api", "rate_limit_time_unit"): "minute",
                 ("api", "min_password_length"): "12",
             }

@@ -6,6 +6,7 @@ actually moves and that the tiers stay coherent while it does.
 """
 
 from contextlib import AbstractContextManager
+from typing import Final
 
 import litestar
 import pytest
@@ -31,19 +32,27 @@ from synthorg.config.schema import RootConfig
 # without any signal here beyond this pin.
 _REVIEWED_LITESTAR_VERSION = "2.24.0"
 
+# Named once so a tier's expectation cannot drift from the value built for it.
+_FLOOR_CAP: Final[int] = 1000
+_UNAUTH_CAP: Final[int] = 20
+_AUTH_CAP: Final[int] = 600
+_AUTH_ENDPOINT_CAP: Final[int] = 10
+
 
 def _limits(
     *,
     enabled: bool = True,
-    floor_max_requests: int = 1000,
-    unauth_max_requests: int = 20,
-    auth_max_requests: int = 600,
+    floor_max_requests: int = _FLOOR_CAP,
+    unauth_max_requests: int = _UNAUTH_CAP,
+    auth_max_requests: int = _AUTH_CAP,
+    auth_endpoint_max_requests: int = _AUTH_ENDPOINT_CAP,
 ) -> LiveRateLimits:
     return LiveRateLimits(
         enabled=enabled,
         floor_max_requests=floor_max_requests,
         unauth_max_requests=unauth_max_requests,
         auth_max_requests=auth_max_requests,
+        auth_endpoint_max_requests=auth_endpoint_max_requests,
     )
 
 
@@ -54,9 +63,10 @@ class TestTierSelection:
     @pytest.mark.parametrize(
         ("tier", "expected"),
         [
-            (RateLimitTier.FLOOR, 1000),
-            (RateLimitTier.UNAUTH, 20),
-            (RateLimitTier.AUTH, 600),
+            (RateLimitTier.FLOOR, _FLOOR_CAP),
+            (RateLimitTier.UNAUTH, _UNAUTH_CAP),
+            (RateLimitTier.AUTH, _AUTH_CAP),
+            (RateLimitTier.AUTH_ENDPOINT, _AUTH_ENDPOINT_CAP),
         ],
     )
     def test_each_tier_reads_its_own_cap(
@@ -77,7 +87,7 @@ class TestTierSelection:
 
 @pytest.mark.unit
 class TestFloorInvariant:
-    """The floor wraps both tiers, so it may never sit below either."""
+    """The floor wraps every windowed tier, so it may never sit below one."""
 
     def test_a_floor_below_a_tier_is_refused(self) -> None:
         # Accepting this would silently cap the authenticated budget at
@@ -86,7 +96,21 @@ class TestFloorInvariant:
             _limits(floor_max_requests=100, auth_max_requests=600)
 
     def test_a_floor_equal_to_the_highest_tier_is_allowed(self) -> None:
-        assert _limits(floor_max_requests=600, auth_max_requests=600) is not None
+        limits = _limits(floor_max_requests=600, auth_max_requests=600)
+        assert limits.floor_max_requests == limits.auth_max_requests
+
+    def test_the_credential_throttle_is_exempt(self) -> None:
+        # It counts over a fixed minute while every other tier follows the
+        # general window, so the two numbers are not comparable. It is also a
+        # ceiling on attacker attempts rather than a budget anyone needs to
+        # reach: an outer tier clipping it lower only tightens the bound.
+        limits = _limits(
+            floor_max_requests=_UNAUTH_CAP,
+            unauth_max_requests=_UNAUTH_CAP,
+            auth_max_requests=_UNAUTH_CAP,
+            auth_endpoint_max_requests=_AUTH_CAP,
+        )
+        assert limits.auth_endpoint_max_requests == _AUTH_CAP
 
     def test_raising_one_tier_past_the_floor_is_refused(self) -> None:
         # A live edit moves one key at a time, which is precisely where

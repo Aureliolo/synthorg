@@ -16,10 +16,9 @@ class SettingsSubscriber(Protocol):
     :class:`~synthorg.settings.dispatcher.SettingsChangeDispatcher`
     when a matching change is detected.
 
-    The dispatcher handles ``restart_required`` filtering: if a
-    setting definition has ``restart_required=True``, the dispatcher
-    logs a WARNING and does **not** call ``on_settings_changed``.
-    Subscribers only receive changes for hot-reloadable settings.
+    Every change the dispatcher delivers is one a subscriber can act on:
+    a ``compose_set`` setting is rejected on the write side, so it never
+    publishes a change.
 
     Attributes:
         watched_keys: ``(namespace, key)`` pairs this subscriber
@@ -44,7 +43,6 @@ class SettingsSubscriber(Protocol):
     ) -> None:
         """Handle a setting change notification.
 
-        Only called for settings where ``restart_required=False``.
         Implementations must be idempotent.  Errors are caught by the
         dispatcher -- they do not crash the polling loop.
 

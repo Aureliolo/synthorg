@@ -28,7 +28,7 @@ The lint detects two ghost-service patterns in lifecycle/app wiring, then matche
 
 When debugging a Pattern A flag, search the ghost class's source for `ConfigResolver.get_*("<flagged_ns>", "<flagged_key>")` calls and verify whether the consumer should migrate to a real unconditionally-started service or whether the gating service should be wired at boot.
 
-`read_only_post_init=True` settings are skipped by design (registry entry exists for `/settings` UI introspection; mutation is rejected at runtime, no live consumer required).
+`compose_set=True` settings are skipped by design: they are read once through the bootstrap resolver before any service exists, so there is no live consumer to find, and the registry entry exists for `/settings` introspection. The skip is not a blanket pass. `check_setting_compose_backed.py` fails any `compose_set` key the shipped launchers do not actually pass, so a key cannot claim the flag to escape this scan.
 
 ## Suppression marker
 

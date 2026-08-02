@@ -16,6 +16,8 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from synthorg.settings.write_governance import SettingsWriteGovernance
+from tests._shared import sid
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -99,11 +101,20 @@ class TestApiSettingsIntegration:
 
         Writes a rate-limit override via ``SettingsService`` and reads
         it back through ``ConfigResolver.get_api_config()``.
+
+        Raising a tier's budget admits more traffic than before, so the write
+        carries the deliberate confirm + reason + actor the guardrail requires;
+        lowering the other tier tightens and needs nothing.
         """
         await settings_service.set(
             "api",
             "rate_limit_unauth_max_requests",
             "50",
+            governance=SettingsWriteGovernance(
+                confirm=True,
+                reason="integration: exercise the DB override path",
+                actor=sid("operator"),
+            ),
         )
         await settings_service.set(
             "api",

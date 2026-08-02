@@ -10,10 +10,11 @@ into three categories:
   Operator changes require a process restart. Used for credentials
   and bootstrap-only paths where a runtime registry entry would be
   unsafe.
-- **Init-time, registry for discoverability:** read once at boot but
-  also exposed in the /settings UI through a `read_only_post_init`
-  registry entry so operators can introspect the running value.
-  `SettingsService.set()` rejects mutation with `SettingReadOnlyError`.
+- **Compose-set, registry for discoverability:** fixed when the
+  container is created but exposed in the /settings UI through a
+  `compose_set` registry entry so operators can introspect the running
+  value. `SettingsService.set()` rejects mutation with
+  `SettingReadOnlyError`.
 - **Runtime override:** `SYNTHORG_<NAMESPACE>_<KEY>` derived from the
   registry definition; consulted on every resolve through
   `SettingsService.get()`.  These are the standard mutable settings.
@@ -54,13 +55,21 @@ into three categories:
 | `SYNTHORG_FINE_TUNE_IMAGE` | unset | Image for ephemeral fine-tune stage containers (CLI publishes `-gpu` and `-cpu` variants); env seed for the `memory.fine_tune_image` setting. Unset means fine-tune runs execute in-process. |
 | `SYNTHORG_FINE_TUNE_DATA_VOLUME` | `synthorg-data` | Named Docker volume mounted read-write at `/data` inside ephemeral fine-tune stage containers; env override for the hot `memory.fine_tune_data_volume` setting. Must be a volume NAME, never a path (a path would become a host bind-mount). |
 
-## Telemetry (restart required)
+## Telemetry (live)
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
-| `SYNTHORG_TELEMETRY_ENABLED` | `false` | `telemetry/enabled` | Master opt-in for product telemetry. Accepts `true` / `false` / `1` / `0` / `yes` / `no`. `restart_required`: the collector is built at construction time, so a DB edit needs a process restart. |
-| `SYNTHORG_TELEMETRY_ENV` | unset | n/a | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
-| `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | n/a | Dockerfile-baked deployment environment. CI sets this in published images; operators normally don't touch it. |
+| `SYNTHORG_TELEMETRY_ENABLED` | `false` | `telemetry/enabled` | Master opt-in for product telemetry. Accepts `true` / `false` / `1` / `0` / `yes` / `no`. Applies at once: the collector is resident either way and the subscriber pushes the new value onto it. |
+
+## Telemetry environment tag (init-time only)
+
+Read once when the collector is built, so a change needs the process restarted.
+Neither backs a registry key, which is why neither can be edited live.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SYNTHORG_TELEMETRY_ENV` | unset | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
+| `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | Dockerfile-baked deployment environment. CI sets this in published images; operators normally don't touch it. |
 
 ## Tracing (init-time only)
 
@@ -130,7 +139,10 @@ directory.
    `os.environ.get` at the relevant boot site. Document the consumer
    module path in the row.
 3. If the variable should be **discoverable but read-only**: register
-   with `restart_required=True` and `read_only_post_init=True`, link
-   the registry key in this page, and consume via `os.environ.get` at
-   the boot site (the registry entry just exposes the value to the
-   /settings UI).
+   with `compose_set=True`, add it to **both** backend compose sources in
+   the same change (`cli/internal/compose/compose.yml.tmpl` and
+   `docker/compose.yml`; a worker-only variable goes in
+   `cli/cmd/worker_start.go` instead), link the registry key in this
+   page, and consume via `os.environ.get` at the boot site (the registry
+   entry just exposes the value to the /settings UI).
+   `check_setting_compose_backed.py` enforces the wiring.

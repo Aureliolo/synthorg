@@ -14,7 +14,7 @@ from synthorg.api.state import AppState
 from synthorg.api.subsystems.runtime import reconcile_subsystems
 from synthorg.core.scheduler import AsyncCycleScheduler
 from synthorg.observability.events.subsystem import (
-    SUBSYSTEM_ACTIVATION_FAILED,
+    SUBSYSTEM_RESYNC_FAILED,
     SUBSYSTEM_RESYNC_STARTED,
     SUBSYSTEM_RESYNC_STOPPED,
 )
@@ -40,7 +40,7 @@ class SubsystemResyncScheduler(AsyncCycleScheduler):
             task_name="subsystem-resync",
             started_event=SUBSYSTEM_RESYNC_STARTED,
             stopped_event=SUBSYSTEM_RESYNC_STOPPED,
-            failed_event=SUBSYSTEM_ACTIVATION_FAILED,
+            failed_event=SUBSYSTEM_RESYNC_FAILED,
         )
         self._app_state = app_state
 

@@ -62,9 +62,10 @@ def _resolve_preset_urls() -> MappingProxyType[TsaPreset, str]:
     The audit-chain sink is installed during ``configure_logging`` -- before
     the DB-backed ``ConfigResolver`` exists -- so the operator-tunable
     ``observability.tsa_endpoint_*`` values are resolved through the
-    bootstrap chain (env > registered default). A later ``/settings`` DB
-    edit to a TSA endpoint is therefore ``restart_required``; the live
-    snapshot still tracks it via ``ObservabilityBridgeSettingsSubscriber``.
+    bootstrap chain (env > registered default). Nothing later can change
+    what the sink already timestamps against, which is why these are
+    compose-set: the trust anchor is chosen before the process can be
+    asked about it.
 
     Returns:
         A mapping of each non-CUSTOM, non-NONE preset to its resolved URL.

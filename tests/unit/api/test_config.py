@@ -72,6 +72,8 @@ class TestApiConfig:
             RateLimitConfig(max_requests=100)  # type: ignore[call-arg]
 
     def test_rate_limit_time_unit_values(self) -> None:
+        # Every unit is accepted on the shipped caps: the window moves what
+        # they all count over, so it never puts a pair out of order.
         for unit in RateLimitTimeUnit:
             rl = RateLimitConfig(time_unit=unit)
             assert rl.time_unit == unit

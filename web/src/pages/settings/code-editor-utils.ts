@@ -13,6 +13,7 @@ import type { SettingEntry } from '@/api/types/settings'
 import type { CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { createLogger } from '@/lib/logger'
 import { UNTRUSTED_YAML_LOAD_OPTIONS } from '@/utils/yaml'
+import { SENSITIVE_VALUE_PLACEHOLDER } from './settings-constants'
 
 const log = createLogger('settings')
 
@@ -93,19 +94,58 @@ function computeChange(value: unknown, origValue: unknown): string | null {
   return stringifyValue(origValue) !== strValue ? strValue : null
 }
 
+/**
+ * True when a document value differs from the entry's current value.
+ *
+ * The buffer holds every setting, editable or not, so a caller that
+ * rejects writes to a class of setting must first know the user actually
+ * edited it: rejecting on mere presence would make the document
+ * unsaveable the moment one such setting exists.
+ */
+export function settingValueDiffers(entry: SettingEntry, value: unknown): boolean {
+  const { namespace, key, sensitive } = entry.definition
+  // A sensitive setting renders as the redaction placeholder until the user
+  // types over it, so the placeholder IS the unedited state. Reading it as a
+  // change makes a document containing one compose-set secret permanently
+  // unsaveable: the rejection fires on a value nobody touched.
+  if (sensitive && value === SENSITIVE_VALUE_PLACEHOLDER) return false
+  const current = entriesToObject([entry])[namespace]?.[key] ?? entry.value
+  return computeChange(value, current) !== null
+}
+
+/**
+ * The document's new value for a setting the user actually edited.
+ *
+ * `settingValueDiffers` runs first because `computeChange` cannot see the
+ * sensitive-placeholder rule: a redacted compose-set setting nobody touched
+ * would read as changed and block every save of the document.
+ */
+function changedValueFor(
+  entry: SettingEntry,
+  value: unknown,
+  current: unknown,
+): string | null {
+  if (!settingValueDiffers(entry, value)) return null
+  return computeChange(value, current)
+}
+
+export interface SettingChanges {
+  changes: Map<string, string>
+  unknownKeys: string[]
+  envKeys: string[]
+  composeSetKeys: string[]
+}
+
 /** Validate and diff parsed settings against original. */
 export function buildChanges(
   parsed: ParsedSettings,
   original: Record<string, Record<string, unknown>>,
   entryLookup: ReadonlyMap<string, SettingEntry>,
-): {
-  changes: Map<string, string>
-  unknownKeys: string[]
-  envKeys: string[]
-} {
+): SettingChanges {
   const changes = new Map<string, string>()
   const unknownKeys: string[] = []
   const envKeys: string[] = []
+  const composeSetKeys: string[] = []
   for (const [ns, keys] of Object.entries(parsed)) {
     const origNs = original[ns] ?? {}
     for (const [key, value] of Object.entries(keys)) {
@@ -115,15 +155,14 @@ export function buildChanges(
         unknownKeys.push(ck)
         continue
       }
-      if (entry.source === 'env') {
-        envKeys.push(ck)
-        continue
-      }
-      const changed = computeChange(value, origNs[key])
-      if (changed !== null) changes.set(ck, changed)
+      const changed = changedValueFor(entry, value, origNs[key])
+      if (changed === null) continue
+      if (entry.definition.compose_set) composeSetKeys.push(ck)
+      else if (entry.source === 'env') envKeys.push(ck)
+      else changes.set(ck, changed)
     }
   }
-  return { changes, unknownKeys, envKeys }
+  return { changes, unknownKeys, envKeys, composeSetKeys }
 }
 
 function parseRawDocument(text: string, format: CodeFormat): unknown {

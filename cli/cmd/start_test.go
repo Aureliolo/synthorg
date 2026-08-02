@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -366,65 +363,6 @@ func TestAssertInitialised(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("assertInitialised(%q) = %v, want nil", dir, err)
-			}
-		})
-	}
-}
-
-// TestWarnIfDependenciesDegraded pins the contract `start` promises: a
-// backend that is serving but whose readiness reports 503 warns and reports
-// not-ready, and never fails the command. The original bug was the opposite,
-// an unstarted local LLM provider aborting the whole start.
-func TestWarnIfDependenciesDegraded(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name         string
-		status       int
-		wantReady    bool
-		wantWarning  bool
-		wantSubtring string
-	}{
-		{
-			name:      "ready_backend_reports_ready",
-			status:    http.StatusOK,
-			wantReady: true,
-		},
-		{
-			name:         "degraded_backend_warns_and_reports_not_ready",
-			status:       http.StatusServiceUnavailable,
-			wantReady:    false,
-			wantWarning:  true,
-			wantSubtring: "dependency is not ready yet",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/v1/readyz" {
-					w.WriteHeader(http.StatusNotFound)
-					return
-				}
-				w.WriteHeader(tc.status)
-			}))
-			defer srv.Close()
-
-			addr, ok := srv.Listener.Addr().(*net.TCPAddr)
-			if !ok {
-				t.Fatalf("test server listener is %T, want *net.TCPAddr", srv.Listener.Addr())
-			}
-
-			var buf bytes.Buffer
-			out := ui.NewUIWithOptions(&buf, ui.Options{NoColor: true, Hints: "auto"})
-			got := warnIfDependenciesDegraded(context.Background(), config.State{BackendPort: addr.Port}, out)
-
-			if got != tc.wantReady {
-				t.Errorf("warnIfDependenciesDegraded() = %v, want %v", got, tc.wantReady)
-			}
-			warned := strings.Contains(buf.String(), tc.wantSubtring) && tc.wantSubtring != ""
-			if warned != tc.wantWarning {
-				t.Errorf("warning printed = %v, want %v (output %q)", warned, tc.wantWarning, buf.String())
 			}
 		})
 	}

@@ -87,14 +87,13 @@ _r.register(
         default="persistence",
         enum_values=("persistence", "noop"),
         description=(
-            "Recorder sink implementation selected at boot. 'persistence'"
-            " appends frames to the connected backend; 'noop' discards"
-            " them (frames are not recorded)."
+            "Recorder sink implementation. 'persistence' appends frames to"
+            " the connected backend; 'noop' discards them (frames are not"
+            " recorded). Applies to the next batch: the sink picks its"
+            " delegate per batch, so a change lands mid-run."
         ),
         group="Flight Recorder",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
     )
 )
 

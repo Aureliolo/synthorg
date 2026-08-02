@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, mergeAriaToken } from '@/lib/utils'
 
 export interface SelectOption {
   readonly value: string
@@ -34,6 +34,11 @@ export interface SelectFieldProps {
    * adjacent text already names the control -- e.g. dense table rows.
    */
   hideLabel?: boolean | undefined
+  /**
+   * Ids of external text describing the control, merged with the field's
+   * own hint / stale-value ids rather than replacing them.
+   */
+  describedBy?: string | undefined
 }
 
 export interface SelectFieldHelpProps {
@@ -130,6 +135,7 @@ interface SelectControlProps {
   placeholder: string | undefined
   options: readonly SelectOption[] | undefined
   groups: readonly SelectOptionGroup[] | undefined
+  describedBy: string | undefined
 }
 
 /**
@@ -186,8 +192,8 @@ function describedById(
   hasError: boolean,
   isStale: boolean,
 ): string | undefined {
-  if (isStale) return props.staleId
-  return props.hint && !hasError ? props.hintId : undefined
+  const managed = isStale ? props.staleId : props.hint && !hasError ? props.hintId : undefined
+  return mergeAriaToken(props.describedBy, managed)
 }
 
 function SelectControl(props: SelectControlProps) {
@@ -236,6 +242,7 @@ export function SelectField({
   className,
   placeholder,
   hideLabel,
+  describedBy,
 }: SelectFieldProps) {
   const id = useId()
   const errorId = `${id}-error`
@@ -266,6 +273,7 @@ export function SelectField({
         placeholder={placeholder}
         options={options}
         groups={groups}
+        describedBy={describedBy}
       />
       {hasStaleValue(value, options, groups) && (
         <p id={staleId} className="text-xs text-warning">

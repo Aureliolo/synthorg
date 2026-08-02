@@ -210,6 +210,7 @@ export const ErrorCode = {
     COMPLETION_ORACLE_ROLE_MISSING: 8057,
     COMPLETION_ORACLE_RUNTIME_SEED_INCOMPLETE: 8058,
     SUBSYSTEM_GRAPH_INVALID: 8059,
+    SUBSYSTEM_ACTIVATION_FAILED: 8060,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

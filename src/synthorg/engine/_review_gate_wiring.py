@@ -42,8 +42,15 @@ class ReviewGateWiringMixin:
     _completion_oracle_shadow_mode: bool
     _completion_oracle_min_stakes: Stakes
 
-    def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
-        """Attach the receipt service after construction (boot wiring seam)."""
+    def set_receipt_service(
+        self, receipt_service: DeliverableReceiptSeam | None
+    ) -> None:
+        """Attach (or clear) the receipt service after construction.
+
+        Passing ``None`` clears a previously-attached service so a rebuild
+        does not leave the gate writing receipts through an instance whose
+        collaborators were replaced underneath it.
+        """
         self._receipt_service = receipt_service
 
     def set_vision_gate(self, vision_gate: VisionVerifierGate | None) -> None:

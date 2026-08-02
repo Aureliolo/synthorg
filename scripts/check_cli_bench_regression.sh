@@ -267,6 +267,14 @@ fi
 # slowdowns. The regex tolerates any number of integer + fractional
 # digits ("+15%", "+15.3%", "+1234.56%") so a benchstat output-format
 # tweak does not silently mute the gate.
+#
+# benchstat prints one section per metric. `sec/op` and `allocs/op` are
+# read; `B/op` is not. Byte volume on these benchmarks is the size of the
+# artefact produced, not how the code behaves: adding an environment
+# variable to the compose template makes every rendered file larger, which
+# is the feature working rather than a regression. The allocation COUNT
+# still gates, so a rewrite that allocates per element instead of once is
+# caught at the same threshold.
 REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BENCHES}" '
     BEGIN {
         # Build a lookup set from the space-separated exclusion list
@@ -275,6 +283,13 @@ REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BE
         for (i = 1; i <= n; i++) {
             if (excl_arr[i] != "") excl[excl_arr[i]] = 1
         }
+        metric = "sec/op"
+    }
+    # A metric header names its column twice and carries "vs base".
+    /vs base/ {
+        metric = ($0 ~ /allocs\/op/) ? "allocs/op" : \
+                 ($0 ~ /B\/op/) ? "B/op" : "sec/op"
+        next
     }
     # Skip header rows + blank lines.
     /^[[:space:]]*$/ { next }
@@ -282,6 +297,7 @@ REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BE
     /^pkg:/ { next }
     /^geomean/ { next }
     {
+        if (metric == "B/op") next
         # Strip the trailing -N (GOMAXPROCS) suffix so the bench name
         # matches the EXCLUDED_BENCHES list shape ("ResolveTunables"
         # not "ResolveTunables-4").

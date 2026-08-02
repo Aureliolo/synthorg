@@ -163,11 +163,23 @@ def build_litestar(  # noqa: PLR0913
             floor_max_requests=api_config.rate_limit.floor_max_requests,
             unauth_max_requests=api_config.rate_limit.unauth_max_requests,
             auth_max_requests=api_config.rate_limit.auth_max_requests,
+            auth_endpoint_max_requests=(
+                api_config.rate_limit.auth_endpoint_max_requests
+            ),
             time_unit=api_config.rate_limit.time_unit.value,
         )
     )
 
     trusted_proxies = resolve_api_str_tuple("trusted_proxies")
+
+    # Retained as well as handed to Litestar: the compression middleware reads
+    # ``minimum_size`` off this object per response, so the settings subscriber
+    # retunes the threshold by mutating it.
+    compression_config = CompressionConfig(
+        backend="brotli",
+        minimum_size=resolve_api_int("compression_minimum_size_bytes"),
+    )
+    app_state.compression.install(compression_config)
 
     return Litestar(
         route_handlers=[api_router, *root_handlers],
@@ -198,10 +210,7 @@ def build_litestar(  # noqa: PLR0913
             allow_headers=list(api_config.cors.allow_headers),
             allow_credentials=api_config.cors.allow_credentials,
         ),
-        compression_config=CompressionConfig(
-            backend="brotli",
-            minimum_size=resolve_api_int("compression_minimum_size_bytes"),
-        ),
+        compression_config=compression_config,
         # Must be >= artifact API max payload (50 MB) so endpoint-level
         # validation can enforce exact storage limits.
         request_max_body_size=resolve_api_int("request_max_body_size_bytes"),

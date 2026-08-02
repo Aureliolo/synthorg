@@ -147,7 +147,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Knowledge | `/knowledge` | Knowledge endpoint. |
 | Learning | `/learning/curve` | Learning endpoint. |
 | Memory Admin | `/admin/memory` | 13 routes under Memory Admin. |
-| Meta | `/meta` | 17 routes under Meta. |
+| Meta | `/meta` | 16 routes under Meta. |
 | Meta Alerts | `/meta/alerts` | Meta Alerts endpoint. |
 | Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
 | Meta Chat | `/meta/chat/conversations` | 2 routes under Meta Chat. |

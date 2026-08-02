@@ -34,7 +34,7 @@ src/synthorg/api/controllers/project_knowledge.py::ProjectKnowledgeController.li
 src/synthorg/api/controllers/tasks.py::TaskController.list_tasks::6
 src/synthorg/api/conversational_builders.py::build_group_chat_service::9
 src/synthorg/api/lifecycle.py::_safe_shutdown::12
-src/synthorg/api/lifecycle_assembly.py::assemble_lifespan_hooks::17
+src/synthorg/api/lifecycle_assembly.py::assemble_lifespan_hooks::16
 src/synthorg/api/lifecycle_builder.py::_build_lifecycle::11
 src/synthorg/api/lifecycle_runner_shutdown.py::_run_shutdown::10
 src/synthorg/api/lifecycle_runner_startup.py::_run_startup::16
@@ -195,10 +195,8 @@ tests/unit/persistence/sqlite/test_workflow_definition_repo.py::_make_definition
 tests/unit/providers/management/test_upgrade_recommender.py::_model::9
 tests/unit/settings/test_resolver_bridge_configs.py::test_bridge_config_happy_path::6
 tests/unit/settings/test_service.py::TestValidation.test_rejects_invalid_value::6
-tests/unit/settings/test_service.py::_make_definition::10
-tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_default_resolves::7
-tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_env_override::8
-tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_registered::6
+tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_default_resolves::6
+tests/unit/settings/test_subsystem_timeout_entries.py::test_subsystem_timeout_entry_env_override::7
 tests/unit/settings/test_url_port_entries.py::test_url_port_entry_default_resolves::6
 tests/unit/settings/test_url_port_entries.py::test_url_port_entry_env_override::7
 tests/unit/templates/test_model_matcher.py::_make_model::14

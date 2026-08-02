@@ -50,11 +50,14 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
 
     ``api.approval_urgency_critical_seconds`` must be strictly less than
     ``api.approval_urgency_high_seconds`` -- a critical escalation has
-    to fire sooner than a high one. Both settings are ``restart_required``,
-    so the only place to enforce the cross-setting invariant is at app
-    startup. Registry defaults (3600 / 14400) satisfy the invariant;
-    this guard catches operator-tuned misconfigurations that the
-    per-setting ``min_value`` / ``max_value`` bounds can't express.
+    to fire sooner than a high one. A later edit is caught where the pair is
+    read: ``_resolve_urgency_thresholds`` validates it per read and falls back
+    to the defaults when it is inverted. This catches a pair already stored
+    inverted, so startup refuses rather than silently running on defaults an
+    operator believes they have replaced. Registry
+    defaults (3600 / 14400) satisfy the invariant; the guard catches
+    operator-tuned misconfigurations that the per-setting ``min_value`` /
+    ``max_value`` bounds cannot express.
 
     Resolver failures (settings backend down) are logged and the
     invariant check is skipped -- other bridge-config paths handle the

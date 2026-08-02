@@ -328,6 +328,35 @@ def _build_auth_exclude_paths(
     return exclude_paths
 
 
+def _resolve_trusted_proxies() -> frozenset[str]:
+    """Read the configured trusted proxies.
+
+    Returns:
+        The configured entries, or an empty set when none resolve.
+    """
+    resolved = resolve_init_value(
+        SettingNamespace.API,
+        "trusted_proxies",
+        parse=parse_str_tuple_json,
+    )
+    if isinstance(resolved.value, tuple):
+        return frozenset(resolved.value)
+    # Coercing to empty silently is what an operator would never expect from a
+    # value they configured: every proxied client collapses into one
+    # rate-limit bucket, and _warn_if_untrusted_proxies stays quiet on a
+    # local-host bind, so nothing else would report it.
+    logger.warning(
+        API_NETWORK_EXPOSURE_WARNING,
+        note=(
+            "trusted_proxies did not resolve to a tuple; proceeding as though "
+            "no proxies are trusted, so proxied clients share one unauth "
+            "rate-limit bucket."
+        ),
+        resolved_type=type(resolved.value).__name__,
+    )
+    return frozenset()
+
+
 def _warn_if_untrusted_proxies(trusted: frozenset[str], host: str) -> None:
     """Warn when no trusted proxies are configured for a non-local host."""
     if not trusted and host not in ("127.0.0.1", "localhost", "::1"):
@@ -442,7 +471,6 @@ def _build_middleware(
     api_config: ApiConfig,
     *,
     a2a_enabled: bool = False,
-    rate_limiter_enabled: bool = True,
 ) -> list[Middleware]:
     """Build the middleware stack from configuration.
 
@@ -517,54 +545,34 @@ def _build_middleware(
     #      innermost so ``scope["user"]`` is already populated and the
     #      permit is held only during actual handler execution.
     #
-    # When ``api.rate_limiter_enabled`` is False (dev only, opt-in
-    # via the registry), the three global rate-limit tiers are
-    # omitted from the chain AND the rate-limit helpers
-    # (`_build_unauth_identifier`, `_build_rate_limits`,
-    # `_warn_if_untrusted_proxies`) are short-circuited so a broken
-    # rate-limit config in dev cannot fail app construction.
-    # PerOpConcurrencyMiddleware and the per-op guard surface still
-    # apply since they have their own master switches.
-    if rate_limiter_enabled:
-        trusted_resolved = resolve_init_value(
-            SettingNamespace.API,
-            "trusted_proxies",
-            parse=parse_str_tuple_json,
-        )
-        trusted = frozenset(
-            trusted_resolved.value if isinstance(trusted_resolved.value, tuple) else ()
-        )
-        host_resolved = resolve_init_value(SettingNamespace.API, "server_host")
-        _warn_if_untrusted_proxies(trusted, str(host_resolved.value))
-        unauth_identifier = _build_unauth_identifier(trusted)
-        ip_floor, unauth_rl, auth_rl = _build_rate_limits(
-            api_config,
-            ws_path=ws_path,
-            unauth_identifier=unauth_identifier,
-        )
-        return [
-            ip_floor.middleware,
-            ETagMiddleware,
-            auth_middleware,
-            AuthContextMiddleware(),
-            csrf_middleware,
-            unauth_rl.middleware,
-            RequestLoggingMiddleware,
-            auth_rl.middleware,
-            # Pass an instance: ``ASGIMiddleware`` (litestar 2.15+) is
-            # instance-based, not class-based.  Stateless -- no per-request
-            # state on the middleware itself (see its docstring).
-            PerOpConcurrencyMiddleware(),
-        ]
-    # ETagMiddleware is not a rate-limit tier; keep it in both branches.
-    # The three global rate-limit tiers (ip_floor / unauth_rl / auth_rl)
-    # are omitted when the gate is False; ETag bandwidth optimisation
-    # remains active.
+    # The three tiers are mounted whatever ``api.rate_limiter_enabled``
+    # resolves to at boot, and the flag is consulted per request from the
+    # live config instead (``LiveRateLimitMiddleware`` short-circuits to the
+    # inner app when it reads false). Mounting conditionally would make the
+    # setting un-live in one direction only: an operator who booted with it
+    # off could turn it back on, see the write accepted, and have no
+    # middleware in the stack to enforce it. This is the shape
+    # ``PerOpConcurrencyMiddleware`` already uses for its own master switch.
+    trusted = _resolve_trusted_proxies()
+    host_resolved = resolve_init_value(SettingNamespace.API, "server_host")
+    _warn_if_untrusted_proxies(trusted, str(host_resolved.value))
+    unauth_identifier = _build_unauth_identifier(trusted)
+    ip_floor, unauth_rl, auth_rl = _build_rate_limits(
+        api_config,
+        ws_path=ws_path,
+        unauth_identifier=unauth_identifier,
+    )
     return [
+        ip_floor.middleware,
         ETagMiddleware,
         auth_middleware,
         AuthContextMiddleware(),
         csrf_middleware,
+        unauth_rl.middleware,
         RequestLoggingMiddleware,
+        auth_rl.middleware,
+        # Pass an instance: ``ASGIMiddleware`` (litestar 2.15+) is
+        # instance-based, not class-based.  Stateless -- no per-request
+        # state on the middleware itself (see its docstring).
         PerOpConcurrencyMiddleware(),
     ]

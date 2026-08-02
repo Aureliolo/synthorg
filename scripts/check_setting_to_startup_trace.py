@@ -33,10 +33,10 @@ Each ghost service is then matched to settings via three matchers
   contains ``ConfigResolver.get_*("<ns>", "<key>")`` matching a
   registered setting. Catches cross-namespace consumption.
 
-Settings tagged ``read_only_post_init=True`` are skipped because
-they are discoverability-only by design (the registry entry exists
-so operators can introspect via ``/settings``; mutation is
-rejected).
+Settings tagged ``compose_set=True`` are skipped because they are
+discoverability-only by design (the deployment supplies the value; the
+registry entry exists so operators can introspect via ``/settings``,
+and a write is rejected).
 
 Per-line opt-out: append ``# lint-allow: bootstrap-wiring -- <reason>``
 to the closing ``)`` of the ``_r.register(...)`` block. The

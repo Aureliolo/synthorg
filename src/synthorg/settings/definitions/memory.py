@@ -26,36 +26,31 @@ _r.register(
         ),
         group="General",
         enum_values=("sqlvector", "composite", "inmemory"),
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- baked into the frozen ConsolidationConfig
-    # at startup; a change applies on the next process start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="consolidation_interval",
         type=SettingType.ENUM,
         default="daily",
         description=(
-            "How often to consolidate and archive memories. Baked into the"
-            " consolidation config at startup, so a change applies on the"
-            " next restart."
+            "How often to consolidate and archive memories. The change"
+            " reconnects memory, so the new interval is in force at once."
         ),
         group="Maintenance",
         level=SettingLevel.ADVANCED,
         enum_values=("hourly", "daily", "weekly", "never"),
-        restart_required=True,
     )
 )
 
 # ── Embedding ────────────────────────────────────────────────────
 #
-# Both are read once, by the boot-time backend wiring, to build the
-# embedder and size the dense index. Changing the model mid-process
-# would leave every stored vector at an incomparable width, so these are
-# deliberately restart-scoped rather than hot-reloadable.
+# Both are read when the memory backend connects, to build the embedder
+# and size the dense index. Changing either replaces the backend rather
+# than adjusting it: vectors written at one width are incomparable with
+# vectors written at another, so there is nothing to reconcile in place.
 #
 # The model is a MODEL_REF rather than a bare string so the type itself
 # refuses a provider-less value at write time. A provider derived from a
@@ -63,8 +58,6 @@ _r.register(
 # produced bindings naming providers no registry had.
 
 _r.register(
-    # lint-allow: restart-required -- read once when the boot path builds
-    # the embedder; a mid-process change would orphan every stored vector.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_model",
@@ -75,17 +68,15 @@ _r.register(
             " you: unset means memory stays off. Choose the builtin/hashing"
             " pair to run without an embedding model, which matches shared"
             " vocabulary rather than meaning and gives agents materially"
-            " weaker recall. Applies on the next restart."
+            " weaker recall. Setting it brings memory up; changing it"
+            " reconnects the backend on the spot."
         ),
         group="Embedding",
         level=SettingLevel.BASIC,
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- sizes the dense index at boot; the
-    # index is keyed by width, so a change re-indexes on the next start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_dims",
@@ -93,19 +84,18 @@ _r.register(
         default=None,
         description=(
             "Pin the embedding vector width instead of measuring it from"
-            " the model (advanced). Applies on the next restart. At or"
-            f" below {HNSW_VECTOR_MAX_DIMENSIONS} the dense index is exact;"
-            f" up to {HNSW_HALFVEC_MAX_DIMENSIONS} it is built at half"
-            " precision; above that no approximate index can be built and"
-            " every dense search reads the whole corpus. Pinning a width"
-            " below what the model emits truncates each vector, which is"
-            " only sound for a Matryoshka-capable model."
+            " the model (advanced). Reconnects the backend on the spot. At"
+            f" or below {HNSW_VECTOR_MAX_DIMENSIONS} the dense index is"
+            f" exact; up to {HNSW_HALFVEC_MAX_DIMENSIONS} it is built at"
+            " half precision; above that no approximate index can be built"
+            " and every dense search reads the whole corpus. Pinning a"
+            " width below what the model emits truncates each vector, which"
+            " is only sound for a Matryoshka-capable model."
         ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=STORAGE_MAX_DIMENSIONS,
-        restart_required=True,
     )
 )
 

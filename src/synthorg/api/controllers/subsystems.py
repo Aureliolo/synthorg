@@ -11,7 +11,7 @@ from collections import Counter
 
 from litestar import Controller, get
 from litestar.datastructures import State
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
@@ -40,12 +40,40 @@ class SubsystemReport(BaseModel):
     phase: SubsystemPhase = Field(description="Current resting state")
     waiting_on: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Unmet dependencies, when waiting",
+        description="Unmet dependencies, when waiting or degraded",
     )
     detail: str | None = Field(
         default=None,
         description="Failure description, when failed",
     )
+
+    @model_validator(mode="after")
+    def _validate_payload_matches_phase(self) -> SubsystemReport:
+        """Reject a report whose payload contradicts its phase.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: When ``waiting_on`` is populated on a phase that names
+                no unmet requirement, or ``detail`` on anything but ``failed``.
+                This is what an operator reads to find out why something is
+                off, so a field left over from a previous phase is worse than
+                an empty one. ``degraded`` carries ``waiting_on`` for the same
+                reason ``waiting`` does: it is up, but a requirement it names
+                has gone away.
+        """
+        names_unmet = {SubsystemPhase.WAITING, SubsystemPhase.DEGRADED}
+        if self.waiting_on and self.phase not in names_unmet:
+            msg = (
+                "waiting_on is only valid on waiting or degraded, got "
+                f"{self.phase.value}"
+            )
+            raise ValueError(msg)
+        if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
+            msg = f"detail is only valid on failed, got {self.phase.value}"
+            raise ValueError(msg)
+        return self
 
 
 class SubsystemsResponse(BaseModel):

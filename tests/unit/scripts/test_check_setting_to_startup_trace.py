@@ -72,8 +72,13 @@ def test_inventory_extracts_namespace_key_and_metadata(tmp_path: Path) -> None:
     assert setting_keys == {"backup.enabled", "backup.path"}
 
 
-def test_inventory_skips_read_only_post_init(tmp_path: Path) -> None:
-    """``read_only_post_init=True`` settings are tagged so the lint can skip."""
+def test_inventory_records_compose_set_flag(tmp_path: Path) -> None:
+    """The loader carries ``compose_set`` through onto each record.
+
+    Scope is the extraction only. That the flag then suppresses a
+    violation is the matcher's behaviour, covered end-to-end by
+    ``test_compose_set_setting_skipped`` in the ghosts module.
+    """
     repo = _make_fake_repo(
         tmp_path,
         settings_files={
@@ -83,7 +88,7 @@ def test_inventory_skips_read_only_post_init(tmp_path: Path) -> None:
                     "auth_token_bytes",
                     setting_type="INTEGER",
                     default='"32"',
-                    read_only_post_init=True,
+                    compose_set=True,
                 ),
                 _setting_registration("SECURITY", "audit_enabled"),
             ),
@@ -93,8 +98,8 @@ def test_inventory_skips_read_only_post_init(tmp_path: Path) -> None:
         repo / "src" / "synthorg" / "settings" / "definitions"
     )
     by_key = {r.key: r for r in records}
-    assert by_key["auth_token_bytes"].read_only_post_init is True
-    assert by_key["audit_enabled"].read_only_post_init is False
+    assert by_key["auth_token_bytes"].compose_set is True
+    assert by_key["audit_enabled"].compose_set is False
 
 
 def test_inventory_uses_explicit_setting_key(tmp_path: Path) -> None:

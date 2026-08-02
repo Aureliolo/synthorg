@@ -23,6 +23,7 @@ from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from synthorg.settings.write_governance import SettingsWriteGovernance
 from tests._shared.fake_clock import FakeClock
 from tests.unit.api.fakes import FakePersistenceBackend
 from tests.unit.meta.test_service import _snap
@@ -192,18 +193,25 @@ async def test_learning_master_gate_blocks_without_persona(
         await backend.disconnect()
 
 
-async def test_code_modification_stays_restart_bound(
+async def test_a_running_service_never_grows_code_modification(
     settings: SettingsService,
 ) -> None:
-    """A runtime ``code_modification_enabled`` write never enables the capability.
+    """Turning the flag on does not arm an already-built service.
 
-    The strategy and applier are built only when baked-enabled (and the
-    GitHub credential check runs only at startup), so flipping the setting at
-    runtime adds neither: self-modifying code stays restart-bound.
+    The strategy and applier are chosen when the service is constructed from
+    a config the credential check has already validated. Writing the flag
+    afterwards therefore adds neither to this instance: the capability
+    arrives with the next service built from the new config, not by mutating
+    one that was built without it.
     """
     svc = _svc(settings)  # code_modification_enabled=False baked, no provider
     await _enable_loop(settings)
-    await settings.set("self_improvement", "code_modification_enabled", "true")
+    await settings.set(
+        "self_improvement",
+        "code_modification_enabled",
+        "true",
+        governance=SettingsWriteGovernance(confirm=True, reason="test", actor="admin"),
+    )
 
     assert all(
         s.altitude is not ProposalAltitude.CODE_MODIFICATION for s in svc._strategies

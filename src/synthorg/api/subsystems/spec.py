@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
 
 
 class CapabilityId(StrEnum):
@@ -37,6 +38,7 @@ class CapabilityId(StrEnum):
     WORK_PIPELINE = "work_pipeline"
     TASK_ENGINE = "task_engine"
     WORKSPACE_SERVICE = "workspace_service"
+    SETTINGS_READ_SERVICE = "settings_read_service"
 
     # Owned by a declared subsystem.
     MEMORY_BACKEND = "memory_backend"
@@ -69,7 +71,24 @@ class CapabilityId(StrEnum):
     TOOL_CALL_FEEDBACK = "tool_call_feedback"
     ROLE_VERSION_SERVICE = "role_version_service"
     BUDGET_VERSIONS_SERVICE = "budget_versions_service"
-    SETTINGS_READ_SERVICE = "settings_read_service"
+    PROJECT_ROLLUP_SERVICE = "project_rollup_service"
+    KANBAN_BOARD = "kanban_board"
+    STEERING_SERVICE = "steering_service"
+    FINE_TUNE_ORCHESTRATOR = "fine_tune_orchestrator"
+    TEAM_SERVICE = "team_service"
+    COMPANY_READ_SERVICE = "company_read_service"
+    PLAN_ITEM_REPLY_SERVICE = "plan_item_reply_service"
+    ANALYTICS_COLLECTOR = "analytics_collector"
+    EVAL_LOOP = "eval_loop"
+    PRUNING_SERVICE = "pruning_service"
+    SCALING_SERVICE = "scaling_service"
+    QUOTA_POLLER = "quota_poller"
+    STRATEGY_CONTEXT = "strategy_context"
+    RUN_NARRATOR = "run_narrator"
+    REFINEMENT_ROUTER = "refinement_router"
+    PLAN_REVIEW_GATE = "plan_review_gate"
+    PLAN_REVIEW_PANEL = "plan_review_panel"
+    CONVERSATIONAL_PLAN_DISPATCHER = "conversational_plan_dispatcher"
 
 
 class SubsystemPhase(StrEnum):
@@ -124,9 +143,9 @@ class SubsystemSpec:
     """One subsystem, declared rather than sequenced.
 
     ``activate`` is the wiring function itself. ``requires`` states the
-    dependency check where the reconciler can read it, order by it and report
-    on it, rather than inside the function body where only that one call site
-    can act on it.
+    dependency check where the reconciler can read it, order by it, and report
+    on it, rather than leaving it inside the function body where only that one
+    call site can act on it.
 
     Attributes:
         name: Stable operator-facing identifier, also the status-surface key.
@@ -142,11 +161,19 @@ class SubsystemSpec:
             and is left alone.
         enabled_by: ``namespace.key`` of a boolean setting gating this
             subsystem. ``None`` means always enabled.
-        rebuild_on_change: When true, a change in any required capability
-            deactivates and reactivates rather than leaving the running
-            instance alone. Needed where activation captures a dependency by
-            value (the engine reads the memory slice once, at construction),
-            which is OSGi's static-reference policy.
+        settings: ``namespace.key`` settings activation reads. Declared here so
+            the settings subscriber derives what to watch instead of keeping a
+            second list, and so a write to one drives a pass. Declaring a
+            setting is enough to bring an inactive subsystem up when the value
+            it was waiting for arrives; replacing an already-running instance
+            additionally needs ``rebuild_on_change``.
+        rebuild_on_change: When true, a change in any required capability or
+            declared setting deactivates and reactivates rather than leaving
+            the running instance alone. Needed where activation captures a
+            dependency by value (the engine reads the memory slice once, at
+            construction), which is OSGi's static-reference policy. Requires
+            ``deactivate``: without a teardown there is nothing to rebuild
+            from, so the declaration is refused rather than silently ignored.
     """
 
     name: str
@@ -155,4 +182,27 @@ class SubsystemSpec:
     requires: tuple[CapabilityId, ...] = ()
     deactivate: Deactivate | None = None
     enabled_by: str | None = None
+    settings: tuple[str, ...] = ()
     rebuild_on_change: bool = False
+
+    def __post_init__(self) -> None:
+        """Refuse a declaration that cannot keep its own promise.
+
+        Checked here rather than in the graph because it needs nothing but
+        this object, and a declaration site is where the author can see what
+        went wrong.
+
+        Raises:
+            SubsystemGraphInvalidError: When ``rebuild_on_change`` is declared
+                with no ``deactivate``: rebuilding is teardown-then-activate,
+                so without a teardown the subsystem still reads active, the
+                pass leaves it alone, and the promise never fires. The same
+                error the graph raises for its mirror fault, a replaceable
+                dependency whose consumer declares no rebuild.
+        """
+        if self.rebuild_on_change and self.deactivate is None:
+            msg = (
+                f"Subsystem {self.name!r} declares rebuild_on_change with no "
+                "deactivate; a rebuild needs a teardown to rebuild from"
+            )
+            raise SubsystemGraphInvalidError(msg)

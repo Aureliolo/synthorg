@@ -1,15 +1,14 @@
-"""Coverage for the bootstrap-only API entries.
+"""Coverage for the compose-set API entries.
 
-These settings are read at process start via ``RootConfig`` and held
-for the lifetime of the running process; the registry entry exists for
-``/settings`` discoverability only.  ``read_only_post_init=True`` makes
-``SettingsService.set()`` reject mutation, and the resolver's
-read-only-post-init branch collapses the chain to env > YAML > default
-(the DB row is never consulted).
+These settings describe the socket uvicorn already opened and the middleware
+Litestar already mounted, so the process cannot change them about itself; the
+deployment supplies them and the registry entry exists for ``/settings``
+discoverability only. ``compose_set=True`` makes ``SettingsService.set()``
+reject mutation, and the read path collapses the chain to env > default (the
+DB row is never consulted).
 """
 
 import os
-from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import BaseModel, ConfigDict
@@ -19,6 +18,7 @@ from synthorg.settings import definitions as _settings_definitions  # noqa: F401
 from synthorg.settings.errors import SettingReadOnlyError
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -28,14 +28,13 @@ class _FakeConfig(BaseModel):
 
 
 class _RepoMustNotBeReadError(RuntimeError):
-    """Sentinel raised by the test repo if read_only_post_init misroutes a get.
+    """Sentinel raised by the test repo if compose_set misroutes a get.
 
-    A bootstrap-only entry must NEVER consult the persistence layer at
-    read time (env > YAML > default short-circuit applies).  The fixture
-    wires this exception into ``repo.get`` so any future regression that
-    accidentally hits the repository for a read-only-post-init key
-    surfaces immediately as a test failure rather than a silent default
-    fallback.
+    A compose-set entry must NEVER consult the persistence layer at read
+    time (the env > default short-circuit applies).  The fixture wires this
+    exception into ``repo.get`` so any future regression that accidentally
+    hits the repository for a compose-set key surfaces immediately as a test
+    failure rather than a silent default fallback.
     """
 
 
@@ -49,9 +48,9 @@ def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
         if env_key.startswith("SYNTHORG_API_"):
             monkeypatch.delenv(env_key, raising=False)
 
-    repo = AsyncMock(spec=SettingsRepository)
+    repo = mock_of[SettingsRepository]()
     repo.get.side_effect = _RepoMustNotBeReadError(
-        "read_only_post_init keys must not consult the persistence layer"
+        "compose_set keys must not consult the persistence layer"
     )
     repo.get_namespace.return_value = ()
     repo.list_items.return_value = ()
@@ -61,19 +60,20 @@ def service(monkeypatch: pytest.MonkeyPatch) -> SettingsService:
     )
 
 
-# (namespace, key, expected_default).  These five API entries are
-# bootstrap-only: ``RootConfig`` reads them once at startup and the
-# resulting values are baked into uvicorn / Litestar / middleware at
-# app construction.  The matrix locks ``read_only_post_init=True`` on
-# each entry so ``SettingsService.set()`` rejects mutations that would
-# otherwise appear to take effect but never actually flow through to
-# the running process until a restart.
-_BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
+# (namespace, key, expected_default).  ``RootConfig`` reads these once at
+# startup and the resulting values are baked into uvicorn / Litestar /
+# middleware at app construction.  The matrix locks ``compose_set=True`` on
+# each entry so ``SettingsService.set()`` rejects a write rather than storing
+# a value the running process will never read.
+_COMPOSE_SET_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("api", "api_prefix", "/api/v1"),
     ("api", "server_host", "127.0.0.1"),
     ("api", "server_port", "3001"),
     ("api", "cors_allowed_origins", "[]"),
     ("api", "trusted_proxies", "[]"),
+    # Litestar applies rate-limit exclusions when the middleware is mounted,
+    # never per request, so moving them means rebuilding the middleware stack.
+    ("api", "rate_limit_exclude_paths", '["/api/v1/healthz", "/api/v1/readyz"]'),
     # TLS paths: uvicorn bakes resolved file paths into the server at
     # construction; runtime ``set()`` cannot retroactively swap the
     # cert on the listening socket.
@@ -85,54 +85,48 @@ _BOOTSTRAP_ONLY_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
 
 @pytest.mark.parametrize(
     ("namespace", "key", "expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-def test_bootstrap_only_entry_carries_read_only_post_init(
+def test_compose_set_entry_carries_compose_set(
     namespace: str,
     key: str,
     expected_default: str,
 ) -> None:
-    """The registry entry must advertise itself as read-only-post-init."""
+    """The registry entry must advertise itself as compose-set."""
     defn = get_registry().get(namespace, key)
     assert defn is not None, f"setting {namespace}.{key} missing from registry"
-    assert defn.read_only_post_init is True, (
-        f"{namespace}.{key} must be read_only_post_init=True"
-    )
-    assert defn.restart_required is True, (
-        f"{namespace}.{key} must be restart_required=True (implied by"
-        " read_only_post_init)"
-    )
+    assert defn.compose_set is True, f"{namespace}.{key} must be compose_set=True"
     assert defn.default == expected_default
 
 
 @pytest.mark.parametrize(
     ("namespace", "key", "_expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-async def test_bootstrap_only_entry_set_rejects(
+async def test_compose_set_entry_set_rejects(
     namespace: str,
     key: str,
     _expected_default: str,
     service: SettingsService,
 ) -> None:
-    """``service.set()`` must raise ``SettingReadOnlyError`` on bootstrap entries."""
+    """``service.set()`` must raise ``SettingReadOnlyError`` on these."""
     with pytest.raises(SettingReadOnlyError):
         await service.set(namespace, key, "ignored")
 
 
 @pytest.mark.parametrize(
     ("namespace", "key", "expected_default"),
-    _BOOTSTRAP_ONLY_API_ENTRIES,
-    ids=[f"{ns}.{k}" for ns, k, _ in _BOOTSTRAP_ONLY_API_ENTRIES],
+    _COMPOSE_SET_API_ENTRIES,
+    ids=[f"{ns}.{k}" for ns, k, _ in _COMPOSE_SET_API_ENTRIES],
 )
-async def test_bootstrap_only_entry_default_resolves(
+async def test_compose_set_entry_default_resolves(
     namespace: str,
     key: str,
     expected_default: str,
     service: SettingsService,
 ) -> None:
-    """With no env/YAML override, the entry resolves to its documented default."""
+    """With no env override, the entry resolves to its documented default."""
     result = await service.get(namespace, key)
     assert result.value == expected_default

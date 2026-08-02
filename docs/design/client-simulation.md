@@ -237,8 +237,7 @@ selected from the `simulations` settings namespace
 verification stage's `verification_review_enabled` /
 `verification_grader` / `verification_decomposer`): construction
 reads them via the bootstrap resolver (env > registered default)
-because `ConfigResolver` is not wired yet, but these keys are
-hot (`restart_required=False`, not `read_only_post_init`). An
+because `ConfigResolver` is not wired yet, but these keys are live. An
 on-startup hook re-resolves them from the settings DB once the
 resolver is wired, and the `SimulationsSettingsSubscriber` rebuilds
 the simulation runtime via `reload_runtime_services` on any change,

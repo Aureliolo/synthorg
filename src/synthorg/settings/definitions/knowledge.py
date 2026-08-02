@@ -43,7 +43,6 @@ _r.register(
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -62,7 +61,6 @@ _r.register(
             " set before ask answers. Retrieval is unaffected."
         ),
         group="Synthesis",
-        restart_required=False,
     )
 )
 
@@ -83,7 +81,6 @@ _r.register(
         ),
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )
 
@@ -96,7 +93,6 @@ _r.register(
         description="Discriminator selecting the knowledge synthesis strategy.",
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         validator_pattern=r"^[a-z][a-z0-9_]*$",
     )
 )
@@ -114,7 +110,6 @@ _r.register(
         ),
         group="Synthesis",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
         min_value=1,
         max_value=KNOWLEDGE_SEARCH_MAX_LIMIT,
     )

@@ -20,6 +20,7 @@ from synthorg.engine.classification.taxonomy_store_protocol import (
     ErrorTaxonomyStore,
 )
 from synthorg.engine.evolution.service import EvolutionService
+from synthorg.engine.flight_recording.sink import LiveFlightRecorderSink
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveSubmission,
@@ -78,6 +79,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     structure_map_tool_factory: StructureMapToolFactory | None = None
     plan_item_reply_service: PlanItemReplyService | None = None
+    flight_recorder_sink: LiveFlightRecorderSink | None = None
 
 
 def task_engine_of(app_state: AppStateSliceMixin) -> TaskEngine:

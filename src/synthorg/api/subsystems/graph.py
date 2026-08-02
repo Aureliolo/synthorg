@@ -1,8 +1,12 @@
 # module-kind: code
-"""Ordering and capability resolution for declared subsystems.
+"""Ordering and declaration validation for declared subsystems.
 
 Activation order is derived from the declarations rather than written down,
 so adding a subsystem cannot put it in the wrong place in a hand-kept list.
+
+Every answer here comes from the declarations alone, which is why nothing in
+this module takes an ``AppState``. What a pass reads from live state lives in
+:mod:`synthorg.api.subsystems.liveness`.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -10,9 +14,8 @@ from typing import get_args
 
 from pydantic import BaseModel
 
-from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
-from synthorg.api.subsystems.spec import Capability, CapabilityId, SubsystemSpec
+from synthorg.api.subsystems.spec import CapabilityId, SubsystemSpec
 from synthorg.config.schema import RootConfig
 
 
@@ -36,8 +39,10 @@ def order_subsystems(
 
     Raises:
         SubsystemGraphInvalidError: On a duplicate name, a duplicate
-            ``provides``, an ``enabled_by`` that names no boolean setting, an
-            unprobed requirement, or a cycle.
+            ``provides``, an unregistered declared setting, an ``enabled_by``
+            that names no boolean setting, an unprobed requirement, a cycle,
+            or a consumer of a tearable capability that declares no teardown
+            of its own.
     """
     pending = list(specs)
     probed = set(known)
@@ -59,6 +64,8 @@ def order_subsystems(
             )
             raise SubsystemGraphInvalidError(msg)
         providers[spec.provides] = spec.name
+    _reject_unteardownable_consumers(pending)
+    _reject_unregistered_settings(pending)
 
     _reject_invalid_enabled_by(pending)
     _reject_unprobed_requirements(pending, providers, probed)
@@ -196,99 +203,81 @@ def _reject_unprobed_requirements(
             raise SubsystemGraphInvalidError(msg)
 
 
-def missing_capabilities(
-    spec: SubsystemSpec,
-    capabilities: Mapping[CapabilityId, Capability],
-    app_state: AppState,
-) -> tuple[CapabilityId, ...]:
-    """Return the required capabilities that are not currently available.
+def _reject_unregistered_settings(specs: Sequence[SubsystemSpec]) -> None:
+    """Refuse a declared setting no settings write can ever name.
+
+    :func:`settings_fingerprint` snapshots an unreadable key as ``None``,
+    deliberately, and :func:`settings_drift` skips those positions so a
+    resolver outage does not read as drift. A key that is merely misspelled or
+    renamed reads that same way on every pass, so the drift it was declared to
+    detect can never fire and a ``rebuild_on_change`` subsystem keeps its stale
+    instance forever. The watched set the settings subscriber derives has the
+    same hole: it waits on a pair no write emits. Both are the declaration
+    being wrong, so it is refused where it is written.
+
+    ``enabled_by`` has its own check, which additionally requires a boolean.
 
     Args:
-        spec: The subsystem being evaluated.
-        capabilities: Live availability checks, keyed by capability.
-        app_state: Application state the checks read.
+        specs: The declared subsystems.
 
-    Returns:
-        Every unmet requirement, so the status surface can name all of them
-        rather than only whichever one happened to be tested first.
+    Raises:
+        SubsystemGraphInvalidError: On an entry that is not ``namespace.key``,
+            or that names no registered setting.
     """
-    return tuple(
-        need
-        for need in spec.requires
-        if not _is_present(capabilities.get(need), app_state)
-    )
+    import synthorg.settings.definitions  # noqa: F401, PLC0415 -- registers them
+    from synthorg.settings.registry import get_registry  # noqa: PLC0415
+
+    registry = get_registry()
+    for spec in specs:
+        for entry in spec.settings:
+            namespace, separator, key = entry.partition(".")
+            if separator and registry.get(namespace, key) is not None:
+                continue
+            msg = (
+                f"Subsystem {spec.name!r} declares setting {entry!r}, which is "
+                "not a registered 'namespace.key'; it would snapshot as empty "
+                "on every pass and never trigger the rebuild it was declared for"
+            )
+            raise SubsystemGraphInvalidError(msg)
 
 
-def is_active(
-    spec: SubsystemSpec,
-    capabilities: Mapping[CapabilityId, Capability],
-    app_state: AppState,
-) -> bool:
-    """Return whether the subsystem's own capability is available.
+def _reject_unteardownable_consumers(specs: Sequence[SubsystemSpec]) -> None:
+    """Refuse a declaration whose teardown promise cannot be kept.
 
-    Liveness is read from what the subsystem provides rather than tracked
-    separately, so the reconciler's idea of "up" cannot drift from what
-    activation actually installed.
+    A capability is tearable when its owner declares a ``deactivate``, so it
+    can genuinely go away while the process runs. Every consumer of one has to
+    be able to go away with it: a subsystem that captured a collaborator at
+    activation and cannot be taken down keeps serving from the instance that
+    was just disconnected, and reads ACTIVE while it does. It also has to
+    declare ``rebuild_on_change``, because a replacement that arrives without
+    a rebuild is the same stale reference by another route.
+
+    Applied transitively: giving a consumer a teardown makes what IT provides
+    tearable in turn, so its own consumers come under the same rule.
 
     Args:
-        spec: The subsystem being evaluated.
-        capabilities: Live availability checks, keyed by capability.
-        app_state: Application state the checks read.
+        specs: The declared subsystems.
 
-    Returns:
-        ``True`` when the provided capability reads as available.
+    Raises:
+        SubsystemGraphInvalidError: When a consumer of a tearable capability
+            declares no teardown of its own, or no rebuild.
     """
-    return _is_present(capabilities.get(spec.provides), app_state)
-
-
-def capability_fingerprint(
-    needs: Sequence[CapabilityId],
-    capabilities: Mapping[CapabilityId, Capability],
-    app_state: AppState,
-    generations: Mapping[CapabilityId, int] | None = None,
-) -> tuple[tuple[bool, int], ...]:
-    """Snapshot the availability and identity of a subsystem's requirements.
-
-    Compared across passes to spot a dependency that changed under a
-    subsystem which captured it by value at activation. Availability alone is
-    not enough, and on its own is never enough: activation only runs when no
-    requirement is missing, so a snapshot of availability taken then matches
-    every later snapshot taken while the subsystem is still up. The
-    generation counter is what makes a replacement visible, so a provider
-    rebuilt underneath a consumer reads as the different instance it is.
-
-    Args:
-        needs: The capabilities to snapshot, in declaration order.
-        capabilities: Live availability checks, keyed by capability.
-        app_state: Application state the checks read.
-        generations: How many times each capability's owner has come up.
-
-    Returns:
-        One ``(present, generation)`` pair per requirement, positionally
-        aligned with ``needs``.
-    """
-    counters = generations or {}
-    return tuple(
-        (_is_present(capabilities.get(need), app_state), counters.get(need, 0))
-        for need in needs
-    )
-
-
-def _is_present(capability: Capability | None, app_state: AppState) -> bool:
-    """Report whether a capability reads as available.
-
-    An undeclared capability is treated as present: it is an ambient
-    precondition established during construction, not something a subsystem
-    owes. Declaring one that nothing establishes is caught by
-    :func:`order_subsystems`, so this cannot mask a real gap.
-
-    Args:
-        capability: The capability check, or ``None`` when undeclared.
-        app_state: Application state the check reads.
-
-    Returns:
-        ``True`` when available or undeclared.
-    """
-    if capability is None:
-        return True
-    return capability.present(app_state)
+    tearable = {spec.provides for spec in specs if spec.deactivate is not None}
+    for spec in specs:
+        depends_on_tearable = any(need in tearable for need in spec.requires)
+        if not depends_on_tearable:
+            continue
+        if spec.deactivate is None:
+            msg = (
+                f"Subsystem {spec.name!r} requires a capability its owner can "
+                "tear down, but declares no deactivate; it would keep serving "
+                "from a disconnected collaborator and still read active"
+            )
+            raise SubsystemGraphInvalidError(msg)
+        if not spec.rebuild_on_change:
+            msg = (
+                f"Subsystem {spec.name!r} requires a capability its owner can "
+                "replace, but declares no rebuild_on_change; it would hold the "
+                "instance that was replaced"
+            )
+            raise SubsystemGraphInvalidError(msg)

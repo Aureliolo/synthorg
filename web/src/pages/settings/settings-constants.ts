@@ -16,8 +16,8 @@ import type { SettingNamespace } from '@/api/types/settings'
  * company/departments) are managed via the dedicated tabs and hidden
  * from the panel (see HIDDEN_SETTINGS).
  * Every other namespace the backend registry exposes is surfaced
- * here. Each setting's `restart_required` flag is honoured by
- * RestartBadge. */
+ * here. A setting's `compose_set` flag is honoured by
+ * ComposeSetBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'company',

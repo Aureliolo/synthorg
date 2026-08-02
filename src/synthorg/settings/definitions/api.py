@@ -6,19 +6,12 @@ Registers settings covering server, TLS, CORS, rate limiting (global
 authentication, setup, and the WebSocket frame-receive / revalidation
 budget.
 
-Counts (kept generic on purpose; the registry below is the
-authoritative source so docstring counts do not silently drift on the
-next addition):
-
-* The majority are ``restart_required=True`` because Litestar bakes
-  middleware, rate-limit budgets, CORS origins, store backends, and
-  WebSocket frame-timeout / revalidation tracker construction into the
-  application at construction time.
-* The remainder are runtime-editable and picked up by the matching
-  ``SettingsSubscriber`` on change.
-* A subset of the restart-required entries also carry
-  ``read_only_post_init=True`` for surfaces that are init-only at the
-  controller construction site (currently the WebSocket budget knobs).
+The ``compose_set`` entries here are the ones Litestar fixes when the
+application is constructed and offers no seam to change afterwards: the bind
+address, the TLS material, the CORS origins (cached on the config object), the
+middleware exclusion lists (applied at mount time) and the per-handler body-size
+limit (resolved once and cached). Everything else is live, applied by the
+matching ``SettingsSubscriber`` on change.
 """
 
 import json
@@ -110,8 +103,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -128,8 +120,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         min_value=1,
         max_value=65535,
     )
@@ -148,8 +139,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -205,8 +195,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -223,8 +212,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
         sensitive=True,
     )
 )
@@ -242,8 +230,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -261,8 +248,7 @@ _r.register(
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -337,8 +323,7 @@ _r.register(
         ),
         group="CORS",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
+        compose_set=True,
     )
 )
 
@@ -414,7 +399,7 @@ _r.register(
         description="Paths excluded from rate limiting",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
     )
 )
 
@@ -456,7 +441,7 @@ _r.register(
         description="Paths excluded from authentication middleware",
         group="Authentication",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
     )
 )
 
@@ -467,18 +452,15 @@ _r.register(
         type=SettingType.INTEGER,
         default="10",
         description=(
-            "Per-IP request budget per time window on the auth endpoints"
+            "Per-IP request budget per minute on the auth endpoints"
             " (login / setup / change-password / dev-login). Stricter than"
             " the global limiter so a brute-force loop is bounded regardless"
-            " of the global cap. Resolved at construction (the route-level"
-            " limiter middleware is baked at import), so a DB-layer change"
-            " needs a restart; env (SYNTHORG_API_RATE_LIMIT_AUTH_ENDPOINT_MAX"
-            "_REQUESTS) > code default applies at boot."
+            " of the global cap, and counted per minute regardless of"
+            " rate_limit_time_unit so widening the general window cannot"
+            " widen this one. Applies from the next request."
         ),
         group="Authentication",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
-        read_only_post_init=True,
         min_value=1,
         max_value=1000,
     )
@@ -608,11 +590,11 @@ _r.register(
         type=SettingType.INTEGER,
         default="1000",
         description=(
-            "Minimum response body size in bytes before brotli compression is applied"
+            "Minimum response body size in bytes before brotli compression is"
+            " applied. Takes effect on the next response."
         ),
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
         min_value=100,
         max_value=10_000,
     )
@@ -627,7 +609,7 @@ _r.register(
         description="Maximum accepted HTTP request body size in bytes",
         group="Server",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
+        compose_set=True,
         min_value=1_000_000,
         max_value=536_870_912,
     )
@@ -923,28 +905,6 @@ _r.register(
             " re-enabling does not hand every caller a fresh budget."
         ),
         group="Rate Limiting",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="restart_supervised",
-        type=SettingType.BOOLEAN,
-        default="false",
-        description=(
-            "Whether something restarts this process after it exits (a"
-            " container restart policy, systemd, a supervisor). The"
-            " in-app restart control refuses while this is false,"
-            " because there the only way to apply a restart-required"
-            " setting would be to shut the deployment down and leave it"
-            " down. The shipped compose file sets it, every long-running"
-            " service carrying restart: unless-stopped; a bare local run should"
-            " not. Read per request, so correcting it needs no restart"
-            " of its own."
-        ),
-        group="Lifecycle",
         level=SettingLevel.ADVANCED,
     )
 )

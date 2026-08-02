@@ -8,8 +8,7 @@ import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harn
  * Exercises the settings root + per-namespace deep link. The full
  * edit-save-reload round-trip requires a setting schema that maps
  * to a known editable widget; this spec asserts the page mounts
- * and reacts to the WS `system.restart_required` event without
- * blanking out, which is the wedge the audit flagged.
+ * and survives an unrecognised WS event without blanking out.
  */
 
 test.describe('Settings management critical flow', () => {
@@ -29,23 +28,18 @@ test.describe('Settings management critical flow', () => {
     await expect(page.locator('main')).toBeVisible()
   })
 
-  test('tolerates an unknown WS event_type (system.restart_required) without unmounting', async ({ page }) => {
+  test('tolerates an unknown WS event_type without unmounting', async ({ page }) => {
     await page.goto('/settings')
     await expect(page.locator('main')).toBeVisible()
     const heading = page.getByRole('heading').first()
     await expect(heading).toBeVisible()
 
-    // ``system.restart_required`` is a NotificationCategory (see
-    // ``web/src/types/notifications.ts``), NOT a top-level
-    // ``WsEventType`` (only ``system.error`` / ``startup`` /
-    // ``shutdown`` are wire event types). The actual restart-required
-    // surface is the notification-store toast/drawer, not a WS-driven
-    // page banner. This spec deliberately injects an unknown wire
-    // event type to verify the dispatch loop tolerates it without
-    // unmounting; the unit tests for the notification store cover
-    // the restart-required toast path.
+    // Only ``system.error`` / ``startup`` / ``shutdown`` are wire event
+    // types on the ``system`` channel. A deliberately unrecognised one
+    // verifies the dispatch loop drops it rather than unmounting the page:
+    // a backend that grows a new event must not blank a running dashboard.
     await injectEvent(page, {
-      event_type: 'system.restart_required',
+      event_type: 'system.unrecognised_event',
       channel: 'system',
       timestamp: '2026-05-13T12:00:00Z',
       payload: { reason: 'config_change', namespace: 'api', key: 'rate_limit_per_minute' },
@@ -72,8 +66,7 @@ test.describe('Settings management critical flow', () => {
       level: 'basic',
       max_value: 10000,
       min_value: 1,
-      read_only_post_init: false,
-      restart_required: false,
+      compose_set: false,
       sensitive: false,
       validator_pattern: null,
     }

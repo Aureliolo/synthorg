@@ -251,6 +251,35 @@ async def _start_runtime_background_services(
         raise
 
 
+async def _reconcile_once_persistence_is_connected(app_state: AppState) -> None:
+    """Run the reconcile pass boot depends on, and refuse a pass that did not.
+
+    A subsystem that could not activate is a degrade the operator reads off
+    ``/subsystems``, deliberately not a boot failure. A pass that never ran is
+    the opposite: nothing was tried, so the injected-store fallback further
+    down would stand in for a durable backend that was never given its chance.
+
+    Args:
+        app_state: Application state the checks and wiring read.
+
+    Raises:
+        SubsystemActivationError: When the pass could not run or was deferred.
+    """
+    from synthorg.api.subsystems.errors import (  # noqa: PLC0415
+        SubsystemActivationError,
+    )
+    from synthorg.api.subsystems.runtime import (  # noqa: PLC0415
+        reconcile_subsystems,
+    )
+
+    report = await reconcile_subsystems(app_state, trigger="persistence_connected")
+    if report is not None and not report.deferred:
+        return
+    reason = "was deferred to a pass already in flight" if report else "could not run"
+    msg = f"the reconcile pass at persistence-connected {reason}"
+    raise SubsystemActivationError(msg)
+
+
 async def _run_startup(  # noqa: PLR0913
     tasks: _LifecycleTasks,
     app_state: AppState,
@@ -303,6 +332,8 @@ async def _run_startup(  # noqa: PLR0913
         Exception: Re-raised after ``_safe_shutdown`` when the SettingsService,
             workflow-observer or memory-backend auto-wire fails, or when the
             approval-gate wire fails in provider-present mode.
+        SubsystemActivationError: Re-raised after ``_safe_shutdown`` when the
+            reconcile pass at persistence-connected never ran.
     """
     logger.info(API_APP_STARTUP, version=__version__)
     # A reused AppState (shared-app tests, in-place restart) carries the
@@ -529,21 +560,16 @@ async def _run_startup(  # noqa: PLR0913
             await _abort_wired(exc, detail="approval_gate_auto_wire_failed")
             raise
 
-    # Wire durable agent memory before anything downstream reads it, and
-    # before the training-service fallback below: the durable backend is
-    # authoritative. If it wired first via a training-service-injected
-    # ephemeral store, ``wire_memory_backend``'s "already wired" guard
-    # would skip the durable substrate AND its consolidation scheduler,
-    # trading durable memory for an in-process store on every restart.
-    # Memory owns this hook rather than riding along with the
-    # training-service auto-wire below, so a substrate failure is
-    # reported as a memory failure instead of degrading recall silently.
-    from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
-        wire_memory_backend,
-    )
-
+    # Reconcile here, not later, so durable agent memory is up before the
+    # training-service fallback below: the durable backend is authoritative.
+    # If an injected ephemeral store published first, the memory subsystem
+    # would read as already active and its activation would be skipped along
+    # with its consolidation scheduler, trading durable memory for an
+    # in-process store on every restart. Persistence has just connected, so
+    # this is the pass where memory can come up; everything still waiting on
+    # the work pipeline comes up in the later passes.
     try:
-        await wire_memory_backend(app_state)
+        await _reconcile_once_persistence_is_connected(app_state)
     except (Exception, asyncio.CancelledError) as exc:
         reraise_critical(exc)
         # Resolving the embedder awaits a network probe, so a shutdown

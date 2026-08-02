@@ -28,7 +28,6 @@ _r.register(
             " config)."
         ),
         group="General",
-        restart_required=False,
     )
 )
 
@@ -48,6 +47,5 @@ _r.register(
         ),
         group="General",
         level=SettingLevel.ADVANCED,
-        restart_required=False,
     )
 )

@@ -6,7 +6,7 @@ Declares the memory feature's surface: its settings namespace, state slice
 REST controllers (fine-tune, checkpoints, entries, embedder) each guarded
 for the CEO / SYSTEM role, and the memory MCP domain. The backend is wired
 during the training-service auto-wire path; the fine-tune orchestrator is
-wired on startup by ``_wire_fine_tune_orchestrator`` once persistence
+wired on startup by ``wire_fine_tune_orchestrator`` once persistence
 connects, so ``FineTuneOrchestrator`` is ghost-wired here.
 """
 

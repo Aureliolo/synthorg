@@ -149,6 +149,12 @@ class RateLimitConfig(BaseModel):
             parse=parse_int,
         ),
         MirrorField(
+            field="auth_endpoint_max_requests",
+            namespace=SettingNamespace.API,
+            key="rate_limit_auth_endpoint_max_requests",
+            parse=parse_int,
+        ),
+        MirrorField(
             field="time_unit",
             namespace=SettingNamespace.API,
             key="rate_limit_time_unit",
@@ -189,6 +195,17 @@ class RateLimitConfig(BaseModel):
         ge=1,
         description="Maximum authenticated requests per time window (by user ID)",
     )
+    auth_endpoint_max_requests: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Maximum requests per minute (by IP) to the credential"
+            " endpoints. Deliberately far below the other tiers and"
+            " deliberately per-minute regardless of ``time_unit``: it"
+            " bounds a brute-force login loop, so widening the general"
+            " window must not widen this one."
+        ),
+    )
     time_unit: RateLimitTimeUnit = Field(
         default=RateLimitTimeUnit.MINUTE,
         description="Time window (second, minute, hour, day)",
@@ -209,6 +226,12 @@ class RateLimitConfig(BaseModel):
         deployments (office NAT, corporate gateway) would silently
         regress to the floor cap.  Require operators to size the
         floor above both user-gated caps.
+
+        ``auth_endpoint_max_requests`` is deliberately outside this rule.
+        It counts over a fixed minute while these tiers follow
+        ``time_unit``, so the numbers are not comparable, and it is a
+        ceiling on attacker attempts rather than a budget anyone needs to
+        reach: an outer tier clipping it lower only tightens the bound.
 
         Returns:
             ``Self`` instance.
@@ -296,12 +319,10 @@ class ApiConfig(BaseModel):
             (IP floor un-gated, unauthenticated by IP, authenticated
             by user ID).
         rate_limiter_enabled: Master kill switch for the three-tier
-            global rate limiter.  Mirrors the
-            ``api.rate_limiter_enabled`` registry entry
-            (``read_only_post_init=True``): the boot-time resolver in
+            global rate limiter.  Seeds the live tier config the
+            middleware reads per request; the boot-time resolver in
             ``api/app.py`` reads ``SYNTHORG_API_RATE_LIMITER_ENABLED``
-            and falls through to the registered default (env > code
-            default per the Cat-2 precedence model).
+            and falls through to the registered default.
         per_op_rate_limit: Per-operation throttling configuration
             (layered on top of the global three-tier limiter).
         per_op_concurrency: Per-operation inflight concurrency capping
@@ -355,11 +376,10 @@ class ApiConfig(BaseModel):
         default=True,
         description=(
             "Master kill switch for the three-tier global rate limiter."
-            " Mirrors the ``api.rate_limiter_enabled`` registry entry"
-            " (read_only_post_init=True): the boot-time resolver in"
-            " ``api/app.py`` reads SYNTHORG_API_RATE_LIMITER_ENABLED"
-            " and falls through to the registered default (env > code"
-            " default per the Cat-2 precedence model)."
+            " Seeds the live tier config the middleware reads per request;"
+            " the boot-time resolver in ``api/app.py`` reads"
+            " SYNTHORG_API_RATE_LIMITER_ENABLED and falls through to the"
+            " registered default."
         ),
     )
     per_op_rate_limit: PerOpRateLimitConfig = Field(

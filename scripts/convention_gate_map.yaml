@@ -81,10 +81,15 @@ mandatory_rules:
     header: Configuration Precedence
     gate: scripts/check_setting_to_startup_trace.py
 
-  - id: claude-md::restart-required-justification
+  - id: claude-md::compose-set-or-live
     file: CLAUDE.md
-    header: Restart-Required Justification
-    gate: scripts/check_setting_restart_required_justified.py
+    header: Compose-Set Or Live
+    gate: scripts/check_setting_compose_backed.py
+
+  - id: claude-md::subsystem-reconciliation
+    file: CLAUDE.md
+    header: Subsystem Reconciliation
+    gate: scripts/check_subsystems_single_owner.py
 
   - id: claude-md::no-hardcoded-values
     file: CLAUDE.md
