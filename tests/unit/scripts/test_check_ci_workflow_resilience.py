@@ -1361,6 +1361,21 @@ class TestScheduleNotifiers:
         assert len(violations) == 1
         assert _NO_SINK in violations[0]
 
+    def test_a_fork_qualified_sink_reference_counts(self, tmp_path: Path) -> None:
+        # The other resolved spelling of an in-repo action, which a job must
+        # use before its workspace exists. Only the local form appears in the
+        # fixtures above, so without this the marker-matching branch could
+        # regress and stop recognising real sinks while the suite stayed green.
+        content = _scheduled(
+            _notifier(
+                "report_failure",
+                _FAILURE_ONLY,
+                uses="Aureliolo/synthorg/.github/actions/post-tracking-issue@abc",
+            )
+            + _notifier("report_stalled", _STALL_ONLY)
+        )
+        assert _scan(tmp_path, content) == []
+
     def test_filing_through_a_wrapper_composite_counts(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

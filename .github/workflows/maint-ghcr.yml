@@ -303,6 +303,32 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      # Two jobs are watched, so the report must name the one that actually
+      # stalled. A stalled `config` skips `cleanup`, and reporting that
+      # `skipped` would describe a settled outcome for a run that measured
+      # nothing, against a budget the run never reached.
+      - name: Resolve which watched job stalled
+        id: stalled
+        env:
+          CONFIG_RESULT: ${{ needs.config.result }}
+          CLEANUP_RESULT: ${{ needs.cleanup.result }}
+        run: |
+          set -euo pipefail
+          case "$CONFIG_RESULT" in
+            success | failure | skipped)
+              result="$CLEANUP_RESULT"
+              budget="the cleanup job's 120-minute budget"
+              ;;
+            *)
+              result="$CONFIG_RESULT"
+              budget="the config job's 5-minute budget"
+              ;;
+          esac
+          {
+            printf 'result=%s\n' "$result"
+            printf 'budget=%s\n' "$budget"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: ./.github/actions/report-stalled-issue
         with:
           title: 'GHCR prune not completing'
@@ -310,11 +336,12 @@ jobs:
           subject: 'The weekly GHCR prune'
           not-measured: 'no version was refused and no version was deleted'
           guidance: >-
-            Check the run's step timings against the cleanup job's 120-minute
-            budget. Unlike a failed prune this leaves no refused digest to
-            quote, so there is no repair command to run; the prune is
-            idempotent, so a genuinely transient stall clears on the next
-            weekly run while stale dev versions accumulate meanwhile.
-          result: ${{ needs.cleanup.result }}
+            Check the run's step timings against
+            ${{ steps.stalled.outputs.budget }}. Unlike a failed prune this
+            leaves no refused digest to quote, so there is no repair command
+            to run; the prune is idempotent, so a genuinely transient stall
+            clears on the next weekly run while stale dev versions accumulate
+            meanwhile.
+          result: ${{ steps.stalled.outputs.result }}
           run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           gh-token: ${{ github.token }}
