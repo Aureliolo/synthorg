@@ -162,6 +162,15 @@ _DAEMON_ATTEMPTS: Final[int] = 2
 # neither cry wolf on a slow-but-warm machine nor miss a real rebuild.
 _REBUILD_REPORT_SECONDS: Final[float] = 30.0
 
+# How long a retry waits for a server that is still coming up before it
+# issues a ``run`` of its own. dmypy waits 5s, which this repo's daemon
+# exceeds on a loaded machine; the retry that follows is what starts a
+# second server for one status file. Generous because the cost of waiting
+# is a few idle seconds and the cost of not waiting is a leaked multi-GB
+# server plus a status file that reports a graph nobody holds.
+_DAEMON_START_GRACE_SECONDS: Final[float] = 60.0
+_DAEMON_POLL_SECONDS: Final[float] = 0.5
+
 # Opt out of the daemon for a single run. CI is opted out unconditionally: a
 # fresh container pays the multi-minute cold build and is then discarded before
 # any warm run repays it.
@@ -748,6 +757,11 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     _drop_stale_graph(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
+        if attempt:
+            # The previous attempt may have left a server still starting up.
+            # Issuing ``run`` before it publishes its status file is what
+            # starts a second one and strands the first.
+            _wait_for_daemon(daemon)
         started = time.monotonic()
         code = _dmypy(
             daemon,
@@ -758,7 +772,13 @@ def _check_daemon(daemon: _Daemon) -> int | None:
             *daemon.paths,
             *daemon.extra,
         )
-        _report_if_rebuilt(daemon, time.monotonic() - started)
+        if _report_if_rebuilt(daemon, time.monotonic() - started):
+            # A rebuild against a daemon that reported "running" is the one
+            # signal that a second server took its status file, so the scan
+            # for it happens here rather than on every check: it costs a
+            # process-table read, and 1s next to the 140s just spent is
+            # nothing, while 1s on every push is the budget this exists for.
+            _reap_orphaned_servers(daemon)
         if code in _CHECK_COMPLETED_CODES:
             _record_bounded_lifetime(daemon)
             if attempt:
@@ -777,7 +797,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     return None
 
 
-def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> None:
+def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> bool:
     """Say so when a daemon check clearly rebuilt rather than answered.
 
     ``_drop_stale_graph`` can only pre-empt the staleness it knows how to
@@ -793,9 +813,12 @@ def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> None:
     check is seconds, so anything past the threshold below is a rebuild,
     and saying so turns an unexplained slow push into a labelled event
     with an obvious remedy.
+
+    Returns:
+        Whether the check was slow enough to be a rebuild.
     """
     if elapsed < _REBUILD_REPORT_SECONDS:
-        return
+        return False
     print(
         f"{daemon.label} daemon took {elapsed:.0f}s: that is a full graph"
         " rebuild, not a check. Its resident graph was stale for a reason"
@@ -806,6 +829,7 @@ def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> None:
         " push budget.",
         file=sys.stderr,
     )
+    return True
 
 
 def _daemon_running(daemon: _Daemon) -> bool:
@@ -907,6 +931,112 @@ def _process_rss_mb(pid: int) -> int | None:
         field = result.stdout
     digits = re.sub(r"[^0-9]", "", field)
     return int(digits) // _KB_PER_MB if digits else None
+
+
+def _process_parent(pid: int) -> int | None:
+    """Return a process's parent pid, or ``None`` if unreadable.
+
+    Single-pid lookup in the style of :func:`_process_rss_mb` rather than a
+    third column on :func:`_process_table`: only the orphan check needs
+    lineage, and widening that table would change the shape every caller and
+    its tests read.
+    """
+    command = (
+        [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').ParentProcessId",
+        ]
+        if sys.platform == "win32"
+        else ["ps", "-o", "ppid=", "-p", str(pid)]
+    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not read the parent of pid {pid}: {exc}", file=sys.stderr)
+        return None
+    parent = result.stdout.strip()
+    return int(parent) if result.returncode == 0 and parent.isdigit() else None
+
+
+def _orphaned_servers(daemon: _Daemon) -> list[int]:
+    """Return dmypy servers bound to *daemon* that its status file disowns.
+
+    A status file holds one pid, and the last server to start wins it. When
+    two start for the same file, the loser keeps running and keeps whatever
+    graph it built: gigabytes resident, unreachable by ``stop`` or ``kill``
+    (both address the status file), and invisible to ``--status``. The winner
+    is typically the one that built nothing, so every later check rebuilds
+    while every marker agrees the daemon is warm.
+
+    The launcher this venv interposes between ``dmypy`` and the real
+    interpreter carries the same command line as the server it spawned, so
+    the status pid's parent is excluded too; without that it would be reaped
+    on every single run.
+
+    Returns:
+        Pids of servers for this status file that nothing references.
+    """
+    status_pid = _daemon_pid(daemon)
+    if status_pid is None:
+        return []
+    referenced = {status_pid, _process_parent(status_pid)}
+    needle = str(daemon.status_file.resolve())
+    return [
+        pid
+        for pid, command in _process_table()
+        if pid not in referenced
+        and _DAEMON_PROCESS_MARKER in command
+        and _references_path(command, needle)
+    ]
+
+
+def _reap_orphaned_servers(daemon: _Daemon) -> None:
+    """Kill every dmypy server for *daemon* that its status file disowns.
+
+    Announced rather than silent: an orphan is proof that a previous run's
+    status file was overwritten mid-start, so the graph the caller believes
+    is resident is not, and the check about to run will rebuild.
+    """
+    for pid in _orphaned_servers(daemon):
+        rss = _process_rss_mb(pid)
+        held = f" holding {rss}MB" if rss is not None else ""
+        print(
+            f"{daemon.label}: reaping orphaned daemon pid {pid}{held}; its "
+            "status file was taken over by a second server, so nothing could "
+            "reach it and this check cannot reuse its graph.",
+            file=sys.stderr,
+        )
+        _stop_holder(pid)
+
+
+def _wait_for_daemon(daemon: _Daemon) -> bool:
+    """Wait for a starting daemon to publish its status file.
+
+    ``dmypy run`` decides whether to start a server by reading that file, and
+    a server still coming up has not written it. dmypy gives it five seconds;
+    on a loaded machine this repo's daemon needs longer, and past the ceiling
+    the client exits non-zero. Retrying straight away is what starts the
+    second server, so the retry waits here first: if the daemon appears, the
+    next ``run`` attaches to it instead of racing it.
+
+    Returns:
+        ``True`` once a daemon is listening, ``False`` at the ceiling.
+    """
+    deadline = time.monotonic() + _DAEMON_START_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        if _daemon_running(daemon):
+            return True
+        time.sleep(_DAEMON_POLL_SECONDS)
+    return _daemon_running(daemon)
 
 
 def _run_daemon_pass(changed: list[str] | None) -> int | None:
@@ -1173,7 +1303,13 @@ def _stop_one(daemon: _Daemon) -> tuple[int, str | None]:
     with an error that reads nothing like its actual cause. Reclaiming the
     memory and releasing the handle outrank letting an unattended rebuild
     finish, so a stalled stop is escalated rather than merely reported.
+
+    Orphans go first, and for the same reason: ``stop`` and ``kill`` both
+    address the status file, so neither can reach a server that lost it, and
+    the largest process in the worktree would be exactly the one left holding
+    the interpreter after a "stopped" verdict.
     """
+    _reap_orphaned_servers(daemon)
     pid = _daemon_pid(daemon)
     rss = _process_rss_mb(pid) if pid is not None else None
     result = _dmypy_result(
@@ -1423,7 +1559,12 @@ def _stop_holder(pid: int) -> int:
 
 
 def _status() -> int:
-    """Report each daemon's state and resident memory."""
+    """Report each daemon's state, resident memory, and any orphans.
+
+    An orphan is reported here because it is the difference between "warm"
+    and "reports warm, rebuilds anyway": the memory the operator is looking
+    for is resident, just not in the process the status file names.
+    """
     for daemon in _ALL_DAEMONS:
         if not _daemon_running(daemon):
             print(f"{daemon.label:<8} stopped")
@@ -1432,6 +1573,14 @@ def _status() -> int:
         rss = _process_rss_mb(pid) if pid is not None else None
         size = f"{rss}MB" if rss is not None else "size unknown"
         print(f"{daemon.label:<8} running  {size:>14}  {' '.join(daemon.paths)}")
+        for orphan in _orphaned_servers(daemon):
+            orphan_rss = _process_rss_mb(orphan)
+            held = f"{orphan_rss}MB" if orphan_rss is not None else "size unknown"
+            print(
+                f"{'':<8} ORPHAN   {held:>14}  pid {orphan}: a second server "
+                "took the status file; this graph is unreachable and the next "
+                "check will rebuild. The next run reaps it."
+            )
     return 0
 
 

@@ -1,7 +1,7 @@
-"""Tests for the two ways a mypy daemon costs a push without being wrong.
+"""Tests for the ways a mypy daemon costs a push without being wrong.
 
-Both failures share a shape: the daemon still answers, so nothing reports
-a problem, and the cost lands inside whatever ran next.
+Every failure here shares a shape: something still answers, so nothing
+reports a problem, and the cost lands inside whatever ran next.
 
 * A ``uv sync`` invalidates the resident graph without stopping the
   daemon. dmypy discovers that only once a check is underway and pays a
@@ -9,10 +9,15 @@ a problem, and the cost lands inside whatever ran next.
 * A wedged server outlives the client that timed out against it, so the
   bounded retry walks back into the same wedge for another full build
   ceiling rather than getting a fresh daemon.
+* A status file holds one pid. When a second server starts for the same
+  file the first keeps its graph and loses every way of being reached,
+  while the winner holds nothing and reports "running": measured once at
+  a 36MB daemon called warm next to a 2577MB one nothing referenced, and
+  the check that followed rebuilt for 140s.
 
-The fingerprint only pre-empts the staleness it can see, so the third
-group covers the rest: a rebuild that happens anyway is at least named,
-because a 162s check and a 2s check look identical from outside.
+The fingerprint only pre-empts the staleness it can see, so one group
+covers the rest: a rebuild that happens anyway is at least named, because
+a 162s check and a 2s check look identical from outside.
 
 Lives apart from ``test_run_affected_mypy.py`` because that module is
 already well past the tests size budget.
@@ -169,17 +174,22 @@ class TestRebuildIsReported:
     def test_a_slow_check_is_named_a_rebuild(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        _MODULE._report_if_rebuilt(_daemon(tmp_path), _MODULE._REBUILD_REPORT_SECONDS)
+        reported = _MODULE._report_if_rebuilt(
+            _daemon(tmp_path), _MODULE._REBUILD_REPORT_SECONDS
+        )
+        assert reported is True
         assert "full graph rebuild" in capsys.readouterr().err
 
     def test_a_warm_check_says_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # Every ordinary push takes this path, so a banner here would be
-        # noise that trains the reader past the one that matters.
-        _MODULE._report_if_rebuilt(
+        # noise that trains the reader past the one that matters, and the
+        # verdict gates a process scan the push budget cannot afford.
+        reported = _MODULE._report_if_rebuilt(
             _daemon(tmp_path), _MODULE._REBUILD_REPORT_SECONDS - 0.01
         )
+        assert reported is False
         assert capsys.readouterr().err == ""
 
     def test_the_dmypy_call_itself_is_what_gets_timed(
@@ -194,6 +204,7 @@ class TestRebuildIsReported:
         # leave the report permanently silent and nothing else would say so.
         daemon = _daemon(tmp_path)
         _running(daemon)
+        monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon: None)
         ticks = iter([0.0, _MODULE._REBUILD_REPORT_SECONDS + 1.0])
         monkeypatch.setattr(
             _MODULE, "time", SimpleNamespace(monotonic=lambda: next(ticks))
@@ -202,6 +213,122 @@ class TestRebuildIsReported:
         assert _MODULE._check_daemon(daemon) == 0
         assert calls[-1][:1] == ("run",)
         assert "full graph rebuild" in capsys.readouterr().err
+
+
+class TestOrphanedServers:
+    """A status file holds one pid, so a second server strands the first."""
+
+    @staticmethod
+    def _table(
+        status_file: Path,
+        *pids: int,
+        extra: tuple[int, str] | None = None,
+    ) -> list[tuple[int, str]]:
+        """Build a process table of dmypy servers bound to *status_file*."""
+        rows = [
+            (pid, f"python.exe -m mypy.dmypy --status-file {status_file} daemon")
+            for pid in pids
+        ]
+        return rows if extra is None else [*rows, extra]
+
+    def test_a_second_server_for_one_status_file_is_an_orphan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=100)
+        monkeypatch.setattr(_MODULE, "_process_parent", lambda _pid: 99)
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: self._table(daemon.status_file, 100, 99, 42),
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == [42]
+
+    def test_the_launchers_own_process_is_not_an_orphan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # This venv puts a launcher between dmypy and the interpreter, and it
+        # carries the same command line; reaping it would fire on every run.
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=100)
+        monkeypatch.setattr(_MODULE, "_process_parent", lambda _pid: 99)
+        monkeypatch.setattr(
+            _MODULE, "_process_table", lambda: self._table(daemon.status_file, 100, 99)
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == []
+
+    def test_another_worktrees_daemon_is_never_claimed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Killing a sibling worktree's daemon mid-push is worse than leaving
+        # an orphan behind, so the match is on this status file alone.
+        daemon = _daemon(tmp_path)
+        _running(daemon, pid=100)
+        sibling = (
+            77,
+            "python.exe -m mypy.dmypy --status-file C:/other/.dmypy.json daemon",
+        )
+        monkeypatch.setattr(_MODULE, "_process_parent", lambda _pid: 99)
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: self._table(daemon.status_file, 100, extra=sibling),
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == []
+
+    def test_no_status_file_claims_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Without a pid to compare against, every server looks unreferenced.
+        daemon = _daemon(tmp_path)
+        monkeypatch.setattr(
+            _MODULE, "_process_table", lambda: self._table(daemon.status_file, 42)
+        )
+
+        assert _MODULE._orphaned_servers(daemon) == []
+
+    def test_an_orphan_is_reaped_and_announced(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        stopped: list[int] = []
+        monkeypatch.setattr(_MODULE, "_orphaned_servers", lambda _daemon: [42])
+        monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: 2577)
+        monkeypatch.setattr(_MODULE, "_stop_holder", stopped.append)
+
+        _MODULE._reap_orphaned_servers(_daemon(tmp_path))
+
+        assert stopped == [42]
+        assert "2577MB" in capsys.readouterr().err
+
+    def test_a_retry_waits_for_the_starting_server(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        calls: list[tuple[str, ...]],
+    ) -> None:
+        # Retrying before the first server publishes its status file is what
+        # starts the second one, so the wait is the fix rather than a comfort.
+        daemon = _daemon(tmp_path)
+        waited: list[str] = []
+
+        def _record_wait(_daemon: object) -> bool:
+            waited.append("waited")
+            return True
+
+        monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
+        monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+        monkeypatch.setattr(_MODULE, "_wait_for_daemon", _record_wait)
+        codes = iter([_MODULE._DMYPY_FAILED, 0])
+        monkeypatch.setattr(_MODULE, "_dmypy", lambda *_a, **_kw: next(codes))
+
+        assert _MODULE._check_daemon(daemon) == 0
+        assert waited == ["waited"], "the retry raced the starting server"
 
 
 class TestWedgedServerIsKilled:
