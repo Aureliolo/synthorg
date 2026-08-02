@@ -74,6 +74,10 @@ class FlightRecorderSettingsSubscriber:
         sink = self._app_state.slice(EngineStateSlice).flight_recorder_sink
         if sink is None:
             return
+        # Local: ``synthorg.workers`` pulls the whole agent-engine surface
+        # (tool factories, sandbox backends, execution loops) behind it, and
+        # this subscriber is imported wherever settings are, including the CLI
+        # paths that never build an engine.
         from synthorg.workers._agent_engine_collaborators import (  # noqa: PLC0415
             refresh_flight_recorder_sink,
         )

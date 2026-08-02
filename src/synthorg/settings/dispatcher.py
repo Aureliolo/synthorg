@@ -61,9 +61,10 @@ class SettingsChangeDispatcher:
     Each incoming message is matched against subscribers' ``watched_keys``
     and every match's ``on_settings_changed`` is invoked. There is no
     "changed but not applied" case to filter for: a compose-set setting is
-    rejected on the write side, so it never publishes a change. Errors in
-    individual subscribers are logged and swallowed -- the poll loop is
-    never interrupted.
+    rejected on the write side, so it never publishes a change. A subscriber
+    error is passed to ``reraise_critical`` first, so a critical failure
+    propagates and stops the poll loop; everything else is logged and
+    swallowed, leaving the remaining subscribers to run.
 
     Args:
         message_bus: The message bus to poll.

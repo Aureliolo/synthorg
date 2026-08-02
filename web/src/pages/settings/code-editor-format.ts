@@ -67,8 +67,9 @@ function validateChanges(
   if (composeSetKeys.length > 0) {
     return {
       error:
-        'Fixed by the deployment at container start, so it cannot be changed here. ' +
-        `Edit the compose file and recreate the container: ${composeSetKeys.join(', ')}`,
+        'Fixed by the deployment when the process starts, so it cannot be ' +
+        'changed here. Change it where the process is launched, then restart ' +
+        `it: ${composeSetKeys.join(', ')}`,
     }
   }
   if (envKeys.length > 0) return { error: `Cannot edit env-sourced setting(s): ${envKeys.join(', ')}` }

@@ -194,10 +194,12 @@ exactly one env var name per setting.
    `SYNTHORG_<NAMESPACE>_<KEY>`; supply `env_var_override=` if an
    operator-facing name predates the rule.
 3. **Category 2 (fixed by the deployment but operator-visible):**
-   register with `compose_set=True`, and add the env var to
-   `cli/internal/compose/compose.yml.tmpl` in the same change: the
-   `SettingsService` rejects runtime mutation and bypasses the DB on
-   reads, and `check_setting_compose_backed.py` fails a claim the
+   register with `compose_set=True`, and add the env var in the same
+   change to **both** backend compose sources
+   (`cli/internal/compose/compose.yml.tmpl` and `docker/compose.yml`),
+   or to `cli/cmd/worker_start.go` for a setting only the worker reads:
+   the `SettingsService` rejects runtime mutation and bypasses the DB
+   on reads, and `check_setting_compose_backed.py` fails a claim the
    deployment does not actually back.
 4. **Category 3 (bootstrap secret):** do **not** register. Read the
    env var directly at the boot site and document the env var on
@@ -444,9 +446,10 @@ sandbox image the CLI pulled and verified, the RFC 3161 trust anchors resolved
 before the settings backend exists, the Litestar middleware exclusion lists
 applied at mount time. `scripts/check_setting_compose_backed.py` (pre-push +
 CI) requires the shipped tooling to actually pass each one's environment
-variable, so the label cannot decay into "we did not wire this up": a
-`compose_set` key that neither `cli/internal/compose/compose.yml.tmpl` nor
-`cli/cmd/worker_start.go` sets fails the gate.
+variable, so the label cannot decay into "we did not wire this up": a backend
+`compose_set` key missing from either `cli/internal/compose/compose.yml.tmpl`
+or `docker/compose.yml`, or a worker-only one missing from
+`cli/cmd/worker_start.go`, fails the gate.
 
 Everything else is live, through whichever seam its consumer allows:
 

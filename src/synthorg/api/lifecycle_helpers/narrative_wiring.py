@@ -144,6 +144,9 @@ async def unwire_run_narrator(app_state: AppState) -> None:
     nothing else uses. Detaching is also what the reconciler reads as the
     subsystem being down, since liveness comes from the pipeline's own
     attachment record.
+
+    Args:
+        app_state: Application state that owns the work pipeline.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 

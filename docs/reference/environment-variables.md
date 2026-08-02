@@ -60,8 +60,16 @@ into three categories:
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
 | `SYNTHORG_TELEMETRY_ENABLED` | `false` | `telemetry/enabled` | Master opt-in for product telemetry. Accepts `true` / `false` / `1` / `0` / `yes` / `no`. Applies at once: the collector is resident either way and the subscriber pushes the new value onto it. |
-| `SYNTHORG_TELEMETRY_ENV` | unset | n/a | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
-| `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | n/a | Dockerfile-baked deployment environment. CI sets this in published images; operators normally don't touch it. |
+
+## Telemetry environment tag (init-time only)
+
+Read once when the collector is built, so a change needs the process restarted.
+Neither backs a registry key, which is why neither can be edited live.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SYNTHORG_TELEMETRY_ENV` | unset | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
+| `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | Dockerfile-baked deployment environment. CI sets this in published images; operators normally don't touch it. |
 
 ## Tracing (init-time only)
 

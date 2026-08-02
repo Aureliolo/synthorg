@@ -680,6 +680,7 @@ class TestPassSerialisation:
         follower.join(timeout=10)
         holder.join(timeout=10)
 
+        assert [follower.is_alive(), holder.is_alive()] == [False, False]
         assert deferred.is_set()
         # Two attempts: the holder's, and the one the deferred sweep earned by
         # having its retry_declined carried onto the repeat.

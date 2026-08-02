@@ -10,9 +10,9 @@ replaced).
 import pytest
 
 from synthorg.api.lifecycle_helpers.organization_wiring import (
-    _wire_company_read_service,
-    _wire_role_version_service,
-    _wire_team_service,
+    wire_company_read_service,
+    wire_role_version_service,
+    wire_team_service,
 )
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state import AppState
@@ -50,36 +50,36 @@ def _app_state(
 class TestTeamServiceWiring:
     async def test_wired_when_settings_present(self) -> None:
         app_state = _app_state()
-        await _wire_team_service(app_state)
+        await wire_team_service(app_state)
         assert app_state.slice(OrganizationStateSlice).team_service is not None
 
     async def test_absent_without_settings(self) -> None:
         app_state = _app_state(with_settings=False)
-        await _wire_team_service(app_state)
+        await wire_team_service(app_state)
         assert app_state.slice(OrganizationStateSlice).team_service is None
 
     async def test_idempotent_keeps_existing_instance(self) -> None:
         app_state = _app_state()
         existing = TeamService(app_state=app_state)
         app_state.wire(OrganizationStateSlice, team_service=existing)
-        await _wire_team_service(app_state)
+        await wire_team_service(app_state)
         assert app_state.slice(OrganizationStateSlice).team_service is existing
 
 
 class TestCompanyReadServiceWiring:
     async def test_wired_with_resolver_and_mutation(self) -> None:
         app_state = _app_state()
-        await _wire_company_read_service(app_state, None, connected=False)
+        await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is not None
 
     async def test_absent_without_resolver(self) -> None:
         app_state = _app_state(with_resolver=False)
-        await _wire_company_read_service(app_state, None, connected=False)
+        await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is None
 
     async def test_absent_without_mutation(self) -> None:
         app_state = _app_state(with_mutation=False)
-        await _wire_company_read_service(app_state, None, connected=False)
+        await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is None
 
 
@@ -91,7 +91,7 @@ class TestRoleVersionServiceWiring:
             company_versions=mock_of[VersionRepository](),
             role_versions=mock_of[VersionRepository](),
         )
-        await _wire_role_version_service(app_state, persistence)
+        await wire_role_version_service(app_state, persistence)
         assert app_state.slice(OrganizationStateSlice).role_version_service is not None
 
     async def test_idempotent_keeps_existing_instance(self) -> None:
@@ -100,7 +100,7 @@ class TestRoleVersionServiceWiring:
             is_connected=True,
             role_versions=mock_of[VersionRepository](),
         )
-        await _wire_role_version_service(app_state, persistence)
+        await wire_role_version_service(app_state, persistence)
         existing = app_state.slice(OrganizationStateSlice).role_version_service
-        await _wire_role_version_service(app_state, persistence)
+        await wire_role_version_service(app_state, persistence)
         assert app_state.slice(OrganizationStateSlice).role_version_service is existing

@@ -18,7 +18,7 @@ export function ComposeSetBadge({ className }: ComposeSetBadgeProps) {
         'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning/10 text-warning',
         className,
       )}
-      title="Set by the deployment; change it in the compose file and recreate the container"
+      title="Set by the deployment; change it where the process is launched, then restart it"
     >
       <Lock className="size-2.5" aria-hidden />
       Compose

@@ -16648,7 +16648,7 @@ export type components = {
          */
         readonly SettingDefinition: {
             /**
-             * @description Fixed by the deployment at container creation; readable through the settings API, but a write is rejected
+             * @description Fixed by the deployment when the process starts; readable through the settings API, but a write is rejected
              * @default false
              */
             readonly compose_set: boolean;

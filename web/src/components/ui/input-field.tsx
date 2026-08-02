@@ -272,10 +272,9 @@ function _buildInputProps(args: BuildInputPropsArgs): React.InputHTMLAttributes<
     id: ids.id,
     type: isPassword && visible ? 'text' : type,
     'aria-invalid': hasError ? true : (domProps['aria-invalid'] ?? false),
-    'aria-errormessage': mergeAriaToken(
-      domProps['aria-errormessage'],
-      hasError ? ids.errorId : undefined,
-    ),
+    // IDREF, not IDREFS: the component's own message wins while it has an
+    // error, and the caller's id applies otherwise.
+    'aria-errormessage': hasError ? ids.errorId : domProps['aria-errormessage'],
     'aria-describedby': mergeAriaToken(
       domProps['aria-describedby'],
       hint && !hasError ? ids.hintId : undefined,
@@ -379,10 +378,7 @@ function TextareaVariant(props: TextareaProps) {
         ref={ref}
         {...domProps}
         aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
-        aria-errormessage={mergeAriaToken(
-          domProps['aria-errormessage'],
-          hasError ? errorId : undefined,
-        )}
+        aria-errormessage={hasError ? errorId : domProps['aria-errormessage']}
         aria-describedby={mergeAriaToken(
           domProps['aria-describedby'],
           hint && !hasError ? hintId : undefined,

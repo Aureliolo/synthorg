@@ -30,12 +30,15 @@ from synthorg.settings.state import SettingsStateSlice
 logger = get_logger(__name__)
 
 
-async def _wire_team_service(app_state: AppState) -> None:
+async def wire_team_service(app_state: AppState) -> None:
     """Wire the settings-backed ``TeamService`` once settings exist.
 
     ``TeamService`` reads/writes teams through the company-departments
     settings blob, so it activates once a settings service is composed; a
     settings-less boot leaves the synthorg_teams_* tools 503.
+
+    Args:
+        app_state: Application state holding the organization slice.
     """
     org = app_state.slice(OrganizationStateSlice)
     if (
@@ -61,12 +64,21 @@ async def _wire_team_service(app_state: AppState) -> None:
         )
 
 
-async def _wire_company_read_service(
+async def wire_company_read_service(
     app_state: AppState,
     persistence: PersistenceBackend | None,
     *,
     connected: bool,
 ) -> None:
+    """Wire the company-read facade once the org surface it projects exists.
+
+    Args:
+        app_state: Application state holding the organization slice.
+        persistence: Backend the version history is read through.
+        connected: Whether that backend is connected. History is left absent
+            rather than half-wired when it is not, so the facade still serves
+            the reads that need no history.
+    """
     org = app_state.slice(OrganizationStateSlice)
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     org_mutation = app_state.slice(ApiCoreStateSlice).org_mutation_service
@@ -98,10 +110,16 @@ async def _wire_company_read_service(
         )
 
 
-async def _wire_role_version_service(
+async def wire_role_version_service(
     app_state: AppState,
     persistence: PersistenceBackend,
 ) -> None:
+    """Wire the role-history facade over a connected backend.
+
+    Args:
+        app_state: Application state holding the organization slice.
+        persistence: Connected backend the role versions are read from.
+    """
     if app_state.slice(OrganizationStateSlice).role_version_service is not None:
         return
     try:
@@ -125,7 +143,7 @@ async def _wire_role_version_service(
 
 
 __all__ = [
-    "_wire_company_read_service",
-    "_wire_role_version_service",
-    "_wire_team_service",
+    "wire_company_read_service",
+    "wire_role_version_service",
+    "wire_team_service",
 ]

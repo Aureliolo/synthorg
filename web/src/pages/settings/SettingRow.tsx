@@ -81,8 +81,8 @@ interface NoticeIds {
 
 function buildDescribedBy(flags: RowFlags, ids: NoticeIds): string {
   return [
-    flags.isEnvLocked ? ids.env : null,
-    flags.isComposeSet && !flags.isEnvLocked ? ids.readonly : null,
+    flags.isEnvLocked && !flags.isComposeSet ? ids.env : null,
+    flags.isComposeSet ? ids.readonly : null,
     flags.isSecuritySensitive ? ids.security : null,
   ]
     .filter((id): id is string => id !== null)
@@ -92,14 +92,16 @@ function buildDescribedBy(flags: RowFlags, ids: NoticeIds): string {
 function SettingRowNotices({ flags, ids }: { flags: RowFlags; ids: NoticeIds }) {
   return (
     <>
-      {flags.isEnvLocked && (
+      {flags.isEnvLocked && !flags.isComposeSet && (
         <p id={ids.env} className="text-micro text-warning">
           Value set by environment variable (read-only)
         </p>
       )}
-      {flags.isComposeSet && !flags.isEnvLocked && (
+      {/* A deployment passes these as environment variables, so the generic
+          env notice would hide the one that says how to change them. */}
+      {flags.isComposeSet && (
         <p id={ids.readonly} className="text-micro text-warning">
-          Set by the deployment. Change it in the compose file and recreate the container.
+          Set by the deployment. Change it where the process is launched, then restart it.
         </p>
       )}
       {flags.isSecuritySensitive && (

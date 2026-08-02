@@ -7,6 +7,8 @@ the ``settings/`` subsystem free of imports from ``synthorg.api`` (a
 prohibited upward dependency).
 """
 
+from collections.abc import Mapping
+from datetime import timedelta
 from typing import ClassVar, Final, Literal, NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -276,6 +278,54 @@ class PerOpConcurrencyConfig(BaseModel):
 
 type RateLimitWindowUnit = Literal["second", "minute", "hour", "day"]
 
+_WINDOW_SECONDS: Final[Mapping[RateLimitWindowUnit, int]] = {
+    "second": int(timedelta(seconds=1).total_seconds()),
+    "minute": int(timedelta(minutes=1).total_seconds()),
+    "hour": int(timedelta(hours=1).total_seconds()),
+    "day": int(timedelta(days=1).total_seconds()),
+}
+
+KNOWN_WINDOWS: Final[frozenset[str]] = frozenset(_WINDOW_SECONDS)
+"""Every window a stored ``rate_limit_time_unit`` may name.
+
+Derived from the table that converts them, so a new unit cannot be accepted
+by one and unknown to the other.
+"""
+
+AUTH_ENDPOINT_WINDOW: Final[RateLimitWindowUnit] = "minute"
+"""Window the credential throttle counts over, whatever the general one uses.
+
+It is a brute-force bound, so widening the general window must not widen it.
+Declared here because the floor invariant has to know the tier's window to
+compare rates rather than raw counts.
+"""
+
+
+def exceeds_window_rate(
+    *,
+    cap: int,
+    cap_window: RateLimitWindowUnit,
+    floor: int,
+    floor_window: RateLimitWindowUnit,
+) -> bool:
+    """Return whether ``cap`` asks for a higher rate than ``floor`` permits.
+
+    Comparing the raw counts only works while both sit on the same window:
+    a floor of 10 per second permits 600 per minute, so a 20-per-minute
+    credential cap is stricter than it despite the larger number. Compared
+    by cross-multiplication so the ratio stays exact.
+
+    Args:
+        cap: Requests the inner tier allows per its own window.
+        cap_window: Window unit the inner tier counts over.
+        floor: Requests the app-wide floor allows per its own window.
+        floor_window: Window unit the floor counts over.
+
+    Returns:
+        True when the inner cap could never be reached under the floor.
+    """
+    return cap * _WINDOW_SECONDS[floor_window] > floor * _WINDOW_SECONDS[cap_window]
+
 
 class LiveRateLimits(BaseModel):
     """The global tier caps, read per request rather than baked at boot.
@@ -328,15 +378,24 @@ class LiveRateLimits(BaseModel):
         Raises:
             ValueError: When the floor sits below any tier.
         """
-        highest = max(
-            self.unauth_max_requests,
-            self.auth_max_requests,
-            self.auth_endpoint_max_requests,
-        )
+        highest = max(self.unauth_max_requests, self.auth_max_requests)
         if self.floor_max_requests < highest:
             msg = (
                 f"floor_max_requests={self.floor_max_requests} is below "
                 f"{highest}, so it would cap a tier below its configured value"
+            )
+            raise ValueError(msg)
+        if exceeds_window_rate(
+            cap=self.auth_endpoint_max_requests,
+            cap_window=AUTH_ENDPOINT_WINDOW,
+            floor=self.floor_max_requests,
+            floor_window=self.time_unit,
+        ):
+            msg = (
+                f"auth_endpoint_max_requests={self.auth_endpoint_max_requests} "
+                f"per {AUTH_ENDPOINT_WINDOW} is a higher rate than "
+                f"floor_max_requests={self.floor_max_requests} per "
+                f"{self.time_unit}, so the credential cap could never be reached"
             )
             raise ValueError(msg)
         return self

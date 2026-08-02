@@ -8,16 +8,15 @@ is true by requiring the shipped tooling to actually pass the matching
 environment variable -- the compose template for the backend service, or the
 worker launch command for the settings only that process reads.
 
-Without the check, ``compose_set=True`` degrades into the old
-``restart_required``: a label meaning "we did not wire this up", attached to a
-setting the operator has no supported way to change at all.
+Without the check, ``compose_set=True`` is just a label meaning "we did not
+wire this up", attached to a setting the operator has no supported way to
+change at all.
 
 Two compose files ship a backend, so a backend setting has to be passed by
-BOTH or the label is true of one deployment path and a lie about the other.
-Checking only one is how ``SYNTHORG_API_SERVER_HOST`` came to read as loopback
-in the file CI and DAST actually run, while uvicorn was bound to every
-interface and the untrusted-proxy warning that keys off a non-loopback bind
-stayed silent.
+BOTH: a value present in one and absent from the other means the settings page
+reports what one deployment path does while the other silently runs the code
+default, and a bind address or a proxy list is exactly where that diverges
+without anything failing.
 
 The env var is the definition's ``env_var_override`` when it declares one, and
 ``SYNTHORG_{NAMESPACE}_{KEY}`` otherwise -- the same resolution the settings

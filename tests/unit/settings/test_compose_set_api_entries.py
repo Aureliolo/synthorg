@@ -71,6 +71,9 @@ _COMPOSE_SET_API_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("api", "server_port", "3001"),
     ("api", "cors_allowed_origins", "[]"),
     ("api", "trusted_proxies", "[]"),
+    # Litestar applies rate-limit exclusions when the middleware is mounted,
+    # never per request, so moving them means rebuilding the middleware stack.
+    ("api", "rate_limit_exclude_paths", '["/api/v1/healthz", "/api/v1/readyz"]'),
     # TLS paths: uvicorn bakes resolved file paths into the server at
     # construction; runtime ``set()`` cannot retroactively swap the
     # cert on the listening socket.

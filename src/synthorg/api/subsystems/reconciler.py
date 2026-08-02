@@ -122,7 +122,9 @@ class SubsystemReconciler:
         freeze it. The trigger is handed to the pass in flight instead, which
         repeats once it finishes, so the state this call was reacting to is
         still converged, by the pass that is already there. The report handed
-        back is the current observation rather than one this call produced.
+        back is then a mid-pass snapshot and says so through ``deferred``,
+        because an absent failure in it means only that the pass in flight has
+        not reached that subsystem yet.
 
         Args:
             app_state: Application state the checks and wiring read.
@@ -140,7 +142,7 @@ class SubsystemReconciler:
         async with self._lock_for_current_loop():
             if not self._claim_pass(retry_declined=retry_declined):
                 logger.debug(SUBSYSTEM_RECONCILE_DEFERRED, trigger=trigger)
-                return ReconcileReport(statuses=self.statuses(app_state))
+                return ReconcileReport(statuses=self.statuses(app_state), deferred=True)
             holding = True
             try:
                 report = await self._pass(

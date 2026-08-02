@@ -71,9 +71,10 @@ describe('SettingRow: compose_set', () => {
     expect(screen.getByText(/Set by the deployment\./i)).toBeInTheDocument()
   })
 
-  it('hides the compose-set notice when the env-locked notice is already shown', () => {
-    // Env-locked source supersedes the compose-set notice so operators
-    // do not see two overlapping read-only explanations.
+  it('shows the compose-set notice rather than the env one for an env source', () => {
+    // A deployment passes compose-set values as environment variables, so
+    // this pair is the normal case rather than an overlap; the generic env
+    // notice would replace the one saying how to change it.
     const entry = makeEntry({
       compose_set: true,
       source: 'env',
@@ -88,10 +89,10 @@ describe('SettingRow: compose_set', () => {
       />,
     )
 
-    expect(screen.queryByText(/Set by the deployment\./i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Set by the deployment\./i)).toBeInTheDocument()
     expect(
-      screen.getByText(/Value set by environment variable/i),
-    ).toBeInTheDocument()
+      screen.queryByText(/Value set by environment variable/i),
+    ).not.toBeInTheDocument()
   })
 
   it('describes the control itself, not just the surrounding group', () => {
