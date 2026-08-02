@@ -10,6 +10,7 @@ from contextlib import AbstractContextManager
 import litestar
 import pytest
 from litestar import Litestar, get
+from litestar.datastructures import State
 from litestar.testing import TestClient, create_test_client
 from pydantic import ValidationError
 
@@ -31,13 +32,19 @@ from synthorg.config.schema import RootConfig
 _REVIEWED_LITESTAR_VERSION = "2.24.0"
 
 
-def _limits(**overrides: object) -> LiveRateLimits:
-    base: dict[str, object] = {
-        "floor_max_requests": 1000,
-        "unauth_max_requests": 20,
-        "auth_max_requests": 600,
-    }
-    return LiveRateLimits(**(base | overrides))  # type: ignore[arg-type]
+def _limits(
+    *,
+    enabled: bool = True,
+    floor_max_requests: int = 1000,
+    unauth_max_requests: int = 20,
+    auth_max_requests: int = 600,
+) -> LiveRateLimits:
+    return LiveRateLimits(
+        enabled=enabled,
+        floor_max_requests=floor_max_requests,
+        unauth_max_requests=unauth_max_requests,
+        auth_max_requests=auth_max_requests,
+    )
 
 
 @pytest.mark.unit
@@ -88,8 +95,8 @@ class TestFloorInvariant:
         # here rather than quietly enforcing the old floor.
         settled = _limits()
         with pytest.raises(ValidationError):
-            LiveRateLimits(
-                **(settled.model_dump() | {"auth_max_requests": 5_000}),
+            LiveRateLimits.model_validate(
+                settled.model_dump() | {"auth_max_requests": 5_000}
             )
 
 
@@ -138,7 +145,7 @@ def _client_with_live_limits(
     return create_test_client(
         route_handlers=[_probe],
         middleware=[config.middleware],
-        state=litestar.datastructures.State({"app_state": app_state}),
+        state=State({"app_state": app_state}),
     )
 
 
