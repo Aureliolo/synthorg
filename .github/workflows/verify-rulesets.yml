@@ -84,12 +84,35 @@ jobs:
           echo "${YQ_SHA256}  /tmp/yq" | sha256sum --check --strict
           sudo install -m 0755 /tmp/yq /usr/local/bin/yq
           yq --version
+      # The PR's own spec, as DATA for the reconciliation branch below. Fetched
+      # by API rather than checked out, so the job keeps running main's script
+      # against main's spec and nothing pull-request-authored is executed. A
+      # missing or unreadable file leaves the path empty, which the audit
+      # treats as "no reconciling spec offered" and reports the drift.
+      - name: Fetch the pull request's spec
+        if: github.event_name == 'pull_request'
+        id: head-spec
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SPEC_PATH: .github/branch_protection.yml
+        run: |
+          set -euo pipefail
+          out=/tmp/head_branch_protection.yml
+          if gh api -H "Accept: application/vnd.github.raw" \
+            "repos/${GITHUB_REPOSITORY}/contents/${SPEC_PATH}?ref=${HEAD_SHA}" > "$out"; then
+            echo "path=$out" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No ${SPEC_PATH} on the pull request head; auditing the base spec alone."
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Audit
         env:
           # The rulesets endpoints need `metadata: read`, which GITHUB_TOKEN
           # carries; on a public repository they answer unauthenticated. No
           # App token, no deployment environment, nothing privileged.
           GH_TOKEN: ${{ github.token }}
+          RECONCILING_SPEC: ${{ steps.head-spec.outputs.path }}
           # Explicit repo: `gh repo view` inference is fragile under
           # persist-credentials: false and masks a transient 401 as a bogus
           # "could not infer repo" failure.
@@ -100,4 +123,11 @@ jobs:
           # exhausted ladder FAILS rather than deferring, because there is no
           # guaranteed re-audit before the PR merges.
           GH_RETRY_ATTEMPTS: 4
-        run: bash scripts/audit_branch_protection.sh
+        run: |
+          set -euo pipefail
+          if [ -n "${RECONCILING_SPEC:-}" ]; then
+            bash scripts/audit_branch_protection.sh \
+              --reconciling-spec "$RECONCILING_SPEC"
+          else
+            bash scripts/audit_branch_protection.sh
+          fi

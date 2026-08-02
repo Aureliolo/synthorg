@@ -15,6 +15,12 @@
 #
 # Usage:
 #   scripts/audit_branch_protection.sh [--repo owner/name]
+#                                      [--reconciling-spec PATH]
+#
+# --reconciling-spec names a second spec to consult only when the committed
+# one drifts. A pull request whose own spec already matches the live state is
+# the repair for that drift, so the audit reports it instead of failing the
+# branch that fixes it.
 #
 # Requirements:
 #   - gh CLI authenticated. The two reads below need only `metadata: read`,
@@ -32,6 +38,7 @@ set -euo pipefail
 
 REPO=""
 SPEC_FILE=".github/branch_protection.yml"
+RECONCILING_SPEC=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +48,12 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       REPO="$2"; shift 2 ;;
+    --reconciling-spec)
+      if [ $# -lt 2 ] || [ -z "${2-}" ]; then
+        echo "error: --reconciling-spec requires a path" >&2
+        exit 2
+      fi
+      RECONCILING_SPEC="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,25p' "$0"
       exit 0
@@ -236,6 +249,37 @@ yq -o=json '.' "$SPEC_FILE" | jq -S "$NORMALISE_FILTER" > "$SPEC_TMP"
 if diff -u "$SPEC_TMP" "$LIVE_TMP" >/dev/null; then
   echo "OK: live rulesets match ${SPEC_FILE}"
   exit 0
+fi
+
+# 3a. The committed spec drifts. Before reporting, ask whether the caller
+# offered a second spec that already reconciles it: a pull request whose own
+# spec matches live is the repair for this drift, not another instance of it,
+# and reddening the branch that fixes the problem trains readers to ignore the
+# alarm. The reconciling spec is DATA (parsed as YAML, compared as JSON), never
+# executed, and it cannot silence a genuine alarm: to pass it must equal the
+# live state, which is exactly the state the audit wants committed.
+if [ -n "$RECONCILING_SPEC" ]; then
+  if [ ! -f "$RECONCILING_SPEC" ]; then
+    echo "error: --reconciling-spec not found: $RECONCILING_SPEC" >&2
+    exit 2
+  fi
+  RECONCILING_TMP=$(mktemp)
+  trap 'rm -f "$LIVE_TMP" "$SPEC_TMP" "$RECONCILING_TMP"; rm -rf "$RULESETS_DIR"' EXIT
+  # A malformed reconciling spec must not swallow the drift report, so a yq
+  # failure falls through to it rather than aborting or passing.
+  if yq -o=json '.' "$RECONCILING_SPEC" 2>/dev/null \
+    | jq -S "$NORMALISE_FILTER" > "$RECONCILING_TMP" 2>/dev/null \
+    && diff -u "$RECONCILING_TMP" "$LIVE_TMP" >/dev/null; then
+    echo "OK: ${SPEC_FILE} drifts from the live rulesets, and ${RECONCILING_SPEC} reconciles it."
+    echo
+    echo "The committed spec on the base branch is behind the live state:"
+    echo
+    diff -u "$SPEC_TMP" "$LIVE_TMP" || true
+    echo
+    echo "Merging this change brings the two back into agreement, so this is"
+    echo "reported rather than failed."
+    exit 0
+  fi
 fi
 
 echo "Drift detected between ${SPEC_FILE} and live rulesets on ${REPO}:"
