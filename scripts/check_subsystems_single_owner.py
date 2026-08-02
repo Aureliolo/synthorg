@@ -25,13 +25,17 @@ Usage::
 import argparse
 import ast
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 _REGISTRY_REL = "src/synthorg/api/subsystems/registry.py"
 _SOURCE_REL = "src/synthorg"
 _ALLOW_MARKER = "lint-allow: subsystem-single-owner"
+# Every name _is_wiring_name accepts starts with `wire_` or `_wire_`, so both
+# spellings contain this. A file whose text lacks it can neither define nor
+# call wiring, which is what lets the scan skip parsing most of the tree.
+_WIRING_SUBSTRING = "wire_"
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +263,62 @@ def _resolve_callee(
     return None
 
 
-def _definition_modules(repo_root: Path) -> dict[str, set[str]]:
+@dataclass(frozen=True, slots=True)
+class _Candidate:
+    """A source file that mentions wiring, read and parsed once.
+
+    Attributes:
+        path: The file on disk.
+        module: Its dotted module name.
+        source: Its text, kept for the per-line opt-out marker.
+        tree: Its parsed AST, shared by the definition and call passes.
+    """
+
+    path: Path
+    module: str
+    source: str
+    tree: ast.Module
+
+
+def _wiring_candidates(repo_root: Path) -> list[_Candidate]:
+    """Read and parse every source file that could carry wiring.
+
+    The definition pass and the call pass both need the same trees, so they
+    are parsed once here rather than once each. The substring gate runs
+    before the parse because the tree under ``src/synthorg`` is large and
+    only a small fraction of it mentions wiring at all; parsing all of it
+    twice put this scan over the test suite's per-test timeout.
+
+    Args:
+        repo_root: Repository root to scan.
+
+    Returns:
+        One entry per readable, parseable file whose text mentions wiring.
+    """
+    candidates: list[_Candidate] = []
+    for path in _tracked_sources(repo_root):
+        try:
+            source = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _WIRING_SUBSTRING not in source:
+            continue
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError:
+            continue
+        candidates.append(
+            _Candidate(
+                path=path,
+                module=_module_of(repo_root, path),
+                source=source,
+                tree=tree,
+            )
+        )
+    return candidates
+
+
+def _definition_modules(candidates: Sequence[_Candidate]) -> dict[str, set[str]]:
     """Map each wiring function name to every module defining one.
 
     A name defined once anywhere in the tree is unambiguous however it was
@@ -267,23 +326,18 @@ def _definition_modules(repo_root: Path) -> dict[str, set[str]]:
     caller imported from differ from the one the registry names.
 
     Args:
-        repo_root: Repository root to scan.
+        candidates: The parsed sources to read definitions from.
 
     Returns:
         ``{function_name: {defining modules}}``.
     """
     definitions: dict[str, set[str]] = {}
-    for path in _tracked_sources(repo_root):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except OSError, SyntaxError:
-            continue
-        module = _module_of(repo_root, path)
-        for node in tree.body:
+    for candidate in candidates:
+        for node in candidate.tree.body:
             if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             if _is_wiring_name(node.name):
-                definitions.setdefault(node.name, set()).add(module)
+                definitions.setdefault(node.name, set()).add(candidate.module)
     return definitions
 
 
@@ -308,21 +362,21 @@ def scan_repo(
         entry.name: entry
         for entry in (owned if owned is not None else owned_wiring(repo_root))
     }
-    definitions = _definition_modules(repo_root)
-    registry_path = (repo_root / _REGISTRY_REL).resolve()
+    candidates = _wiring_candidates(repo_root)
+    definitions = _definition_modules(candidates)
+    # Both sides are joined from the same repo_root and _tracked_sources
+    # introduces no symlink or `..`, so they compare equal unresolved.
+    registry_path = repo_root / _REGISTRY_REL
 
     violations: list[Violation] = []
-    for path in _tracked_sources(repo_root):
-        if path.resolve() == registry_path:
+    for candidate in candidates:
+        path = candidate.path
+        if path == registry_path:
             continue
-        try:
-            source = path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(path))
-        except OSError, SyntaxError:
-            continue
-        lines = source.splitlines()
-        module = _module_of(repo_root, path)
-        for target, lineno, end_lineno in _call_targets(tree, module):
+        lines = candidate.source.splitlines()
+        for target, lineno, end_lineno in _call_targets(
+            candidate.tree, candidate.module
+        ):
             if not _is_owned(target, owners, definitions):
                 continue
             span = lines[lineno - 1 : end_lineno]
