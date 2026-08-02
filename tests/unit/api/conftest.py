@@ -1012,7 +1012,7 @@ def _promote_first_owner(backend: FakePersistenceBackend) -> None:
     Replicates ``_maybe_promote_first_owner`` from the lifespan
     startup.  Called after seeding test users to ensure at least
     one user has ``OrgRole.OWNER``, matching the production
-    startup behavior.
+    startup behaviour.
     """
     from synthorg.core.auth.models import OrgRole
 

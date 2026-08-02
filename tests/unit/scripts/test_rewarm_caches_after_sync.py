@@ -36,17 +36,17 @@ _TIMEOUT_SECONDS = 20
 # has to wait out a grace period instead, so that one stays short: the child is
 # already spawned by the time the hook exits, so anything that will happen has
 # happened within a few tens of milliseconds.
-# 5s was not enough. Under the pre-push hook the suite runs across 8 xdist
-# workers while other gate groups compete for the same cores, and spawning a
-# detached shell plus the stub can outlast that on a loaded machine: the hook
-# recorded its pid and wrote its log, so the launch decision was correct and
-# only the observation timed out. The bound is generous rather than tuned
-# because a healthy run returns the instant the stub writes.
+# The bound is generous rather than tuned, because a healthy run returns the
+# instant the stub writes. Under the pre-push hook the suite runs across 8
+# xdist workers while other gate groups compete for the same cores, and
+# spawning a detached shell plus the stub can outlast a few seconds on a loaded
+# machine: the hook records its pid and writes its log, so the launch decision
+# is right and only the observation is late.
 #
-# Held below the 30s pytest ceiling so a real failure still reports itself. At
-# exactly 30s the poll consumed the whole budget and pytest killed the test on
-# its timeout first, so the assertion naming the fault never printed and the
-# one run that had something to say said nothing.
+# Held below the 30s pytest ceiling so a real failure still reports itself. A
+# poll that consumes the whole budget is killed by pytest's own timeout before
+# its assertion can name the fault, leaving the one run that had something to
+# say saying nothing.
 _LAUNCH_WAIT_SECONDS = 20.0
 _NO_LAUNCH_GRACE_SECONDS = 0.5
 _POLL_INTERVAL_SECONDS = 0.02
