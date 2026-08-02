@@ -1122,10 +1122,11 @@ _r.register(
             " instead of always using the static react loop. Off by default."
             " When on, the complexity rules (defaults plus"
             " loop_complexity_overrides) and default_loop_type decide which of"
-            " react / plan_execute / hybrid / openhands runs each task. Read"
-            " per task at loop-resolution time, so a change applies to the next"
-            " task with no restart. The openhands loop additionally needs its"
-            " gateway + credentialed-MCP boundaries wired."
+            " react / plan_execute / hybrid / openhands runs each task. The"
+            " selection is resolved when the runtime is built and changing this"
+            " rebuilds it, so a change applies to the next task with no"
+            " restart. The openhands loop additionally needs its gateway +"
+            " credentialed-MCP boundaries wired."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

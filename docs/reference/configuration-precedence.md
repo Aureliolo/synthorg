@@ -487,6 +487,50 @@ Everything else is live, through whichever seam its consumer allows:
   memory backend on the spot. See
   [Subsystem Reconciliation](../design/subsystem-reconciliation.md).
 
+### The complement is enforced too
+
+`scripts/check_setting_live_or_compose_set.py` (pre-push + CI) is the sibling
+of the compose-backed gate and asks the opposite question of every writable
+setting: can an operator's write reach anything that is running? A setting that
+nothing reaches accepts the write, shows the new value on the settings page, and
+changes no behaviour until somebody restarts the process, which is the third
+category the rule abolishes wearing the first category's clothes.
+
+The gate accepts as evidence any of the seams above, read straight from the
+source tree rather than by importing it:
+
+- a `(namespace, key)` pair in any settings subscriber's `_WATCHED` set;
+- a `settings=` or `enabled_by` entry on a `SubsystemSpec`;
+- a resolver read in any shape the tree uses: a positional `(ns, key)` pair,
+  `namespace=` / `key=` keywords (which is also what a `MirrorField`
+  declaration looks like), a `_resolve_bridge_fields` bundle, a namespace-wide
+  `get_namespace` read, a dotted `"ns.key"` literal, a loop over a literal
+  collection of keys, or a helper that takes the namespace or key as a
+  parameter and is called with a literal;
+- the key quoted in `web/src/`, outside test files. The dashboard persists no
+  domain state and re-fetches through `GET /settings`, so a key it reads
+  applies on the next render.
+
+Two things are deliberately *not* evidence. A read inside
+`workers/_engine_assembly.py` or `workers/_openhands_wiring.py` runs inside
+`build_runtime_services`, and a read inside a function a `SubsystemSpec`
+names as its `activate=` / `deactivate=` target runs during activation; both
+happen once per rebuild. Declaring the key in that subsystem's `settings=`
+makes the read live again, because the reconcile pass then re-runs activation
+on a write. The activation analysis follows one import hop (the registry's
+`_activate_*` wrapper to the wiring function it calls), so a read inside a
+helper that wiring function then calls still counts as live.
+
+There is no per-line opt-out. A marker on this rule would read "this setting is
+writable and reaches nothing, and that is fine", which is the category the rule
+exists to abolish. The three sanctioned exits are: make it live, mark it
+`compose_set` and pass it from the launchers (which the sibling gate then
+checks), or delete it. Pre-existing violations are frozen in
+`scripts/setting_live_or_compose_set_baseline.txt`, one
+`<namespace>.<key>:<kind>` per line, where `kind` distinguishes `unreachable`
+from `construction-only`; a listed setting whose kind changes is a new
+violation, not a covered one.
+
 ### Security toggle write guardrail
 
 `security.enabled`, `audit_enabled`, `post_tool_scanning_enabled`, and

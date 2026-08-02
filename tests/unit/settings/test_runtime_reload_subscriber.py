@@ -86,6 +86,15 @@ class TestProtocol:
         assert ("tools", "credentialed_mcp_base_url") in watched
         assert ("providers", "gateway_base_url") in watched
 
+    def test_watched_keys_include_loop_selection(self) -> None:
+        # The engine holds its AutoLoopConfig frozen for its lifetime, so an
+        # edit to any of these reaches a task only through a rebuild.
+        sub, _ = _make_subscriber()
+        watched = sub.watched_keys
+        assert ("engine", "loop_auto_select_enabled") in watched
+        assert ("engine", "default_loop_type") in watched
+        assert ("engine", "loop_complexity_overrides") in watched
+
 
 class TestReload:
     @pytest.mark.parametrize(
@@ -105,6 +114,9 @@ class TestReload:
             ("tools", "openhands_enabled"),
             ("tools", "credentialed_mcp_base_url"),
             ("providers", "gateway_base_url"),
+            ("engine", "loop_auto_select_enabled"),
+            ("engine", "default_loop_type"),
+            ("engine", "loop_complexity_overrides"),
         ],
     )
     async def test_watched_change_triggers_reload(

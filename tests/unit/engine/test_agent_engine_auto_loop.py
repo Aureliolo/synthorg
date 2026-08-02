@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
@@ -28,7 +30,9 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_STATIC_SELECTED,
 )
 from synthorg.providers.models import CompletionResponse
-from tests._shared import as_uuid
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.workers._openhands_wiring import build_auto_loop_config_or_none
+from tests._shared import as_uuid, make_app_state, mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -94,6 +98,118 @@ def _make_budget_enforcer() -> BudgetEnforcer:
     )
     tracker = CostTracker(budget_config=cfg)
     return BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+
+def _loop_settings_app_state(values: dict[str, str]) -> AppState:
+    """Build an app state whose resolver reads *values* on every call.
+
+    The dict is read at call time rather than captured, so a test can write a
+    new value and re-resolve exactly as an operator's write plus a runtime
+    rebuild does.
+    """
+
+    async def get_bool(namespace: str, key: str) -> bool:
+        return values[f"{namespace}.{key}"] == "true"
+
+    async def get_str(namespace: str, key: str) -> str:
+        return values[f"{namespace}.{key}"]
+
+    return make_app_state(
+        config=RootConfig(company_name="test-corp"),
+        config_resolver=mock_of[ConfigResolver](
+            get_bool=AsyncMock(side_effect=get_bool),
+            get_str=AsyncMock(side_effect=get_str),
+        ),
+    )
+
+
+# ── Live loop selection ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestLoopSelectionAppliesLive:
+    """An operator's write reaches the next task through a rebuild.
+
+    ``engine.loop_auto_select_enabled`` and its two companions are resolved by
+    ``build_auto_loop_config_or_none`` into the frozen ``AutoLoopConfig`` the
+    engine then holds, and ``RuntimeReloadSettingsSubscriber`` watches all three
+    so a write rebuilds that engine. These tests pin the half of the chain that
+    turns a new setting value into a different loop.
+    """
+
+    async def test_flipping_the_gate_switches_from_static_to_selected(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        values = {
+            "engine.loop_auto_select_enabled": "false",
+            "engine.default_loop_type": "react",
+            "engine.loop_complexity_overrides": "",
+        }
+        app_state = _loop_settings_app_state(values)
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-live-001",
+            task_id="task-live-001",
+        )
+
+        assert await build_auto_loop_config_or_none(app_state) is None
+        before = AgentEngine(provider=mock_provider_factory([]))
+        assert isinstance(
+            await before._resolve_loop(task, "agent-live-001", str(task.id)),
+            ReactLoop,
+        )
+
+        values["engine.loop_auto_select_enabled"] = "true"
+        config = await build_auto_loop_config_or_none(app_state)
+        assert config is not None
+        after = AgentEngine(
+            provider=mock_provider_factory([]),
+            auto_loop_config=config,
+        )
+        assert isinstance(
+            await after._resolve_loop(task, "agent-live-001", str(task.id)),
+            PlanExecuteLoop,
+        )
+
+    async def test_an_override_write_changes_the_loop_a_complexity_gets(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        values = {
+            "engine.loop_auto_select_enabled": "true",
+            "engine.default_loop_type": "react",
+            "engine.loop_complexity_overrides": "",
+        }
+        app_state = _loop_settings_app_state(values)
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-live-002",
+            task_id="task-live-002",
+        )
+
+        default_config = await build_auto_loop_config_or_none(app_state)
+        assert default_config is not None
+        default_engine = AgentEngine(
+            provider=mock_provider_factory([]),
+            auto_loop_config=default_config,
+        )
+        assert isinstance(
+            await default_engine._resolve_loop(task, "agent-live-002", str(task.id)),
+            PlanExecuteLoop,
+        )
+
+        values["engine.loop_complexity_overrides"] = "medium:react"
+        overridden_config = await build_auto_loop_config_or_none(app_state)
+        assert overridden_config is not None
+        overridden_engine = AgentEngine(
+            provider=mock_provider_factory([]),
+            auto_loop_config=overridden_config,
+        )
+        assert isinstance(
+            await overridden_engine._resolve_loop(task, "agent-live-002", str(task.id)),
+            ReactLoop,
+        )
 
 
 # ── Auto-loop selection ──────────────────────────────────────
