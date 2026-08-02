@@ -24,6 +24,7 @@ from typing import Final
 if __package__ in {None, ""}:  # standalone invocation
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _setting_reachability_literals import (  # type: ignore[import-not-found]
+        called_name,
         parameter_names,
         positional_index,
         receives_instance,
@@ -31,6 +32,7 @@ if __package__ in {None, ""}:  # standalone invocation
     )
 else:
     from scripts._setting_reachability_literals import (
+        called_name,
         parameter_names,
         positional_index,
         receives_instance,
@@ -43,6 +45,24 @@ NAMESPACE_KWARGS: Final[tuple[str, ...]] = ("namespace", "ns")
 KEY_KWARGS: Final[tuple[str, ...]] = ("key", "setting_key")
 NAMESPACE_READS: Final[frozenset[str]] = frozenset(
     {"get_namespace", "get_page", "get_all"}
+)
+# The reads that name one setting by ``(namespace, key)``: ``SettingsService``'s
+# accessors and the resolver's typed getters. Pinning the callee is what keeps a
+# helper index out of calls that merely happen to take a string and a parameter,
+# such as a log line tagged with a namespace, which would otherwise mint
+# evidence that a setting is read live when nothing reads it at all.
+SCALAR_READS: Final[frozenset[str]] = frozenset(
+    {
+        "get",
+        "get_entry",
+        "get_versioned",
+        "get_str",
+        "get_int",
+        "get_float",
+        "get_bool",
+        "get_enum",
+        "get_json",
+    }
 )
 
 
@@ -113,6 +133,7 @@ class HelperCollector:
     def __init__(self) -> None:
         self._per_module: dict[str, dict[str, set[ForwardingHelper]]] = {}
         self._dropped: set[str] = set()
+        self._index: HelperIndex | None = None
 
     def observe(
         self,
@@ -144,17 +165,20 @@ class HelperCollector:
             crediting one of them would attribute a caller's literal to a
             namespace it never touches.
         """
+        if self._index is not None:
+            return self._index
         shared: dict[str, set[ForwardingHelper]] = {}
         for declarations in self._per_module.values():
             for name, helpers in declarations.items():
                 shared.setdefault(name, set()).update(helpers)
-        return HelperIndex(
+        self._index = HelperIndex(
             _per_module={
                 rel: _unambiguous(declarations)
                 for rel, declarations in self._per_module.items()
             },
             _shared=_unambiguous(shared, report=self._dropped),
         )
+        return self._index
 
     def dropped_names(self) -> tuple[str, ...]:
         """Return the helper names ambiguity removed from the shared index.
@@ -163,6 +187,7 @@ class HelperCollector:
         unreachable, and without this the developer has no way to see that a
         name collision, not their wiring, is what the gate objected to.
         """
+        self.index()
         return tuple(sorted(self._dropped))
 
 
@@ -209,13 +234,18 @@ def _key_forward(
     aliases: Mapping[str, str],
 ) -> Iterator[ForwardingHelper]:
     """Yield a helper record when *call* reads ``(known namespace, parameter)``."""
+    if called_name(call) not in SCALAR_READS:
+        return
     keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg}
     namespace = _first_resolved(keywords, NAMESPACE_KWARGS, aliases)
     key_node = next(
         (keywords[name] for name in KEY_KWARGS if name in keywords),
         None,
     )
-    if namespace is None and len(call.args) == _READ_ARITY:
+    # Positional arity is a floor, not an equality: every pinned read opens with
+    # ``(namespace, key)`` and ``get_enum`` then takes the enum class, so
+    # demanding exactly two would drop the one getter that carries a third.
+    if namespace is None and len(call.args) >= _READ_ARITY:
         namespace = resolve_literal(call.args[0], aliases)
         key_node = call.args[1]
     if namespace is None or not isinstance(key_node, ast.Name):

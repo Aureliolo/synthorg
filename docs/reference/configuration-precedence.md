@@ -597,6 +597,17 @@ deployment that never wrote an explicit row inherits the new default on its
 next boot with no prompt, so a default flip on any of these belongs in the
 release notes.
 
+Seven guardrailed `tools` keys are also frozen `construction-only` in
+`scripts/setting_live_or_compose_set_baseline.txt`: `mcp_sandbox_enabled`,
+`mcp_sandbox_network`, `mcp_sandbox_cpus`, `mcp_sandbox_memory_limit`,
+`mcp_sandbox_pids_limit`, `forge_tools_enabled` and `chat_tools_enabled`. The
+combination is worth naming: an operator completes the confirm + reason + actor
+prompt, the write is accepted and the dashboard shows the new value, and the
+sandbox isolation posture stays as it was until the next runtime rebuild. For
+these the gap is a security-posture one rather than a convenience one, so they
+are the priority set for the follow-up that makes each key live, ahead of the
+timeout and limit entries sitting beside them in the baseline.
+
 `integrations.webhook_receipt_retention_days` is governed for a different reason:
 it relaxes no boundary, but **shortening** the window has the next sweep destroy
 delivery evidence irreversibly, so the shortening direction (including the

@@ -10,6 +10,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from scripts._gate_source import GateSourceError
 from scripts._setting_reachability_definitions import load_definitions
 from scripts.check_setting_live_or_compose_set import (
     Violation,
@@ -151,6 +152,14 @@ class TestReachabilitySeams:
                 "async def read(svc):",
                 '    return await svc.get_all("engine")',
             ),
+            _lines(
+                "async def _read(r, key):",
+                '    return await r.get_enum("engine", key, Loop)',
+                "",
+                "",
+                "async def read(r):",
+                '    return await _read(r, "knob")',
+            ),
         ],
         ids=[
             "positional-literals",
@@ -167,6 +176,7 @@ class TestReachabilitySeams:
             "key-forwarded-through-a-method",
             "namespace-forwarded-through-a-helper",
             "get-all-bulk-read",
+            "key-forwarded-into-get-enum",
         ],
     )
     def test_seam_satisfies_the_gate(self, tmp_path: Path, body: str) -> None:
@@ -227,6 +237,35 @@ class TestUnreachable:
         )
         assert violations[0].source_line == expected
 
+    @pytest.mark.parametrize(
+        "call",
+        [
+            'logger.info("engine", key)',
+            'tracer.emit("engine", key, level="debug")',
+        ],
+        ids=["a-log-line", "a-telemetry-call"],
+    )
+    def test_a_helper_forwarding_into_a_non_read_is_not_evidence(
+        self, tmp_path: Path, call: str
+    ) -> None:
+        # Taking a namespace literal beside a parameter is a call shape, not a
+        # settings read. Crediting any callee let a log line tagged with a
+        # namespace certify a setting nothing reads.
+        root = _repo(
+            tmp_path,
+            sources={
+                _CONSUMER: _lines(
+                    "def _tag(key):",
+                    f"    return {call}",
+                    "",
+                    "",
+                    "def read():",
+                    '    return _tag("knob")',
+                )
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
     def test_the_failure_message_names_the_definition_site(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -265,15 +304,6 @@ class TestUnreachable:
         )
         assert scan_repo(root) == []
 
-    def test_a_dashboard_test_file_is_not_evidence(self, tmp_path: Path) -> None:
-        # A key named only by a dashboard test has no live consumer: the test
-        # proves the store parses it, not that anything reads it.
-        root = _repo(
-            tmp_path,
-            web={"__tests__/prefs.test.ts": 'const K = "knob";\n'},
-        )
-        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
-
     @pytest.mark.parametrize(
         "path",
         ["__tests__/prefs.test.ts", "stores/prefs.test.ts"],
@@ -282,6 +312,10 @@ class TestUnreachable:
     def test_a_colocated_dashboard_test_is_not_evidence(
         self, tmp_path: Path, path: str
     ) -> None:
+        # A key named only by a dashboard test has no live consumer: the test
+        # proves the store parses it, not that anything reads it. Both halves
+        # are named, so the exclusion is what rejects this, not the bare-key
+        # rule that test_a_bare_key_without_its_namespace_is_not_evidence pins.
         root = _repo(
             tmp_path, web={path: 'updateSetting("engine", "knob", { value });\n'}
         )
@@ -400,6 +434,54 @@ class TestConstructionPath:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
 
+    def test_a_package_the_builder_imports_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # Assembly code imports a package as readily as a module. Resolving
+        # only "<module>.py" skipped the package initialiser, which put a whole
+        # subtree's reads back in the live set.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/execution_service/__init__.py": _BUILD,
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers.execution_service"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_module_reached_only_through_a_package_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # Skipping the package cost more than the package: everything it alone
+        # imports went unvisited too.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/execution_resume.py": _BUILD,
+                "workers/execution_service/__init__.py": (
+                    "from synthorg.workers.execution_resume import wire_it\n"
+                ),
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers.execution_service"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_an_unresolvable_worker_import_fails_the_scan(self, tmp_path: Path) -> None:
+        # Backing neither a module nor a package is a closure the gate cannot
+        # trust, and a silent skip is what let the package case through.
+        root = _repo(
+            tmp_path,
+            sources={
+                _RUNTIME_BUILDER: runtime_builder_module("synthorg.workers.absent"),
+            },
+        )
+        with pytest.raises(GateSourceError, match="absent"):
+            scan_repo(root)
+
     def test_a_worker_module_the_builder_never_reaches_stays_live(
         self, tmp_path: Path
     ) -> None:
@@ -506,6 +588,21 @@ class TestDefinitionScanning:
                 "engine.py": definitions_module(
                     registration("knob", namespace_expr="_NS"),
                     preamble="_NS = SettingNamespace.ENGINE\n",
+                )
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_quoted_registration_does_not_fail_the_scan(self, tmp_path: Path) -> None:
+        # The text-versus-AST count guards against a registration shape the
+        # matcher does not know. Prose naming the call is not such a shape, and
+        # counting it would exit 2 over a docstring edit.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob"),
+                    preamble='"""Each SettingDefinition( here is registered."""\n',
                 )
             },
         )

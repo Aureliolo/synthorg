@@ -82,6 +82,7 @@ _WEB_TOKEN: Final[re.Pattern[str]] = re.compile(r"['\"`]([A-Za-z0-9_]+)['\"`]")
 
 _RUNTIME_BUILD_REL: Final[str] = "src/synthorg/workers/runtime_builder.py"
 _WORKERS_PACKAGE: Final[str] = "synthorg.workers"
+_PACKAGE_INIT: Final[str] = "__init__.py"
 _BRIDGE_BUILDER: Final[str] = "_resolve_bridge_fields"
 # The bridge builder takes the namespace and the field specs, and nothing else.
 _BRIDGE_ARITY: Final[int] = 2
@@ -96,8 +97,12 @@ _ACTIVATION_KWARGS: Final[frozenset[str]] = frozenset({"activate", "deactivate"}
 
 type Reach = Literal["live", "construction"]
 
-_LIVE: Final[Reach] = "live"
-_CONSTRUCTION: Final[Reach] = "construction"
+# Public: the gate classifies each violation by comparing against these. Two
+# independent spellings of the same value would let a change here silently
+# reclassify every setting instead of failing at import. Annotated rather than
+# ``Final`` so the gate's dual-import shim can bind them in both branches.
+LIVE: Reach = "live"
+CONSTRUCTION: Reach = "construction"
 
 
 @dataclass(frozen=True)
@@ -114,8 +119,8 @@ class Evidence:
         beside it, so the precedence lives here rather than in each caller.
         """
         if pair in self.live:
-            return _LIVE
-        return _CONSTRUCTION if pair in self.construction else None
+            return LIVE
+        return CONSTRUCTION if pair in self.construction else None
 
 
 def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evidence:
@@ -613,18 +618,43 @@ def construction_modules(repo_root: Path) -> frozenset[str]:
         rel = pending.pop()
         if rel in seen:
             continue
-        path = repo_root / rel
-        if not path.is_file():
-            continue
         seen.add(rel)
-        _, tree = read_and_parse(path)
+        _, tree = read_and_parse(repo_root / rel)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
             if not node.module.startswith(f"{_WORKERS_PACKAGE}."):
                 continue
-            pending.append(f"src/{node.module.replace('.', '/')}.py")
+            pending.append(_module_file(repo_root, node.module))
     return frozenset(seen)
+
+
+def _module_file(repo_root: Path, module: str) -> str:
+    """Return the repository-relative file backing dotted *module*.
+
+    Args:
+        repo_root: Project root to resolve against.
+        module: Dotted module name inside the workers package.
+
+    Returns:
+        The path to the module file, or to the package initialiser when the
+        name denotes a package.
+
+    Raises:
+        GateSourceError: If the name backs neither. Assembly code imports a
+            package as readily as a module, and a name silently skipped for
+            resolving to neither puts that whole subtree's reads back in the
+            live set, which is the classification this closure exists to make.
+    """
+    stem = f"src/{module.replace('.', '/')}"
+    for candidate in (f"{stem}.py", f"{stem}/{_PACKAGE_INIT}"):
+        if (repo_root / candidate).is_file():
+            return candidate
+    message = (
+        f"{module}: imported from the construction path but backs neither"
+        f" {stem}.py nor {stem}/{_PACKAGE_INIT}"
+    )
+    raise GateSourceError(message)
 
 
 def _imported_targets(

@@ -218,21 +218,30 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 
 **Authorisation and blast radius.** The rewrite is confined to the PR branch this loop was invoked on, which the operator named when they started the loop; that invocation is the authorisation. The rule may never rewrite `main` or any base branch, never rewrite a branch other than `state.pr`'s head, and never use bare `--force`. If any of those three is what the situation calls for, stop and ask instead.
 
-So on any rate-limit marker, check for an owed rebase first. Both commands must succeed:
+So on any rate-limit marker, check for an owed rebase first. Capture each command's status rather than letting it end the tick silently:
 
 ```bash
-git fetch origin main || exit 1
-BEHIND="$(git rev-list --count HEAD..origin/main)" || exit 1
+ANCESTRY_ERR="$(git fetch origin main 2>&1 >/dev/null)"; FETCH_EXIT=$?
+BEHIND="$(git rev-list --count HEAD..origin/main 2>/dev/null)"; COUNT_EXIT=$?
 ```
 
-A failed `fetch` leaves `origin/main` stale and a failed `rev-list` yields no count. Treating either as zero would skip an owed rebase and fall through to the ping path, which is the branch this rule exists to avoid, so a non-zero exit is recorded as `{round, action: "ancestry_check_failed", detail: <stderr>}` and retried on the next tick rather than read as "nothing owed".
+A failed `fetch` leaves `origin/main` stale and a failed `rev-list` yields no count. Treating either as zero would skip an owed rebase and fall through to the ping path, which is the branch this rule exists to avoid, so a non-zero exit is recorded as `{round, action: "ancestry_check_failed", detail: "$ANCESTRY_ERR"}` and retried on the next tick rather than read as "nothing owed".
+
+**Every command on this path has a defined failure action.** A rebase can conflict, a gate can fail on the newly-merged code, and a lease push can be rejected because the remote moved. On any of them the tick STOPS after recording: it never falls through to the refill arithmetic or the ping, because those would spend a trigger while the worktree sits mid-rebase or the branch sits unpushed.
 
 | Condition | Action |
 |---|---|
-| Ancestry check failed | Record and retry next tick. Do **not** infer a count. |
+| `FETCH_EXIT` or `COUNT_EXIT` non-zero | Record `ancestry_check_failed`, ScheduleWakeup, stop the tick. Do **not** infer a count. |
 | `BEHIND` non-zero AND the PR targets a base other than the default branch (a stacked PR) | Do **not** rebase-push for the review. A stacked PR gets no auto-review on a new head ([[coderabbit_skips_stacked_pr_auto_review]]), so the push would rewrite history and buy nothing. Fall through to the refill arithmetic and the ping path. |
-| `BEHIND` non-zero, not stacked | `git rebase origin/main`, re-run any gate the newly-merged code could affect, then `git push --force-with-lease` (the rebase rewrote history, which is the one sanctioned case for it). Do **NOT** also ping: the push already triggers the review, and a ping on top is one trigger more than needed. Append history `{round, action: "rate_limit_rebase_push", head_sha: <new sha>, rebased_onto: <main sha>}`. Schedule the NORMAL `cadence_seconds`, not the refill window, since a review is now inbound. |
+| `BEHIND` non-zero, not stacked | Run the rebase sequence below. |
 | `BEHIND` zero | No rebase owed. Fall through to the refill arithmetic below. |
+
+Rebase sequence, in order, stopping at the first failure:
+
+1. `git rebase origin/main`. **On failure** (conflict, or a dirty tree): run `git rebase --abort` to return the worktree to its pre-rebase state, record `{round, action: "rate_limit_rebase_failed", detail: <stderr>}`, ScheduleWakeup, stop the tick. Never leave a rebase in progress across ticks: the next tick would read a detached HEAD as the branch state. A conflict is real work, not a retry candidate, so surface it rather than re-attempting on a timer.
+2. Re-run any gate the newly-merged code could affect. **On failure**: the rebase already rewrote local history and cannot be aborted, so do NOT push and do NOT ping. Record `{round, action: "rate_limit_rebase_gate_failed", gate: <name>, detail: <output>}`, then treat the failure as a finding and fix it through Phases 8 to 10 this round, which pushes the rebase along with the fix.
+3. `git push --force-with-lease` (the rebase rewrote history, which is the one sanctioned case for it). **On rejection**: the lease is stale, meaning the remote head moved since the fetch. Never retry with bare `--force`; that would discard whatever landed. Record `{round, action: "rate_limit_rebase_push_rejected", detail: <stderr>}`, ScheduleWakeup, stop the tick so the next one re-derives ancestry against the moved remote.
+4. On success, do **NOT** also ping: the push already triggers the review, and a ping on top is one trigger more than needed. Append `{round, action: "rate_limit_rebase_push", head_sha: <new sha>, rebased_onto: <main sha>}`. Schedule the NORMAL `cadence_seconds`, not the refill window, since a review is now inbound.
 
 This is not a trick played on the limiter. The branch has to be rebased before it can merge, and the `check push rebased` pre-push hook blocks a push from a branch that is behind, so the rebase is work already owed; spending it during the wait buys the review for free and triggers no more reviews than necessary.
 

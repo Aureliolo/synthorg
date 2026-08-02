@@ -74,6 +74,8 @@ if __package__ in {None, ""}:  # standalone invocation
         load_definitions,
     )
     from _setting_reachability_evidence import (  # type: ignore[import-not-found]
+        CONSTRUCTION,
+        LIVE,
         collect_evidence,
     )
 else:
@@ -82,7 +84,11 @@ else:
         SettingScanError,
         load_definitions,
     )
-    from scripts._setting_reachability_evidence import collect_evidence
+    from scripts._setting_reachability_evidence import (
+        CONSTRUCTION,
+        LIVE,
+        collect_evidence,
+    )
 
 _BASELINE_REL: Final[str] = "scripts/setting_live_or_compose_set_baseline.txt"
 
@@ -156,14 +162,14 @@ def scan_repo(repo_root: Path) -> list[Violation]:
             setting_key=record.setting_key,
             kind=(
                 _KIND_CONSTRUCTION
-                if evidence.status(record.pair) == "construction"
+                if evidence.status(record.pair) == CONSTRUCTION
                 else _KIND_UNREACHABLE
             ),
             source_file=record.source_file,
             source_line=record.source_line,
         )
         for record in writable
-        if evidence.status(record.pair) != "live"
+        if evidence.status(record.pair) != LIVE
     ]
     return sorted(violations, key=Violation.baseline_key)
 

@@ -144,7 +144,7 @@ def _scan_file(path: Path, rel: str) -> Iterator[SettingRecord]:
                 source_file=rel,
                 source_line=node.lineno,
             )
-    _check_all_recognised(source, seen, rel)
+    _check_all_recognised(source, tree, seen, rel)
 
 
 def _definition_names(tree: ast.Module) -> frozenset[str]:
@@ -172,17 +172,31 @@ def _is_definition_call(node: ast.AST, names: frozenset[str]) -> TypeIs[ast.Call
     return isinstance(node.func, ast.Attribute) and node.func.attr == _DEFINITION_CALL
 
 
-def _check_all_recognised(source: str, seen: int, rel: str) -> None:
+def _check_all_recognised(source: str, tree: ast.Module, seen: int, rel: str) -> None:
     """Fail when the text spells more registrations than the AST matched.
 
     A shape the matcher does not know yet drops its setting from the inventory
     without raising anywhere else, which is the one failure this scan cannot
     detect from its own results.
 
+    Args:
+        source: The module text, counted for spelled registrations.
+        tree: The parsed module, used to discount quoted occurrences.
+        seen: How many registrations the AST walk resolved.
+        rel: Repository-relative path, for the error message.
+
     Raises:
         SettingScanError: If the counts disagree.
     """
-    spelled = source.count(f"{_DEFINITION_CALL}(")
+    needle = f"{_DEFINITION_CALL}("
+    # A docstring or error message naming the call is prose, not a registration;
+    # counting it would fail the scan for a documentation edit.
+    quoted = sum(
+        node.value.count(needle)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    )
+    spelled = source.count(needle) - quoted
     if spelled > seen:
         message = (
             f"{rel}: found {spelled} '{_DEFINITION_CALL}(' in the source but"

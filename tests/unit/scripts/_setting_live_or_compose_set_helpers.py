@@ -228,12 +228,34 @@ def registry_module(
         f"    await {target_function}(app_state)",
         "",
         "",
-        "SUBSYSTEMS: tuple[SubsystemSpec, ...] = (",
-        "    SubsystemSpec(",
-        '        name="thing",',
-        "        provides=CapabilityId.THING,",
-        f"        {activate_kwarg}={activate},",
     ]
+    # The production graph refuses ``rebuild_on_change=True`` without a
+    # ``deactivate``, so a fixture that omitted one would encode a spec the
+    # rule rejects. The gate reads the registry by AST and never constructs a
+    # SubsystemSpec, so nothing would have failed to say so. When the caller
+    # has already routed its wrapper through ``deactivate=``, the spec has one.
+    teardown = f"{activate}_teardown"
+    needs_teardown = rebuild_on_change and activate_kwarg == "activate"
+    if needs_teardown:
+        lines.extend(
+            [
+                f"async def {teardown}(app_state: object) -> None:",
+                f"    from {target_module} import {target_function}",
+                "",
+                f"    await {target_function}(app_state)",
+                "",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "SUBSYSTEMS: tuple[SubsystemSpec, ...] = (",
+            "    SubsystemSpec(",
+            '        name="thing",',
+            "        provides=CapabilityId.THING,",
+            f"        {activate_kwarg}={activate},",
+        ]
+    )
     if enabled_by is not None:
         lines.append(f'        enabled_by="{enabled_by}",')
     if settings:
@@ -244,6 +266,8 @@ def registry_module(
                 "        ),",
             ]
         )
+    if needs_teardown:
+        lines.append(f"        deactivate={teardown},")
     if rebuild_on_change:
         lines.append("        rebuild_on_change=True,")
     lines.extend(["    ),", ")"])
