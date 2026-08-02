@@ -10,10 +10,17 @@ Foundational modules (core, config, observability) are imported by nearly every
 other module, so a change there raises a whole-suite question. Answering it is
 CI's job (the Test Unit shards): locally the changed module's own tests still
 run and the deferral is printed, never silent, so a push stays inside its
-five-minute budget. The same applies to a ``conftest.py``, a top-level source
+five-minute budget. The same applies to a ``conftest.py``, shared test
+infrastructure under ``tests/`` that belongs to no tier, a top-level source
 file (``__init__.py``, ``constants.py``), and a ``pyproject.toml`` edit, which
 carries pytest's own configuration. ``--full`` runs the whole suite on demand,
 with the timing-regression guards armed.
+
+A changed test file selects only itself. Nothing imports a test file, so its
+siblings verify nothing the change could have broken, and the packages where
+that costs the most are the ones with no source package to scope against:
+``tests/unit/scripts`` alone is a fifth of the unit tier, so touching one
+gate's tests used to run every gate's tests.
 
 A change can also be too broad to fit the budget without any of those triggers
 firing, simply by touching many packages at once. Past
@@ -72,6 +79,16 @@ _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
 # quietly verifying an unprincipled fraction of it.
 _MAX_AFFECTED_TEST_FILES: Final[int] = 600
 
+# The test tiers, each of which owns its own runner. Everything else under
+# ``tests/`` is infrastructure the unit tier imports (``_shared/``,
+# ``baselines/``, ``_typeguard_checker.py``), so it raises a whole-suite
+# question rather than mapping to a package. A tier added later and not
+# listed here lands on that side too, which announces a deferral it did not
+# need instead of silently checking nothing.
+_TEST_TIERS: Final[frozenset[str]] = frozenset(
+    {"unit", "integration", "e2e", "conformance", "benchmarks", "evals", "evals_spine"}
+)
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
@@ -120,12 +137,64 @@ from tests.baselines.loader import (  # noqa: E402
 )
 
 
+def _is_test_file(name: str) -> bool:
+    """Whether *name* is a file pytest collects as a test module.
+
+    Mirrors pytest's ``python_files`` default, which the project leaves
+    unset, and the glob :func:`count_affected_test_files` counts with.
+
+    Returns:
+        ``True`` for a ``test_*.py`` basename.
+    """
+    return name.startswith("test_") and name.endswith(".py")
+
+
+def _classify_test_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
+    """Classify a path under ``tests/``.
+
+    Anything outside a tier directory (``tests/_shared/``,
+    ``tests/baselines/``, a bare ``tests/foo.py``) is infrastructure the
+    unit tier imports without being part of it, so a change there is a
+    whole-suite question. Deferring it says so; classifying it "other"
+    would run nothing and announce nothing, which reads as a push with
+    nothing to check. A tier directory that is not ``unit`` is that
+    tier's own business and this runner never runs it.
+
+    Returns:
+        ``(category, module)``, where module names the ``tests/unit/``
+        package the path belongs to (``"."`` for the tier root).
+    """
+    if len(parts) < MIN_MODULE_DEPTH or parts[1] not in _TEST_TIERS:
+        return "shared_test_infra", None
+    if parts[1] != "unit":
+        return "other", None
+
+    # The regex already rejects dotted names like test_smoke.py and
+    # __init__.py, but listing them explicitly documents the intent.
+    if SAFE_MODULE_NAME.match(parts[2]) and parts[2] not in TOP_LEVEL_SRC:
+        if _is_test_file(parts[-1]):
+            return "test_unit_file", parts[2]
+        return "test_unit", parts[2]
+
+    # Either a file sitting directly in the tier root, or a path whose
+    # package component is not a package name at all (a ``..`` from a
+    # crafted diff). Only the first is addressable, and only at exactly
+    # that depth: past it the rejected component is a directory nobody
+    # has validated, so the tier root's own smoke test is the answer.
+    if len(parts) == MIN_MODULE_DEPTH and _is_test_file(parts[2]):
+        return "test_unit_file", "."
+    return "test_unit", "."
+
+
 def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     """Classify a file path into a category and optional module name.
 
     Returns ``(category, module)`` where category is one of:
     ``"conftest"``, ``"blast_radius"``, ``"top_level_src"``,
-    ``"src_module"``, ``"test_unit"``, ``"other"``.
+    ``"src_module"``, ``"test_unit"``, ``"test_unit_file"``,
+    ``"shared_test_infra"``, ``"other"``. For ``"test_unit_file"`` the
+    module names the package the file sits in, which is what the caller
+    de-duplicates against rather than what it selects.
     """
     if parts[-1] == "conftest.py":
         return "conftest", None
@@ -134,17 +203,38 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     if source is not None:
         return source
 
-    if len(parts) >= MIN_MODULE_DEPTH and parts[0] == "tests" and parts[1] == "unit":
-        # The regex already rejects dotted names like test_smoke.py and
-        # __init__.py, but listing them explicitly documents the intent.
-        is_root = (
-            not SAFE_MODULE_NAME.match(parts[2])
-            or parts[2] == "test_smoke.py"
-            or parts[2] in TOP_LEVEL_SRC
-        )
-        return ("test_unit", ".") if is_root else ("test_unit", parts[2])
+    if parts[0] == "tests":
+        return _classify_test_path(parts)
 
     return "other", None
+
+
+def _selected_test_files(module: str, filepaths: set[str]) -> list[str]:
+    """Return the changed test files under ``tests/unit/<module>`` to run.
+
+    A test file is the one thing in the tree with no importers, so
+    running its siblings verifies nothing the change could have broken.
+    Everything shared it depends on -- a ``conftest.py``, a helper
+    module, the package's own source -- is classified elsewhere and
+    still selects the whole package.
+
+    A path that no longer exists is dropped rather than handed to
+    pytest, which exits 4 on a missing path and would fail the push for
+    the deletion itself. The containment check is the same barrier
+    :data:`SAFE_MODULE_NAME` provides for directories: a ``..`` segment
+    past the package name would otherwise carry a crafted diff path
+    straight into the argv.
+
+    Returns:
+        Repo-relative paths, one per surviving file.
+    """
+    owner = (_REPO_ROOT / "tests" / "unit" / module).resolve()
+    selected: list[str] = []
+    for filepath in sorted(filepaths):
+        candidate = (_REPO_ROOT / filepath).resolve()
+        if candidate.is_relative_to(owner) and candidate.is_file():
+            selected.append(str(candidate.relative_to(_REPO_ROOT)))
+    return selected
 
 
 def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
@@ -157,15 +247,25 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
     local push verifies what changed, CI owns the sweep.
     """
     modules: set[str] = set()
+    changed_test_files: dict[str, set[str]] = {}
     deferred = False
 
     for filepath in changed:
         parts = PurePosixPath(filepath).parts
         category, module = _classify_path(parts)
 
-        if category in {"conftest", "blast_radius", "top_level_src"}:
+        if category in {
+            "conftest",
+            "blast_radius",
+            "top_level_src",
+            "shared_test_infra",
+        }:
             deferred = True
-        if module is not None:
+        if module is None:
+            continue
+        if category == "test_unit_file":
+            changed_test_files.setdefault(module, set()).add(filepath)
+        else:
             modules.add(module)
 
     # Build test directory paths (only dirs that actually exist).
@@ -179,6 +279,12 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
             test_dir = _REPO_ROOT / "tests" / "unit" / mod
             if test_dir.is_dir():
                 test_dirs.append(str(test_dir.relative_to(_REPO_ROOT)))
+
+    # A package already selected covers its own test files; adding them
+    # again would collect each one twice.
+    for mod, filepaths in sorted(changed_test_files.items()):
+        if mod not in modules:
+            test_dirs.extend(_selected_test_files(mod, filepaths))
 
     return test_dirs, deferred
 
@@ -977,7 +1083,7 @@ def _run_tests() -> int:
         deferred_announced = True
     elif deferred:
         _defer_to_ci(
-            "Foundational module or conftest changed",
+            "Foundational module, conftest or shared test infrastructure changed",
             scoped_run_follows=bool(test_dirs),
         )
         deferred_announced = True
