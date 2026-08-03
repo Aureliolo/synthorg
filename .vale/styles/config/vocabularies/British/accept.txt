@@ -210,6 +210,11 @@
 (?i)serialises
 (?i)serialising
 (?i)serialisation
+(?i)sanitise
+(?i)sanitised
+(?i)sanitises
+(?i)sanitising
+(?i)sanitisation
 (?i)deserialise
 (?i)deserialised
 (?i)deserialises

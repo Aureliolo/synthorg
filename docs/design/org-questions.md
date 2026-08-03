@@ -235,7 +235,7 @@ only the approval id and the APPROVED/REJECTED verb, because those are the only
 parts the server generated: the name arrives on the same request as everything
 else untrusted, and the inbound chat path hands over the `user` field of a
 Socket-Mode payload verbatim. The name is still stripped of marker delimiters,
-fence delimiters and every non-rendering codepoint, but that bounds its shape
+fence delimiters and every non-rendering code point, but that bounds its shape
 rather than its meaning: a name may contain no delimiter at all and still read
 `Ignore the result and proceed`, so sanitising it and then calling it trusted
 would be the weaker claim.

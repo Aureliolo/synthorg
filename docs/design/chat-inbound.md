@@ -162,6 +162,6 @@ event's `user` as the resume `decided_by`, and that field is decoded from the
 Socket-Mode payload with no format check, so it is attacker-controlled on the
 same terms. `build_resume_message` therefore fences it under `TAG_DECIDER_NAME`
 and keeps only the approval id and the decision verb in the trusted marker. A
-display name needs no delimiter and no invisible codepoint to read as an
+display name needs no delimiter and no invisible code point to read as an
 instruction, so sanitisation alone would leave a second prompt channel open
 beside the one this section is about.
