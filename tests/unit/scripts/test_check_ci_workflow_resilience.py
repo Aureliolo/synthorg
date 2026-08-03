@@ -44,6 +44,7 @@ Covers all ten invariants:
 """
 
 import importlib.util
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,7 @@ import yaml
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 _SCRIPT_PATH = _REPO_ROOT / "scripts" / "check_ci_workflow_resilience.py"
 
 
@@ -77,11 +79,59 @@ _MODULE = _load_script_module()
 _PERMS = "permissions: {}\n"
 
 
-def _scan(tmp_path: Path, content: str) -> list[str]:
-    """Write content to a tmp .yml file and return the violation messages."""
+@cache
+def _repo_scan_context() -> tuple[object, object, object, object]:
+    """Resolve the four whole-tree lookups ``_scan_file`` would recompute.
+
+    Each walks and parses every composite action under ``.github/actions``.
+    Left to the default, this module's ~80 cases redo all four per case,
+    which was ~35s of the file's ~43s. The gate itself hoists them once per
+    run for the same reason; this mirrors that in the tests rather than
+    caching inside the script, where two cases deliberately repoint
+    ``_REPO_ROOT`` and a cache would quietly answer for the wrong tree.
+    """
+    consumers = _MODULE._artifact_consumer_dirs()  # type: ignore[attr-defined]
+    sinks = _MODULE._tracking_issue_dirs()  # type: ignore[attr-defined]
+    pull_defaults = _MODULE._pull_action_defaults()  # type: ignore[attr-defined]
+    ladder_costs = _MODULE._pull_ladder_costs(pull_defaults)  # type: ignore[attr-defined]
+    return consumers, sinks, pull_defaults, ladder_costs
+
+
+def _scan(tmp_path: Path, content: str, *, fresh: bool = False) -> list[str]:
+    """Write content to a tmp .yml file and return the violation messages.
+
+    Args:
+        tmp_path: Directory to write the workflow into.
+        content: The workflow YAML under test.
+        fresh: Resolve the whole-tree lookups from scratch instead of reusing
+            the cached ones. Required by any case that repoints
+            ``_REPO_ROOT`` / ``_ACTIONS_ROOT``: the cache answers for the
+            real repository, which is precisely what such a case is not
+            asking about.
+    """
     target = tmp_path / "wf.yml"
     target.write_text(content, encoding="utf-8")
-    violations: list[str] = _MODULE._scan_file(target)  # type: ignore[attr-defined]
+    # Both roots, because either one alone can be repointed: the closures
+    # walk from ``_ACTIONS_ROOT`` and only report against ``_REPO_ROOT``.
+    repointed = [
+        name
+        for name, live, original in (
+            ("_REPO_ROOT", _MODULE._REPO_ROOT, _REPO_ROOT),  # type: ignore[attr-defined]
+            ("_ACTIONS_ROOT", _MODULE._ACTIONS_ROOT, _ACTIONS_ROOT),  # type: ignore[attr-defined]
+        )
+        if live != original
+    ]
+    if not fresh and repointed:
+        # The cached context describes the real repository. A case that
+        # repointed the roots and forgot ``fresh=True`` would silently be
+        # answered about the wrong tree, and its assertions would pass or
+        # fail for reasons it never expressed.
+        msg = f"{', '.join(repointed)} monkeypatched; pass fresh=True to _scan"
+        raise AssertionError(msg)
+    context: tuple[object, ...] = () if fresh else _repo_scan_context()
+    violations: list[str] = _MODULE._scan_file(  # type: ignore[attr-defined]
+        target, *context
+    )
     return violations
 
 
@@ -1025,6 +1075,49 @@ class TestDockerfileDigestPins:
         assert check() == []
 
 
+class TestActionDiscovery:
+    """A composite the closures cannot parse is a finding, not a warning."""
+
+    def _check(self) -> list[str]:
+        found: list[str] = _MODULE._check_action_discovery()  # type: ignore[attr-defined]
+        return found
+
+    def test_an_unparseable_action_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Silently dropping it removes the composite from the artifact,
+        # sink and ladder-cost closures, so invariants 5 and 6 stop being
+        # enforced for everything it reaches and the gate still exits 0.
+        broken = tmp_path / "action.yml"
+        broken.write_text("uses: [unclosed\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [broken])
+
+        problems = self._check()
+        assert len(problems) == 1
+        assert "invariants 5 and 6 are unenforced" in problems[0]
+
+    def test_a_non_mapping_action_is_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        listed = tmp_path / "action.yml"
+        listed.write_text("- not: a mapping\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [listed])
+
+        assert len(self._check()) == 1
+
+    def test_a_readable_action_is_not_reported(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fine = tmp_path / "action.yml"
+        fine.write_text("runs:\n  using: composite\n  steps: []\n", encoding="utf-8")
+        monkeypatch.setattr(_MODULE, "_iter_action_files", lambda: [fine])
+
+        assert self._check() == []
+
+    def test_the_live_actions_all_parse(self) -> None:
+        assert self._check() == []
+
+
 class TestScanFileEdgeCases:
     """Error / degenerate inputs are handled, not crashed."""
 
@@ -1162,11 +1255,82 @@ class TestPullRequestTargetRefs:
         )
         assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
 
+    def test_head_repository_checkout_flagged(self, tmp_path: Path) -> None:
+        # `repository:` selects the fork outright, so pinning `ref` to a
+        # base-side value buys nothing: the tree is still fork-authored and
+        # the job still holds the base repository's secrets.
+        steps = (
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n"
+            "          repository: "
+            "${{ github.event.pull_request.head.repo.full_name }}\n"
+            "          ref: main\n"
+        )
+        violations = _scan(tmp_path, self._wf(self._TARGET, steps))
+        assert len(violations) == 1
+        assert "`repository`" in violations[0]
+
+    def test_base_side_checkout_inputs_are_clean(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: actions/checkout@abc\n"
+            "        with:\n"
+            "          repository: ${{ github.repository }}\n"
+            "          ref: ${{ github.sha }}\n"
+        )
+        assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
+
+    def test_a_head_ref_is_reported_once_not_twice(self, tmp_path: Path) -> None:
+        # The generic input sweep skips `ref`, which the specialised check
+        # above it already covers with the actionable remediation text.
+        violations = _scan(tmp_path, self._wf(self._TARGET, self._HEAD_CHECKOUT))
+        assert len(violations) == 1
+        assert "checkout ref resolves" in violations[0]
+
     def test_pr_data_in_run_body_flagged(self, tmp_path: Path) -> None:
         steps = "      - run: echo ${{ github.event.pull_request.head.label }}\n"
         violations = _scan(tmp_path, self._wf(self._TARGET, steps))
         assert len(violations) == 1
         assert "run" in violations[0]
+
+    def test_pr_data_in_a_non_checkout_step_with_flagged(self, tmp_path: Path) -> None:
+        # A third-party action taking a ref resolves fork content itself, and
+        # only the checkout family is recognised by the ref-specific check.
+        steps = (
+            "      - uses: some-org/fetch-pr@abc\n"
+            "        with:\n"
+            "          pr-sha: ${{ github.event.pull_request.head.sha }}\n"
+        )
+        violations = _scan(tmp_path, self._wf(self._TARGET, steps))
+        assert len(violations) == 1
+        assert "`with:`" in violations[0]
+
+    def test_a_non_checkout_step_with_base_data_is_clean(self, tmp_path: Path) -> None:
+        steps = (
+            "      - uses: some-org/fetch-pr@abc\n"
+            "        with:\n          pr-sha: ${{ github.sha }}\n"
+        )
+        assert _scan(tmp_path, self._wf(self._TARGET, steps)) == []
+
+    def test_pr_data_in_a_job_level_with_flagged(self, tmp_path: Path) -> None:
+        # A reusable-workflow call passes `with:` into a workflow that
+        # resolves it holding this repository's secrets; the interpolation
+        # is visible only at the call site.
+        content = (
+            f"{self._TARGET}\n{_PERMS}jobs:\n  a:\n"
+            "    uses: ./.github/workflows/other.yml\n"
+            "    with:\n      ref: ${{ github.head_ref }}\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "job-level `with:`" in violations[0]
+
+    def test_a_job_level_with_base_data_is_clean(self, tmp_path: Path) -> None:
+        content = (
+            f"{self._TARGET}\n{_PERMS}jobs:\n  a:\n"
+            "    uses: ./.github/workflows/other.yml\n"
+            "    with:\n      ref: main\n"
+        )
+        assert _scan(tmp_path, content) == []
 
     def test_pr_data_in_step_env_flagged(self, tmp_path: Path) -> None:
         steps = (
@@ -1540,7 +1704,7 @@ class TestScheduleNotifiers:
                 "report_stalled", _STALL_ONLY, uses="./.github/actions/wrap-issue"
             )
         )
-        assert _scan(tmp_path, content) == []
+        assert _scan(tmp_path, content, fresh=True) == []
 
 
 class TestMain:

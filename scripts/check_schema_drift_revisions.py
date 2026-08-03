@@ -16,9 +16,11 @@ For one backend at a time:
 
 Exits 0 on parity, non-zero on drift, prints a structured finding list.
 Exit codes: 0 parity, 1 drift, 2 missing input file, 3 the Postgres
-throwaway container could not be provisioned. 3 is split out from 1 so a
+throwaway container could not be provisioned, 4 a trigger or function
+this gate must compare could not be named. 3 is split out from 1 so a
 caller can retry a transient registry / daemon failure without retrying
-a deterministic drift finding.
+a deterministic drift finding; 4 is split out so "nothing was compared"
+never arrives wearing the code that sends a caller to read findings.
 
 Usage::
 
@@ -106,9 +108,36 @@ that with a drift finding forces a caller to choose between retrying a
 deterministic failure three times or never retrying a blip at all.
 """
 
+_PARSE_EXIT_CODE: Final[int] = 4
+"""Exit code for "an object this gate must compare could not be named".
 
-class SchemaDriftProvisionError(Exception):
+Its own code because the three it would otherwise land on all mislead. It
+is not drift (1): nothing was compared, so a caller sent to read a
+finding list finds none. It is not a missing input file (2): both files
+were there and readable. It is not provisioning (3), which CI retries,
+and this failure is deterministic, so a retry burns the budget to fail
+identically three times.
+"""
+
+
+class SchemaDriftError(
+    Exception
+):  # lint-allow: domain-error-hierarchy -- gate-internal error; never leaves this script
+    """Base for every way this gate fails other than finding drift."""
+
+
+class SchemaDriftProvisionError(SchemaDriftError):
     """The Postgres throwaway container could not be started."""
+
+
+class SchemaDriftParseError(SchemaDriftError):
+    """A statement this gate must compare could not be identified.
+
+    Distinct from finding drift: it means the comparison never happened
+    for that object. Raised rather than skipped because the two sides are
+    parsed by the same regex, so a silent miss removes the object from
+    both and leaves nothing for the diff to notice.
+    """
 
 
 _POSTGRES_DEFAULT_PORT: Final[int] = 5432
@@ -248,8 +277,10 @@ async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> st
         await migrations.migrate_apply(url, revisions_path=revisions_path)
         wrapped_container = pg.get_wrapped_container()
         if wrapped_container is None or wrapped_container.id is None:
+            # Provisioning, not drift: the split exit code exists so a
+            # caller can retry infrastructure without retrying a finding.
             msg = "Postgres testcontainer has no id; cannot run pg_dump."
-            raise SystemExit(msg)
+            raise SchemaDriftProvisionError(msg)
         container_id = wrapped_container.id
         dump = await asyncio.to_thread(_run_pg_dump, container_id, user, dbname)
     finally:
@@ -260,9 +291,10 @@ async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> st
 def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
     """Invoke ``pg_dump`` inside the running Postgres testcontainer.
 
-    Wraps ``subprocess.TimeoutExpired`` in a :class:`SystemExit` so the
-    drift gate surfaces a clear failure when ``docker exec`` stalls,
-    rather than waiting out the job-level CI timeout.
+    Wraps ``subprocess.TimeoutExpired`` in a
+    :class:`SchemaDriftProvisionError` so the drift gate surfaces a clear
+    failure when ``docker exec`` stalls, rather than waiting out the
+    job-level CI timeout.
     """
     try:
         return subprocess.run(
@@ -286,11 +318,13 @@ def _run_pg_dump(container_id: str, user: str, dbname: str) -> str:
             timeout=_PG_DUMP_TIMEOUT_SECONDS,
         ).stdout
     except subprocess.TimeoutExpired as exc:
+        # A dump that never finished is a provisioning failure worth
+        # retrying, not a schema finding to go and read.
         msg = (
             f"pg_dump timed out after {_PG_DUMP_TIMEOUT_SECONDS}s "
             f"against container {container_id}"
         )
-        raise SystemExit(msg) from exc
+        raise SchemaDriftProvisionError(msg) from exc
 
 
 _YOYO_TABLE_PREFIXES: Final[tuple[str, ...]] = ("_yoyo", "yoyo_")
@@ -404,7 +438,13 @@ def _extract_triggers_and_functions(sql_text: str) -> dict[str, _TriggerOrFuncti
         if upper.startswith(("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")):
             match = _FUNCTION_NAME_PATTERN.search(body)
             if match is None:
-                continue
+                # This regex is the only thing that sees trigger and function
+                # DDL at all (sqlglot drops it through its Command fallback).
+                # A name it cannot read would drop the object from BOTH sides
+                # of the comparison, so drift in it would be undetectable and
+                # nothing would say the check had been skipped.
+                msg = f"could not extract a function name from: {body[:120]!r}"
+                raise SchemaDriftParseError(msg)
             name = match.group(1)
             findings[f"function:{name}"] = _TriggerOrFunction(
                 kind="function",
@@ -414,7 +454,8 @@ def _extract_triggers_and_functions(sql_text: str) -> dict[str, _TriggerOrFuncti
         elif upper.startswith(("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER")):
             match = _TRIGGER_NAME_PATTERN.search(body)
             if match is None:
-                continue
+                msg = f"could not extract a trigger name from: {body[:120]!r}"
+                raise SchemaDriftParseError(msg)
             name = match.group(1)
             findings[f"trigger:{name}"] = _TriggerOrFunction(
                 kind="trigger",
@@ -657,6 +698,37 @@ def _wrap_schema_as_revisions(schema_text: str) -> Path:
     return tmp_dir
 
 
+def _fold_revisions(revisions_path: Path) -> Path:
+    """Concatenate every revision into one synthetic revision, in order.
+
+    yoyo commits once per migration, and each commit is an fsync against a
+    real file, so applying the revisions one at a time costs far more in
+    transaction overhead than the DDL itself: measured at 27.5s for the
+    SQLite set against 1.4s for the same statements applied together, for
+    a byte-identical schema dump.
+
+    This is the same trick :func:`_wrap_schema_as_revisions` already plays
+    on the declared side, so both halves of the comparison are now built
+    the same way. What the gate asserts is the schema the revisions
+    *accumulate to*; that each revision also applies cleanly in isolation
+    is a migration-correctness property, and it is the real ``migrate_apply``
+    in the conformance suite and at app startup that proves it.
+
+    Returns:
+        A temp directory holding the single folded revision. The caller
+        deletes it.
+    """
+    folded = Path(tempfile.mkdtemp(prefix="drift-folded-"))
+    bodies = [
+        path.read_text(encoding="utf-8")
+        for path in sorted(revisions_path.glob("*.sql"))
+    ]
+    (folded / "00000000000000_folded.sql").write_text(
+        "\n".join(bodies), encoding="utf-8"
+    )
+    return folded
+
+
 async def _dump_via_yoyo(
     backend: BackendName,
     revisions_path: Path,
@@ -666,6 +738,27 @@ async def _dump_via_yoyo(
     if backend == "sqlite":
         return await _dump_sqlite_schema(revisions_path)
     return await _dump_postgres_schema(revisions_path, postgres_image)
+
+
+async def _dump_accumulated(
+    backend: BackendName,
+    revisions_path: Path,
+    postgres_image: str,
+) -> str:
+    """Dump the schema the revisions accumulate to.
+
+    SQLite folds the revisions into one transaction (see
+    :func:`_fold_revisions`). Postgres does not: some DDL there is not
+    transactional, so folding could change what actually runs, and that
+    arm's cost is dominated by starting a container anyway.
+    """
+    if backend != "sqlite":
+        return await _dump_via_yoyo(backend, revisions_path, postgres_image)
+    folded = _fold_revisions(revisions_path)
+    try:
+        return await _dump_via_yoyo(backend, folded, postgres_image)
+    finally:
+        shutil.rmtree(folded, ignore_errors=True)
 
 
 async def _main(backend: BackendName, postgres_image: str) -> int:
@@ -685,7 +778,7 @@ async def _main(backend: BackendName, postgres_image: str) -> int:
         declared_sql = await _dump_via_yoyo(backend, declared_tmp, postgres_image)
     finally:
         shutil.rmtree(declared_tmp, ignore_errors=True)
-    actual_sql = await _dump_via_yoyo(backend, revisions_path, postgres_image)
+    actual_sql = await _dump_accumulated(backend, revisions_path, postgres_image)
 
     declared_tables, declared_indexes = parse_schema(declared_sql, backend)
     actual_tables, actual_indexes = parse_schema(actual_sql, backend)
@@ -761,6 +854,12 @@ def main(argv: list[str] | None = None) -> int:
         # legible line instead of a Docker traceback a caller must parse.
         print(f"PROVISION-FAILED: {exc}", file=sys.stderr)
         return _PROVISION_EXIT_CODE
+    except SchemaDriftParseError as exc:
+        # Uncaught, this leaves via the interpreter's default handler, which
+        # exits 1: the drift code. A parse failure would then be reported as
+        # drift, with a traceback where the finding list should be.
+        print(f"PARSE-FAILED: {exc}", file=sys.stderr)
+        return _PARSE_EXIT_CODE
 
 
 if __name__ == "__main__":

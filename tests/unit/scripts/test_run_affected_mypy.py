@@ -7,10 +7,12 @@ the private helpers are callable.
 """
 
 import argparse
+import contextlib
 import importlib.util
 import inspect
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -78,6 +80,25 @@ def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
     monkeypatch.setattr(_MODULE, "_record_bounded_lifetime", lambda _daemon: None)
     monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+    # Same reasoning: unstubbed, the staleness check would issue a real
+    # ``dmypy stop`` against the developer's own daemon.
+    monkeypatch.setattr(_MODULE, "_drop_stale_graph", lambda _daemon: None)
+    # The orphan reap enumerates the machine's processes; the retry's wait
+    # sleeps out its full grace period whenever no status file ever appears,
+    # which no test here is asserting and every timeout would then blame on
+    # the wrong thing.
+    monkeypatch.setattr(_MODULE, "_reap_orphaned_servers", lambda _daemon, **_kw: None)
+    monkeypatch.setattr(_MODULE, "_wait_for_daemon", lambda _daemon: False)
+
+    # The start lock is named from the status file, which for the real
+    # daemons is the developer's own worktree root: unstubbed, a unit run
+    # creates a lock there and can wait out its grace period against a
+    # genuine push happening at the same time.
+    @contextlib.contextmanager
+    def _no_lock(_daemon: object) -> Iterator[bool]:
+        yield True
+
+    monkeypatch.setattr(_MODULE, "_start_lock", _no_lock)
 
 
 def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
@@ -462,10 +483,9 @@ class TestIdleTimeoutAdoption:
 class TestWorktreeHolders:
     """Finding what holds a worktree open, without offering up a neighbour.
 
-    This replaces a PowerShell snippet that lived in two skill docs. Keeping
-    the matching in Python is the point: it is the rule that decides what an
-    operator is invited to kill, so it belongs somewhere testable rather than
-    in a quoting-sensitive shell predicate duplicated across files.
+    Keeping the matching in Python is the point: it is the rule that decides
+    what an operator is invited to kill, so it belongs somewhere testable
+    rather than in a quoting-sensitive shell predicate.
     """
 
     @pytest.mark.parametrize(

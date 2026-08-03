@@ -533,14 +533,14 @@ class TestHookRegistration:
     def test_rewarm_registered_on_the_bash_matcher(self) -> None:
         """Matcher-scoped: on Edit|Write it would never see a `uv sync`."""
         commands = self._post_tool_use_commands("Bash")
-        assert any("rewarm_mypy_after_sync.sh" in cmd for cmd in commands)
+        assert any("rewarm_caches_after_sync.sh" in cmd for cmd in commands)
 
     def test_mirrored_in_opencode_plugin(self) -> None:
         plugin = (_REPO_ROOT / ".opencode" / "plugins" / "synthorg-hooks.ts").read_text(
             encoding="utf-8"
         )
         assert "run_edit_time_gates.py" in plugin
-        assert "rewarm_mypy_after_sync.sh" in plugin
+        assert "rewarm_caches_after_sync.sh" in plugin
 
     def test_documented_in_the_dispatchers_own_doc_section(self) -> None:
         """Scoped to the dispatcher's section, not the whole document.
@@ -553,7 +553,7 @@ class TestHookRegistration:
             encoding="utf-8"
         )
         start = doc.index("### Edit-time gate dispatcher")
-        section = doc[start : doc.index("### Post-sync mypy re-warm", start)]
+        section = doc[start : doc.index("### Post-sync cache re-warm", start)]
         for gate in dispatcher._GATES:
             assert gate.script in section, (
                 f"{gate.script} is routed but absent from the dispatcher's "

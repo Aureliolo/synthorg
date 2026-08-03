@@ -11,6 +11,7 @@ hour again.
 
 import importlib.util
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -21,6 +22,9 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _FULL_SUITE = "tests/unit/"
 
+# A test file guaranteed to exist, because it is the one asserting with it.
+_THIS_TEST_FILE = Path(__file__).resolve().relative_to(_REPO_ROOT).as_posix()
+
 
 class _TestsModule(Protocol):
     """Subset of ``scripts/run_affected_tests.py`` under test."""
@@ -29,6 +33,12 @@ class _TestsModule(Protocol):
 
     @staticmethod
     def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]: ...
+
+    @staticmethod
+    def count_affected_test_files(test_dirs: list[str]) -> int: ...
+
+    @staticmethod
+    def _test_module_importers() -> Mapping[str, frozenset[str]]: ...
 
     @staticmethod
     def _run_tests() -> int: ...
@@ -125,10 +135,52 @@ def _norm(paths: list[str]) -> set[str]:
             id="conftest_defers_without_selecting_the_whole_tree",
         ),
         pytest.param(
-            ["tests/unit/tools/test_thing.py"],
+            [_THIS_TEST_FILE],
+            {_THIS_TEST_FILE},
+            False,
+            id="a_test_file_selects_only_itself",
+        ),
+        pytest.param(
+            ["tests/unit/tools/test_deleted_by_this_push.py"],
+            set(),
+            False,
+            id="a_deleted_test_file_selects_nothing",
+        ),
+        pytest.param(
+            ["tests/unit/tools/_helper.py"],
             {"tests/unit/tools"},
             False,
-            id="a_test_file_selects_its_own_directory",
+            id="a_shared_test_helper_still_selects_its_package",
+        ),
+        pytest.param(
+            ["src/synthorg/tools/mcp/config.py", "tests/unit/tools/test_thing.py"],
+            {"tests/unit/tools"},
+            False,
+            id="a_selected_package_absorbs_its_own_test_file",
+        ),
+        pytest.param(
+            ["tests/unit/test_cold_import.py"],
+            {"tests/unit/test_cold_import.py"},
+            False,
+            id="a_tier_root_test_file_selects_itself_not_the_smoke_test",
+        ),
+        pytest.param(
+            ["tests/unit/__init__.py"],
+            {"tests/unit/test_smoke.py"},
+            False,
+            id="a_tier_root_non_test_file_falls_back_to_the_smoke_test",
+        ),
+        pytest.param(
+            ["tests/_shared/ids.py"],
+            set(),
+            True,
+            id="shared_test_infrastructure_defers",
+        ),
+        pytest.param(
+            ["tests/e2e/test_wizard.py"],
+            set(),
+            False,
+            id="another_tier_is_not_this_runners_business",
         ),
         pytest.param([], set(), False, id="no_changes_select_nothing"),
         pytest.param(
@@ -175,6 +227,46 @@ def test_mypy_path_selection(changed: list[str], expected_deferred: bool) -> Non
     assert _FULL_SUITE not in _norm(paths)
 
 
+def test_a_test_module_other_tests_import_selects_its_importers() -> None:
+    """The file-level narrowing rests on test modules being leaves.
+
+    A handful are not: they carry a shared fake or helper that sibling
+    modules import by dotted path. Selecting only the file that defines
+    it would let a break in that fake pass a push, having run the one
+    file that cannot observe the breakage.
+    """
+    importers = _TESTS._test_module_importers()
+    shared = "tests.unit.engine.workflow.test_subworkflow_registry"
+
+    assert shared in importers, "the tree no longer has a cross-imported test"
+    dirs, _ = _TESTS._affected_test_dirs([f"{shared.replace('.', '/')}.py"])
+    assert "tests/unit/engine" in _norm(dirs)
+
+
+def test_a_leaf_test_file_still_selects_only_itself() -> None:
+    """The importer lookup must not quietly re-widen the common case."""
+    assert _THIS_TEST_FILE.removesuffix(".py").replace("/", ".") not in (
+        _TESTS._test_module_importers()
+    )
+    dirs, _ = _TESTS._affected_test_dirs([_THIS_TEST_FILE])
+    assert _norm(dirs) == {_THIS_TEST_FILE}
+
+
+def test_a_gate_test_file_does_not_select_every_other_gates_tests() -> None:
+    """The package this file lives in is a fifth of the unit tier.
+
+    ``tests/unit/scripts`` is the one unit package with no source package
+    to scope against, so every gate's tests share it. Selecting the
+    package for a one-file change spent 115s of a 300s push budget
+    running tests that the change could not reach.
+    """
+    dirs, deferred = _TESTS._affected_test_dirs([_THIS_TEST_FILE])
+
+    assert _norm(dirs) == {_THIS_TEST_FILE}
+    assert deferred is False
+    assert _TESTS.count_affected_test_files(dirs) == 1
+
+
 def test_observability_module_and_leaf_are_distinguished() -> None:
     """The leaf carve-out must not exempt the whole blast-radius module.
 
@@ -204,6 +296,8 @@ def test_observability_module_and_leaf_are_distinguished() -> None:
         pytest.param("src/synthorg/foo.py", id="unlisted_top_level_source"),
         pytest.param("src/synthorg/../secrets.py", id="traversal_segment"),
         pytest.param("tests/unit/conftest.py", id="shared_test_infrastructure"),
+        pytest.param("tests/_shared/ids.py", id="tierless_test_helper"),
+        pytest.param("tests/_typeguard_checker.py", id="tierless_test_module"),
     ],
 )
 def test_both_runners_agree_on_what_defers(carve_out: str) -> None:
@@ -224,6 +318,7 @@ def test_both_runners_agree_on_what_defers(carve_out: str) -> None:
         "src/synthorg/../../etc/passwd.py",
         "src/synthorg/../secrets.py",
         "tests/unit/../../outside.py",
+        "tests/unit/scripts/../../../outside/test_evil.py",
     ],
 )
 def test_traversal_segments_never_resolve_to_a_path(hostile: str) -> None:

@@ -17,6 +17,8 @@ from typing import Any, cast
 
 import pytest
 
+from tests._shared import FakeCommandResult, FakeProcess
+
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -1124,3 +1126,95 @@ def test_run_tests_suppresses_the_no_op_line_after_a_deferral(
     out = capsys.readouterr().out
     assert "deferred to CI" in out
     assert "No Python files changed" not in out
+
+
+class TestKillProcessTreeAnnouncesFailure:
+    """The caller reports the hung exit code either way, so a silent
+    failure here reads as "the tree is gone" while workers still hold the
+    locks the kill exists to release."""
+
+    @pytest.fixture
+    def _on_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Take the taskkill branch whatever the host is.
+
+        Skipping off Windows would leave the branch unexercised on the
+        Linux runners that gate every PR, so the one platform the fix is
+        for is the only one that never proves it.
+        """
+        monkeypatch.setattr(_MODULE.sys, "platform", "win32")
+
+    @pytest.mark.usefixtures("_on_windows")
+    def test_a_refused_taskkill_is_announced(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # taskkill signals refusal through its exit code, not an exception,
+        # so the exception handler alone never sees the commonest failure.
+        monkeypatch.setattr(
+            _MODULE.subprocess,
+            "run",
+            lambda *_a, **_k: FakeCommandResult(returncode=128),
+        )
+        _MODULE._kill_process_tree(FakeProcess(pid=4242))
+
+        assert "taskkill refused" in capsys.readouterr().err
+
+    @pytest.mark.usefixtures("_on_windows")
+    def test_a_successful_taskkill_is_quiet(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(
+            _MODULE.subprocess,
+            "run",
+            lambda *_a, **_k: FakeCommandResult(returncode=0),
+        )
+        _MODULE._kill_process_tree(FakeProcess(pid=4242))
+
+        assert capsys.readouterr().err == ""
+
+
+class TestStaleTypeguardWarmIsReported:
+    """The detached warm's exit code goes nowhere; the marker is the route."""
+
+    def test_a_marker_warns_and_is_cleared(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "hooks_dir", lambda: tmp_path)
+        marker = tmp_path / _MODULE._TYPEGUARD_WARM_FAILED_MARKER
+        marker.write_text("failed", encoding="utf-8")
+
+        _MODULE._report_stale_typeguard_warm()
+
+        assert "typeguard cache warm" in capsys.readouterr().err
+        # Cleared so the warning fires once rather than on every run until
+        # someone happens to re-warm.
+        assert not marker.exists()
+
+    def test_no_marker_is_silent(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "hooks_dir", lambda: tmp_path)
+
+        _MODULE._report_stale_typeguard_warm()
+
+        assert capsys.readouterr().err == ""
+
+    def test_the_marker_name_matches_the_warmer(self) -> None:
+        # The name is duplicated rather than imported (importing the warmer
+        # would pull typeguard into this hook), so nothing but this keeps
+        # the writer and the reader naming the same file.
+        spec = importlib.util.spec_from_file_location(
+            "_warm_typeguard_cache_name",
+            _REPO_ROOT / "scripts" / "warm_typeguard_cache.py",
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        warmer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(warmer)
+
+        assert warmer.WARM_FAILED_MARKER == _MODULE._TYPEGUARD_WARM_FAILED_MARKER

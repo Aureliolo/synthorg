@@ -32,7 +32,7 @@
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *   PostToolUse (Edit|Write): scripts/run_edit_time_gates.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
- *   PostToolUse (Bash): scripts/rewarm_mypy_after_sync.sh
+ *   PostToolUse (Bash): scripts/rewarm_caches_after_sync.sh
  *
  * These committed scripts are the single source of truth for the
  * shared hook rules, so OpenCode (this plugin) and Claude Code
@@ -525,10 +525,11 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             if (denyReason) {
               throw new Error(denyReason);
             }
-            // rewarm_mypy_after_sync.sh: a `uv sync` invalidates the resident
-            // dmypy graph, so re-warm it off the push path. Fail-open like the
-            // SessionEnd counterpart -- it is housekeeping, and the script
-            // itself declines unless a daemon is already resident.
+            // rewarm_caches_after_sync.sh: a `uv sync` invalidates both the
+            // resident dmypy graph and typeguard's instrumented bytecode, so
+            // re-warm them off the push path. Fail-open like the SessionEnd
+            // counterpart -- it is housekeeping, and the script itself
+            // declines unless a daemon is already resident.
             //
             // `runHookScript` sends only `tool_input`, so the script's
             // did-the-sync-succeed check sees no signal and re-warms either
@@ -536,7 +537,7 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             // old environment in place, so the worst case is one wasted
             // background rebuild, against a slow push if it were skipped.
             runHookScript(
-              "scripts/rewarm_mypy_after_sync.sh",
+              "scripts/rewarm_caches_after_sync.sh",
               { command },
               10000,
               "Bash",

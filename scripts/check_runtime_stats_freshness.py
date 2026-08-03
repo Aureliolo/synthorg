@@ -27,10 +27,11 @@ Exit codes
 
 Flags
 -----
-* ``--skip-network`` -- bypass fetchers that shell out to
-  ``pytest --collect-only`` (``tests``). Pre-push uses this so
-  developers do not pay the collection cost on every push; CI runs
-  without the flag to perform the full check.
+* ``--skip-network`` -- bypass the fetchers that are too slow to pay on
+  every push: ``tests`` (shells out to ``pytest --collect-only``) and
+  ``providers_via_litellm`` (imports litellm, ~2.5s). Pre-push uses this
+  so developers do not pay either cost on every push; CI runs without the
+  flag to perform the full check.
 """
 
 import argparse
@@ -54,11 +55,12 @@ _YAML_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
 # orthogonal to the per-stat drift check below.
 _STALE_AFTER_DAYS: Final[int] = 14
 
-# Fetchers whose source call is a subprocess to ``pytest --collect-only``.
-# Skipped under ``--skip-network`` so developers can pre-push without
-# paying the collection cost; CI runs without the flag and covers every
-# fetcher.
-_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests"})
+# Fetchers too slow to pay on every push. ``tests`` shells out to
+# ``pytest --collect-only``; ``providers_via_litellm`` does no I/O at all
+# but imports litellm, measured at ~2.5s, which is the same cost to a
+# developer either way. Both are skipped under ``--skip-network``; CI runs
+# without the flag and covers every fetcher.
+_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "providers_via_litellm"})
 
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_runtime_stats.py"
 
@@ -191,12 +193,15 @@ def _check_drift(
             # convention; do not silently absorb resource exhaustion.
             raise
         except Exception as exc:
-            # An unexpected fetcher failure (KeyError, ConnectionError, ...)
-            # for one stat must not abort drift detection for the others.
-            print(
-                f"note: skipping drift check for {name} "
-                f"(unexpected error: {type(exc).__name__}: {exc})",
-                file=sys.stderr,
+            # Unlike _StatFetchError, this is not an offline machine: it is a
+            # fetcher that no longer works (a renamed field, a changed
+            # signature). The others are still worth checking, so the loop
+            # continues, but a fetcher that cannot run is not evidence its
+            # stat is fresh, so the run fails rather than noting it in
+            # passing on an otherwise-green gate.
+            lines.append(
+                f"stats.{name} could not be fetched "
+                f"({type(exc).__name__}: {exc}); its drift is unchecked."
             )
             continue
         committed_entry = stats_block.get(name)
@@ -227,9 +232,9 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-network",
         action="store_true",
         help=(
-            "Skip subprocess-backed fetchers (tests). "
-            "Used by pre-push so developers do not pay the pytest "
-            "collection cost on every push."
+            "Skip the slow fetchers (tests, providers_via_litellm). "
+            "Used by pre-push so developers pay neither the pytest "
+            "collection cost nor the litellm import on every push."
         ),
     )
     args = parser.parse_args(argv)

@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
-# PostToolUse hook: re-warm this worktree's mypy daemon after a dependency
-# sync invalidated its resident build graph.
+# PostToolUse hook: re-warm the caches a dependency sync invalidated.
 #
 # Why this exists:
-#   A ``uv sync`` rewrites the interpreter's site-packages. The dmypy daemon
-#   stays alive but its graph no longer matches, so the next check silently
-#   pays a full cold rebuild -- measured at 124s against 1.4s warm. When that
-#   next check is the pre-push hook, a third of the 300s push budget is gone
-#   before a single gate has run, and the push reads as mysteriously slow
-#   rather than as the dependency change it actually is.
+#   A ``uv sync`` rewrites the interpreter's site-packages, which silently
+#   invalidates two separate caches. Neither says so; both are discovered
+#   only once something slow is already underway.
+#
+#   1. The dmypy daemon stays alive but its graph no longer matches, so the
+#      next check pays a full cold rebuild -- measured at 124s against 1.4s
+#      warm. When that next check is the pre-push hook, a third of the 300s
+#      push budget is gone before a single gate has run, and the push reads
+#      as mysteriously slow rather than as the dependency change it is.
+#   2. typeguard's instrumented bytecode is cached under a tag carrying its
+#      own version, so a typeguard bump invalidates every cached file at
+#      once. Re-instrumenting costs ~17s per process, and a pytest-xdist run
+#      pays it in all 8 workers simultaneously.
+#
+#   The two differ in one way that matters here: the mypy re-warm restores a
+#   warm state that already existed and costs ~2.5GB resident, so it refuses
+#   unless a daemon is already up. The typeguard warm only writes .pyc files,
+#   costs no resident memory, and is what every later test run reads, so it
+#   runs unconditionally.
 #
 # Why PostToolUse on Bash rather than SessionStart:
 #   Warming is not free: the main daemon holds ~2.5GB resident (the separate
@@ -53,7 +65,7 @@ fi
 # status stays observable: an I/O error on stdin is a different thing from the
 # harness sending nothing, and collapsing the two would hide a real failure.
 if ! PAYLOAD=$(cat); then
-    printf 'rewarm_mypy_after_sync: could not read the hook payload from stdin; no re-warm attempted.\n' >&2
+    printf 'rewarm_caches_after_sync: could not read the hook payload from stdin; no re-warm attempted.\n' >&2
     exit 0
 fi
 if [[ -z "${PAYLOAD}" ]]; then
@@ -65,11 +77,11 @@ fi
 # a jq that stopped working would disable this hook permanently and invisibly,
 # and every later push would eat the cold rebuild with nothing to explain why.
 if ! command -v jq >/dev/null 2>&1; then
-    printf 'rewarm_mypy_after_sync: jq not found on PATH; cannot inspect the hook payload, so the mypy daemon will not be re-warmed after dependency syncs.\n' >&2
+    printf 'rewarm_caches_after_sync: jq not found on PATH; cannot inspect the hook payload, so the caches will not be re-warmed after dependency syncs.\n' >&2
     exit 0
 fi
 if ! COMMAND=$(printf '%s' "${PAYLOAD}" | jq -r '.tool_input.command // ""'); then
-    printf 'rewarm_mypy_after_sync: jq failed to parse the hook payload; no re-warm attempted.\n' >&2
+    printf 'rewarm_caches_after_sync: jq failed to parse the hook payload; no re-warm attempted.\n' >&2
     exit 0
 fi
 if [[ -z "${COMMAND}" ]]; then
@@ -112,12 +124,12 @@ fi
 # script that gets EXECUTED, so a stale value from another worktree would run
 # a different checkout's code.
 if ! REPO_ROOT_DIR=$(git rev-parse --show-toplevel 2>/dev/null); then
-    printf 'rewarm_mypy_after_sync: not inside a git work tree; cannot locate the worktree to re-warm.\n' >&2
+    printf 'rewarm_caches_after_sync: not inside a git work tree; cannot locate the worktree to re-warm.\n' >&2
     exit 0
 fi
 
 if ! LOG_DIR=$(git rev-parse --git-path synthorg-hooks 2>/dev/null); then
-    printf 'rewarm_mypy_after_sync: could not resolve the git dir for the hook log; no re-warm attempted.\n' >&2
+    printf 'rewarm_caches_after_sync: could not resolve the git dir for the hook log; no re-warm attempted.\n' >&2
     exit 0
 fi
 # ``--git-path`` answers relative to the caller's cwd, which the harness owns
@@ -130,7 +142,7 @@ if [[ "${LOG_DIR}" != /* && "${LOG_DIR}" != ?:[/\\]* ]]; then
     LOG_DIR="${REPO_ROOT_DIR}/${LOG_DIR}"
 fi
 if ! mkdir -p "${LOG_DIR}" 2>/dev/null; then
-    printf 'rewarm_mypy_after_sync: could not create %s; no re-warm attempted.\n' "${LOG_DIR}" >&2
+    printf 'rewarm_caches_after_sync: could not create %s; no re-warm attempted.\n' "${LOG_DIR}" >&2
     exit 0
 fi
 LOG="${LOG_DIR}/mypy-rewarm-last.log"
@@ -153,14 +165,24 @@ fi
 #
 # setsid where available so the rebuild outlives the hook process; nohup is
 # the portable fallback (Git Bash on Windows has no setsid).
+#
+# typeguard first: it is the shorter of the two and its result is what the
+# very next test run reads, whereas the mypy graph is only needed at push.
+#
+# ``--mark-failures`` because this is the detached path: nothing reads the
+# exit code, so without a marker a repeatedly-failing warm is invisible and
+# every test process silently keeps paying full instrumentation. The dmypy
+# half already leaves ``mypy-rewarm-FAILED``; this is its counterpart.
+#
+# The program text is fixed and the repository path arrives as an argument:
+# interpolating it would put a path into shell source, where a single quote
+# in a directory name closes the quoting and the detached shell dies before
+# either warm runs.
+REWARM_CMD='uv run --project "$1" python "$1/scripts/warm_typeguard_cache.py" --quiet --mark-failures; uv run --project "$1" python "$1/scripts/run_affected_mypy.py" --rewarm'
 if command -v setsid >/dev/null 2>&1; then
-    setsid uv run --project "${REPO_ROOT_DIR}" \
-        python "${REPO_ROOT_DIR}/scripts/run_affected_mypy.py" --rewarm \
-        >"${LOG}" 2>&1 &
+    setsid bash -c "${REWARM_CMD}" rewarm-caches "${REPO_ROOT_DIR}" >"${LOG}" 2>&1 &
 else
-    nohup uv run --project "${REPO_ROOT_DIR}" \
-        python "${REPO_ROOT_DIR}/scripts/run_affected_mypy.py" --rewarm \
-        >"${LOG}" 2>&1 &
+    nohup bash -c "${REWARM_CMD}" rewarm-caches "${REPO_ROOT_DIR}" >"${LOG}" 2>&1 &
 fi
 REWARM_PID=$!
 printf '%s\n' "${REWARM_PID}" >"${LOCK}"

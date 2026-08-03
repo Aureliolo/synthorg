@@ -203,6 +203,7 @@ import argparse
 import re
 import sys
 from collections.abc import Iterable, Sequence
+from functools import cache
 from pathlib import Path
 from typing import Final, NamedTuple
 
@@ -518,47 +519,105 @@ def _check_pull_request_target_refs(
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        # Workflow- and job-level env reach every `run:` in the job without
-        # appearing in it, so checking step bodies alone leaves `env: REF:
-        # ${{ github.head_ref }}` plus a bare `echo $REF` compliant.
-        for scope, env_block in (
-            ("workflow `env:`", workflow_env),
-            (f"job '{job_name}' `env:`", job.get("env")),
+        violations.extend(_check_job_level_with(job_name, job))
+        violations.extend(_check_env_scopes(job_name, job, workflow_env))
+        violations.extend(_check_step_refs(job_name, job))
+    return violations
+
+
+def _check_job_level_with(job_name: str, job: dict[str, object]) -> list[str]:
+    """Return violations for a job-level ``with:`` block.
+
+    A job whose body is ``uses:`` passes its ``with:`` into a called
+    workflow, which resolves it with this repository's secrets. The
+    interpolation happens here, so this is the only place it is visible.
+    """
+    return [
+        f"job '{job_name}': job-level `with:` interpolates '{marker}' under"
+        " pull_request_target. A called reusable workflow resolves it with"
+        " the base repository's secrets."
+        for marker in _pr_head_markers(job.get("with"))
+    ]
+
+
+def _check_env_scopes(
+    job_name: str,
+    job: dict[str, object],
+    workflow_env: object,
+) -> list[str]:
+    """Return violations for the workflow- and job-level ``env:`` blocks.
+
+    Both reach every ``run:`` in the job without appearing in it, so
+    checking step bodies alone leaves ``env: REF: ${{ github.head_ref }}``
+    plus a bare ``echo $REF`` compliant.
+    """
+    violations: list[str] = []
+    for scope, env_block in (
+        ("workflow `env:`", workflow_env),
+        (f"job '{job_name}' `env:`", job.get("env")),
+    ):
+        if env_block is None:
+            continue
+        violations.extend(
+            f"job '{job_name}': {scope} interpolates '{marker}' under"
+            " pull_request_target. Pull-request-controlled data must not"
+            " reach a privileged job."
+            for marker in _pr_head_markers(env_block)
+        )
+    return violations
+
+
+def _check_step_refs(job_name: str, job: dict[str, object]) -> list[str]:
+    """Return violations for each step's ``with:``, ``run:`` and ``env:``."""
+    violations: list[str] = []
+    for index, step in enumerate(_job_steps(job)):
+        context = f"job '{job_name}': '{_step_label(step, index)}'"
+        uses = step.get("uses")
+        with_block = step.get("with")
+        if (
+            isinstance(uses, str)
+            and _is_checkout_action(uses)
+            and isinstance(with_block, dict)
         ):
-            if env_block is None:
+            violations.extend(
+                f"{context}: checkout ref resolves '{marker}' under"
+                " pull_request_target, which runs fork-authored code with"
+                " the base repository's secrets. Check out a base-side ref"
+                " (`main`, or `github.sha`) instead."
+                for marker in _pr_head_markers(with_block.get("ref", ""))
+            )
+            # `ref` is not the only input that selects what lands in the
+            # workspace: `repository` picks the fork outright, at which
+            # point a base-side ref buys nothing at all.
+            violations.extend(
+                f"{context}: checkout input `{input_name}` resolves"
+                f" '{marker}' under pull_request_target."
+                " Pull-request-controlled data must not decide what a"
+                " privileged job checks out."
+                for input_name, value in with_block.items()
+                if input_name != "ref"
+                for marker in _pr_head_markers(value)
+            )
+        elif isinstance(with_block, dict):
+            # Any other action's inputs: a third-party step taking a
+            # `ref` / `pr-sha` / `head` can resolve fork content itself,
+            # and only the checkout family is recognised above.
+            violations.extend(
+                f"{context}: `with:` interpolates '{marker}' under"
+                " pull_request_target. Pull-request-controlled data must"
+                " not reach a privileged job."
+                for marker in _pr_head_markers(with_block)
+            )
+        for field in ("run", "env"):
+            value = step.get(field)
+            if value is None:
                 continue
             violations.extend(
-                f"job '{job_name}': {scope} interpolates '{marker}' under"
-                " pull_request_target. Pull-request-controlled data must not"
-                " reach a privileged job."
-                for marker in _pr_head_markers(env_block)
+                f"{context}: `{field}:` interpolates '{marker}' under"
+                " pull_request_target. Pull-request-controlled data must"
+                " not reach a privileged job."
+                for marker in _pr_head_markers(value)
             )
-        for index, step in enumerate(_job_steps(job)):
-            context = f"job '{job_name}': '{_step_label(step, index)}'"
-            uses = step.get("uses")
-            with_block = step.get("with")
-            if (
-                isinstance(uses, str)
-                and _is_checkout_action(uses)
-                and isinstance(with_block, dict)
-            ):
-                violations.extend(
-                    f"{context}: checkout ref resolves '{marker}' under"
-                    " pull_request_target, which runs fork-authored code with"
-                    " the base repository's secrets. Check out a base-side ref"
-                    " (`main`, or `github.sha`) instead."
-                    for marker in _pr_head_markers(with_block.get("ref", ""))
-                )
-            for field in ("run", "env"):
-                value = step.get(field)
-                if value is None:
-                    continue
-                violations.extend(
-                    f"{context}: `{field}:` interpolates '{marker}' under"
-                    " pull_request_target. Pull-request-controlled data must"
-                    " not reach a privileged job."
-                    for marker in _pr_head_markers(value)
-                )
     return violations
 
 
@@ -989,13 +1048,49 @@ def _composite_uses(data: dict[str, object]) -> list[str]:
     ]
 
 
+@cache
 def _load_yaml_mapping(path: Path) -> dict[str, object] | None:
-    """Parse *path* as YAML, returning ``None`` unless it is a mapping."""
+    """Parse *path* as YAML, returning ``None`` unless it is a mapping.
+
+    Cached per path: five separate whole-tree walks (the four fixpoint
+    closures plus discovery) each ask about the same ~25 action files, and
+    parsing them once is the same reason ``_scan_paths`` hoists the closures
+    themselves. Keyed on the Path, so a test that repoints the roots asks
+    about different files and gets its own answers.
+
+    Returns:
+        The parsed mapping, or ``None`` when the file is unreadable, not
+        YAML, or not a mapping. :func:`_check_action_discovery` is what
+        turns that ``None`` into a violation; this stays quiet so the
+        four fixpoint closures below can call it freely.
+    """
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError, yaml.YAMLError, UnicodeDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _check_action_discovery() -> list[str]:
+    """Report every composite action the closures below cannot read.
+
+    The four fixpoint closures are what make this gate closed under "calls
+    a consumer". A file they cannot parse drops out of all of them, so a
+    composite that genuinely downloads an artifact or costs retry budget
+    stops being counted and the gate reports zero violations for a scope
+    it never saw. Fail-closed, matching :func:`_check_dockerfile_digest_pins`:
+    an unreadable input is a finding, not a warning nobody reads.
+
+    Returns:
+        One message per unreadable or non-mapping action file.
+    """
+    return [
+        f"{_relative_path(path)}: could not be parsed as a YAML mapping, so it"
+        " is invisible to artifact-consumer, sink and ladder-cost tracking and"
+        " invariants 5 and 6 are unenforced for everything it reaches."
+        for path in _iter_action_files()
+        if _load_yaml_mapping(path) is None
+    ]
 
 
 def _artifact_consumer_dirs() -> frozenset[str]:
@@ -1644,6 +1739,8 @@ def _scan_file(
     path: Path,
     consumers: frozenset[str] | None = None,
     sinks: frozenset[str] | None = None,
+    pull_defaults: tuple[int, int] | None = None,
+    ladder_costs: dict[str, int] | None = None,
 ) -> list[str]:
     """Return all violation messages for one workflow file.
 
@@ -1654,6 +1751,8 @@ def _scan_file(
             it resolved so a whole-tree run walks the actions tree once.
         sinks: Local action directories that reach the tracking issue,
             resolved once by ``_scan_paths`` for the same reason.
+        pull_defaults: Retry defaults declared by each composite action.
+        ladder_costs: Worst-case ladder seconds per composite action.
 
     Returns:
         Violation messages, empty when the file is compliant.
@@ -1663,6 +1762,10 @@ def _scan_file(
         consumers = _artifact_consumer_dirs()
     if sinks is None:
         sinks = _tracking_issue_dirs()
+    if pull_defaults is None:
+        pull_defaults = _pull_action_defaults()
+    if ladder_costs is None:
+        ladder_costs = _pull_ladder_costs(pull_defaults)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -1676,8 +1779,6 @@ def _scan_file(
     if not isinstance(jobs, dict):
         return _scan_composite_action(data, rel_path, consumers)
     permissions = data.get("permissions")
-    pull_defaults = _pull_action_defaults()
-    ladder_costs = _pull_ladder_costs(pull_defaults)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -1752,7 +1853,14 @@ def _check_dockerfile_digest_pins() -> list[str]:
     for path in sorted(root.rglob(_DOCKERFILE_NAME)):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError) as exc:
+            # A Dockerfile the gate cannot read is a Dockerfile it cannot
+            # vouch for, and this invariant is the only thing standing
+            # between the docker.io mirror and unpinned content.
+            violations.append(
+                f"{_relative_path(path)}: could not read "
+                f"({type(exc).__name__}); digest pinning is unverified."
+            )
             continue
         violations.extend(
             f"{_relative_path(path)}:{number}: '{ref}' is not digest-pinned."
@@ -1768,15 +1876,20 @@ def _check_dockerfile_digest_pins() -> list[str]:
 def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
+    # Resolved once for the whole run. Each of these walks and parses every
+    # composite action, so recomputing them per file made a 34-workflow scan
+    # re-read the 25 action files 34 times over.
     consumers = _artifact_consumer_dirs()
     sinks = _tracking_issue_dirs()
-    for message in _check_dockerfile_digest_pins():
+    pull_defaults = _pull_action_defaults()
+    ladder_costs = _pull_ladder_costs(pull_defaults)
+    for message in (*_check_action_discovery(), *_check_dockerfile_digest_pins()):
         failed = True
         print(message, file=sys.stderr)
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
-        violations = _scan_file(path, consumers, sinks)
+        violations = _scan_file(path, consumers, sinks, pull_defaults, ladder_costs)
         if not violations:
             continue
         failed = True

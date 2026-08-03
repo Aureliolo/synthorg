@@ -162,6 +162,7 @@ _GATES: tuple[str, ...] = (
     "check_no_ruff100_self_cloak",
     "check_argument_count_suppression",
     "check_doc_numeric_macros",
+    "check_every_gate_is_wired",
 )
 
 

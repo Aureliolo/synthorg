@@ -10,10 +10,20 @@ Foundational modules (core, config, observability) are imported by nearly every
 other module, so a change there raises a whole-suite question. Answering it is
 CI's job (the Test Unit shards): locally the changed module's own tests still
 run and the deferral is printed, never silent, so a push stays inside its
-five-minute budget. The same applies to a ``conftest.py``, a top-level source
+five-minute budget. The same applies to a ``conftest.py``, shared test
+infrastructure under ``tests/`` that belongs to no tier, a top-level source
 file (``__init__.py``, ``constants.py``), and a ``pyproject.toml`` edit, which
 carries pytest's own configuration. ``--full`` runs the whole suite on demand,
 with the timing-regression guards armed.
+
+A changed test file usually selects only itself: almost nothing imports a test
+module, so its siblings verify nothing the change could have broken. The
+exception is the handful that other test modules DO import for a shared fake or
+helper, and for those the importers' packages are selected as well -- otherwise
+breaking a shared fake would pass a push having run only the file that defines
+it. Scoping by package instead would cost the most exactly where there is no
+source package to scope against: ``tests/unit/scripts`` is a thirteenth of the
+unit tier by collected cases, and every gate's tests share it.
 
 A change can also be too broad to fit the budget without any of those triggers
 firing, simply by touching many packages at once. Past
@@ -41,9 +51,11 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Final, Literal
 
 # Hard wall-clock caps so a Windows + Python 3.14 + xdist IOCP teardown
@@ -54,6 +66,17 @@ from typing import Final, Literal
 _PYTEST_FULL_SUITE_TIMEOUT_SECONDS: Final[float] = 12 * 60
 _PYTEST_AFFECTED_TIMEOUT_SECONDS: Final[float] = 6 * 60
 _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
+# ``taskkill /T`` walks the tree and returns; anything slower than this means
+# the kill itself is stuck, and waiting longer on the killer of a hung run
+# only compounds the hang it was called to end.
+_TASKKILL_TIMEOUT_SECONDS: Final[float] = 5.0
+
+# Written by ``warm_typeguard_cache.py --mark-failures``. Duplicated as a
+# literal rather than imported: that module imports typeguard at module
+# level, and pulling it in here would cost this hook the instrumentation it
+# exists to have already paid. Kept in step by
+# ``test_run_affected_tests.py``'s marker-name test.
+_TYPEGUARD_WARM_FAILED_MARKER: Final[str] = "typeguard-warm-FAILED"
 
 # Above this many affected test files the local run stops being a fast screen
 # and becomes a slower duplicate of CI, so the unit run is deferred whole.
@@ -72,6 +95,25 @@ _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
 # quietly verifying an unprincipled fraction of it.
 _MAX_AFFECTED_TEST_FILES: Final[int] = 600
 
+# The test tiers, each of which owns its own runner. Everything else under
+# ``tests/`` is infrastructure the unit tier imports (``_shared/``,
+# ``baselines/``, ``_typeguard_checker.py``), so it raises a whole-suite
+# question rather than mapping to a package. A tier added later and not
+# listed here lands on that side too, which announces a deferral it did not
+# need instead of silently checking nothing.
+_TEST_TIERS: Final[frozenset[str]] = frozenset(
+    {"unit", "integration", "e2e", "conformance", "benchmarks", "evals", "evals_spine"}
+)
+
+# A test module imported by another test module, by dotted path. Both import
+# forms are matched because both appear in the tree, and the trailing boundary
+# stops ``tests.unit.meta.test_service`` from also matching a longer sibling
+# whose name merely extends it.
+_TEST_MODULE_IMPORT: Final[re.Pattern[str]] = re.compile(
+    r"^(?:from|import)\s+(tests(?:\.[A-Za-z_][A-Za-z0-9_]*)*\.test_[A-Za-z0-9_]+)\b",
+    re.MULTILINE,
+)
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
@@ -85,6 +127,7 @@ if __package__ in {None, ""}:
         changed_files,
         classify_src_path,
         git_output,
+        hooks_dir,
         merge_base,
     )
 else:
@@ -99,6 +142,7 @@ else:
         changed_files,
         classify_src_path,
         git_output,
+        hooks_dir,
         merge_base,
     )
 
@@ -120,12 +164,64 @@ from tests.baselines.loader import (  # noqa: E402
 )
 
 
+def _is_test_file(name: str) -> bool:
+    """Whether *name* is a file pytest collects as a test module.
+
+    Mirrors pytest's ``python_files`` default, which the project leaves
+    unset, and the glob :func:`count_affected_test_files` counts with.
+
+    Returns:
+        ``True`` for a ``test_*.py`` basename.
+    """
+    return name.startswith("test_") and name.endswith(".py")
+
+
+def _classify_test_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
+    """Classify a path under ``tests/``.
+
+    Anything outside a tier directory (``tests/_shared/``,
+    ``tests/baselines/``, a bare ``tests/foo.py``) is infrastructure the
+    unit tier imports without being part of it, so a change there is a
+    whole-suite question. Deferring it says so; classifying it "other"
+    would run nothing and announce nothing, which reads as a push with
+    nothing to check. A tier directory that is not ``unit`` is that
+    tier's own business and this runner never runs it.
+
+    Returns:
+        ``(category, module)``, where module names the ``tests/unit/``
+        package the path belongs to (``"."`` for the tier root).
+    """
+    if len(parts) < MIN_MODULE_DEPTH or parts[1] not in _TEST_TIERS:
+        return "shared_test_infra", None
+    if parts[1] != "unit":
+        return "other", None
+
+    # The regex already rejects dotted names like test_smoke.py and
+    # __init__.py, but listing them explicitly documents the intent.
+    if SAFE_MODULE_NAME.match(parts[2]) and parts[2] not in TOP_LEVEL_SRC:
+        if _is_test_file(parts[-1]):
+            return "test_unit_file", parts[2]
+        return "test_unit", parts[2]
+
+    # Either a file sitting directly in the tier root, or a path whose
+    # package component is not a package name at all (a ``..`` from a
+    # crafted diff). Only the first is addressable, and only at exactly
+    # that depth: past it the rejected component is a directory nobody
+    # has validated, so the tier root's own smoke test is the answer.
+    if len(parts) == MIN_MODULE_DEPTH and _is_test_file(parts[2]):
+        return "test_unit_file", "."
+    return "test_unit", "."
+
+
 def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     """Classify a file path into a category and optional module name.
 
     Returns ``(category, module)`` where category is one of:
     ``"conftest"``, ``"blast_radius"``, ``"top_level_src"``,
-    ``"src_module"``, ``"test_unit"``, ``"other"``.
+    ``"src_module"``, ``"test_unit"``, ``"test_unit_file"``,
+    ``"shared_test_infra"``, ``"other"``. For ``"test_unit_file"`` the
+    module names the package the file sits in, which is what the caller
+    de-duplicates against rather than what it selects.
     """
     if parts[-1] == "conftest.py":
         return "conftest", None
@@ -134,17 +230,86 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     if source is not None:
         return source
 
-    if len(parts) >= MIN_MODULE_DEPTH and parts[0] == "tests" and parts[1] == "unit":
-        # The regex already rejects dotted names like test_smoke.py and
-        # __init__.py, but listing them explicitly documents the intent.
-        is_root = (
-            not SAFE_MODULE_NAME.match(parts[2])
-            or parts[2] == "test_smoke.py"
-            or parts[2] in TOP_LEVEL_SRC
-        )
-        return ("test_unit", ".") if is_root else ("test_unit", parts[2])
+    if parts[0] == "tests":
+        return _classify_test_path(parts)
 
     return "other", None
+
+
+@cache
+def _test_module_importers() -> Mapping[str, frozenset[str]]:
+    """Map each imported test module to the packages that import it.
+
+    A test module is normally a leaf: pytest collects it and nothing else
+    reads it, which is what makes selecting one file sufficient. A few
+    carry a shared fake or helper that sibling test modules import by
+    dotted path, and for those the leaf assumption is simply false -- a
+    change to the definition can break importers the file-level selection
+    would never run.
+
+    Scanned once per process with a regex rather than parsed: the answer
+    is needed only for the handful of changed test files in one push, and
+    an import that this regex misses degrades to today's file-only
+    selection rather than to a wrong package.
+
+    Returns:
+        Dotted module name -> the ``tests/unit/`` packages importing it.
+    """
+    importers: dict[str, set[str]] = {}
+    for path in (_REPO_ROOT / "tests").rglob("*.py"):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        parts = path.relative_to(_REPO_ROOT).as_posix().split("/")
+        if parts[1] != "unit":
+            # Only the unit tier is this runner's to select; an importer in
+            # another tier is that tier's runner to worry about.
+            continue
+        package = parts[2] if len(parts) > MIN_MODULE_DEPTH else "."
+        for match in _TEST_MODULE_IMPORT.finditer(text):
+            importers.setdefault(match.group(1), set()).add(package)
+    return MappingProxyType(
+        {name: frozenset(packages) for name, packages in importers.items()}
+    )
+
+
+def _importer_packages(filepath: str) -> frozenset[str]:
+    """Return the ``tests/unit/`` packages importing the module at *filepath*.
+
+    Returns:
+        The importing packages, empty when nothing imports this module.
+    """
+    dotted = filepath.removesuffix(".py").replace("/", ".")
+    return _test_module_importers().get(dotted, frozenset())
+
+
+def _selected_test_files(module: str, filepaths: set[str]) -> list[str]:
+    """Return the changed test files under ``tests/unit/<module>`` to run.
+
+    A test file is the one thing in the tree with no importers, so
+    running its siblings verifies nothing the change could have broken.
+    Everything shared it depends on -- a ``conftest.py``, a helper
+    module, the package's own source -- is classified elsewhere and
+    still selects the whole package.
+
+    A path that no longer exists is dropped rather than handed to
+    pytest, which exits 4 on a missing path and would fail the push for
+    the deletion itself. The containment check is the same barrier
+    :data:`SAFE_MODULE_NAME` provides for directories: a ``..`` segment
+    past the package name would otherwise carry a crafted diff path
+    straight into the argv.
+
+    Returns:
+        Repo-relative paths, one per surviving file.
+    """
+    owner = (_REPO_ROOT / "tests" / "unit" / module).resolve()
+    selected: list[str] = []
+    for filepath in sorted(filepaths):
+        candidate = (_REPO_ROOT / filepath).resolve()
+        if candidate.is_relative_to(owner) and candidate.is_file():
+            selected.append(str(candidate.relative_to(_REPO_ROOT)))
+    return selected
 
 
 def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
@@ -157,15 +322,29 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
     local push verifies what changed, CI owns the sweep.
     """
     modules: set[str] = set()
+    changed_test_files: dict[str, set[str]] = {}
     deferred = False
 
     for filepath in changed:
         parts = PurePosixPath(filepath).parts
         category, module = _classify_path(parts)
 
-        if category in {"conftest", "blast_radius", "top_level_src"}:
+        if category in {
+            "conftest",
+            "blast_radius",
+            "top_level_src",
+            "shared_test_infra",
+        }:
             deferred = True
-        if module is not None:
+        if module is None:
+            continue
+        if category == "test_unit_file":
+            changed_test_files.setdefault(module, set()).add(filepath)
+            # A test module that other test modules import is not a leaf:
+            # its importers have to run too, or breaking a shared fake
+            # passes a push having run only the file that defines it.
+            modules.update(_importer_packages(filepath))
+        else:
             modules.add(module)
 
     # Build test directory paths (only dirs that actually exist).
@@ -179,6 +358,12 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
             test_dir = _REPO_ROOT / "tests" / "unit" / mod
             if test_dir.is_dir():
                 test_dirs.append(str(test_dir.relative_to(_REPO_ROOT)))
+
+    # A package already selected covers its own test files; adding them
+    # again would collect each one twice.
+    for mod, filepaths in sorted(changed_test_files.items()):
+        if mod not in modules:
+            test_dirs.extend(_selected_test_files(mod, filepaths))
 
     return test_dirs, deferred
 
@@ -419,17 +604,39 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     that started its own group (some C-extensions running aiosqlite /
     docker calls do exactly that).
     """
-    if sys.platform == "win32":
-        with contextlib.suppress(subprocess.SubprocessError, OSError):
-            subprocess.run(
+    # A kill that fails is announced. The caller reports the hung-run exit
+    # code either way, so a silent failure here reads as "the tree is gone"
+    # while the workers are still holding the locks this exists to release.
+    try:
+        if sys.platform == "win32":
+            killed = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True,
                 check=False,
-                timeout=5.0,
+                timeout=_TASKKILL_TIMEOUT_SECONDS,
             )
-    else:
-        with contextlib.suppress(ProcessLookupError, OSError):
+            if killed.returncode != 0:
+                # taskkill reports refusal through its exit code, not an
+                # exception, so without this the announcement below never
+                # fires for the commonest failure it exists to catch.
+                print(
+                    f"taskkill refused the pytest process tree at pid "
+                    f"{proc.pid} (exit {killed.returncode}); workers may "
+                    "still be running and holding file locks.",
+                    file=sys.stderr,
+                )
+        else:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        # Already gone, which is the outcome this wanted.
+        pass
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(
+            f"could not kill the pytest process tree at pid {proc.pid} "
+            f"({type(exc).__name__}: {exc}); workers may still be running "
+            "and holding file locks.",
+            file=sys.stderr,
+        )
 
 
 def _own_process_group_kwargs() -> dict[str, object]:
@@ -977,7 +1184,7 @@ def _run_tests() -> int:
         deferred_announced = True
     elif deferred:
         _defer_to_ci(
-            "Foundational module or conftest changed",
+            "Foundational module, conftest or shared test infrastructure changed",
             scoped_run_follows=bool(test_dirs),
         )
         deferred_announced = True
@@ -1024,6 +1231,33 @@ def _run_full_suite() -> int:
     return _run_pytest(["tests/unit/"], run_all=True)
 
 
+def _report_stale_typeguard_warm() -> None:
+    """Warn once if the last detached typeguard warm failed, then clear it.
+
+    The warm runs detached after a dependency sync, so its exit code goes
+    nowhere. Without this, a repeatedly-failing warm is invisible and every
+    test process silently pays the full instrumentation cost again: a
+    mysteriously slow suite with no attribution, which is the problem the
+    warm exists to remove reintroduced one layer down. A warning rather
+    than a block, because a cold cache costs time and never correctness.
+    """
+    directory = hooks_dir()
+    if directory is None:
+        return
+    marker = directory / _TYPEGUARD_WARM_FAILED_MARKER
+    if not marker.is_file():
+        return
+    print(
+        "NOTE: the background typeguard cache warm after your last dependency "
+        "sync failed, so every test process here re-instruments the package. "
+        f"See {directory}/mypy-rewarm-last.log; re-run with "
+        "`uv run python scripts/warm_typeguard_cache.py`.",
+        file=sys.stderr,
+    )
+    with contextlib.suppress(OSError):
+        marker.unlink()
+
+
 def main() -> int:
     """Entry point.
 
@@ -1042,6 +1276,7 @@ def main() -> int:
         help="run the whole unit suite with the timing-regression guards armed",
     )
     run = _run_full_suite if parser.parse_args().full else _run_tests
+    _report_stale_typeguard_warm()
 
     try:
         before = _tracked_dirty_paths()

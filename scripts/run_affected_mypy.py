@@ -52,6 +52,7 @@ Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), et
 import argparse
 import contextlib
 import csv
+import hashlib
 import json
 import os
 import re
@@ -60,13 +61,13 @@ import sys
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, NamedTuple
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
-        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -75,11 +76,11 @@ if __package__ in {None, ""}:
         announce_deferral,
         changed_files,
         classify_src_path,
+        hooks_dir,
         merge_base,
     )
 else:
     from scripts._prepush_scope import (
-        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -88,6 +89,7 @@ else:
         announce_deferral,
         changed_files,
         classify_src_path,
+        hooks_dir,
         merge_base,
     )
 
@@ -154,6 +156,21 @@ _CHECK_COMPLETED_CODES: Final[frozenset[int]] = frozenset({0, 1})
 # a stale status file causes (see ``_check_daemon``). More would only delay the
 # cold fallback that a genuinely broken daemon needs.
 _DAEMON_ATTEMPTS: Final[int] = 2
+
+# Past this, a daemon check was a rebuild rather than an answer. A warm
+# full-tree check measures ~1.4-4s; a cold rebuild measures 120-160s. The
+# threshold sits far above the former and far below the latter, so it can
+# neither cry wolf on a slow-but-warm machine nor miss a real rebuild.
+_REBUILD_REPORT_SECONDS: Final[float] = 30.0
+
+# How long a retry waits for a server that is still coming up before it
+# issues a ``run`` of its own. dmypy waits 5s, which this repo's daemon
+# exceeds on a loaded machine; the retry that follows is what starts a
+# second server for one status file. Generous because the cost of waiting
+# is a few idle seconds and the cost of not waiting is a leaked multi-GB
+# server plus a status file that reports a graph nobody holds.
+_DAEMON_START_GRACE_SECONDS: Final[float] = 60.0
+_DAEMON_POLL_SECONDS: Final[float] = 0.5
 
 # Opt out of the daemon for a single run. CI is opted out unconditionally: a
 # fresh container pays the multi-minute cold build and is then discarded before
@@ -458,6 +475,7 @@ def _dmypy_result(
     *args: str,
     quiet: bool = False,
     timeout: int = _MYPY_TIMEOUT_SECONDS,
+    kill_on_timeout: bool = True,
 ) -> subprocess.CompletedProcess[str] | None:
     """Run a dmypy subcommand, returning ``None`` if it hung and was killed.
 
@@ -497,22 +515,140 @@ def _dmypy_result(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        print(
-            f"{daemon.label} daemon exceeded {timeout}s and was "
-            f"killed; try: dmypy kill --status-file {daemon.status_file}",
-            file=sys.stderr,
-        )
+        # The timeout killed the dmypy CLIENT this call spawned. The server
+        # is a separate process and is still wedged, so retrying would walk
+        # straight back into it for another full ceiling. Kill the server
+        # too, and the retry gets a clean one. ``kill_on_timeout=False`` is
+        # what the kill itself passes, so a kill that also hangs reports
+        # rather than recursing.
+        if kill_on_timeout:
+            print(
+                f"{daemon.label} daemon exceeded {timeout}s; killing the "
+                f"server so the retry starts a fresh one",
+                file=sys.stderr,
+            )
+            _kill_wedged_server(daemon)
+        else:
+            print(
+                f"{daemon.label} daemon exceeded {timeout}s and was killed",
+                file=sys.stderr,
+            )
         return None
 
 
-def _dmypy(daemon: _Daemon, *args: str, quiet: bool = False) -> int:
+def _kill_wedged_server(daemon: _Daemon) -> None:
+    """Hard-kill a daemon whose server stopped answering.
+
+    ``subprocess.run(timeout=...)`` only reaches the client it started; the
+    dmypy server is a separate, still-wedged process holding the status
+    file. Left alone it absorbs every remaining attempt at the full build
+    ceiling each time, so a single hung server could hold a push for hours
+    while printing a remedy nobody is there to run. ``kill`` is issued
+    directly rather than ``stop`` because a graceful stop queues behind the
+    in-flight request that is already stuck.
+
+    Best-effort by design: if the kill fails too, the caller still falls
+    back to a cold check, which is slow but correct.
+    """
+    killed = _dmypy_result(
+        daemon,
+        "kill",
+        quiet=True,
+        timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        kill_on_timeout=False,
+    )
+    if killed is None or killed.returncode != 0:
+        print(
+            f"{daemon.label}: could not kill the wedged server; "
+            f"stop it by hand with: "
+            f"dmypy kill --status-file {daemon.status_file}",
+            file=sys.stderr,
+        )
+        return
+    _forget_bounded_lifetime(daemon)
+
+
+def _dmypy(
+    daemon: _Daemon,
+    *args: str,
+    quiet: bool = False,
+    timeout: int = _MYPY_TIMEOUT_SECONDS,
+) -> int:
     """Run a dmypy subcommand for *daemon* and return its exit code.
 
     A killed-on-timeout run reports dmypy's own "something went wrong" code so
     callers cannot mistake a hang for a verdict.
     """
-    result = _dmypy_result(daemon, *args, quiet=quiet)
+    result = _dmypy_result(daemon, *args, quiet=quiet, timeout=timeout)
     return _DMYPY_FAILED if result is None else result.returncode
+
+
+class _LifetimeRecord(NamedTuple):
+    """What this script remembers about a daemon it started.
+
+    Two readers want different fields out of the same marker, and both a
+    misparse and a renamed key fail the same silent way: the marker reads as
+    absent, the daemon is restarted, and the only symptom is the push getting
+    slower again. So the shape is named once here and parsed once, rather
+    than re-derived at each read site.
+    """
+
+    pid: int
+    idle_timeout_seconds: int
+    dependency_digest: str | None
+
+    def to_json(self) -> str:
+        """Serialise the record for the marker file.
+
+        Returns:
+            The marker's contents.
+        """
+        return json.dumps(self._asdict())
+
+    @classmethod
+    def from_json(cls, text: str) -> _LifetimeRecord | None:
+        """Parse a marker's contents.
+
+        Args:
+            text: Whatever the marker file held.
+
+        Returns:
+            The record, or None when the text is not a usable marker.
+            Failing open would vouch for a daemon nothing verified.
+        """
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(raw, dict):
+            return None
+        pid, idle = raw.get("pid"), raw.get("idle_timeout_seconds")
+        digest = raw.get("dependency_digest")
+        # ``bool`` subclasses ``int``, and a pid of ``True`` is not a pid.
+        if type(pid) is not int or type(idle) is not int:
+            return None
+        if digest is not None and not isinstance(digest, str):
+            return None
+        return cls(pid=pid, idle_timeout_seconds=idle, dependency_digest=digest)
+
+
+def _read_lifetime_record(daemon: _Daemon) -> _LifetimeRecord | None:
+    """Read the marker recording how *daemon* was last started.
+
+    Args:
+        daemon: The daemon whose marker to read.
+
+    Returns:
+        The record, or None when no usable marker exists.
+    """
+    try:
+        return _LifetimeRecord.from_json(
+            daemon.lifetime_file.read_text(encoding="utf-8")
+        )
+    # A marker caught mid-write holds a partial UTF-8 sequence, which is a
+    # decode failure rather than an IO one and would otherwise escape.
+    except OSError, UnicodeDecodeError:
+        return None
 
 
 def _recorded_lifetime_pid(daemon: _Daemon) -> int | None:
@@ -524,17 +660,35 @@ def _recorded_lifetime_pid(daemon: _Daemon) -> int | None:
     Changing ``_DAEMON_IDLE_TIMEOUT_SECONDS`` therefore rebinds warm daemons
     on their next use rather than leaving them on the old value.
     """
+    record = _read_lifetime_record(daemon)
+    if record is None or record.idle_timeout_seconds != _DAEMON_IDLE_TIMEOUT_SECONDS:
+        return None
+    return record.pid
+
+
+def _dependency_digest() -> str | None:
+    """Fingerprint the resolved dependency set the graph was built against.
+
+    ``uv.lock`` changes exactly when the installed packages can change, and
+    it is one small file, so hashing it is far cheaper than inspecting
+    site-packages.
+
+    Returns:
+        A hex digest, or None when the lock cannot be read (then staleness
+        is simply not asserted, which is today's behaviour).
+    """
     try:
-        raw = json.loads(daemon.lifetime_file.read_text(encoding="utf-8"))
-    except OSError, json.JSONDecodeError:
+        return hashlib.blake2b(
+            (REPO_ROOT / "uv.lock").read_bytes(), digest_size=16
+        ).hexdigest()
+    except OSError:
         return None
-    if not isinstance(raw, dict):
-        return None
-    if raw.get("idle_timeout_seconds") != _DAEMON_IDLE_TIMEOUT_SECONDS:
-        return None
-    pid = raw.get("pid")
-    # ``bool`` subclasses ``int``, and a pid of ``True`` is not a pid.
-    return pid if type(pid) is int else None
+
+
+def _recorded_dependency_digest(daemon: _Daemon) -> str | None:
+    """Return the dependency digest recorded when this daemon was started."""
+    record = _read_lifetime_record(daemon)
+    return None if record is None else record.dependency_digest
 
 
 def _record_bounded_lifetime(daemon: _Daemon) -> None:
@@ -542,9 +696,11 @@ def _record_bounded_lifetime(daemon: _Daemon) -> None:
     pid = _daemon_pid(daemon)
     if pid is None:
         return
-    payload = json.dumps(
-        {"pid": pid, "idle_timeout_seconds": _DAEMON_IDLE_TIMEOUT_SECONDS}
-    )
+    payload = _LifetimeRecord(
+        pid=pid,
+        idle_timeout_seconds=_DAEMON_IDLE_TIMEOUT_SECONDS,
+        dependency_digest=_dependency_digest(),
+    ).to_json()
     try:
         daemon.lifetime_file.write_text(payload, encoding="utf-8")
     except OSError as exc:
@@ -595,6 +751,51 @@ def _adopt_idle_timeout(daemon: _Daemon) -> None:
     _forget_bounded_lifetime(daemon)
 
 
+def _drop_stale_graph(daemon: _Daemon) -> None:
+    """Stop a daemon whose resident graph predates the installed packages.
+
+    A ``uv sync`` rewrites site-packages without stopping the daemon, so the
+    graph it holds is invalid while the daemon still answers. dmypy notices
+    only once the next check is already underway, and then silently pays the
+    full cold rebuild inside it: measured at 124s against 1.4s warm, i.e. a
+    third of the push budget spent with nothing on screen explaining why.
+
+    Detecting it here turns that into an announced restart before the check
+    starts. The cost is identical (one rebuild either way); what changes is
+    that it is attributable, and that the caller is not left wondering
+    whether the push has hung.
+
+    Only reached when a daemon is actually listening, so this never starts
+    one. A daemon this script has not vouched for carries no recorded digest
+    and is left to ``_adopt_idle_timeout``.
+    """
+    recorded = _recorded_dependency_digest(daemon)
+    if recorded is None:
+        return
+    current = _dependency_digest()
+    if current is None:
+        # Every other degraded path in this file announces itself. Staying
+        # quiet here would disable the one guard that turns a silent
+        # mid-check rebuild into an announced restart, silently.
+        print(
+            f"{daemon.label}: could not read uv.lock; the daemon's graph was "
+            "not checked for staleness this run.",
+            file=sys.stderr,
+        )
+        return
+    if current == recorded:
+        return
+    if not _daemon_running(daemon):
+        return
+    print(
+        f"{daemon.label} daemon was built against a different uv.lock "
+        "(dependencies changed since it started); restarting it now rather "
+        "than paying the rebuild silently inside the next check."
+    )
+    _dmypy_result(daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS)
+    _forget_bounded_lifetime(daemon)
+
+
 def _check_daemon(daemon: _Daemon) -> int | None:
     """Check *daemon*'s scope, returning ``None`` if it gave no verdict.
 
@@ -613,17 +814,64 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     run costs the same wall clock either way and leaves a warm daemon behind
     instead of nothing. The retry is safe when the daemon is merely busy:
     ``run`` starts a daemon only when none is listening, so a second attempt
-    competes for the existing one and falls through to cold if it loses. No
-    delay between attempts: dmypy's own client already polls for the
-    replacement to come up, so sleeping here would just double that wait.
+    competes for the existing one and falls through to cold if it loses. A
+    retry first waits for any server the previous attempt left starting
+    (``_wait_for_daemon``): dmypy's own five-second ceiling is shorter than
+    this repo's daemon needs on a loaded machine, and issuing ``run`` before
+    the starting server publishes its status file is what starts a second
+    one and strands the first.
+
+    A second process can be in the same window at the same time (a
+    detached ``--rewarm`` after a dependency sync, and a push), so the
+    whole sequence runs under ``_start_lock``.
 
     See docs/reference/retry-patterns.md: Pattern C/Sync -- this script is a
     standalone pre-push hook that must run without importing synthorg, so the
     shared GeneralRetryHandler is not available to it.
     """
+    # Started before the lock is acquired, so waiting out the grace period and
+    # the restarts that precede the first check are charged against the same
+    # ceiling. A deadline opened after the lock would hand a run that already
+    # waited its full allowance on top of the wait.
+    deadline = time.monotonic() + _MYPY_TIMEOUT_SECONDS
+    with _start_lock(daemon):
+        return _check_daemon_locked(daemon, deadline)
+
+
+def _check_daemon_locked(daemon: _Daemon, deadline: float) -> int | None:
+    """Run the daemon check itself, inside the start lock.
+
+    Args:
+        daemon: The daemon to check.
+        deadline: Monotonic instant the whole check must be finished by.
+
+    Returns:
+        The dmypy exit code, or ``None`` when it gave no verdict.
+    """
+    # Before anything else: a leaked server from an earlier run holds GBs and
+    # is unreachable by stop/kill, and the status file it lost says nothing
+    # about it. One cached process-table read covers both daemons.
+    _reap_orphaned_servers(daemon)
     _adopt_idle_timeout(daemon)
+    _drop_stale_graph(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
+        if attempt:
+            # The previous attempt may have left a server still starting up.
+            # Issuing ``run`` before it publishes its status file is what
+            # starts a second one and strands the first.
+            _wait_for_daemon(daemon)
+        started = time.monotonic()
+        # One ceiling for the whole daemon, not one per attempt: two
+        # independent full-length allowances would let a wedged daemon hold
+        # a push for twice the bound the ceiling exists to impose, and the
+        # scripts daemon would then start its own from zero.
+        remaining = deadline - started
+        # A sub-second remainder truncates to ``timeout=0`` below, which fires
+        # the wedged-server kill against a daemon that was never given a
+        # chance to answer, and reports it as "exceeded 0s".
+        if remaining < 1:
+            break
         code = _dmypy(
             daemon,
             "run",
@@ -632,7 +880,13 @@ def _check_daemon(daemon: _Daemon) -> int | None:
             "--",
             *daemon.paths,
             *daemon.extra,
+            timeout=int(remaining),
         )
+        if _report_if_rebuilt(daemon, time.monotonic() - started):
+            # A rebuild means the graph this run started from was gone, so
+            # re-read the table: the twin that took the status file may have
+            # appeared after this run's snapshot.
+            _reap_orphaned_servers(daemon, fresh=True)
         if code in _CHECK_COMPLETED_CODES:
             _record_bounded_lifetime(daemon)
             if attempt:
@@ -649,6 +903,41 @@ def _check_daemon(daemon: _Daemon) -> int | None:
         file=sys.stderr,
     )
     return None
+
+
+def _report_if_rebuilt(daemon: _Daemon, elapsed: float) -> bool:
+    """Say so when a daemon check clearly rebuilt rather than answered.
+
+    ``_drop_stale_graph`` can only pre-empt the staleness it knows how to
+    fingerprint. A resident graph goes stale for other reasons too: a
+    branch switch or rebase rewrites every source mtime, a mypy config
+    change makes dmypy restart itself, and site-packages can move without
+    ``uv.lock`` moving. One such push was measured at 162s in this hook
+    with ``uv.lock`` untouched since hours before the daemon started, and
+    it took a dozen probes to establish that afterwards, because the
+    rebuild is indistinguishable from a slow check from the outside.
+
+    Enumerating every trigger is not tractable; naming the cost is. A warm
+    check is seconds, so anything past the threshold below is a rebuild,
+    and saying so turns an unexplained slow push into a labelled event
+    with an obvious remedy.
+
+    Returns:
+        Whether the check was slow enough to be a rebuild.
+    """
+    if elapsed < _REBUILD_REPORT_SECONDS:
+        return False
+    print(
+        f"{daemon.label} daemon took {elapsed:.0f}s: that is a full graph"
+        " rebuild, not a check. Its resident graph was stale for a reason"
+        " the uv.lock fingerprint does not cover (a rebase or branch"
+        " switch rewrites every source mtime; a mypy config change makes"
+        " dmypy restart itself). The graph is warm again now, so the next"
+        " push pays seconds; `make typecheck-warm` pre-pays it off the"
+        " push budget.",
+        file=sys.stderr,
+    )
+    return True
 
 
 def _daemon_running(daemon: _Daemon) -> bool:
@@ -750,6 +1039,250 @@ def _process_rss_mb(pid: int) -> int | None:
         field = result.stdout
     digits = re.sub(r"[^0-9]", "", field)
     return int(digits) // _KB_PER_MB if digits else None
+
+
+def _process_parent(pid: int) -> int | None:
+    """Return a process's parent pid, or ``None`` if unreadable.
+
+    Single-pid lookup in the style of :func:`_process_rss_mb` rather than a
+    third column on :func:`_process_table`: only the orphan check needs
+    lineage, and widening that table would change the shape every caller and
+    its tests read.
+    """
+    command = (
+        [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').ParentProcessId",
+        ]
+        if sys.platform == "win32"
+        else ["ps", "-o", "ppid=", "-p", str(pid)]
+    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not read the parent of pid {pid}: {exc}", file=sys.stderr)
+        return None
+    parent = result.stdout.strip()
+    return int(parent) if result.returncode == 0 and parent.isdigit() else None
+
+
+@cache
+def _process_table_snapshot() -> tuple[tuple[int, str], ...]:
+    """One process-table read per run, shared by the orphan checks.
+
+    Enumerating processes shells out (PowerShell on Windows), so reading
+    it once per daemon per call would put a measurable cost on every push
+    for a check that is looking for the same processes each time.
+
+    Returns:
+        The process table as of the first call in this process.
+    """
+    return tuple(_process_table())
+
+
+def _orphaned_servers(daemon: _Daemon, *, fresh: bool = False) -> list[int]:
+    """Return dmypy servers bound to *daemon* that its status file disowns.
+
+    A status file holds one pid, and the last server to start wins it. When
+    two start for the same file, the loser keeps running and keeps whatever
+    graph it built: gigabytes resident, unreachable by ``stop`` or ``kill``
+    (both address the status file), and invisible to ``--status``. The winner
+    is typically the one that built nothing, so every later check rebuilds
+    while every marker agrees the daemon is warm.
+
+    The launcher this venv interposes between ``dmypy`` and the real
+    interpreter carries the same command line as the server it spawned, so
+    the status pid's parent is excluded too; without that it would be reaped
+    on every single run.
+
+    Args:
+        daemon: The daemon whose status file bounds the search.
+        fresh: Re-read the process table instead of using this run's
+            snapshot. Only worth it right after something is known to have
+            changed, such as a check that turned out to be a rebuild.
+
+    Returns:
+        Pids of servers for this status file that nothing references.
+    """
+    status_pid = _daemon_pid(daemon)
+    if status_pid is None:
+        return []
+    table = _process_table() if fresh else _process_table_snapshot()
+    referenced = {status_pid}
+    if any(pid == status_pid for pid, _command in table):
+        # There is a live daemon to protect, so its launcher has to be
+        # identified before anything is killed: the launcher carries the
+        # same command line, and reaping it would fire on every run.
+        parent = _process_parent(status_pid)
+        if parent is None:
+            print(
+                f"{daemon.label}: could not identify the running daemon's "
+                "launcher; skipping the orphan check rather than risk "
+                "reaping it.",
+                file=sys.stderr,
+            )
+            return []
+        referenced.add(parent)
+    needle = str(daemon.status_file.resolve())
+    return [
+        pid
+        for pid, command in table
+        if pid not in referenced
+        and _DAEMON_PROCESS_MARKER in command
+        and _references_path(command, needle)
+    ]
+
+
+def _reap_orphaned_servers(daemon: _Daemon, *, fresh: bool = False) -> None:
+    """Kill every dmypy server for *daemon* that its status file disowns.
+
+    Announced rather than silent: an orphan is proof that a run's status
+    file was overwritten mid-start, so the graph the caller believes is
+    resident is not, and the next check will rebuild.
+
+    The status file is re-read immediately before each kill. A server that
+    was an orphan when the table was read can be the legitimate one by the
+    time its turn comes (it published its status file in between), and
+    killing it would tear down a check some other process is waiting on.
+
+    Args:
+        daemon: The daemon whose orphans to reap.
+        fresh: Passed through to :func:`_orphaned_servers`.
+    """
+    for pid in _orphaned_servers(daemon, fresh=fresh):
+        if _daemon_pid(daemon) == pid:
+            continue
+        rss = _process_rss_mb(pid)
+        if rss is None:
+            # Exited between the table read and now, which is the outcome
+            # this wanted; saying so would read as a failure.
+            continue
+        print(
+            f"{daemon.label}: reaping dmypy pid {pid} holding {rss}MB. It is "
+            "bound to this daemon's status file but is not the process that "
+            "file names, so nothing can reach it and no check can reuse its "
+            "graph.",
+            file=sys.stderr,
+        )
+        _stop_holder(pid)
+
+
+@contextlib.contextmanager
+def _start_lock(daemon: _Daemon) -> Iterator[bool]:
+    """Serialise the decide-to-start window across processes.
+
+    ``_wait_for_daemon`` only orders one process's own retries. Two
+    processes racing is the commoner case and is reachable by design:
+    ``rewarm_caches_after_sync.sh`` detaches a rebuild after a ``uv
+    sync`` that takes minutes, and nothing stops a ``git push`` starting
+    while it runs. Each independently reads the status file, sees no
+    daemon, and starts one; the loser is then stranded.
+
+    Advisory and fail-open on purpose. A lock that could block a push is
+    worse than the race it prevents, so waiting is bounded and a lock
+    that cannot be taken is proceeded past. A lock older than the build
+    ceiling belonged to a process that died holding it, and is taken
+    over rather than waited on forever.
+
+    Yields:
+        Whether the lock was held. ``False`` means the caller raced.
+    """
+    lock = daemon.status_file.with_suffix(".start.lock")
+    deadline = time.monotonic() + _DAEMON_START_GRACE_SECONDS
+    held = False
+    while time.monotonic() < deadline:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _lock_is_stale(lock) and _remove_stale_lock(lock):
+                continue
+            # Either the lock is live, or the takeover failed and retrying
+            # it immediately would spin the whole grace period at full tilt.
+            time.sleep(_DAEMON_POLL_SECONDS)
+            continue
+        except OSError:
+            break  # Unwritable location; the lock is not worth failing over.
+        with contextlib.suppress(OSError):
+            os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        held = True
+        break
+    try:
+        yield held
+    finally:
+        if held:
+            with contextlib.suppress(OSError):
+                lock.unlink(missing_ok=True)
+
+
+def _remove_stale_lock(lock: Path) -> bool:
+    """Take over a lock whose owner died, reporting whether it worked.
+
+    Windows refuses to unlink a file another process still holds open, so a
+    takeover can fail against a lock that only looked abandoned. Failing is
+    not fatal: the caller waits it out like a live lock, and the whole
+    mechanism is advisory anyway.
+
+    Args:
+        lock: The lock file to remove.
+
+    Returns:
+        Whether the lock is now gone.
+    """
+    try:
+        lock.unlink(missing_ok=True)
+    except OSError:
+        return False
+    return True
+
+
+def _lock_is_stale(lock: Path) -> bool:
+    """Whether *lock* outlived any run that could still be holding it.
+
+    Returns:
+        ``True`` when the lock is older than a full build could take.
+    """
+    try:
+        age = time.time() - lock.stat().st_mtime
+    except OSError:
+        return False
+    return age > _MYPY_TIMEOUT_SECONDS
+
+
+def _wait_for_daemon(daemon: _Daemon) -> bool:
+    """Wait for a starting daemon to publish its status file.
+
+    ``dmypy run`` decides whether to start a server by reading that file, and
+    a server still coming up has not written it. dmypy gives it five seconds;
+    on a loaded machine this repo's daemon needs longer, and past the ceiling
+    the client exits non-zero. Retrying straight away is what starts the
+    second server, so the retry waits here first: if the daemon appears, the
+    next ``run`` attaches to it instead of racing it.
+
+    Polls the status file rather than asking dmypy: the file appearing is
+    the exact condition ``run`` branches on, and it is a file read. Asking
+    dmypy would spawn a client per poll, each with its own multi-second
+    timeout, which is both slower than the thing being waited for and a
+    hundred processes over one wait.
+
+    Returns:
+        ``True`` once a daemon has published a pid, ``False`` at the ceiling.
+    """
+    deadline = time.monotonic() + _DAEMON_START_GRACE_SECONDS
+    while time.monotonic() < deadline:
+        if _daemon_pid(daemon) is not None:
+            return True
+        time.sleep(_DAEMON_POLL_SECONDS)
+    return _daemon_pid(daemon) is not None
 
 
 def _run_daemon_pass(changed: list[str] | None) -> int | None:
@@ -908,30 +1441,11 @@ def _warm() -> int:
 def _rewarm_marker() -> Path | None:
     """Return the path of the failed-re-warm marker, or ``None`` if unknown.
 
-    Resolved via ``git rev-parse --git-path`` so it lands in this worktree's
-    own git dir rather than the main checkout's; a worktree's git dir is
-    ``.git/worktrees/<name>/``, so joining ``.git`` by hand would put every
-    worktree's marker in one shared place.
+    Returns:
+        The marker path, or ``None`` when the hooks directory is unknown.
     """
-    try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "--git-path", "synthorg-hooks"],
-            cwd=_REPO_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=GIT_TIMEOUT_SECONDS,
-        )
-    except OSError, subprocess.SubprocessError:
-        return None
-    if completed.returncode != 0 or not completed.stdout.strip():
-        return None
-    directory = Path(completed.stdout.strip())
-    if not directory.is_absolute():
-        directory = _REPO_ROOT / directory
-    return directory / "mypy-rewarm-FAILED"
+    directory = hooks_dir()
+    return None if directory is None else directory / "mypy-rewarm-FAILED"
 
 
 def report_stale_rewarm_failure() -> None:
@@ -1016,7 +1530,13 @@ def _stop_one(daemon: _Daemon) -> tuple[int, str | None]:
     with an error that reads nothing like its actual cause. Reclaiming the
     memory and releasing the handle outrank letting an unattended rebuild
     finish, so a stalled stop is escalated rather than merely reported.
+
+    Orphans go first, and for the same reason: ``stop`` and ``kill`` both
+    address the status file, so neither can reach a server that lost it, and
+    the largest process in the worktree would be exactly the one left holding
+    the interpreter after a "stopped" verdict.
     """
+    _reap_orphaned_servers(daemon)
     pid = _daemon_pid(daemon)
     rss = _process_rss_mb(pid) if pid is not None else None
     result = _dmypy_result(
@@ -1266,7 +1786,12 @@ def _stop_holder(pid: int) -> int:
 
 
 def _status() -> int:
-    """Report each daemon's state and resident memory."""
+    """Report each daemon's state, resident memory, and any orphans.
+
+    An orphan is reported here because it is the difference between "warm"
+    and "reports warm, rebuilds anyway": the memory the operator is looking
+    for is resident, just not in the process the status file names.
+    """
     for daemon in _ALL_DAEMONS:
         if not _daemon_running(daemon):
             print(f"{daemon.label:<8} stopped")
@@ -1275,6 +1800,14 @@ def _status() -> int:
         rss = _process_rss_mb(pid) if pid is not None else None
         size = f"{rss}MB" if rss is not None else "size unknown"
         print(f"{daemon.label:<8} running  {size:>14}  {' '.join(daemon.paths)}")
+        for orphan in _orphaned_servers(daemon):
+            orphan_rss = _process_rss_mb(orphan)
+            held = f"{orphan_rss}MB" if orphan_rss is not None else "size unknown"
+            print(
+                f"{'':<8} ORPHAN   {held:>14}  pid {orphan}: a second server "
+                "took the status file; this graph is unreachable and the next "
+                "check will rebuild. The next run reaps it."
+            )
     return 0
 
 
@@ -1339,9 +1872,12 @@ def _dispatch_management_flag(args: argparse.Namespace) -> int | None:
         return _stop()
     if args.status:
         return _status()
-    if args.find_holders:
+    # Presence, not truthiness: ``--stop-holder 0`` and ``--find-holders ""``
+    # are falsy, and silently running an ordinary type check instead of the
+    # subcommand the operator asked for is the wrong way to reject them.
+    if args.find_holders is not None:
         return _find_holders(args.find_holders)
-    if args.stop_holder:
+    if args.stop_holder is not None:
         return _stop_holder(args.stop_holder)
     if args.full:
         return _run_full()

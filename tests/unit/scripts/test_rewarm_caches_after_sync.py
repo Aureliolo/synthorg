@@ -1,4 +1,4 @@
-"""Unit tests for the ``scripts/rewarm_mypy_after_sync.sh`` PostToolUse hook.
+"""Unit tests for the ``scripts/rewarm_caches_after_sync.sh`` PostToolUse hook.
 
 The script's two pieces of real logic are the command matcher and the
 did-the-sync-succeed guard, and neither has any other backstop: a regression in
@@ -21,7 +21,7 @@ from tests._shared import resolve_bash
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_SCRIPT = _REPO_ROOT / "scripts" / "rewarm_mypy_after_sync.sh"
+_SCRIPT = _REPO_ROOT / "scripts" / "rewarm_caches_after_sync.sh"
 
 _BASH = resolve_bash()
 _BASH_AVAILABLE = pytest.mark.skipif(_BASH is None, reason="bash not available")
@@ -36,17 +36,17 @@ _TIMEOUT_SECONDS = 20
 # has to wait out a grace period instead, so that one stays short: the child is
 # already spawned by the time the hook exits, so anything that will happen has
 # happened within a few tens of milliseconds.
-# 5s was not enough. Under the pre-push hook the suite runs across 8 xdist
-# workers while other gate groups compete for the same cores, and spawning a
-# detached shell plus the stub can outlast that on a loaded machine: the hook
-# recorded its pid and wrote its log, so the launch decision was correct and
-# only the observation timed out. The bound is generous rather than tuned
-# because a healthy run returns the instant the stub writes.
+# The bound is generous rather than tuned, because a healthy run returns the
+# instant the stub writes. Under the pre-push hook the suite runs across 8
+# xdist workers while other gate groups compete for the same cores, and
+# spawning a detached shell plus the stub can outlast a few seconds on a loaded
+# machine: the hook records its pid and writes its log, so the launch decision
+# is right and only the observation is late.
 #
-# Held below the 30s pytest ceiling so a real failure still reports itself. At
-# exactly 30s the poll consumed the whole budget and pytest killed the test on
-# its timeout first, so the assertion naming the fault never printed and the
-# one run that had something to say said nothing.
+# Held below the 30s pytest ceiling so a real failure still reports itself. A
+# poll that consumes the whole budget is killed by pytest's own timeout before
+# its assertion can name the fault, leaving the one run that had something to
+# say saying nothing.
 _LAUNCH_WAIT_SECONDS = 20.0
 _NO_LAUNCH_GRACE_SECONDS = 0.5
 _POLL_INTERVAL_SECONDS = 0.02
@@ -113,6 +113,39 @@ def _wait_for(path: Path, *, window: float) -> bool:
             return True
         time.sleep(_POLL_INTERVAL_SECONDS)
     return path.exists()
+
+
+def _wait_for_text(path: Path, needle: str, *, window: float) -> str:
+    """Return *path*'s contents once it holds *needle*, or when *window* ends.
+
+    The hook chains two warms in one detached shell, so the second only
+    records after the first has finished. Waiting on the file merely
+    existing would read it mid-chain and see only the first.
+    """
+    deadline = time.monotonic() + window
+    while time.monotonic() < deadline:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        if needle in text:
+            return text
+        time.sleep(_POLL_INTERVAL_SECONDS)
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def _rewarm_program() -> str:
+    """Return the shipped ``bash -c`` program text the hook detaches.
+
+    Read out of the script rather than restated here: a copy would keep
+    passing while the line that actually runs regressed.
+    """
+    for line in _SCRIPT.read_text(encoding="utf-8").splitlines():
+        if line.startswith("REWARM_CMD="):
+            body = line.removeprefix("REWARM_CMD=")
+            # Single-quoted, or the repository path is expanded into shell
+            # source before the inner shell ever sees it as an argument.
+            assert body.startswith("'")
+            assert body.endswith("'")
+            return body[1:-1]
+    pytest.fail("no REWARM_CMD assignment in the hook script")
 
 
 def _run(
@@ -238,7 +271,7 @@ def test_malformed_payload_warns_rather_than_failing_silently(tmp_path: Path) ->
     completed, launched = _run("not json at all", tmp_path, expect_launch=False)
     assert completed.returncode == 0
     assert not launched
-    assert "rewarm_mypy_after_sync" in completed.stderr
+    assert "rewarm_caches_after_sync" in completed.stderr
 
 
 @_BASH_AVAILABLE
@@ -269,6 +302,41 @@ def test_never_interpolates_the_command_into_the_launched_process(
     assert completed.returncode == 0, completed.stderr
     assert launched
     assert not (tmp_path / "pwned").exists()
-    recorded = (tmp_path / "uv-invoked.txt").read_text(encoding="utf-8")
+    recorded = _wait_for_text(
+        tmp_path / "uv-invoked.txt", "--rewarm", window=_LAUNCH_WAIT_SECONDS
+    )
     assert "pwned" not in recorded
+    # Both warms launch, and neither argv carries anything from the payload.
+    assert "warm_typeguard_cache.py" in recorded
+    assert "--rewarm" in recorded
+
+
+@_BASH_AVAILABLE
+def test_a_repository_path_holding_a_quote_still_reaches_uv(tmp_path: Path) -> None:
+    """The worktree path is an argument to the detached shell, not source.
+
+    A directory name containing a single quote closes quoted program text,
+    so an interpolated path takes the whole re-warm down before either
+    warm starts, in the one place nothing reads an exit code.
+    """
+    assert _BASH is not None
+    hostile = tmp_path / "it's a worktree"
+    hostile.mkdir()
+    bin_dir = _stub_uv(tmp_path)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    completed = subprocess.run(  # noqa: S603 -- resolved argv, no shell, path is a fixture
+        [_BASH, "-c", _rewarm_program(), "rewarm-caches", str(hostile)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=env,
+        timeout=_TIMEOUT_SECONDS,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    recorded = (tmp_path / "uv-invoked.txt").read_text(encoding="utf-8")
+    assert str(hostile) in recorded
+    assert "warm_typeguard_cache.py" in recorded
     assert "--rewarm" in recorded

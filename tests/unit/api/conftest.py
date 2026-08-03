@@ -963,11 +963,26 @@ async def async_test_client(
     """Yield a portal-free async client wrapping the shared app.
 
     The expensive ``create_app()`` runs once per worker. Each test
-    re-runs the idempotent lifespan startup (~90ms) and the per-test
-    state reset; shutdown is skipped (``_skip_lifecycle_shutdown``). The
-    lifespan and every request run on the test's own pytest-asyncio loop,
-    so there is no anyio ``BlockingPortal`` (no extra thread, event loop,
-    or ``socket.socketpair``).
+    re-runs the idempotent lifespan startup and the per-test state reset;
+    shutdown is skipped (``_skip_lifecycle_shutdown``). The lifespan and
+    every request run on the test's own pytest-asyncio loop, so there is
+    no anyio ``BlockingPortal`` (no extra thread, event loop, or
+    ``socket.socketpair``).
+
+    Cost per test, medians across three controller files after the first
+    test in the process (the first pays roughly 5x for one-off wiring):
+    entering the client 110ms, of which the core ``on_startup`` hook is
+    75ms and its reconcile pass at persistence-connected is 45ms; the two
+    later reconcile passes are 1.7ms each, and the three resets together
+    are 1.4ms.
+
+    Two things follow. The resets are noise, so nothing aimed at this
+    fixture's cost should aim at them. And the reconciler's converged
+    no-op works: the repeat passes are already nearly free. What is not
+    free is the FIRST pass, which activates roughly forty subsystems from
+    scratch on every test, because ``_post_startup_reset`` and
+    ``_restore_app_state`` revert that wiring for isolation. That cost is
+    the price of per-test isolation, not a defect in the startup path.
     """
     async with _async_shared_client(_shared_app, _reset_services) as client:
         yield client
@@ -997,7 +1012,7 @@ def _promote_first_owner(backend: FakePersistenceBackend) -> None:
     Replicates ``_maybe_promote_first_owner`` from the lifespan
     startup.  Called after seeding test users to ensure at least
     one user has ``OrgRole.OWNER``, matching the production
-    startup behavior.
+    startup behaviour.
     """
     from synthorg.core.auth.models import OrgRole
 

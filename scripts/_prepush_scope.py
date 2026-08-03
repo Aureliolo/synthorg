@@ -4,11 +4,10 @@
 question in two languages: which of the changed paths does this push have
 to check locally, and which question is wide enough that CI owns it?
 
-They used to answer it from two private copies of the same constants. A
-push is held to a five-minute budget and both runners police that budget,
-so a carve-out added to one copy and not the other does not fail: it
-silently makes the two runners disagree about what a push covers. The
-constants and the git plumbing live here so there is one answer.
+A push is held to a five-minute budget and both runners police it, so a
+carve-out that reached only one of them would not fail loudly: it would
+silently make the two disagree about what a push covers. The constants
+and the git plumbing live here so there is one answer to give.
 """
 
 import re
@@ -126,6 +125,29 @@ def git_output(*args: str, strip: bool = True) -> str:
         msg = f"git {' '.join(args)} failed: {result.stderr.strip()}"
         raise GitError(msg)
     return result.stdout.strip() if strip else result.stdout
+
+
+def hooks_dir() -> Path | None:
+    """Return this worktree's ``synthorg-hooks`` directory.
+
+    Resolved via ``git rev-parse --git-path`` rather than by joining
+    ``.git`` by hand: a linked worktree's git dir is
+    ``.git/worktrees/<name>/``, so the hand-built path would put every
+    worktree's markers and logs in one shared place, where one worktree's
+    stale-cache warning would fire in all of them.
+
+    Returns:
+        The directory, or ``None`` when git cannot answer (then no marker
+        is written or read, which costs time and never correctness).
+    """
+    try:
+        raw = git_output("rev-parse", "--git-path", "synthorg-hooks")
+    except GitError:
+        return None
+    if not raw:
+        return None
+    directory = Path(raw)
+    return directory if directory.is_absolute() else REPO_ROOT / directory
 
 
 def merge_base() -> str:

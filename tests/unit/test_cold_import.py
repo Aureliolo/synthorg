@@ -135,6 +135,14 @@ class _ColdImportOutcome(NamedTuple):
     timed_out: bool
 
 
+#: Packages heavy enough that reaching them from the app's import graph is a
+#: regression in its own right. litellm alone costs ~2.5s to import, and the
+#: single edge that used to pull it in (a tuple of exception classes built at
+#: module scope in ``memory.embedding.dispatch``) charged that to every app
+#: boot, every cold-import leaf below it, and every xdist worker's collection.
+_FORBIDDEN_EAGER_IMPORTS: Final[tuple[str, ...]] = ("litellm",)
+
+
 def _import_leaf_cold(module_name: str) -> _ColdImportOutcome:
     """Import ``module_name`` in a fresh, unprimed interpreter."""
     try:
@@ -199,4 +207,32 @@ def test_leaf_imports_from_cold_interpreter(module_name: str) -> None:
         f"a regressed package-level circular import is the most likely cause "
         f"(an ImportError from a typo or missing dependency also exits non-zero "
         f"-- check the stderr tail).\nstderr tail:\n{outcome.stderr[-2000:]}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("heavy", _FORBIDDEN_EAGER_IMPORTS)
+def test_the_app_graph_does_not_drag_in_a_heavy_package(heavy: str) -> None:
+    """Importing the app must not import a package it only needs at call time.
+
+    Asserted in a fresh interpreter for the same reason as the leaves above:
+    ``tests/conftest.py`` primes the import graph, so an in-process check
+    could not tell an eager import from one some earlier test triggered.
+    """
+    probe = (
+        "import sys; import synthorg.api.app; "
+        f"sys.exit(1 if {heavy!r} in sys.modules else 0)"
+    )
+    result = subprocess.run(  # noqa: S603 -- probe is built from a hardcoded tuple
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=_IMPORT_TIMEOUT_SECONDS,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"importing synthorg.api.app pulled in {heavy!r}. Something now "
+        f"imports it at module scope; defer it to first use instead (see "
+        f"memory.embedding.dispatch._retryable_embedding_errors)."
+        f"\nstderr tail:\n{result.stderr[-2000:]}"
     )

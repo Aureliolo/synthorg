@@ -18,6 +18,12 @@ import sys
 import traceback
 from pathlib import Path
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _openapi_export_shared as shared  # type: ignore[import-not-found]
+else:
+    from scripts import _openapi_export_shared as shared
+
 # Repository root is the parent of the scripts/ directory
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = REPO_ROOT / "docs" / "openapi"
@@ -43,10 +49,12 @@ if "SYNTHORG_DB_PATH" not in os.environ:
 # supply a stable value too, so pre-import setdefault keeps this script
 # usable in CI and local previews without requiring the operator to set
 # the env var explicitly.  Real deployments inject their own secret via
-# the compose env block.
+# the compose env block.  Taken from the shared module rather than spelled
+# again: two copies of the same placeholder drift silently, because this
+# one runs first and makes the shared setdefault a no-op.
 os.environ.setdefault(
     "SYNTHORG_PAGINATION_CURSOR_SECRET",
-    "openapi-export-stable-cursor-secret-not-a-real-secret",
+    shared.STABLE_CURSOR_SECRET,
 )
 
 # Pinned for stability; update after testing newer releases in local preview.
@@ -142,13 +150,11 @@ STANDALONE_HTML = """\
 
 def main() -> int:
     """Instantiate the app, extract the OpenAPI schema, and write files."""
+    pinned_exit: int | None = shared.re_exec_with_fixed_hash_seed()
+    if pinned_exit is not None:
+        return pinned_exit
     try:
-        from synthorg.api.app import create_app
-        from synthorg.api.openapi import inject_rfc9457_responses
-
-        app = create_app()
-        schema_dict = app.openapi_schema.to_schema()
-        schema_dict = inject_rfc9457_responses(schema_dict)
+        schema_dict = shared.build_openapi_schema()
         schema_json = json.dumps(schema_dict, indent=2, ensure_ascii=False) + "\n"
     except Exception as exc:
         print("Failed to export OpenAPI schema:", file=sys.stderr)
@@ -163,6 +169,11 @@ def main() -> int:
 
         HTML_FILE.write_text(STANDALONE_HTML, encoding="utf-8")
         print(f"Wrote Scalar UI page to {HTML_FILE.relative_to(REPO_ROOT)}")
+
+        # Written last: a consumer trusts the schema only when this agrees
+        # with it, so a crash between the two writes degrades to "rebuild",
+        # never to "trust a half-written export".
+        shared.write_export_state(schema_json)
     except OSError as exc:
         print("Failed to write output files:", file=sys.stderr)
         traceback.print_exception(exc)
