@@ -19,7 +19,7 @@ from litestar.response import Response
 
 from synthorg._core.features import require_service
 from synthorg.api.gateway.state import GatewayStateSlice
-from synthorg.api.mcp_gateway.protocol import dispatch_mcp
+from synthorg.api.mcp_gateway.protocol import ToolContextProvider, dispatch_mcp
 from synthorg.api.mcp_gateway.scoping import deploy_denials, publish_denials
 from synthorg.api.mcp_gateway.tools import (
     CredentialedToolContext,
@@ -40,6 +40,7 @@ from synthorg.engine._security_factory import make_security_interceptor
 from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.llm.gateway_token import GatewayTokenClaims
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
 from synthorg.security.state import audit_log_of
@@ -97,22 +98,21 @@ class CredentialedMcpController(Controller):
         try:
             claims = signer.verify(token)
             messages, is_batch = await _read_messages(request)
-            ctx, kill_switches = await _build_context(
-                app_state, agent_id=claims.agent_id, task_id=claims.task_id
-            )
             capabilities = _parse_capabilities(
                 await resolver.get_str(_TOOLS_NS, "credentialed_mcp_capabilities")
             )
+            kill_switches = await _resolve_kill_switches(resolver)
             denied = deploy_denials(
                 deploy_enabled=kill_switches.deploy_enabled
             ) + publish_denials(publish_enabled=kill_switches.publish_enabled)
+            open_context = _context_opener(app_state, claims=claims)
             responses = [
                 response
                 for message in messages
                 if (
                     response := await dispatch_mcp(
                         message,
-                        ctx=ctx,
+                        open_context=open_context,
                         agent_id=claims.agent_id,
                         capabilities=capabilities,
                         denied=denied,
@@ -290,9 +290,52 @@ async def _resolve_publish_settings(resolver: ConfigResolver) -> _PublishSetting
     )
 
 
+async def _resolve_kill_switches(resolver: ConfigResolver) -> _FamilyKillSwitches:
+    """Read the per-family enable flags on their own.
+
+    Read here rather than out of the full context bundle because the dispatch
+    denials apply to ``tools/list`` too, and the context is deferred to the one
+    method that executes a tool. Both are cheap resolver-cache hits.
+
+    Returns:
+        The deploy / publish kill switches for this request.
+    """
+    return _FamilyKillSwitches(
+        deploy_enabled=await resolver.get_bool(_TOOLS_NS, "deploy_tools_enabled"),
+        publish_enabled=await resolver.get_bool(_TOOLS_NS, "publish_tools_enabled"),
+    )
+
+
+def _context_opener(
+    app_state: AppState, *, claims: GatewayTokenClaims
+) -> ToolContextProvider:
+    """Build the deferred, once-per-request credentialed-tool context opener.
+
+    Deferred because only ``tools/call`` needs the context, and a deployment
+    with no forge or chat connection configured cannot build one at all: doing
+    it eagerly refuses the ``initialize`` an embedded harness must complete
+    before it can construct its agent, on a capability that ships enabled.
+    Memoised so a batch carrying several calls brokers its collaborators once.
+
+    Returns:
+        An awaitable factory for this request's context.
+    """
+    opened: CredentialedToolContext | None = None
+
+    async def _open() -> CredentialedToolContext:
+        nonlocal opened
+        if opened is None:
+            opened = await _build_context(
+                app_state, agent_id=claims.agent_id, task_id=claims.task_id
+            )
+        return opened
+
+    return _open
+
+
 async def _build_context(
     app_state: AppState, *, agent_id: str, task_id: str | None
-) -> tuple[CredentialedToolContext, _FamilyKillSwitches]:
+) -> CredentialedToolContext:
     """Fan out the per-request reads, then assemble the credentialed context.
 
     The independent reads (forge / chat settings, the deploy and publish
@@ -302,8 +345,7 @@ async def _build_context(
     the security context per run.
 
     Returns:
-        The :class:`CredentialedToolContext` for this request, paired with the
-        per-family kill switches the caller threads into the dispatch denials.
+        The :class:`CredentialedToolContext` for this request.
     """
     resolver = config_resolver_of(app_state)
     try:
@@ -361,15 +403,14 @@ def _assemble_context(
     *,
     agent_id: str,
     task_id: str | None,
-) -> tuple[CredentialedToolContext, _FamilyKillSwitches]:
-    """Assemble the context + kill switches from the resolved per-request reads.
+) -> CredentialedToolContext:
+    """Assemble the context from the resolved per-request reads.
 
     The SecOps pre-tool screen is wired fail-closed so the rule-engine screening
     runs before every credentialed dispatch.
 
     Returns:
-        The :class:`CredentialedToolContext` paired with the per-family kill
-        switches the caller threads into the dispatch denials.
+        The :class:`CredentialedToolContext` for this request.
     """
     interceptor = make_security_interceptor(
         app_state.security_runtime_config.current,
@@ -378,7 +419,7 @@ def _assemble_context(
     )
     deploy_settings = inputs.deploy_settings
     publish_settings = inputs.publish_settings
-    ctx = CredentialedToolContext(
+    return CredentialedToolContext(
         connection_catalog=require_service(
             app_state.slice(IntegrationsStateSlice).connection_catalog,
             "connection catalog",
@@ -402,10 +443,6 @@ def _assemble_context(
         security_pre_check=build_security_pre_check(
             interceptor, agent_id=agent_id, task_id=task_id
         ),
-    )
-    return ctx, _FamilyKillSwitches(
-        deploy_enabled=deploy_settings.enabled,
-        publish_enabled=publish_settings.enabled,
     )
 
 

@@ -129,9 +129,13 @@ standard streams (no in-container HTTP server):
    `CANCELLED`) and tearing the container down. The gateway additionally
    enforces the authoritative hard token kill server-side.
 5. **Map events to turns**: an action becomes one `TurnRecord`; a message
-   advances conversation state. The container reports a running accumulated
-   cost per event, so the host attributes the per-turn cost delta (the
-   deltas sum to the run total; the gateway is the authoritative cost sink).
+   advances conversation state. The container reports running accumulated cost
+   and token usage per event, so the host attributes the per-turn deltas (which
+   sum to the run totals; the gateway is the authoritative cost sink). The
+   token figures are load-bearing rather than decoration: the
+   [A/B rubric](loop-ab-harness.md) ranks loops on tokens and scores an
+   observed zero as unbeatable, so a run reporting none would win that
+   dimension by reporting nothing at all.
 6. **Completion**: build `ExecutionResult(COMPLETED)`, then apply the
    **exact native NO_OP predicate**: a task with `artifacts_expected` that
    produced no tool calls and is not a resumed run terminates `NO_OP`
@@ -213,8 +217,8 @@ image against a local OpenAI-compatible stub (plus the minimal MCP endpoint the
 agent needs to build at all), with zero provider spend. It serialises the spec
 with the production `_spec_line` and parses every stdout line with the
 production `_parse_event`, so image/adapter drift fails there rather than in a
-live run, and it asserts the spec parse, the event stream, the cost-delta
-arithmetic, termination, and the bearer scrub. It runs inside the
+live run, and it asserts the spec parse, the event stream, the cost and token
+delta arithmetic, termination, and the bearer scrub. It runs inside the
 `build-openhands` job because that is the only place the freshly built image is
 reachable on a pull request.
 

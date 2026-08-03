@@ -81,23 +81,32 @@ benchmark:
 # refuses any model whose cassette is missing. Pass `ARGS=--record` (with real
 # provider credentials, the example-* ids aliased to real models) to record the
 # cassettes first. See `evals/benchmark_scores/models.yaml`.
+#
+# `PYTHONPATH=.` because `evals` is out-of-package: running a file under
+# `scripts/` puts that directory on the path, not the repository root.
 record-benchmark-scores:
-	uv run python scripts/record_benchmark_scores.py $(ARGS)
+	PYTHONPATH=. uv run python scripts/record_benchmark_scores.py $(ARGS)
 
 # Print the inner-loop A/B matrix and the number of runs it would execute,
-# without spending anything. Run this before `loop-ab-record` to see the size of
-# the bill. See `evals/loop_ab/manifest.yaml`.
+# without spending anything: this path boots no gateway, opens no port and
+# starts no container. Run it before `loop-ab-record` to see the size of the
+# bill. See `evals/loop_ab/manifest.yaml`.
 loop-ab:
-	uv run python scripts/record_loop_ab.py $(ARGS)
+	PYTHONPATH=. uv run python scripts/record_loop_ab.py $(ARGS)
 
 # Measure the inner-loop A/B for real (REAL PROVIDER SPEND) and rewrite the
-# committed scoreboard under `evals/loop_ab/scoreboard/`. Requires a running API
-# exposing the LLM gateway, since every loop dispatches through it so their
-# costs land on one authoritative ledger:
+# committed scoreboard under `evals/loop_ab/scoreboard/`. The recorder hosts its
+# own gateway, so no running API is needed; what it does need is a Docker daemon
+# and the OpenHands image (for the fourth leg), and a `--company-config` whose
+# `providers:` block aliases the manifest's example-* ids to real models. The
+# default config carries no providers at all, so a record run must supply one:
 #
-#   make loop-ab-record ARGS="--gateway-base-url http://localhost:8000/api/v1/gateway/v1"
+#   make loop-ab-record ARGS="--company-config my-providers.yaml"
+#
+# Add `--openhands-image` to measure a locally built image, and `--bind-host` to
+# narrow the listener from every interface to the Docker bridge address.
 #
 # Re-run this whenever loop behaviour changes; the scoreboard stamps the commit
 # it was measured against, so a stale one is self-evident.
 loop-ab-record:
-	uv run python scripts/record_loop_ab.py --record $(ARGS)
+	PYTHONPATH=. uv run python scripts/record_loop_ab.py --record $(ARGS)

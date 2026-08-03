@@ -14,10 +14,13 @@ honest: when its runtime is not wired, the cell is recorded as unavailable with
 the reason instead of being dropped from the comparison.
 """
 
-from collections.abc import Callable
+import contextlib
+from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Final
 from uuid import UUID
 
 from evals.errors import BriefExecutionError
@@ -37,7 +40,7 @@ from evals.loop_ab.models import (
 from evals.loop_ab.promotion import recommend_promotion
 from evals.loop_ab.rollup import rollup_by_complexity
 from evals.loop_ab.rubric import LoopCellScore, score_cell
-from evals.loop_ab.workspace import seed_workspace
+from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import Brief
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.runner.execution import run_brief
@@ -45,12 +48,12 @@ from evals.runner.interpreter import resolve_checks
 from evals.scoring.executable import grade_executable
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import CostTrackerProtocol, collect_all_records
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_selector import build_execution_loop
-from synthorg.engine.openhands.config import OpenHandsLoopDeps
+from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
@@ -72,28 +75,8 @@ _AB_AGENT_ROLE: str = "Developer"
 _AB_AGENT_DEPARTMENT: str = "Engineering"
 _AB_HIRING_DATE: date = date(2026, 1, 1)
 
-ProviderFactory = Callable[[TierEntry], CompletionProvider]
-ToolRegistryFactory = Callable[[Path], ToolRegistry | None]
-
-
-@dataclass(frozen=True)
-class LoopAbDeps:
-    """Runtime collaborators the matrix is driven with.
-
-    Attributes:
-        build_provider: Builds the completion provider for a tier. At record
-            time this returns a driver pointed at the LLM gateway's
-            ``base_url``, so every loop's spend lands in the same authoritative
-            ledger rather than being re-derived per loop.
-        build_tool_registry: Builds the tool registry scoped to a run's
-            workspace, giving the native loops their file and shell tools.
-        openhands_loop_deps: Runtime deps for the OpenHands loop. ``None``
-            records that loop as unavailable rather than skipping it.
-    """
-
-    build_provider: ProviderFactory
-    build_tool_registry: ToolRegistryFactory
-    openhands_loop_deps: OpenHandsLoopDeps | None = None
+#: The one loop whose runtime the harness constructs per cell.
+_OPENHANDS_LOOP: Final[str] = "openhands"
 
 
 @dataclass(frozen=True)
@@ -107,6 +90,66 @@ class _CellCoordinates:
     loop_type: str
     tier: TierEntry
     brief: Brief
+
+
+@dataclass(frozen=True)
+class CellRun:
+    """One repetition, as the collaborators that bind it need to see it.
+
+    Everything a collaborator binds is per repetition, not per tier: the
+    gateway bearer binds the run, and the sandbox binds the workspace this run
+    was given, which the next repetition will have recreated.
+
+    Attributes:
+        loop_type: The loop under test in this cell.
+        tier: The explicitly bound ``(provider, model_id)`` pair.
+        brief: The brief being run, carrying the limits a bearer's ceiling and
+            the loop's turn cap come from.
+        repetition: Zero-based index within the cell.
+        workspace: The recreated workspace this repetition runs against.
+    """
+
+    loop_type: str
+    tier: TierEntry
+    brief: Brief
+    repetition: int
+    workspace: CellWorkspace
+
+
+ProviderFactory = Callable[[CellRun], Awaitable[CompletionProvider]]
+ToolRegistryFactory = Callable[[CellWorkspace], ToolRegistry | None]
+OpenHandsCellFactory = Callable[
+    [CellRun], Awaitable[tuple[OpenHandsLoopConfig, OpenHandsLoopDeps]]
+]
+CellLedgerFactory = Callable[
+    [CellRun], AbstractAsyncContextManager[CostTrackerProtocol]
+]
+
+
+@dataclass(frozen=True)
+class LoopAbDeps:
+    """Runtime collaborators the matrix is driven with.
+
+    Attributes:
+        build_provider: Builds the completion provider for one repetition. At
+            record time this returns a driver pointed at the LLM gateway and
+            carrying that run's bearer, so every loop's spend lands in the same
+            authoritative ledger rather than being re-derived per loop.
+        build_tool_registry: Builds the tool registry scoped to a run's
+            workspace, giving the native loops their file and shell tools.
+        build_openhands_cell: Builds the OpenHands loop's config and runtime
+            deps for one repetition. ``None`` records that loop as unavailable
+            rather than skipping it.
+        open_cell_ledger: Installs the authoritative cost sink for one
+            repetition and yields it. ``None`` means no gateway is hosted, so
+            the engine's own tracker is the ledger; that is the offline path
+            the regression suite drives.
+    """
+
+    build_provider: ProviderFactory
+    build_tool_registry: ToolRegistryFactory
+    build_openhands_cell: OpenHandsCellFactory | None = None
+    open_cell_ledger: CellLedgerFactory | None = None
 
 
 def _identity(tier: TierEntry) -> AgentIdentity:
@@ -181,14 +224,13 @@ def _resolved(brief: Brief) -> Brief:
     return brief.model_copy(update={"checks": resolve_checks(brief.checks)})
 
 
-def _build_engine(
+async def _build_engine(
     *,
-    coord: _CellCoordinates,
-    work_dir: Path,
+    cell: CellRun,
     deps: LoopAbDeps,
     cost_tracker: CostTracker,
 ) -> AgentEngine:
-    """Build an engine running exactly *coord*'s loop against *work_dir*.
+    """Build an engine running exactly *cell*'s loop against its workspace.
 
     Returns:
         The configured :class:`AgentEngine`.
@@ -197,25 +239,65 @@ def _build_engine(
         OpenHandsUnavailableError: The loop is openhands and its runtime deps
             are not wired.
     """
+    openhands_config, openhands_deps = await _openhands_cell(cell, deps)
     execution_loop = build_execution_loop(
-        coord.loop_type, openhands_loop_deps=deps.openhands_loop_deps
+        cell.loop_type,
+        openhands_loop_config=openhands_config,
+        openhands_loop_deps=openhands_deps,
     )
     # No API lifespan runs here, so the ambient prompt layers the product binds
     # at boot have to be bound explicitly or the A/B compares a prompt the
     # product never sends.
     bind_default_prompt_layers()
     return AgentEngine(
-        provider=deps.build_provider(coord.tier),
+        provider=await deps.build_provider(cell),
         execution_loop=execution_loop,
-        tool_registry=deps.build_tool_registry(work_dir),
+        tool_registry=deps.build_tool_registry(cell.workspace),
         cost_tracker=cost_tracker,
         recovery_strategy=FailAndReassignStrategy(),
     )
 
 
+async def _openhands_cell(
+    cell: CellRun, deps: LoopAbDeps
+) -> tuple[OpenHandsLoopConfig | None, OpenHandsLoopDeps | None]:
+    """Build the OpenHands loop's config and deps, for the cell that needs them.
+
+    The config travels with the deps rather than being left to default: it
+    carries the live bearer TTL, and a loop minting against the frozen default
+    could outlive its token on a long cell.
+
+    Returns:
+        The ``(config, deps)`` pair, both ``None`` off the OpenHands leg.
+    """
+    if cell.loop_type != _OPENHANDS_LOOP or deps.build_openhands_cell is None:
+        return None, None
+    return await deps.build_openhands_cell(cell)
+
+
+def _cell_ledger(
+    cell: CellRun, deps: LoopAbDeps, fallback: CostTracker
+) -> AbstractAsyncContextManager[CostTrackerProtocol]:
+    """Open the cost sink whose records are this run's authoritative spend.
+
+    With a hosted gateway the ledger is the gateway's, not the engine's: it is
+    the only place the OpenHands leg's spend is recorded at all (its calls
+    happen inside the container), and reading it rather than the engine's own
+    tracker is also what stops a native leg being counted twice, once by its
+    driver and once by the gateway it dialled.
+
+    Returns:
+        A context manager yielding the tracker to collect records from.
+    """
+    if deps.open_cell_ledger is None:
+        return contextlib.nullcontext(fallback)
+    return deps.open_cell_ledger(cell)
+
+
 async def _run_repetition(
     *,
     coord: _CellCoordinates,
+    repetition: int,
     suite_root: Path,
     work_root: Path,
     deps: LoopAbDeps,
@@ -225,24 +307,25 @@ async def _run_repetition(
     Returns:
         ``(outcome, spend)`` for this repetition.
     """
-    work_dir = seed_workspace(
-        brief=coord.brief, suite_root=suite_root, work_root=work_root
+    cell = CellRun(
+        loop_type=coord.loop_type,
+        tier=coord.tier,
+        brief=coord.brief,
+        repetition=repetition,
+        workspace=seed_workspace(
+            brief=coord.brief, suite_root=suite_root, work_root=work_root
+        ),
     )
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
     cost_tracker = CostTracker()
-    engine = _build_engine(
-        coord=coord,
-        work_dir=work_dir,
-        deps=deps,
-        cost_tracker=cost_tracker,
-    )
-
-    outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
-    grade = grade_executable(_resolved(coord.brief), work_dir)
+    async with _cell_ledger(cell, deps, cost_tracker) as ledger:
+        engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
+        outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
+        spend = _spend_from_records(await collect_all_records(ledger))
+    grade = grade_executable(_resolved(coord.brief), cell.workspace.project_dir)
     metrics = outcome.metrics
-    spend = _spend_from_records(await collect_all_records(cost_tracker))
 
     logger.info(
         EVALS_LOOP_AB_RUN_RECORDED,
@@ -310,10 +393,11 @@ async def _run_cell(
     """
     outcomes: list[RepetitionOutcome] = []
     spend: list[ProviderSpend] = []
-    for _ in range(manifest.repetitions):
+    for repetition in range(manifest.repetitions):
         try:
             outcome, run_spend = await _run_repetition(
                 coord=coord,
+                repetition=repetition,
                 suite_root=suite_root,
                 work_root=work_root,
                 deps=deps,
@@ -432,4 +516,12 @@ async def run_matrix(
     )
 
 
-__all__ = ["LoopAbDeps", "ProviderFactory", "ToolRegistryFactory", "run_matrix"]
+__all__ = [
+    "CellLedgerFactory",
+    "CellRun",
+    "LoopAbDeps",
+    "OpenHandsCellFactory",
+    "ProviderFactory",
+    "ToolRegistryFactory",
+    "run_matrix",
+]

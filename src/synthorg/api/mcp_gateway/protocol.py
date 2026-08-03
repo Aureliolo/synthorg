@@ -10,6 +10,7 @@ harness can react) while genuine protocol errors surface as JSON-RPC
 errors.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import Final
 
 from synthorg.api.mcp_gateway.scoping import tool_schemas
@@ -23,6 +24,16 @@ from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
 
 logger = get_logger(__name__)
 
+ToolContextProvider = Callable[[], Awaitable[CredentialedToolContext]]
+"""Opens the host-side collaborators a ``tools/call`` executes against.
+
+Deferred rather than passed in already-built, because only ``tools/call`` needs
+them. The handshake methods do not, and a deployment that has configured no
+forge or chat connection cannot build one at all: making them wait on it would
+fail the ``initialize`` an embedded harness must complete before it can even
+construct its agent.
+"""
+
 _PROTOCOL_VERSION: Final[str] = "2025-06-18"
 _SERVER_NAME: Final[str] = "synthorg-credentialed-tools"
 _METHOD_NOT_FOUND: Final[int] = -32601
@@ -32,7 +43,7 @@ _INVALID_PARAMS: Final[int] = -32602
 async def dispatch_mcp(
     message: dict[str, object],
     *,
-    ctx: CredentialedToolContext,
+    open_context: ToolContextProvider,
     agent_id: str,
     capabilities: tuple[str, ...],
     allowed: tuple[str, ...] = (),
@@ -42,7 +53,8 @@ async def dispatch_mcp(
 
     Args:
         message: A decoded JSON-RPC request or notification.
-        ctx: Host-side collaborators for tool execution.
+        open_context: Opens the host-side collaborators for tool execution;
+            awaited only on ``tools/call``.
         agent_id: The authenticated actor id.
         capabilities: Capability patterns the actor is granted.
         allowed: Explicit tool-name allowances.
@@ -65,7 +77,7 @@ async def dispatch_mcp(
         return await _tools_call(
             message_id,
             message.get("params"),
-            ctx=ctx,
+            open_context=open_context,
             agent_id=agent_id,
             capabilities=capabilities,
             allowed=allowed,
@@ -91,7 +103,7 @@ async def _tools_call(
     message_id: object,
     params: object,
     *,
-    ctx: CredentialedToolContext,
+    open_context: ToolContextProvider,
     agent_id: str,
     capabilities: tuple[str, ...],
     allowed: tuple[str, ...],
@@ -113,7 +125,7 @@ async def _tools_call(
         text = await invoke_credentialed_tool(
             name,
             arguments,
-            ctx=ctx,
+            ctx=await open_context(),
             agent_id=agent_id,
             capabilities=capabilities,
             allowed=allowed,

@@ -123,8 +123,8 @@ from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
 
-# Latch so the missing-cost-shape diagnostic is written once per run.
-_COST_SHAPE_REPORTED: set[str] = set()
+# Latch so each missing-metrics-shape diagnostic is written once per run.
+_SHAPE_REPORTED: set[str] = set()
 
 # SDK events the adapter deliberately does not forward: lifecycle, streaming
 # and telemetry that carry no turn, no action and no cost. Matched by class
@@ -283,43 +283,93 @@ def _build_agent(spec: dict[str, object]) -> Agent:
     )
 
 
+def _combined_metrics(conversation: object) -> object | None:
+    """Read the conversation's combined metrics object, best-effort.
+
+    The run totals live on the COMBINED metrics, not on ``ConversationStats``
+    itself (the SDK reads them the same way for its own budget check), so
+    reaching for the attributes directly silently yields zero on every event.
+
+    Returns:
+        The combined metrics object, or ``None`` when unavailable.
+    """
+    stats = getattr(conversation, "conversation_stats", None)
+    combined = getattr(stats, "get_combined_metrics", None)
+    return combined() if callable(combined) else None
+
+
+def _report_shape_once(key: str, detail: str) -> None:
+    """Write a missing-metrics-shape diagnostic once per run per *key*.
+
+    Zero is indistinguishable from "this run spent nothing", and the host reads
+    these numbers for its budget kill and for the A/B token ranking, so a shape
+    the contract test does not reproduce has to leave a trace rather than
+    silently disarming either. Once per run: this runs on every event, and a
+    broken shape stays broken for the whole run, so repeating it would bury the
+    rest of the container's diagnostics.
+    """
+    if key in _SHAPE_REPORTED:
+        return
+    _SHAPE_REPORTED.add(key)
+    sys.stderr.write(f"{key} unavailable: {detail}\n")
+
+
 def _accumulated_cost(conversation: object) -> float:
     """Read the conversation's running accumulated cost, best-effort.
-
-    The total lives on the COMBINED metrics, not on ``ConversationStats``
-    itself (the SDK reads it the same way for its own budget check), so
-    reaching for the attribute directly silently yields zero on every event
-    and flatlines the host's per-turn cost attribution.
 
     Returns:
         The accumulated cost, or ``0.0`` when unavailable.
     """
-    stats = getattr(conversation, "conversation_stats", None)
-    combined = getattr(stats, "get_combined_metrics", None)
-    metrics = combined() if callable(combined) else None
+    metrics = _combined_metrics(conversation)
     cost = getattr(metrics, "accumulated_cost", None)
     if cost is None:
-        # Zero is indistinguishable from "this run cost nothing", and the
-        # host's per-task budget kill reads this number, so a shape the
-        # contract test does not reproduce has to leave a trace rather than
-        # silently disarming the cap. Once per run: this is called on every
-        # event, and a broken shape stays broken for the whole run, so
-        # repeating it would bury the rest of the container's diagnostics.
-        if not _COST_SHAPE_REPORTED:
-            _COST_SHAPE_REPORTED.add("reported")
-            sys.stderr.write(
-                f"accumulated cost unavailable: stats={type(stats).__name__} "
-                f"metrics={type(metrics).__name__}\n"
-            )
+        _report_shape_once("accumulated cost", f"metrics={type(metrics).__name__}")
         return 0.0
     return float(cost or 0.0)
+
+
+def _accumulated_tokens(conversation: object) -> tuple[int, int]:
+    """Read the conversation's running accumulated token usage, best-effort.
+
+    The host's A/B rubric ranks loops on tokens and treats a zero as
+    unbeatable, so a run reporting none would win that dimension by reporting
+    nothing at all. Emitting the totals is what makes the comparison real.
+
+    Returns:
+        ``(prompt_tokens, completion_tokens)``, zeroed when unavailable.
+    """
+    metrics = _combined_metrics(conversation)
+    usage = getattr(metrics, "accumulated_token_usage", None)
+    prompt = getattr(usage, "prompt_tokens", None)
+    completion = getattr(usage, "completion_tokens", None)
+    if prompt is None and completion is None:
+        _report_shape_once(
+            "accumulated tokens",
+            f"metrics={type(metrics).__name__} usage={type(usage).__name__}",
+        )
+        return 0, 0
+    return int(prompt or 0), int(completion or 0)
+
+
+def _totals(conversation: object) -> dict[str, object]:
+    """Return the running accumulated figures to stamp on one event.
+
+    Returns:
+        The ``cost`` / ``input_tokens`` / ``output_tokens`` run totals.
+    """
+    prompt_tokens, completion_tokens = _accumulated_tokens(conversation)
+    return {
+        "cost": _accumulated_cost(conversation),
+        "input_tokens": prompt_tokens,
+        "output_tokens": completion_tokens,
+    }
 
 
 def _run(spec: dict[str, object]) -> None:
     """Run one agent task, streaming normalized events, then a terminal line.
 
-    Each emitted event carries the conversation's running accumulated cost
-    so the host adapter can attribute a per-turn cost delta; the host is
+    Each emitted event carries the conversation's running accumulated cost and
+    token usage so the host adapter can attribute per-turn deltas; the host is
     the authoritative cost sink (via the gateway), this is a reconciling
     signal.
     """
@@ -332,7 +382,7 @@ def _run(spec: dict[str, object]) -> None:
             return
         conversation = holder.get("conversation")
         if conversation is not None:
-            normalized["cost"] = _accumulated_cost(conversation)
+            normalized.update(_totals(conversation))
         _emit(normalized)
 
     # Persist conversation state under the (rw) workspace keyed by a stable
@@ -352,7 +402,7 @@ def _run(spec: dict[str, object]) -> None:
     holder["conversation"] = conversation
     conversation.send_message(spec["task_prompt"])
     conversation.run()
-    _emit({"kind": "finished", "cost": _accumulated_cost(conversation)})
+    _emit({"kind": "finished", **_totals(conversation)})
 
 
 def main() -> int:

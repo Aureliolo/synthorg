@@ -5,8 +5,12 @@ Every ``(loop, tier, brief, repetition)`` cell runs against a workspace recreate
 from the brief's committed seed fixture. That reset is the fair-comparison
 invariant the whole scoreboard rests on: if one loop could inherit another's
 artifacts, the acceptance grade would measure run order rather than the loop.
+
+The layout is project-scoped because both sandboxes a cell drives resolve their
+mount through the run's project id, so a flat workspace is one neither can bind.
 """
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -16,7 +20,7 @@ from evals.errors import (
     WorkspaceSeedNotFoundError,
     WorkspaceSpecMissingError,
 )
-from evals.loop_ab.workspace import seed_workspace
+from evals.loop_ab.workspace import CellWorkspace, seed_workspace
 from evals.models.brief import (
     Brief,
     BriefKind,
@@ -25,7 +29,9 @@ from evals.models.brief import (
     LimitsSpec,
     WorkspaceSpec,
 )
+from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.types import NotBlankStr
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 
 pytestmark = pytest.mark.unit
 
@@ -66,12 +72,45 @@ def test_seeds_every_file_including_nested_directories(
     suite_root: Path, tmp_path: Path
 ) -> None:
     """The loop starts from a faithful copy of the committed fixture."""
-    work_dir = seed_workspace(
+    cell = seed_workspace(
         brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
     )
 
-    assert (work_dir / "README.md").read_text(encoding="utf-8") == "seed readme\n"
-    assert (work_dir / "pkg" / "widget.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    project = cell.project_dir
+    assert (project / "README.md").read_text(encoding="utf-8") == "seed readme\n"
+    assert (project / "pkg" / "widget.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+
+
+def test_seed_lands_in_the_project_subtree_of_the_sandbox_root(
+    suite_root: Path, tmp_path: Path
+) -> None:
+    """The graded directory is the project subtree, not the sandbox root."""
+    cell = seed_workspace(
+        brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
+    )
+
+    assert cell.project_dir == cell.root / "projects" / EVAL_TASK_PROJECT
+    assert cell.project_dir.is_dir()
+
+
+def test_the_sandbox_binds_the_project_subtree_the_seed_landed_in(
+    suite_root: Path, tmp_path: Path
+) -> None:
+    """A run's project id must resolve to the graded directory.
+
+    ``AgentEngine.run`` binds the task's project into the correlation context,
+    which both the shell sandbox and the OpenHands sandbox read to pick their
+    mount. A layout the mount cannot resolve fails every cell at the first tool
+    call, so the two are asserted together rather than assumed to agree.
+    """
+    cell = seed_workspace(
+        brief=_brief(), suite_root=suite_root, work_root=tmp_path / "work"
+    )
+    sandbox = DockerSandbox(workspace=cell.root)
+
+    resolved = asyncio.run(sandbox._project_root(EVAL_TASK_PROJECT))
+
+    assert resolved == cell.project_dir.resolve()
 
 
 def test_reseeding_discards_a_prior_run_artifacts(
@@ -81,14 +120,24 @@ def test_reseeding_discards_a_prior_run_artifacts(
     brief = _brief()
     work_root = tmp_path / "work"
     first = seed_workspace(brief=brief, suite_root=suite_root, work_root=work_root)
-    (first / "pkg" / "widget.py").write_text("VALUE = 999\n", encoding="utf-8")
-    (first / "leftover.txt").write_text("from the previous loop\n", encoding="utf-8")
+    (first.project_dir / "pkg" / "widget.py").write_text(
+        "VALUE = 999\n", encoding="utf-8"
+    )
+    (first.project_dir / "leftover.txt").write_text(
+        "from the previous loop\n", encoding="utf-8"
+    )
+    # Outside the project subtree, so only a reset of the whole sandbox root
+    # clears it; a loop can write here through the mount.
+    (first.root / "stray.txt").write_text("outside the project\n", encoding="utf-8")
 
     second = seed_workspace(brief=brief, suite_root=suite_root, work_root=work_root)
 
     assert second == first
-    assert (second / "pkg" / "widget.py").read_text(encoding="utf-8") == "VALUE = 1\n"
-    assert not (second / "leftover.txt").exists()
+    assert (second.project_dir / "pkg" / "widget.py").read_text(
+        encoding="utf-8"
+    ) == "VALUE = 1\n"
+    assert not (second.project_dir / "leftover.txt").exists()
+    assert not (second.root / "stray.txt").exists()
 
 
 def test_each_brief_gets_its_own_workspace(suite_root: Path, tmp_path: Path) -> None:
@@ -103,6 +152,7 @@ def test_each_brief_gets_its_own_workspace(suite_root: Path, tmp_path: Path) -> 
     )
 
     assert first != second
+    assert isinstance(first, CellWorkspace)
 
 
 def test_missing_seed_fixture_fails_loud(tmp_path: Path) -> None:

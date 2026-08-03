@@ -23,6 +23,7 @@ out of the application environment entirely.
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
@@ -86,6 +87,23 @@ _CONTAINER_SPEC_FIELDS: Final[tuple[str, ...]] = (
     "max_turns",
 )
 
+
+@dataclass(frozen=True)
+class _RunningTotals:
+    """The accumulated figures the container restates on every event.
+
+    The container reports run totals, while the loop accumulates per-turn
+    figures, so each event's contribution is the difference from the previous
+    one. Carried as one value because the three advance together and a partial
+    carry-forward would silently misattribute the rest. A difference of two
+    totals has the same shape, so this doubles as one turn's contribution.
+    """
+
+    cost: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 _KIND_BY_NAME: Final[dict[str, OpenHandsEventKind]] = {
     "action": OpenHandsEventKind.ACTION,
     "observation": OpenHandsEventKind.OBSERVATION,
@@ -94,8 +112,8 @@ _KIND_BY_NAME: Final[dict[str, OpenHandsEventKind]] = {
     "finished": OpenHandsEventKind.FINISHED,
 }
 
-# Event kinds that correspond to an LLM turn, so may carry a cost delta.
-_TURN_COST_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
+# Event kinds that correspond to an LLM turn, so may carry token / cost deltas.
+_TURN_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
     {OpenHandsEventKind.ACTION, OpenHandsEventKind.MESSAGE}
 )
 
@@ -118,21 +136,23 @@ def _spec_line(spec: OpenHandsRunSpec) -> str:
     return json.dumps(payload, separators=(",", ":")) + "\n"
 
 
-def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, float]:
+def _parse_event(
+    line: str, previous: _RunningTotals
+) -> tuple[OpenHandsEvent | None, _RunningTotals]:
     """Parse one normalized JSON event line into an :class:`OpenHandsEvent`.
 
-    The container reports a *running accumulated* cost per event; the
-    per-turn cost forwarded to the loop is the delta since the previous
+    The container reports *running accumulated* cost and token figures per
+    event; what the loop is given per turn is the delta since the previous
     event, so the loop's per-turn accumulation sums to the run total.
 
     Args:
         line: One JSON event line from the container's stdout.
-        prev_cost: Accumulated cost reported by the previous event.
+        previous: Accumulated figures reported by the previous event.
 
     Returns:
-        ``(event, accumulated_cost)``. ``event`` is ``None`` for an
-        unparseable or unknown line (skipped without terminating the run);
-        ``accumulated_cost`` carries forward the running total.
+        ``(event, totals)``. ``event`` is ``None`` for an unparseable or
+        unknown line (skipped without terminating the run); ``totals`` carries
+        forward the running figures.
     """
     try:
         payload = json.loads(line)
@@ -142,14 +162,14 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
             loop_type="openhands",
             note="unparseable container event line",
         )
-        return None, prev_cost
+        return None, previous
     if not isinstance(payload, dict):
         logger.warning(
             EXECUTION_LOOP_ERROR,
             loop_type="openhands",
             note="container event line was not a JSON object",
         )
-        return None, prev_cost
+        return None, previous
     name = str(payload.get("kind", ""))
     if name == _UNMAPPED_KIND:
         # The container recognised an SDK event it has no mapping for. That is
@@ -161,7 +181,7 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
             note="container reported an unmapped SDK event",
             sdk_event=str(payload.get("text", ""))[:_MAX_KIND_LOG_CHARS],
         )
-        return None, prev_cost
+        return None, previous
     kind = _KIND_BY_NAME.get(name)
     if kind is None:
         # A protocol-skew (an event kind this host does not know) must not
@@ -172,20 +192,46 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
             note="unknown container event kind",
             kind=name[:_MAX_KIND_LOG_CHARS],
         )
-        return None, prev_cost
-    accumulated = _non_negative_float(payload.get("cost"))
-    # Attribute the per-turn cost delta only on turn kinds (ACTION / MESSAGE);
-    # the model rejects cost on the others, and the deltas already sum to the
-    # run total. The accumulated total still advances for the next delta.
-    delta = max(0.0, accumulated - prev_cost) if kind in _TURN_COST_KINDS else 0.0
+        return None, previous
+    totals = _RunningTotals(
+        cost=_non_negative_float(payload.get("cost")),
+        input_tokens=_non_negative_int(payload.get("input_tokens")),
+        output_tokens=_non_negative_int(payload.get("output_tokens")),
+    )
     tool_name = payload.get("tool_name") if kind is OpenHandsEventKind.ACTION else None
+    turn = _turn_deltas(kind, previous, totals)
     event = OpenHandsEvent(
         kind=kind,
         text=str(payload.get("text", "")),
         tool_name=tool_name if isinstance(tool_name, str) and tool_name else None,
-        cost=delta,
+        cost=turn.cost,
+        input_tokens=turn.input_tokens,
+        output_tokens=turn.output_tokens,
     )
-    return event, accumulated
+    return event, totals
+
+
+def _turn_deltas(
+    kind: OpenHandsEventKind, previous: _RunningTotals, totals: _RunningTotals
+) -> _RunningTotals:
+    """Return the figures this event contributes as one turn.
+
+    Only a turn (ACTION / MESSAGE) carries them: the event model rejects token
+    and cost figures on the other kinds, and attributing them there would
+    double-count against the turn that actually spent them. The accumulated
+    totals still advance regardless, so the next turn's delta is measured from
+    the right baseline.
+
+    Returns:
+        The per-turn cost and token figures, all zero off a turn kind.
+    """
+    if kind not in _TURN_KINDS:
+        return _RunningTotals()
+    return _RunningTotals(
+        cost=max(0.0, totals.cost - previous.cost),
+        input_tokens=max(0, totals.input_tokens - previous.input_tokens),
+        output_tokens=max(0, totals.output_tokens - previous.output_tokens),
+    )
 
 
 def _non_negative_float(value: object) -> float:
@@ -197,6 +243,22 @@ def _non_negative_float(value: object) -> float:
     if isinstance(value, int | float):
         return max(0.0, float(value))
     return 0.0
+
+
+def _non_negative_int(value: object) -> int:
+    """Coerce a value to a non-negative int, defaulting to zero.
+
+    ``bool`` is excluded despite subclassing ``int``: a stray ``True`` in the
+    container's payload would otherwise read as one token spent.
+
+    Returns:
+        The coerced value clamped to ``>= 0``.
+    """
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int | float):
+        return max(0, int(value))
+    return 0
 
 
 class _ContainerConversation:
@@ -240,7 +302,7 @@ class _ContainerConversation:
             project_id=self._spec.project_id,
         )
         finished = False
-        prev_cost = 0.0
+        totals = _RunningTotals()
         try:
             # Bound the whole run by wall-clock (not just per-event idle): the
             # idle deadline resets on every event, so a steadily-active run
@@ -249,7 +311,7 @@ class _ContainerConversation:
             # the token can expire mid-task.
             async with asyncio.timeout(self._max_runtime_seconds):
                 async for line in stream:
-                    event, prev_cost = _parse_event(line, prev_cost)
+                    event, totals = _parse_event(line, totals)
                     if event is None:
                         continue
                     if event.kind is OpenHandsEventKind.FINISHED:

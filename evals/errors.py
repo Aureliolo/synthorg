@@ -165,6 +165,34 @@ class LoopAbProviderMissingError(EvalError):
     )
 
 
+class LoopAbGatewayUnavailableError(EvalError):
+    """Raised when the recorder's hosted gateway did not come up wired.
+
+    The recording host exists so mint and verify are the same
+    :class:`~synthorg.llm.gateway_token.GatewaySigner` instance. A host that
+    booted without one cannot authenticate a single cell, so it fails here
+    rather than recording every row as unavailable for a reason nobody can act
+    on.
+    """
+
+    default_message: ClassVar[str] = (
+        "Loop A/B recording host has no gateway signer to mint run bearers with"
+    )
+
+
+class LoopAbOpenHandsUnwiredError(EvalError):
+    """Raised when the OpenHands loop's runtime is not wired for a cell.
+
+    The boundary reports the missing piece at WARNING as it declines to wire, so
+    this carries the cell into the runner's unavailable row rather than letting
+    a ``None`` reach the loop factory and fail with a less specific message.
+    """
+
+    default_message: ClassVar[str] = (
+        "OpenHands loop runtime is unwired; see the logged missing pieces"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -192,6 +220,8 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "LoopAbGatewayUnavailableError",
+    "LoopAbOpenHandsUnwiredError",
     "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",

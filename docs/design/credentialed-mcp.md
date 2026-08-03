@@ -235,6 +235,15 @@ pause-and-retry rather than a terminal error.
 result (not a transport error); an unknown method is `-32601`; malformed
 params are `-32602`. Batch requests are supported.
 
+The host-side context is **opened lazily**, only for `tools/call`, and memoised
+per request. It has to be: it requires a configured forge and chat connection,
+which a deployment that has wired neither cannot supply, and the embedded
+harness must complete `initialize` before it can construct its agent at all. The
+handshake therefore answers on a stock deployment while remaining unable to
+reach a credentialed tool, which is the same posture the empty default
+capability grant already produces. The per-family kill switches are resolved
+separately, because they gate `tools/list` as well.
+
 ## Settings
 
 Under the `tools` namespace, off by default, hot-reloadable:

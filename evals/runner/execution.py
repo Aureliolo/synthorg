@@ -10,6 +10,7 @@ learning curve proves the live ``capture -> store -> retrieve -> inject``
 pipeline. Only the LLM is a deterministic stand-in.
 """
 
+from typing import Final
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -32,6 +33,12 @@ from synthorg.observability.events.evals import (
 from synthorg.observability.events.provider import PROVIDER_PROMPT_PURPOSE_INVOKED
 
 logger = get_logger(__name__)
+
+#: Project every brief task is attributed to. ``AgentEngine.run`` binds this into
+#: the correlation context, and the sandbox backends read it from there to pick
+#: the workspace subtree they mount, so anything provisioning a run's workspace
+#: has to lay it out under this same name.
+EVAL_TASK_PROJECT: Final[str] = "eval-benchmark"
 
 
 class BriefRunOutcome(BaseModel):
@@ -85,7 +92,7 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         title=brief.title,
         description=brief.description,
         type=TaskType.DEVELOPMENT,
-        project="eval-benchmark",
+        project=EVAL_TASK_PROJECT,
         created_by="eval-runner",
         assigned_to=agent_id,
         status=TaskStatus.ASSIGNED,
@@ -169,4 +176,4 @@ async def run_brief(
     )
 
 
-__all__ = ["BriefRunOutcome", "run_brief"]
+__all__ = ["EVAL_TASK_PROJECT", "BriefRunOutcome", "run_brief"]
