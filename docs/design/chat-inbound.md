@@ -156,3 +156,12 @@ own reachable `self._dispatcher.resume(...)` call. Binding the check to that
 one call is what makes it load-bearing: a `decision_reason=` sitting on a
 helper, on a different collaborator, or after an early return would satisfy
 a module-wide search while the real hand-off shipped the text unfenced.
+
+The reason is not the only field that crosses. The router also forwards the
+event's `user` as the resume `decided_by`, and that field is decoded from the
+Socket-Mode payload with no format check, so it is attacker-controlled on the
+same terms. `build_resume_message` therefore fences it under `TAG_DECIDER_NAME`
+and keeps only the approval id and the decision verb in the trusted marker. A
+display name needs no delimiter and no invisible codepoint to read as an
+instruction, so sanitisation alone would leave a second prompt channel open
+beside the one this section is about.

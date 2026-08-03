@@ -33,6 +33,8 @@ The authoritative registry is `ALL_FENCE_TAGS` in `engine/prompt_safety.py` (aut
 - `TAG_BRAIN_STATE`
 - `TAG_KNOWLEDGE`
 - `TAG_CONFLICT_POSITION`
+- `TAG_DECISION_OPTION`
+- `TAG_DECIDER_NAME`
 
 ### Fence breakout protection
 
