@@ -479,13 +479,23 @@ class TestConstructionPath:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
 
-    def test_a_relative_import_past_the_root_fails_closed(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("dots", ["...", "....", ".....", "......."])
+    def test_a_relative_import_past_the_root_fails_closed(
+        self, tmp_path: Path, dots: str
+    ) -> None:
         # Ascending past the package root is not importable, so it means the
         # path was misread. Yielding nothing would silently shrink the closure.
+        #
+        # Every level past the root is covered rather than one sample: the
+        # containing package here has two parts, so a bound computed by
+        # subtraction goes negative from four dots on and indexes from the end
+        # of the list instead of clamping. That makes the failure a band (three
+        # dots caught, four not, five caught again), which any single-level case
+        # reads straight past.
         root = _repo(
             tmp_path,
             sources={
-                "workers/_engine_assembly.py": "from ....... import wire_it\n",
+                "workers/_engine_assembly.py": f"from {dots} import wire_it\n",
                 _RUNTIME_BUILDER: runtime_builder_module(
                     "synthorg.workers._engine_assembly"
                 ),
@@ -493,6 +503,29 @@ class TestConstructionPath:
         )
         with pytest.raises(GateSourceError, match="ascends past the package root"):
             scan_repo(root)
+
+    def test_a_relative_import_to_the_parent_package_is_accepted(
+        self, tmp_path: Path
+    ) -> None:
+        # The boundary the guard must NOT cross. Two dots from a module inside
+        # synthorg.workers names synthorg, which is a real package, so the scan
+        # has to keep walking; tightening the check until this raises would
+        # trade the fail-open for a fail-closed that rejects valid code.
+        #
+        # It contributes nothing to the closure either way, because synthorg is
+        # outside the workers package. So the assertion is that the walk
+        # COMPLETES, evidenced by the read in this same module still being
+        # classified construction-only, rather than any effect of the import.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/_engine_assembly.py": f"from .. import workers\n\n\n{_BUILD}",
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers._engine_assembly"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
 
     def test_a_dotted_import_of_a_submodule_is_construction_only(
         self, tmp_path: Path

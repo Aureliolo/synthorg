@@ -649,13 +649,19 @@ def _absolute_import_module(rel: str, node: ast.ImportFrom) -> str:
     # and for an ``__init__`` alike, since the initialiser's own package is the
     # directory holding it.
     parts = rel.removeprefix("src/").removesuffix(".py").split("/")[:-1]
-    ascended = parts[: len(parts) - (node.level - 1)]
-    if not ascended:
+    # Compare the depth BEFORE slicing. Testing the slice result instead lets a
+    # bound that has gone negative index from the end of the list, which yields
+    # a non-empty prefix naming a package the import never referred to. The hole
+    # is a band rather than a tail: against a two-part package, level 3 clamps to
+    # empty and is caught, level 4 lands on -1 and silently resolves, and level 5
+    # clamps again. So a spot check either side of it reads as working.
+    if node.level - 1 >= len(parts):
         message = (
             f"{rel}: relative import at line {node.lineno} ascends past the"
             " package root, so the construction closure cannot be derived"
         )
         raise GateSourceError(message)
+    ascended = parts[: len(parts) - (node.level - 1)]
     return ".".join([*ascended, node.module] if node.module else ascended)
 
 
