@@ -623,10 +623,35 @@ def construction_modules(repo_root: Path) -> frozenset[str]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom) or not node.module:
                 continue
-            if not node.module.startswith(f"{_WORKERS_PACKAGE}."):
-                continue
-            pending.append(_module_file(repo_root, node.module))
+            pending.extend(_imported_worker_modules(repo_root, node))
     return frozenset(seen)
+
+
+def _imported_worker_modules(repo_root: Path, node: ast.ImportFrom) -> Iterator[str]:
+    """Yield the worker module files *node* pulls into the construction path.
+
+    Args:
+        repo_root: Project root to resolve against.
+        node: One ``from ... import ...`` statement.
+
+    Yields:
+        Repository-relative paths, one per worker module the import reaches.
+    """
+    if node.module == _WORKERS_PACKAGE:
+        # ``from synthorg.workers import x`` binds either a submodule or a name
+        # the initialiser re-exports. Both are resolved by existence rather than
+        # demanded: a name backing no module is a symbol, and a package with no
+        # initialiser is a namespace package. Neither is a broken scan, unlike
+        # the dotted form below, where the name can only be a module.
+        package = f"src/{_WORKERS_PACKAGE.replace('.', '/')}"
+        stems = [package, *(f"{package}/{alias.name}" for alias in node.names)]
+        for stem in stems:
+            for candidate in (f"{stem}.py", f"{stem}/{_PACKAGE_INIT}"):
+                if (repo_root / candidate).is_file():
+                    yield candidate
+                    break
+    elif node.module is not None and node.module.startswith(f"{_WORKERS_PACKAGE}."):
+        yield _module_file(repo_root, node.module)
 
 
 def _module_file(repo_root: Path, module: str) -> str:

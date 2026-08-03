@@ -32,44 +32,63 @@ def _make_subscriber() -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
     return sub, app_state
 
 
-# Every pair asserted watched is also driven through a reload below. Two
-# hand-maintained lists drifted the moment one gained a key the other lacked,
-# leaving a watched key that nothing proved actually rebuilds.
+# The complete watched set, asserted whole below and driven through a reload
+# one pair at a time. Listing a subset proved too weak twice over: a subset
+# cannot catch a key added to _WATCHED that no rebuild test exercises, which is
+# exactly how a key gets watched and applied to nothing.
 _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
-    ("engine", "matcher_min_usable_parameters"),
-    ("engine", "matcher_prefer_local"),
-    ("engine", "matcher_min_cloud_tier"),
-    ("engine", "classifier_fallback_confidence"),
-    ("external_api", "enabled"),
-    ("external_api", "provider_type"),
-    ("coordination", "enable_coordination_middleware"),
     ("coordination", "decomposition_model"),
+    ("coordination", "enable_coordination_middleware"),
     ("design", "image_generation_enabled"),
     ("design", "image_model"),
     ("engine", "auto_review_on_completion"),
+    ("engine", "clarification_enabled"),
+    ("engine", "classification_detector_timeout_seconds"),
+    ("engine", "classifier_fallback_confidence"),
+    ("engine", "classifier_rule_matched_confidence"),
     ("engine", "completion_oracle_enabled"),
-    ("engine", "completion_oracle_shadow_mode"),
     ("engine", "completion_oracle_min_stakes"),
     ("engine", "completion_oracle_reviewer_model_tier"),
+    ("engine", "completion_oracle_shadow_mode"),
+    # The engine holds its AutoLoopConfig frozen for its lifetime, so an edit
+    # to a loop-selection key reaches a task only via a rebuild.
+    ("engine", "default_loop_type"),
+    ("engine", "enable_agent_middleware"),
+    ("engine", "loop_auto_select_enabled"),
+    ("engine", "loop_complexity_overrides"),
+    ("engine", "matcher_min_cloud_tier"),
+    ("engine", "matcher_min_usable_parameters"),
+    ("engine", "matcher_prefer_local"),
+    ("engine", "scoping_enabled"),
+    ("external_api", "enabled"),
+    ("external_api", "provider_type"),
+    ("memory", "backend"),
+    ("memory", "consolidation_interval"),
+    ("memory", "embedder_dims"),
+    ("memory", "embedder_model"),
+    ("memory", "planning_memory_digest_budget"),
+    ("memory", "planning_memory_recall_enabled"),
+    ("memory", "procedural_max_tokens"),
+    ("memory", "procedural_skill_md_directory"),
+    ("memory", "procedural_temperature"),
+    ("providers", "gateway_base_url"),
+    ("tools", "browser_image_pin"),
+    ("tools", "credentialed_mcp_base_url"),
+    ("tools", "desktop_driver"),
+    ("tools", "desktop_image_pin"),
+    ("tools", "desktop_screen_height"),
+    ("tools", "desktop_screen_width"),
     # ``build_openhands_loop_deps_or_none`` reads each of these inside the
     # rebuild and then holds the result for the engine's lifetime, so a key
     # missing here is an operator edit that reaches no run.
     ("tools", "openhands_enabled"),
-    ("tools", "openhands_image"),
     ("tools", "openhands_idle_timeout_seconds"),
+    ("tools", "openhands_image"),
     ("tools", "openhands_max_runtime_seconds"),
-    ("tools", "credentialed_mcp_base_url"),
-    ("providers", "gateway_base_url"),
-    # The engine holds its AutoLoopConfig frozen for its lifetime, so an edit
-    # to a loop-selection key reaches a task only via a rebuild.
-    ("engine", "loop_auto_select_enabled"),
-    ("engine", "default_loop_type"),
-    ("engine", "loop_complexity_overrides"),
-    # Both are resolved into the boot AgentEngine when
-    # ``build_runtime_services`` (re)builds it, so an edit reaches a run only
-    # through a rebuild.
-    ("engine", "clarification_enabled"),
-    ("engine", "scoping_enabled"),
+    ("tools", "web_search_connection"),
+    ("tools", "web_search_enabled"),
+    ("tools", "web_search_max_results"),
+    ("tools", "web_search_provider"),
 )
 
 
@@ -82,10 +101,11 @@ class TestProtocol:
         sub, _ = _make_subscriber()
         assert sub.subscriber_name == "runtime-reload"
 
-    @pytest.mark.parametrize(("namespace", "key"), _EXPECTED_WATCHED)
-    def test_pair_is_watched(self, namespace: str, key: str) -> None:
+    def test_watched_set_is_exactly_the_expected_pairs(self) -> None:
+        # Equality, not containment: a subset assertion passes while a newly
+        # watched key sits unexercised by the reload test below.
         sub, _ = _make_subscriber()
-        assert (namespace, key) in sub.watched_keys
+        assert sub.watched_keys == frozenset(_EXPECTED_WATCHED)
 
     def test_ask_policy_keys_are_not_watched(self) -> None:
         # The prompt-only ask-policy keys belong to the ask-policy subscriber,

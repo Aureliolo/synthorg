@@ -160,6 +160,14 @@ class TestReachabilitySeams:
                 "async def read(r):",
                 '    return await _read(r, "knob")',
             ),
+            _lines(
+                "async def _read(settings_service, key):",
+                '    return await settings_service.get("engine", key)',
+                "",
+                "",
+                "async def read(svc):",
+                '    return await _read(svc, "knob")',
+            ),
         ],
         ids=[
             "positional-literals",
@@ -177,6 +185,7 @@ class TestReachabilitySeams:
             "namespace-forwarded-through-a-helper",
             "get-all-bulk-read",
             "key-forwarded-into-get-enum",
+            "key-forwarded-into-a-settings-service-get",
         ],
     )
     def test_seam_satisfies_the_gate(self, tmp_path: Path, body: str) -> None:
@@ -242,8 +251,15 @@ class TestUnreachable:
         [
             'logger.info("engine", key)',
             'tracer.emit("engine", key, level="debug")',
+            'payload.get("engine", key)',
+            'row.get("engine", key)',
         ],
-        ids=["a-log-line", "a-telemetry-call"],
+        ids=[
+            "a-log-line",
+            "a-telemetry-call",
+            "a-mapping-get",
+            "a-row-get",
+        ],
     )
     def test_a_helper_forwarding_into_a_non_read_is_not_evidence(
         self, tmp_path: Path, call: str
@@ -465,6 +481,27 @@ class TestConstructionPath:
                 ),
                 _RUNTIME_BUILDER: runtime_builder_module(
                     "synthorg.workers.execution_service"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_submodule_imported_from_the_package_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # ``from synthorg.workers import x`` names the package, not
+        # ``synthorg.workers.x``, so a prefix test that demanded the trailing
+        # dot skipped the import entirely.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/execution_resume.py": _BUILD,
+                _RUNTIME_BUILDER: _lines(
+                    "from synthorg.workers import execution_resume",
+                    "",
+                    "",
+                    "async def build_runtime_services(app_state):",
+                    "    return None",
                 ),
             },
         )

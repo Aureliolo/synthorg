@@ -46,14 +46,14 @@ KEY_KWARGS: Final[tuple[str, ...]] = ("key", "setting_key")
 NAMESPACE_READS: Final[frozenset[str]] = frozenset(
     {"get_namespace", "get_page", "get_all"}
 )
-# The reads that name one setting by ``(namespace, key)``: ``SettingsService``'s
-# accessors and the resolver's typed getters. Pinning the callee is what keeps a
-# helper index out of calls that merely happen to take a string and a parameter,
-# such as a log line tagged with a namespace, which would otherwise mint
-# evidence that a setting is read live when nothing reads it at all.
+# The reads that name one setting by ``(namespace, key)``. Pinning the callee is
+# what keeps a helper index out of calls that merely happen to take a string and
+# a parameter, such as a log line tagged with a namespace, which would otherwise
+# mint evidence that a setting is read live when nothing reads it at all.
+#
+# These names are unambiguous: nothing else in the tree defines them.
 SCALAR_READS: Final[frozenset[str]] = frozenset(
     {
-        "get",
         "get_entry",
         "get_versioned",
         "get_str",
@@ -64,6 +64,12 @@ SCALAR_READS: Final[frozenset[str]] = frozenset(
         "get_json",
     }
 )
+# ``SettingsService.get`` is the one read whose name every mapping also carries,
+# and a mapping's ``get(key, default)`` means something else entirely, so
+# ``data.get("engine", fallback)`` would be misread as the pair ("engine",
+# fallback). It counts only off a receiver that names a settings object.
+_AMBIGUOUS_READ: Final[str] = "get"
+_SETTINGS_RECEIVER_MARKERS: Final[tuple[str, ...]] = ("setting", "resolver")
 
 
 @dataclass(frozen=True)
@@ -227,6 +233,32 @@ def _helpers_from(
     yield from _namespace_forward(call, func, parameters)
 
 
+def _is_scalar_read(call: ast.Call) -> bool:
+    """Whether *call* reads one setting by ``(namespace, key)``.
+
+    Args:
+        call: The call site.
+
+    Returns:
+        True for an unambiguously-named getter, or for ``get`` off a receiver
+        that names a settings object.
+    """
+    name = called_name(call)
+    if name in SCALAR_READS:
+        return True
+    if name != _AMBIGUOUS_READ or not isinstance(call.func, ast.Attribute):
+        return False
+    receiver = call.func.value
+    text = (
+        receiver.id
+        if isinstance(receiver, ast.Name)
+        else receiver.attr
+        if isinstance(receiver, ast.Attribute)
+        else ""
+    ).lower()
+    return any(marker in text for marker in _SETTINGS_RECEIVER_MARKERS)
+
+
 def _key_forward(
     call: ast.Call,
     func: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -234,7 +266,7 @@ def _key_forward(
     aliases: Mapping[str, str],
 ) -> Iterator[ForwardingHelper]:
     """Yield a helper record when *call* reads ``(known namespace, parameter)``."""
-    if called_name(call) not in SCALAR_READS:
+    if not _is_scalar_read(call):
         return
     keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg}
     namespace = _first_resolved(keywords, NAMESPACE_KWARGS, aliases)
