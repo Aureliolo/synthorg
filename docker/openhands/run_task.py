@@ -27,6 +27,10 @@ from pathlib import PurePosixPath
 from typing import TextIO, cast, override
 from uuid import UUID
 
+# A sibling module in the image, imported before the stream rebinding below so
+# its own stderr writes go through the scrubbing wrapper like everything else.
+from metrics_shape import totals
+
 _REDACTED = "***"
 
 
@@ -122,9 +126,6 @@ from openhands.sdk.mcp.config import MCPServer  # noqa: E402
 
 _LLM_USAGE_ID = "openhands-loop"
 _NATIVE_TOOLS = ("terminal", "file_editor")
-
-# Latch so the missing-cost-shape diagnostic is written once per run.
-_COST_SHAPE_REPORTED: set[str] = set()
 
 # SDK events the adapter deliberately does not forward: lifecycle, streaming
 # and telemetry that carry no turn, no action and no cost. Matched by class
@@ -283,43 +284,11 @@ def _build_agent(spec: dict[str, object]) -> Agent:
     )
 
 
-def _accumulated_cost(conversation: object) -> float:
-    """Read the conversation's running accumulated cost, best-effort.
-
-    The total lives on the COMBINED metrics, not on ``ConversationStats``
-    itself (the SDK reads it the same way for its own budget check), so
-    reaching for the attribute directly silently yields zero on every event
-    and flatlines the host's per-turn cost attribution.
-
-    Returns:
-        The accumulated cost, or ``0.0`` when unavailable.
-    """
-    stats = getattr(conversation, "conversation_stats", None)
-    combined = getattr(stats, "get_combined_metrics", None)
-    metrics = combined() if callable(combined) else None
-    cost = getattr(metrics, "accumulated_cost", None)
-    if cost is None:
-        # Zero is indistinguishable from "this run cost nothing", and the
-        # host's per-task budget kill reads this number, so a shape the
-        # contract test does not reproduce has to leave a trace rather than
-        # silently disarming the cap. Once per run: this is called on every
-        # event, and a broken shape stays broken for the whole run, so
-        # repeating it would bury the rest of the container's diagnostics.
-        if not _COST_SHAPE_REPORTED:
-            _COST_SHAPE_REPORTED.add("reported")
-            sys.stderr.write(
-                f"accumulated cost unavailable: stats={type(stats).__name__} "
-                f"metrics={type(metrics).__name__}\n"
-            )
-        return 0.0
-    return float(cost or 0.0)
-
-
 def _run(spec: dict[str, object]) -> None:
     """Run one agent task, streaming normalized events, then a terminal line.
 
-    Each emitted event carries the conversation's running accumulated cost
-    so the host adapter can attribute a per-turn cost delta; the host is
+    Each emitted event carries the conversation's running accumulated cost and
+    token usage so the host adapter can attribute per-turn deltas; the host is
     the authoritative cost sink (via the gateway), this is a reconciling
     signal.
     """
@@ -332,7 +301,7 @@ def _run(spec: dict[str, object]) -> None:
             return
         conversation = holder.get("conversation")
         if conversation is not None:
-            normalized["cost"] = _accumulated_cost(conversation)
+            normalized.update(totals(conversation))
         _emit(normalized)
 
     # Persist conversation state under the (rw) workspace keyed by a stable
@@ -352,7 +321,7 @@ def _run(spec: dict[str, object]) -> None:
     holder["conversation"] = conversation
     conversation.send_message(spec["task_prompt"])
     conversation.run()
-    _emit({"kind": "finished", "cost": _accumulated_cost(conversation)})
+    _emit({"kind": "finished", **totals(conversation)})
 
 
 def main() -> int:

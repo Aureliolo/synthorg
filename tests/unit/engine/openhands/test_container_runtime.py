@@ -12,7 +12,9 @@ import pytest
 
 from synthorg.engine.openhands.container_runtime import (
     _non_negative_float,
+    _non_negative_int,
     _parse_event,
+    _RunningTotals,
     _spec_line,
     build_container_conversation,
 )
@@ -59,20 +61,21 @@ def test_spec_line_excludes_host_only_fields() -> None:
 
 
 def test_parse_event_action_carries_tool_and_cost_delta() -> None:
-    event, accumulated = _parse_event(
-        json.dumps({"kind": "action", "tool_name": "terminal", "cost": 0.30}), 0.10
+    event, totals = _parse_event(
+        json.dumps({"kind": "action", "tool_name": "terminal", "cost": 0.30}),
+        _RunningTotals(cost=0.10),
     )
     assert event is not None
     assert event.kind is OpenHandsEventKind.ACTION
     assert event.tool_name == "terminal"
     assert event.cost == pytest.approx(0.20)  # delta from prev 0.10
-    assert accumulated == pytest.approx(0.30)
+    assert totals.cost == pytest.approx(0.30)
 
 
 def test_parse_event_message_gets_cost_but_no_tool() -> None:
     event, _ = _parse_event(
         json.dumps({"kind": "message", "text": "hi", "tool_name": "x", "cost": 0.5}),
-        0.0,
+        _RunningTotals(),
     )
     assert event is not None
     assert event.kind is OpenHandsEventKind.MESSAGE
@@ -81,50 +84,131 @@ def test_parse_event_message_gets_cost_but_no_tool() -> None:
 
 
 def test_parse_event_observation_has_no_cost() -> None:
-    event, accumulated = _parse_event(
-        json.dumps({"kind": "observation", "cost": 0.9}), 0.2
+    event, totals = _parse_event(
+        json.dumps({"kind": "observation", "cost": 0.9}), _RunningTotals(cost=0.2)
     )
     assert event is not None
     assert event.kind is OpenHandsEventKind.OBSERVATION
     assert event.cost == 0.0  # non-turn kinds carry no cost
-    assert accumulated == pytest.approx(0.9)  # accumulator still advances
+    assert totals.cost == pytest.approx(0.9)  # accumulator still advances
 
 
 def test_parse_event_finished_carries_no_cost() -> None:
-    event, _ = _parse_event(json.dumps({"kind": "finished", "cost": 1.5}), 0.0)
+    event, _ = _parse_event(
+        json.dumps({"kind": "finished", "cost": 1.5}), _RunningTotals()
+    )
     assert event is not None
     assert event.kind is OpenHandsEventKind.FINISHED
     assert event.cost == 0.0
 
 
+def test_parse_event_action_carries_token_deltas() -> None:
+    # The rubric ranks on tokens and scores a zero as unbeatable, so a turn
+    # reporting none would win that dimension by reporting nothing at all.
+    event, totals = _parse_event(
+        json.dumps(
+            {
+                "kind": "action",
+                "tool_name": "terminal",
+                "cost": 0.3,
+                "input_tokens": 900,
+                "output_tokens": 150,
+            }
+        ),
+        _RunningTotals(cost=0.1, input_tokens=400, output_tokens=50),
+    )
+    assert event is not None
+    assert event.input_tokens == 500
+    assert event.output_tokens == 100
+    assert totals.input_tokens == 900
+    assert totals.output_tokens == 150
+
+
+def test_parse_event_token_deltas_sum_to_the_reported_total() -> None:
+    # The container reports running totals and the loop accumulates per-turn
+    # deltas, so the two only agree if every delta is measured against the
+    # previous event rather than restated as the total.
+    lines = [
+        json.dumps({"kind": "message", "input_tokens": 100, "output_tokens": 10}),
+        json.dumps({"kind": "action", "input_tokens": 260, "output_tokens": 45}),
+        json.dumps({"kind": "message", "input_tokens": 400, "output_tokens": 80}),
+    ]
+    totals = _RunningTotals()
+    events: list[OpenHandsEvent] = []
+    for line in lines:
+        event, totals = _parse_event(line, totals)
+        assert event is not None
+        events.append(event)
+
+    assert sum(e.input_tokens for e in events) == totals.input_tokens == 400
+    assert sum(e.output_tokens for e in events) == totals.output_tokens == 80
+
+
+def test_parse_event_tokens_only_land_on_turn_kinds() -> None:
+    # A tool result is not an LLM turn, and the event model rejects token
+    # figures on one, so the delta has to be withheld rather than clamped.
+    event, totals = _parse_event(
+        json.dumps({"kind": "observation", "input_tokens": 90, "output_tokens": 9}),
+        _RunningTotals(input_tokens=10, output_tokens=1),
+    )
+    assert event is not None
+    assert event.input_tokens == 0
+    assert event.output_tokens == 0
+    assert totals.input_tokens == 90  # the accumulator still advances
+
+
+def test_parse_event_token_total_going_backwards_yields_no_negative_delta() -> None:
+    event, totals = _parse_event(
+        json.dumps({"kind": "message", "input_tokens": 5, "output_tokens": 1}),
+        _RunningTotals(input_tokens=50, output_tokens=10),
+    )
+    assert event is not None
+    assert event.input_tokens == 0
+    assert event.output_tokens == 0
+    assert totals.input_tokens == 5
+
+
+def test_parse_event_missing_or_malformed_token_fields_default_to_zero() -> None:
+    event, totals = _parse_event(
+        json.dumps({"kind": "message", "input_tokens": "many"}), _RunningTotals()
+    )
+    assert event is not None
+    assert event.input_tokens == 0
+    assert event.output_tokens == 0
+    assert totals.input_tokens == 0
+
+
 def test_parse_event_unparseable_line_is_skipped() -> None:
-    event, prev = _parse_event("not json", 0.4)
+    event, totals = _parse_event("not json", _RunningTotals(cost=0.4))
     assert event is None
-    assert prev == pytest.approx(0.4)
+    assert totals.cost == pytest.approx(0.4)
 
 
 def test_parse_event_unknown_kind_is_skipped() -> None:
-    event, prev = _parse_event(json.dumps({"kind": "heartbeat"}), 0.4)
+    event, totals = _parse_event(
+        json.dumps({"kind": "heartbeat"}), _RunningTotals(cost=0.4)
+    )
     assert event is None
-    assert prev == pytest.approx(0.4)
+    assert totals.cost == pytest.approx(0.4)
 
 
 def test_parse_event_unmapped_kind_is_skipped_and_named() -> None:
     # The container reports an SDK event class it neither forwards nor knows
     # to ignore. It carries no turn, so nothing reaches the loop, but the
     # class name has to survive into the log for the skew to be diagnosable.
-    event, prev = _parse_event(
-        json.dumps({"kind": "unmapped", "text": "SomeNewSdkEvent"}), 0.4
+    event, totals = _parse_event(
+        json.dumps({"kind": "unmapped", "text": "SomeNewSdkEvent"}),
+        _RunningTotals(cost=0.4),
     )
     assert event is None
-    assert prev == pytest.approx(0.4)
+    assert totals.cost == pytest.approx(0.4)
 
 
 def test_parse_event_non_dict_payload_is_skipped() -> None:
     # Valid JSON but not an object (e.g. a bare array) is skipped, not crashed.
-    event, prev = _parse_event(json.dumps([1, 2, 3]), 0.7)
+    event, totals = _parse_event(json.dumps([1, 2, 3]), _RunningTotals(cost=0.7))
     assert event is None
-    assert prev == pytest.approx(0.7)
+    assert totals.cost == pytest.approx(0.7)
 
 
 def test_non_negative_float_clamps_and_defaults() -> None:
@@ -132,6 +216,21 @@ def test_non_negative_float_clamps_and_defaults() -> None:
     assert _non_negative_float("nan-ish") == 0.0
     assert _non_negative_float(None) == 0.0
     assert _non_negative_float(2) == pytest.approx(2.0)
+    # ``bool`` is an ``int`` subclass, and True would silently read as $1.00 of
+    # spend, which the budget kill and the loop ranking both act on.
+    assert _non_negative_float(True) == 0.0
+
+
+def test_non_negative_int_clamps_and_defaults() -> None:
+    assert _non_negative_int(-3) == 0
+    assert _non_negative_int("many") == 0
+    assert _non_negative_int(None) == 0
+    assert _non_negative_int(7) == 7
+    # A float total (a JSON number the container rounded) truncates rather
+    # than raising at the event model's integer boundary.
+    assert _non_negative_int(7.9) == 7
+    # ``bool`` is an ``int`` subclass, and True would silently read as 1 token.
+    assert _non_negative_int(True) == 0
 
 
 async def test_build_container_conversation_is_lazy() -> None:

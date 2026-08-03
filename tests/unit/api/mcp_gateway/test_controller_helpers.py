@@ -16,14 +16,18 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.mcp_gateway.controller import (
+from synthorg.api.mcp_gateway._request_context import (
     _build_context,
-    _parse_capabilities,
+    _context_opener,
     _parse_targets,
-    _require_enabled,
     _resolve_actor,
     _resolve_deploy_settings,
+    _resolve_kill_switches,
     _resolve_publish_settings,
+)
+from synthorg.api.mcp_gateway.controller import (
+    _parse_capabilities,
+    _require_enabled,
 )
 from synthorg.api.state import AppState
 from synthorg.core.agent import (
@@ -35,8 +39,10 @@ from synthorg.core.agent import (
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.role import Skill
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.llm.gateway_token import GatewayTokenClaims
 from synthorg.security.audit import AuditLog
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import config_resolver_of
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -145,17 +151,15 @@ async def test_resolve_deploy_settings_parses_the_bundle() -> None:
             enabled=True, targets="prod, staging", timeout=45.0, max_log_chars=10000
         )
     )
-    assert settings.enabled is True
     assert settings.targets == frozenset({"prod", "staging"})
     assert settings.timeout_seconds == 45.0
     assert settings.max_log_chars == 10000
 
 
-async def test_resolve_deploy_settings_carries_the_kill_switch_off() -> None:
+async def test_resolve_deploy_settings_parses_an_empty_allowlist() -> None:
     settings = await _resolve_deploy_settings(
         _resolver(enabled=False, targets="", timeout=30.0, max_log_chars=20000)
     )
-    assert settings.enabled is False
     assert settings.targets == frozenset()
 
 
@@ -171,7 +175,6 @@ async def test_resolve_publish_settings_parses_the_bundle() -> None:
     }
     resolver.get_int.side_effect = lambda _ns, key: caps[key]
     settings = await _resolve_publish_settings(cast("ConfigResolver", resolver))
-    assert settings.enabled is True
     assert settings.targets == frozenset({"prod-images"})
     assert settings.timeout_seconds == 60.0
     assert settings.max_manifest_bytes == 4_000_000
@@ -226,22 +229,48 @@ def _context_app_state(
     )
 
 
+def _claims() -> GatewayTokenClaims:
+    """Build the verified bearer claims a request's context is bound to.
+
+    Returns:
+        The claims.
+    """
+    return GatewayTokenClaims(
+        execution_id="exec-1",
+        agent_id="agent-1",
+        task_id="task-1",
+        provider="example-provider",
+        model_id="example-medium-001",
+    )
+
+
+async def test_the_context_is_opened_once_per_request() -> None:
+    # A batch carrying several ``tools/call`` messages must broker its
+    # collaborators once: without the cache every message would rebuild the
+    # context, re-resolve the actor and re-broker every connection.
+    opener = _context_opener(_context_app_state(deploy_enabled=True), claims=_claims())
+
+    first = await opener()
+    second = await opener()
+
+    assert first is second
+
+
 class TestBuildContext:
     """The wiring that decides what a run's tools can see and reach."""
 
     async def test_deploy_settings_reach_the_tool_context(self) -> None:
-        ctx, kill = await _build_context(
+        ctx = await _build_context(
             _context_app_state(deploy_enabled=True, targets="prod, staging"),
             agent_id="agent-1",
             task_id="task-1",
         )
-        assert kill.deploy_enabled is True
         assert ctx.deploy_targets == frozenset({"prod", "staging"})
         assert ctx.deploy_timeout_seconds == 45.0
         assert ctx.deploy_max_log_chars == 10000
 
     async def test_publish_settings_reach_the_tool_context(self) -> None:
-        ctx, kill = await _build_context(
+        ctx = await _build_context(
             _context_app_state(
                 deploy_enabled=True,
                 targets="prod, staging",
@@ -250,27 +279,36 @@ class TestBuildContext:
             agent_id="agent-1",
             task_id="task-1",
         )
-        assert kill.publish_enabled is True
         # Sourced from the publish keys, distinct from the deploy targets.
         assert ctx.publish_targets == frozenset({"prod-images", "staging-images"})
         assert ctx.deploy_targets == frozenset({"prod", "staging"})
         assert ctx.publish_timeout_seconds == 60.0
         assert ctx.workspace_root.is_dir()
 
-    async def test_kill_switch_off_is_reported_to_the_caller(self) -> None:
+    async def test_kill_switch_leaves_the_allowlist_populated(self) -> None:
         """The allowlist stays populated; only the switch denies the tools."""
-        ctx, kill = await _build_context(
-            _context_app_state(deploy_enabled=False),
-            agent_id="agent-1",
-            task_id="task-1",
-        )
+        app_state = _context_app_state(deploy_enabled=False)
+
+        ctx = await _build_context(app_state, agent_id="agent-1", task_id="task-1")
+        kill = await _resolve_kill_switches(config_resolver_of(app_state))
+
         assert kill.deploy_enabled is False
         assert kill.publish_enabled is False
         assert ctx.deploy_targets == frozenset({"prod"})
 
+    async def test_kill_switches_are_read_without_the_tool_context(self) -> None:
+        # They gate ``tools/list`` as well as ``tools/call``, and the context is
+        # deferred to the one method that executes a tool, so they must resolve
+        # on their own rather than out of that bundle.
+        kill = await _resolve_kill_switches(
+            config_resolver_of(_context_app_state(deploy_enabled=True))
+        )
+
+        assert kill.deploy_enabled is True
+
     async def test_actor_is_none_without_a_registry(self) -> None:
         """A run that cannot be attributed must not be able to deploy."""
-        ctx, _ = await _build_context(
+        ctx = await _build_context(
             _context_app_state(deploy_enabled=True),
             agent_id="agent-1",
             task_id="task-1",
@@ -279,7 +317,7 @@ class TestBuildContext:
 
     async def test_actor_is_resolved_from_the_registry(self) -> None:
         identity = _identity()
-        ctx, _ = await _build_context(
+        ctx = await _build_context(
             _context_app_state(deploy_enabled=True, registry=_Registry(identity)),
             agent_id="deployer",
             task_id="task-1",

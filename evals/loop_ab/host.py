@@ -1,0 +1,534 @@
+# module-kind: orchestrator
+"""The recording host: the A/B recorder serving its own LLM gateway.
+
+The OpenHands loop authenticates to the gateway with a per-run bearer minted by
+the *same* :class:`~synthorg.llm.gateway_token.GatewaySigner` instance the
+gateway verifies with, and that instance is built per process and never
+persisted, so only a process that owns the signer can mint a bearer its own
+gateway will accept. The recorder therefore boots the real application against a
+scratch database, serves it on a local port, and reads the signer off the state
+the boot wiring populated.
+
+Owning the process rather than dialling one has two further consequences the
+scoreboard depends on. The gateway's cost ledger belongs to the recorder, so the
+OpenHands leg's spend (which is recorded inside the container's calls, not the
+engine's) is visible at all. And the credentialed-MCP surface the SDK insists on
+is the real one, served under the shipped empty capability grant, so the harness
+completes the handshake while reaching no credentialed tool.
+
+Serving the real application means serving *all* of it, which two things here
+exist to contain. ``/auth/setup`` is deliberately excluded from authentication
+so an operator can never lock themselves out, and it hands a CEO session to
+whoever asks first while no CEO exists, so this host seeds one of its own before
+anything can accept a connection. And the listener resolves the narrowest
+address the sandbox can still reach (see :mod:`evals.loop_ab.bind_host`) rather
+than every interface, which keeps the remaining surfaces (login, health, docs)
+off the network. Plain HTTP is sound at that point because both resolved
+addresses (host loopback, or the Docker bridge gateway) are host-local: nothing
+on a shared segment is in a position to read a bearer off the wire.
+
+The scratch database and the bootstrap secrets die with the run; the signer
+never leaves memory. Per-cell workspace trees live outside this module and are
+reclaimed by the recorder.
+"""
+
+import asyncio
+import base64
+import os
+import secrets
+import shutil
+import socket
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from types import TracebackType
+from typing import Final, Self
+
+import uvicorn
+from litestar import Litestar
+
+from evals.errors import (
+    LoopAbGatewayUnavailableError,
+    LoopAbHostAlreadyStartedError,
+    LoopAbHostConfigInvalidError,
+)
+from evals.loop_ab.bind_host import resolve_bind_host
+from synthorg.api.app import create_app
+from synthorg.api.app_overrides import AppOverrides
+from synthorg.api.auth.service import AuthService
+from synthorg.api.gateway.state import GatewayStateSlice
+from synthorg.api.state import AppState
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import RootConfig
+from synthorg.core.auth.models import OrgRole, User
+from synthorg.core.auth.roles import HumanRole
+from synthorg.llm.gateway_token import GatewaySigner
+from synthorg.observability import get_logger
+from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_HOST_ADMIN_SEEDED,
+    EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
+    EVALS_LOOP_AB_HOST_START_FAILED,
+    EVALS_LOOP_AB_HOST_STARTED,
+    EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+    EVALS_LOOP_AB_HOST_STOPPED,
+)
+from synthorg.observability.redaction import safe_error_description
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.settings.state import settings_service_of
+
+logger = get_logger(__name__)
+
+#: Mounted route prefixes, matching what the two controllers declare.
+_GATEWAY_PATH: Final[str] = "/api/v1/gateway/v1"
+_MCP_PATH: Final[str] = "/api/v1/mcp-gateway"
+
+#: Where the OpenHands container reaches the recorder from. The container joins
+#: the sidecar's network namespace, so its loopback is the sidecar's own; the
+#: wiring gives the sidecar this alias and nothing else resolves.
+DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
+
+#: How long the serving task gets to unwind before teardown stops waiting on it.
+#: Bounded because an in-flight request the container will never collect (its
+#: sandbox was already killed) would otherwise hold a graceful shutdown open for
+#: as long as the connection lives, stranding the run after its last cell.
+_STOP_TIMEOUT_SECONDS: Final[float] = 30.0
+
+_SCRATCH_DB_NAME: Final[str] = "loop-ab.db"
+
+#: Owner-only, because the scratch database holds this run's cost, task and
+#: audit rows in the clear (only settings values are encrypted at rest), and a
+#: shared CI runner is exactly where that matters.
+_SCRATCH_DIR_MODE: Final[int] = 0o700
+
+_MAX_PORT: Final[int] = 65535
+
+#: The throwaway account that occupies the single-CEO slot. It exists so the
+#: unauthenticated first-run setup route has nothing left to grant, so its
+#: password is random, never disclosed and never used to log in.
+_SEED_ADMIN_USERNAME: Final[str] = "loop-ab-recorder"
+_SEED_PASSWORD_BYTES: Final[int] = 32
+
+# Cat-3 bootstrap secrets the application resolves straight from the
+# environment, with no config or injection path, and refuses to boot without.
+# The host mints its own rather than inheriting the operator's: nothing issues a
+# session, a cursor or a stored credential on this throwaway instance (its two
+# reachable routes authenticate with the per-run bearer), and a secret that dies
+# with the process cannot sign or decrypt anything elsewhere.
+_OPAQUE_SECRET_VARS: Final[tuple[str, ...]] = (
+    "SYNTHORG_JWT_SECRET",
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+)
+#: These two must be Fernet-shaped (URL-safe base64 of 32 raw bytes).
+_FERNET_KEY_VARS: Final[tuple[str, ...]] = (
+    "SYNTHORG_MASTER_KEY",
+    "SYNTHORG_SETTINGS_KEY",
+)
+_SECRET_BYTES: Final[int] = 32
+
+#: One host per process, because the ephemeral secrets live in ``os.environ``:
+#: a second host would capture the first's throwaway values as the ones to put
+#: back, and the first to stop would restore secrets that no longer mean
+#: anything to the one still serving.
+_ACTIVE_HOSTS: Final[set[int]] = set()
+
+
+@dataclass(frozen=True)
+class LoopAbHostConfig:
+    """What the recording host is stood up with.
+
+    Attributes:
+        company_config: The recording company config. Its ``providers`` block
+            is what the gateway resolves a run bearer's bound provider against,
+            so the manifest's tiers must name providers present here.
+        scratch_dir: Directory for the throwaway database, removed on exit.
+        bind_host: Interface to listen on, or ``None`` to resolve the narrowest
+            address the sandbox can still reach.
+        bind_port: Port to listen on; ``0`` takes an ephemeral one.
+        container_host: Host the sandbox addresses the recorder by.
+        openhands_image: Overrides ``tools.openhands_image`` when set, so a
+            maintainer can record against a locally built image.
+    """
+
+    company_config: RootConfig
+    scratch_dir: Path
+    bind_host: str | None = None
+    bind_port: int = 0
+    container_host: str = DEFAULT_CONTAINER_HOST
+    openhands_image: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a port the socket layer could only refuse later.
+
+        Raises:
+            LoopAbHostConfigInvalidError: ``bind_port`` is outside the TCP port
+                range.
+        """
+        if not 0 <= self.bind_port <= _MAX_PORT:
+            msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
+            raise LoopAbHostConfigInvalidError(msg)
+
+
+class LoopAbGatewayHost:
+    """Boots, serves and tears down the recorder's own application instance.
+
+    Used as an async context manager: the matrix runs inside it, and every
+    collaborator that needs the signer, the endpoints or the cost ledger reads
+    them off the started host.
+    """
+
+    def __init__(self, config: LoopAbHostConfig) -> None:
+        self._config = config
+        self._app: Litestar | None = None
+        self._server: uvicorn.Server | None = None
+        self._socket: socket.socket | None = None
+        self._serving: asyncio.Task[None] | None = None
+        self._port: int = 0
+        self._prior_secrets: dict[str, str | None] = {}
+        self._persistence: SQLitePersistenceBackend | None = None
+
+    async def __aenter__(self) -> Self:
+        """Start the host.
+
+        Returns:
+            The started host.
+        """
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Stop the host, whatever ended the matrix."""
+        del exc_type, exc, traceback
+        await self.stop()
+
+    @property
+    def app_state(self) -> AppState:
+        """The started application's state.
+
+        Returns:
+            The live :class:`AppState`.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host has not been started.
+        """
+        if self._app is None:
+            msg = "loop A/B recording host was read before it was started"
+            raise LoopAbGatewayUnavailableError(msg)
+        state: AppState = self._app.state["app_state"]
+        return state
+
+    @property
+    def signer(self) -> GatewaySigner:
+        """The gateway signer this host's own gateway verifies with.
+
+        Returns:
+            The shared :class:`GatewaySigner`.
+
+        Raises:
+            LoopAbGatewayUnavailableError: The host is unstarted, or booted
+                without a gateway. Building one here would recreate exactly the
+                second-instance bug this host exists to remove.
+        """
+        signer = self.app_state.slice(GatewayStateSlice).signer
+        if signer is None:
+            msg = (
+                "the recording host booted without a gateway signer, so no "
+                "bearer it mints could be verified by its own gateway"
+            )
+            raise LoopAbGatewayUnavailableError(msg)
+        return signer
+
+    @property
+    def port(self) -> int:
+        """The port the host actually bound.
+
+        Returns:
+            The bound TCP port, or ``0`` before start.
+        """
+        return self._port
+
+    @property
+    def serving(self) -> asyncio.Task[None] | None:
+        """The task running the server's accept loop.
+
+        Exposed so a caller can race a long matrix against it. A serving task
+        that dies mid-run turns every remaining cell into a connection error
+        recorded as that loop's unavailable row, which spends real money to
+        measure nothing; whoever drives the matrix needs to be able to see that
+        happen rather than learn it at teardown.
+
+        Returns:
+            The serving task, or ``None`` before start.
+        """
+        return self._serving
+
+    @property
+    def local_gateway_url(self) -> str:
+        """The gateway base URL the in-process native drivers dial.
+
+        Returns:
+            The loopback gateway base URL.
+        """
+        return f"http://127.0.0.1:{self._port}{_GATEWAY_PATH}"
+
+    @property
+    def container_gateway_url(self) -> str:
+        """The gateway base URL the sandbox reaches the recorder by.
+
+        Returns:
+            The container-facing gateway base URL.
+        """
+        return f"http://{self._config.container_host}:{self._port}{_GATEWAY_PATH}"
+
+    @property
+    def container_mcp_url(self) -> str:
+        """The credentialed-MCP base URL the sandbox reaches the recorder by.
+
+        Returns:
+            The container-facing MCP base URL (the runtime appends ``/mcp``).
+        """
+        return f"http://{self._config.container_host}:{self._port}{_MCP_PATH}"
+
+    async def start(self) -> None:
+        """Boot the application, serve it, and publish its endpoints.
+
+        A boot that fails midway has already claimed the process's one host
+        slot and swapped the process environment, so it unwinds itself rather
+        than leaving either for the next host. The guarantee lives here, not in
+        ``__aenter__``, because a direct caller is owed it just as much and
+        ``__aexit__`` never runs for a ``__aenter__`` that raised.
+
+        Raises:
+            LoopAbHostAlreadyStartedError: This host, or another in the same
+                process, is already holding the ephemeral bootstrap secrets.
+        """
+        if self._app is not None or _ACTIVE_HOSTS:
+            msg = (
+                "a loop A/B recording host is already started in this process; "
+                "stop it before starting another"
+            )
+            raise LoopAbHostAlreadyStartedError(msg)
+        _ACTIVE_HOSTS.add(id(self))
+        try:
+            await self._boot()
+        except BaseException as exc:
+            logger.warning(
+                EVALS_LOOP_AB_HOST_START_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await self.stop()
+            raise
+
+    async def _boot(self) -> None:
+        """Run the fallible boot sequence the host slot has been claimed for."""
+        self._config.scratch_dir.mkdir(
+            parents=True, exist_ok=True, mode=_SCRATCH_DIR_MODE
+        )
+        self._install_ephemeral_secrets()
+        # Connected and migrated here rather than left to the startup lifecycle
+        # (which does both, idempotently) so the admin seed below has a schema
+        # to write into before anything can accept a connection.
+        # Held so teardown can close it on the paths the application lifespan
+        # never owns it: a boot that fails before ``create_app``, or one whose
+        # lifespan never started. An open handle also blocks the scratch tree's
+        # removal on Windows, so the leak would show up as a stranded database.
+        persistence = SQLitePersistenceBackend(
+            SQLiteConfig(path=str(self._config.scratch_dir / _SCRATCH_DB_NAME))
+        )
+        self._persistence = persistence
+        await persistence.connect()
+        await persistence.migrate()
+        await self._seed_admin(persistence)
+        self._app = create_app(
+            config=self._config.company_config,
+            overrides=AppOverrides(
+                persistence=persistence,
+                cost_tracker=CostTracker(),
+            ),
+        )
+        await self._serve(self._app)
+        await self._publish_endpoints()
+        logger.info(
+            EVALS_LOOP_AB_HOST_STARTED,
+            port=self._port,
+            gateway_base_url=self.container_gateway_url,
+            mcp_base_url=self.container_mcp_url,
+        )
+
+    async def stop(self) -> None:
+        """Tear the server, the application lifespan and the scratch dir down.
+
+        Idempotent, and safe on every exit path: a matrix that raised, or whose
+        awaiting coroutine was cancelled, must not leave a listening socket, a
+        half-open database or the operator's environment holding this run's
+        throwaway secrets. A graceful shutdown that overruns is reported and
+        then abandoned, because none of that cleanup is contingent on it.
+        """
+        server, sock, serving, port = (
+            self._server,
+            self._socket,
+            self._serving,
+            self._port,
+        )
+        self._server = self._socket = self._serving = None
+        try:
+            if server is not None and serving is not None:
+                server.should_exit = True
+                try:
+                    async with asyncio.timeout(_STOP_TIMEOUT_SECONDS):
+                        await serving
+                        if server.started:
+                            await server.shutdown(
+                                sockets=[sock] if sock is not None else None
+                            )
+                except TimeoutError:
+                    logger.warning(
+                        EVALS_LOOP_AB_HOST_STOP_TIMED_OUT,
+                        timeout_seconds=_STOP_TIMEOUT_SECONDS,
+                        port=port,
+                    )
+        finally:
+            if sock is not None:
+                sock.close()
+            persistence, self._persistence = self._persistence, None
+            if persistence is not None:
+                # A no-op once the lifespan shutdown above has closed it, and
+                # the only close there is on a boot that never got that far.
+                await persistence.disconnect()
+            self._app = None
+            self._port = 0
+            self._restore_secrets()
+            _ACTIVE_HOSTS.discard(id(self))
+            await asyncio.to_thread(
+                shutil.rmtree, self._config.scratch_dir, ignore_errors=True
+            )
+            logger.info(EVALS_LOOP_AB_HOST_STOPPED, port=port)
+
+    async def _seed_admin(self, persistence: SQLitePersistenceBackend) -> None:
+        """Occupy the single-CEO slot before the host can accept a connection.
+
+        ``POST /auth/setup`` is force-excluded from authentication so a real
+        deployment cannot lock its operator out, and it grants CEO and OWNER to
+        whoever reaches it first while no CEO exists. A fresh scratch database
+        has none, so without this every recording run would offer an
+        unauthenticated route to full control of a process holding the
+        operator's real provider credentials. Seeding one closes that route by
+        its own precondition, independently of which interface is bound.
+
+        Args:
+            persistence: The connected, migrated scratch backend.
+        """
+        auth = AuthService(self._config.company_config.api.auth)
+        # Random and never disclosed: this account exists to be present, not to
+        # be logged in as, and the run needs no human at the console.
+        password_hash = await auth.hash_password(
+            secrets.token_urlsafe(_SEED_PASSWORD_BYTES)
+        )
+        now = datetime.now(UTC)
+        await persistence.users.save(
+            User(
+                id=str(uuid.uuid4()),
+                username=_SEED_ADMIN_USERNAME,
+                password_hash=password_hash,
+                role=HumanRole.CEO,
+                must_change_password=False,
+                org_roles=(OrgRole.OWNER,),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        logger.info(EVALS_LOOP_AB_HOST_ADMIN_SEEDED, username=_SEED_ADMIN_USERNAME)
+
+    def _install_ephemeral_secrets(self) -> None:
+        """Give the throwaway instance its own Cat-3 bootstrap secrets.
+
+        The Fernet-shaped keys matter beyond satisfying a validator: supplying
+        them selects the encrypted secret and settings backends rather than the
+        unencrypted fallbacks, so whatever this instance does write at rest is
+        encrypted under a key that dies with the process.
+        """
+        self._prior_secrets = {
+            var: os.environ.get(var)
+            for var in (*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS)
+        }
+        for var in _OPAQUE_SECRET_VARS:
+            os.environ[var] = secrets.token_urlsafe(_SECRET_BYTES)
+        for var in _FERNET_KEY_VARS:
+            os.environ[var] = base64.urlsafe_b64encode(
+                secrets.token_bytes(_SECRET_BYTES)
+            ).decode("ascii")
+        logger.debug(
+            EVALS_LOOP_AB_HOST_SECRETS_INSTALLED,
+            variables=(*_OPAQUE_SECRET_VARS, *_FERNET_KEY_VARS),
+        )
+
+    def _restore_secrets(self) -> None:
+        """Put the caller's environment back the way the host found it."""
+        for var, prior in self._prior_secrets.items():
+            if prior is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = prior
+        self._prior_secrets = {}
+
+    async def _serve(self, app: Litestar) -> None:
+        """Bind the socket and run the application's lifespan + serving loop.
+
+        Driven a phase at a time rather than through ``Server.serve()`` for two
+        reasons. ``serve()`` installs its own signal handlers, which would turn
+        a Ctrl-C during a long real-spend matrix into a quiet server stop
+        instead of an interrupt the recorder sees. And awaiting ``startup()``
+        directly means the endpoints are published only once the app is
+        genuinely accepting, with no polling for a flag. The socket is bound
+        first so an ephemeral port is knowable before anything serves on it.
+        """
+        config = uvicorn.Config(
+            app,
+            host=await resolve_bind_host(self._config.bind_host),
+            port=self._config.bind_port,
+            lifespan="on",
+            # The application installs its own structlog pipeline at import;
+            # letting uvicorn call dictConfig would replace its sinks.
+            log_config=None,
+        )
+        if not config.loaded:
+            config.load()
+        server = uvicorn.Server(config)
+        server.lifespan = config.lifespan_class(config)
+        sock = config.bind_socket()
+        self._socket = sock
+        self._port = sock.getsockname()[1]
+        # Raises SystemExit when the application's lifespan startup fails, so a
+        # host that could not boot never reports a port it is not serving on.
+        await server.startup(sockets=[sock])
+        self._server = server
+        self._serving = asyncio.create_task(server.main_loop())
+
+    async def _publish_endpoints(self) -> None:
+        """Write the endpoint settings the loop wiring reads.
+
+        These go to the database tier, which outranks the environment and the
+        code default, because the wiring resolves them through the settings
+        resolver rather than from this object. Neither carries a write
+        guardrail: the surfaces they address ship enabled already, so nothing
+        here weakens a posture an operator chose.
+        """
+        settings = settings_service_of(self.app_state)
+        await settings.set("providers", "gateway_base_url", self.container_gateway_url)
+        await settings.set("tools", "credentialed_mcp_base_url", self.container_mcp_url)
+        if self._config.openhands_image is not None:
+            await settings.set("tools", "openhands_image", self._config.openhands_image)
+
+
+__all__ = [
+    "DEFAULT_CONTAINER_HOST",
+    "LoopAbGatewayHost",
+    "LoopAbHostConfig",
+]

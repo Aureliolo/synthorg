@@ -7,6 +7,7 @@ the sandbox it builds unguarded, so these drive the function itself.
 """
 
 import functools
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -14,6 +15,8 @@ import pytest
 from synthorg.api.gateway.state import GatewayStateSlice
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.engine.openhands.config import OpenHandsLoopDeps
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
@@ -174,6 +177,57 @@ class TestSignerRotationRace:
         assert await build_openhands_loop_deps_or_none(app_state) is None
 
 
+def _resolved(path: Path) -> Path:
+    """Resolve *path* outside an async frame, where the linter allows the call.
+
+    Returns:
+        The resolved path.
+    """
+    return path.resolve()
+
+
+def _bound_sandbox(deps: OpenHandsLoopDeps) -> DockerSandbox:
+    """Reach the sandbox the conversation factory was partial'd over.
+
+    Returns:
+        The :class:`DockerSandbox` that actually reaches Docker and the sidecar.
+    """
+    factory = cast("functools.partial[object]", deps.build_conversation)
+    return cast("DockerSandbox", factory.args[0])
+
+
+class TestWorkspaceRoot:
+    async def test_defaults_to_the_deployment_agent_workspace(self) -> None:
+        app_state = _app_state(signer=_signer())
+
+        deps = await build_openhands_loop_deps_or_none(app_state)
+
+        assert deps is not None
+        assert _bound_sandbox(deps).workspace == agent_workspace_root_of(app_state)
+
+    async def test_override_binds_the_supplied_root(self, tmp_path: Path) -> None:
+        # The A/B harness runs each cell against its own recreated workspace, so
+        # it supplies the root per run rather than standing up a second sandbox
+        # builder that would have to re-derive the egress pin.
+        deps = await build_openhands_loop_deps_or_none(
+            _app_state(signer=_signer()), workspace_root=tmp_path
+        )
+
+        assert deps is not None
+        assert _bound_sandbox(deps).workspace == _resolved(tmp_path)
+
+    async def test_override_keeps_the_egress_pin(self, tmp_path: Path) -> None:
+        # A per-run root must not become a second, unpinned wiring path.
+        deps = await build_openhands_loop_deps_or_none(
+            _app_state(signer=_signer()), workspace_root=tmp_path
+        )
+
+        assert deps is not None
+        assert _bound_sandbox(deps).config.allowed_hosts == (
+            "host.docker.internal:3001",
+        )
+
+
 class TestSandboxEgress:
     async def test_sandbox_carries_the_alias_and_both_layers_of_pinning(
         self,
@@ -183,9 +237,7 @@ class TestSandboxEgress:
         assert deps is not None
         # build_conversation is a partial over the sandbox; its config is what
         # actually reaches Docker and the sidecar.
-        factory = cast("functools.partial[object]", deps.build_conversation)
-        sandbox = cast("DockerSandbox", factory.args[0])
-        config = sandbox._config
+        config = _bound_sandbox(deps).config
 
         assert config.extra_hosts == _HOST_GATEWAY_ALIAS
         assert config.allowed_hosts == ("host.docker.internal:3001",)

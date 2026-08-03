@@ -235,14 +235,25 @@ pause-and-retry rather than a terminal error.
 result (not a transport error); an unknown method is `-32601`; malformed
 params are `-32602`. Batch requests are supported.
 
+The host-side context is **opened lazily**, only for `tools/call`, and cached
+per request. It has to be: it requires a configured forge and chat connection,
+which a deployment that has wired neither cannot supply, and the embedded
+harness must complete `initialize` before it can construct its agent at all. The
+handshake therefore answers on a stock deployment while remaining unable to
+reach a credentialed tool, which is the same posture the empty default
+capability grant already produces. The per-family enable flags are resolved
+separately, because they gate `tools/list` as well.
+
 ## Settings
 
-Under the `tools` namespace, off by default, hot-reloadable:
-`credentialed_mcp_enabled`, `credentialed_mcp_capabilities` (the
-comma-separated default capability grant), and `credentialed_mcp_base_url`
-(the sandbox-reachable base URL the harness connects to, e.g.
-`http://host.internal:8000/api/v1/mcp-gateway`; the runtime appends
-`/mcp`). It reuses the existing forge/chat connection, timeout, and
+Under the `tools` namespace, hot-reloadable: `credentialed_mcp_enabled`,
+`credentialed_mcp_capabilities` (the comma-separated default capability grant),
+and `credentialed_mcp_base_url` (the sandbox-reachable base URL the harness
+connects to, e.g. `http://host.internal:8000/api/v1/mcp-gateway`; the runtime
+appends `/mcp`). The endpoint itself is **on** by default, because a bundled
+harness attaches it unconditionally and cannot build its agent without one; the
+grant and the base URL are both blank, so serving it reaches no tool until an
+operator names one. It reuses the existing forge/chat connection, timeout, and
 read-limit settings, and the deploy family adds `deploy_tools_enabled`,
 `deploy_tools_targets`, `deploy_tools_timeout_seconds` and
 `deploy_tools_max_log_chars`. The publish family adds `publish_tools_enabled`,

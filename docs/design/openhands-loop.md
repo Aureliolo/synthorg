@@ -129,9 +129,13 @@ standard streams (no in-container HTTP server):
    `CANCELLED`) and tearing the container down. The gateway additionally
    enforces the authoritative hard token kill server-side.
 5. **Map events to turns**: an action becomes one `TurnRecord`; a message
-   advances conversation state. The container reports a running accumulated
-   cost per event, so the host attributes the per-turn cost delta (the
-   deltas sum to the run total; the gateway is the authoritative cost sink).
+   advances conversation state. The container reports running accumulated cost
+   and token usage per event, so the host attributes the per-turn deltas (which
+   sum to the run totals; the gateway is the authoritative cost sink). The
+   token figures are load-bearing rather than decoration: the
+   [A/B rubric](loop-ab-harness.md) ranks loops on tokens and scores an
+   observed zero as unbeatable, so a run reporting none would win that
+   dimension by reporting nothing at all.
 6. **Completion**: build `ExecutionResult(COMPLETED)`, then apply the
    **exact native NO_OP predicate**: a task with `artifacts_expected` that
    produced no tool calls and is not a resumed run terminates `NO_OP`
@@ -185,6 +189,19 @@ rather than left for an operator to discover:
 - **The CLI treats it like the sidecar**: verified, digest-pinned, pulled,
   updated and pruned whenever the sandbox is enabled, which is also the
   precondition for the Docker socket the backend spawns it through.
+- **The run cannot outlive its own credential.** `tools.openhands_max_runtime_seconds`
+  caps the whole stream by wall clock, not just per-event idleness, because the
+  idle deadline resets on every event and a steadily active run would otherwise
+  keep going past the expiry of the bearer it authenticates with. The wiring
+  fails the loop closed when that cap is not below
+  `providers.gateway_token_ttl_seconds`, so the invariant is a precondition for
+  wiring rather than a mid-run surprise.
+
+Because the entrypoint is baked into the image, a change under
+`docker/openhands/` reaches a deployment only through a rebuild. That matters
+most for the [A/B recorder](loop-ab-harness.md), whose image setting defaults to
+a published tag: a local run without `--openhands-image` measures the previously
+published entrypoint and reports it as a result.
 
 ## Selection
 
@@ -213,8 +230,8 @@ image against a local OpenAI-compatible stub (plus the minimal MCP endpoint the
 agent needs to build at all), with zero provider spend. It serialises the spec
 with the production `_spec_line` and parses every stdout line with the
 production `_parse_event`, so image/adapter drift fails there rather than in a
-live run, and it asserts the spec parse, the event stream, the cost-delta
-arithmetic, termination, and the bearer scrub. It runs inside the
+live run, and it asserts the spec parse, the event stream, the cost-delta and
+token-delta arithmetic, termination, and the bearer scrub. It runs inside the
 `build-openhands` job because that is the only place the freshly built image is
 reachable on a pull request.
 

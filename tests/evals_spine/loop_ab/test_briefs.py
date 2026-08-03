@@ -211,7 +211,7 @@ def _graded(brief: Brief, tmp_path: Path, files: dict[str, str]) -> int:
     """
     work_dir = seed_workspace(
         brief=brief, suite_root=_SUITE, work_root=tmp_path / "work"
-    )
+    ).project_dir
     for relative, body in files.items():
         target = work_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +236,7 @@ def test_every_brief_seeds_a_real_committed_fixture(tmp_path: Path) -> None:
     for brief in load_brief_suite(_SUITE):
         work_dir = seed_workspace(
             brief=brief, suite_root=_SUITE, work_root=tmp_path / brief.brief_id
-        )
+        ).project_dir
 
         assert any(work_dir.iterdir()), f"{brief.brief_id} seeded an empty workspace"
 

@@ -39,14 +39,54 @@ async def _dispatch(
     *,
     capabilities: tuple[str, ...],
     denied: tuple[str, ...] = (),
+    opens: list[str] | None = None,
 ) -> dict[str, object] | None:
+    async def _open() -> CredentialedToolContext:
+        if opens is not None:
+            opens.append("opened")
+        return _ctx()
+
     return await dispatch_mcp(
         message,
-        ctx=_ctx(),
+        open_context=_open,
         agent_id="agent-1",
         capabilities=capabilities,
         denied=denied,
     )
+
+
+async def test_handshake_never_opens_the_credentialed_context() -> None:
+    # A deployment with no forge or chat connection cannot build one, and the
+    # embedded harness cannot construct its agent without completing this
+    # handshake, so opening it here would make the capability unusable by
+    # default on the very deployments that ship it enabled.
+    opens: list[str] = []
+
+    for method in ("initialize", "tools/list"):
+        await _dispatch(
+            {"jsonrpc": "2.0", "id": 1, "method": method},
+            capabilities=("forge:read",),
+            opens=opens,
+        )
+
+    assert opens == []
+
+
+async def test_tools_call_opens_the_credentialed_context() -> None:
+    opens: list[str] = []
+
+    await _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "forge_repo", "arguments": {}},
+        },
+        capabilities=("forge:read",),
+        opens=opens,
+    )
+
+    assert opens == ["opened"]
 
 
 async def test_initialize_advertises_tools() -> None:
