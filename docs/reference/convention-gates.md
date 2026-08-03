@@ -119,6 +119,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_schema_drift.py` | push | `{sqlite,postgres}/schema.sql` + revisions | full | no | `schema_drift_baseline.txt` | keep |
 | `check_schema_drift_revisions.py` | push (sqlite); CI (postgres) | `schema.sql` vs revisions | full | no | none | keep |
 | `check_setting_compose_backed.py` | push | `settings/definitions/` + compose template + worker launch | full | no | none | keep |
+| `check_setting_live_or_compose_set.py` | push | `settings/definitions/` + `src/synthorg/` + `web/src/` | full | no | `setting_live_or_compose_set_baseline.txt` | add |
 | `check_setting_to_startup_trace.py` | push | `settings/definitions/` + lifecycle | full | no | `setting_to_startup_trace_baseline.txt` | keep |
 | `check_settings_namespace_complete.py` | push | `settings/` | full | no | `_settings_namespace_baseline.txt` | harden |
 | `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `.github/scripts/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
@@ -134,7 +135,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->110<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->111<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -156,6 +157,7 @@ Most gates scan `src/synthorg/` only. Those that walk additional trees encode ev
 - `check_frozen_model_extra_forbid.py`: `src/synthorg/` AND `tests/`. The project-wide `extra="forbid"` rule applies equally to test fixtures, so the gate walks both trees in a single pass. The same gate also enforces `allow_inf_nan=False` on every frozen model, but scoped to `src/synthorg/` only (test fixtures are exempt from the inf/nan assertion). The `extra` check auto-exempts `@computed_field`-only models; the `allow_inf_nan` check does not. Per-line opt-outs: `# lint-allow: frozen-extra-forbid -- <reason>` and `# lint-allow: frozen-allow-inf-nan -- <reason>`.
 - `check_persistence_boundary.py`, `check_no_review_origin_in_code.py`, `check_no_migration_framing.py`, `check_docstring_completeness.py`: `src/synthorg/` AND `tests/`.
 - `check_dead_api_endpoints.py`: `src/synthorg/api/` AND `web/src/` (frontend / backend route parity).
+- `check_setting_live_or_compose_set.py`: `src/synthorg/settings/definitions/` (the inventory of writable settings), `src/synthorg/` (live-seam and construction-path evidence), AND `web/src/` (dashboard references). The dashboard tree is load-bearing rather than incidental: a namespace and key quoted together in one non-generated dashboard file is live evidence, because the dashboard re-fetches through `GET /settings`. Dropping `web/src/` would report those settings as unreachable.
 - `check_argument_count_suppression.py`: the whole tree, enumerated with `git ls-files` and parsed directly. Deliberately NOT scoped to what `ruff` walks, since pruning that walk is one of the bypasses it exists to close.
 
 ## PreToolUse hooks (Claude Code + OpenCode)

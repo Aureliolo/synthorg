@@ -1,0 +1,48 @@
+# Frozen baseline of writable settings that reach nothing while the system
+# runs. Each line is `<namespace>.<key>:<kind>`, sorted, where kind is
+# `unreachable` (no seam names the setting) or `construction-only` (the only
+# reads run while the runtime is assembled).
+#
+# scripts/check_setting_live_or_compose_set.py suppresses exactly these
+# entries. A new violation, or a listed setting whose kind changes, fails the
+# pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) with:
+#   uv run python scripts/check_setting_live_or_compose_set.py --update-baseline
+client.human_response_timeout_seconds:unreachable
+cockpit.steering_propose_candidate_limit:construction-only
+coordination.decomposition_agent_cost_ceiling:construction-only
+coordination.decomposition_agent_max_turns:construction-only
+coordination.decomposition_strategy:construction-only
+coordination.leaf_subtask_threshold:construction-only
+coordination.plan_approval_required:construction-only
+coordination.plan_review_panel_cost_ceiling:construction-only
+coordination.plan_review_panel_enabled:construction-only
+coordination.plan_review_panel_max_turns:construction-only
+coordination.plan_review_panel_size:construction-only
+coordination.routing_policy:construction-only
+engine.health_monitoring_enabled:construction-only
+engine.routing_low_confidence_score:unreachable
+external_api.default_max_response_bytes:construction-only
+external_api.default_max_rpm:construction-only
+external_api.default_timeout_seconds:construction-only
+memory.fine_tune_data_volume:construction-only
+memory.fine_tune_max_tasks_per_status:construction-only
+memory.fine_tune_memory_limit:construction-only
+memory.fine_tune_per_agent_memory_limit:construction-only
+memory.fine_tune_query_model:construction-only
+memory.fine_tune_stage_timeout_seconds:construction-only
+providers.gateway_token_ttl_seconds:construction-only
+providers.tier_assignment_overrides:construction-only
+tools.chat_tools_enabled:construction-only
+tools.code_runner_output_tail_limit:construction-only
+tools.forge_tools_enabled:construction-only
+tools.git_command_timeout_seconds:construction-only
+tools.git_log_max_count:construction-only
+tools.mcp_sandbox_cpus:construction-only
+tools.mcp_sandbox_enabled:construction-only
+tools.mcp_sandbox_image:construction-only
+tools.mcp_sandbox_memory_limit:construction-only
+tools.mcp_sandbox_network:construction-only
+tools.mcp_sandbox_pids_limit:construction-only
+tools.web_request_timeout_seconds:construction-only

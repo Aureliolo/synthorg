@@ -522,7 +522,9 @@ async def build_runtime_services(
 _RUNTIME_RELOAD_LOCK = asyncio.Lock()
 
 
-async def reload_runtime_services(app_state: AppState) -> None:
+async def reload_runtime_services(
+    app_state: AppState, *, trigger: str = "unspecified"
+) -> None:
     """Rebuild runtime services and hot-swap them into ``AppState``.
 
     Brings the agent runtime (worker execution service, multi-agent
@@ -543,6 +545,13 @@ async def reload_runtime_services(app_state: AppState) -> None:
     it; the next task picks up the rebuilt one. A failure midway leaves
     ``AppState`` partially swapped, so the partial state is logged; the
     next reload reapplies the full set and heals it.
+
+    Args:
+        app_state: The state to rebuild and swap into.
+        trigger: What prompted this rebuild, for the logs only. Dozens of
+            watched settings, provider setup and an MCP catalog install all
+            land here, so without it a reload line cannot be attributed to
+            what caused it.
 
     Raises:
         Exception: Propagated from ``build_runtime_services`` (or a swap)
@@ -647,12 +656,14 @@ async def reload_runtime_services(app_state: AppState) -> None:
                 app_state.wire(ClientStateSlice, simulation_state=previous_sim_state)
             logger.error(
                 WORKERS_RUNTIME_HOT_SWAP_FAILED,
+                trigger=trigger,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
         logger.info(
             WORKERS_RUNTIME_RELOADED,
+            trigger=trigger,
             coordinator_swapped=services.coordinator is not None,
             pipeline_swapped=services.work_pipeline is not None,
         )

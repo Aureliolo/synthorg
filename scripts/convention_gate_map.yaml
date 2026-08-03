@@ -90,6 +90,15 @@ mandatory_rules:
     file: CLAUDE.md
     header: Compose-Set Or Live
     gate: scripts/check_setting_compose_backed.py
+    # Sibling gate documented in docs/reference/convention-gates.md but not
+    # independently mapped here (the inventory tracks one primary gate per
+    # MANDATORY paragraph):
+    #
+    #   scripts/check_setting_live_or_compose_set.py
+    #     - the complement of the primary gate: a writable (non-compose_set)
+    #       setting that no subscriber, subsystem, live resolver read or
+    #       dashboard reference reaches is the third category the rule
+    #       abolishes, and fails.
 
   - id: claude-md::subsystem-reconciliation
     file: CLAUDE.md

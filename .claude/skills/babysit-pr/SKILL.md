@@ -76,12 +76,28 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 Run in one Bash batch (parallel `&` then `wait` is fine here, or sequential since each is sub-second):
 
 ```bash
-gh pr view N --json state,headRefOid,statusCheckRollup,reviewDecision,mergeable,mergedAt,headRefName
+# ONE snapshot, captured once and destructured. Every later value comes
+# out of `$PR_JSON`, never from a fresh `gh pr view`: a PR is live, so
+# separate calls observe separate moments, and a head that moves between
+# them yields a `HEAD_SHA` and a `headRefName` describing different
+# states of the branch. Phase 10 builds a refspec and a lease out of
+# exactly those two, so an inconsistent pair is not a cosmetic problem.
+PR_JSON="$(gh pr view N --json state,headRefOid,statusCheckRollup,reviewDecision,mergeable,mergedAt,headRefName,baseRefName,baseRefOid,headRepositoryOwner,headRepository)"
+HEAD_SHA="$(printf '%s' "$PR_JSON" | jq -r .headRefOid)"
+HEAD_BRANCH="$(printf '%s' "$PR_JSON" | jq -r .headRefName)"
+BASE_REF="$(printf '%s' "$PR_JSON" | jq -r .baseRefName)"
+BASE_SHA="$(printf '%s' "$PR_JSON" | jq -r .baseRefOid)"
+# The repository's default branch, which `gh pr view` does not carry.
+# Phase 4 routes on "does this PR target the default branch", so both
+# halves of that comparison have to be in Phase 1 state: `baseRefName`
+# above, and this. Fetching either later, inside a block that a
+# disabled scanner or an early exit can skip, leaves the stacked-PR row
+# undecidable exactly when it matters.
+DEFAULT_BRANCH="$(gh repo view OWNER/REPO --json defaultBranchRef --jq .defaultBranchRef.name)"
 # Head commit timestamp -- needed by the Phase 3 silent-approval
 # fallback to compare the rolling summary's `updated_at` against the
 # moment the head was pushed.  ``commit.committer.date`` is the
 # canonical "this commit landed on the branch" timestamp.
-HEAD_SHA="$(gh pr view N --json headRefOid --jq .headRefOid)"
 HEAD_COMMIT_TIME="$(gh api "repos/OWNER/REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')"
 # FULL bodies. Never truncate. ``body`` (not ``body | .[0:500]``) is
 # the only acceptable form here -- truncation hides actionable
@@ -101,7 +117,8 @@ gh api repos/OWNER/REPO/issues/N/comments --paginate --jq '[.[] | {id, author: .
 **Security alerts (additional fetches in the same batch):**
 
 ```bash
-HEAD_BRANCH="$(gh pr view N --json headRefName --jq .headRefName)"
+# `HEAD_BRANCH`, `BASE_REF`, `BASE_SHA` and `HEAD_SHA` all come from the
+# single `$PR_JSON` snapshot destructured above; do not re-query them.
 
 # CodeQL + other code-scanning alerts visible on the PR. CodeQL's
 # pull-request workflow attaches alerts to ``refs/pull/<N>/head``,
@@ -125,8 +142,18 @@ gh api "repos/OWNER/REPO/code-scanning/alerts?state=open&ref=refs/pull/$N/head&p
 # returns vulnerabilities introduced by the PR's manifest changes
 # directly. Use this instead so the babysit loop only blocks on
 # vulnerabilities the PR actually introduced or surfaced.
-BASE_REF="$(gh pr view N --json baseRefName --jq .baseRefName)"
-gh api "repos/OWNER/REPO/dependency-graph/compare/$BASE_REF...$HEAD_BRANCH" --paginate \
+# BOTH sides are commit SHAs, not branch names. The head side must be,
+# because this endpoint resolves revisions inside OWNER/REPO and a fork
+# PR's head branch does not exist there: it would 404, or worse, silently
+# resolve a same-named branch that happens to exist in the base repo and
+# report that branch's dependencies as this PR's. The base side is a SHA
+# for a second reason: a ref name goes into a URL path, and a base such as
+# `release/1.2` or one carrying `#` or a space is not a safe path
+# component. Percent-encoding it is the wrong repair -- encoding `/` as
+# `%2F` breaks GitHub's own path matching, and leaving `/` raw still
+# leaves `#` and space broken -- whereas a 40-character hex OID contains
+# nothing that needs encoding at all.
+gh api "repos/OWNER/REPO/dependency-graph/compare/$BASE_SHA...$HEAD_SHA" --paginate \
   --jq '[.[] | select(.vulnerabilities | length > 0) | {package: .name, ecosystem: .ecosystem, manifest: .manifest, change_type, vulnerabilities: [.vulnerabilities[] | {severity, advisory_ghsa_id, advisory_summary}]}]'
 
 # Secret-scanning alerts (repo-wide).
@@ -135,6 +162,13 @@ gh api "repos/OWNER/REPO/secret-scanning/alerts?state=open&per_page=100" --pagin
 ```
 
 If any endpoint returns 404 (feature disabled on the repo) or 403 (insufficient token scope), log a one-line warning in the round summary, set `state.scanners_available[<scanner>] = false`, and continue. The absence of one scanner doesn't halt the loop. Subsequent ticks skip 404'd endpoints by reading `state.scanners_available`.
+
+**But "the scanner is not available here" and "this scan did not run" are different facts, and only the first is safe to continue past.** The two arrive as the same status code: the dependency-graph compare answers 403/404 both when Advanced Security is off for the repository and when it cannot resolve a revision it was handed. Filing the second as "scanner unavailable" converts a scan that never executed into a silent zero-vulnerability result, and the loop then reports the PR clean on evidence it does not have, which is the fail-open this skill exists to refuse.
+
+Disambiguate before deciding, using a fact the status code does not carry: **do the revisions resolve?** Ask `gh api "repos/OWNER/REPO/commits/$BASE_SHA"` and the same for `$HEAD_SHA`.
+
+- Both resolve and the compare still fails: the repository genuinely does not serve this endpoint. Mark the scanner unavailable and continue, as above.
+- Either does not resolve: the compare was handed a revision this repository cannot see, so **no scan happened**. Do NOT mark the scanner unavailable. Record `{round, action: "scan_failed", scanner: "dependabot", detail: <status and the unresolvable OID>}`, and treat it as blocking for Phase 3: a round that could not scan has not shown the PR to be clean, so convergence must not be declared on it.
 
 ## Phase 2: terminal stop conditions (no reschedule)
 
@@ -160,6 +194,7 @@ Convergence holds when ALL true:
   2. **Per-review fallback.** If the summary comment is unavailable (very early PR, or CodeRabbit changed its banner format), accept the older signal: the most recent CodeRabbit review body contains `Actionable comments posted: 0`.
   3. **Silent-approval fallback (last resort).** If the most recent CodeRabbit review's `commit_id` is older than the current head AND the rolling summary comment is also stale (its `updated_at` predates `HEAD_COMMIT_TIME` from the Phase 1 fetch), AND the CodeRabbit `StatusContext` (`__typename: "StatusContext", context: "CodeRabbit"`) for the current head is `state: SUCCESS`, AND no rate-limit / "currently processing" / "I'll be back" markers (as defined in the Phase 4 marker table) were detected on the most recent CodeRabbit-authored item across reviews + issue comments (the same scan set Phase 4 uses) -- treat as silent approval. Used only when neither (1) nor (2) is conclusive.
 - **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts visible on EITHER `ref=refs/heads/$HEAD_BRANCH` OR `ref=refs/pull/$N/head` (CodeQL's PR workflow uses the latter; the branch ref only sees alerts from workflows that run on `push` events), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
+- **Every in-scope scanner actually ran.** A scanner Phase 1 recorded as `scan_failed` blocks convergence until a later tick scans successfully. Zero alerts from a scan that did not execute is not evidence of zero alerts, and this is the one place where treating the two alike would ship an unscanned PR as clean. A scanner marked genuinely unavailable is different and does not block, because "this repository does not serve that endpoint" is a fact about the repository rather than a gap in this round's evidence.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4). **Evaluate this over EVERY review with `id > last_review_id`, not the highest-id review or `reviewDecision` alone:** CodeRabbit posts a `COMMENTED` review (outside-diff findings) immediately followed by an empty `APPROVED` review on the same head, so a max-id-only or `reviewDecision == APPROVED` check reads as "converged" while actionable findings sit unread in the lower-id `COMMENTED` review (see the Phase 6 caution). Open each review body before declaring convergence.
 
 If converged:
@@ -214,7 +249,79 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 | `i'll be back` / `back online` / `try again later` | CodeRabbit deferred review | Ping + sleep |
 | `you've reached your` / `quota` | Quota exhaustion | Ping + sleep |
 
-**Refill-time parsing (mandatory before deciding ping vs. defer).** CodeRabbit's `Review limit reached` body explicitly states the refill ETA: `Refill in <N> minutes (and <M> seconds)?`. Parse this against the rolling-summary comment's `created_at` (or `updated_at` if the comment was edited after the limit was hit) to compute an absolute `refill_at_iso` in UTC. Regex: `/Refill in (?:(\d+) minutes?(?: and (\d+) seconds?)?|(\d+) seconds?)/i` -- accept either "X minutes [and Y seconds]" or bare "Z seconds". If parsing succeeds:
+**Rebase-first (mandatory, runs BEFORE the refill arithmetic below).** A rate-limit marker means the ping path is closed, not that the review path is. CodeRabbit's own limit message names two continuations: an `@coderabbitai review` comment, or "push new commits to this PR". Inside the window the ping is *rejected rather than queued*, and the rejection becomes the newest marker, which resets the perceived refill window and leaves the loop busy but not progressing. A push does not go through the limiter at all: a new head SHA triggers an auto-review.
+
+**Authorisation and blast radius.** The rewrite is confined to the PR branch this loop was invoked on, which the operator named when they started the loop; that invocation is the authorisation. The rule may never rewrite `main` or any base branch, never rewrite a branch other than `state.pr`'s head, and never use bare `--force`. If any of those three is what the situation calls for, stop and ask instead.
+
+So on any rate-limit marker, check for an owed rebase first. Capture each command's status and stderr separately. The `if` wrappers matter: under `set -e` a bare `VAR="$(cmd)"` assignment whose command fails ends the shell before the next line can read `$?`, which is the silent exit this rule exists to prevent.
+
+```bash
+if ! FETCH_ERR="$(git fetch origin "$DEFAULT_BRANCH" 2>&1)"; then FETCH_EXIT=1; else FETCH_EXIT=0; fi
+if ! COUNT_ERR="$(git rev-list --count "HEAD..origin/$DEFAULT_BRANCH" 2>&1)"; then
+  COUNT_EXIT=1
+else
+  COUNT_EXIT=0; BEHIND="$COUNT_ERR"
+fi
+```
+
+**Validate `origin`'s FETCH URL against `state.owner_repo` before running either command.** Step 2 below checks push URLs, which is the wrong half for these two and also happens too late: the fetch and the rebase both run first, and both read from `origin`'s fetch URL, which `remote.<name>.pushurl` leaves free to point at an unrelated repository. Unvalidated, `BEHIND` is then counted against a stranger's branch and the rebase replays this PR's commits onto its history, which the push-URL check cannot catch because by then the damage is in the local branch rather than the destination. Resolve it with `git remote get-url origin` (no `--push`), require it to name `state.owner_repo` in either the SSH or HTTPS form, and on a mismatch record `{round, action: "rate_limit_rebase_wrong_fetch_remote", fetch_url: <url>, expected: state.owner_repo}` and stop the loop.
+
+`DEFAULT_BRANCH` is the Phase 1 value, not a literal `main`. Hardcoding the name reads as correct only while the repository's default happens to be called `main`, and the failure it produces after a rename is the misleading kind: every tick records `ancestry_check_failed` with git's "couldn't find remote ref" text, which sends whoever reads it hunting for a network or credential fault rather than the rename that actually disabled the path. Validate it against the same branch-name pattern step 5 applies to `headRefName` before interpolating, and quote it, since it reaches the command line the same way.
+
+A failed `fetch` leaves the default branch's remote-tracking ref stale and a failed `rev-list` yields no count. Treating either as zero would skip an owed rebase and fall through to the ping path, which is the branch this rule exists to avoid, so a non-zero exit is recorded as `{round, action: "ancestry_check_failed", detail: <the failing command's error>}` and retried on the next tick rather than read as "nothing owed".
+
+**Every command on this path has a defined failure action**, and each says explicitly whether the tick stops or carries the failure forward. A failed precondition, a rebase conflict and a push failure of any kind all STOP the tick: none falls through to the refill arithmetic or the ping, because those would spend a trigger while the worktree sits mid-rebase, the branch sits unpushed, or the loop has just declined to touch a branch it could not identify. A gate failure is the one exception, and it is handled as a finding rather than a stop, because by then the rebase has already rewritten local history that only a push can settle.
+
+| Condition | Action |
+|---|---|
+| `FETCH_EXIT` or `COUNT_EXIT` non-zero | Record `ancestry_check_failed`, ScheduleWakeup, stop the tick. Do **not** infer a count. |
+| `BEHIND` non-zero AND `baseRefName != DEFAULT_BRANCH` (a non-default base), both from the Phase 1 fetch | Do **not** rebase-push for the review: a push onto a non-default base buys no auto-review ([[coderabbit_skips_stacked_pr_auto_review]]), so it would rewrite history for nothing. Fall through to the refill arithmetic and the ping path. |
+| `BEHIND` non-zero, not stacked | Run the rebase sequence below. |
+| `BEHIND` zero | No rebase owed. Fall through to the refill arithmetic below. |
+
+The non-default-base row deliberately tests the base branch and **not** whether the PR is stacked on another PR. Those are different populations: a PR from a feature branch onto a release or maintenance branch is not stacked, yet it is covered here and must be, because CodeRabbit's refusal is worded `Auto reviews are disabled on base/target branches other than the default branch` and so keys on the base alone. Narrowing this to a true stacked-PR predicate would let exactly those maintenance-branch PRs rebase-push for a review that is never coming. The row is named for the condition it tests rather than the case that motivated it, since the case is a strict subset.
+
+Rebase sequence, in order, stopping at the first failure:
+
+1. Check `git status --porcelain` first, and treat a non-zero exit from it the same as dirty output. Tracked staged or unstaged changes mean the tick started on a dirty worktree, which is not a rebase problem: record `{round, action: "rate_limit_rebase_blocked_dirty", detail: <status output or failure>}`, ScheduleWakeup, stop the tick, and do **not** run `git rebase` at all.
+
+   Untracked-only output (`??` lines) is deliberately NOT treated as dirty. This repo carries untracked files as a steady state, so failing closed on them would disable the whole rebase path permanently rather than occasionally. The residual risk is narrow and already covered: a rebase touches untracked files only when a replayed commit would overwrite one, and git refuses the rebase outright in that case, which step 3 catches, aborts and records. So the untracked exception cannot produce a silently wrong result, only a rebase failure that is handled.
+2. **Establish that the local branch IS the PR head, that the PR head is a branch this path is allowed to rewrite, and that this checkout may push to it.** All three checks belong here, before `git rebase`, not before the push: by push time history has already been rewritten, so a failure there strands commits that a failure here costs nothing to avoid. Capture `PRE_REBASE_SHA="$(git rev-parse HEAD)"` in the same step; every failure record from step 3 onward carries it as `pre_rebase_sha`, because it is the one value that makes the rewrite recoverable by hand. Step 2's own failures all precede `git rebase`, so the branch still points at that commit and recording it there would be noise rather than an anchor; the head-identity record below carries the value regardless, as `local_sha`, because there it is the evidence and not the recovery point.
+
+   - **Head identity.** `PRE_REBASE_SHA` must equal the Phase 1 `headRefOid`. If it does not, the local branch and the PR head have diverged, and the direction does not matter: when local is behind, the rebase replays only the commits this checkout happens to have, while the lease still matches the remote it was told to expect, so the push silently destroys whatever landed on the PR in between. That is the one outcome on this path that loses committed work rather than merely failing. Do **not** try to reconcile it automatically; a `git pull` here would be guessing at whose commits win. Record `{round, action: "rate_limit_rebase_head_mismatch", local_sha: PRE_REBASE_SHA, pr_head_sha: headRefOid}` and **stop the loop** without a ScheduleWakeup.
+   - **Branch class.** `headRefName` must be neither `DEFAULT_BRANCH` nor `baseRefName`, both from the Phase 1 fetch. This is what makes the never-rewrite-a-base-branch rule above executable rather than merely declared. Nothing else on this path enforces it: head identity passes for a same-repository PR opened *from* the default branch, and the only thing standing between such a PR and a force push today is the stacked-PR row declining to rebase whenever the base is not the default branch. That row is a rule about CodeRabbit's auto-review behaviour that happens to overlap, and it stops overlapping the moment someone revisits it on its own merits. Record `{round, action: "rate_limit_rebase_protected_branch", head_ref: headRefName, base_ref: baseRefName, default_branch: DEFAULT_BRANCH}` and stop the loop. It sits ahead of the repository check because it is a decision about whether this branch may be rewritten at all, which is settled before any work goes into resolving where to send the result. The guard is deliberately confined to this rewrite path: an ordinary Phase 10 fast-forward onto the PR head is the loop's entire job whatever that branch is called, and the prohibition above is about rewriting history, not about pushing to it.
+   - **Head repository.** Compute `HEAD_REPO` from the Phase 1 `headRepositoryOwner.login` and `headRepository.name`. If it differs from `state.owner_repo` the PR is from a fork, and this checkout has no verified write path into it: record `{round, action: "rate_limit_rebase_fork_head", head_repo: HEAD_REPO}` and stop the loop. When it matches, resolve the destination by enumerating remote **names** with `git remote` and asking each one for **every** push URL it has, using `git remote get-url --push --all <name>`. Three details are load-bearing.
+
+     Do not parse `git remote -v`: it prints a separate row per remote for fetch and for push, so a single correctly-configured remote yields two matching rows and a naive count reads it as ambiguous, stopping the loop on the ordinary case rather than the broken one. Match the **push** URL, never the fetch URL, because `remote.<name>.pushurl` can point somewhere else entirely and the push URL is where this operation lands. And pass `--all`, because a remote may carry several push URLs and `git push <remote>` sends the ref to **all** of them: a remote whose first URL names `HEAD_REPO` can therefore pass a one-URL check while the same command force-pushes to a second, unverified destination.
+
+     So accept a remote only when it has **exactly one** push URL and that URL names `HEAD_REPO` (accept the SSH and HTTPS forms, with or without a `.git` suffix), and require exactly one such remote across the whole enumeration. On zero, several, or a remote carrying multiple push URLs, record `{round, action: "rate_limit_rebase_no_remote", head_repo: HEAD_REPO, candidates: <matching remote names>}` and stop. Carry that URL forward as `verified_push_url`, never the remote name, and push to it in step 5: the name is an indirection through config that can acquire a second destination between this check and the push, while the URL is the thing actually verified. Every later reference to the destination, here and in Phase 10, names `verified_push_url`, because "the remote" is precisely the ambiguity that lets a remote name be substituted back in at the point of use. Never fall back to a bare `git push` on this path; that would resolve the destination through `push.default` and the branch's tracking config, neither of which this loop set or verified, and the operation about to be performed is a force push.
+
+3. `git rebase "origin/$DEFAULT_BRANCH"`. **The moment this succeeds, set `rebase_push_required = true` and carry `headRefOid`, `headRefName`, `verified_push_url` and `PRE_REBASE_SHA` forward.** The trigger is the rewrite, not any later failure: from here on the branch cannot fast-forward, so every route out of this sequence that ends in a push needs the lease, including the two that reach Phase 10 without step 4 ever failing (step 5's sweep finding new feedback, and any other path that folds this round back through Phases 6 to 10). Setting the flag only on the gate failure leaves those routes selecting the ordinary fast-forward, which a rewritten branch refuses. **On failure**, the worktree is left mid-rebase only if the rebase actually started, so run `git rebase --abort` only when rebase state exists (`git rev-parse --verify --quiet REBASE_HEAD`, or a `rebase-merge` / `rebase-apply` directory under `.git`); calling `--abort` without it fails and buries the real error. **Check the abort's own exit status.** If it succeeded, or there was no rebase state to abort, record `{round, action: "rate_limit_rebase_conflict", detail: <stderr>, pre_rebase_sha: PRE_REBASE_SHA}`. If the abort itself failed, the worktree is still mid-rebase: record `{round, action: "rate_limit_rebase_abort_failed", detail: <abort stderr>, pre_rebase_sha: PRE_REBASE_SHA}` instead. The anchor matters most in that second record, where the abort could not put the branch back and only the recorded SHA says where it was. **Either way, do NOT ScheduleWakeup: stop the loop** so a human resolves it. Never leave a rebase in progress across ticks either; the next tick would read a detached HEAD as the branch state.
+
+   The retry decision follows one criterion: **schedule another tick only when the blocker can clear without a decision.** A conflict and an untracked-path collision are deterministic, so the next attempt reproduces them exactly and a timer only manufactures churn while looking like progress. Step 1's dirty worktree is the opposite case and keeps its wakeup, because an operator mid-edit finishes on their own and the next tick legitimately finds a clean tree.
+4. Re-run any gate the newly-merged code could affect. **On failure**, the rebase has already rewritten local history and cannot be aborted, so this does NOT stop the tick: record `{round, action: "rate_limit_rebase_gate_failed", gate: <name>, detail: <output>, pre_rebase_sha: PRE_REBASE_SHA}`, then treat the failure as a finding and fix it through Phases 8 to 10 this round. Because history was rewritten, Phase 10 must push with step 5's explicit lease and destination rather than a plain `git push`, so this step has to hand it the values to do that: the hand-off state step 3 already set (`rebase_push_required` plus `headRefOid`, `headRefName`, `verified_push_url` and `PRE_REBASE_SHA`) is what Phase 10 pushes with. `PRE_REBASE_SHA` is among them because Phase 10's push is governed by step 5's failure rules, every one of which records `pre_rebase_sha`, and a hand-off that omitted it would name records Phase 10 cannot construct. Do **not** ping afterwards, and do not ScheduleWakeup here; the round continues.
+5. **Run the Phase 9b sweep first, then push.** Phase 9b is mandatory before *every* push, and this one is no exception just because the round reached it without fixing anything: the rebase and its gate re-run take minutes, which is exactly the window Phase 9b exists to close, and publishing a rewritten head while a new review, a new alert or a fresh CI failure is already visible ships a known-stale view and guarantees the next tick redoes the round. Run the sweep as written, and if it turns up anything, fold it into this round through Phases 6 to 10 rather than pushing here; Phase 10 then performs the push with `rebase_push_required` set, which is the same lease and destination this step specifies. Push here only when the sweep comes back clean.
+
+   `git push --force-with-lease=<headRefName>:<headRefOid> <verified_push_url> HEAD:refs/heads/<headRefName>` (the rebase rewrote history, which is the one sanctioned case for a force push). Two things are explicit here, for the same reason: a force push resolves nothing by default that this loop has verified.
+
+   - The **lease**, not the bare flag. The bare form compares the remote-tracking ref, which this path never refreshed for the PR branch (the ancestry check above fetches the default branch only), so it can be stale in either direction. The expected OID is `headRefOid` as most recently fetched (the Phase 9b refresh when the push runs from Phase 10, the Phase 1 fetch on this step's own path), the remote head as GitHub reported it this tick, NOT `state.last_head_sha`: the cached value is only what the loop believes it last pushed, and it is exactly wrong in the case the lease exists to catch, where something else moved the branch. If `headRefOid` is empty, stop the tick rather than pushing without a lease.
+   - The **destination**, as `verified_push_url` from step 2 plus a full refspec, never a remote name. `push.default` and the branch's tracking config are ambient state this loop neither set nor checked, and a wrong answer from either sends a force push at a branch nobody asked about; a remote name reintroduces the multi-push-URL fan-out step 2 rejected it for.
+
+   **Validate both interpolated values before building the command, and quote every argument.** `headRefName` and `headRefOid` arrive from a GitHub API response, and a branch name is close to free-form: it may contain spaces, `$`, backticks, `;` and `--`. Interpolating one unquoted into a shell command line is a command-injection surface on the single operation in this skill that can destroy work, and it is reachable by anyone who can open a PR from a branch they named. So require `headRefOid` to match `^[0-9a-f]{40}$` and `headRefName` to match `^[A-Za-z0-9._/-]+$` with no leading `-` and no `..` segment, quote the complete lease, destination and refspec arguments, and stop the tick recording `{round, action: "rate_limit_rebase_unsafe_ref", head_ref: headRefName, pre_rebase_sha: PRE_REBASE_SHA}` if either check fails. That record carries the anchor for the same reason the push failures do, and more urgently: the rebase in step 3 already landed, so the branch is rewritten and this stop leaves it unpushed. The same validation covers the Phase 10 hand-off, which builds the same push from the same two values. An empty `headRefOid` is already a stop, and this is the same rule applied to a value that is present but malformed.
+
+   **On any non-zero exit, stop the loop without a ScheduleWakeup** and record the failure. Handling only the lease rejection would be the more dangerous half-measure: a rejection at least leaves an obvious signal in the reviewer stream, whereas a timeout, an auth failure, a rejected signature or a remote hook refusal leaves the branch looking untouched while local history has already been rewritten, and a loop that treated those as "carry on" would schedule a tick that reads `BEHIND` zero, skip this path, and never push the rewrite at all. Distinguish the two only in what gets recorded, never in whether to stop:
+
+   - **The lease specifically failed**, meaning the remote moved between the Phase 1 fetch and the push. The only signals that establish this are the literal `stale info` that `--force-with-lease` emits, or a re-fetch of the PR head showing an OID other than `headRefOid`. Record `{round, action: "rate_limit_rebase_push_rejected", detail: <stderr>, pre_rebase_sha: PRE_REBASE_SHA}`. Do **not** classify on `rejected` or `non-fast-forward` alone: git prints those for branch protection, a declined pre-receive hook and insufficient permissions just as readily, none of which mean the branch moved, and filing them as a lease rejection sends whoever reads the record hunting for a phantom concurrent push instead of the policy or credential that actually refused.
+   - **Any other non-zero exit**, including a `rejected` with no lease signal: record `{round, action: "rate_limit_rebase_push_failed", exit_code: <code>, detail: <stderr>, pre_rebase_sha: PRE_REBASE_SHA}`.
+
+   Never retry either with a bare `--force`; against a moved remote that discards whatever landed, and against the other failures it changes nothing that caused them. `pre_rebase_sha` is in both records because it is what makes the rewrite recoverable: `git reset --hard <pre_rebase_sha>` restores the branch to the commit it had before this tick touched it. Whether that or the rewrite is the right end state depends on what else moved, which is a human's call, and the loop stops so a human makes it.
+6. On success, capture the pushed SHA (`git rev-parse HEAD`) as `pushed_sha` and append `{round, action: "rate_limit_rebase_push", head_sha: pushed_sha, rebased_onto: <main sha>}`. Do **NOT** also ping: the push already triggers the review, and a ping on top is one trigger more than needed.
+
+   Then **continue into Phase 11 rather than exiting here**, carrying `pushed_sha`. Phase 11 is where the round is counted, the three comment cursors advance, `last_action_at` is stamped and the merge guard is cleared for the new head, and none of that is optional just because this tick reached the push down the rate-limit path instead of the ordinary one. Writing `last_head_sha` here and exiting would record the one field this step happens to know and silently skip the rest, leaving the round uncounted and the merge guard still pinned to the previous head. Let Phase 11 write `last_head_sha` from `pushed_sha` exactly as it does for a Phase 10 push, and schedule the NORMAL `cadence_seconds` there, not the refill window, since a review is now inbound.
+
+This is not a trick played on the limiter. The branch has to be rebased before it can merge, and the `check push rebased` pre-push hook blocks a push from a branch that is behind, so the rebase is work already owed; spending it during the wait buys the review for free and triggers no more reviews than necessary.
+
+**Refill-time parsing (only when no rebase was performed).** This covers both `BEHIND` zero and the stacked-PR row, which has a rebase owed but deliberately does not spend it here. CodeRabbit states the refill ETA in one of two wordings, and both must be matched: `Refill in <N> minutes (and <M> seconds)?` and `Next review available in: <N> minutes`. Parse against the rolling-summary comment's `created_at` (or `updated_at` if the comment was edited after the limit was hit) to compute an absolute `refill_at_iso` in UTC. Regex: `/(?:Refill in|Next review available in:?)\s*\**\s*(?:(\d+)\**\s*minutes?(?:\s*(?:and)?\s*\**(\d+)\**\s*seconds?)?|(\d+)\**\s*seconds?)/i` -- the `\**` sits on BOTH sides of every captured number, because CodeRabbit wraps the value itself (`Refill in **5** minutes`), so allowing the markers only before the digits fails to match the closing pair and drops the whole parse to the ping fallback. If parsing succeeds:
 
 - `refill_at_iso = comment.updated_at + parsed_duration` (treat the comment timestamp as the moment the limit was reported; updated_at handles edits).
 - `seconds_until_refill = refill_at_iso - now()` (clamp negatives to 0).
@@ -377,7 +484,7 @@ The sweep mechanic is uniform. The only thing that varies between rounds is the 
 
 Steps:
 
-1. **Re-fetch reviews / inline comments / issue comments / security alerts AND CI rollup** with the same queries as Phase 1. Use `body` verbatim (no truncation) and no author allowlist; same hard rules as the initial fetch. The CI rollup re-fetch (`gh pr view N --json statusCheckRollup`) is non-negotiable: CI state changes asynchronously while Phase 8 / Phase 9 run, and a check that flipped to `FAILURE` after the Phase 1 snapshot MUST be folded into this round, not the next one. Without this, the loop ships a "fix" while a brand-new CI failure on the same head sits unaddressed -- the very thrash this phase exists to prevent.
+1. **Re-fetch reviews / inline comments / issue comments / security alerts AND the PR metadata (including the CI rollup)** with the same queries as Phase 1. Re-fetch `state`, `headRefOid`, `headRefName` and the head repository alongside `statusCheckRollup`, in the same `gh pr view` call, and carry the refreshed values into Phase 10 rather than the Phase 1 ones. Phase 10 builds a refspec and, on the rebase hand-off, a lease out of exactly those fields, and by the time it runs they are as old as this round's whole fix cycle. **Stop the tick** if `state` is no longer `OPEN` (the PR was merged or closed while fixes were being written, so the push has no destination worth having) or if `headRefOid` no longer matches what this round started from (something else moved the branch, and a lease built from the stale value is the one that quietly destroys it). Record `{round, action: "pre_push_state_changed", observed_state: state, head_sha: headRefOid}`. Use `body` verbatim (no truncation) and no author allowlist; same hard rules as the initial fetch. The CI rollup re-fetch (`gh pr view N --json statusCheckRollup`) is non-negotiable: CI state changes asynchronously while Phase 8 / Phase 9 run, and a check that flipped to `FAILURE` after the Phase 1 snapshot MUST be folded into this round, not the next one. Without this, the loop ships a "fix" while a brand-new CI failure on the same head sits unaddressed -- the very thrash this phase exists to prevent.
 
 2. **Diff against the working set** Phase 7 was triaged from. Compute:
 
@@ -404,16 +511,19 @@ The sweep is read-only -- no API mutations, no commits, no pushes -- so it only 
 
 1. `git add -A`
 2. Commit with message `fix: babysit round R, M findings (X coderabbit, Y ci)` plus a body listing the fixed items.
-3. `git push` (no `-u`; branch already tracks).
+3. Push, in one of two forms, and on success capture `pushed_sha = git rev-parse HEAD` for Phase 11 either way. The commit just made is the new PR head, and the `headRefOid` Phase 1 fetched now names the commit before it.
+
+   - **Ordinary case** (`rebase_push_required` unset, which is every round that did not rebase): `git push <verified_push_url> HEAD:refs/heads/<headRefName>`, no `-u` and no force flag, since this is a fast-forward. Resolve both interpolated values here rather than assuming Phase 4 ran, because an ordinary round never enters its rebase sequence: take `headRefName` from the Phase 9b refresh, not the Phase 1 fetch, and validate it against `^[A-Za-z0-9._/-]+$` with no leading `-` and no `..` segment, and resolve `verified_push_url` by **exactly** the procedure in Phase 4 step 2, including its `git remote get-url --push --all` enumeration and its rejection of any remote carrying more than one push URL. That last part matters as much here as under a lease: `git push <remote>` fans the ref out to every push URL the remote has, so a second unverified destination receives this branch whether the push is forced or not. On a failed validation, an ambiguous remote or a multi-URL remote, stop the tick and record it rather than falling back to a bare `git push`. Relying on the branch's tracking config would resolve the destination from ambient state on the one operation whose purpose is to move the PR, and a fast-forward aimed at the wrong branch still lands, it just lands somewhere nobody asked about.
+   - **After any Phase 4 rebase** (`rebase_push_required` set, whether the round arrived here because the gate re-run failed or because step 5's sweep found new feedback): local history was rewritten before these fixes were committed, so a fast-forward is refused and the push must carry step 5's explicit lease and destination, using the `headRefOid`, `headRefName`, `verified_push_url` and `PRE_REBASE_SHA` that step 3 handed over. Every failure rule in step 5 applies unchanged here, including stopping the loop on **any** non-zero exit rather than only a lease rejection.
 4. Hook failures: fix the actual issue, never `--no-verify`, never `--amend`. Create a NEW commit if needed.
 5. **Flaky / intermittent pre-push failures are NOT a retry signal -- they are a root-cause signal.** If a pre-push hook (especially `pytest-unit`) fails with an intermittent / load-dependent crash (Windows xdist "Fatal Python error: Aborted", `[gwN] node down`, a test that hangs under the parallel affected-suite run but passes in isolation, a SIGPIPE / broken-pipe), you MUST diagnose and fix the root cause -- you may NOT simply re-run `git push` on the hope it passes the second time. "It passed on retry" is a workaround that ships a known-flaky suite forward; it is exactly the `feedback_root_cause_only_no_workarounds` violation. Read the full hook log first (`feedback_read_hook_log_before_any_retry`), identify the actual cause (race, resource leak, event-loop starvation, FileLock contention, a kwarg that broke a hand-written mock), and fix THAT. If the root cause is a genuinely hard, pre-existing infra problem you cannot pin from the available evidence, do NOT silently retry-past it: surface the limit to the user via `AskUserQuestion` (dedicated infra investigation vs. proceed) and let them decide. The only thing you may never do is retry the push as if the failure did not happen.
 
 ## Phase 11: update state, schedule next tick
 
-1. Update `state.json`. The variable `headRefOid` here refers to the value fetched in Phase 1 (`gh pr view N --json headRefOid`), the same identifier Phase 3 reads:
+1. Update `state.json`. The variable `headRefOid` here refers to the value fetched in Phase 1 (`gh pr view N --json headRefOid`), the same identifier Phase 3 reads. Where the two differ, `current_head = pushed_sha or headRefOid`: a tick that pushed in Phase 10 moved the head after Phase 1 read it, so `headRefOid` names the commit the round started from, not the one the branch now points at. Recording the stale value would make the next tick read this loop's own push as a new commit from elsewhere, which is the exact condition `new_commits` exists to distinguish.
    - `round += 1`
-   - **If `headRefOid != state.last_head_sha`:** clear `state.last_merge_attempt_headRefOid = ""` so the next time Phase 3 reaches convergence on this branch, the merge guard does not block a fresh attempt against the new head. Without this reset the merge would only ever fire once per babysit lifetime, regardless of how many later commits land. Do this BEFORE updating `last_head_sha` so the comparison is against the previous tick's value.
-   - `last_head_sha = headRefOid`
+   - **If `current_head != state.last_head_sha`:** clear `state.last_merge_attempt_headRefOid = ""` so the next time Phase 3 reaches convergence on this branch, the merge guard does not block a fresh attempt against the new head. Without this reset the merge would only ever fire once per babysit lifetime, regardless of how many later commits land. Do this BEFORE updating `last_head_sha` so the comparison is against the previous tick's value.
+   - `last_head_sha = current_head`
    - `last_review_id = max(review.id, last_review_id)` (same for the two comment streams)
    - `last_action_at = <ISO-now>`
    - Append history `{round, action: "fixed_and_pushed", findings: M, sources: {...}}`
@@ -422,11 +532,17 @@ The sweep is read-only -- no API mutations, no commits, no pushes -- so it only 
    - On "continue": apply the user's new cap, reschedule.
    - On "stop": write state and exit (no reschedule).
    - On "raise cap": apply the new value (Other -> integer), reschedule.
-3. **Reschedule:**
+3. **Reschedule.** Decide the delay first, then make exactly ONE `ScheduleWakeup` call with it. The two steps are ordered, not alternative: a tick that scheduled the cadence and then scheduled again on discovering a refusal would fire twice.
+
+   **3a. Check whether the push was refused.** A new head normally auto-triggers a review, but CodeRabbit answers a push made inside a rate-limit window by re-stamping the rolling summary for the new range with `Review limit reached` and an ETA, exactly as it answers a ping. That refusal lands seconds after the push, so this phase is where it is visible and Phase 4 will not run again until the next tick. Re-read the rolling summary, and treat it as a refusal only when it carries a limit marker AND names the range this push created (the `<BASE_SHA>` to `<HEAD_SHA>` block whose head token equals `current_head`); a marker naming an older range is the previous refusal, not this one.
+
+   **3b. Select the delay.** On a refusal, parse the ETA with the Phase 4 regex and take `max(cadence_seconds, seconds_until_refill + 60)`, recording `refill_at` on the history entry. Otherwise take `cadence_seconds`. Without this the loop sleeps a cadence chosen before the ETA existed, wakes to a window that has not opened, and defers; the ping then waits for whichever later tick happens to land past refill, which in practice ran an hour past the window while every intervening tick looked busy. The Phase 4 deferral branch already schedules to refill; a refusal discovered after a push is the same fact arriving through a different door and gets the same treatment.
+
+   **3c. Schedule, once**, passing the delay chosen in 3b:
 
    ```text
    ScheduleWakeup({
-     delaySeconds: state.cadence_seconds,
+     delaySeconds: <the delay selected in 3b>,
      prompt: "/babysit-pr <PR>",
      reason: "round R pushed M fixes; next tick checks for CodeRabbit re-review + CI"
    })
@@ -524,7 +640,7 @@ Log every dismissal in the round-history entry: `{round, action: "stale_review_d
 - **Never `durable: true`** on any cron primitive. Session-only. (`feedback_no_cloud_schedule.md`.)
 - **Never offer cloud `/schedule`.** Default `/loop`-style scheduling is `ScheduleWakeup`. (`feedback_no_cloud_schedule.md`.)
 - **Never `--no-verify`, never `--amend`.** Hook failures get fixed in a NEW commit, never bypassed.
-- **Never `--force` / `--force-with-lease`** unless the immediately-prior step actually rewrote history. This skill never rewrites history.
+- **Never bare `--force`, anywhere.** The rate-limit rebase in Phase 4 is the only step that rewrites history. Exactly two pushes may therefore carry a force flag, both using the explicit lease and destination Phase 4 step 5 specifies: that step itself, and the Phase 10 push of a round the rebase handed off with `rebase_push_required` set. Every other push in this skill is a fast-forward and takes no force flag at all; if one appears to need it, history was rewritten somewhere it should not have been, and that is the thing to fix.
 - **Never push when local verification (Phase 9) failed.** Hold the work, fix the failure first.
 - **NEVER use `cd` in Bash commands.** Use `go -C cli`, `npm --prefix web`, absolute paths, or `bash -c "cd <dir> && <cmd>"` for tools without a `-C` equivalent. (Project bash hook enforces this.)
 - **Always `uv run python -m pytest`** (not bare `pytest`) on Windows; the bare form has path issues.

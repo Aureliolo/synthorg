@@ -32,6 +32,66 @@ def _make_subscriber() -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
     return sub, app_state
 
 
+# The complete watched set, asserted whole below and driven through a reload one
+# pair at a time. It has to be complete rather than a sample: a subset cannot
+# catch a key added to _WATCHED that no rebuild test exercises, which is how a
+# key ends up watched and applied to nothing.
+_EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
+    ("coordination", "decomposition_model"),
+    ("coordination", "enable_coordination_middleware"),
+    ("design", "image_generation_enabled"),
+    ("design", "image_model"),
+    ("engine", "auto_review_on_completion"),
+    ("engine", "clarification_enabled"),
+    ("engine", "classification_detector_timeout_seconds"),
+    ("engine", "classifier_fallback_confidence"),
+    ("engine", "classifier_rule_matched_confidence"),
+    ("engine", "completion_oracle_enabled"),
+    ("engine", "completion_oracle_min_stakes"),
+    ("engine", "completion_oracle_reviewer_model_tier"),
+    ("engine", "completion_oracle_shadow_mode"),
+    # The engine holds its AutoLoopConfig frozen for its lifetime, so an edit
+    # to a loop-selection key reaches a task only via a rebuild.
+    ("engine", "default_loop_type"),
+    ("engine", "enable_agent_middleware"),
+    ("engine", "loop_auto_select_enabled"),
+    ("engine", "loop_complexity_overrides"),
+    ("engine", "matcher_min_cloud_tier"),
+    ("engine", "matcher_min_usable_parameters"),
+    ("engine", "matcher_prefer_local"),
+    ("engine", "scoping_enabled"),
+    ("external_api", "enabled"),
+    ("external_api", "provider_type"),
+    ("memory", "backend"),
+    ("memory", "consolidation_interval"),
+    ("memory", "embedder_dims"),
+    ("memory", "embedder_model"),
+    ("memory", "planning_memory_digest_budget"),
+    ("memory", "planning_memory_recall_enabled"),
+    ("memory", "procedural_max_tokens"),
+    ("memory", "procedural_skill_md_directory"),
+    ("memory", "procedural_temperature"),
+    ("providers", "gateway_base_url"),
+    ("tools", "browser_image_pin"),
+    ("tools", "credentialed_mcp_base_url"),
+    ("tools", "desktop_driver"),
+    ("tools", "desktop_image_pin"),
+    ("tools", "desktop_screen_height"),
+    ("tools", "desktop_screen_width"),
+    # ``build_openhands_loop_deps_or_none`` reads each of these inside the
+    # rebuild and then holds the result for the engine's lifetime, so a key
+    # missing here is an operator edit that reaches no run.
+    ("tools", "openhands_enabled"),
+    ("tools", "openhands_idle_timeout_seconds"),
+    ("tools", "openhands_image"),
+    ("tools", "openhands_max_runtime_seconds"),
+    ("tools", "web_search_connection"),
+    ("tools", "web_search_enabled"),
+    ("tools", "web_search_max_results"),
+    ("tools", "web_search_provider"),
+)
+
+
 class TestProtocol:
     def test_isinstance(self) -> None:
         sub, _ = _make_subscriber()
@@ -41,72 +101,25 @@ class TestProtocol:
         sub, _ = _make_subscriber()
         assert sub.subscriber_name == "runtime-reload"
 
-    def test_watched_keys_span_engine_external_api_coordination(self) -> None:
+    def test_watched_set_is_exactly_the_expected_pairs(self) -> None:
+        # Equality, not containment: a subset assertion passes while a newly
+        # watched key sits unexercised by the reload test below.
         sub, _ = _make_subscriber()
-        watched = sub.watched_keys
-        assert ("engine", "matcher_min_usable_parameters") in watched
-        assert ("engine", "matcher_prefer_local") in watched
-        assert ("engine", "matcher_min_cloud_tier") in watched
-        assert ("external_api", "enabled") in watched
-        assert ("coordination", "enable_coordination_middleware") in watched
-        assert ("coordination", "decomposition_model") in watched
-        assert ("design", "image_generation_enabled") in watched
-        assert ("design", "image_model") in watched
+        assert sub.watched_keys == frozenset(_EXPECTED_WATCHED)
 
-    def test_watched_keys_keep_the_two_tool_gates(self) -> None:
-        # The tool gates change the agent toolset, which only a runtime rebuild
-        # can install, so they stay here rather than migrating to the
-        # ask-policy subscriber (which owns the prompt-only keys).
+    def test_ask_policy_keys_are_not_watched(self) -> None:
+        # The prompt-only ask-policy keys belong to the ask-policy subscriber,
+        # which applies them without a rebuild. Their absence from this
+        # subscriber is the assertion, not an omission: watching them here
+        # would rebuild the whole runtime to change a prompt section.
         sub, _ = _make_subscriber()
         watched = sub.watched_keys
-        assert ("engine", "clarification_enabled") in watched
-        assert ("engine", "scoping_enabled") in watched
         assert ("engine", "ask_policy_enabled") not in watched
         assert ("engine", "ask_policy_extra_directives") not in watched
 
-    def test_watched_keys_include_auto_review_and_completion_oracle(self) -> None:
-        sub, _ = _make_subscriber()
-        watched = sub.watched_keys
-        assert ("engine", "auto_review_on_completion") in watched
-        assert ("engine", "completion_oracle_enabled") in watched
-        assert ("engine", "completion_oracle_shadow_mode") in watched
-        assert ("engine", "completion_oracle_min_stakes") in watched
-        assert ("engine", "completion_oracle_reviewer_model_tier") in watched
-
-    def test_watched_keys_cover_every_openhands_deps_input(self) -> None:
-        # ``build_openhands_loop_deps_or_none`` reads each of these inside the
-        # rebuild and then holds the result for the engine's lifetime, so a key
-        # missing here is an operator edit that reaches no run.
-        sub, _ = _make_subscriber()
-        watched = sub.watched_keys
-        assert ("tools", "openhands_enabled") in watched
-        assert ("tools", "openhands_image") in watched
-        assert ("tools", "openhands_idle_timeout_seconds") in watched
-        assert ("tools", "openhands_max_runtime_seconds") in watched
-        assert ("tools", "credentialed_mcp_base_url") in watched
-        assert ("providers", "gateway_base_url") in watched
-
 
 class TestReload:
-    @pytest.mark.parametrize(
-        ("namespace", "key"),
-        [
-            ("engine", "classifier_fallback_confidence"),
-            ("external_api", "provider_type"),
-            ("coordination", "enable_coordination_middleware"),
-            ("coordination", "decomposition_model"),
-            ("design", "image_generation_enabled"),
-            ("design", "image_model"),
-            ("engine", "auto_review_on_completion"),
-            ("engine", "completion_oracle_enabled"),
-            ("engine", "completion_oracle_shadow_mode"),
-            ("engine", "completion_oracle_min_stakes"),
-            ("engine", "completion_oracle_reviewer_model_tier"),
-            ("tools", "openhands_enabled"),
-            ("tools", "credentialed_mcp_base_url"),
-            ("providers", "gateway_base_url"),
-        ],
-    )
+    @pytest.mark.parametrize(("namespace", "key"), _EXPECTED_WATCHED)
     async def test_watched_change_triggers_reload(
         self, monkeypatch: pytest.MonkeyPatch, namespace: str, key: str
     ) -> None:
@@ -114,7 +127,9 @@ class TestReload:
         monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
         sub, app_state = _make_subscriber()
         await sub.on_settings_changed(namespace, key)
-        spy.assert_awaited_once_with(app_state)
+        # The trigger names the key, so a reload line can be attributed to the
+        # write that caused it rather than to one of the other watched pairs.
+        spy.assert_awaited_once_with(app_state, trigger=f"setting:{namespace}.{key}")
 
     async def test_unknown_key_does_not_reload(
         self, monkeypatch: pytest.MonkeyPatch

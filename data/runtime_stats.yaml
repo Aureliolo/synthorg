@@ -16,8 +16,8 @@ stats:
     raw: 28
     display: '28'
   convention_gates:
-    raw: 110
-    display: '110'
+    raw: 111
+    display: '111'
   mcp_tools:
     raw: 247
     display: '247'

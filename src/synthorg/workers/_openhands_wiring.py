@@ -29,7 +29,10 @@ from synthorg.engine.openhands.config import (
 )
 from synthorg.engine.openhands.container_runtime import SandboxStreamer
 from synthorg.observability import get_logger
-from synthorg.observability.events.execution import EXECUTION_LOOP_UNAVAILABLE
+from synthorg.observability.events.execution import (
+    EXECUTION_LOOP_SELECTION_RESOLVED,
+    EXECUTION_LOOP_UNAVAILABLE,
+)
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.state import config_resolver_of
 
@@ -385,10 +388,17 @@ async def build_auto_loop_config_or_none(
     """
     resolver = config_resolver_of(app_state)
     if not await resolver.get_bool("engine", "loop_auto_select_enabled"):
+        logger.debug(EXECUTION_LOOP_SELECTION_RESOLVED, enabled=False)
         return None
     default_loop_type = await resolver.get_str("engine", "default_loop_type")
     overrides = await resolver.get_str("engine", "loop_complexity_overrides")
     rules = _merge_complexity_rules(overrides)
+    logger.debug(
+        EXECUTION_LOOP_SELECTION_RESOLVED,
+        enabled=True,
+        default_loop_type=default_loop_type or "react",
+        rule_count=len(rules),
+    )
     return AutoLoopConfig(
         rules=rules,
         default_loop_type=default_loop_type or "react",

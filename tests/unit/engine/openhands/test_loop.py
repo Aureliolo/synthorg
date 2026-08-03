@@ -1,6 +1,8 @@
 """Unit tests for the OpenHands execution-loop adapter."""
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Final
 
 import pytest
 
@@ -23,6 +25,7 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
+from synthorg.llm.gateway_errors import GatewayTokenInvalidError
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import FakeClock, mock_of
@@ -30,6 +33,9 @@ from tests._shared import FakeClock, mock_of
 pytestmark = pytest.mark.unit
 
 _SECRET = b"o" * 32
+_TTL: Final[int] = 900
+"""A bearer lifetime distinct from the config default, so an assertion on it
+cannot pass by coincidence if the loop stopped reading the config."""
 
 
 class _FakeConversation:
@@ -283,3 +289,45 @@ async def test_spec_binds_gateway_token_and_urls(
     claims = signer.verify(spec.gateway_token)
     assert claims.provider == "example-provider"
     assert claims.model_id == "example-large-001"
+
+
+async def test_bearer_lifetime_comes_from_the_frozen_config(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> None:
+    # ``providers.gateway_token_ttl_seconds`` is resolved once, while the
+    # runtime is assembled, and frozen onto OpenHandsLoopConfig; the loop mints
+    # from that stored value rather than re-reading the setting per run. That is
+    # what makes the key construction-only, so a re-read here would silently
+    # promote it to live and falsify its baseline entry.
+    minted_at = datetime(2026, 1, 1, tzinfo=UTC)
+    captured: dict[str, object] = {}
+    deps = OpenHandsLoopDeps(
+        build_conversation=_factory((_FINISHED,), captured),
+        signer=GatewaySigner(secret=_SECRET, clock=FakeClock(start=minted_at)),
+        gateway_base_url="http://gateway",
+        mcp_base_url="http://mcp",
+        clock=FakeClock(start=minted_at),
+    )
+    ctx = AgentContext.from_identity(
+        _bound(sample_agent_with_personality), task=sample_task_with_criteria
+    )
+    loop = OpenHandsLoop(config=OpenHandsLoopConfig(token_ttl_seconds=_TTL), deps=deps)
+    await loop.execute(context=ctx, provider=mock_of[CompletionProvider]())
+
+    spec = captured["spec"]
+    assert isinstance(spec, OpenHandsRunSpec)
+    # Bracket the configured lifetime: a verifier one second inside it accepts
+    # the bearer, one second past rejects it. Asserting the boundary rather than
+    # a decoded field keeps the check on observable behaviour.
+    inside = GatewaySigner(
+        secret=_SECRET,
+        clock=FakeClock(start=minted_at + timedelta(seconds=_TTL - 1)),
+    )
+    assert inside.verify(spec.gateway_token).model_id == "example-large-001"
+    expired = GatewaySigner(
+        secret=_SECRET,
+        clock=FakeClock(start=minted_at + timedelta(seconds=_TTL + 1)),
+    )
+    with pytest.raises(GatewayTokenInvalidError):
+        expired.verify(spec.gateway_token)

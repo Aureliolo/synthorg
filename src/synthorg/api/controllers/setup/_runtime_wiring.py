@@ -200,7 +200,7 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
             )
 
             _try_wire_cost_dial(app_state)
-        await reload_runtime_services(app_state)
+        await reload_runtime_services(app_state, trigger="setup")
     except MemoryError, RecursionError:
         raise
     except RuntimeServicesBuildError:

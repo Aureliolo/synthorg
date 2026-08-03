@@ -86,7 +86,9 @@ class SimulationsSettingsSubscriber:
             )
             return
         try:
-            await reload_runtime_services(self._app_state)
+            await reload_runtime_services(
+                self._app_state, trigger=f"setting:{namespace}.{key}"
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

@@ -58,7 +58,7 @@ async def _reload_bridge_best_effort(
     )
 
     try:
-        await reload_runtime_services(app_state)
+        await reload_runtime_services(app_state, trigger="mcp-catalog")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

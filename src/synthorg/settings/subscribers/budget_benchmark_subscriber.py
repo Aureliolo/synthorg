@@ -80,7 +80,9 @@ class BudgetBenchmarkProviderSettingsSubscriber:
         prior_analyzer = budget_slice.pareto_analyzer
         try:
             await rebuild_cost_dial_benchmark_provider(self._app_state)
-            await reload_runtime_services(self._app_state)
+            await reload_runtime_services(
+                self._app_state, trigger=f"setting:{namespace}.{key}"
+            )
         except Exception as exc:
             reraise_critical(exc)
             self._app_state.wire(

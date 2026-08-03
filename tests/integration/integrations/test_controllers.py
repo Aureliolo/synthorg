@@ -1074,7 +1074,10 @@ class TestMCPCatalogController:
         from synthorg.api.controllers.mcp_catalog import _reload_bridge_best_effort
         from synthorg.workers import runtime_builder
 
-        async def _boom(_app_state: object) -> None:
+        triggers: list[str] = []
+
+        async def _boom(_app_state: object, *, trigger: str = "") -> None:
+            triggers.append(trigger)
             msg = "rebuild failed"
             raise RuntimeError(msg)
 
@@ -1084,6 +1087,9 @@ class TestMCPCatalogController:
         await _reload_bridge_best_effort(
             make_app_state(), action="install", catalog_entry_id="x"
         )
+        # The default keeps the mock callable if the kwarg is dropped, so the
+        # trigger is asserted rather than merely accepted.
+        assert triggers == ["mcp-catalog"]
 
     async def test_reload_critical_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1091,7 +1097,7 @@ class TestMCPCatalogController:
         from synthorg.api.controllers.mcp_catalog import _reload_bridge_best_effort
         from synthorg.workers import runtime_builder
 
-        async def _oom(_app_state: object) -> None:
+        async def _oom(_app_state: object, *, trigger: str = "") -> None:
             raise MemoryError
 
         monkeypatch.setattr(runtime_builder, "reload_runtime_services", _oom)

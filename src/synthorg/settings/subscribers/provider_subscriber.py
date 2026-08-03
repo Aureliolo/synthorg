@@ -209,12 +209,14 @@ class ProviderSettingsSubscriber:
                     note="cassette became active during rebuild -- skipped swap",
                 )
                 return
-            await self._apply_registry_swap(new_registry, live)
+            await self._apply_registry_swap(
+                new_registry, live, trigger=f"setting:providers.{key}"
+            )
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace="providers",
-                key="retry_max_attempts",
+                key=key,
                 note="provider registry rebuilt, swapped, and runtime reloaded",
             )
         except Exception as exc:
@@ -231,8 +233,15 @@ class ProviderSettingsSubscriber:
         self,
         new_registry: ProviderRegistry,
         previous_registry: ProviderRegistry | None,
+        *,
+        trigger: str,
     ) -> None:
         """Swap in *new_registry* and reload the runtime, rolling back on failure.
+
+        *trigger* names the setting whose write prompted this, so a reload in
+        the log can be traced to the write that caused it; several watched keys
+        rebuild the registry, and a shared constant would make them
+        indistinguishable exactly when one of them is misbehaving.
 
         The slice swap commits before the runtime reload (the running
         ``AgentEngine`` captured the registry at construction, so a slice swap
@@ -252,12 +261,14 @@ class ProviderSettingsSubscriber:
 
         self._app_state.swap_provider_registry(new_registry)
         try:
-            await reload_runtime_services(self._app_state)
+            await reload_runtime_services(self._app_state, trigger=trigger)
         except Exception as reload_exc:
             reraise_critical(reload_exc)
             self._app_state.wire(ProvidersStateSlice, registry=previous_registry)
             try:
-                await reload_runtime_services(self._app_state)
+                await reload_runtime_services(
+                    self._app_state, trigger=f"{trigger}-rollback"
+                )
             except Exception as heal_exc:  # noqa: BLE001
                 reraise_critical(heal_exc)
                 logger.error(

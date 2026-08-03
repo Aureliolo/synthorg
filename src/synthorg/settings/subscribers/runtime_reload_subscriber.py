@@ -85,6 +85,13 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("tools", "openhands_enabled"),
         ("tools", "credentialed_mcp_base_url"),
         ("providers", "gateway_base_url"),
+        # Per-task loop selection is resolved into the frozen AutoLoopConfig
+        # the engine holds for its lifetime, and the per-task resolution reads
+        # that snapshot rather than the resolver, so an edit reaches no task
+        # until the engine is rebuilt.
+        ("engine", "loop_auto_select_enabled"),
+        ("engine", "default_loop_type"),
+        ("engine", "loop_complexity_overrides"),
         # The boot engine captures the memory backend by value, so replacing
         # the backend (which the memory_backend subsystem does on any of
         # these) leaves the engine reading and writing through the instance
@@ -154,7 +161,9 @@ class RuntimeReloadSettingsSubscriber:
         )
 
         try:
-            await reload_runtime_services(self._app_state)
+            await reload_runtime_services(
+                self._app_state, trigger=f"setting:{namespace}.{key}"
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

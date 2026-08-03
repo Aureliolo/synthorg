@@ -77,7 +77,9 @@ class TestRebuild:
         sub, app_state = _make_subscriber()
         await sub.on_settings_changed("budget", "benchmark_provider")
         rebuild.assert_awaited_once_with(app_state)
-        reload.assert_awaited_once_with(app_state)
+        reload.assert_awaited_once_with(
+            app_state, trigger="setting:budget.benchmark_provider"
+        )
         # The reload rebuilds the engine routing strategy against the slice
         # provider, so the rebuild MUST land first; assert the sequence, not
         # just that both fired.

@@ -208,7 +208,11 @@ exactly one env var name per setting.
 5. Consume the value via `ConfigResolver.get_*()` (post-init) or
    `synthorg.settings.bootstrap_resolver.resolve_init_value(...)`
    (pre-init). Direct `os.environ.get` reads in application code
-   outside startup are forbidden.
+   outside startup are forbidden. For a Category-1 setting this step is
+   also what satisfies `check_setting_live_or_compose_set.py`: a read
+   that runs only while the runtime is assembled does not count, so see
+   [The complement is enforced too](#the-complement-is-enforced-too)
+   before wiring one into worker assembly.
 
 ## Bootstrap resolver (pre-`SettingsService` Cat-2 reads)
 
@@ -487,6 +491,69 @@ Everything else is live, through whichever seam its consumer allows:
   memory backend on the spot. See
   [Subsystem Reconciliation](../design/subsystem-reconciliation.md).
 
+### The complement is enforced too
+
+`scripts/check_setting_live_or_compose_set.py` (pre-push + CI) is the sibling
+of the compose-backed gate and asks the opposite question of every writable
+setting: can an operator's write reach anything that is running? A setting that
+nothing reaches accepts the write, shows the new value on the settings page, and
+changes no behaviour. The value is not lost: it is retained and picked up the
+next time the runtime is rebuilt. But nothing about the write schedules that
+rebuild, so it arrives only as a side effect of some unrelated watched key
+firing, or of a restart. An operator therefore cannot tell from the dashboard
+when, or whether, the change has taken effect, which is the third category the
+rule abolishes wearing the first category's clothes.
+
+The gate accepts as evidence any of the seams above, read straight from the
+source tree rather than by importing it:
+
+- a `(namespace, key)` pair in any settings subscriber's `_WATCHED` set;
+- an `enabled_by` entry on a `SubsystemSpec`, or a `settings=` entry on a spec
+  that also declares `rebuild_on_change=True` (see below);
+- a resolver read in any shape the tree uses: a positional `(ns, key)` pair,
+  `namespace=` / `key=` keywords (which is also what a `MirrorField`
+  declaration looks like), a `_resolve_bridge_fields` bundle, a namespace-wide
+  `get_namespace` / `get_page` / `get_all` read, a dotted `"ns.key"` literal, a
+  loop over a literal collection of keys, or a helper that takes the namespace
+  or key as a parameter and is called with a literal;
+- the namespace *and* the key quoted in the same `web/src/` file, outside test
+  files and generated `*.gen.ts` types. The dashboard persists no domain state
+  and re-fetches through `GET /settings`, so a key it reads applies on the next
+  render. Both halves are required because eight settings share the key
+  `enabled`, and matching the key alone would let one unrelated token certify
+  every one of them.
+
+Two things are deliberately *not* evidence. A read inside any module
+`build_runtime_services` reaches runs while the runtime is assembled, and a
+read inside a function a `SubsystemSpec` names as its `activate=` /
+`deactivate=` target runs during activation; both happen once per rebuild. The
+construction path is derived by closing over the `synthorg.workers` imports of
+the module defining `build_runtime_services`, rather than listed, so it does
+not go stale as the assembly grows.
+
+Declaring the key in that subsystem's `settings=` makes the read live again
+**only alongside `rebuild_on_change=True`**. Without the flag the reconciler
+short-circuits on an already-active subsystem, so the write is watched but
+replaces nothing and the value waits for the next fresh wiring: watched is not
+the same as applied. `enabled_by` needs no flag, because the reconciler
+evaluates it on every pass regardless.
+
+The activation analysis follows one import hop (the registry's `_activate_*`
+wrapper to the wiring function it calls) and excludes reads lexically inside
+that function. It matches the function by name rather than tracing calls, so a
+read inside a helper that wiring function calls is not excluded and stays
+live.
+
+There is no per-line opt-out. A marker on this rule would read "this setting is
+writable and reaches nothing, and that is fine", which is the category the rule
+exists to abolish. The three sanctioned exits are: make it live, mark it
+`compose_set` and pass it from the launchers (which the sibling gate then
+checks), or delete it. Pre-existing violations are frozen in
+`scripts/setting_live_or_compose_set_baseline.txt`, one
+`<namespace>.<key>:<kind>` per line, where `kind` distinguishes `unreachable`
+from `construction-only`; a listed setting whose kind changes is a new
+violation, not a covered one.
+
 ### Security toggle write guardrail
 
 `security.enabled`, `audit_enabled`, `post_tool_scanning_enabled`, and
@@ -533,6 +600,17 @@ Either way the guardrail is a live-write control, not an upgrade-time one: a
 deployment that never wrote an explicit row inherits the new default on its
 next boot with no prompt, so a default flip on any of these belongs in the
 release notes.
+
+Seven `tools` keys this guardrail covers are also frozen `construction-only` in
+`scripts/setting_live_or_compose_set_baseline.txt`: `mcp_sandbox_enabled`,
+`mcp_sandbox_network`, `mcp_sandbox_cpus`, `mcp_sandbox_memory_limit`,
+`mcp_sandbox_pids_limit`, `forge_tools_enabled` and `chat_tools_enabled`. The
+combination is worth naming: an operator completes the confirm + reason + actor
+prompt, the write is accepted and the dashboard shows the new value, and the
+sandbox isolation posture stays as it was until the next runtime rebuild. For
+these the gap is a security-posture one rather than a convenience one, so they
+are the priority set for the follow-up that makes each key live, ahead of the
+timeout and limit entries sitting beside them in the baseline.
 
 `integrations.webhook_receipt_retention_days` is governed for a different reason:
 it relaxes no boundary, but **shortening** the window has the next sweep destroy
