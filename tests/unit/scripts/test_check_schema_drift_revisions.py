@@ -194,3 +194,41 @@ class TestUnreadableTriggerAndFunctionNames:
         found = _MODULE._extract_triggers_and_functions(_READABLE_PAIR)
 
         assert set(found) == {"function:touch_widget", "trigger:widget_touched"}
+
+
+class TestParseFailureReachesTheCliBoundary:
+    """Raising is only half of it; the code a caller reads is the other."""
+
+    def test_a_parse_error_becomes_its_own_exit_code(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Uncaught, this leaves through the interpreter's default handler,
+        # which exits 1: the drift code. A caller would then go looking for
+        # a finding list that was never produced.
+        async def _raise(_backend: str, _image: str) -> int:
+            msg = "could not extract a trigger name from: 'CREATE TRIGGER ...'"
+            raise _MODULE.SchemaDriftParseError(msg)
+
+        monkeypatch.setattr(_MODULE, "_main", _raise)
+
+        code = _MODULE.main(["--backend", "sqlite"])
+
+        assert code == _MODULE._PARSE_EXIT_CODE
+        assert code != _MODULE._PROVISION_EXIT_CODE, "a retry would repeat it"
+        assert "PARSE-FAILED" in capsys.readouterr().err
+
+    def test_a_provision_error_keeps_its_own_exit_code(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The retryable branch must stay reachable: one handler swallowing
+        # both would make CI retry a deterministic parse failure three times.
+        async def _raise(_backend: str, _image: str) -> int:
+            msg = "container never came up"
+            raise _MODULE.SchemaDriftProvisionError(msg)
+
+        monkeypatch.setattr(_MODULE, "_main", _raise)
+
+        code = _MODULE.main(["--backend", "sqlite"])
+
+        assert code == _MODULE._PROVISION_EXIT_CODE
+        assert "PROVISION-FAILED" in capsys.readouterr().err

@@ -16,9 +16,11 @@ For one backend at a time:
 
 Exits 0 on parity, non-zero on drift, prints a structured finding list.
 Exit codes: 0 parity, 1 drift, 2 missing input file, 3 the Postgres
-throwaway container could not be provisioned. 3 is split out from 1 so a
+throwaway container could not be provisioned, 4 a trigger or function
+this gate must compare could not be named. 3 is split out from 1 so a
 caller can retry a transient registry / daemon failure without retrying
-a deterministic drift finding.
+a deterministic drift finding; 4 is split out so "nothing was compared"
+never arrives wearing the code that sends a caller to read findings.
 
 Usage::
 
@@ -104,6 +106,17 @@ half of the gate. Pulling the image reaches Docker Hub at job runtime,
 which times out often enough to fail the gate on its own; conflating
 that with a drift finding forces a caller to choose between retrying a
 deterministic failure three times or never retrying a blip at all.
+"""
+
+_PARSE_EXIT_CODE: Final[int] = 4
+"""Exit code for "an object this gate must compare could not be named".
+
+Its own code because the three it would otherwise land on all mislead. It
+is not drift (1): nothing was compared, so a caller sent to read a
+finding list finds none. It is not a missing input file (2): both files
+were there and readable. It is not provisioning (3), which CI retries,
+and this failure is deterministic, so a retry burns the budget to fail
+identically three times.
 """
 
 
@@ -841,6 +854,12 @@ def main(argv: list[str] | None = None) -> int:
         # legible line instead of a Docker traceback a caller must parse.
         print(f"PROVISION-FAILED: {exc}", file=sys.stderr)
         return _PROVISION_EXIT_CODE
+    except SchemaDriftParseError as exc:
+        # Uncaught, this leaves via the interpreter's default handler, which
+        # exits 1: the drift code. A parse failure would then be reported as
+        # drift, with a traceback where the finding list should be.
+        print(f"PARSE-FAILED: {exc}", file=sys.stderr)
+        return _PARSE_EXIT_CODE
 
 
 if __name__ == "__main__":
