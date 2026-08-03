@@ -211,6 +211,16 @@ class LoopAbBindHostUnresolvedError(EvalError):
     )
 
 
+class LoopAbHostConfigInvalidError(EvalError):
+    """Raised when the recording host is configured with a value it cannot bind.
+
+    Caught alongside the other host errors, so a caller wrapping host
+    construction in the eval taxonomy does not have to special-case a builtin.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B recording host config is invalid"
+
+
 class LoopAbHostAlreadyStartedError(EvalError):
     """Raised when a started recording host is started a second time.
 
@@ -277,6 +287,7 @@ __all__ = [
     "LoopAbDockerUnavailableError",
     "LoopAbGatewayUnavailableError",
     "LoopAbHostAlreadyStartedError",
+    "LoopAbHostConfigInvalidError",
     "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
     "LoopAbProviderMissingError",

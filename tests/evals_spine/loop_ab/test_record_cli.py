@@ -26,6 +26,7 @@ from evals.loop_ab.binding import CellBinder
 from evals.loop_ab.host import LoopAbGatewayHost
 from evals.loop_ab.workspace import CellWorkspace
 from evals.runner.execution import EVAL_TASK_PROJECT
+from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from tests.evals_spine.loop_ab.conftest import RECORDING_PROVIDER
 
@@ -87,8 +88,16 @@ class TestToolRegistry:
 
         registry = _build_tool_registry(workspace)
 
-        assert registry is not None
-        assert workspace.project_dir == workspace.root / "projects" / "eval-benchmark"
+        file_tools = [
+            tool
+            for tool in registry.all_tools()
+            if isinstance(tool, BaseFileSystemTool)
+        ]
+        assert file_tools
+        # The tools resolve their root, so compare against a resolved path.
+        assert {tool.workspace_root for tool in file_tools} == {
+            workspace.project_dir.resolve()
+        }
 
     async def test_the_sandbox_binds_the_root_the_project_lives_under(
         self, tmp_path: Path

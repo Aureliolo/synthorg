@@ -15,7 +15,7 @@ that ships enabled. The kill switches are resolved separately because they gate
 
 import asyncio
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, NoReturn
 
 from pydantic import ValidationError
 
@@ -51,11 +51,11 @@ _TOOLS_NS: Final[str] = "tools"
 class _DeploySettings:
     """The per-request deploy-tool settings resolved as one unit.
 
-    ``enabled`` is the defence-in-depth kill switch: when off, the caller
-    denies every deploy tool this request regardless of the capability grant.
+    The family's kill switch is not among them: it gates ``tools/list`` too, so
+    it is read by :func:`_resolve_kill_switches` on its own rather than out of
+    a bundle that only a ``tools/call`` builds.
     """
 
-    enabled: bool
     targets: frozenset[str]
     timeout_seconds: float
     max_log_chars: int
@@ -65,11 +65,9 @@ class _DeploySettings:
 class _PublishSettings:
     """The per-request publish-tool settings resolved as one unit.
 
-    ``enabled`` is the defence-in-depth kill switch: when off, the caller
-    denies every publish tool this request regardless of the capability grant.
+    As with the deploy bundle, the family's kill switch is resolved separately.
     """
 
-    enabled: bool
     targets: frozenset[str]
     timeout_seconds: float
     max_manifest_bytes: int
@@ -111,12 +109,10 @@ async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
     Returns:
         The resolved :class:`_DeploySettings`.
     """
-    enabled = await resolver.get_bool(_TOOLS_NS, "deploy_tools_enabled")
     targets = await resolver.get_str(_TOOLS_NS, "deploy_tools_targets")
     timeout = await resolver.get_float(_TOOLS_NS, "deploy_tools_timeout_seconds")
     max_log_chars = await resolver.get_int(_TOOLS_NS, "deploy_tools_max_log_chars")
     return _DeploySettings(
-        enabled=enabled,
         targets=_parse_targets(targets),
         timeout_seconds=timeout,
         max_log_chars=max_log_chars,
@@ -135,13 +131,11 @@ async def _resolve_publish_settings(resolver: ConfigResolver) -> _PublishSetting
     Returns:
         The resolved :class:`_PublishSettings`.
     """
-    enabled = await resolver.get_bool(_TOOLS_NS, "publish_tools_enabled")
     targets = await resolver.get_str(_TOOLS_NS, "publish_tools_targets")
     timeout = await resolver.get_float(_TOOLS_NS, "publish_tools_timeout_seconds")
     max_manifest = await resolver.get_int(_TOOLS_NS, "publish_tools_max_manifest_bytes")
     max_image = await resolver.get_int(_TOOLS_NS, "publish_tools_max_image_bytes")
     return _PublishSettings(
-        enabled=enabled,
         targets=_parse_targets(targets),
         timeout_seconds=timeout,
         max_manifest_bytes=max_manifest,
@@ -159,9 +153,6 @@ async def _resolve_kill_switches(resolver: ConfigResolver) -> _FamilyKillSwitche
     Returns:
         The deploy / publish kill switches for this request.
     """
-    # These two keys are also read by the per-family settings bundles below.
-    # They cannot disagree within one request: the resolver caches per request,
-    # so both reads see the same value even if an operator writes between them.
     return _FamilyKillSwitches(
         deploy_enabled=await resolver.get_bool(_TOOLS_NS, "deploy_tools_enabled"),
         publish_enabled=await resolver.get_bool(_TOOLS_NS, "publish_tools_enabled"),
@@ -191,29 +182,23 @@ def _context_opener(
     return _open
 
 
-async def _build_context(
-    app_state: AppState, *, agent_id: str, task_id: str | None
-) -> CredentialedToolContext:
-    """Fan out the per-request reads, then assemble the credentialed context.
+async def _gather_context_inputs(
+    app_state: AppState, resolver: ConfigResolver, *, agent_id: str
+) -> _ResolvedContextInputs:
+    """Read every independent per-request input concurrently.
 
-    The independent reads (forge / chat settings, the deploy and publish
-    settings bundles, and the actor lookup) run concurrently under one
-    ``TaskGroup``; :func:`_assemble_context` turns their results into the
-    context. ``agent_id`` / ``task_id`` come from the verified bearer and bind
-    the security context per run.
+    The reads (forge / chat settings, the deploy and publish settings bundles,
+    and the actor lookup) do not depend on one another, so they run under one
+    ``TaskGroup`` and the group's error flattening is handled here.
+
+    Args:
+        app_state: The live application state.
+        resolver: The per-request configuration resolver.
+        agent_id: The caller id from the verified bearer.
 
     Returns:
-        The :class:`CredentialedToolContext` for this request.
-
-    Raises:
-        ServiceUnavailableError: The resolved settings do not describe a usable
-            context. The commonest case is a deployment with no forge or chat
-            connection configured, which the context type refuses at its own
-            boundary: that is a real answer (those tools cannot be served here)
-            but it arrives as a validation error, and letting a bare one escape
-            would surface an unexplained 500 instead of naming what is unset.
+        The awaited reads a context is assembled from.
     """
-    resolver = config_resolver_of(app_state)
     try:
         async with asyncio.TaskGroup() as tg:
             forge_conn = tg.create_task(
@@ -235,22 +220,8 @@ async def _build_context(
             publish = tg.create_task(_resolve_publish_settings(resolver))
             actor = tg.create_task(_resolve_actor(app_state, agent_id=agent_id))
     except ExceptionGroup as eg:
-        # Surface the first underlying error (e.g. a DomainError from a
-        # settings read) so the caller's ``except DomainError`` mapping runs
-        # rather than a raw ExceptionGroup escaping to the generic handler.
-        reraise_critical(eg)
-        if len(eg.exceptions) > 1:
-            # Only the re-raised exception is otherwise logged, so a request
-            # that failed for several independent reasons at once would hide
-            # every cause but one.
-            logger.warning(
-                GATEWAY_DISPATCH_FAILED,
-                surface="mcp-gateway",
-                reason="concurrent_context_build_failures",
-                error_types=[type(exc).__name__ for exc in eg.exceptions],
-            )
-        raise eg.exceptions[0] from eg
-    inputs = _ResolvedContextInputs(
+        _reraise_first(eg)
+    return _ResolvedContextInputs(
         forge_connection=forge_conn.result(),
         chat_connection=chat_conn.result(),
         forge_timeout_seconds=forge_timeout.result(),
@@ -260,6 +231,55 @@ async def _build_context(
         publish_settings=publish.result(),
         actor=actor.result(),
     )
+
+
+def _reraise_first(eg: ExceptionGroup[Exception]) -> NoReturn:
+    """Flatten a context-build group to the one error the caller can map.
+
+    Args:
+        eg: The group the concurrent reads raised.
+
+    Raises:
+        Exception: The group's first member. Surfacing it (e.g. a
+            ``DomainError`` from a settings read) is what lets the caller's
+            ``except DomainError`` mapping run, rather than a raw
+            ``ExceptionGroup`` escaping to the generic handler.
+    """
+    reraise_critical(eg)
+    if len(eg.exceptions) > 1:
+        # Only the re-raised exception is otherwise logged, so a request that
+        # failed for several independent reasons at once would hide every
+        # cause but one.
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="mcp-gateway",
+            reason="concurrent_context_build_failures",
+            error_types=[type(exc).__name__ for exc in eg.exceptions],
+        )
+    raise eg.exceptions[0] from eg
+
+
+async def _build_context(
+    app_state: AppState, *, agent_id: str, task_id: str | None
+) -> CredentialedToolContext:
+    """Fan out the per-request reads, then assemble the credentialed context.
+
+    ``agent_id`` / ``task_id`` come from the verified bearer and bind the
+    security context per run.
+
+    Returns:
+        The :class:`CredentialedToolContext` for this request.
+
+    Raises:
+        ServiceUnavailableError: The resolved settings do not describe a usable
+            context. The commonest case is a deployment with no forge or chat
+            connection configured, which the context type refuses at its own
+            boundary: that is a real answer (those tools cannot be served here)
+            but it arrives as a validation error, and letting a bare one escape
+            would surface an unexplained 500 instead of naming what is unset.
+    """
+    resolver = config_resolver_of(app_state)
+    inputs = await _gather_context_inputs(app_state, resolver, agent_id=agent_id)
     try:
         return _assemble_context(app_state, inputs, agent_id=agent_id, task_id=task_id)
     except ValidationError as exc:

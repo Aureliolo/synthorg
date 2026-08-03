@@ -15,6 +15,7 @@ import pytest
 from synthorg.api.gateway.state import GatewayStateSlice
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.engine.openhands.config import OpenHandsLoopDeps
 from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.settings.resolver import ConfigResolver
@@ -185,13 +186,13 @@ def _resolved(path: Path) -> Path:
     return path.resolve()
 
 
-def _bound_sandbox(deps: object) -> DockerSandbox:
+def _bound_sandbox(deps: OpenHandsLoopDeps) -> DockerSandbox:
     """Reach the sandbox the conversation factory was partial'd over.
 
     Returns:
         The :class:`DockerSandbox` that actually reaches Docker and the sidecar.
     """
-    factory = cast("functools.partial[object]", deps.build_conversation)  # type: ignore[attr-defined]
+    factory = cast("functools.partial[object]", deps.build_conversation)
     return cast("DockerSandbox", factory.args[0])
 
 
@@ -222,7 +223,7 @@ class TestWorkspaceRoot:
         )
 
         assert deps is not None
-        assert _bound_sandbox(deps)._config.allowed_hosts == (
+        assert _bound_sandbox(deps).config.allowed_hosts == (
             "host.docker.internal:3001",
         )
 
@@ -236,7 +237,7 @@ class TestSandboxEgress:
         assert deps is not None
         # build_conversation is a partial over the sandbox; its config is what
         # actually reaches Docker and the sidecar.
-        config = _bound_sandbox(deps)._config
+        config = _bound_sandbox(deps).config
 
         assert config.extra_hosts == _HOST_GATEWAY_ALIAS
         assert config.allowed_hosts == ("host.docker.internal:3001",)

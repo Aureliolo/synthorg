@@ -51,6 +51,7 @@ from litestar import Litestar
 from evals.errors import (
     LoopAbGatewayUnavailableError,
     LoopAbHostAlreadyStartedError,
+    LoopAbHostConfigInvalidError,
 )
 from evals.loop_ab.bind_host import resolve_bind_host
 from synthorg.api.app import create_app
@@ -161,11 +162,12 @@ class LoopAbHostConfig:
         """Reject a port the socket layer could only refuse later.
 
         Raises:
-            ValueError: ``bind_port`` is outside the TCP port range.
+            LoopAbHostConfigInvalidError: ``bind_port`` is outside the TCP port
+                range.
         """
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
-            raise ValueError(msg)
+            raise LoopAbHostConfigInvalidError(msg)
 
 
 class LoopAbGatewayHost:
@@ -184,27 +186,15 @@ class LoopAbGatewayHost:
         self._serving: asyncio.Task[None] | None = None
         self._port: int = 0
         self._prior_secrets: dict[str, str | None] = {}
+        self._persistence: SQLitePersistenceBackend | None = None
 
     async def __aenter__(self) -> Self:
-        """Start the host, unwinding a partial start rather than leaking it.
-
-        A boot that fails midway has already bound a socket and swapped the
-        process environment, and ``__aexit__`` never runs for a ``__aenter__``
-        that raised, so the teardown is driven here instead.
+        """Start the host.
 
         Returns:
             The started host.
         """
-        try:
-            await self.start()
-        except BaseException as exc:
-            logger.warning(
-                EVALS_LOOP_AB_HOST_START_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            await self.stop()
-            raise
+        await self.start()
         return self
 
     async def __aexit__(
@@ -308,6 +298,12 @@ class LoopAbGatewayHost:
     async def start(self) -> None:
         """Boot the application, serve it, and publish its endpoints.
 
+        A boot that fails midway has already claimed the process's one host
+        slot and swapped the process environment, so it unwinds itself rather
+        than leaving either for the next host. The guarantee lives here, not in
+        ``__aenter__``, because a direct caller is owed it just as much and
+        ``__aexit__`` never runs for a ``__aenter__`` that raised.
+
         Raises:
             LoopAbHostAlreadyStartedError: This host, or another in the same
                 process, is already holding the ephemeral bootstrap secrets.
@@ -319,6 +315,19 @@ class LoopAbGatewayHost:
             )
             raise LoopAbHostAlreadyStartedError(msg)
         _ACTIVE_HOSTS.add(id(self))
+        try:
+            await self._boot()
+        except BaseException as exc:
+            logger.warning(
+                EVALS_LOOP_AB_HOST_START_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await self.stop()
+            raise
+
+    async def _boot(self) -> None:
+        """Run the fallible boot sequence the host slot has been claimed for."""
         self._config.scratch_dir.mkdir(
             parents=True, exist_ok=True, mode=_SCRATCH_DIR_MODE
         )
@@ -326,9 +335,14 @@ class LoopAbGatewayHost:
         # Connected and migrated here rather than left to the startup lifecycle
         # (which does both, idempotently) so the admin seed below has a schema
         # to write into before anything can accept a connection.
+        # Held so teardown can close it on the paths the application lifespan
+        # never owns it: a boot that fails before ``create_app``, or one whose
+        # lifespan never started. An open handle also blocks the scratch tree's
+        # removal on Windows, so the leak would show up as a stranded database.
         persistence = SQLitePersistenceBackend(
             SQLiteConfig(path=str(self._config.scratch_dir / _SCRATCH_DB_NAME))
         )
+        self._persistence = persistence
         await persistence.connect()
         await persistence.migrate()
         await self._seed_admin(persistence)
@@ -383,6 +397,11 @@ class LoopAbGatewayHost:
         finally:
             if sock is not None:
                 sock.close()
+            persistence, self._persistence = self._persistence, None
+            if persistence is not None:
+                # A no-op once the lifespan shutdown above has closed it, and
+                # the only close there is on a boot that never got that far.
+                await persistence.disconnect()
             self._app = None
             self._port = 0
             self._restore_secrets()

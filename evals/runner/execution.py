@@ -193,4 +193,4 @@ async def run_brief(
     )
 
 
-__all__ = ["EVAL_TASK_PROJECT", "BriefRunOutcome", "run_brief"]
+__all__ = ["EVAL_TASK_PROJECT", "BriefRunOutcome", "brief_task_id", "run_brief"]

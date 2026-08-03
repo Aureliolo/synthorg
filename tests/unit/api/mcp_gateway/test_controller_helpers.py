@@ -18,6 +18,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.mcp_gateway._request_context import (
     _build_context,
+    _context_opener,
     _parse_targets,
     _resolve_actor,
     _resolve_deploy_settings,
@@ -38,6 +39,7 @@ from synthorg.core.agent import (
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.role import Skill
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.llm.gateway_token import GatewayTokenClaims
 from synthorg.security.audit import AuditLog
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
@@ -149,17 +151,15 @@ async def test_resolve_deploy_settings_parses_the_bundle() -> None:
             enabled=True, targets="prod, staging", timeout=45.0, max_log_chars=10000
         )
     )
-    assert settings.enabled is True
     assert settings.targets == frozenset({"prod", "staging"})
     assert settings.timeout_seconds == 45.0
     assert settings.max_log_chars == 10000
 
 
-async def test_resolve_deploy_settings_carries_the_kill_switch_off() -> None:
+async def test_resolve_deploy_settings_parses_an_empty_allowlist() -> None:
     settings = await _resolve_deploy_settings(
         _resolver(enabled=False, targets="", timeout=30.0, max_log_chars=20000)
     )
-    assert settings.enabled is False
     assert settings.targets == frozenset()
 
 
@@ -175,7 +175,6 @@ async def test_resolve_publish_settings_parses_the_bundle() -> None:
     }
     resolver.get_int.side_effect = lambda _ns, key: caps[key]
     settings = await _resolve_publish_settings(cast("ConfigResolver", resolver))
-    assert settings.enabled is True
     assert settings.targets == frozenset({"prod-images"})
     assert settings.timeout_seconds == 60.0
     assert settings.max_manifest_bytes == 4_000_000
@@ -228,6 +227,33 @@ def _context_app_state(
         audit_log=AuditLog(),
         agent_registry=registry,
     )
+
+
+def _claims() -> GatewayTokenClaims:
+    """Build the verified bearer claims a request's context is bound to.
+
+    Returns:
+        The claims.
+    """
+    return GatewayTokenClaims(
+        execution_id="exec-1",
+        agent_id="agent-1",
+        task_id="task-1",
+        provider="example-provider",
+        model_id="example-medium-001",
+    )
+
+
+async def test_the_context_is_opened_once_per_request() -> None:
+    # A batch carrying several ``tools/call`` messages must broker its
+    # collaborators once: without the cache every message would rebuild the
+    # context, re-resolve the actor and re-broker every connection.
+    opener = _context_opener(_context_app_state(deploy_enabled=True), claims=_claims())
+
+    first = await opener()
+    second = await opener()
+
+    assert first is second
 
 
 class TestBuildContext:

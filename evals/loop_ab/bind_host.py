@@ -23,6 +23,7 @@ Which address is narrow enough depends on how the daemon bridges to the host:
 Anything else fails loud and asks for ``--bind-host`` rather than guessing wide.
 """
 
+import ipaddress
 import sys
 from typing import Final
 
@@ -43,6 +44,9 @@ _BRIDGE_NETWORK: Final[str] = "bridge"
 
 #: Platforms where the daemon runs in a VM that forwards to host loopback.
 _DESKTOP_PLATFORMS: Final[frozenset[str]] = frozenset({"darwin", "win32"})
+
+#: The address family the resolved gateway must belong to.
+_IPV4: Final[int] = 4
 
 
 async def resolve_bind_host(configured: str | None) -> str:
@@ -97,13 +101,33 @@ async def _bridge_gateway() -> str:
         raise LoopAbBindHostUnresolvedError(msg) from exc
     for entry in _ipam_config(detail):
         gateway = entry.get("Gateway")
-        if isinstance(gateway, str) and gateway:
+        if isinstance(gateway, str) and _is_ipv4(gateway):
             return gateway
     msg = (
-        "the Docker bridge network declares no gateway address; "
+        "the Docker bridge network declares no IPv4 gateway address; "
         "pass --bind-host explicitly"
     )
     raise LoopAbBindHostUnresolvedError(msg)
+
+
+def _is_ipv4(address: str) -> bool:
+    """Decide whether *address* is one this host can bind and dial unbracketed.
+
+    A dual-stack bridge declares an IPv6 config entry alongside the IPv4 one,
+    in either order, and every URL built from the result interpolates the
+    address without brackets, so an IPv6 gateway would produce an unparseable
+    authority rather than a listener the sandbox can reach.
+
+    Args:
+        address: The candidate gateway address.
+
+    Returns:
+        Whether it parses as IPv4.
+    """
+    try:
+        return ipaddress.ip_address(address).version == _IPV4
+    except ValueError:
+        return False
 
 
 def _ipam_config(detail: object) -> tuple[dict[str, object], ...]:

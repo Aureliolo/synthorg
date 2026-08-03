@@ -262,7 +262,7 @@ async def _build_engine(
         The configured :class:`AgentEngine`.
 
     Raises:
-        OpenHandsUnavailableError: The loop is openhands and its runtime deps
+        LoopAbOpenHandsUnwiredError: The loop is openhands and its runtime deps
             are not wired.
     """
     openhands_config, openhands_deps = await _openhands_cell(cell, deps)

@@ -45,6 +45,9 @@ _TTL_SECONDS = 600
 #: What the deterministic scripted driver always opens its completion with.
 _SCRIPTED_PREFIX = "Scripted deterministic completion"
 
+#: Marker the injected mid-boot failure carries, so the test matches its own.
+_BOOT_FAILURE = "injected boot failure"
+
 #: The Cat-3 bootstrap secrets the host swaps for throwaway values while it runs.
 _SECRET_VARS = (
     "SYNTHORG_JWT_SECRET",
@@ -80,6 +83,15 @@ def _config(tmp_path: Path, *, scratch: Path | None = None) -> LoopAbHostConfig:
         scratch_dir=scratch if scratch is not None else tmp_path / "host",
         bind_host="127.0.0.1",
     )
+
+
+async def _raise_boot_failure(*_args: object, **_kwargs: object) -> None:
+    """Fail a boot step the way a full disk or a dead socket would.
+
+    Raises:
+        OSError: Always, standing in for whatever the real step could hit.
+    """
+    raise OSError(_BOOT_FAILURE)
 
 
 def _bearer(host: LoopAbGatewayHost) -> str:
@@ -224,7 +236,7 @@ class TestLifecycle:
         assert not scratch.exists()
 
     async def test_stop_is_idempotent(self, tmp_path: Path) -> None:
-        # Teardown runs from ``__aexit__`` and again from ``__aenter__``'s
+        # Teardown runs from ``__aexit__`` and again from ``start()``'s own
         # unwind, so the second call has to be a no-op rather than an error
         # that replaces whatever ended the run.
         started = LoopAbGatewayHost(_config(tmp_path))
@@ -253,6 +265,27 @@ class TestLifecycle:
 
         assert {var: os.environ.get(var) for var in _SECRET_VARS} == before
         assert not scratch.exists()
+
+    async def test_a_boot_that_fails_midway_releases_the_process_slot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The slot and the swapped secrets are claimed before the fallible
+        # steps, so a direct ``start()`` caller that never reaches the context
+        # manager must still get them back, or the next host in the process is
+        # refused and the operator's environment keeps this run's throwaways.
+        before = {var: os.environ.get(var) for var in _SECRET_VARS}
+        failing = LoopAbGatewayHost(_config(tmp_path, scratch=tmp_path / "doomed"))
+        # Patched on the instance, so the recovery host below boots for real.
+        monkeypatch.setattr(failing, "_seed_admin", _raise_boot_failure)
+
+        with pytest.raises(OSError, match=_BOOT_FAILURE):
+            await failing.start()
+
+        assert {var: os.environ.get(var) for var in _SECRET_VARS} == before
+        assert not (tmp_path / "doomed").exists()
+        # Proven by the next host booting at all: the slot is process-global.
+        async with LoopAbGatewayHost(_config(tmp_path)) as recovered:
+            assert recovered.port > 0
 
     async def test_a_second_concurrent_host_is_refused(
         self, tmp_path: Path, host: LoopAbGatewayHost
