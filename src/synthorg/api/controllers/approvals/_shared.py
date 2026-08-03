@@ -1,142 +1,36 @@
 # module-kind: code
-"""Shared DTOs, urgency resolution, and fetch helpers for approvals.
+"""Shared DTOs and fetch helpers for approvals.
 
 Pure helper module consumed by both the approvals query and decision
-controllers: the urgency-threshold resolution (settings-backed with a
-log-once fallback), the urgency-enriched response DTO + its conversion,
-and the approval-store fetch-or-404 helper. No Litestar surface.
+controllers: the urgency-enriched response DTO + its conversion, and the
+approval-store fetch-or-404 helper. No Litestar surface. The thresholds the
+urgency bucketing reads come from :mod:`._urgency`.
 """
 
-import asyncio
-import math
 from datetime import datetime
 from enum import StrEnum
-from typing import Final, Literal, Self
+from typing import Literal, LiteralString, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api.controllers.approvals._urgency import (
+    _URGENCY_CRITICAL_FALLBACK_SECONDS,
+    _URGENCY_HIGH_FALLBACK_SECONDS,
+)
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.artifact import ArtifactType
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_RESOURCE_NOT_FOUND,
-    API_SETTINGS_BACKEND_RECOVERED,
-    API_VALIDATION_FAILED,
-)
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 
 logger = get_logger(__name__)
-
-_URGENCY_CRITICAL_FALLBACK_SECONDS: Final[float] = 3600.0
-_URGENCY_HIGH_FALLBACK_SECONDS: Final[float] = 14400.0
-
-
-_urgency_threshold_fallback_logged: bool = False
-
-
-def _urgency_thresholds_fallback(reason: str) -> tuple[float, float]:
-    """Log the fallback warning once and return the registry defaults.
-
-    Idempotent: only the first transition into the fallback state
-    emits a log line, so a flapping settings backend doesn't spam.
-
-    Returns:
-        Tuple of the declared element types.
-    """
-    global _urgency_threshold_fallback_logged  # noqa: PLW0603
-    if not _urgency_threshold_fallback_logged:
-        logger.warning(
-            API_VALIDATION_FAILED,
-            error=reason,
-            critical_fallback=_URGENCY_CRITICAL_FALLBACK_SECONDS,
-            high_fallback=_URGENCY_HIGH_FALLBACK_SECONDS,
-        )
-        _urgency_threshold_fallback_logged = True
-    return _URGENCY_CRITICAL_FALLBACK_SECONDS, _URGENCY_HIGH_FALLBACK_SECONDS
-
-
-def _validate_urgency_thresholds(
-    critical: float,
-    high: float,
-) -> tuple[float, float]:
-    """Validate resolved thresholds and emit the recovery log on success.
-
-    Thresholds must be non-negative, finite, and ordered
-    (``critical < high``); otherwise the urgency bucketing would
-    misclassify every approval (a ``critical=high=0`` setting would
-    mark everything as ``CRITICAL``).  Invalid values are treated
-    identically to a backend outage so the fallback log fires and
-    recovery is still possible.
-
-    Returns:
-        Tuple of the declared element types.
-    """
-    global _urgency_threshold_fallback_logged  # noqa: PLW0603
-    if (
-        not (math.isfinite(critical) and math.isfinite(high))
-        or critical < 0
-        or high < 0
-        or critical >= high
-    ):
-        return _urgency_thresholds_fallback(
-            "approval urgency thresholds are invalid"
-            " (require 0 <= critical < high, both finite);"
-            " using fallback"
-        )
-    if _urgency_threshold_fallback_logged:
-        logger.info(
-            API_SETTINGS_BACKEND_RECOVERED,
-            setting="approval_urgency_thresholds",
-            critical_seconds=critical,
-            high_seconds=high,
-        )
-        _urgency_threshold_fallback_logged = False
-    return critical, high
-
-
-async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float]:
-    """Read approval urgency thresholds from the settings backend.
-
-    Falls back to the registry defaults (3600s critical / 14400s high)
-    if the settings backend is unavailable.  Per-process log-once so a
-    flapping settings backend does not spam the logs.
-
-    Returns:
-        Tuple of the declared element types.
-
-    Raises:
-        CancelledError: Raised on the corresponding failure path.
-    """
-    if app_state.slice(SettingsStateSlice).config_resolver is None:
-        return _urgency_thresholds_fallback(
-            "no config resolver available; using approval urgency threshold fallbacks"
-        )
-    try:
-        critical = await config_resolver_of(app_state).get_float(
-            SettingNamespace.API.value, "approval_urgency_critical_seconds"
-        )
-        high = await config_resolver_of(app_state).get_float(
-            SettingNamespace.API.value, "approval_urgency_high_seconds"
-        )
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        return _urgency_thresholds_fallback(
-            "failed to resolve approval urgency thresholds;"
-            f" using fallback ({type(exc).__name__})"
-        )
-    return _validate_urgency_thresholds(critical, high)
 
 
 class UrgencyLevel(StrEnum):
@@ -475,12 +369,20 @@ def to_response_without_context(
 async def _get_approval_or_404(
     app_state: AppState,
     approval_id: str,
+    *,
+    missing_message: LiteralString | None = None,
 ) -> ApprovalItem:
     """Fetch an approval item or raise NotFoundError.
 
     Args:
         app_state: Application state containing the approval store.
         approval_id: Approval identifier.
+        missing_message: Fixed 404 text replacing the default, which quotes
+            the caller's identifier back. A door that also 404s an in-range
+            id it refuses (the chat question surface) passes the same
+            constant on both paths so the two are indistinguishable. The
+            structured log still records the real identifier, so the two
+            cases stay distinguishable server-side.
 
     Returns:
         The matching approval item.
@@ -495,4 +397,5 @@ async def _get_approval_or_404(
         identifier=approval_id,
         log_event=API_RESOURCE_NOT_FOUND,
         operation="read",
+        message=missing_message,
     )

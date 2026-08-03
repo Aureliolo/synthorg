@@ -22,6 +22,7 @@ from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
 from tests._shared import as_uuid
 from tests._shared.mock_of import mock_of
 
@@ -53,11 +54,14 @@ def _decided_item() -> ApprovalItem:
 
 
 class _FakeStore:
-    def __init__(self) -> None:
+    def __init__(self, *, first_writer_wins: bool = True) -> None:
         self.saved: ApprovalItem | None = None
         self.restored: ApprovalItem | None = None
+        self._first_writer_wins = first_writer_wins
 
-    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem:
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        if not self._first_writer_wins:
+            return None
         self.saved = item
         return item
 
@@ -71,6 +75,7 @@ def _patch(
     store: _FakeStore,
     *,
     cleared: list[str] | None = None,
+    signalled: list[str] | None = None,
 ) -> list[datetime]:
     """Stub every collaborator except the ordering under test.
 
@@ -85,6 +90,10 @@ def _patch(
     async def _clear(_app_state: object, approval_id: str) -> None:
         if cleared is not None:
             cleared.append(approval_id)
+
+    async def _signal(_app_state: object, approval_id: str, **_kwargs: object) -> None:
+        if signalled is not None:
+            signalled.append(approval_id)
 
     async def _noop_async(*_args: object, **_kwargs: object) -> None:
         return None
@@ -104,7 +113,7 @@ def _patch(
     monkeypatch.setattr(notify_mod, "_log_state_transition_and_metrics", _noop)
     monkeypatch.setattr(notify_mod, "_log_approval_decision", _noop)
     monkeypatch.setattr(notify_mod, "_publish_approval_event", _publish)
-    monkeypatch.setattr(notify_mod, "signal_resume_intent", _noop_async)
+    monkeypatch.setattr(notify_mod, "signal_resume_intent", _signal)
     return recorded_at
 
 
@@ -158,6 +167,45 @@ class TestSaveDecisionAndNotifyOutboxOrdering:
         assert store.saved.decided_at is not None
         assert store.saved.decided_at != _STALE_DECIDED_AT
         assert datetime.now(UTC) - store.saved.decided_at < timedelta(minutes=1)
+
+
+class TestLosingDeciderLeavesTheMarkerAlone:
+    """A concurrent loser must not disturb the winner's crash recovery.
+
+    Two deciders that both read the approval as PENDING both record a marker
+    before the compare-and-swap picks one. Clearing on the losing branch, or
+    letting the loser's later timestamp replace the winner's, would retire the
+    marker standing behind an in-flight resume: the winner then crashes
+    mid-resume and the startup drain has nothing left to finish from.
+    """
+
+    async def test_loss_does_not_clear_the_marker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = _FakeStore(first_writer_wins=False)
+        cleared: list[str] = []
+        signalled: list[str] = []
+        _patch(monkeypatch, store, cleared=cleared, signalled=signalled)
+
+        with pytest.raises(ConflictError):
+            await _save_decision_and_notify(
+                mock_of[AppState](),
+                mock_of[Request](),
+                "ap-1",
+                _decided_item(),
+                approved=True,
+                decided_by="operator-2",
+                decided_by_user_id="user-2",
+                previous_status=ApprovalStatus.PENDING,
+                decision_reason="me too",
+                ws_event=WsEventType.APPROVAL_APPROVED,
+            )
+
+        assert cleared == []
+        # And it dispatches nothing: only the winner resumes the parked run.
+        assert signalled == []
+        assert store.saved is None
+        assert store.restored is None
 
 
 class TestSaveDecisionAndNotifyResumeFailure:

@@ -43,6 +43,31 @@ class TestEngineSettingDefinitions:
         assert defn.default == "true"
         assert defn.group == "Personality Trimming"
 
+    @pytest.mark.parametrize(
+        "key",
+        ["clarification_enabled", "scoping_enabled", "ask_policy_enabled"],
+    )
+    def test_human_ask_toggles_default_on(self, key: str) -> None:
+        """The org asks by default: all three ask toggles ship enabled.
+
+        A run in which the system never asks is the failure this default
+        exists to prevent, so the value is pinned rather than assumed.
+        """
+        defn = get_registry().get("engine", key)
+
+        assert defn is not None
+        assert defn.type == SettingType.BOOLEAN
+        assert defn.default == "true"
+
+    def test_ask_policy_extra_directives_registered(self) -> None:
+        """ask_policy_extra_directives is a JSON setting defaulting to empty."""
+        defn = get_registry().get("engine", "ask_policy_extra_directives")
+
+        assert defn is not None
+        assert defn.type == SettingType.JSON
+        assert defn.default == "[]"
+        assert defn.group == "Ask Policy"
+
     def test_engine_settings_contain_expected_keys(self) -> None:
         """Engine namespace registers the expected personality-trim settings.
 

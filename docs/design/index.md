@@ -236,6 +236,14 @@ Queue: Hiring Queue
     newly-spawned agents adopt it at safe boundaries, redirects force a re-plan,
     and obsolete work is superseded, recorded in the brain with its rationale.
 
+-   [**The Org Asks**](org-questions.md)
+
+    ---
+
+    A standing directive tells every agent to ask rather than guess when a choice
+    is material and hard to reverse; the parked question surfaces in the unified
+    conversation and answering it there resumes the run.
+
 -   [**Semantic Ontology**](ontology.md)
 
     ---

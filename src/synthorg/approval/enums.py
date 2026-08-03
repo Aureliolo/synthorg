@@ -21,6 +21,27 @@ class ApprovalRiskLevel(StrEnum):
     CRITICAL = "critical"
 
 
+class QuestionReversibility(StrEnum):
+    """How reversible the choice behind an agent's question is.
+
+    Declared by the agent on ``request_clarification`` /
+    ``request_project_decision`` and recorded on the resulting
+    ``ApprovalItem`` metadata, so the operator sees at a glance whether an
+    answer is undoable and the chat surface can rank the questions that are.
+
+    It deliberately does not feed ``ApprovalRiskLevel``, which drives autonomy
+    routing and the approval-timeout policy: escalating a hard-to-reverse
+    question there would silently re-route parks that exist today.
+
+    Attributes:
+        REVERSIBLE: Undoing the choice is a quick edit.
+        HARD_TO_REVERSE: Undoing the choice costs real rework.
+    """
+
+    REVERSIBLE = "reversible"
+    HARD_TO_REVERSE = "hard_to_reverse"
+
+
 class ApprovalSource(StrEnum):
     """Origin of an approval item, fixed at creation.
 

@@ -75,7 +75,13 @@ __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 # a pure test dependency and confines the suppression to the call site
 # that needs it.
 create_app = suppress_type_checks(create_app)
-_app_mod.create_app = create_app
+# The module attribute keeps the REAL function's signature, wrapped only for
+# the suppression. This rebinding is process-global and outlives this package's
+# collection, so installing the kwarg-flattening test helper here would change
+# what every other caller in the process is calling: any module that boots the
+# app for its own reasons (the loop A/B recording host) would be handed a
+# different signature depending on which suites were collected alongside it.
+_app_mod.create_app = suppress_type_checks(_app_mod.create_app)
 
 # ── Test auth constants ───────────────────────────────────────
 

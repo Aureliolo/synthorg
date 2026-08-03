@@ -12,7 +12,7 @@ run) marked both as a clarification (so the task moves to
 ``AWAITING_INPUT`` while it waits) and as a decision (so the human's
 choice is recorded as a project-brain DECISION entry on resume). The
 chosen option's writeup rides back in as the decision the parked agent
-continues with, injected by ``ApprovalGate.build_resume_message``.
+continues with, injected by ``build_resume_message``.
 """
 
 import json
@@ -22,8 +22,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.enums import ApprovalRiskLevel, QuestionReversibility
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.questions import DECISION_ACTION_TYPE
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
@@ -36,6 +37,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_FAILED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._question_output_guard import guard_question_text
 
 from .base import BaseTool, ToolExecutionResult
 
@@ -44,7 +46,7 @@ logger = get_logger(__name__)
 #: Action type for a project-decision park. Structurally a
 #: ``category:action`` pair; the actually-emitted successor to the dead
 #: ``arch:decide`` action type.
-_DECISION_ACTION_TYPE: str = "decision:project"
+_DECISION_ACTION_TYPE: Final[str] = DECISION_ACTION_TYPE
 
 #: Every project decision must offer at least two structured options so the
 #: operator always picks by option id rather than approving with no decision.
@@ -52,7 +54,7 @@ _MIN_OPTIONS: Final[int] = 2
 
 #: Bound on the number of options a single decision may present, so a
 #: runaway model cannot flood the human with choices.
-_MAX_OPTIONS: int = 12
+_MAX_OPTIONS: Final[int] = 12
 
 #: Cap for the evidence package's compact ``title`` label, derived from the
 #: (up to 4096-char) question so the title stays a short summary distinct from
@@ -116,6 +118,13 @@ class RequestProjectDecisionArgs(BaseModel):
             "exactly one recommended, unique ids)."
         ),
     )
+    reversibility: QuestionReversibility = Field(
+        description=(
+            "Whether the choice behind this decision is 'reversible' (a quick "
+            "edit undoes it) or 'hard_to_reverse' (undoing it costs real "
+            "rework). Required: judging it is part of deciding to ask."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_options(self) -> Self:
@@ -153,6 +162,42 @@ class RequestProjectDecisionArgs(BaseModel):
             )
             for opt in self.options
         )
+
+
+def _guarded_args(
+    args: RequestProjectDecisionArgs, approved: list[str]
+) -> RequestProjectDecisionArgs:
+    """Rebuild the args from the output-style-approved strings.
+
+    ``approved`` arrives in the order the caller supplied: the question, then
+    every option title, then every option summary. Copied rather than
+    re-validated because a text rewrite touches no invariant the model
+    enforces (option count, the single recommendation, unique ids), and
+    re-validation would turn a rewrite that trips ``NotBlankStr`` into an
+    exception escaping a tool that must return a result.
+
+    Returns:
+        The args with every human-facing string replaced by its approved form.
+    """
+    count = len(args.options)
+    titles = approved[1 : 1 + count]
+    summaries = approved[1 + count :]
+    return args.model_copy(
+        update={
+            "question": NotBlankStr(approved[0]),
+            "options": tuple(
+                option.model_copy(
+                    update={
+                        "title": NotBlankStr(title),
+                        "summary": NotBlankStr(summary),
+                    },
+                )
+                for option, title, summary in zip(
+                    args.options, titles, summaries, strict=True
+                )
+            ),
+        },
+    )
 
 
 class RequestProjectDecisionTool(BaseTool):
@@ -221,33 +266,70 @@ class RequestProjectDecisionTool(BaseTool):
                 RequestProjectDecisionArgs,
             )
         except ValidationError as exc:
-            # Surface which field failed (question, options, or an unexpected
-            # extra) rather than a fixed "question" message that misreports an
-            # options / extra-field error. Uses loc + msg only, never the raw
-            # input value.
-            details = "; ".join(
-                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
-                for err in exc.errors()
-            )
-            return ToolExecutionResult(
-                content=f"Invalid decision arguments: {details}",
-                is_error=True,
-            )
+            return self._invalid_arguments(exc)
 
-        question = args.question.strip()
+        # The question and every option writeup are agent-authored prose a
+        # human reads in the chat transcript, so they pass the same
+        # output-style boundary an inter-agent message does before persisting.
+        blocked, approved = guard_question_text(
+            args.question.strip(),
+            *(opt.title for opt in args.options),
+            *(opt.summary for opt in args.options),
+        )
+        if blocked is not None:
+            return blocked
+        # Everything downstream reads the guarded copy. An AUTO_REWRITE rule
+        # that fixed the question but left the option writeups raw would
+        # persist, resume with and show the operator text the boundary had
+        # already ruled against.
+        guarded = _guarded_args(args, approved)
         approval_id = str(uuid4())
         # One timestamp for the whole decision so the evidence package and the
         # approval item share it. Options are already validated by
         # ``RequestProjectDecisionArgs``'s model validator (rejected at
         # ``parse_typed`` above), so building the evidence cannot fail here.
         now = datetime.now(UTC)
-        evidence = self._build_evidence(approval_id, args, now)
+        evidence = self._build_evidence(approval_id, guarded, now)
 
-        store_error = await self._persist_item(approval_id, args, evidence, now)
+        store_error = await self._persist_item(approval_id, guarded, evidence, now)
         if store_error is not None:
             return store_error
 
-        return self._build_success(approval_id, question, args.options)
+        return self._build_success(
+            approval_id, guarded.question, guarded.options, guarded.reversibility
+        )
+
+    def _invalid_arguments(self, exc: ValidationError) -> ToolExecutionResult:
+        """Report which field failed, without echoing what the agent sent.
+
+        Names the failing field (question, options, or an unexpected extra)
+        rather than a fixed "question" message that would misreport an
+        options error, and uses ``loc`` + ``msg`` only, never the raw value.
+        Logged as well as returned: the error result goes back to the agent,
+        so an agent looping on a malformed call is otherwise invisible to the
+        operator watching the run.
+
+        Returns:
+            The error result handed back to the calling agent.
+        """
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+            for err in exc.errors()
+        )
+        logger.warning(
+            APPROVAL_GATE_ESCALATION_FAILED,
+            agent_id=self._agent_id,
+            action_type=_DECISION_ACTION_TYPE,
+            error_type=type(exc).__name__,
+            invalid_fields=[
+                ".".join(str(part) for part in err["loc"]) for err in exc.errors()
+            ],
+            note="Malformed decision arguments",
+        )
+        return ToolExecutionResult(
+            content=f"Invalid decision arguments: {details}",
+            is_error=True,
+        )
 
     def _build_evidence(
         self, approval_id: str, args: RequestProjectDecisionArgs, now: datetime
@@ -310,6 +392,7 @@ class RequestProjectDecisionTool(BaseTool):
                 "clarification": "true",
                 "decision": "true",
                 "options": json.dumps(option_titles),
+                "reversibility": args.reversibility.value,
             },
         )
         try:
@@ -335,6 +418,7 @@ class RequestProjectDecisionTool(BaseTool):
         approval_id: str,
         question: str,
         options: tuple[DecisionOption, ...],
+        reversibility: QuestionReversibility,
     ) -> ToolExecutionResult:
         """Build the success result with parking + decision metadata.
 
@@ -365,5 +449,6 @@ class RequestProjectDecisionTool(BaseTool):
                 "approval_id": approval_id,
                 "action_type": _DECISION_ACTION_TYPE,
                 "risk_level": ApprovalRiskLevel.LOW.value,
+                "reversibility": reversibility.value,
             },
         )

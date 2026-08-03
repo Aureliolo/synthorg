@@ -398,6 +398,9 @@ class TestEventConstants:
             # Output-style policy: house-style injection + hard-guardrail
             # verdict / rewrite / exemption / shadow events.
             "output_style",
+            # Ask policy: the standing "ask rather than guess" directive's
+            # config / rebind / prompt-injection events.
+            "ask_policy",
             # LLM gateway + credentialed-MCP boundaries for the embedded
             # OpenHands loop: request / budget-kill / injection-suspected /
             # provider-unavailable / dispatch-failed events.

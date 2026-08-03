@@ -404,6 +404,14 @@ jobs:
           PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
           HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
         with:
+          # github-script defaults to zero retries, so one transient
+          # api.github.com 5xx fails the job: a 503 on the comment PATCH
+          # took this check down while the deploy above had already
+          # succeeded. The action's own retry-exempt list is
+          # 400,401,403,404,422, i.e. it is built to retry 5xx and we had
+          # simply never asked. Still fail-closed: a persistent outage
+          # exhausts the three attempts and surfaces the error.
+          retries: 3
           script: |
             const url = process.env.PREVIEW_URL;
             const headSha = process.env.HEAD_SHA;
@@ -463,6 +471,7 @@ jobs:
         continue-on-error: true  # Don't block deployment cleanup if comment deletion fails
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          retries: 3
           script: |
             const marker = '<!-- synthorg-pr-preview -->';
             const comments = await github.paginate(

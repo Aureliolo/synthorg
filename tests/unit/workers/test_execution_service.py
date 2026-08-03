@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from structlog.testing import capture_logs
 
+from synthorg.approval.resume_annotations import DEFAULT_RESUME_ANNOTATIONS
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -25,6 +26,7 @@ from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
+from synthorg.engine.resume_message import build_resume_message
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workspace.project_workspace_service import (
@@ -578,12 +580,7 @@ class _StubGate:
     """Minimal ApprovalGate surface for dispatch_resume tests."""
 
     def __init__(self, resumed: object) -> None:
-        from unittest.mock import MagicMock
-
         self.resume_context = AsyncMock(return_value=resumed)
-        self.build_resume_message = MagicMock(
-            return_value="[SYSTEM: APPROVED]",
-        )
 
 
 class _StubEngine:
@@ -681,19 +678,21 @@ class TestDispatchResume:
         await service.drain_resume_tasks()
 
         gate.resume_context.assert_awaited_once_with("approval-1")
-        gate.build_resume_message.assert_called_once_with(
-            "approval-1",
-            approved=True,
-            decided_by="admin",
-            decision_reason="ship it",
-        )
         engine.resume_parked_run.assert_awaited_once()
         call = engine.resume_parked_run.await_args
         assert call is not None
         kwargs = call.kwargs
         assert kwargs["parked_context"] is ctx
         assert kwargs["approval_id"] == "approval-1"
-        assert kwargs["decision_message"] == "[SYSTEM: APPROVED]"
+        # The real renderer, not a stub: what the agent is handed is the whole
+        # point of the dispatch, so a stub here would assert only the plumbing.
+        assert kwargs["decision_message"] == build_resume_message(
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            decision_reason="ship it",
+            annotations=DEFAULT_RESUME_ANNOTATIONS,
+        )
 
     async def test_dispatch_resumes_taskless_chat_action(self) -> None:
         """A taskless parked context routes to the chat-action resume.
@@ -728,7 +727,13 @@ class TestDispatchResume:
         kwargs = call.kwargs
         assert kwargs["parked_context"] is ctx
         assert kwargs["approval_id"] == "appr-chat-1"
-        assert kwargs["decision_message"] == "[SYSTEM: APPROVED]"
+        assert kwargs["decision_message"] == build_resume_message(
+            "appr-chat-1",
+            approved=True,
+            decided_by="operator-1",
+            decision_reason=None,
+            annotations=DEFAULT_RESUME_ANNOTATIONS,
+        )
 
     async def test_dispatch_no_parked_context_is_noop(self) -> None:
         gate = _StubGate(resumed=None)

@@ -1,3 +1,4 @@
+# module-kind: code
 """Domain error hierarchy for the eval spine.
 
 The eval spine is out-of-package, but it follows the project convention
@@ -165,6 +166,96 @@ class LoopAbProviderMissingError(EvalError):
     )
 
 
+class LoopAbGatewayUnavailableError(EvalError):
+    """Raised when the recorder's hosted gateway did not come up wired.
+
+    The recording host exists so mint and verify are the same
+    :class:`~synthorg.llm.gateway_token.GatewaySigner` instance. A host that
+    booted without one cannot authenticate a single cell, so it fails here
+    rather than recording every row as unavailable for a reason nobody can act
+    on.
+    """
+
+    default_message: ClassVar[str] = (
+        "Loop A/B recording host has no gateway signer to mint run bearers with"
+    )
+
+
+class LoopAbOpenHandsUnwiredError(EvalError):
+    """Raised when the OpenHands loop's runtime is not wired for a cell.
+
+    The boundary reports the missing piece at WARNING as it declines to wire, so
+    this carries the cell into the runner's unavailable row rather than letting
+    a ``None`` reach the loop factory and fail with a less specific message.
+    """
+
+    default_message: ClassVar[str] = (
+        "OpenHands loop runtime is unwired; see the logged missing pieces"
+    )
+
+
+class LoopAbBindHostUnresolvedError(EvalError):
+    """Raised when the interface the recording host should listen on is unknown.
+
+    The container dials the recorder through a ``host-gateway`` alias, so the
+    listener has to sit on an address that alias resolves to. Binding every
+    interface would always satisfy that, and is exactly what this refuses to do
+    silently: the host serves the whole application, including the fail-safe
+    excluded ``/auth/setup``, so a wide bind is the operator's explicit call to
+    make via ``--bind-host``, never a default the harness picks for them.
+    """
+
+    default_message: ClassVar[str] = (
+        "Could not resolve an interface reachable from the sandbox; "
+        "pass --bind-host explicitly"
+    )
+
+
+class LoopAbHostConfigInvalidError(EvalError):
+    """Raised when the recording host is configured with a value it cannot bind.
+
+    Caught alongside the other host errors, so a caller wrapping host
+    construction in the eval taxonomy does not have to special-case a builtin.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B recording host config is invalid"
+
+
+class LoopAbHostAlreadyStartedError(EvalError):
+    """Raised when a started recording host is started a second time.
+
+    The second start would capture the first start's throwaway bootstrap
+    secrets as the values to restore, so stopping would leave the operator's
+    real environment holding secrets that died with a process.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B recording host is already started"
+
+
+class LoopAbDockerUnavailableError(EvalError):
+    """Raised when the Docker daemon is unreachable before a recording run.
+
+    Every loop drives a sandbox, so a run without a daemon measures nothing.
+    Discovering that inside a cell would first spend real provider tokens and
+    then record the failure as that loop's unavailable row, which reads as a
+    property of the loop rather than of the machine.
+    """
+
+    default_message: ClassVar[str] = "Docker daemon is unreachable"
+
+
+class LoopAbNoCellsMeasuredError(EvalError):
+    """Raised when a completed matrix scored no cell at all.
+
+    An all-unavailable scoreboard is never a legitimate measurement, and
+    writing one exits successfully with a file that looks like a result. The
+    usual cause is a company config whose ``providers`` block does not cover
+    the manifest's tiers.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B matrix measured no cells"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -192,6 +283,13 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "LoopAbBindHostUnresolvedError",
+    "LoopAbDockerUnavailableError",
+    "LoopAbGatewayUnavailableError",
+    "LoopAbHostAlreadyStartedError",
+    "LoopAbHostConfigInvalidError",
+    "LoopAbNoCellsMeasuredError",
+    "LoopAbOpenHandsUnwiredError",
     "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",

@@ -12,6 +12,7 @@ import type {
 import { paginatedEnvelopeFor, successFor } from '@/mocks/handlers/helpers'
 import { deferredStreamBody, sseResponse } from '@/mocks/handlers/meta'
 import ChatPage from '@/pages/ChatPage'
+import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { server } from '@/test-setup'
 
 function renderChat() {
@@ -23,7 +24,7 @@ function renderChat() {
 }
 
 describe('ChatPage unified surface', () => {
-  it('shows the empty state with example prompts before any turn', () => {
+  it('shows the empty state with example prompts before any turn', async () => {
     renderChat()
     expect(screen.getByText('Talk to your organisation')).toBeInTheDocument()
     expect(
@@ -32,6 +33,11 @@ describe('ChatPage unified surface', () => {
     // The unified surface has no legacy ask/act/charter mode picker: the intent
     // is classified server-side per turn, so no tab strip is ever rendered.
     expect(screen.queryByRole('tablist')).toBeNull()
+    // The page hydrates its parked questions on mount; settle that read so its
+    // state update lands inside act() rather than after the test.
+    await waitFor(() =>
+      expect(useOrgQuestionsStore.getState().loading).toBe(false),
+    )
   })
 
   it('sends a message to the unified turn endpoint and renders the answer', async () => {

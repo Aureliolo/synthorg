@@ -477,11 +477,15 @@ class ApprovalsCreateArgs(_ArgsBase):
     )
 
 
-class ApprovalsApproveArgs(_ArgsBase):
-    """Args for ``approvals.approve``."""
+class ApprovalsApproveArgs(AdminGuardrailFields):
+    """Args for ``approvals.approve`` (destructive).
+
+    The guardrail's ``reason`` is also the decision reason recorded on the
+    approval, so there is no separate free-text comment: one field, read in
+    both places, cannot drift from itself.
+    """
 
     approval_id: NotBlankStr = Field(description="Approval UUID")
-    comment: str | None = Field(default=None, description="Approval comment")
 
 
 class ApprovalsRejectArgs(AdminGuardrailFields):

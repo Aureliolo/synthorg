@@ -2874,6 +2874,57 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/questions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListQuestions */
+        readonly get: operations["ApiV1MetaChatQuestionsListQuestions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/chat/questions/{approval_id}/answer": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Answer */
+        readonly post: operations["ApiV1MetaChatQuestionsApprovalIdAnswerAnswer"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/chat/questions/{approval_id}/decline": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Decline */
+        readonly post: operations["ApiV1MetaChatQuestionsApprovalIdDeclineDecline"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/chat/turn": {
         readonly parameters: {
             readonly query?: never;
@@ -6601,6 +6652,13 @@ export type components = {
             readonly source_rule?: string | null;
             readonly timestamp: string;
         };
+        /** AnswerQuestionRequest */
+        readonly AnswerQuestionRequest: {
+            /** @description The answer to give the agent. Required and non-blank. */
+            readonly answer: string;
+            /** @description For a project decision, the id of the option you pick. The chosen option's writeup becomes what the agent resumes with. */
+            readonly chosen_option_id?: string | null;
+        };
         /** ApiKeyResponse */
         readonly ApiKeyResponse: {
             /**
@@ -7367,6 +7425,14 @@ export type components = {
         /** ApiResponse[QualityOverrideResponse] */
         readonly ApiResponse_QualityOverrideResponse_: {
             readonly data: components["schemas"]["QualityOverrideResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[QuestionDecisionResult] */
+        readonly ApiResponse_QuestionDecisionResult_: {
+            readonly data: components["schemas"]["QuestionDecisionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -13696,6 +13762,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ParkedQuestion] */
+        readonly PaginatedResponse_ParkedQuestion_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ParkedQuestion"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[PersonalityPresetInfoResponse] */
         readonly PaginatedResponse_PersonalityPresetInfoResponse_: {
             /** @default [] */
@@ -14224,6 +14305,52 @@ export type components = {
             readonly role_label: string;
             /** @description Benchmark-score provenance identifier */
             readonly source: string;
+        };
+        /** ParkedQuestion */
+        readonly ParkedQuestion: {
+            readonly approval_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly asked_at: string;
+            readonly asked_by_id: string;
+            readonly asked_by_name: string;
+            /**
+             * @description Whether this is a structural pick rather than an open question.
+             *
+             *     Derived rather than stored: the operator picks by option id, so what
+             *     makes a question a decision IS having options to pick from. Carrying a
+             *     separate flag would let the two disagree, and the disagreement that
+             *     matters (a decision with no options) would render a pick UI with
+             *     nothing to pick.
+             *
+             *     Returns:
+             *         ``True`` when the question offers options.
+             */
+            readonly is_decision: boolean;
+            /** @default [] */
+            readonly options: readonly components["schemas"]["ParkedQuestionOption"][];
+            readonly project: string | null;
+            readonly question: string;
+            /** @enum {string|null} */
+            readonly reversibility: "reversible" | "hard_to_reverse" | null;
+            readonly task_id: string | null;
+            readonly task_title: string | null;
+        };
+        /** ParkedQuestionOption */
+        readonly ParkedQuestionOption: {
+            /** @description Stable option identifier; echo it back to pick this option. */
+            readonly id: string;
+            /**
+             * @description Whether the asking agent recommends this option.
+             * @default false
+             */
+            readonly recommended: boolean;
+            /** @description The option's tradeoffs and rationale. */
+            readonly summary: string;
+            /** @description Short option title. */
+            readonly title: string;
         };
         /** PauseInterventionRequest */
         readonly PauseInterventionRequest: {
@@ -15529,6 +15656,36 @@ export type components = {
             /** @description Override score */
             readonly score: number;
         };
+        /** QuestionDecisionResult */
+        readonly QuestionDecisionResult: {
+            readonly approval_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly decided_at: string;
+            readonly recorded_answer: string;
+            readonly status: components["schemas"]["ApprovalStatus"];
+        };
+        /**
+         * QuestionReversibility
+         * @description How reversible the choice behind an agent's question is.
+         *
+         *     Declared by the agent on ``request_clarification`` /
+         *     ``request_project_decision`` and recorded on the resulting
+         *     ``ApprovalItem`` metadata, so the operator sees at a glance whether an
+         *     answer is undoable and the chat surface can rank the questions that are.
+         *
+         *     It deliberately does not feed ``ApprovalRiskLevel``, which drives autonomy
+         *     routing and the approval-timeout policy: escalating a hard-to-reverse
+         *     question there would silently re-route parks that exist today.
+         *
+         *     Attributes:
+         *         REVERSIBLE: Undoing the choice is a quick edit.
+         *         HARD_TO_REVERSE: Undoing the choice costs real rework.
+         * @enum {string}
+         */
+        readonly QuestionReversibility: "reversible" | "hard_to_reverse";
         /** QuotaLimit */
         readonly QuotaLimit: {
             /**
@@ -25711,6 +25868,109 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatQuestionsListQuestions: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ParkedQuestion_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatQuestionsApprovalIdAnswerAnswer: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description RFC-style retry-safe key. Required: an identical key returns the cached decision instead of re-answering, so a 5xx-driven client retry cannot double-fire the resume signal. */
+                readonly "Idempotency-Key": string;
+            };
+            readonly path: {
+                /** @description Resource identifier */
+                readonly approval_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AnswerQuestionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_QuestionDecisionResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatQuestionsApprovalIdDeclineDecline: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description RFC-style retry-safe key. Required: an identical key returns the cached decision instead of re-answering, so a 5xx-driven client retry cannot double-fire the resume signal. */
+                readonly "Idempotency-Key": string;
+            };
+            readonly path: {
+                /** @description Resource identifier */
+                readonly approval_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_QuestionDecisionResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

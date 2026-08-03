@@ -96,54 +96,142 @@ the planning loops report their replan count in `ExecutionResult.metadata`.
 rework **cost** that is structurally zero for the loops that cannot replan, so a
 loop is never rewarded for lacking the capability.
 
+**`provider_retries` is a native-leg signal only.** A retry the driver performs
+is counted because the driver reports it; a retry OpenHands performs happens
+inside its own SDK client, in the container, on a path with no `RetryHandler` in
+it, and reaches no `TurnRecord`. Its tokens and latency *are* counted (they come
+off the SDK's own accumulated metrics), so an identical hiccup reads as extra
+work for that leg and as rework for the others. Read a zero here as "not
+observable for this loop", never as "this loop did not retry".
+
 Cost is read from the gateway's `CostRecord` ledger, not re-derived from token
-counts and a price list. Each run gets a fresh tracker, because `run_brief`
-derives a deterministic task id from the brief alone and records would otherwise
-pool across every loop measuring that brief.
+counts and a price list. Each run gets a fresh tracker, installed on the
+[recording host](#the-recording-host) for the duration of the cell, because
+`run_brief` derives a deterministic task id from the brief alone and records
+would otherwise pool across every loop measuring that brief.
+
+Reading the gateway's ledger rather than the engine's own tracker is what makes
+the figure right for both kinds of leg. A native loop dispatching through the
+gateway is recorded twice, once by its driver and once by the gateway, so only
+one of the two may be counted; the OpenHands leg is recorded *only* by the
+gateway, because its calls happen inside the container.
+
+The container reports running accumulated cost **and** token usage per event,
+and the adapter forwards the delta since the previous event. Tokens are not
+optional detail: the rubric scores an observed zero as unbeatable, so a leg
+reporting none would take the token dimension by reporting nothing at all.
 
 ## Fair-comparison invariants
 
 1. Identical brief and identical seed workspace per cell, recreated each run.
+   The seed lands in a project subtree (`<cell>/projects/<project>/`) because
+   both sandboxes a cell drives pick their mount by resolving the run's project
+   id under the sandbox root, so a flat layout is one neither can bind.
 2. Every loop dispatches through the [LLM gateway](llm-gateway.md), so all four
-   are metered by the same `cost_recording_scope`. This is why
-   `--gateway-base-url` is required to record.
+   are metered by one `cost_recording_scope` writing to one ledger. The native
+   legs carry a per-run bearer of their own and route as an OpenAI-compatible
+   proxy client, exactly as the container's SDK does.
 3. Credentialed tools are reached only through the
    [credentialed-MCP boundary](credentialed-mcp.md); in-workspace file and shell
    tools stay native to each loop.
 4. The same explicitly bound `(provider, model)` per tier for every loop, never
    an auto-pick.
-5. The same `max_turns`, taken from the brief's limits.
+5. The same `max_turns`, taken from the brief's limits. The OpenHands loop takes
+   the lower of that and its own configured ceiling, so the harness overrides
+   the ceiling per cell; left at its default, a brief allowed more turns would
+   give that leg fewer than the three it is ranked against.
 6. Wall clock is captured when the run happens, never re-measured.
+
+## The recording host
+
+OpenHands authenticates to the gateway with a per-run bearer minted by the
+**same** `GatewaySigner` instance the gateway verifies with, and that instance
+is built per process and never persisted. A token minted by any other instance
+is rejected, so a recorder that points at a separately running backend is
+precisely the configuration that cannot work.
+
+The recorder therefore stops borrowing a gateway and owns one
+(`evals/loop_ab/host.py`): it boots the real app against a scratch
+database, serves it on a local port, and reads the signer off the state the boot
+wiring populated. Mint and verify are the same instance because they are the
+same process. No token-minting endpoint joins the API surface, and no secret is
+persisted or rotatable: the signer never leaves memory, and the host's own Cat-3
+bootstrap secrets are minted fresh and die with the process.
+
+Three things follow from hosting rather than borrowing:
+
+- The **OpenHands runtime** is built from the production wiring
+  (`build_openhands_loop_deps_or_none`, given the cell's workspace root), so the
+  egress allowlist, the per-request path narrowing and the host alias stay
+  single-owner instead of being re-derived in the harness.
+- The **ledger belongs to the recorder**, which is the only reason the OpenHands
+  leg's spend is visible at all.
+- The **credentialed-MCP surface is the real one**. The SDK will not build an
+  agent without an MCP endpoint to attach, so the handshake has to answer; it is
+  served under the shipped empty capability grant, so `tools/list` returns
+  nothing and no credentialed tool is reachable by these briefs.
+
+Serving the real app means serving all of it, which two things contain.
+
+`POST /auth/setup` is deliberately excluded from authentication so a real
+deployment can never lock its operator out, and it grants CEO and OWNER to the
+first caller while no CEO exists. A fresh scratch database has none, so the host
+seeds a throwaway one (random password, never disclosed, never used to log in)
+before it accepts a connection. That closes the route by its own precondition,
+whatever the listener is bound to.
+
+The listener then resolves the narrowest address the sandbox can still reach
+rather than every interface: host loopback under Docker Desktop, whose daemon
+forwards `host.docker.internal` there, and the bridge network's gateway under
+Docker Engine, which is what a Linux `host-gateway` alias resolves to. Neither
+is reachable from a shared segment, which is also why plain HTTP is sound: there
+is no on-path position from which to read a bearer. When neither can be
+resolved, the run stops and asks for `--bind-host` instead of widening.
+
+Beyond those two, every route that is not the pair the container needs stays
+behind session auth, and that pair refuses anything without a bearer this
+process minted.
 
 ## Recording
 
 ```bash
-make loop-ab          # print the matrix and the run count; spends nothing
-make loop-ab-record ARGS="--gateway-base-url http://localhost:8000/api/v1/gateway/v1"
+make loop-ab          # print the matrix and the run count; boots nothing, spends nothing
+make loop-ab-record ARGS="--company-config my-providers.yaml"
 ```
+
+Recording needs a Docker daemon, the OpenHands image, and a company config whose
+`providers:` block aliases the manifest's vendor-agnostic tier ids to real
+models. The daemon and the tier-to-provider coverage are both checked before
+anything is spent, because each is otherwise discovered once per cell, after a
+full retry budget, and recorded as a property of whichever loop hit it.
+
+The image is baked at build time, so a change under `docker/openhands/` is only
+measured by a run that passes `--openhands-image` naming a locally built one
+(`make build-openhands-image`). Without it a run measures the published
+entrypoint, at full price, and looks like it succeeded.
+
+Other flags: `--bind-host` overrides the resolved listener address,
+`--bind-port` pins the port instead of taking an ephemeral one,
+`--container-host` overrides the alias the sandbox addresses the recorder by,
+and `--keep-workspaces` retains each cell's tree for inspection rather than
+reclaiming it (a matrix leaves 36 of them, carrying whatever the loops built).
 
 Only a real run produces scoreboard numbers, so a published ranking is always
 something that actually happened. There is deliberately no offline replay that
 regenerates the artifact; the harness itself is regression-tested without spend
 by `tests/evals_spine/loop_ab/`, which drives the real loops against a scripted
-LLM.
+LLM and the real host against a scripted provider.
 
-A loop whose runtime is unavailable is recorded as an unavailable row carrying
-the reason.
+A loop whose runtime is unavailable is still recorded as an unavailable row
+carrying the reason, never dropped, and never scored as a zero. A cell that
+completed some of its repetitions before failing keeps them: fewer repetitions
+is a weaker measurement, not an absent one, and discarding runs that were paid
+for over a later transient failure loses real evidence. Only a cell that never
+finished one repetition has nothing but a reason to report.
 
-!!! warning "The OpenHands leg needs a host that holds the gateway signer"
-    OpenHands authenticates to the gateway with a per-run bearer minted by the
-    **same** `GatewaySigner` instance the gateway verifies with, and that
-    instance lives on the running API process's state. A token minted by any
-    other instance is rejected, so `scripts/record_loop_ab.py` cannot construct
-    `OpenHandsLoopDeps` on its own: recording that leg requires driving the
-    matrix from inside a host holding the signer (and with Docker plus the
-    sandbox image available).
-
-    Run standalone, the script therefore records the three native loops and
-    reports OpenHands as unavailable with that reason. The scoreboard says so
-    explicitly rather than presenting a three-loop table as if it were the whole
-    field.
+A matrix that measured no cell at all is not a result. The scoreboard is written
+first, so the reasons survive for reading, and then the run exits non-zero
+rather than presenting a file that looks like a ranking.
 
 ## Provenance and staleness
 

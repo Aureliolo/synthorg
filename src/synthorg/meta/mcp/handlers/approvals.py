@@ -8,12 +8,18 @@ arguments, call the store, wrap the result in the common envelope.
 
 Destructive ops
 ---------------
-``synthorg_approvals_reject`` is destructive and enforces
-``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` via
-``require_admin_guardrails`` before mutating state.  It emits
-``MCP_ADMIN_OP_EXECUTED`` at INFO exactly once per successful
-rejection.  Create and approve are non-destructive writes and only
-need an actor (to populate ``requested_by`` / ``decided_by``).
+``synthorg_approvals_approve`` and ``synthorg_approvals_reject`` both settle
+an escalation, so both enforce ``confirm=True`` + non-blank ``reason`` +
+non-``None`` ``actor`` via ``require_admin_guardrails`` before mutating
+state, and both emit ``MCP_ADMIN_OP_EXECUTED`` at INFO exactly once.
+Approving is what authorises the escalated action, so guarding only the
+reject side would leave the dangerous direction as the cheap one. Create is
+a non-destructive write and only needs an actor (to populate
+``requested_by``).
+
+Settling a decision (approve/reject) is delegated to
+``_approvals_decision``: what this door refuses to decide, the
+compare-and-set write, and the resume it signals all live there.
 """
 
 from collections.abc import Mapping
@@ -43,6 +49,10 @@ from synthorg.meta.mcp.errors import (
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
+)
+from synthorg.meta.mcp.handlers._approvals_decision import (
+    _decide,
+    _NotFoundError,
 )
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import (
@@ -75,28 +85,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-
-class _NotFoundError(
-    LookupError,
-):  # lint-allow: domain-error-hierarchy -- MCP handler-local; no HTTP layer
-    """Handler-local not-found signal.
-
-    Raised inside the try block so the ``err()`` envelope picks up
-    ``domain_code=not_found`` without taking a dependency on Litestar's
-    ``NotFoundError`` (that one would trigger 404 handling in HTTP
-    paths; MCP has no HTTP layer).
-    """
-
-    domain_code = "not_found"
-
-
-class _ConflictError(
-    RuntimeError,
-):  # lint-allow: domain-error-hierarchy -- MCP handler-local; no HTTP layer
-    """Handler-local conflict signal (approve/reject race)."""
-
-    domain_code = "conflict"
 
 
 # --- handlers --------------------------------------------------------------
@@ -228,119 +216,65 @@ async def _create_approval(
     return ok(data=item.model_dump(mode="json"))
 
 
-async def _decide(
-    *,
-    app_state: AppState,
-    approval_id: str,
-    actor: AgentIdentity | None,
-    target: ApprovalStatus,
-    reason: str | None,
-) -> ApprovalItem:
-    """Shared approve/reject finalisation.
-
-    Fetches the current item, stamps decision fields, and writes via
-    ``save_if_pending`` so a concurrent decision cannot race us past
-    first-writer-wins.  When ``save_if_pending`` returns ``None`` we
-    re-read the approval to distinguish *gone* (``_NotFoundError``) from
-    *raced to a new state* (``_ConflictError``) -- a silent collapse to
-    "conflict" misleads callers when the item was actually deleted or
-    expired between the fetch and the write.
-
-    Raises:
-        _NotFoundError: Approval id does not exist or was removed.
-        _ConflictError: Item already decided or in-flight save.
-        ArgumentValidationError: Actor is missing a decidable name.
-
-    Returns:
-        ``ApprovalItem`` instance.
-    """
-    decided_by = require_actor_id(actor)
-    store = approval_store_of(app_state)
-    existing = await store.get(approval_id)
-    if existing is None:
-        msg = f"Approval {approval_id!r} not found"
-        raise _NotFoundError(msg)
-    if existing.status != ApprovalStatus.PENDING:
-        msg = f"Approval {approval_id!r} is {existing.status.value!s}, not pending"
-        raise _ConflictError(msg)
-    now = datetime.now(UTC)
-    updated = existing.model_copy(
-        update={
-            "status": target,
-            "decided_at": now,
-            "decided_by": decided_by,
-            "decision_reason": reason,
-        },
-    )
-    saved: ApprovalItem | None = await store.save_if_pending(
-        updated,
-    )
-    if saved is None:
-        current = await store.get(approval_id)
-        if current is None:
-            msg = f"Approval {approval_id!r} was removed before decision"
-            raise _NotFoundError(msg)
-        msg = (
-            f"Approval {approval_id!r} was decided concurrently "
-            f"(now {current.status.value!s})"
-        )
-        raise _ConflictError(msg)
-    return saved
-
-
 async def _approve(
     *,
     app_state: AppState,
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Handler: ``synthorg_approvals_approve``.
+    """Handler: ``synthorg_approvals_approve`` (destructive).
+
+    Guardrails (via ``require_admin_guardrails``): ``confirm=True``,
+    non-blank ``reason``, non-``None`` ``actor``. Approving is what
+    AUTHORISES the escalated action, so it carries at least the blast radius
+    of rejecting it; guarding only the reject side would leave the dangerous
+    direction as the cheap one.
 
     Returns:
         Resulting string.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
     """
     tool = "synthorg_approvals_approve"
 
     try:
-        args = typed_args(arguments, ApprovalsApproveArgs)
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
-
-    try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        approval_id = typed_args(arguments, ApprovalsApproveArgs).approval_id
         saved = await _decide(
             app_state=app_state,
-            approval_id=args.approval_id,
-            actor=actor,
+            approval_id=approval_id,
+            actor=resolved_actor,
             target=ApprovalStatus.APPROVED,
-            reason=args.comment,
+            reason=reason,
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
-        return err(exc)
-    except _NotFoundError as exc:
-        log_handler_invoke_failed(tool, exc)
-        return err(exc)
-    except _ConflictError as exc:
-        log_handler_invoke_failed(tool, exc)
         return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
+        # Covers _NotFoundError, _ConflictError, _OutOfScopeError, and any
+        # other service-layer failure. The ``err()`` envelope picks up
+        # ``domain_code`` off the handler-local errors automatically.
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
+        target_id=approval_id,
+    )
     # Emit the signed ``security.*`` audit event so the tamper-evident
     # audit chain records the approve decision; the ``mcp.*`` event above
     # is operational only and is not chained.
     logger.info(
         SECURITY_APPROVAL_APPROVED,
-        approval_id=str(args.approval_id),
-        actor_agent_id=actor_id(actor),
-        reason=args.comment,
+        approval_id=str(approval_id),
+        actor_agent_id=actor_id(resolved_actor),
+        reason=reason,
     )
     return ok(data=saved.model_dump(mode="json"))
 

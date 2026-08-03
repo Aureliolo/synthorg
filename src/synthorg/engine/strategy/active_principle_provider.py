@@ -21,8 +21,8 @@ from synthorg.core.normalization import normalize_identifier
 from synthorg.engine.strategy.active_principle import (
     ActivePrinciple,
     ActivePrincipleProvider,
-    ScopeKind,
 )
+from synthorg.engine.strategy.scoping import scope_matches
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_ACTIVE_PRINCIPLE_SNAPSHOT_REFRESHED,
@@ -32,27 +32,6 @@ logger = get_logger(__name__)
 
 #: Async loader returning the full active-principle snapshot.
 ActivePrincipleLoader = Callable[[], Awaitable[tuple[ActivePrinciple, ...]]]
-
-
-def _in_scope(
-    principle: ActivePrinciple,
-    *,
-    role_key: str | None,
-    dept_key: str | None,
-) -> bool:
-    """Return whether *principle* applies to an agent's role / department.
-
-    Returns:
-        ``True`` for an ``ALL``-scoped principle, a ``ROLE``-scoped principle
-        matching ``role_key``, or a ``DEPARTMENT``-scoped principle matching
-        ``dept_key``.
-    """
-    if principle.scope_kind is ScopeKind.ALL:
-        return True
-    scope_key = normalize_identifier(principle.scope)
-    if principle.scope_kind is ScopeKind.ROLE:
-        return role_key is not None and scope_key == role_key
-    return dept_key is not None and scope_key == dept_key
 
 
 class CachedActivePrincipleProvider:
@@ -103,7 +82,12 @@ class CachedActivePrincipleProvider:
         return tuple(
             principle
             for principle in self._snapshot
-            if _in_scope(principle, role_key=role_key, dept_key=dept_key)
+            if scope_matches(
+                scope_kind=principle.scope_kind,
+                scope=principle.scope,
+                role_key=role_key,
+                dept_key=dept_key,
+            )
         )
 
     def snapshot(self) -> tuple[ActivePrinciple, ...]:

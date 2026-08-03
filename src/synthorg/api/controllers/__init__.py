@@ -40,6 +40,7 @@ from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
 from synthorg.api.controllers.charter import CharterController
+from synthorg.api.controllers.chat_questions import ChatQuestionsController
 from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.cockpit import CockpitController
 from synthorg.api.controllers.collaboration import CollaborationController
@@ -305,6 +306,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetaEvolutionController,
     MetaAlertsController,
     TurnController,
+    ChatQuestionsController,
     ConversationHistoryController,
     MetaAnalyticsController,
     LearningController,
@@ -385,6 +387,7 @@ __all__ = [
     "BudgetController",
     "CeremonyPolicyController",
     "CharterController",
+    "ChatQuestionsController",
     "ClientController",
     "CollaborationController",
     "CompanyController",

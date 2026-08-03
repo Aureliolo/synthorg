@@ -33,11 +33,11 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import BudgetChecker, TerminationReason
 from synthorg.engine.park_service import ParkService
+from synthorg.engine.resume_message import build_resume_message
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
@@ -453,7 +453,7 @@ class TestResumeParkedChatAction:
         resumed = await gate.resume_context(approval_id)
         assert resumed is not None
         parked_ctx, _ = resumed
-        decision = ApprovalGate.build_resume_message(
+        decision = build_resume_message(
             approval_id,
             approved=True,
             decided_by="operator-1",
@@ -493,7 +493,7 @@ class TestResumeParkedChatAction:
         resumed = await gate.resume_context(approval_id)
         assert resumed is not None
         parked_ctx, _ = resumed
-        decision = ApprovalGate.build_resume_message(
+        decision = build_resume_message(
             approval_id,
             approved=False,
             decided_by="operator-1",

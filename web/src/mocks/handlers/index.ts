@@ -53,8 +53,9 @@ import { boardHandlers } from './board'
 import { brownfieldHandlers } from './brownfield'
 import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
-import { charterHandlers } from './charter'
 import { ceremonyPolicyHandlers } from './ceremony-policy'
+import { charterHandlers } from './charter'
+import { chatQuestionsHandlers } from './chat-questions'
 import { clientsHandlers } from './clients'
 import { cockpitHandlers } from './cockpit'
 import { collaborationHandlers } from './collaboration'
@@ -126,8 +127,9 @@ export const defaultHandlers = [
   ...brownfieldHandlers,
   ...budgetHandlers,
   ...capabilitiesHandlers,
-  ...charterHandlers,
   ...ceremonyPolicyHandlers,
+  ...charterHandlers,
+  ...chatQuestionsHandlers,
   ...clientsHandlers,
   ...cockpitHandlers,
   ...collaborationHandlers,
@@ -190,6 +192,11 @@ export { authLoginSuccess, authSetupSuccess } from './auth'
 
 export { buildAuditEntry } from './audit'
 export { buildCharter } from './charter'
+export {
+  openQuestionsHandler,
+  parkedQuestionFixture,
+  questionsPage,
+} from './chat-questions'
 export {
   deferredStreamBody,
   explainStreamBody,

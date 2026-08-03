@@ -173,6 +173,7 @@ nav:
       - Chat Inbound (Socket-Mode): design/chat-inbound.md
       - Agent MCP Governance: design/agent-mcp-governance.md
       - Mid-Flight Steering: design/mid-flight-steering.md
+      - The Org Asks: design/org-questions.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md
       - Output-Style Policy: design/output-style-policy.md

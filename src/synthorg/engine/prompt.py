@@ -216,9 +216,14 @@ def build_system_prompt(  # noqa: PLR0913
     # ``available_tools``), so either signal means the agent is tool-capable
     # and the fence must be declared.
     fences_tool_results = bool(available_tools or l1_summaries)
+    # ``TAG_CONFIG_VALUE`` is reserved unconditionally: two sections can now
+    # emit it (company policies, and the ask policy's operator-authored
+    # additions) and neither is known before the render. Over-reserving one
+    # tag's worth of budget is the safe direction; under-reserving would let
+    # the directive push the prompt past its ceiling.
     max_directive_tags: tuple[str, ...] = (
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
-        *((TAG_CONFIG_VALUE,) if org_policies else ()),
+        TAG_CONFIG_VALUE,
         *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
     )
 
@@ -301,7 +306,12 @@ def build_system_prompt(  # noqa: PLR0913
             if "task" in result.sections or "async_tasks" in result.sections
             else ()
         ),
-        *((TAG_CONFIG_VALUE,) if "org_policies" in result.sections else ()),
+        # Derived from the content, not the section list: the company-policy
+        # section and the ask policy's operator additions both emit this
+        # fence, and the ask-policy section emits it only when the operator
+        # actually configured an addition. The rendered fence is the exact
+        # condition under which the directive should name the tag.
+        *((TAG_CONFIG_VALUE,) if f"<{TAG_CONFIG_VALUE}>" in result.content else ()),
         # Declared for tool-capable agents only: the ``<tool-result>``
         # fence governs later-turn message history, not a section here, so
         # it is gated on tool availability rather than a surviving section.

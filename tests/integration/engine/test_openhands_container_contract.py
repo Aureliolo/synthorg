@@ -6,8 +6,9 @@ and asserts the wire contract the host adapter depends on:
 - the run spec is read as one JSON line from stdin and parsed;
 - stdout carries ONLY normalized events, one JSON object per line, and every
   adapter-relevant kind appears;
-- the container's running accumulated cost advances, and the per-turn deltas
-  ``container_runtime._parse_event`` derives sum to the run total;
+- the container's running accumulated cost and token usage advance, and the
+  per-turn deltas ``container_runtime._parse_event`` derives sum to the run
+  totals;
 - the run reaches a terminal state and leaves no container behind;
 - an induced failure never echoes the per-run gateway bearer.
 
@@ -36,7 +37,11 @@ from typing import ClassVar, Final, override
 
 import pytest
 
-from synthorg.engine.openhands.container_runtime import _parse_event, _spec_line
+from synthorg.engine.openhands.container_runtime import (
+    _parse_event,
+    _RunningTotals,
+    _spec_line,
+)
 from synthorg.engine.openhands.conversation import OpenHandsRunSpec
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 
@@ -359,11 +364,11 @@ def _events(stdout: str) -> list[OpenHandsEvent]:
         Every event the adapter would forward to the loop, in order.
     """
     parsed: list[OpenHandsEvent] = []
-    accumulated = 0.0
+    totals = _RunningTotals()
     for line in stdout.splitlines():
         if not line.strip():
             continue
-        event, accumulated = _parse_event(line, accumulated)
+        event, totals = _parse_event(line, totals)
         if event is None:
             assert _is_unmapped(line), (
                 f"adapter could not parse container line: {line!r}"
@@ -407,6 +412,19 @@ def _totals(stdout: str) -> Iterator[float]:
     for line in stdout.splitlines():
         if line.strip():
             yield float(json.loads(line).get("cost", 0.0))
+
+
+def _token_totals(stdout: str, field: str) -> list[int]:
+    """Collect the running accumulated token counts the event lines report.
+
+    Returns:
+        The *field* value of every event line, in order.
+    """
+    return [
+        int(json.loads(line).get(field, 0))
+        for line in stdout.splitlines()
+        if line.strip()
+    ]
 
 
 @skip_no_image
@@ -472,6 +490,35 @@ class TestContainerContract:
         # would misattribute every turn's cost downstream.
         assert sum(event.cost for event in _events(result.stdout)) == pytest.approx(
             totals[-1]
+        )
+
+    def test_token_deltas_sum_to_the_run_total(
+        self,
+        happy_run: tuple[type[_StubHandler], subprocess.CompletedProcess[str]],
+    ) -> None:
+        _, result = happy_run
+
+        assert result.returncode == 0, result.stderr[-2000:]
+        # The A/B rubric ranks loops on tokens and scores an observed zero as
+        # unbeatable, so a container reporting none would win that dimension by
+        # reporting nothing. Assert the figures exist before asserting on them.
+        for field, per_call in (("input_tokens", 10), ("output_tokens", 5)):
+            totals = _token_totals(result.stdout, field)
+            assert totals[-1] > 0, f"the container reported no {field} at all"
+            assert totals == sorted(totals), f"{field} went backwards: {totals}"
+            # The stub bills a fixed usage block per completion, so the final
+            # total is a known multiple: a flat or restated series would still
+            # be monotonic, and only this catches it.
+            assert totals[-1] % per_call == 0
+
+        events = _events(result.stdout)
+        assert (
+            sum(e.input_tokens for e in events)
+            == _token_totals(result.stdout, "input_tokens")[-1]
+        )
+        assert (
+            sum(e.output_tokens for e in events)
+            == _token_totals(result.stdout, "output_tokens")[-1]
         )
 
     def test_run_terminates_and_leaves_no_container(

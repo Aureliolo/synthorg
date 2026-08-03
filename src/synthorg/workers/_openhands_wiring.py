@@ -13,6 +13,7 @@ so an operator can see why the loop stayed unavailable.
 """
 
 import functools
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
@@ -66,6 +67,8 @@ async def build_openhands_loop_config(app_state: AppState) -> OpenHandsLoopConfi
 
 async def build_openhands_loop_deps_or_none(
     app_state: AppState,
+    *,
+    workspace_root: Path | None = None,
 ) -> OpenHandsLoopDeps | None:
     """Wire the OpenHands loop dependencies when the gateway is available.
 
@@ -78,6 +81,14 @@ async def build_openhands_loop_deps_or_none(
     unset, or either endpoint does not resolve to a host, leaving the loop
     unavailable (it fails loud only if selected) so sandbox egress is never
     created without a host allowlist.
+
+    Args:
+        app_state: The live application state.
+        workspace_root: Sandbox root to bind instead of the deployment's agent
+            workspace. A caller that recreates a workspace per run (the
+            inner-loop A/B harness) supplies its own; passing it here rather
+            than building a second sandbox keeps the egress pin, the path
+            narrowing, the host alias and the signer re-read in one place.
 
     Returns:
         The wired dependencies, or ``None`` when the boundary is unwired.
@@ -109,7 +120,9 @@ async def build_openhands_loop_deps_or_none(
         return None
     idle, max_runtime = timings
 
-    sandbox = await _build_openhands_sandbox(app_state, gateway_base_url, mcp_base_url)
+    sandbox = await _build_openhands_sandbox(
+        app_state, gateway_base_url, mcp_base_url, workspace_root=workspace_root
+    )
     factory = functools.partial(
         build_container_conversation, sandbox, idle, max_runtime
     )
@@ -237,6 +250,8 @@ async def _build_openhands_sandbox(
     app_state: AppState,
     gateway_base_url: str,
     mcp_base_url: str,
+    *,
+    workspace_root: Path | None = None,
 ) -> SandboxStreamer:
     """Build the egress-pinned Docker sandbox the OpenHands loop runs in.
 
@@ -245,6 +260,13 @@ async def _build_openhands_sandbox(
     agent edits files), and the image bundles the SDK + tools. Returned as
     the narrow :class:`SandboxStreamer` the container runtime drives (the
     concrete :class:`DockerSandbox` is imported lazily: heavy aiodocker dep).
+
+    Args:
+        app_state: The live application state.
+        gateway_base_url: The sandbox-reachable LLM gateway address.
+        mcp_base_url: The sandbox-reachable credentialed-MCP address.
+        workspace_root: Root to bind, defaulting to the deployment's agent
+            workspace.
 
     Returns:
         A :class:`DockerSandbox` pinned to the OpenHands image + egress.
@@ -273,7 +295,11 @@ async def _build_openhands_sandbox(
     )
     return DockerSandbox(
         config=config,
-        workspace=agent_workspace_root_of(app_state),
+        workspace=(
+            workspace_root
+            if workspace_root is not None
+            else agent_workspace_root_of(app_state)
+        ),
         clock=app_state.clock,
     )
 
