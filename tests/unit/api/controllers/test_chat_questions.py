@@ -471,7 +471,7 @@ class TestDeclineQuestion:
         assert body["status"] == "rejected"
         assert body["recorded_answer"] == DECLINE_REASON
         # Server-owned text, never operator input: the route takes no body.
-        assert resumes[0]["decision_reason"] is DECLINE_REASON
+        assert resumes[0]["decision_reason"] == DECLINE_REASON
         assert resumes[0]["approved"] is False
         # The reason is fenced by contract, so the instruction the agent is
         # meant to ACT on rides the separate trusted channel.

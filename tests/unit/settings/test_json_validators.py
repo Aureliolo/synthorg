@@ -178,6 +178,10 @@ class TestAskPolicyExtraDirectivesJsonValidator:
     def test_accepts_empty_array(self, validator: _Validator) -> None:
         validator([])
 
+    def test_accepts_an_unscoped_directive(self, validator: _Validator) -> None:
+        # The org-wide form, which is what an operator writes first.
+        validator([{"id": "x_all", "text": "Ask before a schema change."}])
+
     def test_accepts_a_scoped_directive(self, validator: _Validator) -> None:
         validator(
             [

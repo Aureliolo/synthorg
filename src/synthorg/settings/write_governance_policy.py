@@ -473,34 +473,43 @@ def _sandboxed_loop_routes(value: str | None) -> frozenset[str]:
     return frozenset(routes)
 
 
-def _added_directive_count(current: str | None, new: str) -> int:
-    """Return how many entries *new* adds over *current*, as JSON arrays.
+def _has_new_directive(current: str | None, new: str) -> bool:
+    """Return whether *new* carries an entry absent from *current*.
+
+    Compares entry sets, not list length. A write that drops one directive and
+    adds a different one keeps the count identical, and it is the arriving
+    entry, not the net count, that can neutralise the deferral posture.
 
     Returns:
-        The growth in entry count, or ``0`` when either value does not parse
-        as a JSON array. A malformed payload is rejected by the type
-        validator, so treating it as no growth here does not let one through.
+        Whether any entry is new, or ``False`` when either value does not
+        parse as a JSON array. A malformed payload is rejected by the type
+        validator, so treating it as no addition here does not let one through.
     """
 
-    def _count(raw: str | None) -> int | None:
+    def _entries(raw: str | None) -> set[str] | None:
         if raw is None or not raw.strip():
-            return 0
+            return set()
         try:
             parsed = json.loads(raw)
         except ValueError, TypeError:
             return None
-        return len(parsed) if isinstance(parsed, list) else None
+        if not isinstance(parsed, list):
+            return None
+        # Canonical per-entry text, because a directive is a dict and a dict
+        # is unhashable; sorting the keys makes a reordered but identical
+        # entry compare equal rather than reading as an addition.
+        return {json.dumps(entry, sort_keys=True) for entry in parsed}
 
-    before, after = _count(current), _count(new)
+    before, after = _entries(current), _entries(new)
     if before is None or after is None:
-        return 0
-    return max(after - before, 0)
+        return False
+    return bool(after - before)
 
 
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether an ``engine.*`` oracle, middleware or ask change relaxes it."""
     if key == _ENGINE_ASK_EXTRA_DIRECTIVES_KEY:
-        return _added_directive_count(current, new) > 0
+        return _has_new_directive(current, new)
     if key in _ENGINE_ASK_KEYS:
         currently_on = current is None or compare_ci(
             current, _ENGINE_ASK_ENABLED_DEFAULT

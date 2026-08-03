@@ -19,12 +19,22 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import registered_default_float
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
-_URGENCY_CRITICAL_FALLBACK_SECONDS: Final[float] = 3600.0
-_URGENCY_HIGH_FALLBACK_SECONDS: Final[float] = 14400.0
+_CRITICAL_KEY: Final[str] = "approval_urgency_critical_seconds"
+_HIGH_KEY: Final[str] = "approval_urgency_high_seconds"
+
+# Read from the registry rather than restated here, so a default the operator
+# never overrode and the fallback a backend outage serves cannot drift apart.
+_URGENCY_CRITICAL_FALLBACK_SECONDS: Final[float] = registered_default_float(
+    SettingNamespace.API.value, _CRITICAL_KEY
+)
+_URGENCY_HIGH_FALLBACK_SECONDS: Final[float] = registered_default_float(
+    SettingNamespace.API.value, _HIGH_KEY
+)
 
 
 _urgency_threshold_fallback_logged: bool = False
@@ -93,9 +103,9 @@ def _validate_urgency_thresholds(
 async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float]:
     """Read approval urgency thresholds from the settings backend.
 
-    Falls back to the registry defaults (3600s critical / 14400s high)
-    if the settings backend is unavailable.  Per-process log-once so a
-    flapping settings backend does not spam the logs.
+    Falls back to the registry defaults if the settings backend is
+    unavailable.  Per-process log-once so a flapping settings backend does
+    not spam the logs.
 
     Returns:
         Tuple of the declared element types.
@@ -109,10 +119,10 @@ async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float
         )
     try:
         critical = await config_resolver_of(app_state).get_float(
-            SettingNamespace.API.value, "approval_urgency_critical_seconds"
+            SettingNamespace.API.value, _CRITICAL_KEY
         )
         high = await config_resolver_of(app_state).get_float(
-            SettingNamespace.API.value, "approval_urgency_high_seconds"
+            SettingNamespace.API.value, _HIGH_KEY
         )
     except asyncio.CancelledError:
         raise

@@ -282,7 +282,7 @@ def _validate_ask_policy_directives(value: object) -> None:
             "directive objects"
         )
         raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
-    directives = []
+    directives: list[AskDirective] = []
     for idx, entry in enumerate(value):
         try:
             directives.append(AskDirective.model_validate(entry))

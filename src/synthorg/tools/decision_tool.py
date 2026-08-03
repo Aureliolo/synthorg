@@ -164,6 +164,42 @@ class RequestProjectDecisionArgs(BaseModel):
         )
 
 
+def _guarded_args(
+    args: RequestProjectDecisionArgs, approved: list[str]
+) -> RequestProjectDecisionArgs:
+    """Rebuild the args from the output-style-approved strings.
+
+    ``approved`` arrives in the order the caller supplied: the question, then
+    every option title, then every option summary. Copied rather than
+    re-validated because a text rewrite touches no invariant the model
+    enforces (option count, the single recommendation, unique ids), and
+    re-validation would turn a rewrite that trips ``NotBlankStr`` into an
+    exception escaping a tool that must return a result.
+
+    Returns:
+        The args with every human-facing string replaced by its approved form.
+    """
+    count = len(args.options)
+    titles = approved[1 : 1 + count]
+    summaries = approved[1 + count :]
+    return args.model_copy(
+        update={
+            "question": NotBlankStr(approved[0]),
+            "options": tuple(
+                option.model_copy(
+                    update={
+                        "title": NotBlankStr(title),
+                        "summary": NotBlankStr(summary),
+                    },
+                )
+                for option, title, summary in zip(
+                    args.options, titles, summaries, strict=True
+                )
+            ),
+        },
+    )
+
+
 class RequestProjectDecisionTool(BaseTool):
     """Agent-callable tool to put a project-shaping decision to a human.
 
@@ -266,21 +302,25 @@ class RequestProjectDecisionTool(BaseTool):
         )
         if blocked is not None:
             return blocked
-        question = approved[0]
+        # Everything downstream reads the guarded copy. An AUTO_REWRITE rule
+        # that fixed the question but left the option writeups raw would
+        # persist, resume with and show the operator text the boundary had
+        # already ruled against.
+        guarded = _guarded_args(args, approved)
         approval_id = str(uuid4())
         # One timestamp for the whole decision so the evidence package and the
         # approval item share it. Options are already validated by
         # ``RequestProjectDecisionArgs``'s model validator (rejected at
         # ``parse_typed`` above), so building the evidence cannot fail here.
         now = datetime.now(UTC)
-        evidence = self._build_evidence(approval_id, args, now)
+        evidence = self._build_evidence(approval_id, guarded, now)
 
-        store_error = await self._persist_item(approval_id, args, evidence, now)
+        store_error = await self._persist_item(approval_id, guarded, evidence, now)
         if store_error is not None:
             return store_error
 
         return self._build_success(
-            approval_id, question, args.options, args.reversibility
+            approval_id, guarded.question, guarded.options, guarded.reversibility
         )
 
     def _build_evidence(

@@ -66,7 +66,9 @@ class TestResumeFencing:
         assert DECLINED_QUESTION_NOTE not in wrap_untrusted(
             TAG_TASK_DATA, DECLINE_REASON
         )
-        assert message.index(DECLINED_QUESTION_NOTE) < message.index("<task-data>")
+        assert message.index(DECLINED_QUESTION_NOTE) < message.index(
+            f"<{TAG_TASK_DATA}>",
+        )
         assert "proceed on your own best judgement" in DECLINED_QUESTION_NOTE.casefold()
         assert "state the assumption" in DECLINED_QUESTION_NOTE.casefold()
 

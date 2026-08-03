@@ -75,6 +75,7 @@ def _patch(
     store: _FakeStore,
     *,
     cleared: list[str] | None = None,
+    signalled: list[str] | None = None,
 ) -> list[datetime]:
     """Stub every collaborator except the ordering under test.
 
@@ -89,6 +90,10 @@ def _patch(
     async def _clear(_app_state: object, approval_id: str) -> None:
         if cleared is not None:
             cleared.append(approval_id)
+
+    async def _signal(_app_state: object, approval_id: str, **_kwargs: object) -> None:
+        if signalled is not None:
+            signalled.append(approval_id)
 
     async def _noop_async(*_args: object, **_kwargs: object) -> None:
         return None
@@ -108,7 +113,7 @@ def _patch(
     monkeypatch.setattr(notify_mod, "_log_state_transition_and_metrics", _noop)
     monkeypatch.setattr(notify_mod, "_log_approval_decision", _noop)
     monkeypatch.setattr(notify_mod, "_publish_approval_event", _publish)
-    monkeypatch.setattr(notify_mod, "signal_resume_intent", _noop_async)
+    monkeypatch.setattr(notify_mod, "signal_resume_intent", _signal)
     return recorded_at
 
 
@@ -179,7 +184,8 @@ class TestLosingDeciderLeavesTheMarkerAlone:
     ) -> None:
         store = _FakeStore(first_writer_wins=False)
         cleared: list[str] = []
-        _patch(monkeypatch, store, cleared=cleared)
+        signalled: list[str] = []
+        _patch(monkeypatch, store, cleared=cleared, signalled=signalled)
 
         with pytest.raises(ConflictError):
             await _save_decision_and_notify(
@@ -197,6 +203,7 @@ class TestLosingDeciderLeavesTheMarkerAlone:
 
         assert cleared == []
         # And it dispatches nothing: only the winner resumes the parked run.
+        assert signalled == []
         assert store.saved is None
         assert store.restored is None
 

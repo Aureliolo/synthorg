@@ -155,7 +155,7 @@ without being *part of* one.
 | Route | Purpose |
 | --- | --- |
 | `GET /` | the open questions, cursor-paginated, hard-to-reverse first then oldest-first. The dashboard's hydrate-on-mount source, so a reload never loses a waiting question. |
-| `POST /{approval_id}/answer` | answer it. `answer` is required and non-blank; `chosen_option_id` picks an option on a project decision. |
+| `POST /{approval_id}/answer` | answer it. `answer` is required and non-blank on both question types; `chosen_option_id` additionally picks an option on a project decision, and that option's writeup, not the submitted `answer`, becomes what the agent resumes with. The card sends the picked option's title as the `answer` so the field is always populated, and the response echoes the text actually recorded. |
 | `POST /{approval_id}/decline` | decline to answer. The run resumes and the agent proceeds on its own judgement. |
 
 All three delegate to the same decision write the approvals endpoints use

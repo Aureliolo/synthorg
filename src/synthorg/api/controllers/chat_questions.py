@@ -50,9 +50,9 @@ from synthorg.core.types import NotBlankStr
 
 _DEFAULT_LIMIT: Final[int] = 50
 
-# The durable idempotency-key column is bounded at 255 chars and these routes
-# store the composite ``f"{approval_id}:{idempotency_key}"`` (a 36-char UUID
-# plus a ":" separator), so the caller's raw key must stay within 218.
+# The stored key is a fixed-length digest of (approval id, raw key), so the
+# 255-char column cannot overflow whatever the caller sends. This bound is a
+# plain request-size sanity limit, matching the approvals decision endpoints'.
 _MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 255
 
 _QuestionIdempotencyKeyHeader = Annotated[

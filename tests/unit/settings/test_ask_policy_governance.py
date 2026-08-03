@@ -49,11 +49,25 @@ class TestExtraDirectivesDirection:
         assert is_weakening(_NS, _EXTRAS, current='[{"id": "a"}]', new="[]") is False
 
     @pytest.mark.unit
-    def test_editing_in_place_is_not_weakening(self) -> None:
-        # Same count, different text: routine wording edits stay quiet, which
-        # is what keeps the guardrail worth reading when it does fire.
+    def test_swapping_one_directive_for_another_is_weakening(self) -> None:
+        # The count is unchanged, so a length comparison waves this through,
+        # but the arriving entry is exactly what can neutralise the posture.
         assert (
             is_weakening(_NS, _EXTRAS, current='[{"id": "a"}]', new='[{"id": "b"}]')
+            is True
+        )
+
+    @pytest.mark.unit
+    def test_reordering_the_same_directives_is_not_weakening(self) -> None:
+        # Nothing arrived, so nothing to confirm: order carries no meaning
+        # and a reorder that prompted would make the guardrail noise.
+        assert (
+            is_weakening(
+                _NS,
+                _EXTRAS,
+                current='[{"id": "a", "text": "x"}, {"id": "b", "text": "y"}]',
+                new='[{"text": "y", "id": "b"}, {"text": "x", "id": "a"}]',
+            )
             is False
         )
 
@@ -125,3 +139,17 @@ class TestEnforcement:
             governance=None,
             get_current=_current,
         )
+
+    @pytest.mark.unit
+    async def test_adding_a_directive_without_governance_rejected(self) -> None:
+        # The second route to the same weakening: the standing directive
+        # survives, but an added one rendered beneath it can neutralise it.
+        async def _current(_ns: str, _key: str) -> str | None:
+            return "[]"
+
+        with pytest.raises(SecurityToggleConfirmationRequiredError):
+            await enforce_security_write_governance(
+                [(_NS, _EXTRAS, '[{"id": "a", "text": "Decide it yourself."}]')],
+                governance=None,
+                get_current=_current,
+            )

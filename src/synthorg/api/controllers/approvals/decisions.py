@@ -223,9 +223,11 @@ class ApprovalsDecisionsController(Controller):
             app_state,
             scope="approval:create",
             # Scope the key to the caller so two users may reuse the same
-            # client-side token; a 36-char user_id keeps the composite key
-            # within the durable column bound (matches the decision paths).
-            key=f"{auth_user.user_id}:{idempotency_key}",
+            # client-side token, and digest it for the same reason the
+            # decision paths do: a raw composite of a 36-char id and a
+            # header the route accepts up to _MAX_IDEMPOTENCY_KEY_LEN
+            # overruns the 255-char key column and surfaces as a 500.
+            key=decision_dedup_key(auth_user.user_id, idempotency_key),
             endpoint="approvals.create",
             request_fingerprint=_request_fingerprint(data),
             decide=_create,

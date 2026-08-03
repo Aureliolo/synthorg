@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource
+from synthorg.tools import decision_tool
 from synthorg.tools.decision_tool import RequestProjectDecisionTool
 from tests._shared import JsonDict
 
@@ -281,10 +282,17 @@ class TestExecute:
         self,
         tool: RequestProjectDecisionTool,
     ) -> None:
+        # Valid options, so the parser cannot fail on a missing field and
+        # mask a broken blank-question check.
         result = await tool.execute(
-            arguments={"question": "   ", "reversibility": "reversible"}
+            arguments={
+                "question": "   ",
+                "options": _rich_options(),
+                "reversibility": "reversible",
+            }
         )
         assert result.is_error
+        assert "question" in result.content
 
     async def test_store_error_returns_error_result(
         self,
@@ -306,3 +314,77 @@ class TestExecute:
         )
         assert result.is_error
         assert "Failed to create decision request" in result.content
+
+
+class TestOutputStyleRewritesReachPersistence:
+    """What the boundary rewrote is what gets stored, resumed and shown.
+
+    A rewrite applied only to the agent-facing confirmation would leave the
+    operator reading, and the resumed run quoting, the text the output-style
+    boundary had already ruled against.
+    """
+
+    @staticmethod
+    def _rewrite_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Stand in for an AUTO_REWRITE rule that changes every string."""
+
+        def _guard(*texts: str) -> tuple[None, list[str]]:
+            return None, [f"{text} [ok]" for text in texts]
+
+        monkeypatch.setattr(decision_tool, "guard_question_text", _guard)
+
+    async def test_question_and_options_persist_rewritten(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tool: RequestProjectDecisionTool,
+        approval_store: ApprovalStore,
+    ) -> None:
+        self._rewrite_everything(monkeypatch)
+
+        result = await tool.execute(
+            arguments={
+                "question": "Framework?",
+                "options": _rich_options(),
+                "reversibility": "reversible",
+            },
+        )
+        assert not result.is_error
+
+        item = await approval_store.get(str(result.metadata["approval_id"]))
+        assert item is not None
+        assert item.description == "Framework? [ok]"
+        evidence = item.evidence_package
+        assert evidence is not None
+        assert evidence.narrative == "Framework? [ok]"
+        assert [opt.title for opt in evidence.options] == ["React [ok]", "Svelte [ok]"]
+        assert all(opt.summary.endswith(" [ok]") for opt in evidence.options)
+        # The brain DECISION record reads its alternatives from this list, so
+        # it has to carry the rewrite too.
+        assert json.loads(str(item.metadata["options"])) == [
+            "React [ok]",
+            "Svelte [ok]",
+        ]
+
+    async def test_option_ids_and_recommendation_survive_the_rewrite(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tool: RequestProjectDecisionTool,
+        approval_store: ApprovalStore,
+    ) -> None:
+        # The operator picks structurally by id, so a prose rewrite must not
+        # disturb the fields the pick resolves against.
+        self._rewrite_everything(monkeypatch)
+
+        result = await tool.execute(
+            arguments={
+                "question": "Framework?",
+                "options": _rich_options(),
+                "reversibility": "reversible",
+            },
+        )
+        item = await approval_store.get(str(result.metadata["approval_id"]))
+        assert item is not None
+        evidence = item.evidence_package
+        assert evidence is not None
+        assert [opt.id for opt in evidence.options] == ["react", "svelte"]
+        assert [opt.recommended for opt in evidence.options] == [True, False]
