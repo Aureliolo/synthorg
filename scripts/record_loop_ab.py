@@ -29,27 +29,37 @@ on one authoritative cost ledger rather than a per-loop estimate.
 import argparse
 import asyncio
 import hashlib
+import shutil
+from contextlib import suppress
 from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
+from evals.errors import (
+    LoopAbGatewayUnavailableError,
+    LoopAbNoCellsMeasuredError,
+)
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.binding import CellBinder
 from evals.loop_ab.emit import write_scoreboard
 from evals.loop_ab.host import (
-    DEFAULT_BIND_HOST,
     DEFAULT_CONTAINER_HOST,
     LoopAbGatewayHost,
     LoopAbHostConfig,
 )
 from evals.loop_ab.manifest import LoopAbManifest, load_manifest
+from evals.loop_ab.models import Scoreboard
+from evals.loop_ab.preflight import run_preflight
 from evals.loop_ab.provenance import capture_provenance
 from evals.loop_ab.runner import LoopAbDeps, run_matrix
 from evals.loop_ab.workspace import CellWorkspace
 from evals.models.brief import Brief
 from synthorg.config.loader import load_config
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_LOOP_AB_RECORD_START
+from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_RECORD_START,
+    EVALS_LOOP_AB_WORKSPACES_RECLAIMED,
+)
 from synthorg.tools.file_system.delete_file import DeleteFileTool
 from synthorg.tools.file_system.edit_file import EditFileTool
 from synthorg.tools.file_system.read_file import ReadFileTool
@@ -134,14 +144,20 @@ async def _record(
 
     Returns:
         Process exit code.
+
+    Raises:
+        LoopAbNoCellsMeasuredError: The matrix completed with nothing measured.
+            The scoreboard is written first, so the unavailable reasons survive
+            for reading, but exiting successfully on an empty one would present
+            a file that looks like a result.
     """
-    suite_root = Path(manifest.brief_suite)
     # A run-scoped scratch root so two concurrent ``--record`` invocations never
     # target the same workspace path: the per-cell reset (rmtree + copytree) is
     # only race-free within a single process, so cross-process isolation has to
     # come from a unique root rather than the shared default.
     run_work_root = args.work_root / f"run-{uuid4().hex[:12]}"
     company_config = load_config(args.company_config)
+    await run_preflight(manifest=manifest, company_config=company_config)
 
     host_config = LoopAbHostConfig(
         company_config=company_config,
@@ -151,51 +167,163 @@ async def _record(
         container_host=args.container_host,
         openhands_image=args.openhands_image,
     )
-    async with LoopAbGatewayHost(host_config) as host:
-        binder = CellBinder(host=host, company_config=company_config)
-        logger.info(
-            EVALS_LOOP_AB_RECORD_START,
-            manifest=str(args.manifest),
-            briefs=len(briefs),
-            tiers=len(manifest.tiers),
-            loops=len(manifest.loops),
-            repetitions=manifest.repetitions,
-            work_root=str(run_work_root),
-            # A container that cannot reach these is the failure mode hardest to
-            # read from a run's output, so the addresses it was given are stated
-            # once up front rather than inferred from a stack of timeouts.
-            gateway_base_url=host.container_gateway_url,
-            mcp_base_url=host.container_mcp_url,
-            bind_host=args.bind_host,
-            port=host.port,
+    try:
+        async with LoopAbGatewayHost(host_config) as host:
+            _log_record_start(args, manifest=manifest, briefs=briefs, host=host)
+            scoreboard = await _run_supervised(
+                host,
+                manifest=manifest,
+                briefs=briefs,
+                run_work_root=run_work_root,
+                deps=_build_deps(host),
+                manifest_path=args.manifest,
+            )
+            # Written inside the host's lifetime so a teardown that overruns
+            # cannot discard a matrix that already cost real money to produce.
+            json_path, md_path = await asyncio.to_thread(
+                write_scoreboard, scoreboard, args.out_dir
+            )
+    finally:
+        await _reclaim_workspaces(run_work_root, keep=args.keep_workspaces)
+    print(f"scoreboard written: {json_path} and {md_path}")
+    if not scoreboard.measured_rows:
+        msg = (
+            "every cell recorded as unavailable, so the scoreboard measures "
+            "nothing; the reasons are in the artifact just written"
         )
-        deps = LoopAbDeps(
-            build_provider=binder.build_provider,
-            build_tool_registry=_build_tool_registry,
-            build_openhands_cell=binder.build_openhands_cell,
-            open_cell_ledger=binder.open_cell_ledger,
-        )
-        # ``capture_provenance`` shells out to git and ``write_scoreboard``
-        # fsyncs to disk; both are blocking, so they run off the event loop.
-        provenance = await asyncio.to_thread(
-            capture_provenance,
-            repo_root=Path.cwd(),
-            manifest_path=args.manifest,
-            brief_suite_version=_suite_version(briefs),
-        )
-        scoreboard = await run_matrix(
+        raise LoopAbNoCellsMeasuredError(msg)
+    return 0
+
+
+def _build_deps(host: LoopAbGatewayHost) -> LoopAbDeps:
+    """Bind every per-cell collaborator to the hosted gateway.
+
+    Args:
+        host: The started recording host.
+
+    Returns:
+        The fully wired :class:`LoopAbDeps`.
+    """
+    binder = CellBinder(host=host)
+    return LoopAbDeps(
+        build_provider=binder.build_provider,
+        build_tool_registry=_build_tool_registry,
+        build_openhands_cell=binder.build_openhands_cell,
+        open_cell_ledger=binder.open_cell_ledger,
+    )
+
+
+def _log_record_start(
+    args: argparse.Namespace,
+    *,
+    manifest: LoopAbManifest,
+    briefs: tuple[Brief, ...],
+    host: LoopAbGatewayHost,
+) -> None:
+    """State what is about to be spent, and where the container must reach.
+
+    Args:
+        args: The parsed CLI arguments.
+        manifest: The loaded recording manifest.
+        briefs: The loaded brief suite.
+        host: The started recording host.
+    """
+    logger.info(
+        EVALS_LOOP_AB_RECORD_START,
+        manifest=str(args.manifest),
+        briefs=len(briefs),
+        tiers=len(manifest.tiers),
+        loops=len(manifest.loops),
+        repetitions=manifest.repetitions,
+        work_root=str(args.work_root),
+        # A container that cannot reach these is the failure mode hardest to
+        # read from a run's output, so the addresses it was given are stated
+        # once up front rather than inferred from a stack of timeouts.
+        gateway_base_url=host.container_gateway_url,
+        mcp_base_url=host.container_mcp_url,
+        port=host.port,
+    )
+
+
+async def _run_supervised(
+    host: LoopAbGatewayHost,
+    *,
+    manifest: LoopAbManifest,
+    briefs: tuple[Brief, ...],
+    run_work_root: Path,
+    deps: LoopAbDeps,
+    manifest_path: Path,
+) -> Scoreboard:
+    """Run the matrix, abandoning it if the gateway it dials stops serving.
+
+    A serving task that dies mid-matrix turns every remaining cell into a
+    connection error, which the per-cell handler faithfully records as that
+    loop's unavailable row: the run keeps paying for containers and turns while
+    measuring nothing, and the real cause surfaces only at teardown. Racing the
+    two surfaces it at the first cell instead.
+
+    Args:
+        host: The started recording host.
+        manifest: The loaded recording manifest.
+        briefs: The loaded brief suite.
+        run_work_root: Root for this run's per-cell workspaces.
+        deps: The wired per-cell collaborators.
+        manifest_path: Path the manifest was loaded from, for provenance.
+
+    Returns:
+        The completed scoreboard.
+
+    Raises:
+        LoopAbGatewayUnavailableError: The gateway stopped serving mid-matrix.
+    """
+    # ``capture_provenance`` shells out to git, so it runs off the event loop.
+    provenance = await asyncio.to_thread(
+        capture_provenance,
+        repo_root=Path.cwd(),
+        manifest_path=manifest_path,
+        brief_suite_version=_suite_version(briefs),
+    )
+    matrix = asyncio.ensure_future(
+        run_matrix(
             manifest=manifest,
             briefs=briefs,
-            suite_root=suite_root,
+            suite_root=Path(manifest.brief_suite),
             work_root=run_work_root,
             deps=deps,
             provenance=provenance,
         )
-    json_path, md_path = await asyncio.to_thread(
-        write_scoreboard, scoreboard, args.out_dir
     )
-    print(f"scoreboard written: {json_path} and {md_path}")
-    return 0
+    serving = host.serving
+    if serving is None:
+        return await matrix
+    await asyncio.wait({matrix, serving}, return_when=asyncio.FIRST_COMPLETED)
+    if matrix.done():
+        return await matrix
+    matrix.cancel()
+    with suppress(asyncio.CancelledError):
+        await matrix
+    msg = "the recording host stopped serving before the matrix finished"
+    raise LoopAbGatewayUnavailableError(msg)
+
+
+async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:
+    """Remove this run's per-cell workspace trees.
+
+    One tree per cell is recreated from the seed fixture and then written into
+    by a coding agent, so a matrix leaves behind whatever those agents installed
+    or built. Nothing reuses a tree between runs (each run mints its own root),
+    so retaining them grows disk monotonically for no benefit unless a
+    maintainer is inspecting what a loop actually produced.
+
+    Args:
+        run_work_root: Root for this run's per-cell workspaces.
+        keep: Leave the trees on disk for inspection.
+    """
+    if keep:
+        print(f"workspaces kept: {run_work_root}")
+        return
+    await asyncio.to_thread(shutil.rmtree, run_work_root, ignore_errors=True)
+    logger.info(EVALS_LOOP_AB_WORKSPACES_RECLAIMED, work_root=str(run_work_root))
 
 
 def _suite_version(briefs: tuple[Brief, ...]) -> str:
@@ -221,12 +349,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--work-root", type=Path, default=_DEFAULT_WORK_ROOT)
     parser.add_argument(
         "--bind-host",
-        default=DEFAULT_BIND_HOST,
+        default=None,
         help=(
-            "Interface the recorder's own gateway listens on. The default binds "
-            "every interface because the Docker bridge cannot reach a "
-            "loopback-only listener; narrow it to the bridge address where that "
-            "address is known and stable."
+            "Interface the recorder's own gateway listens on. Left unset, the "
+            "narrowest address the sandbox can still reach is resolved: host "
+            "loopback under Docker Desktop, the bridge gateway under Docker "
+            "Engine. Set it only to override that; the recorder serves the "
+            "whole application, so a wide bind exposes more than the gateway."
         ),
     )
     parser.add_argument(
@@ -249,6 +378,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Override tools.openhands_image, to record against a locally built "
             "image rather than the published one."
+        ),
+    )
+    parser.add_argument(
+        "--keep-workspaces",
+        action="store_true",
+        help=(
+            "Leave each cell's workspace tree on disk after the run, to inspect "
+            "what a loop actually produced. Off by default: nothing reuses them "
+            "between runs, so they only accumulate."
         ),
     )
     parser.add_argument(

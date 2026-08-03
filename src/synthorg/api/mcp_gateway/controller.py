@@ -155,7 +155,11 @@ async def _read_messages(
     if len(body) > _MAX_BODY_BYTES:
         msg = "request body exceeds the MCP gateway size ceiling"
         logger.warning(
-            GATEWAY_DISPATCH_FAILED, surface="mcp-gateway", reason="oversize"
+            GATEWAY_DISPATCH_FAILED,
+            surface="mcp-gateway",
+            reason="oversize",
+            body_bytes=len(body),
+            max_bytes=_MAX_BODY_BYTES,
         )
         raise ValidationError(msg)
     try:

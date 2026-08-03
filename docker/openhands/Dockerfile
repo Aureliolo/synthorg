@@ -78,6 +78,7 @@ RUN python3 -m venv "${OPENHANDS_VENV}" \
 # ordering keeps the whole pip layer cached whenever only the entrypoint
 # changes, which is most of the time.
 COPY --chown=10001:10001 docker/openhands/run_task.py /opt/openhands/run_task.py
+COPY --chown=10001:10001 docker/openhands/metrics_shape.py /opt/openhands/metrics_shape.py
 
 WORKDIR /workspace
 USER 10001

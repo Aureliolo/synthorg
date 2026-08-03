@@ -30,7 +30,6 @@ from synthorg.settings.model_ref import ModelRef
 from tests.evals_spine.loop_ab.conftest import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
-    recording_company_config,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
@@ -61,17 +60,19 @@ def _tier(provider: str = RECORDING_PROVIDER) -> TierEntry:
     )
 
 
-def _cell(workspace: CellWorkspace, *, loop_type: str = "react") -> CellRun:
+def _cell(
+    workspace: CellWorkspace, *, loop_type: str = "react", repetition: int = 0
+) -> CellRun:
     """One repetition against *workspace*.
 
     Returns:
         The cell run.
     """
     return CellRun(
-        loop_type=loop_type,
+        loop_type=NotBlankStr(loop_type),
         tier=_tier(),
         brief=_brief(),
-        repetition=0,
+        repetition=repetition,
         workspace=workspace,
     )
 
@@ -95,7 +96,7 @@ def binder(host: LoopAbGatewayHost) -> CellBinder:
     Returns:
         The cell binder.
     """
-    return CellBinder(host=host, company_config=recording_company_config())
+    return CellBinder(host=host)
 
 
 class TestRunBearer:
@@ -235,3 +236,31 @@ class TestCellLedger:
 
         assert records, "the hosted gateway recorded no cost for the run"
         assert {record.provider for record in records} == {RECORDING_PROVIDER}
+
+    async def test_the_previous_ledger_is_restored_when_the_cell_raises(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # A cell that fails is the normal case the runner is built around, and
+        # an un-restored swap would leave the NEXT cell's real spend landing in
+        # a tracker nobody reads: a silently wrong number, not a missing one.
+        before = host.app_state.slice(BudgetStateSlice).cost_tracker
+        failure = RuntimeError("the cell failed mid-run")
+
+        with pytest.raises(RuntimeError):
+            async with binder.open_cell_ledger(_cell(workspace)):
+                raise failure
+
+        assert host.app_state.slice(BudgetStateSlice).cost_tracker is before
+
+    async def test_a_bearer_binds_the_cell_that_minted_it(
+        self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
+    ) -> None:
+        # Each cell's ceiling is keyed on its own execution id, so two cells
+        # sharing a token would let the second inherit the first's exhausted
+        # budget. Verify the claims differ where the cell does.
+        first = await binder.mint_bearer(_cell(workspace, repetition=0))
+        second = await binder.mint_bearer(_cell(workspace, repetition=1))
+
+        assert host.signer.verify(first).execution_id != (
+            host.signer.verify(second).execution_id
+        )

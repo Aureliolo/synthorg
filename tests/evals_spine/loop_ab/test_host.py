@@ -10,19 +10,26 @@ No provider is contacted: the company config binds the deterministic scripted
 driver, so a full round trip costs nothing.
 """
 
+import os
 from pathlib import Path
 
 import httpx
 import pytest
 
-from evals.errors import LoopAbGatewayUnavailableError
+from evals.errors import (
+    LoopAbGatewayUnavailableError,
+    LoopAbHostAlreadyStartedError,
+)
 from evals.loop_ab.host import (
     DEFAULT_CONTAINER_HOST,
     LoopAbGatewayHost,
     LoopAbHostConfig,
 )
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.gateway_binding import mint_run_token
+from synthorg.llm.gateway_token import GatewaySigner
+from synthorg.persistence.state import persistence_of
 from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of
 from tests.evals_spine.loop_ab.conftest import (
@@ -34,6 +41,17 @@ from tests.evals_spine.loop_ab.conftest import (
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 _TTL_SECONDS = 600
+
+#: What the deterministic scripted driver always opens its completion with.
+_SCRIPTED_PREFIX = "Scripted deterministic completion"
+
+#: The Cat-3 bootstrap secrets the host swaps for throwaway values while it runs.
+_SECRET_VARS = (
+    "SYNTHORG_JWT_SECRET",
+    "SYNTHORG_PAGINATION_CURSOR_SECRET",
+    "SYNTHORG_MASTER_KEY",
+    "SYNTHORG_SETTINGS_KEY",
+)
 
 
 _COMPLETION_BODY: dict[str, object] = {
@@ -49,6 +67,19 @@ def _local_mcp_url(host: LoopAbGatewayHost) -> str:
         The same mounted route, dialled the way this process can reach it.
     """
     return host.container_mcp_url.replace(DEFAULT_CONTAINER_HOST, "127.0.0.1")
+
+
+def _config(tmp_path: Path, *, scratch: Path | None = None) -> LoopAbHostConfig:
+    """Build a loopback-bound host config rooted under *tmp_path*.
+
+    Returns:
+        The host config.
+    """
+    return LoopAbHostConfig(
+        company_config=recording_company_config(),
+        scratch_dir=scratch if scratch is not None else tmp_path / "host",
+        bind_host="127.0.0.1",
+    )
 
 
 def _bearer(host: LoopAbGatewayHost) -> str:
@@ -82,14 +113,42 @@ class TestSigner:
             )
 
         assert response.status_code == 200, response.text
-        assert response.json()["choices"]
+        content = response.json()["choices"][0]["message"]["content"]
+        # The scripted driver is deterministic, so asserting on the content it
+        # is known to produce catches a hop that answered with something else
+        # (a different model dispatched, a truncated or re-encoded body) where
+        # a truthiness check would pass.
+        assert content.startswith(_SCRIPTED_PREFIX), content
 
-    async def test_a_foreign_bearer_is_refused(self, host: LoopAbGatewayHost) -> None:
+    async def test_a_malformed_bearer_is_refused(self, host: LoopAbGatewayHost) -> None:
         # The other half of the same claim: the route is not simply unguarded.
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{host.local_gateway_url}/chat/completions",
                 headers={"Authorization": "Bearer not-a-token"},
+                json=_COMPLETION_BODY,
+            )
+
+        assert response.status_code == 401, response.text
+
+    async def test_a_bearer_from_another_signer_is_refused(
+        self, host: LoopAbGatewayHost
+    ) -> None:
+        # The actual defect is cross-INSTANCE, not malformed input: a token that
+        # is correctly shaped and correctly signed, just by a different signer,
+        # is what a recorder pointed at a separately running backend would send.
+        foreign = mint_run_token(
+            GatewaySigner.with_random_key(),
+            execution_id=NotBlankStr("loop-ab-host-test"),
+            agent_id=NotBlankStr("agent-1"),
+            task_id=NotBlankStr("task-1"),
+            ref=ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL),
+            ttl_seconds=_TTL_SECONDS,
+        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{host.local_gateway_url}/chat/completions",
+                headers={"Authorization": f"Bearer {foreign}"},
                 json=_COMPLETION_BODY,
             )
 
@@ -164,6 +223,47 @@ class TestLifecycle:
 
         assert not scratch.exists()
 
+    async def test_stop_is_idempotent(self, tmp_path: Path) -> None:
+        # Teardown runs from ``__aexit__`` and again from ``__aenter__``'s
+        # unwind, so the second call has to be a no-op rather than an error
+        # that replaces whatever ended the run.
+        started = LoopAbGatewayHost(_config(tmp_path))
+        await started.start()
+        await started.stop()
+        await started.stop()
+
+        assert started.port == 0
+
+    async def test_stop_before_start_is_a_no_op(self, tmp_path: Path) -> None:
+        await LoopAbGatewayHost(_config(tmp_path)).stop()
+
+    async def test_a_failed_start_restores_the_environment(
+        self, tmp_path: Path, host: LoopAbGatewayHost
+    ) -> None:
+        # A start that raises has already swapped the process environment, and
+        # ``__aexit__`` never runs for an ``__aenter__`` that raised, so the
+        # unwind is the only thing that puts the operator's secrets back.
+        del host  # one host is already active, which is what makes this fail
+        before = {var: os.environ.get(var) for var in _SECRET_VARS}
+        scratch = tmp_path / "second-host"
+
+        with pytest.raises(LoopAbHostAlreadyStartedError):
+            async with LoopAbGatewayHost(_config(tmp_path, scratch=scratch)):
+                pass
+
+        assert {var: os.environ.get(var) for var in _SECRET_VARS} == before
+        assert not scratch.exists()
+
+    async def test_a_second_concurrent_host_is_refused(
+        self, tmp_path: Path, host: LoopAbGatewayHost
+    ) -> None:
+        # Two live hosts would each capture the other's throwaway secrets as
+        # the values to restore, so whichever stopped first would leave the
+        # survivor's environment holding secrets that no longer decrypt.
+        del host
+        with pytest.raises(LoopAbHostAlreadyStartedError):
+            await LoopAbGatewayHost(_config(tmp_path)).start()
+
     async def test_signer_before_start_fails_loud(self, tmp_path: Path) -> None:
         # A host that never started has no signer, and silently returning one
         # built here would be exactly the second instance this fixes.
@@ -175,6 +275,32 @@ class TestLifecycle:
 
         with pytest.raises(LoopAbGatewayUnavailableError):
             _ = LoopAbGatewayHost(config).signer
+
+
+class TestFirstRunSetup:
+    async def test_the_setup_route_grants_nobody_admin(
+        self, host: LoopAbGatewayHost
+    ) -> None:
+        # ``/auth/setup`` is excluded from authentication on purpose so a real
+        # deployment cannot lock its operator out, and it grants CEO plus OWNER
+        # to the first caller while no CEO exists. The recorder boots a database
+        # that has none and serves the whole application, so without a seeded
+        # admin this route hands full control of a process holding the
+        # operator's provider credentials to anyone who can reach the port.
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{host.port}/api/v1/auth/setup",
+                json={"username": "intruder", "password": "hunter2-hunter2"},
+            )
+
+        assert response.status_code == 409, response.text
+
+    async def test_the_seeded_admin_is_the_only_ceo(
+        self, host: LoopAbGatewayHost
+    ) -> None:
+        persistence = persistence_of(host.app_state)
+
+        assert await persistence.users.count_by_role(HumanRole.CEO) == 1
 
 
 class TestOpenHandsImage:

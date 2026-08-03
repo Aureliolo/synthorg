@@ -1,3 +1,4 @@
+# module-kind: code
 """Domain error hierarchy for the eval spine.
 
 The eval spine is out-of-package, but it follows the project convention
@@ -193,6 +194,58 @@ class LoopAbOpenHandsUnwiredError(EvalError):
     )
 
 
+class LoopAbBindHostUnresolvedError(EvalError):
+    """Raised when the interface the recording host should listen on is unknown.
+
+    The container dials the recorder through a ``host-gateway`` alias, so the
+    listener has to sit on an address that alias resolves to. Binding every
+    interface would always satisfy that, and is exactly what this refuses to do
+    silently: the host serves the whole application, including the fail-safe
+    excluded ``/auth/setup``, so a wide bind is the operator's explicit call to
+    make via ``--bind-host``, never a default the harness picks for them.
+    """
+
+    default_message: ClassVar[str] = (
+        "Could not resolve an interface reachable from the sandbox; "
+        "pass --bind-host explicitly"
+    )
+
+
+class LoopAbHostAlreadyStartedError(EvalError):
+    """Raised when a started recording host is started a second time.
+
+    The second start would capture the first start's throwaway bootstrap
+    secrets as the values to restore, so stopping would leave the operator's
+    real environment holding secrets that died with a process.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B recording host is already started"
+
+
+class LoopAbDockerUnavailableError(EvalError):
+    """Raised when the Docker daemon is unreachable before a recording run.
+
+    Every loop drives a sandbox, so a run without a daemon measures nothing.
+    Discovering that inside a cell would first spend real provider tokens and
+    then record the failure as that loop's unavailable row, which reads as a
+    property of the loop rather than of the machine.
+    """
+
+    default_message: ClassVar[str] = "Docker daemon is unreachable"
+
+
+class LoopAbNoCellsMeasuredError(EvalError):
+    """Raised when a completed matrix scored no cell at all.
+
+    An all-unavailable scoreboard is never a legitimate measurement, and
+    writing one exits successfully with a file that looks like a result. The
+    usual cause is a company config whose ``providers`` block does not cover
+    the manifest's tiers.
+    """
+
+    default_message: ClassVar[str] = "Loop A/B matrix measured no cells"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -220,7 +273,11 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "LoopAbBindHostUnresolvedError",
+    "LoopAbDockerUnavailableError",
     "LoopAbGatewayUnavailableError",
+    "LoopAbHostAlreadyStartedError",
+    "LoopAbNoCellsMeasuredError",
     "LoopAbOpenHandsUnwiredError",
     "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",

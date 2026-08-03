@@ -114,6 +114,14 @@ async def _tools_call(
     Returns:
         A JSON-RPC response: a tool-result envelope on success (or a tool
         failure marked ``isError``), or a JSON-RPC error for malformed params.
+
+    Raises:
+        DomainError: The tool context could not be built. Building it is a
+            deployment question (are the connections configured, is the catalog
+            wired), not a property of the call, so it propagates to the
+            transport and becomes an HTTP error. Folding it into the tool-result
+            envelope would tell the agent its tool failed, inviting a retry or a
+            different tool, when nothing it can do will help.
     """
     if not isinstance(params, dict):
         return _error(message_id, _INVALID_PARAMS, "params must be an object")
@@ -121,15 +129,16 @@ async def _tools_call(
     arguments = params.get("arguments", {})
     if not isinstance(name, str) or not isinstance(arguments, dict):
         return _error(message_id, _INVALID_PARAMS, "invalid tool name or arguments")
+    ctx = await open_context()
     try:
         text = await invoke_credentialed_tool(
             name,
             arguments,
-            ctx=await open_context(),
+            ctx=ctx,
             agent_id=agent_id,
             capabilities=capabilities,
-            allowed=allowed,
             denied=denied,
+            allowed=allowed,
         )
     except DomainError as exc:
         logger.warning(
@@ -137,6 +146,7 @@ async def _tools_call(
             surface="mcp",
             tool=name,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return _ok(message_id, _tool_error(safe_error_description(exc)))
     return _ok(message_id, _tool_text(text))

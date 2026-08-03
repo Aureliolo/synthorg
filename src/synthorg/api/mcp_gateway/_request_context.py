@@ -17,6 +17,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Final
 
+from pydantic import ValidationError
+
 from synthorg._core.features import require_service
 from synthorg.api.mcp_gateway.protocol import ToolContextProvider
 from synthorg.api.mcp_gateway.tools import (
@@ -27,6 +29,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.state import approval_store_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._security_factory import make_security_interceptor
 from synthorg.engine.workspace.state import agent_workspace_root_of
@@ -156,6 +159,9 @@ async def _resolve_kill_switches(resolver: ConfigResolver) -> _FamilyKillSwitche
     Returns:
         The deploy / publish kill switches for this request.
     """
+    # These two keys are also read by the per-family settings bundles below.
+    # They cannot disagree within one request: the resolver caches per request,
+    # so both reads see the same value even if an operator writes between them.
     return _FamilyKillSwitches(
         deploy_enabled=await resolver.get_bool(_TOOLS_NS, "deploy_tools_enabled"),
         publish_enabled=await resolver.get_bool(_TOOLS_NS, "publish_tools_enabled"),
@@ -198,6 +204,14 @@ async def _build_context(
 
     Returns:
         The :class:`CredentialedToolContext` for this request.
+
+    Raises:
+        ServiceUnavailableError: The resolved settings do not describe a usable
+            context. The commonest case is a deployment with no forge or chat
+            connection configured, which the context type refuses at its own
+            boundary: that is a real answer (those tools cannot be served here)
+            but it arrives as a validation error, and letting a bare one escape
+            would surface an unexplained 500 instead of naming what is unset.
     """
     resolver = config_resolver_of(app_state)
     try:
@@ -246,7 +260,20 @@ async def _build_context(
         publish_settings=publish.result(),
         actor=actor.result(),
     )
-    return _assemble_context(app_state, inputs, agent_id=agent_id, task_id=task_id)
+    try:
+        return _assemble_context(app_state, inputs, agent_id=agent_id, task_id=task_id)
+    except ValidationError as exc:
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="mcp-gateway",
+            reason="context_not_configured",
+            error_type=type(exc).__name__,
+        )
+        msg = (
+            "the credentialed-tool context is not configured on this deployment; "
+            "set tools.forge_tools_connection and tools.chat_tools_connection"
+        )
+        raise ServiceUnavailableError(msg) from exc
 
 
 def _assemble_context(
@@ -328,4 +355,16 @@ async def _resolve_actor(app_state: AppState, *, agent_id: str) -> AgentIdentity
     registry = app_state.slice(HrStateSlice).agent_registry
     if registry is None:
         return None
-    return await registry.get(NotBlankStr(agent_id))
+    actor = await registry.get(NotBlankStr(agent_id))
+    if actor is None:
+        # An unattributable call is refused later by the destructive guardrail,
+        # but silently: nothing else records that a verified bearer named an
+        # agent the registry has never heard of, which is either a token that
+        # outlived its agent or one minted for an agent that never existed.
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="mcp-gateway",
+            reason="unknown_actor",
+            agent_id=agent_id,
+        )
+    return actor

@@ -43,16 +43,28 @@ _PROJECTS_SUBDIR: Final[str] = "projects"
 class CellWorkspace:
     """The two directories one cell needs, which are not the same directory.
 
+    ``project_dir`` is derived rather than stored, because the two must name the
+    same tree by construction. A pair that disagreed would send the loop's file
+    tools to one directory and its shell (which re-derives the mount from
+    ``root`` by project id) to another, and the brief would then be graded
+    against whichever one the checks happened to read: wrong, silently, with no
+    failure anywhere.
+
     Attributes:
         root: What a sandbox is bound to. The mount is selected beneath it by
             project id, so this is the parent of the graded tree, not the tree.
-        project_dir: What the loop's file tools are scoped to, what the
-            container sees at its workspace path, and what the brief's checks
-            are graded against.
     """
 
     root: Path
-    project_dir: Path
+
+    @property
+    def project_dir(self) -> Path:
+        """What the loop actually works in and is graded on.
+
+        Returns:
+            The project subtree the sandbox backends resolve under ``root``.
+        """
+        return self.root / _PROJECTS_SUBDIR / EVAL_TASK_PROJECT
 
 
 def _contained(candidate: Path, root: Path) -> Path:
@@ -112,6 +124,10 @@ def seed_workspace(*, brief: Brief, suite_root: Path, work_root: Path) -> CellWo
     root = _contained(Path(brief.brief_id), work_root)
     if root.exists():
         shutil.rmtree(root)
+    workspace = CellWorkspace(root=root)
+    # Re-checked after resolution even though the segments below ``root`` are
+    # our own constants: ``brief_id`` reached ``root`` from authored YAML, and a
+    # symlink planted in a previous run's tree could redirect the copy.
     project_dir = _contained(Path(_PROJECTS_SUBDIR) / EVAL_TASK_PROJECT, root)
     shutil.copytree(seed, project_dir)
 
@@ -121,7 +137,7 @@ def seed_workspace(*, brief: Brief, suite_root: Path, work_root: Path) -> CellWo
         seed_dir=spec.seed_dir,
         project=EVAL_TASK_PROJECT,
     )
-    return CellWorkspace(root=root, project_dir=project_dir)
+    return workspace
 
 
 __all__ = ["CellWorkspace", "seed_workspace"]

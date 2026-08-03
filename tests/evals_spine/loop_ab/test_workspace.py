@@ -17,10 +17,11 @@ import pytest
 from pydantic import ValidationError
 
 from evals.errors import (
+    WorkspacePathEscapeError,
     WorkspaceSeedNotFoundError,
     WorkspaceSpecMissingError,
 )
-from evals.loop_ab.workspace import CellWorkspace, seed_workspace
+from evals.loop_ab.workspace import CellWorkspace, _contained, seed_workspace
 from evals.models.brief import (
     Brief,
     BriefKind,
@@ -182,3 +183,24 @@ def test_brief_id_that_escapes_the_work_root_is_refused_at_the_model() -> None:
     rejected at the model boundary before it can ever reach the seeding join."""
     with pytest.raises(ValidationError):
         _brief(brief_id="../escaped")
+
+
+def test_the_containment_guard_refuses_an_escaping_path(tmp_path: Path) -> None:
+    """The guard behind that model boundary actually raises.
+
+    Both inputs the seeder joins are model-validated, so nothing a loaded brief
+    can express reaches this branch: it is the second line, for a value that
+    arrived some other way (a symlink planted under a reused root). A defence
+    that has never been observed to fire is a defence nobody can rely on.
+    """
+    with pytest.raises(WorkspacePathEscapeError):
+        _contained(Path("..") / "escaped", tmp_path / "root")
+
+
+def test_the_containment_guard_admits_a_contained_path(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    assert _contained(Path("inside") / "deeper", root) == (
+        root.resolve() / "inside" / "deeper"
+    )

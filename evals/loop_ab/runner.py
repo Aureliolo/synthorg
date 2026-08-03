@@ -14,16 +14,23 @@ honest: when its runtime is not wired, the cell is recorded as unavailable with
 the reason instead of being dropped from the comparison.
 """
 
+import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from evals.errors import BriefExecutionError
+from evals.errors import (
+    BriefExecutionError,
+    LoopAbDockerUnavailableError,
+    LoopAbGatewayUnavailableError,
+    LoopAbProviderMissingError,
+)
 from evals.loop_ab.aggregate import (
     LoopRepetitionSummary,
     RepetitionOutcome,
@@ -57,6 +64,7 @@ from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopD
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_CELL_PARTIAL,
     EVALS_LOOP_AB_LOOP_UNAVAILABLE,
     EVALS_LOOP_AB_RUN_RECORDED,
 )
@@ -65,9 +73,11 @@ from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 
-#: Stable agent id for every A/B run. Fixed so runs are comparable and so no
-#: run inherits another's per-agent state.
-_AB_AGENT_ID: UUID = UUID("00000000-0000-4000-8000-00000000ab00")
+#: The one agent every cell runs as, fixed so runs stay comparable and no run
+#: inherits another's per-agent state. Exported because the gateway-side bearer
+#: has to name the same actor the engine does, and two literals kept level by a
+#: comment is how cost attribution drifts apart.
+AB_AGENT_ID: Final[UUID] = UUID("00000000-0000-4000-8000-00000000ab00")
 
 #: The loop's execution is the unit under test, so the agent is a plain
 #: developer with no role-specific prompt shaping to advantage one loop.
@@ -78,6 +88,16 @@ _AB_HIRING_DATE: date = date(2026, 1, 1)
 #: The one loop whose runtime the harness constructs per cell.
 _OPENHANDS_LOOP: Final[str] = "openhands"
 
+#: Failures that are true of the machine or the configuration rather than of
+#: the loop under test, so no other cell would survive them either. Recording
+#: them per cell would spend the rest of a matrix rediscovering one fact and
+#: then attribute it to whichever loop happened to hit it.
+_SYSTEMIC_FAILURES: Final[tuple[type[Exception], ...]] = (
+    LoopAbProviderMissingError,
+    LoopAbGatewayUnavailableError,
+    LoopAbDockerUnavailableError,
+)
+
 
 @dataclass(frozen=True)
 class _CellCoordinates:
@@ -87,7 +107,7 @@ class _CellCoordinates:
     three parallel parameters threaded through every run helper.
     """
 
-    loop_type: str
+    loop_type: NotBlankStr
     tier: TierEntry
     brief: Brief
 
@@ -109,7 +129,7 @@ class CellRun:
         workspace: The recreated workspace this repetition runs against.
     """
 
-    loop_type: str
+    loop_type: NotBlankStr
     tier: TierEntry
     brief: Brief
     repetition: int
@@ -144,6 +164,12 @@ class LoopAbDeps:
             repetition and yields it. ``None`` means no gateway is hosted, so
             the engine's own tracker is the ledger; that is the offline path
             the regression suite drives.
+
+    The two optional factories are independent, not a paired mode: the suite
+    exercises each one set while the other is ``None``, because what they answer
+    (can this loop's runtime be built, and whose ledger is authoritative) are
+    separate questions. Folding them into one flag would assert a correlation
+    nothing here has.
     """
 
     build_provider: ProviderFactory
@@ -159,7 +185,7 @@ def _identity(tier: TierEntry) -> AgentIdentity:
         The agent identity for this tier.
     """
     return AgentIdentity(
-        id=_AB_AGENT_ID,
+        id=AB_AGENT_ID,
         name="Loop A/B Agent",
         role=_AB_AGENT_ROLE,
         department=_AB_AGENT_DEPARTMENT,
@@ -307,14 +333,22 @@ async def _run_repetition(
     Returns:
         ``(outcome, spend)`` for this repetition.
     """
+    # Provisioning removes and re-copies a whole tree, which is long enough to
+    # stall the accept loop of the gateway this same process is serving.
+    workspace = await asyncio.to_thread(
+        partial(
+            seed_workspace,
+            brief=coord.brief,
+            suite_root=suite_root,
+            work_root=work_root,
+        )
+    )
     cell = CellRun(
-        loop_type=coord.loop_type,
+        loop_type=NotBlankStr(coord.loop_type),
         tier=coord.tier,
         brief=coord.brief,
         repetition=repetition,
-        workspace=seed_workspace(
-            brief=coord.brief, suite_root=suite_root, work_root=work_root
-        ),
+        workspace=workspace,
     )
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
@@ -390,6 +424,23 @@ async def _run_cell(
     fabricated zero. This is what keeps a transient failure on one cell of a
     long real-spend matrix from discarding every other already-measured,
     already-paid-for cell: the whole scoreboard is always assembled and written.
+
+    The same reasoning applies inside a cell. A failure on the last of several
+    repetitions leaves the earlier ones measured and paid for, and a summary
+    over fewer repetitions is a weaker measurement, not an absent one, so the
+    cell reports what it managed rather than discarding it. Only a cell that
+    never completed one repetition has nothing to report.
+
+    Failures of the machine or the configuration are not caught here at all.
+    They are true of every remaining cell, so absorbing them would spend the
+    rest of the matrix rediscovering one fact, each time after a full retry
+    budget, and report it as a property of each loop in turn.
+
+    Raises:
+        LoopAbProviderMissingError: A tier names an absent provider, which no
+            other cell can survive either.
+        LoopAbGatewayUnavailableError: The hosted gateway is gone.
+        LoopAbDockerUnavailableError: The Docker daemon is gone.
     """
     outcomes: list[RepetitionOutcome] = []
     spend: list[ProviderSpend] = []
@@ -404,16 +455,30 @@ async def _run_cell(
             )
         except MemoryError, RecursionError:
             raise
+        except _SYSTEMIC_FAILURES:
+            raise
         except Exception as exc:  # noqa: BLE001 -- failed cell recorded as unavailable
             logger.warning(
                 EVALS_LOOP_AB_LOOP_UNAVAILABLE,
                 loop_type=coord.loop_type,
                 tier=coord.tier.tier,
                 brief_id=coord.brief.brief_id,
+                repetition=repetition,
+                completed_repetitions=len(outcomes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return _unavailable_row(coord, exc, tuple(spend))
+            if not outcomes:
+                return _unavailable_row(coord, exc, tuple(spend))
+            logger.warning(
+                EVALS_LOOP_AB_CELL_PARTIAL,
+                loop_type=coord.loop_type,
+                tier=coord.tier.tier,
+                brief_id=coord.brief.brief_id,
+                completed_repetitions=len(outcomes),
+                planned_repetitions=manifest.repetitions,
+            )
+            break
         outcomes.append(outcome)
         spend.extend(run_spend)
 

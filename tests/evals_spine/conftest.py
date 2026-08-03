@@ -1,12 +1,36 @@
 """Shared fixtures for the eval-spine test suite."""
 
-from collections.abc import Callable
+import asyncio
+import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 import yaml
 
 BriefYamlWriter = Callable[..., Path]  # type: ignore[explicit-any]  # arbitrary-arg brief-writer test factory
+
+
+# This tier binds real sockets and serves a real application (the loop A/B
+# recording host), which the Windows ``SelectorEventLoop`` cannot drive. It sits
+# outside ``tests/unit``, so it does not inherit that tier's override and would
+# otherwise take whatever the interpreter defaults to: correct today, but by
+# coincidence rather than by choice, and a coincidence that breaks as a hang.
+# Declared in a conftest so pytest's plugin manager discovers it; a hook defined
+# in a test module is never registered.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
+
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``ProactorEventLoop`` for the eval spine on Windows.
+
+        Returns:
+            The loop factory mapping pytest-asyncio selects from.
+        """
+        del config, item
+        return {"proactor": asyncio.ProactorEventLoop}
 
 
 def _brief_yaml(kind: str, **overrides: object) -> str:

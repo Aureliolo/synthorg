@@ -103,6 +103,23 @@ class _RunningTotals:
     input_tokens: int = 0
     output_tokens: int = 0
 
+    def __post_init__(self) -> None:
+        """Reject a negative figure at construction.
+
+        Every producer already clamps, so this asserts the invariant on the
+        type rather than leaving it a property of having read three call sites.
+
+        Raises:
+            ValueError: Any figure is negative.
+        """
+        if self.cost < 0 or self.input_tokens < 0 or self.output_tokens < 0:
+            msg = (
+                "running totals must be non-negative, got "
+                f"cost={self.cost}, input_tokens={self.input_tokens}, "
+                f"output_tokens={self.output_tokens}"
+            )
+            raise ValueError(msg)
+
 
 _KIND_BY_NAME: Final[dict[str, OpenHandsEventKind]] = {
     "action": OpenHandsEventKind.ACTION,
@@ -119,6 +136,9 @@ _TURN_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
 
 # Cap the unknown-kind value logged from an untrusted container line.
 _MAX_KIND_LOG_CHARS: Final[int] = 64
+
+# The per-event figures a turn must carry for the run to be measurable.
+_METRIC_FIELDS: Final[tuple[str, ...]] = ("cost", "input_tokens", "output_tokens")
 
 # The container reports an SDK event it could not map onto the four
 # adapter-relevant classes under this kind, carrying the class name.
@@ -193,6 +213,7 @@ def _parse_event(
             kind=name[:_MAX_KIND_LOG_CHARS],
         )
         return None, previous
+    _report_metrics_gaps(kind, payload)
     totals = _RunningTotals(
         cost=_non_negative_float(payload.get("cost")),
         input_tokens=_non_negative_int(payload.get("input_tokens")),
@@ -209,6 +230,40 @@ def _parse_event(
         output_tokens=turn.output_tokens,
     )
     return event, totals
+
+
+def _report_metrics_gaps(kind: OpenHandsEventKind, payload: dict[str, object]) -> None:
+    """Warn when a turn's cost or token figures did not arrive intact.
+
+    Both halves of this matter for the same reason: the loop rankings score an
+    observed zero as unbeatable and the budget kill trusts the cost, so a run
+    that reports nothing wins by reporting nothing. The container writes its own
+    diagnostic to stderr, which is sunk at DEBUG and therefore invisible at any
+    level an operator runs, so the flag it sets on the stream is re-reported
+    here, on the pipeline that is actually watched. An absent field is reported
+    separately: it means the image predates the field entirely, which the flag
+    (also absent) cannot signal.
+
+    Args:
+        kind: The parsed event kind.
+        payload: The raw event payload from the container.
+    """
+    if kind not in _TURN_KINDS:
+        return
+    if payload.get("metrics_shape_ok") is False:
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            note="container could not read its own SDK cost/token metrics",
+        )
+    absent = tuple(field for field in _METRIC_FIELDS if payload.get(field) is None)
+    if absent:
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            note="container turn event omitted cost/token figures",
+            missing=absent,
+        )
 
 
 def _turn_deltas(
@@ -323,40 +378,50 @@ class _ContainerConversation:
         except OpenHandsRuntimeError:
             # Already attributed (sink-side failure); do not re-wrap as transport.
             raise
-        except SandboxError as exc:
-            logger.warning(
-                EXECUTION_LOOP_ERROR,
-                loop_type="openhands",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "OpenHands container run failed"
-            raise OpenHandsRuntimeError(msg) from exc
-        except TimeoutError as exc:
-            logger.warning(
-                EXECUTION_LOOP_ERROR,
-                loop_type="openhands",
-                note="run exceeded the max wall-clock runtime cap",
-                max_runtime_seconds=self._max_runtime_seconds,
-            )
-            msg = "OpenHands run exceeded its wall-clock runtime cap"
-            raise OpenHandsRuntimeError(msg) from exc
         except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_LOOP_ERROR,
-                loop_type="openhands",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "OpenHands container stream failed"
-            raise OpenHandsRuntimeError(msg) from exc
+            raise self._stream_error(exc) from exc
         finally:
             # aclose() drives the generator's finally (container + sidecar
             # teardown) on every exit path: natural end, sink stop, error,
             # or cancellation of the awaiting coroutine.
             await stream.aclose()
         return OpenHandsOutcome(finished=finished)
+
+    def _stream_error(self, exc: Exception) -> OpenHandsRuntimeError:
+        """Log a stream failure and render it as the loop's typed error.
+
+        Args:
+            exc: The failure that ended the stream.
+
+        Returns:
+            The typed error to raise in its place.
+        """
+        reraise_critical(exc)
+        if isinstance(exc, SandboxError):
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                loop_type="openhands",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return OpenHandsRuntimeError("OpenHands container run failed")
+        if isinstance(exc, TimeoutError):
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                loop_type="openhands",
+                note="run exceeded the max wall-clock runtime cap",
+                max_runtime_seconds=self._max_runtime_seconds,
+            )
+            return OpenHandsRuntimeError(
+                "OpenHands run exceeded its wall-clock runtime cap"
+            )
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return OpenHandsRuntimeError("OpenHands container stream failed")
 
     async def _handle_event(self, event: OpenHandsEvent) -> bool:
         """Forward one event to the sink, attributing a sink-side failure.

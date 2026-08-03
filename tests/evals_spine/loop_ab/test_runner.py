@@ -22,7 +22,7 @@ from typing import Final
 
 import pytest
 
-from evals.errors import LoopAbOpenHandsUnwiredError
+from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.manifest import LoopAbManifest, TierEntry
 from evals.loop_ab.models import Provenance
@@ -323,16 +323,17 @@ async def test_measured_rows_carry_their_ledger_spend(tmp_path: Path) -> None:
             assert item.cost > 0.0
 
 
-async def test_a_failed_later_repetition_keeps_the_earlier_spend(
+async def test_a_failed_later_repetition_keeps_what_it_already_measured(
     tmp_path: Path,
 ) -> None:
-    """A cell that dies on a later repetition still reports what it already paid.
+    """A cell that dies on a later repetition reports what it already measured.
 
     Drive a two-repetition cell whose provider works for the first repetition
     (booking real spend against the ledger) and then becomes unavailable for the
-    second. The emitted unavailable row must carry the first repetition's spend
-    forward, because that money was charged and the scoreboard's dollar total
-    must not silently lose it just because a later repetition failed.
+    second. Both the measurement and the spend from the first repetition have to
+    survive: that run happened and was paid for, and a summary over fewer
+    repetitions is a weaker measurement rather than an absent one. Discarding it
+    would throw away real money's worth of evidence over a transient failure.
     """
     calls = {"count": 0}
 
@@ -357,10 +358,75 @@ async def test_a_failed_later_repetition_keeps_the_earlier_spend(
         deps=deps,
     )
 
-    assert row.unavailable_reason is not None
-    assert row.measurement is None
+    assert row.unavailable_reason is None
+    assert row.measurement is not None
+    assert row.measurement.repetitions == 1
     assert row.spend, "the failed cell dropped the first repetition's spend"
     assert sum(item.cost for item in row.spend) > 0.0
+
+
+async def test_a_cell_that_never_completes_a_repetition_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """With nothing measured there is nothing to report but the reason.
+
+    The partial-summary path above needs a floor: a cell whose very first
+    repetition failed has no evidence at all, and summarising zero runs would
+    be a fabricated measurement rather than a weaker one.
+    """
+
+    async def _build_provider(cell: CellRun) -> ScriptedProvider:
+        del cell
+        msg = "provider unavailable from the first repetition"
+        raise RuntimeError(msg)
+
+    deps = LoopAbDeps(
+        build_provider=_build_provider,
+        build_tool_registry=lambda _workspace: None,
+    )
+    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+
+    row = await _run_cell(
+        coord=coord,
+        manifest=_manifest(repetitions=2),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=deps,
+    )
+
+    assert row.measurement is None
+    assert row.unavailable_reason is not None
+
+
+async def test_a_systemic_failure_aborts_rather_than_recording_a_row(
+    tmp_path: Path,
+) -> None:
+    """A broken machine is not a property of the loop it happened to hit.
+
+    A missing provider is true of every remaining cell, so absorbing it here
+    would spend the rest of the matrix rediscovering one fact and attribute it
+    to whichever loop ran next.
+    """
+
+    async def _build_provider(cell: CellRun) -> ScriptedProvider:
+        del cell
+        msg = "tier names a provider absent from the company config"
+        raise LoopAbProviderMissingError(msg)
+
+    deps = LoopAbDeps(
+        build_provider=_build_provider,
+        build_tool_registry=lambda _workspace: None,
+    )
+    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+
+    with pytest.raises(LoopAbProviderMissingError):
+        await _run_cell(
+            coord=coord,
+            manifest=_manifest(repetitions=2),
+            suite_root=_SUITE,
+            work_root=tmp_path / "work",
+            deps=deps,
+        )
 
 
 async def test_collaborators_are_bound_per_repetition(tmp_path: Path) -> None:

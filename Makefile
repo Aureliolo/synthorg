@@ -103,10 +103,33 @@ loop-ab:
 #
 #   make loop-ab-record ARGS="--company-config my-providers.yaml"
 #
-# Add `--openhands-image` to measure a locally built image, and `--bind-host` to
-# narrow the listener from every interface to the Docker bridge address.
+# `--openhands-image` records against a locally built image. It is REQUIRED
+# after any change under `docker/openhands/`: the entrypoint is baked into the
+# image, and the default setting names a published tag, so a run without it
+# silently measures the previously published entrypoint against real spend.
+# Build one with `make build-openhands-image` and pass the tag it prints.
+#
+# Other flags: `--bind-host` overrides the resolved listener address (unset
+# resolves the narrowest one the sandbox can reach), `--bind-port` pins the port
+# instead of taking an ephemeral one, `--container-host` overrides the alias the
+# sandbox addresses the recorder by, and `--keep-workspaces` leaves each cell's
+# tree on disk to inspect instead of reclaiming it.
+#
+# ARGS is word-split by the shell, which is what lets it carry several flags;
+# quote any value containing a space within it, e.g.
+# ARGS="--company-config 'my config.yaml'".
 #
 # Re-run this whenever loop behaviour changes; the scoreboard stamps the commit
 # it was measured against, so a stale one is self-evident.
 loop-ab-record:
 	PYTHONPATH=. uv run python scripts/record_loop_ab.py --record $(ARGS)
+
+# Build the OpenHands loop image from the working tree, for a record run that
+# has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to
+# the published sandbox base, so the layers below the entrypoint match what CI
+# builds on; override it to test against a locally built base.
+BASE_IMAGE ?= ghcr.io/aureliolo/synthorg-sandbox:latest
+build-openhands-image:
+	docker build -f docker/openhands/Dockerfile --build-arg BASE_IMAGE=$(BASE_IMAGE) -t synthorg-openhands:local .
+	@echo "built synthorg-openhands:local; record against it with:"
+	@echo "  make loop-ab-record ARGS=\"--company-config <yours> --openhands-image synthorg-openhands:local\""

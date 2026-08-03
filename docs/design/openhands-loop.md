@@ -189,6 +189,19 @@ rather than left for an operator to discover:
 - **The CLI treats it like the sidecar**: verified, digest-pinned, pulled,
   updated and pruned whenever the sandbox is enabled, which is also the
   precondition for the Docker socket the backend spawns it through.
+- **The run cannot outlive its own credential.** `tools.openhands_max_runtime_seconds`
+  caps the whole stream by wall clock, not just per-event idleness, because the
+  idle deadline resets on every event and a steadily active run would otherwise
+  keep going past the expiry of the bearer it authenticates with. The wiring
+  fails the loop closed when that cap is not below
+  `providers.gateway_token_ttl_seconds`, so the invariant is a precondition for
+  wiring rather than a mid-run surprise.
+
+Because the entrypoint is baked into the image, a change under
+`docker/openhands/` reaches a deployment only through a rebuild. That matters
+most for the [A/B recorder](loop-ab-harness.md), whose image setting defaults to
+a published tag: a local run without `--openhands-image` measures the previously
+published entrypoint and reports it as a result.
 
 ## Selection
 

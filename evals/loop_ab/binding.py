@@ -17,11 +17,11 @@ import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Final
-from uuid import NAMESPACE_URL, uuid5
 
 from evals.errors import LoopAbOpenHandsUnwiredError, LoopAbProviderMissingError
 from evals.loop_ab.host import LoopAbGatewayHost
-from evals.loop_ab.runner import CellRun
+from evals.loop_ab.runner import AB_AGENT_ID, CellRun
+from evals.runner.execution import brief_task_id
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
@@ -30,7 +30,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
 from synthorg.llm.gateway_binding import mint_run_token
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_LOOP_AB_PROVIDER_MISSING
+from synthorg.observability.events.evals import (
+    EVALS_LOOP_AB_BEARER_MINTED,
+    EVALS_LOOP_AB_LEDGER_INSTALLED,
+    EVALS_LOOP_AB_PROVIDER_MISSING,
+)
 from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -55,10 +59,6 @@ _PROXY_ROUTING_KEY: Final[str] = "litellm_proxy"
 #: OpenAI-compatible HTTP surface.
 _GATEWAY_DRIVER: Final[str] = "litellm"
 
-#: The A/B agent, matching what ``runner._identity`` builds for the engine, so
-#: the gateway attributes a run's cost to the same actor the engine does.
-_AB_AGENT_ID: Final[str] = "00000000-0000-4000-8000-00000000ab00"
-
 
 @dataclass(frozen=True)
 class CellBinder:
@@ -66,12 +66,23 @@ class CellBinder:
 
     Attributes:
         host: The started host whose signer mints and whose gateway verifies.
-        company_config: The recording company config the manifest's tiers are
-            resolved against.
     """
 
     host: LoopAbGatewayHost
-    company_config: RootConfig
+
+    @property
+    def company_config(self) -> RootConfig:
+        """The config the manifest's tiers resolve against.
+
+        Read off the host rather than supplied separately: the gateway resolves
+        a bearer's bound provider against the config the host booted with, so a
+        second copy handed in here could disagree with it and route a scored run
+        through provider settings the gateway never saw.
+
+        Returns:
+            The booted application's config.
+        """
+        return self.host.app_state.config
 
     async def mint_bearer(self, cell: CellRun) -> str:
         """Mint the per-run gateway bearer for *cell*.
@@ -88,17 +99,29 @@ class CellBinder:
             GatewayModelUnboundError: The tier is not fully bound.
         """
         resolver = config_resolver_of(self.host.app_state)
-        return mint_run_token(
+        ttl_seconds = await resolver.get_int("providers", "gateway_token_ttl_seconds")
+        execution_id = _execution_id(cell)
+        bearer = mint_run_token(
             self.host.signer,
-            execution_id=NotBlankStr(_execution_id(cell)),
-            agent_id=NotBlankStr(_AB_AGENT_ID),
-            task_id=NotBlankStr(_task_id(cell)),
+            execution_id=NotBlankStr(execution_id),
+            agent_id=NotBlankStr(str(AB_AGENT_ID)),
+            task_id=NotBlankStr(str(brief_task_id(cell.brief.brief_id))),
             ref=ModelRef(provider=cell.tier.provider, model_id=cell.tier.model_id),
             cost_ceiling=cell.brief.limits.max_total_cost,
-            ttl_seconds=await resolver.get_int(
-                "providers", "gateway_token_ttl_seconds"
-            ),
+            ttl_seconds=ttl_seconds,
         )
+        # What the cell is authorised to spend, and against which pair. Never
+        # the bearer: it is the credential, and this is the one place holding it.
+        logger.debug(
+            EVALS_LOOP_AB_BEARER_MINTED,
+            execution_id=execution_id,
+            tier=cell.tier.tier,
+            provider=cell.tier.provider,
+            model_id=cell.tier.model_id,
+            cost_ceiling=cell.brief.limits.max_total_cost,
+            ttl_seconds=ttl_seconds,
+        )
+        return bearer
 
     async def routed_provider_config(self, cell: CellRun) -> ProviderConfig:
         """Point the tier's provider config at the gateway, with its bearer.
@@ -112,7 +135,11 @@ class CellBinder:
         """
         base = self.company_config.providers.get(cell.tier.provider)
         if base is None:
-            logger.error(
+            # WARNING, not ERROR: the preflight is what turns this into a
+            # refusal before anything is spent. Reaching it here means one cell
+            # could not be measured, which the runner records as an unavailable
+            # row like any other, and an error level would read as an outage.
+            logger.warning(
                 EVALS_LOOP_AB_PROVIDER_MISSING,
                 tier=cell.tier.tier,
                 provider=cell.tier.provider,
@@ -138,11 +165,26 @@ class CellBinder:
                 "auth_type": AuthType.SUBSCRIPTION,
                 "subscription_token": NotBlankStr(await self.mint_bearer(cell)),
                 "connection_name": None,
+                # SUBSCRIPTION normally records an operator's acceptance of a
+                # vendor's terms. There is no vendor here: the counterparty is
+                # this process, one hop away, and the real provider call happens
+                # on the far side of the gateway under the operator's own
+                # config, where their acceptance already applies.
+                "tos_accepted_at": None,
             }
         )
 
     async def build_provider(self, cell: CellRun) -> CompletionProvider:
         """Build the completion driver this repetition dispatches through.
+
+        Retry behaviour comes from the company config's own ``retry`` block,
+        deliberately not from the live ``providers.retry_max_attempts`` setting
+        the production registry threads in: a scoreboard has to be reproducible
+        from the config it names, and a setting an operator can move between
+        runs would silently change what "the same measurement" means. It is
+        worth knowing that retries are not free here either, since a retried
+        call's tokens and latency land on the leg that made it; keeping the
+        budget in one declarative place is what makes that comparable.
 
         Returns:
             A driver routed and authenticated to the hosted gateway.
@@ -161,6 +203,12 @@ class CellBinder:
         and the ``host.docker.internal`` alias all stay single-owner rather than
         being re-derived here.
 
+        The turn ceiling is overridden with the brief's own, because the loop
+        takes the lower of its config and what the caller asks for. Left at the
+        config default, a brief allowed more turns than that default would give
+        this leg fewer than the three it is ranked against, which is a
+        fair-comparison invariant rather than a tuning choice.
+
         Returns:
             The ``(config, deps)`` pair for this repetition.
 
@@ -178,7 +226,10 @@ class CellBinder:
                 "boundary logged the missing piece at EXECUTION_LOOP_UNAVAILABLE"
             )
             raise LoopAbOpenHandsUnwiredError(msg)
-        return await build_openhands_loop_config(app_state), deps
+        config = await build_openhands_loop_config(app_state)
+        return config.model_copy(
+            update={"max_turns": cell.brief.limits.max_turns}
+        ), deps
 
     @contextlib.asynccontextmanager
     async def open_cell_ledger(self, cell: CellRun) -> AsyncIterator[CostTracker]:
@@ -190,14 +241,20 @@ class CellBinder:
         on every exit path, so a failed cell cannot leave the next one writing
         into a ledger nobody reads.
 
+        Installed through the slice's own atomic swap rather than a read then a
+        write: cells run one at a time today, so the two-step version has no
+        window to lose a swap in, but nothing about this method enforces that,
+        and a lost swap would misattribute one cell's real spend to another.
+
         Yields:
             The tracker holding this run's authoritative spend.
         """
-        del cell
         app_state = self.host.app_state
-        previous = app_state.slice(BudgetStateSlice).cost_tracker
         ledger = CostTracker()
-        app_state.wire(BudgetStateSlice, cost_tracker=ledger)
+        previous = app_state.swap_field_returning_previous(
+            BudgetStateSlice, "cost_tracker", ledger
+        )
+        logger.debug(EVALS_LOOP_AB_LEDGER_INSTALLED, execution_id=_execution_id(cell))
         try:
             yield ledger
         finally:
@@ -214,18 +271,6 @@ def _execution_id(cell: CellRun) -> str:
         f"loop-ab-{cell.loop_type}-{cell.tier.tier}-"
         f"{cell.brief.brief_id}-{cell.repetition}"
     )
-
-
-def _task_id(cell: CellRun) -> str:
-    """Derive the task id the engine will attribute this run's cost to.
-
-    Matches what ``run_brief`` derives from the brief alone, so a gateway-side
-    record and an engine-side one name the same task rather than drifting.
-
-    Returns:
-        The task id.
-    """
-    return str(uuid5(NAMESPACE_URL, f"eval-{cell.brief.brief_id}"))
 
 
 __all__ = ["CellBinder"]

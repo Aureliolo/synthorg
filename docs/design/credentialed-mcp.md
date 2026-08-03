@@ -246,12 +246,14 @@ separately, because they gate `tools/list` as well.
 
 ## Settings
 
-Under the `tools` namespace, off by default, hot-reloadable:
-`credentialed_mcp_enabled`, `credentialed_mcp_capabilities` (the
-comma-separated default capability grant), and `credentialed_mcp_base_url`
-(the sandbox-reachable base URL the harness connects to, e.g.
-`http://host.internal:8000/api/v1/mcp-gateway`; the runtime appends
-`/mcp`). It reuses the existing forge/chat connection, timeout, and
+Under the `tools` namespace, hot-reloadable: `credentialed_mcp_enabled`,
+`credentialed_mcp_capabilities` (the comma-separated default capability grant),
+and `credentialed_mcp_base_url` (the sandbox-reachable base URL the harness
+connects to, e.g. `http://host.internal:8000/api/v1/mcp-gateway`; the runtime
+appends `/mcp`). The endpoint itself is **on** by default, because a bundled
+harness attaches it unconditionally and cannot build its agent without one; the
+grant and the base URL are both blank, so serving it reaches no tool until an
+operator names one. It reuses the existing forge/chat connection, timeout, and
 read-limit settings, and the deploy family adds `deploy_tools_enabled`,
 `deploy_tools_targets`, `deploy_tools_timeout_seconds` and
 `deploy_tools_max_log_chars`. The publish family adds `publish_tools_enabled`,

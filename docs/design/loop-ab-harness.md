@@ -96,6 +96,14 @@ the planning loops report their replan count in `ExecutionResult.metadata`.
 rework **cost** that is structurally zero for the loops that cannot replan, so a
 loop is never rewarded for lacking the capability.
 
+**`provider_retries` is a native-leg signal only.** A retry the driver performs
+is counted because the driver reports it; a retry OpenHands performs happens
+inside its own SDK client, in the container, on a path with no `RetryHandler` in
+it, and reaches no `TurnRecord`. Its tokens and latency *are* counted (they come
+off the SDK's own accumulated metrics), so an identical hiccup reads as extra
+work for that leg and as rework for the others. Read a zero here as "not
+observable for this loop", never as "this loop did not retry".
+
 Cost is read from the gateway's `CostRecord` ledger, not re-derived from token
 counts and a price list. Each run gets a fresh tracker, installed on the
 [recording host](#the-recording-host) for the duration of the cell, because
@@ -128,7 +136,10 @@ reporting none would take the token dimension by reporting nothing at all.
    tools stay native to each loop.
 4. The same explicitly bound `(provider, model)` per tier for every loop, never
    an auto-pick.
-5. The same `max_turns`, taken from the brief's limits.
+5. The same `max_turns`, taken from the brief's limits. The OpenHands loop takes
+   the lower of that and its own configured ceiling, so the harness overrides
+   the ceiling per cell; left at its default, a brief allowed more turns would
+   give that leg fewer than the three it is ranked against.
 6. Wall clock is captured when the run happens, never re-measured.
 
 ## The recording host
@@ -160,11 +171,26 @@ Three things follow from hosting rather than borrowing:
   served under the shipped empty capability grant, so `tools/list` returns
   nothing and no credentialed tool is reachable by these briefs.
 
-The listener binds every interface by default, because the Docker bridge cannot
-reach a loopback-only one; `--bind-host` narrows it where the bridge address is
-known. Everything on the host except the two per-bearer routes stays behind
-session auth, and those two refuse anything without a bearer this process
-minted.
+Serving the real app means serving all of it, which two things contain.
+
+`POST /auth/setup` is deliberately excluded from authentication so a real
+deployment can never lock its operator out, and it grants CEO and OWNER to the
+first caller while no CEO exists. A fresh scratch database has none, so the host
+seeds a throwaway one (random password, never disclosed, never used to log in)
+before it accepts a connection. That closes the route by its own precondition,
+whatever the listener is bound to.
+
+The listener then resolves the narrowest address the sandbox can still reach
+rather than every interface: host loopback under Docker Desktop, whose daemon
+forwards `host.docker.internal` there, and the bridge network's gateway under
+Docker Engine, which is what a Linux `host-gateway` alias resolves to. Neither
+is reachable from a shared segment, which is also why plain HTTP is sound: there
+is no on-path position from which to read a bearer. When neither can be
+resolved, the run stops and asks for `--bind-host` instead of widening.
+
+Beyond those two, every route that is not the pair the container needs stays
+behind session auth, and that pair refuses anything without a bearer this
+process minted.
 
 ## Recording
 
@@ -175,7 +201,20 @@ make loop-ab-record ARGS="--company-config my-providers.yaml"
 
 Recording needs a Docker daemon, the OpenHands image, and a company config whose
 `providers:` block aliases the manifest's vendor-agnostic tier ids to real
-models. Add `--openhands-image` to measure a locally built image.
+models. The daemon and the tier-to-provider coverage are both checked before
+anything is spent, because each is otherwise discovered once per cell, after a
+full retry budget, and recorded as a property of whichever loop hit it.
+
+The image is baked at build time, so a change under `docker/openhands/` is only
+measured by a run that passes `--openhands-image` naming a locally built one
+(`make build-openhands-image`). Without it a run measures the published
+entrypoint, at full price, and looks like it succeeded.
+
+Other flags: `--bind-host` overrides the resolved listener address,
+`--bind-port` pins the port instead of taking an ephemeral one,
+`--container-host` overrides the alias the sandbox addresses the recorder by,
+and `--keep-workspaces` retains each cell's tree for inspection rather than
+reclaiming it (a matrix leaves 36 of them, carrying whatever the loops built).
 
 Only a real run produces scoreboard numbers, so a published ranking is always
 something that actually happened. There is deliberately no offline replay that
@@ -184,7 +223,15 @@ by `tests/evals_spine/loop_ab/`, which drives the real loops against a scripted
 LLM and the real host against a scripted provider.
 
 A loop whose runtime is unavailable is still recorded as an unavailable row
-carrying the reason, never dropped, and never scored as a zero.
+carrying the reason, never dropped, and never scored as a zero. A cell that
+completed some of its repetitions before failing keeps them: fewer repetitions
+is a weaker measurement, not an absent one, and discarding runs that were paid
+for over a later transient failure loses real evidence. Only a cell that never
+finished one repetition has nothing but a reason to report.
+
+A matrix that measured no cell at all is not a result. The scoreboard is written
+first, so the reasons survive for reading, and then the run exits non-zero
+rather than presenting a file that looks like a ranking.
 
 ## Provenance and staleness
 

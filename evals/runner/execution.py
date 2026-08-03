@@ -11,12 +11,12 @@ pipeline. Only the LLM is a deterministic stand-in.
 """
 
 from typing import Final
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from structlog.testing import capture_logs
 
 from evals.models.brief import Brief
+from evals.runner.log_tap import capture_run_logs
 from evals.runner.metrics import RunMetrics, run_metrics
 from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
 from synthorg.core.agent import AgentIdentity
@@ -39,6 +39,23 @@ logger = get_logger(__name__)
 #: the workspace subtree they mount, so anything provisioning a run's workspace
 #: has to lay it out under this same name.
 EVAL_TASK_PROJECT: Final[str] = "eval-benchmark"
+
+
+def brief_task_id(brief_id: str) -> UUID:
+    """Derive the task id a brief's run is attributed to.
+
+    Derived from the brief alone so a re-run of the same brief lands on the same
+    task. Exported because the A/B recorder mints its gateway bearer against
+    this id from outside the engine, and a second copy of the formula would let
+    the two sides drift into attributing one run's cost to two tasks.
+
+    Args:
+        brief_id: The brief's identifier.
+
+    Returns:
+        The deterministic task id.
+    """
+    return uuid5(NAMESPACE_URL, f"eval-{brief_id}")
 
 
 class BriefRunOutcome(BaseModel):
@@ -88,7 +105,7 @@ def _brief_task(brief: Brief, *, agent_id: str) -> Task:
         The :class:`~synthorg.core.task.Task` for the brief.
     """
     return Task(
-        id=uuid5(NAMESPACE_URL, f"eval-{brief.brief_id}"),
+        id=brief_task_id(brief.brief_id),
         title=brief.title,
         description=brief.description,
         type=TaskType.DEVELOPMENT,
@@ -121,7 +138,7 @@ async def run_brief(
     """
     task = _brief_task(brief, agent_id=str(identity.id))
 
-    with capture_logs() as logs:
+    with capture_run_logs() as logs:
         result: AgentRunResult = await engine.run(
             identity=identity,
             task=task,
