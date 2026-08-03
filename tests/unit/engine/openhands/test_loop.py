@@ -25,7 +25,8 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.openhands.loop import OpenHandsLoop
-from synthorg.llm.gateway_token import GatewaySigner, GatewayTokenInvalidError
+from synthorg.llm.gateway_errors import GatewayTokenInvalidError
+from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import FakeClock, mock_of
 
