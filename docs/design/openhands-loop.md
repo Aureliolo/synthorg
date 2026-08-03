@@ -217,8 +217,8 @@ image against a local OpenAI-compatible stub (plus the minimal MCP endpoint the
 agent needs to build at all), with zero provider spend. It serialises the spec
 with the production `_spec_line` and parses every stdout line with the
 production `_parse_event`, so image/adapter drift fails there rather than in a
-live run, and it asserts the spec parse, the event stream, the cost and token
-delta arithmetic, termination, and the bearer scrub. It runs inside the
+live run, and it asserts the spec parse, the event stream, the cost-delta and
+token-delta arithmetic, termination, and the bearer scrub. It runs inside the
 `build-openhands` job because that is the only place the freshly built image is
 reachable on a pull request.
 

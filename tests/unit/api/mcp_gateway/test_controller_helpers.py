@@ -16,15 +16,17 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.mcp_gateway.controller import (
+from synthorg.api.mcp_gateway._request_context import (
     _build_context,
-    _parse_capabilities,
     _parse_targets,
-    _require_enabled,
     _resolve_actor,
     _resolve_deploy_settings,
     _resolve_kill_switches,
     _resolve_publish_settings,
+)
+from synthorg.api.mcp_gateway.controller import (
+    _parse_capabilities,
+    _require_enabled,
 )
 from synthorg.api.state import AppState
 from synthorg.core.agent import (

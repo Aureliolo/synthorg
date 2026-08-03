@@ -136,11 +136,11 @@ reporting none would take the token dimension by reporting nothing at all.
 OpenHands authenticates to the gateway with a per-run bearer minted by the
 **same** `GatewaySigner` instance the gateway verifies with, and that instance
 is built per process and never persisted. A token minted by any other instance
-is rejected, so a recorder that points at somebody else's backend is precisely
-the configuration that cannot work.
+is rejected, so a recorder that points at a separately running backend is
+precisely the configuration that cannot work.
 
 The recorder therefore stops borrowing a gateway and owns one
-(`evals/loop_ab/host.py`): it boots the real application against a scratch
+(`evals/loop_ab/host.py`): it boots the real app against a scratch
 database, serves it on a local port, and reads the signer off the state the boot
 wiring populated. Mint and verify are the same instance because they are the
 same process. No token-minting endpoint joins the API surface, and no secret is
@@ -184,7 +184,7 @@ by `tests/evals_spine/loop_ab/`, which drives the real loops against a scripted
 LLM and the real host against a scripted provider.
 
 A loop whose runtime is unavailable is still recorded as an unavailable row
-carrying the reason, never dropped and never scored as a zero.
+carrying the reason, never dropped, and never scored as a zero.
 
 ## Provenance and staleness
 
