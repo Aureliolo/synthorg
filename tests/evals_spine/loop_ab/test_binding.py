@@ -32,7 +32,12 @@ from tests.evals_spine.loop_ab.conftest import (
     RECORDING_PROVIDER,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [
+    pytest.mark.integration,
+    # Each test boots the recording host through the real application lifespan.
+    pytest.mark.slow,
+    pytest.mark.timeout(300),
+]
 
 _SUITE = Path(__file__).resolve().parents[3] / "evals" / "loop_ab" / "briefs"
 _PROXY_ROUTING_KEY = "litellm_proxy"
@@ -252,15 +257,21 @@ class TestCellLedger:
 
         assert host.app_state.slice(BudgetStateSlice).cost_tracker is before
 
-    async def test_a_bearer_binds_the_cell_that_minted_it(
+    async def test_repetitions_differ_in_their_run_id_and_nothing_else(
         self, binder: CellBinder, workspace: CellWorkspace, host: LoopAbGatewayHost
     ) -> None:
-        # Each cell's ceiling is keyed on its own execution id, so two cells
-        # sharing a token would let the second inherit the first's exhausted
-        # budget. Verify the claims differ where the cell does.
-        first = await binder.mint_bearer(_cell(workspace, repetition=0))
-        second = await binder.mint_bearer(_cell(workspace, repetition=1))
+        # The ceiling is keyed on the execution id, so repetitions must not
+        # share one. Everything else is a property of the cell, not the run:
+        # a repetition that also moved its bound pair, its attribution or its
+        # ceiling would be measuring something other than the same cell twice.
+        first = host.signer.verify(await binder.mint_bearer(_cell(workspace)))
+        second = host.signer.verify(
+            await binder.mint_bearer(_cell(workspace, repetition=1))
+        )
 
-        assert host.signer.verify(first).execution_id != (
-            host.signer.verify(second).execution_id
+        assert first.execution_id != second.execution_id
+        # Excluding the one field under test, so a claim added later is covered
+        # here by default rather than silently drifting between repetitions.
+        assert first.model_dump(exclude={"execution_id"}) == second.model_dump(
+            exclude={"execution_id"}
         )

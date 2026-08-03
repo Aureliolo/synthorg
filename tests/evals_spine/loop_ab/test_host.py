@@ -10,6 +10,7 @@ No provider is contacted: the company config binds the deterministic scripted
 driver, so a full round trip costs nothing.
 """
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -38,7 +39,13 @@ from tests.evals_spine.loop_ab.conftest import (
     recording_company_config,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [
+    pytest.mark.integration,
+    # Every test here boots the real application, binds a socket and serves
+    # HTTP, which is the slow tier by any reading of a 300s budget.
+    pytest.mark.slow,
+    pytest.mark.timeout(300),
+]
 
 _TTL_SECONDS = 600
 
@@ -83,6 +90,26 @@ def _config(tmp_path: Path, *, scratch: Path | None = None) -> LoopAbHostConfig:
         scratch_dir=scratch if scratch is not None else tmp_path / "host",
         bind_host="127.0.0.1",
     )
+
+
+def _secret_fingerprint() -> dict[str, str | None]:
+    """Digest each bootstrap secret so a failed assertion never prints one.
+
+    The property under test is that the host put back exactly what it found,
+    which a digest proves; comparing the values themselves would write the
+    operator's real Cat-3 secrets into the failure report.
+
+    Returns:
+        One digest per variable, or ``None`` where the variable is unset.
+    """
+    return {
+        var: (
+            None
+            if (value := os.environ.get(var)) is None
+            else hashlib.sha256(value.encode()).hexdigest()
+        )
+        for var in _SECRET_VARS
+    }
 
 
 async def _raise_boot_failure(*_args: object, **_kwargs: object) -> None:
@@ -256,14 +283,14 @@ class TestLifecycle:
         # ``__aexit__`` never runs for an ``__aenter__`` that raised, so the
         # unwind is the only thing that puts the operator's secrets back.
         del host  # one host is already active, which is what makes this fail
-        before = {var: os.environ.get(var) for var in _SECRET_VARS}
+        before = _secret_fingerprint()
         scratch = tmp_path / "second-host"
 
         with pytest.raises(LoopAbHostAlreadyStartedError):
             async with LoopAbGatewayHost(_config(tmp_path, scratch=scratch)):
                 pass
 
-        assert {var: os.environ.get(var) for var in _SECRET_VARS} == before
+        assert _secret_fingerprint() == before
         assert not scratch.exists()
 
     async def test_a_boot_that_fails_midway_releases_the_process_slot(
@@ -273,7 +300,7 @@ class TestLifecycle:
         # steps, so a direct ``start()`` caller that never reaches the context
         # manager must still get them back, or the next host in the process is
         # refused and the operator's environment keeps this run's throwaways.
-        before = {var: os.environ.get(var) for var in _SECRET_VARS}
+        before = _secret_fingerprint()
         failing = LoopAbGatewayHost(_config(tmp_path, scratch=tmp_path / "doomed"))
         # Patched on the instance, so the recovery host below boots for real.
         monkeypatch.setattr(failing, "_seed_admin", _raise_boot_failure)
@@ -281,7 +308,7 @@ class TestLifecycle:
         with pytest.raises(OSError, match=_BOOT_FAILURE):
             await failing.start()
 
-        assert {var: os.environ.get(var) for var in _SECRET_VARS} == before
+        assert _secret_fingerprint() == before
         assert not (tmp_path / "doomed").exists()
         # Proven by the next host booting at all: the slot is process-global.
         async with LoopAbGatewayHost(_config(tmp_path)) as recovered:

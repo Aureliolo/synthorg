@@ -510,11 +510,12 @@ async def test_spend_is_read_from_the_supplied_ledger(tmp_path: Path) -> None:
 async def test_the_openhands_cell_factory_supplies_config_and_deps(
     tmp_path: Path,
 ) -> None:
-    """The loop's config must travel with its deps, not fall back to defaults.
+    """The OpenHands leg asks its factory for one cell, and reports a refusal.
 
-    ``OpenHandsLoopConfig`` carries the bearer TTL the run is minted against;
-    left to its frozen default a long cell could outlive its token, so what the
-    factory returns has to reach ``build_execution_loop``.
+    The factory is the only place ``OpenHandsLoopConfig`` comes from, because it
+    carries the bearer TTL the run is minted against. This covers the call and
+    the refusal path; a returned config reaching ``build_execution_loop`` needs
+    its own case.
     """
     calls: list[CellRun] = []
 

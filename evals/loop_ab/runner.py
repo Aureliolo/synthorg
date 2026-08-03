@@ -358,7 +358,11 @@ async def _run_repetition(
         engine = await _build_engine(cell=cell, deps=deps, cost_tracker=cost_tracker)
         outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
         spend = _spend_from_records(await collect_all_records(ledger))
-    grade = grade_executable(_resolved(coord.brief), cell.workspace.project_dir)
+    # Grading shells out to the brief's check commands, which stalls the accept
+    # loop of the gateway this same process serves for as long as they run.
+    grade = await asyncio.to_thread(
+        grade_executable, _resolved(coord.brief), cell.workspace.project_dir
+    )
     metrics = outcome.metrics
 
     logger.info(

@@ -30,7 +30,12 @@ from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from tests.evals_spine.loop_ab.conftest import RECORDING_PROVIDER
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [
+    pytest.mark.integration,
+    # The deps-wiring and plan-path tests boot the recording host for real.
+    pytest.mark.slow,
+    pytest.mark.timeout(300),
+]
 
 
 class TestDepsWiring:

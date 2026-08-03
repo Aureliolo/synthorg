@@ -1,8 +1,11 @@
 # module-kind: tests
 """Shared fixtures for the recording-host and per-cell-binding suites.
 
-Booting the host runs the real application lifespan, so the two suites share one
-started instance rather than each paying for its own.
+The ``host`` fixture is per-test, not shared. ``_ACTIVE_HOSTS`` allows one host
+per process, and several tests boot one of their own to exercise the lifecycle,
+so a wider scope would hold the single slot and refuse them. Booting the real
+application lifespan per test is the price of that; it is why every module using
+this fixture carries the ``slow`` marker and a raised timeout.
 """
 
 from collections.abc import AsyncIterator

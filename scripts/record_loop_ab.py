@@ -302,8 +302,13 @@ async def _run_supervised(
     matrix.cancel()
     with suppress(asyncio.CancelledError):
         await matrix
+    # Retrieved here so the reason the listener died becomes the cause the
+    # operator sees. Left unread it surfaces as a bare "Task exception was never
+    # retrieved" at shutdown, or is re-raised by the stop() inside __aexit__
+    # (which awaits the same task and only catches TimeoutError) and masks this.
+    cause = None if serving.cancelled() else serving.exception()
     msg = "the recording host stopped serving before the matrix finished"
-    raise LoopAbGatewayUnavailableError(msg)
+    raise LoopAbGatewayUnavailableError(msg) from cause
 
 
 async def _reclaim_workspaces(run_work_root: Path, *, keep: bool) -> None:

@@ -93,6 +93,10 @@ async def _bridge_gateway() -> str:
         async with aiodocker.Docker() as client:
             network = await client.networks.get(_BRIDGE_NETWORK)
             detail = await network.show()
+    except MemoryError, RecursionError:
+        # An interpreter-level fault says nothing about the bridge, and
+        # converting it would tell the operator to pass --bind-host.
+        raise
     except Exception as exc:
         msg = (
             "could not read the Docker bridge gateway to bind to; "

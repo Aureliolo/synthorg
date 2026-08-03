@@ -6,7 +6,7 @@
 
 .PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
 	typecheck typecheck-warm typecheck-status typecheck-stop \
-	test-durations
+	test-durations build-openhands-image
 
 # Type-check the tree through the mypy daemon (seconds once warm, and the same
 # command the pre-push hook runs). `typecheck-warm` pays the one-time graph
@@ -128,7 +128,13 @@ loop-ab-record:
 # has to measure local changes under `docker/openhands/`. BASE_IMAGE defaults to
 # the published sandbox base, so the layers below the entrypoint match what CI
 # builds on; override it to test against a locally built base.
-BASE_IMAGE ?= ghcr.io/aureliolo/synthorg-sandbox:latest
+#
+# Pinned to this tree's release tag rather than `latest`, which moves: the
+# scoreboard stamps only the commit, so two recordings a week apart could
+# otherwise differ because of the base image and read as a loop difference.
+# Read from pyproject rather than written out, so a release bump carries it.
+# `?=` defers the shell to first use, keeping it off every other target.
+BASE_IMAGE ?= ghcr.io/aureliolo/synthorg-sandbox:v$(shell sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml)
 build-openhands-image:
 	docker build -f docker/openhands/Dockerfile --build-arg BASE_IMAGE=$(BASE_IMAGE) -t synthorg-openhands:local .
 	@echo "built synthorg-openhands:local; record against it with:"

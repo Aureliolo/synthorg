@@ -95,6 +95,10 @@ async def _check_docker() -> None:
     try:
         async with aiodocker.Docker() as client:
             await client.version()
+    except MemoryError, RecursionError:
+        # An interpreter-level fault is not a statement about the daemon, and
+        # reporting it as one sends the operator to check Docker.
+        raise
     except Exception as exc:
         msg = (
             "the Docker daemon is unreachable, and every loop in the matrix "

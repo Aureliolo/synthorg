@@ -292,9 +292,15 @@ def _turn_deltas(
 def _non_negative_float(value: object) -> float:
     """Coerce a value to a non-negative float, defaulting to zero.
 
+    ``bool`` is excluded despite subclassing ``int``: a stray ``True`` in the
+    container's payload would otherwise read as a cost of ``1.0``, which the
+    budget kill and the loop ranking both act on.
+
     Returns:
         The coerced value clamped to ``>= 0.0``.
     """
+    if isinstance(value, bool):
+        return 0.0
     if isinstance(value, int | float):
         return max(0.0, float(value))
     return 0.0

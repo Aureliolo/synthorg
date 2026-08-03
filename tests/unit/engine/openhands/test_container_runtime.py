@@ -216,6 +216,9 @@ def test_non_negative_float_clamps_and_defaults() -> None:
     assert _non_negative_float("nan-ish") == 0.0
     assert _non_negative_float(None) == 0.0
     assert _non_negative_float(2) == pytest.approx(2.0)
+    # ``bool`` is an ``int`` subclass, and True would silently read as $1.00 of
+    # spend, which the budget kill and the loop ranking both act on.
+    assert _non_negative_float(True) == 0.0
 
 
 def test_non_negative_int_clamps_and_defaults() -> None:
