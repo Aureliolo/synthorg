@@ -14,6 +14,7 @@ The message has three regions and they are not interchangeable:
 """
 
 import re
+import unicodedata
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
@@ -29,27 +30,12 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 
-#: Characters stripped from a decider attribution before it is rendered into
-#: the trusted region: the marker delimiters (``[``/``]``), the fence
-#: delimiters (``<``/``>``), control characters, and every codepoint that a
-#: reader cannot see. The invisible ranges are the ASCII-smuggling vectors:
-#: bidirectional overrides and isolates reorder what a human reviewing the
-#: transcript sees against what the model reads, and zero-width joiners, the
-#: byte-order mark and the Unicode Tag block carry text that renders as
-#: nothing at all. A display name is attacker-supplied on several paths (a
-#: local username, an OIDC claim, a chat profile), so an attribution written
-#: out of those ranges would smuggle instructions into the one region of the
-#: resume message that is deliberately NOT fenced.
-#: Visible characters stay: a wider allowlist would mangle legitimate names
-#: (an apostrophe, a non-Latin script) to buy nothing.
-#: Tab / newline / carriage return are deliberately absent: they are folded
-#: into a space below instead of deleted, so a name split across lines does
+#: The marker delimiters (``[``/``]``) and the fence delimiters (``<``/``>``),
+#: stripped from a decider attribution so a name cannot forge either.
+_DECIDER_STRUCTURAL: Final[re.Pattern[str]] = re.compile(r"[\[\]<>]")
+#: Folded into a space rather than deleted, so a name split across lines does
 #: not come back as one run-together word.
-_DECIDER_STRUCTURAL: Final[re.Pattern[str]] = re.compile(
-    r"[\[\]<>\x00-\x08\x0b\x0c\x0e-\x1f\x7f"
-    r"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff"
-    r"\U000e0000-\U000e007f]"
-)
+_DECIDER_FOLDED_CONTROLS: Final[frozenset[str]] = frozenset("\t\n\r")
 #: Collapsed to a single space so an attribution stays one visual line.
 _DECIDER_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
 _DECIDER_MAX_LEN: Final[int] = 64
@@ -93,6 +79,35 @@ if _MISSING_RENDERINGS:
     raise ValueError(_msg)
 
 
+def _is_renderable(char: str) -> bool:
+    """Whether a character may reach the attribution, by Unicode category.
+
+    Everything in the Other major category goes: ``Cc`` controls, ``Cf``
+    format characters, ``Cn`` unassigned, ``Co`` private use and ``Cs``
+    surrogates. By category rather than by codepoint range: format
+    characters are scattered across a dozen blocks from U+00AD to U+1D17A,
+    so a hand-written range list reads as complete while missing most of
+    them, and it would need re-auditing against every Unicode revision that
+    adds one.
+
+    The ``Cf`` block is the ASCII-smuggling surface. Bidirectional overrides
+    and isolates reorder what a human reviewing the transcript sees against
+    what the model reads, while zero-width joiners, the byte-order mark and
+    the Unicode Tag block carry text that renders as nothing at all.
+
+    Visible characters stay whatever their script: a tighter allowlist would
+    mangle legitimate names (an apostrophe, a non-Latin script) to buy
+    nothing.
+
+    Returns:
+        True when the character may be rendered, including the three
+        whitespace controls the caller folds into a space.
+    """
+    if char in _DECIDER_FOLDED_CONTROLS:
+        return True
+    return not unicodedata.category(char).startswith("C")
+
+
 def _safe_decider(decided_by: str) -> str:
     """Reduce a decider attribution to a token safe for the trusted region.
 
@@ -109,12 +124,13 @@ def _safe_decider(decided_by: str) -> str:
     next caller.
 
     Returns:
-        The attribution with structural characters stripped, whitespace
-        collapsed and length bounded, or a fixed placeholder when nothing
-        survives.
+        The attribution with structural and non-rendering characters
+        stripped, whitespace collapsed and length bounded, or a fixed
+        placeholder when nothing survives.
     """
     stripped = _DECIDER_STRUCTURAL.sub("", decided_by)
-    cleaned = _DECIDER_WHITESPACE.sub(" ", stripped).strip()
+    visible = "".join(char for char in stripped if _is_renderable(char))
+    cleaned = _DECIDER_WHITESPACE.sub(" ", visible).strip()
     if not cleaned:
         return _DECIDER_UNRENDERABLE
     return cleaned[:_DECIDER_MAX_LEN]
