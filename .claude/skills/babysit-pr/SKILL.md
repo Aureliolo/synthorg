@@ -163,6 +163,13 @@ gh api "repos/OWNER/REPO/secret-scanning/alerts?state=open&per_page=100" --pagin
 
 If any endpoint returns 404 (feature disabled on the repo) or 403 (insufficient token scope), log a one-line warning in the round summary, set `state.scanners_available[<scanner>] = false`, and continue. The absence of one scanner doesn't halt the loop. Subsequent ticks skip 404'd endpoints by reading `state.scanners_available`.
 
+**But "the scanner is not available here" and "this scan did not run" are different facts, and only the first is safe to continue past.** The two arrive as the same status code: the dependency-graph compare answers 403/404 both when Advanced Security is off for the repository and when it cannot resolve a revision it was handed. Filing the second as "scanner unavailable" converts a scan that never executed into a silent zero-vulnerability result, and the loop then reports the PR clean on evidence it does not have, which is the fail-open this skill exists to refuse.
+
+Disambiguate before deciding, using a fact the status code does not carry: **do the revisions resolve?** Ask `gh api "repos/OWNER/REPO/commits/$BASE_SHA"` and the same for `$HEAD_SHA`.
+
+- Both resolve and the compare still fails: the repository genuinely does not serve this endpoint. Mark the scanner unavailable and continue, as above.
+- Either does not resolve: the compare was handed a revision this repository cannot see, so **no scan happened**. Do NOT mark the scanner unavailable. Record `{round, action: "scan_failed", scanner: "dependabot", detail: <status and the unresolvable OID>}`, and treat it as blocking for Phase 3: a round that could not scan has not shown the PR to be clean, so convergence must not be declared on it.
+
 ## Phase 2: terminal stop conditions (no reschedule)
 
 If `state` is `MERGED` or `CLOSED`:
@@ -187,6 +194,7 @@ Convergence holds when ALL true:
   2. **Per-review fallback.** If the summary comment is unavailable (very early PR, or CodeRabbit changed its banner format), accept the older signal: the most recent CodeRabbit review body contains `Actionable comments posted: 0`.
   3. **Silent-approval fallback (last resort).** If the most recent CodeRabbit review's `commit_id` is older than the current head AND the rolling summary comment is also stale (its `updated_at` predates `HEAD_COMMIT_TIME` from the Phase 1 fetch), AND the CodeRabbit `StatusContext` (`__typename: "StatusContext", context: "CodeRabbit"`) for the current head is `state: SUCCESS`, AND no rate-limit / "currently processing" / "I'll be back" markers (as defined in the Phase 4 marker table) were detected on the most recent CodeRabbit-authored item across reviews + issue comments (the same scan set Phase 4 uses) -- treat as silent approval. Used only when neither (1) nor (2) is conclusive.
 - **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts visible on EITHER `ref=refs/heads/$HEAD_BRANCH` OR `ref=refs/pull/$N/head` (CodeQL's PR workflow uses the latter; the branch ref only sees alerts from workflows that run on `push` events), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
+- **Every in-scope scanner actually ran.** A scanner Phase 1 recorded as `scan_failed` blocks convergence until a later tick scans successfully. Zero alerts from a scan that did not execute is not evidence of zero alerts, and this is the one place where treating the two alike would ship an unscanned PR as clean. A scanner marked genuinely unavailable is different and does not block, because "this repository does not serve that endpoint" is a fact about the repository rather than a gap in this round's evidence.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4). **Evaluate this over EVERY review with `id > last_review_id`, not the highest-id review or `reviewDecision` alone:** CodeRabbit posts a `COMMENTED` review (outside-diff findings) immediately followed by an empty `APPROVED` review on the same head, so a max-id-only or `reviewDecision == APPROVED` check reads as "converged" while actionable findings sit unread in the lower-id `COMMENTED` review (see the Phase 6 caution). Open each review body before declaring convergence.
 
 If converged:
@@ -267,9 +275,11 @@ A failed `fetch` leaves the default branch's remote-tracking ref stale and a fai
 | Condition | Action |
 |---|---|
 | `FETCH_EXIT` or `COUNT_EXIT` non-zero | Record `ancestry_check_failed`, ScheduleWakeup, stop the tick. Do **not** infer a count. |
-| `BEHIND` non-zero AND `baseRefName != DEFAULT_BRANCH` (a stacked PR), both from the Phase 1 fetch | Do **not** rebase-push for the review. A stacked PR gets no auto-review on a new head ([[coderabbit_skips_stacked_pr_auto_review]]), so the push would rewrite history and buy nothing. Fall through to the refill arithmetic and the ping path. |
+| `BEHIND` non-zero AND `baseRefName != DEFAULT_BRANCH` (a non-default base), both from the Phase 1 fetch | Do **not** rebase-push for the review: a push onto a non-default base buys no auto-review ([[coderabbit_skips_stacked_pr_auto_review]]), so it would rewrite history for nothing. Fall through to the refill arithmetic and the ping path. |
 | `BEHIND` non-zero, not stacked | Run the rebase sequence below. |
 | `BEHIND` zero | No rebase owed. Fall through to the refill arithmetic below. |
+
+The non-default-base row deliberately tests the base branch and **not** whether the PR is stacked on another PR. Those are different populations: a PR from a feature branch onto a release or maintenance branch is not stacked, yet it is covered here and must be, because CodeRabbit's refusal is worded `Auto reviews are disabled on base/target branches other than the default branch` and so keys on the base alone. Narrowing this to a true stacked-PR predicate would let exactly those maintenance-branch PRs rebase-push for a review that is never coming. The row is named for the condition it tests rather than the case that motivated it, since the case is a strict subset.
 
 Rebase sequence, in order, stopping at the first failure:
 
@@ -522,19 +532,21 @@ The sweep is read-only -- no API mutations, no commits, no pushes -- so it only 
    - On "continue": apply the user's new cap, reschedule.
    - On "stop": write state and exit (no reschedule).
    - On "raise cap": apply the new value (Other -> integer), reschedule.
-3. **Reschedule:**
+3. **Reschedule.** Decide the delay first, then make exactly ONE `ScheduleWakeup` call with it. The two steps are ordered, not alternative: a tick that scheduled the cadence and then scheduled again on discovering a refusal would fire twice.
+
+   **3a. Check whether the push was refused.** A new head normally auto-triggers a review, but CodeRabbit answers a push made inside a rate-limit window by re-stamping the rolling summary for the new range with `Review limit reached` and an ETA, exactly as it answers a ping. That refusal lands seconds after the push, so this phase is where it is visible and Phase 4 will not run again until the next tick. Re-read the rolling summary, and treat it as a refusal only when it carries a limit marker AND names the range this push created (the `<BASE_SHA>` to `<HEAD_SHA>` block whose head token equals `current_head`); a marker naming an older range is the previous refusal, not this one.
+
+   **3b. Select the delay.** On a refusal, parse the ETA with the Phase 4 regex and take `max(cadence_seconds, seconds_until_refill + 60)`, recording `refill_at` on the history entry. Otherwise take `cadence_seconds`. Without this the loop sleeps a cadence chosen before the ETA existed, wakes to a window that has not opened, and defers; the ping then waits for whichever later tick happens to land past refill, which in practice ran an hour past the window while every intervening tick looked busy. The Phase 4 deferral branch already schedules to refill; a refusal discovered after a push is the same fact arriving through a different door and gets the same treatment.
+
+   **3c. Schedule, once**, passing the delay chosen in 3b:
 
    ```text
    ScheduleWakeup({
-     delaySeconds: state.cadence_seconds,
+     delaySeconds: <the delay selected in 3b>,
      prompt: "/babysit-pr <PR>",
      reason: "round R pushed M fixes; next tick checks for CodeRabbit re-review + CI"
    })
    ```
-
-   **A push can be refused, and the refusal states when to come back.** A new head normally auto-triggers a review, but CodeRabbit answers a push made inside a rate-limit window by re-stamping the rolling summary for the new range with `Review limit reached` and an ETA, exactly as it answers a ping. That refusal lands seconds after the push, so this phase is where it is visible and Phase 4 will not run again until the next tick. Re-read the rolling summary after pushing, and when it carries a refusal naming the range this push created, parse the ETA with the Phase 4 regex and schedule `max(cadence_seconds, seconds_until_refill + 60)` instead of the bare cadence, recording `refill_at` on the history entry.
-
-   Without this the loop sleeps a cadence chosen before the ETA existed, wakes to a window that has not opened, and defers; the ping then waits for whichever later tick happens to land past refill, which in practice has run an hour past the window while every intervening tick looked busy. The Phase 4 deferral branch already schedules to refill; a refusal discovered after a push is the same fact arriving through a different door and gets the same treatment.
 
 ## Output discipline (per tick)
 
