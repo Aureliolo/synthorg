@@ -284,16 +284,6 @@ def _build_agent(spec: dict[str, object]) -> Agent:
     )
 
 
-def _totals(conversation: object) -> dict[str, object]:
-    """Return the running accumulated figures to stamp on one event.
-
-    Returns:
-        The ``cost`` / ``input_tokens`` / ``output_tokens`` run totals, plus the
-        flag telling the host whether they could be read at all.
-    """
-    return totals(conversation)
-
-
 def _run(spec: dict[str, object]) -> None:
     """Run one agent task, streaming normalized events, then a terminal line.
 
@@ -311,7 +301,7 @@ def _run(spec: dict[str, object]) -> None:
             return
         conversation = holder.get("conversation")
         if conversation is not None:
-            normalized.update(_totals(conversation))
+            normalized.update(totals(conversation))
         _emit(normalized)
 
     # Persist conversation state under the (rw) workspace keyed by a stable
@@ -331,7 +321,7 @@ def _run(spec: dict[str, object]) -> None:
     holder["conversation"] = conversation
     conversation.send_message(spec["task_prompt"])
     conversation.run()
-    _emit({"kind": "finished", **_totals(conversation)})
+    _emit({"kind": "finished", **totals(conversation)})
 
 
 def main() -> int:
