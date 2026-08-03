@@ -42,16 +42,14 @@ export function useOrgQuestions(): UseOrgQuestionsReturn {
   const error = useOrgQuestionsStore((s) => s.error)
   const hasMore = useOrgQuestionsStore((s) => s.hasMore)
 
-  // Hydrate on mount: a reload must not lose a waiting question.
-  useEffect(() => {
-    void useOrgQuestionsStore.getState().fetchQuestions()
-  }, [])
-
   const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useOrgQuestionsStore.getState().fetchQuestions()
   }, [])
   const { start, stop } = usePolling(pollFn, QUESTION_POLL_INTERVAL, { skipIfFresh })
+  // ``start()`` polls once immediately, which is the mount hydrate: a reload
+  // must not lose a waiting question. A separate hydrate effect alongside it
+  // would issue a second request for the same page load.
   useEffect(() => {
     start()
     return () => stop()

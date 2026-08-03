@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 
 import type { WsEvent } from '@/api/types/websocket'
 import { useOrgQuestions } from '@/pages/chat/use-org-questions'
@@ -54,11 +54,19 @@ describe('useOrgQuestions', () => {
     })
   })
 
-  it('hydrates on mount, so a reload does not lose a waiting question', async () => {
+  it('hydrates on mount through the poll function, exactly once', async () => {
+    // ``start()`` runs the poll function immediately, so that call IS the
+    // mount hydrate and a reload does not lose a waiting question. A separate
+    // hydrate effect would double every page load, which is why the hook has
+    // only one path here and this test drives the one the hook handed over.
+    const { usePolling } = await import('@/hooks/usePolling')
     renderHook(() => useOrgQuestions())
-    await waitFor(() => {
-      expect(mockFetchQuestions).toHaveBeenCalledTimes(1)
-    })
+
+    expect(mockFetchQuestions).not.toHaveBeenCalled()
+    const pollFn = vi.mocked(usePolling).mock.calls[0]?.[0]
+    await pollFn?.()
+
+    expect(mockFetchQuestions).toHaveBeenCalledTimes(1)
   })
 
   it('starts polling on mount and stops on unmount', () => {

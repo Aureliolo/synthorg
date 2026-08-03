@@ -152,7 +152,7 @@ that cannot proceed without a human's answer should ask rather than guess: the
 **mid-task clarification pause** (`AWAITING_INPUT`, `engine.clarification_enabled`) lets
 an agent ask a human an open-ended question, and the **project-decision gate**
 (`engine.scoping_enabled`) puts a mid-build implementation fork to a human, who picks
-structurally from the agent-supplied options (each with a tradeoff writeup, one
+structurally from the agent-supplied options (each with a trade-off write-up, one
 recommended) and records the choice as a project-brain `DECISION` entry. Both carry a
 declared reversibility and are answerable in the unified conversation as well as in the
 approvals queue (see [The Org Asks](org-questions.md)).

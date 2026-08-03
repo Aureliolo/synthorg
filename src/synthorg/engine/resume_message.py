@@ -31,15 +31,24 @@ from synthorg.engine.prompt_safety import (
 
 #: Characters stripped from a decider attribution before it is rendered into
 #: the trusted region: the marker delimiters (``[``/``]``), the fence
-#: delimiters (``<``/``>``) and control characters. Those are the only ones
-#: that carry structure here, so those are the only ones removed; a wider
-#: allowlist would mangle legitimate names (an apostrophe, a non-Latin script)
-#: to buy nothing.
+#: delimiters (``<``/``>``), control characters, and every codepoint that a
+#: reader cannot see. The invisible ranges are the ASCII-smuggling vectors:
+#: bidirectional overrides and isolates reorder what a human reviewing the
+#: transcript sees against what the model reads, and zero-width joiners, the
+#: byte-order mark and the Unicode Tag block carry text that renders as
+#: nothing at all. A display name is attacker-supplied on several paths (a
+#: local username, an OIDC claim, a chat profile), so an attribution written
+#: out of those ranges would smuggle instructions into the one region of the
+#: resume message that is deliberately NOT fenced.
+#: Visible characters stay: a wider allowlist would mangle legitimate names
+#: (an apostrophe, a non-Latin script) to buy nothing.
 #: Tab / newline / carriage return are deliberately absent: they are folded
 #: into a space below instead of deleted, so a name split across lines does
 #: not come back as one run-together word.
 _DECIDER_STRUCTURAL: Final[re.Pattern[str]] = re.compile(
-    r"[\[\]<>\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"
+    r"[\[\]<>\x00-\x08\x0b\x0c\x0e-\x1f\x7f"
+    r"\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff"
+    r"\U000e0000-\U000e007f]"
 )
 #: Collapsed to a single space so an attribution stays one visual line.
 _DECIDER_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")

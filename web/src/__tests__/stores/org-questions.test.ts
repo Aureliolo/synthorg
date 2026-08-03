@@ -14,6 +14,7 @@ import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 
+const QUESTIONS_URL = '/api/v1/meta/chat/questions'
 const ANSWER_URL = '/api/v1/meta/chat/questions/:approvalId/answer'
 const DECLINE_URL = '/api/v1/meta/chat/questions/:approvalId/decline'
 
@@ -214,6 +215,42 @@ describe('useOrgQuestionsStore', () => {
     expect(keys[0]).toBe(keys[1])
   })
 
+  it('mints a fresh idempotency key when the operator edits the answer', async () => {
+    // Reusing the key here would have the server replay the FIRST answer and
+    // report it as recorded, so the correction is lost behind a success toast.
+    const keys: (string | null)[] = []
+    let attempt = 0
+    server.use(
+      openQuestionsHandler([parkedQuestionFixture({ approval_id: 'q-1' })]),
+      http.post(ANSWER_URL, ({ request }) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        attempt += 1
+        if (attempt === 1) {
+          return HttpResponse.json(apiError('gateway timeout'), { status: 504 })
+        }
+        return HttpResponse.json(
+          successFor<typeof answerParkedQuestion>({
+            approval_id: 'q-1',
+            status: 'approved',
+            recorded_answer: 'SQLite',
+            decided_at: '2026-08-02T10:05:00Z',
+          }),
+        )
+      }),
+    )
+    await useOrgQuestionsStore.getState().fetchQuestions()
+
+    expect(await useOrgQuestionsStore.getState().answerQuestion('q-1', 'Postgres')).toBe(
+      false,
+    )
+    expect(await useOrgQuestionsStore.getState().answerQuestion('q-1', 'SQLite')).toBe(
+      true,
+    )
+
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).not.toBe(keys[1])
+  })
+
   it.each<WsEventType>([
     'approval.approved',
     'approval.rejected',
@@ -234,6 +271,38 @@ describe('useOrgQuestionsStore', () => {
       expect(useOrgQuestionsStore.getState().questions).toEqual([])
     },
   )
+
+  it('an unrelated decided approval does not discard an in-flight read', async () => {
+    // The approvals channel carries the whole org's approval traffic, so a
+    // decision on something that is not a parked question must not invalidate
+    // a list read: under a busy queue that starves the list of every page.
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get(QUESTIONS_URL, async () => {
+        await gate
+        return HttpResponse.json(
+          questionsPage([parkedQuestionFixture({ approval_id: 'q-1' })]),
+        )
+      }),
+    )
+
+    const inFlight = useOrgQuestionsStore.getState().fetchQuestions()
+    useOrgQuestionsStore.getState().handleWsEvent({
+      event_type: 'approval.approved',
+      channel: 'approvals',
+      timestamp: '2026-08-02T10:01:00Z',
+      payload: { approval: { id: 'unrelated-deploy', action_type: 'deploy:release' } },
+    })
+    release()
+    await inFlight
+
+    expect(
+      useOrgQuestionsStore.getState().questions.map((r) => r.question.approval_id),
+    ).toEqual(['q-1'])
+  })
 
   it('a decided event falls back to the flat approval_id payload', async () => {
     server.use(openQuestionsHandler([parkedQuestionFixture({ approval_id: 'q-1' })]))

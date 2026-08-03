@@ -266,31 +266,7 @@ class RequestProjectDecisionTool(BaseTool):
                 RequestProjectDecisionArgs,
             )
         except ValidationError as exc:
-            # Surface which field failed (question, options, or an unexpected
-            # extra) rather than a fixed "question" message that misreports an
-            # options / extra-field error. Uses loc + msg only, never the raw
-            # input value.
-            details = "; ".join(
-                f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
-                for err in exc.errors()
-            )
-            # Logged as well as returned: the error result goes back to the
-            # agent, so an agent looping on a malformed call is otherwise
-            # invisible to the operator watching the run.
-            logger.warning(
-                APPROVAL_GATE_ESCALATION_FAILED,
-                agent_id=self._agent_id,
-                action_type=_DECISION_ACTION_TYPE,
-                error_type=type(exc).__name__,
-                invalid_fields=[
-                    ".".join(str(part) for part in err["loc"]) for err in exc.errors()
-                ],
-                note="Malformed decision arguments",
-            )
-            return ToolExecutionResult(
-                content=f"Invalid decision arguments: {details}",
-                is_error=True,
-            )
+            return self._invalid_arguments(exc)
 
         # The question and every option writeup are agent-authored prose a
         # human reads in the chat transcript, so they pass the same
@@ -321,6 +297,38 @@ class RequestProjectDecisionTool(BaseTool):
 
         return self._build_success(
             approval_id, guarded.question, guarded.options, guarded.reversibility
+        )
+
+    def _invalid_arguments(self, exc: ValidationError) -> ToolExecutionResult:
+        """Report which field failed, without echoing what the agent sent.
+
+        Names the failing field (question, options, or an unexpected extra)
+        rather than a fixed "question" message that would misreport an
+        options error, and uses ``loc`` + ``msg`` only, never the raw value.
+        Logged as well as returned: the error result goes back to the agent,
+        so an agent looping on a malformed call is otherwise invisible to the
+        operator watching the run.
+
+        Returns:
+            The error result handed back to the calling agent.
+        """
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}"
+            for err in exc.errors()
+        )
+        logger.warning(
+            APPROVAL_GATE_ESCALATION_FAILED,
+            agent_id=self._agent_id,
+            action_type=_DECISION_ACTION_TYPE,
+            error_type=type(exc).__name__,
+            invalid_fields=[
+                ".".join(str(part) for part in err["loc"]) for err in exc.errors()
+            ],
+            note="Malformed decision arguments",
+        )
+        return ToolExecutionResult(
+            content=f"Invalid decision arguments: {details}",
+            is_error=True,
         )
 
     def _build_evidence(

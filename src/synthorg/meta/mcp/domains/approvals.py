@@ -116,7 +116,10 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "approvals",
         "reject",
-        "Reject a pending approval item (destructive; requires confirm).",
+        (
+            "Reject a pending approval item (destructive; requires confirm). "
+            "Cannot answer a question an agent parked for a human."
+        ),
         {
             "approval_id": {"type": "string", "description": "Approval UUID"},
             **ADMIN_GUARDRAIL_PROPERTIES,

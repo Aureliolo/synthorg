@@ -136,6 +136,7 @@ class ResumeDispatchMixin:
             decided_by=decided_by,
             has_reason=decision_reason is not None,
             reason_provenance=annotations.reason_provenance.value,
+            has_system_note=annotations.system_note is not None,
         )
         _ = self._resume_tasks.spawn(
             self._resume_parked(

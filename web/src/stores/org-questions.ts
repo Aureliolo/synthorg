@@ -195,16 +195,27 @@ function decidedApprovalId(event: WsEvent): string {
   return sanitizeWsString(event.payload['approval_id'], MAX_WS_ID_LEN) ?? ''
 }
 
-/** Drop one question locally and invalidate any read issued before now. */
+/**
+ * Drop one question locally and invalidate any read issued before now.
+ *
+ * The epoch only advances when a record actually went: this runs for every
+ * decided approval on the channel, and the channel carries the whole org's
+ * approval traffic. Bumping unconditionally would let an unrelated decision
+ * discard an in-flight list read, and a busy queue could exhaust every fetch
+ * pass without applying a page, leaving the list stale until the next poll.
+ */
 function removeQuestion(
   set: QuestionsSet,
   get: QuestionsGet,
   approvalId: string,
 ): void {
+  const current = get().questions
+  const remaining = current.filter(
+    (r) => r.question.approval_id !== approvalId,
+  )
+  if (remaining.length === current.length) return
   refetch.epoch += 1
-  set({
-    questions: get().questions.filter((r) => r.question.approval_id !== approvalId),
-  })
+  set({ questions: remaining })
 }
 
 /**
@@ -282,6 +293,14 @@ function handleWsEventImpl(set: QuestionsSet, get: QuestionsGet, event: WsEvent)
 
 interface ResolveSpec {
   approvalId: string
+  /**
+   * What is being submitted, so a retry of the same payload reuses the key
+   * while a corrected one mints a fresh one. Keyed on the approval alone, an
+   * operator who fixes a rejected answer and resubmits would replay the first
+   * key, and the server would return the ORIGINAL answer as a recorded
+   * decision: success toast, card gone, edit silently discarded.
+   */
+  payloadKey: string
   send: (idempotencyKey: string) => Promise<QuestionDecisionResult>
   successTitle: string
   errorTitle: string
@@ -321,7 +340,7 @@ async function resolveQuestionImpl(
   spec: ResolveSpec,
 ): Promise<boolean> {
   set({ resolving: new Set(get().resolving).add(spec.approvalId) })
-  const scope = `${spec.logPrefix}:${spec.approvalId}`
+  const scope = `${spec.logPrefix}:${spec.approvalId}:${spec.payloadKey}`
   try {
     const result = await spec.send(idempotencyKeyFor(scope))
     idempotencyKeys.delete(scope)
@@ -353,6 +372,7 @@ export const useOrgQuestionsStore = create<OrgQuestionsState>()((set, get) => ({
   answerQuestion: async (approvalId, answer, chosenOptionId) =>
     resolveQuestionImpl(set, get, {
       approvalId,
+      payloadKey: `${chosenOptionId ?? ''} ${answer}`,
       send: async (key) =>
         answerParkedQuestion(
           approvalId,
@@ -374,6 +394,8 @@ export const useOrgQuestionsStore = create<OrgQuestionsState>()((set, get) => ({
   declineQuestion: async (approvalId) =>
     resolveQuestionImpl(set, get, {
       approvalId,
+      // A decline takes no body, so every attempt is the same payload.
+      payloadKey: 'decline',
       send: async (key) => declineParkedQuestion(approvalId, key),
       successTitle: 'Declined; the agent proceeds on its own judgement',
       errorTitle: 'Failed to decline the question',

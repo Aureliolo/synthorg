@@ -110,8 +110,8 @@ function QuestionsUnavailable({ message }: { message: string }) {
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
       <p>
-        Could not load the questions the organisation is waiting on, so any open
-        question is hidden right now: {message}
+        Could not refresh the questions the organisation is waiting on, so a new
+        one may be missing here. Approvals has the full list: {message}
       </p>
     </div>
   )
