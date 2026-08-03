@@ -537,6 +537,19 @@ class TestConstructionPath:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
 
+    def test_an_activation_target_in_a_package_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # The wrapper's import is resolved the same module-or-package way the
+        # closure resolves its own: keying the target set by a ".py" no module
+        # has would match nothing, leaving the activation's reads live.
+        root = _repo(
+            tmp_path,
+            registry=registry_module(),
+            sources={"api/lifecycle_helpers/thing_wiring/__init__.py": _WIRE},
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
     def test_an_unresolvable_worker_import_fails_the_scan(self, tmp_path: Path) -> None:
         # Backing neither a module nor a package is a closure the gate cannot
         # trust, and a silent skip is what let the package case through.
@@ -674,6 +687,22 @@ class TestDefinitionScanning:
             },
         )
         assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_a_nested_definitions_package_is_scanned(self, tmp_path: Path) -> None:
+        # A top-level-only glob would leave a nested package's settings out of
+        # the inventory, and a setting absent from the inventory is one the
+        # gate never checks at all.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob")),
+                "nested/extra.py": definitions_module(registration("deep")),
+            },
+        )
+        assert _keys(scan_repo(root)) == [
+            "engine.deep:unreachable",
+            "engine.knob:unreachable",
+        ]
 
     def test_a_registration_helper_is_resolved(self, tmp_path: Path) -> None:
         # self_improvement.py registers six flags through a `_flag(key, ...)`
@@ -927,7 +956,7 @@ class TestBaseline:
         root = _repo(tmp_path)
         baseline = tmp_path / "baseline.txt"
         baseline.write_text("engine.knob:unreachable\n", encoding="utf-8")
-        new, stale = run_with_baseline(root, baseline_path=baseline)
+        new, stale, _ = run_with_baseline(root, baseline_path=baseline)
         assert new == []
         assert stale == []
 
@@ -942,7 +971,7 @@ class TestBaseline:
         )
         baseline = tmp_path / "baseline.txt"
         baseline.write_text("engine.knob:unreachable\n", encoding="utf-8")
-        new, stale = run_with_baseline(root, baseline_path=baseline)
+        new, stale, _ = run_with_baseline(root, baseline_path=baseline)
         assert _keys(new) == ["engine.fresh_knob:unreachable"]
         assert stale == []
 
@@ -961,7 +990,7 @@ class TestBaseline:
         )
         baseline = tmp_path / "baseline.txt"
         baseline.write_text("engine.knob:unreachable\n", encoding="utf-8")
-        new, stale = run_with_baseline(root, baseline_path=baseline)
+        new, stale, _ = run_with_baseline(root, baseline_path=baseline)
         assert _keys(new) == ["engine.knob:construction-only"]
         assert stale == ["engine.knob:unreachable"]
 
@@ -1009,7 +1038,7 @@ class TestBaseline:
 
     def test_a_missing_baseline_reads_as_empty(self, tmp_path: Path) -> None:
         root = _repo(tmp_path)
-        new, stale = run_with_baseline(root, baseline_path=tmp_path / "absent.txt")
+        new, stale, _ = run_with_baseline(root, baseline_path=tmp_path / "absent.txt")
         assert _keys(new) == ["engine.knob:unreachable"]
         assert stale == []
 

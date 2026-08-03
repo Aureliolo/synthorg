@@ -152,6 +152,23 @@ def scan_repo(repo_root: Path) -> list[Violation]:
         SettingScanError: If the settings inventory cannot be resolved.
         GateSourceError: If a source file cannot be read or parsed.
     """
+    return _scan_with_notes(repo_root)[0]
+
+
+def _scan_with_notes(repo_root: Path) -> tuple[list[Violation], tuple[str, ...]]:
+    """Return the violations and the diagnostics that explain them.
+
+    Args:
+        repo_root: Project root to scan.
+
+    Returns:
+        The sorted violations, and the forwarding-helper names ambiguity
+        dropped from the shared index.
+
+    Raises:
+        SettingScanError: If the settings inventory cannot be resolved.
+        GateSourceError: If a source file cannot be read or parsed.
+    """
     definitions = load_definitions(repo_root)
     writable = [record for record in definitions if not record.compose_set]
     evidence = collect_evidence(
@@ -171,12 +188,12 @@ def scan_repo(repo_root: Path) -> list[Violation]:
         for record in writable
         if evidence.status(record.pair) != LIVE
     ]
-    return sorted(violations, key=Violation.baseline_key)
+    return sorted(violations, key=Violation.baseline_key), evidence.dropped_helpers
 
 
 def run_with_baseline(
     repo_root: Path, *, baseline_path: Path
-) -> tuple[list[Violation], list[str]]:
+) -> tuple[list[Violation], list[str], tuple[str, ...]]:
     """Split the current violations against the frozen baseline.
 
     Args:
@@ -184,20 +201,22 @@ def run_with_baseline(
         baseline_path: Baseline file; a missing file reads as empty.
 
     Returns:
-        The violations absent from the baseline, and the baseline entries no
-        longer violated.
+        The violations absent from the baseline, the baseline entries no longer
+        violated, and the forwarding-helper names ambiguity dropped. The last
+        rides along from the same scan so the caller can report it only when
+        there is a violation to act on, without paying for a second pass.
 
     Raises:
         ValueError: If the baseline file is malformed.
         SettingScanError: If the settings inventory cannot be resolved.
         GateSourceError: If a source file cannot be read or parsed.
     """
-    violations = scan_repo(repo_root)
+    violations, dropped = _scan_with_notes(repo_root)
     baseline = _load_baseline(baseline_path)
     current = {violation.baseline_key() for violation in violations}
     new = [v for v in violations if v.baseline_key() not in baseline]
     stale = sorted(baseline - current)
-    return new, stale
+    return new, stale, dropped
 
 
 def _load_baseline(path: Path) -> set[str]:
@@ -276,12 +295,23 @@ def _resolve_repo_root(repo_root: Path | None) -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _report(new: list[Violation], stale: list[str]) -> None:
+def _report(
+    new: list[Violation], stale: list[str], dropped: tuple[str, ...] = ()
+) -> None:
     """Print the violation and stale-entry report."""
     for violation in new:
         print(
             f"{violation.source_file}:{violation.source_line}:"
             f" {violation.setting_key} is {_REASONS[violation.kind]}"
+        )
+    if new and dropped:
+        # A name collision, not the wiring, can be why a setting reads as
+        # unreachable. Only worth saying when there is a violation to act on.
+        print(
+            "\nNote: these forwarding-helper names resolve more than one way,"
+            " so evidence running only through them was not credited:"
+            f" {', '.join(dropped)}",
+            file=sys.stderr,
         )
     if stale:
         print(
@@ -347,10 +377,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.update_baseline:
         return _update_baseline(repo_root, baseline_path)
     try:
-        new, stale = run_with_baseline(repo_root, baseline_path=baseline_path)
+        new, stale, dropped = run_with_baseline(repo_root, baseline_path=baseline_path)
     except (GateSourceError, SettingScanError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except MemoryError, RecursionError:
+        # Resource exhaustion says nothing about the tree being scanned, and
+        # reporting it as a gate verdict would hide a machine-level problem
+        # behind a code-level one.
+        raise
     except Exception as exc:
         # Exit 1 means "you have violations". Letting anything else reach the
         # interpreter's own handler would exit 1 too, so a broken gate would be
@@ -361,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    _report(new, stale)
+    _report(new, stale, dropped)
     return 1 if new else 0
 
 
@@ -380,6 +415,8 @@ def _update_baseline(repo_root: Path, baseline_path: Path) -> int:
     except (GateSourceError, SettingScanError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         print(f"scan failed unexpectedly ({type(exc).__name__})", file=sys.stderr)
         return 2

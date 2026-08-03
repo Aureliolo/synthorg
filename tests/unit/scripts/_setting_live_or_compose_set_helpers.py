@@ -38,6 +38,18 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
 )
 """
 
+# Every module a registry wrapper imports must exist: the gate resolves each
+# activation target to a real file and refuses a scan whose targets it cannot
+# place. These are the two the default registries name.
+_WIRING_MODULES = {
+    "api/lifecycle_helpers/inert_wiring.py": (
+        "async def wire_inert(state):\n    return None\n"
+    ),
+    "api/lifecycle_helpers/thing_wiring.py": (
+        "async def wire_thing(state):\n    return None\n"
+    ),
+}
+
 
 def make_repo(
     tmp_path: Path,
@@ -81,6 +93,13 @@ def make_repo(
     supplied = sources or {}
     if not omit_runtime_builder and _RUNTIME_BUILDER_REL not in supplied:
         _write(src_root / _RUNTIME_BUILDER_REL, runtime_builder_module())
+    for rel, body in _WIRING_MODULES.items():
+        # A caller supplying the package form must not also get the flat
+        # module: resolution prefers the ".py", so the default would shadow
+        # exactly the shape the test is exercising.
+        package_form = f"{rel.removesuffix('.py')}/__init__.py"
+        if rel not in supplied and package_form not in supplied:
+            _write(src_root / rel, body)
     for rel, body in supplied.items():
         _write(src_root / rel, body)
     for rel, body in (web or {}).items():

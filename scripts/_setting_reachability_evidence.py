@@ -111,6 +111,11 @@ class Evidence:
 
     live: frozenset[tuple[str, str]]
     construction: frozenset[tuple[str, str]]
+    dropped_helpers: tuple[str, ...] = ()
+    """Forwarding-helper names ambiguity removed from the shared index. A
+    setting whose only evidence ran through one is reported unreachable, so the
+    report names them: otherwise the developer sees the verdict without the one
+    fact that explains it."""
 
     def status(self, pair: tuple[str, str]) -> Reach | None:
         """Return how *pair* is reached, or ``None`` when nothing reaches it.
@@ -158,7 +163,9 @@ def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evid
     scan.resolve_deferred()
     scan.live.update(_web_referenced(repo_root, pairs))
     return Evidence(
-        live=frozenset(scan.live), construction=frozenset(scan.construction)
+        live=frozenset(scan.live),
+        construction=frozenset(scan.construction),
+        dropped_helpers=scan.collector.dropped_names(),
     )
 
 
@@ -581,7 +588,7 @@ def activation_targets(repo_root: Path) -> dict[str, frozenset[str]]:
                     "module-level function this scan can follow"
                 )
                 raise GateSourceError(message)
-            for rel, name in _imported_targets(wrappers[kw.value.id]):
+            for rel, name in _imported_targets(repo_root, wrappers[kw.value.id]):
                 targets.setdefault(rel, set()).add(name)
     return {rel: frozenset(names) for rel, names in targets.items()}
 
@@ -715,15 +722,32 @@ def _module_file(repo_root: Path, module: str) -> str:
 
 
 def _imported_targets(
-    wrapper: ast.FunctionDef | ast.AsyncFunctionDef,
+    repo_root: Path, wrapper: ast.FunctionDef | ast.AsyncFunctionDef
 ) -> Iterator[tuple[str, str]]:
-    """Yield the ``(module path, function name)`` pairs *wrapper* imports."""
+    """Yield the ``(module path, function name)`` pairs *wrapper* imports.
+
+    Resolved through the module-or-package rule rather than by assuming a
+    ``.py``: a wiring function imported from a package would otherwise key the
+    target set by a path no module has, so nothing would match it and the
+    activation's reads would count as live.
+
+    Args:
+        repo_root: Project root to resolve against.
+        wrapper: The registry's activation wrapper.
+
+    Yields:
+        One ``(repository-relative path, imported name)`` pair per import.
+
+    Raises:
+        GateSourceError: If an imported module backs neither a module file nor
+            a package initialiser.
+    """
     for node in ast.walk(wrapper):
         if not isinstance(node, ast.ImportFrom) or not node.module:
             continue
         if not node.module.startswith("synthorg."):
             continue
-        rel = f"src/{node.module.replace('.', '/')}.py"
+        rel = _module_file(repo_root, node.module)
         for alias in node.names:
             yield rel, alias.name
 

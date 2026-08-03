@@ -89,9 +89,12 @@ def load_definitions(repo_root: Path) -> tuple[SettingRecord, ...]:
             registration cannot be resolved.
         GateSourceError: If a definitions module cannot be read or parsed.
     """
+    # Recursive: a nested definitions package would otherwise register settings
+    # the inventory never lists, and a setting absent from the inventory is one
+    # the gate never checks.
     paths = sorted(
         path
-        for path in (repo_root / DEFINITIONS_REL).glob("*.py")
+        for path in (repo_root / DEFINITIONS_REL).rglob("*.py")
         if path.name != "__init__.py"
     )
     if not paths:
