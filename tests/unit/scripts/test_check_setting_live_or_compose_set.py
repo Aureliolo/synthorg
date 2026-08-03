@@ -792,6 +792,39 @@ class TestDefinitionScanning:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
 
+    def test_a_commented_registration_does_not_fail_the_scan(
+        self, tmp_path: Path
+    ) -> None:
+        # A comment is prose the same way a docstring is, but no AST node spans
+        # one, so discounting quoted text alone left it counted and a comment
+        # naming the call exited 2 on a module that registers correctly.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob"),
+                    preamble="# Each SettingDefinition( below is registered.\n",
+                )
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
+    def test_an_interpolated_registration_does_not_fail_the_scan(
+        self, tmp_path: Path
+    ) -> None:
+        # An f-string's literal run is reported apart from a plain string, so
+        # masking has to cover it too or prose built by interpolation counts.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob"),
+                    preamble='_NOTE = f"SettingDefinition({__name__}) is the shape"\n',
+                )
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
+
     def test_a_nested_definitions_package_is_scanned(self, tmp_path: Path) -> None:
         # A top-level-only glob would leave a nested package's settings out of
         # the inventory, and a setting absent from the inventory is one the

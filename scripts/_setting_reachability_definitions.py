@@ -12,7 +12,9 @@ dropped is the one nothing then checks.
 """
 
 import ast
+import io
 import sys
+import tokenize
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +46,11 @@ else:
 
 DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 _DEFINITION_CALL: Final[str] = "SettingDefinition"
+# Spans that spell the call without performing it. FSTRING_MIDDLE is the literal
+# run inside an f-string, which 3.12 onward reports separately from STRING.
+_UNSPOKEN_TOKENS: Final[frozenset[int]] = frozenset(
+    {tokenize.COMMENT, tokenize.STRING, tokenize.FSTRING_MIDDLE}
+)
 
 
 class SettingScanError(Exception):
@@ -147,7 +154,7 @@ def _scan_file(path: Path, rel: str) -> Iterator[SettingRecord]:
                 source_file=rel,
                 source_line=node.lineno,
             )
-    _check_all_recognised(source, tree, seen, rel)
+    _check_all_recognised(source, seen, rel)
 
 
 def _definition_names(tree: ast.Module) -> frozenset[str]:
@@ -175,7 +182,50 @@ def _is_definition_call(node: ast.AST, names: frozenset[str]) -> TypeIs[ast.Call
     return isinstance(node.func, ast.Attribute) and node.func.attr == _DEFINITION_CALL
 
 
-def _check_all_recognised(source: str, tree: ast.Module, seen: int, rel: str) -> None:
+def _blank_unspoken(source: str, rel: str) -> str:
+    """Overwrite comment and string spans with spaces, keeping every position.
+
+    Masking beats subtracting a separately counted total: a discount has to
+    rediscover every way the text can name the call, and it silently went wrong
+    for a ``#`` comment, which no AST node covers. Counting adjacent tokens
+    instead cannot work at all, because the tokeniser reports the name and its
+    parenthesis separately, so the needle matches no single token and the check
+    would pass everything.
+
+    Args:
+        source: The module text.
+        rel: Repository-relative path, for the error message.
+
+    Returns:
+        The text with masked spans blanked, so offsets still line up.
+
+    Raises:
+        SettingScanError: If the module cannot be tokenised.
+    """
+    grid = [list(line) for line in source.splitlines(keepends=True)]
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+    except (SyntaxError, tokenize.TokenError) as exc:
+        message = (
+            f"{rel}: cannot be tokenised, so the registration count is"
+            " unverifiable and the scan cannot be trusted"
+        )
+        raise SettingScanError(message) from exc
+    for token in tokens:
+        if token.type not in _UNSPOKEN_TOKENS:
+            continue
+        (first_row, first_col), (last_row, last_col) = token.start, token.end
+        for row in range(first_row - 1, last_row):
+            line = grid[row]
+            start = first_col if row == first_row - 1 else 0
+            stop = last_col if row == last_row - 1 else len(line)
+            for col in range(start, min(stop, len(line))):
+                if line[col] != "\n":
+                    line[col] = " "
+    return "".join("".join(line) for line in grid)
+
+
+def _check_all_recognised(source: str, seen: int, rel: str) -> None:
     """Fail when the text spells more registrations than the AST matched.
 
     A shape the matcher does not know yet drops its setting from the inventory
@@ -184,7 +234,6 @@ def _check_all_recognised(source: str, tree: ast.Module, seen: int, rel: str) ->
 
     Args:
         source: The module text, counted for spelled registrations.
-        tree: The parsed module, used to discount quoted occurrences.
         seen: How many registrations the AST walk resolved.
         rel: Repository-relative path, for the error message.
 
@@ -192,14 +241,9 @@ def _check_all_recognised(source: str, tree: ast.Module, seen: int, rel: str) ->
         SettingScanError: If the counts disagree.
     """
     needle = f"{_DEFINITION_CALL}("
-    # A docstring or error message naming the call is prose, not a registration;
-    # counting it would fail the scan for a documentation edit.
-    quoted = sum(
-        node.value.count(needle)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    )
-    spelled = source.count(needle) - quoted
+    # A docstring, error message or comment naming the call is prose, not a
+    # registration; counting it would fail the scan for a documentation edit.
+    spelled = _blank_unspoken(source, rel).count(needle)
     if spelled > seen:
         message = (
             f"{rel}: found {spelled} '{_DEFINITION_CALL}(' in the source but"

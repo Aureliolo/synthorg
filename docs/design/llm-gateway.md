@@ -82,8 +82,7 @@ the system runs, the latter because the runtime-reload subscriber watches it.
 onto the frozen `OpenHandsLoopConfig`, and once more to check the run cap sits
 below it), and the loop mints every per-run bearer from that stored value rather
 than re-reading the setting. A write therefore takes effect no earlier than the
-next rebuild, and it is recorded in
-`scripts/setting_live_or_compose_set_baseline.txt` as `construction-only`.
+next rebuild.
 
 `gateway_enabled` ships **on**, because `tools.openhands_enabled` does and a
 wired loop whose every call 503s is not a capability; the route carries no

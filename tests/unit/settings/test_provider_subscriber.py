@@ -133,8 +133,11 @@ class TestProviderSubscriberRebuild:
         assert state.slice(ProvidersStateSlice).registry is not old_registry
         resolver.get_int.assert_awaited_once_with("providers", "retry_max_attempts")
         # The running engine captured the old registry; the runtime rebuild is
-        # what makes the new cap reach the completion path.
-        reload_spy.assert_awaited_once_with(state, trigger="provider-registry")
+        # what makes the new cap reach the completion path. The trigger names
+        # the key, so a reload in the log is traceable to the write behind it.
+        reload_spy.assert_awaited_once_with(
+            state, trigger="setting:providers.retry_max_attempts"
+        )
 
     async def test_default_provider_change_rebuilds_and_binds(
         self, monkeypatch: pytest.MonkeyPatch
@@ -184,8 +187,11 @@ class TestProviderSubscriberRebuild:
         assert new_registry.default_provider_resolved_name() == "example-provider"
         # default_provider goes through the same rebuild path as
         # retry_max_attempts, so the runtime reload -- the seam that makes the
-        # new default reach the running engine -- must be awaited here too.
-        reload_spy.assert_awaited_once_with(state, trigger="provider-registry")
+        # new default reach the running engine -- must be awaited here too, and
+        # its trigger must name this key rather than the path's other one.
+        reload_spy.assert_awaited_once_with(
+            state, trigger="setting:providers.default_provider"
+        )
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""
@@ -283,7 +289,10 @@ class TestProviderSubscriberRebuild:
         assert state.slice(ProvidersStateSlice).registry is old_registry
         # The two reloads are distinguishable in the logs: the rollback names
         # itself, so a heal is never mistaken for the write that failed.
-        assert calls == ["provider-registry", "provider-registry-rollback"]
+        assert calls == [
+            "setting:providers.retry_max_attempts",
+            "setting:providers.retry_max_attempts-rollback",
+        ]
 
     async def test_runtime_reload_failure_rolls_back_to_unset_registry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -328,7 +337,10 @@ class TestProviderSubscriberRebuild:
         assert state.slice(ProvidersStateSlice).registry is None
         # The two reloads are distinguishable in the logs: the rollback names
         # itself, so a heal is never mistaken for the write that failed.
-        assert calls == ["provider-registry", "provider-registry-rollback"]
+        assert calls == [
+            "setting:providers.retry_max_attempts",
+            "setting:providers.retry_max_attempts-rollback",
+        ]
 
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""
