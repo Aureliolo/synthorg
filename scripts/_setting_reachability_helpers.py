@@ -64,12 +64,15 @@ SCALAR_READS: Final[frozenset[str]] = frozenset(
         "get_json",
     }
 )
-# ``SettingsService.get`` is the one read whose name every mapping also carries,
-# and a mapping's ``get(key, default)`` means something else entirely, so
-# ``data.get("engine", fallback)`` would be misread as the pair ("engine",
-# fallback). It counts only off a receiver that names a settings object.
-_AMBIGUOUS_READ: Final[str] = "get"
-_SETTINGS_RECEIVER_MARKERS: Final[tuple[str, ...]] = ("setting", "resolver")
+# ``SettingsService.get`` is deliberately absent. Its name is the one every
+# mapping also carries, and a mapping's ``get(key, default)`` means something
+# else entirely, so ``data.get("engine", fallback)`` reads as the pair
+# ("engine", fallback). Nothing available to an AST scan tells the two apart:
+# a receiver-name test credits ``settings_payload.get(...)`` on the strength of
+# a substring, and proving the receiver is a settings object needs type
+# inference this gate does not have. Omitting it can only cost evidence, which
+# surfaces as a violation to look at; including it invents evidence, which is
+# the failure that makes a gate worse than absent.
 
 
 @dataclass(frozen=True)
@@ -233,32 +236,6 @@ def _helpers_from(
     yield from _namespace_forward(call, func, parameters)
 
 
-def _is_scalar_read(call: ast.Call) -> bool:
-    """Whether *call* reads one setting by ``(namespace, key)``.
-
-    Args:
-        call: The call site.
-
-    Returns:
-        True for an unambiguously-named getter, or for ``get`` off a receiver
-        that names a settings object.
-    """
-    name = called_name(call)
-    if name in SCALAR_READS:
-        return True
-    if name != _AMBIGUOUS_READ or not isinstance(call.func, ast.Attribute):
-        return False
-    receiver = call.func.value
-    text = (
-        receiver.id
-        if isinstance(receiver, ast.Name)
-        else receiver.attr
-        if isinstance(receiver, ast.Attribute)
-        else ""
-    ).lower()
-    return any(marker in text for marker in _SETTINGS_RECEIVER_MARKERS)
-
-
 def _key_forward(
     call: ast.Call,
     func: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -266,7 +243,7 @@ def _key_forward(
     aliases: Mapping[str, str],
 ) -> Iterator[ForwardingHelper]:
     """Yield a helper record when *call* reads ``(known namespace, parameter)``."""
-    if not _is_scalar_read(call):
+    if called_name(call) not in SCALAR_READS:
         return
     keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg}
     namespace = _first_resolved(keywords, NAMESPACE_KWARGS, aliases)

@@ -621,23 +621,28 @@ def construction_modules(repo_root: Path) -> frozenset[str]:
         seen.add(rel)
         _, tree = read_and_parse(repo_root / rel)
         for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom) or not node.module:
-                continue
             pending.extend(_imported_worker_modules(repo_root, node))
     return frozenset(seen)
 
 
-def _imported_worker_modules(repo_root: Path, node: ast.ImportFrom) -> Iterator[str]:
+def _imported_worker_modules(repo_root: Path, node: ast.AST) -> Iterator[str]:
     """Yield the worker module files *node* pulls into the construction path.
+
+    Both statement forms count, because both execute the module: ``import
+    synthorg.workers.x`` runs it exactly as ``from synthorg.workers.x import y``
+    does, and a walk that only knew the second would skip the first in silence.
 
     Args:
         repo_root: Project root to resolve against.
-        node: One ``from ... import ...`` statement.
+        node: Any AST node; non-import nodes yield nothing.
 
     Yields:
         Repository-relative paths, one per worker module the import reaches.
     """
-    if node.module == _WORKERS_PACKAGE:
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            yield from _package_chain(repo_root, alias.name)
+    elif isinstance(node, ast.ImportFrom) and node.module == _WORKERS_PACKAGE:
         # ``from synthorg.workers import x`` binds either a submodule or a name
         # the initialiser re-exports. Both are resolved by existence rather than
         # demanded: a name backing no module is a symbol, and a package with no
@@ -650,8 +655,35 @@ def _imported_worker_modules(repo_root: Path, node: ast.ImportFrom) -> Iterator[
                 if (repo_root / candidate).is_file():
                     yield candidate
                     break
-    elif node.module is not None and node.module.startswith(f"{_WORKERS_PACKAGE}."):
-        yield _module_file(repo_root, node.module)
+    elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+        f"{_WORKERS_PACKAGE}."
+    ):
+        module = node.module or ""
+        yield from _package_initialisers(repo_root, module)
+        yield _module_file(repo_root, module)
+
+
+def _package_chain(repo_root: Path, module: str) -> Iterator[str]:
+    """Yield the files a plain ``import <module>`` executes, if it is a worker."""
+    if module != _WORKERS_PACKAGE and not module.startswith(f"{_WORKERS_PACKAGE}."):
+        return
+    yield from _package_initialisers(repo_root, module)
+    if module != _WORKERS_PACKAGE:
+        yield _module_file(repo_root, module)
+
+
+def _package_initialisers(repo_root: Path, module: str) -> Iterator[str]:
+    """Yield every package initialiser importing *module* executes first.
+
+    Python runs each parent package's ``__init__`` before the module itself, so
+    a read there runs while the runtime is assembled just as surely as one in
+    the module named by the import.
+    """
+    parts = module.split(".")
+    for depth in range(1, len(parts) + 1):
+        candidate = f"src/{'/'.join(parts[:depth])}/{_PACKAGE_INIT}"
+        if (repo_root / candidate).is_file():
+            yield candidate
 
 
 def _module_file(repo_root: Path, module: str) -> str:

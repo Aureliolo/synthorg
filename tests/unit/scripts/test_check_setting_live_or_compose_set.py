@@ -160,14 +160,6 @@ class TestReachabilitySeams:
                 "async def read(r):",
                 '    return await _read(r, "knob")',
             ),
-            _lines(
-                "async def _read(settings_service, key):",
-                '    return await settings_service.get("engine", key)',
-                "",
-                "",
-                "async def read(svc):",
-                '    return await _read(svc, "knob")',
-            ),
         ],
         ids=[
             "positional-literals",
@@ -185,7 +177,6 @@ class TestReachabilitySeams:
             "namespace-forwarded-through-a-helper",
             "get-all-bulk-read",
             "key-forwarded-into-get-enum",
-            "key-forwarded-into-a-settings-service-get",
         ],
     )
     def test_seam_satisfies_the_gate(self, tmp_path: Path, body: str) -> None:
@@ -253,12 +244,14 @@ class TestUnreachable:
             'tracer.emit("engine", key, level="debug")',
             'payload.get("engine", key)',
             'row.get("engine", key)',
+            'settings_payload.get("engine", key)',
         ],
         ids=[
             "a-log-line",
             "a-telemetry-call",
             "a-mapping-get",
             "a-row-get",
+            "a-mapping-named-like-a-settings-object",
         ],
     )
     def test_a_helper_forwarding_into_a_non_read_is_not_evidence(
@@ -502,6 +495,43 @@ class TestConstructionPath:
                     "",
                     "async def build_runtime_services(app_state):",
                     "    return None",
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_plain_import_statement_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # ``import synthorg.workers.x`` executes the module exactly as the
+        # from-form does, and a walk that only knew ImportFrom skipped it.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/execution_resume.py": _BUILD,
+                _RUNTIME_BUILDER: _lines(
+                    "import synthorg.workers.execution_resume",
+                    "",
+                    "",
+                    "async def build_runtime_services(app_state):",
+                    "    return None",
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_read_in_a_parent_package_initialiser_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # Importing a worker module runs its package initialiser first, so a
+        # read there is assembly code even when nothing imports it by name.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/__init__.py": _BUILD,
+                "workers/execution_resume.py": "VALUE = 1\n",
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers.execution_resume"
                 ),
             },
         )
