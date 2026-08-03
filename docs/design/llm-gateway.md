@@ -78,8 +78,11 @@ All under the `providers` namespace: `gateway_enabled`,
 address handed to the harness, which both compose deployments set from the
 published backend port). `gateway_enabled` and `gateway_base_url` apply while
 the system runs, the latter because the runtime-reload subscriber watches it.
-`gateway_token_ttl_seconds` is read once, while the runtime is assembled, so a
-write to it takes effect no earlier than the next rebuild; it is recorded in
+`gateway_token_ttl_seconds` is read only while the runtime is assembled (once
+onto the frozen `OpenHandsLoopConfig`, and once more to check the run cap sits
+below it), and the loop mints every per-run bearer from that stored value rather
+than re-reading the setting. A write therefore takes effect no earlier than the
+next rebuild, and it is recorded in
 `scripts/setting_live_or_compose_set_baseline.txt` as `construction-only`.
 
 `gateway_enabled` ships **on**, because `tools.openhands_enabled` does and a

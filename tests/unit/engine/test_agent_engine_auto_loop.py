@@ -27,6 +27,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
+    EXECUTION_LOOP_SELECTION_RESOLVED,
     EXECUTION_LOOP_STATIC_SELECTED,
 )
 from synthorg.providers.models import CompletionResponse
@@ -136,6 +137,49 @@ class TestLoopSelectionAppliesLive:
     so a write rebuilds that engine. These tests pin the half of the chain that
     turns a new setting value into a different loop.
     """
+
+    async def test_resolution_is_logged_with_the_gate_off(self) -> None:
+        # The rebuild is the only moment these keys are read, so the resolved
+        # verdict is the sole operator-visible evidence that a write landed.
+        # Logging only the enabled branch would leave a disabled loop silent
+        # and indistinguishable from a rebuild that never ran.
+        app_state = _loop_settings_app_state(
+            {
+                "engine.loop_auto_select_enabled": "false",
+                "engine.default_loop_type": "react",
+                "engine.loop_complexity_overrides": "",
+            }
+        )
+        with structlog.testing.capture_logs() as logs:
+            assert await build_auto_loop_config_or_none(app_state) is None
+
+        resolved = [
+            e for e in logs if e.get("event") == EXECUTION_LOOP_SELECTION_RESOLVED
+        ]
+        assert len(resolved) == 1
+        assert resolved[0]["enabled"] is False
+
+    async def test_resolution_is_logged_with_the_gate_on(self) -> None:
+        app_state = _loop_settings_app_state(
+            {
+                "engine.loop_auto_select_enabled": "true",
+                "engine.default_loop_type": "plan_execute",
+                "engine.loop_complexity_overrides": "",
+            }
+        )
+        with structlog.testing.capture_logs() as logs:
+            config = await build_auto_loop_config_or_none(app_state)
+
+        assert config is not None
+        resolved = [
+            e for e in logs if e.get("event") == EXECUTION_LOOP_SELECTION_RESOLVED
+        ]
+        assert len(resolved) == 1
+        # The logged verdict has to match the config actually built, or the
+        # operator is reading a value the engine is not using.
+        assert resolved[0]["enabled"] is True
+        assert resolved[0]["default_loop_type"] == config.default_loop_type
+        assert resolved[0]["rule_count"] == len(config.rules)
 
     async def test_flipping_the_gate_switches_from_static_to_selected(
         self,

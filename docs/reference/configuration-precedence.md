@@ -497,8 +497,12 @@ Everything else is live, through whichever seam its consumer allows:
 of the compose-backed gate and asks the opposite question of every writable
 setting: can an operator's write reach anything that is running? A setting that
 nothing reaches accepts the write, shows the new value on the settings page, and
-changes no behaviour until somebody restarts the process, which is the third
-category the rule abolishes wearing the first category's clothes.
+changes no behaviour. The value is not lost: it is retained and picked up the
+next time the runtime is rebuilt. But nothing about the write schedules that
+rebuild, so it arrives only as a side effect of some unrelated watched key
+firing, or of a restart. An operator therefore cannot tell from the dashboard
+when, or whether, the change has taken effect, which is the third category the
+rule abolishes wearing the first category's clothes.
 
 The gate accepts as evidence any of the seams above, read straight from the
 source tree rather than by importing it:

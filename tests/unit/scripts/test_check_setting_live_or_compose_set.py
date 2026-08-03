@@ -443,6 +443,77 @@ class TestConstructionPath:
         )
         assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
 
+    @pytest.mark.parametrize(
+        ("containing", "statement", "imported"),
+        [
+            (
+                "workers/_engine_assembly.py",
+                "from . import _openhands_wiring\n",
+                "synthorg.workers._engine_assembly",
+            ),
+            (
+                "workers/_engine_assembly.py",
+                "from ._openhands_wiring import wire_it\n",
+                "synthorg.workers._engine_assembly",
+            ),
+            (
+                "workers/assembly/__init__.py",
+                "from .._openhands_wiring import wire_it\n",
+                "synthorg.workers.assembly",
+            ),
+        ],
+    )
+    def test_a_relative_import_keeps_its_target_construction_only(
+        self, tmp_path: Path, containing: str, statement: str, imported: str
+    ) -> None:
+        # A relative import carries its package in ``level`` rather than in
+        # ``module``, so reading the attribute alone yields a module matching no
+        # branch: the target drops out of the closure and its reads read live.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/_openhands_wiring.py": _BUILD,
+                containing: statement,
+                _RUNTIME_BUILDER: runtime_builder_module(imported),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
+    def test_a_relative_import_past_the_root_fails_closed(self, tmp_path: Path) -> None:
+        # Ascending past the package root is not importable, so it means the
+        # path was misread. Yielding nothing would silently shrink the closure.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/_engine_assembly.py": "from ....... import wire_it\n",
+                _RUNTIME_BUILDER: runtime_builder_module(
+                    "synthorg.workers._engine_assembly"
+                ),
+            },
+        )
+        with pytest.raises(GateSourceError, match="ascends past the package root"):
+            scan_repo(root)
+
+    def test_a_dotted_import_of_a_submodule_is_construction_only(
+        self, tmp_path: Path
+    ) -> None:
+        # ``from pkg import submodule`` executes the submodule whichever way the
+        # package is spelled, so the dotted form resolves aliases exactly as the
+        # package-self form does.
+        root = _repo(
+            tmp_path,
+            sources={
+                "workers/assembly/__init__.py": "",
+                "workers/assembly/deps.py": _BUILD,
+                _RUNTIME_BUILDER: (
+                    "from synthorg.workers.assembly import deps\n\n\n"
+                    "async def build_runtime_services(app_state: object) -> None:\n"
+                    "    return None\n"
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:construction-only"]
+
     def test_a_package_the_builder_imports_is_construction_only(
         self, tmp_path: Path
     ) -> None:

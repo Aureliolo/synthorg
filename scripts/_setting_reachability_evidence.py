@@ -426,20 +426,6 @@ def _matching(
     }
 
 
-def _adjacent_sequence(node: ast.AST) -> list[ast.expr]:
-    """Return the expressions a node lists in order.
-
-    Returns:
-        Positional call arguments, or tuple / list elements; empty for
-        anything else.
-    """
-    if isinstance(node, ast.Call):
-        return list(node.args)
-    if isinstance(node, ast.Tuple | ast.List):
-        return list(node.elts)
-    return []
-
-
 def _call_evidence(
     call: ast.Call,
     names: ModuleBindings,
@@ -534,7 +520,12 @@ def _bridge_fields(
 ) -> Iterator[tuple[str, str]]:
     """Yield the pairs a ``_resolve_bridge_fields`` bundle resolves."""
     namespaces = names.resolve(call.args[0])
-    for spec in _adjacent_sequence(call.args[1]):
+    # The bundle is a literal sequence of ``(key, kind)`` tuples. Anything else
+    # is an expression this scan cannot read, and yielding nothing for it costs
+    # only evidence, which reports the setting rather than clearing it.
+    bundle = call.args[1]
+    specs = list(bundle.elts) if isinstance(bundle, ast.Tuple | ast.List) else []
+    for spec in specs:
         if not isinstance(spec, ast.Tuple) or not spec.elts:
             continue
         yield from _matching(namespaces, names.resolve(spec.elts[0]), pairs)
@@ -628,11 +619,47 @@ def construction_modules(repo_root: Path) -> frozenset[str]:
         seen.add(rel)
         _, tree = read_and_parse(repo_root / rel)
         for node in ast.walk(tree):
-            pending.extend(_imported_worker_modules(repo_root, node))
+            pending.extend(_imported_worker_modules(repo_root, rel, node))
     return frozenset(seen)
 
 
-def _imported_worker_modules(repo_root: Path, node: ast.AST) -> Iterator[str]:
+def _absolute_import_module(rel: str, node: ast.ImportFrom) -> str:
+    """Return the dotted module *node* names, resolving a relative import.
+
+    ``node.module`` is only the whole story for an absolute import. A relative
+    one carries the rest in ``node.level``, and reading the attribute alone
+    turns ``from . import x`` into a module named ``None`` that matches no
+    branch and silently contributes nothing to the closure.
+
+    Args:
+        rel: Repository-relative path of the module containing the import.
+        node: The ``ImportFrom`` node to resolve.
+
+    Returns:
+        The absolute dotted module the import names.
+
+    Raises:
+        GateSourceError: If the level walks past the package root, which is not
+            importable and therefore means the path was misread rather than
+            that the import reaches nothing.
+    """
+    if not node.level:
+        return node.module or ""
+    # Dropping the final component yields the containing package for a module
+    # and for an ``__init__`` alike, since the initialiser's own package is the
+    # directory holding it.
+    parts = rel.removeprefix("src/").removesuffix(".py").split("/")[:-1]
+    ascended = parts[: len(parts) - (node.level - 1)]
+    if not ascended:
+        message = (
+            f"{rel}: relative import at line {node.lineno} ascends past the"
+            " package root, so the construction closure cannot be derived"
+        )
+        raise GateSourceError(message)
+    return ".".join([*ascended, node.module] if node.module else ascended)
+
+
+def _imported_worker_modules(repo_root: Path, rel: str, node: ast.AST) -> Iterator[str]:
     """Yield the worker module files *node* pulls into the construction path.
 
     Both statement forms count, because both execute the module: ``import
@@ -641,15 +668,20 @@ def _imported_worker_modules(repo_root: Path, node: ast.AST) -> Iterator[str]:
 
     Args:
         repo_root: Project root to resolve against.
+        rel: Repository-relative path of the module being walked, needed to
+            resolve a relative import against its own package.
         node: Any AST node; non-import nodes yield nothing.
 
     Yields:
         Repository-relative paths, one per worker module the import reaches.
     """
+    module = (
+        _absolute_import_module(rel, node) if isinstance(node, ast.ImportFrom) else ""
+    )
     if isinstance(node, ast.Import):
         for alias in node.names:
             yield from _package_chain(repo_root, alias.name)
-    elif isinstance(node, ast.ImportFrom) and node.module == _WORKERS_PACKAGE:
+    elif isinstance(node, ast.ImportFrom) and module == _WORKERS_PACKAGE:
         # ``from synthorg.workers import x`` binds either a submodule or a name
         # the initialiser re-exports. Both are resolved by existence rather than
         # demanded: a name backing no module is a symbol, and a package with no
@@ -662,12 +694,23 @@ def _imported_worker_modules(repo_root: Path, node: ast.AST) -> Iterator[str]:
                 if (repo_root / candidate).is_file():
                     yield candidate
                     break
-    elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
-        f"{_WORKERS_PACKAGE}."
-    ):
-        module = node.module or ""
+    elif isinstance(node, ast.ImportFrom) and module.startswith(f"{_WORKERS_PACKAGE}."):
         yield from _package_initialisers(repo_root, module)
         yield _module_file(repo_root, module)
+        # An alias here can name a submodule as readily as a symbol, and
+        # importing one executes it. Resolved by existence, exactly as the
+        # package-self branch above does: the two forms differ only in how the
+        # package is spelled, so resolving aliases in one and not the other
+        # leaves a module running unseen on whichever spelling was overlooked.
+        stem = f"src/{module.replace('.', '/')}"
+        for alias in node.names:
+            for candidate in (
+                f"{stem}/{alias.name}.py",
+                f"{stem}/{alias.name}/{_PACKAGE_INIT}",
+            ):
+                if (repo_root / candidate).is_file():
+                    yield candidate
+                    break
 
 
 def _package_chain(repo_root: Path, module: str) -> Iterator[str]:

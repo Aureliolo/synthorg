@@ -32,10 +32,10 @@ def _make_subscriber() -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
     return sub, app_state
 
 
-# The complete watched set, asserted whole below and driven through a reload
-# one pair at a time. Listing a subset proved too weak twice over: a subset
-# cannot catch a key added to _WATCHED that no rebuild test exercises, which is
-# exactly how a key gets watched and applied to nothing.
+# The complete watched set, asserted whole below and driven through a reload one
+# pair at a time. It has to be complete rather than a sample: a subset cannot
+# catch a key added to _WATCHED that no rebuild test exercises, which is how a
+# key ends up watched and applied to nothing.
 _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("coordination", "decomposition_model"),
     ("coordination", "enable_coordination_middleware"),
