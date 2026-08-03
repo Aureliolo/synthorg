@@ -15,23 +15,17 @@ from pydantic import BaseModel
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
-from synthorg.api.controllers.approvals._decision_resolution import (
-    record_chosen_option,
-    resolve_decision_reason,
+from synthorg.api.controllers.approvals._decide import (
+    apply_approval,
+    apply_rejection,
+    decision_dedup_key,
 )
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
-from synthorg.api.controllers.approvals._notify import (
-    _decided_attribution,
-    _publish_approval_event,
-    _resolve_decision,
-    _save_decision_and_notify,
-)
 from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
-    _get_approval_or_404,
-    _resolve_urgency_thresholds,
     _to_approval_response,
 )
+from synthorg.api.controllers.approvals._urgency import _resolve_urgency_thresholds
 from synthorg.api.dto import (
     ApiResponse,
     ApproveRequest,
@@ -45,8 +39,6 @@ from synthorg.api.guards import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.api.ws_models import WsEventType
-from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
@@ -57,12 +49,10 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 
-# The durable idempotency-key column is bounded at 255 chars. Decision
-# endpoints store the composite key ``f"{approval_id}:{idempotency_key}"``
-# (a 36-char UUID + a ":" separator = 37 chars of prefix), so the caller's
-# raw key must stay within 255 - 37 = 218 chars or the composite would
-# overflow the column's CHECK constraint.
-_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 218
+# The stored key is a fixed-length digest of (approval id, raw key), so the
+# 255-char column cannot overflow whatever the caller sends. This bound is a
+# plain request-size sanity limit, matching the restore endpoint's.
+_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 255
 
 _IdempotencyKeyHeader = Annotated[
     NotBlankStr,
@@ -209,14 +199,11 @@ class ApprovalsDecisionsController(Controller):
             store = require_service(
                 app_state.slice(ApprovalStateSlice).store, "Approval Store"
             )
+            # The store's own ``on_add`` hook publishes APPROVAL_SUBMITTED, so
+            # this path deliberately does not: one announcement per new
+            # approval, from the one place every producer converges.
             await store.add(item)
 
-            await _publish_approval_event(
-                request,
-                app_state,
-                WsEventType.APPROVAL_SUBMITTED,
-                item,
-            )
             logger.info(
                 API_APPROVAL_CREATED,
                 approval_id=item.id,
@@ -236,9 +223,11 @@ class ApprovalsDecisionsController(Controller):
             app_state,
             scope="approval:create",
             # Scope the key to the caller so two users may reuse the same
-            # client-side token; a 36-char user_id keeps the composite key
-            # within the durable column bound (matches the decision paths).
-            key=f"{auth_user.user_id}:{idempotency_key}",
+            # client-side token, and digest it for the same reason the
+            # decision paths do: a raw composite of a 36-char id and a
+            # header the route accepts up to _MAX_IDEMPOTENCY_KEY_LEN
+            # overruns the 255-char key column and surfaces as a 500.
+            key=decision_dedup_key(auth_user.user_id, idempotency_key),
             endpoint="approvals.create",
             request_fingerprint=_request_fingerprint(data),
             decide=_create,
@@ -286,49 +275,12 @@ class ApprovalsDecisionsController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_approve() -> dict[str, object]:
-            item = await _get_approval_or_404(app_state, approval_id)
-            _resolve_decision(request, item, approval_id)
-            decided_by, decided_by_user_id = _decided_attribution()
-            decision_reason = resolve_decision_reason(
-                item, chosen_option_id=data.chosen_option_id, comment=data.comment
-            )
-            now = datetime.now(UTC)
-            previous_status = item.status
-            update: dict[str, object] = {
-                "status": ApprovalStatus.APPROVED,
-                "decided_at": now,
-                "decided_by": decided_by,
-                "decision_reason": decision_reason,
-            }
-            # A decided decision fork records the operator's structured pick on
-            # the evidence package so downstream reads surface it without
-            # parsing the derived reason string.
-            chosen_evidence = record_chosen_option(
-                item, chosen_option_id=data.chosen_option_id
-            )
-            if chosen_evidence is not None:
-                update["evidence_package"] = chosen_evidence
-            updated = item.model_copy(update=update)
-            # ``_save_decision_and_notify`` emits the
-            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-            # persistence write succeeds, so a downstream notification or
-            # resume-signal failure cannot strand the row in a decided
-            # state without a corresponding transition entry. The log
-            # uses ``decided_by_user_id`` (not username) to keep the
-            # observability stream free of human-readable identifiers. It
-            # returns the enriched response (built once for the WS publish)
-            # so the review context is not resolved a second time here.
-            response_obj = await _save_decision_and_notify(
+            response_obj = await apply_approval(
                 app_state,
                 request,
                 approval_id,
-                updated,
-                approved=True,
-                decided_by=decided_by,
-                decided_by_user_id=decided_by_user_id,
-                previous_status=previous_status,
-                decision_reason=decision_reason,
-                ws_event=WsEventType.APPROVAL_APPROVED,
+                comment=data.comment,
+                chosen_option_id=data.chosen_option_id,
             )
             return response_obj.model_dump(mode="json")
 
@@ -338,7 +290,7 @@ class ApprovalsDecisionsController(Controller):
             # Bind the approval id into the key so the same caller token
             # reused against a different approval cannot return this one's
             # cached decision (matches the MCP backup handler's pattern).
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="approvals.approve",
             request_fingerprint=_request_fingerprint(data),
             decide=_do_approve,
@@ -386,35 +338,8 @@ class ApprovalsDecisionsController(Controller):
         app_state: AppState = state.app_state
 
         async def _do_reject() -> dict[str, object]:
-            item = await _get_approval_or_404(app_state, approval_id)
-            _resolve_decision(request, item, approval_id)
-            decided_by, decided_by_user_id = _decided_attribution()
-            now = datetime.now(UTC)
-            previous_status = item.status
-            updated = item.model_copy(
-                update={
-                    "status": ApprovalStatus.REJECTED,
-                    "decided_at": now,
-                    "decided_by": decided_by,
-                    "decision_reason": data.reason,
-                },
-            )
-            # ``_save_decision_and_notify`` emits the
-            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-            # persistence write succeeds (see the approve branch above for
-            # the rationale) and returns the enriched response built once for
-            # the WS publish, so the context is not resolved a second time.
-            response_obj = await _save_decision_and_notify(
-                app_state,
-                request,
-                approval_id,
-                updated,
-                approved=False,
-                decided_by=decided_by,
-                decided_by_user_id=decided_by_user_id,
-                previous_status=previous_status,
-                decision_reason=data.reason,
-                ws_event=WsEventType.APPROVAL_REJECTED,
+            response_obj = await apply_rejection(
+                app_state, request, approval_id, reason=data.reason
             )
             return response_obj.model_dump(mode="json")
 
@@ -423,7 +348,7 @@ class ApprovalsDecisionsController(Controller):
             scope="approval:reject",
             # Bind the approval id into the key (see ``approve`` above) so a
             # reused token on a different approval cannot collide.
-            key=f"{approval_id}:{idempotency_key}",
+            key=decision_dedup_key(approval_id, idempotency_key),
             endpoint="approvals.reject",
             request_fingerprint=_request_fingerprint(data),
             decide=_do_reject,

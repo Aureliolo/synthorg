@@ -198,14 +198,18 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="clarification_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Let an executing agent pause to ask a human a question via the"
             " request_clarification tool, parking its context and moving the"
             " task to AWAITING_INPUT until the human answers, then resuming with"
-            " the answer injected. Off by default (agents proceed on their own"
-            " judgement); when on, the tool is added to every agent toolset,"
-            " which applies on the next runtime rebuild the change triggers."
+            " the answer injected. On by default: an agent that cannot proceed"
+            " without a human's answer should ask rather than guess, because a"
+            " wrong guess on an ambiguous requirement costs more than the pause,"
+            " and the question is answerable in the unified conversation. Turn"
+            " it off to make agents always proceed on their own judgement. The"
+            " tool is added to every agent toolset, which applies on the next"
+            " runtime rebuild the change triggers."
         ),
         group="Clarification",
         level=SettingLevel.ADVANCED,
@@ -219,17 +223,61 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="scoping_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Let a lead agent surface project-shaping decisions to a human via"
             " the request_project_decision tool: it parks the run (like a"
             " clarification), and on the human's answer records a DECISION"
             " entry in the project brain and resumes with the choice injected."
-            " Off by default (agents decide on their own); when on, the tool is"
-            " added to every agent toolset, which applies on the next runtime"
-            " rebuild the change triggers."
+            " On by default: a fork that shapes the project belongs to the"
+            " operator, and the recorded decision is what later work is held to."
+            " Turn it off to let agents settle project-shaping forks themselves."
+            " The tool is added to every agent toolset, which applies on the"
+            " next runtime rebuild the change triggers."
         ),
         group="Scoping",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Ask policy (the standing "ask rather than guess" directive) ─
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="ask_policy_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Inject the standing 'ask rather than guess' directive into every"
+            " agent system prompt, worded for whichever autonomy level the run"
+            " resolves to and at the verbosity the prompt profile selects. The"
+            " directive tells an agent to put a choice to a human when it is"
+            " material (it moves cost, scope, public behaviour, data, or someone"
+            " else's work) and hard to reverse, and to decide everything else"
+            " itself. Applies on the next prompt build, no restart."
+        ),
+        group="Ask Policy",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="ask_policy_extra_directives",
+        type=SettingType.JSON,
+        default="[]",
+        description=(
+            "Additional 'when to ask' directives appended below the standing"
+            " one, as a JSON array of {id, text, scope, scope_kind} objects."
+            " scope_kind is 'all', 'role', or 'department'; an agent sees every"
+            " 'all' directive plus the role and department directives matching"
+            " it. Use this to name the choices your organisation always wants"
+            " escalated (a schema change, a public API break, spend above a"
+            " threshold). Applies on the next prompt build, no restart."
+        ),
+        group="Ask Policy",
         level=SettingLevel.ADVANCED,
     )
 )

@@ -158,9 +158,14 @@ export function OrgChatTranscript({
   onRetry,
 }: OrgChatTranscriptProps) {
   // Stable identity so the memoised TurnView only re-renders when its own turn
-  // (or the invite-resolution set) actually changes, not on every keystroke.
+  // (or one of the resolution sets) actually changes, not on every keystroke.
   const events: EventProps = useMemo(
-    () => ({ sending, resolvingInvites, onResolveInvite, onSubmitSecretCaptures }),
+    () => ({
+      sending,
+      resolvingInvites,
+      onResolveInvite,
+      onSubmitSecretCaptures,
+    }),
     [sending, resolvingInvites, onResolveInvite, onSubmitSecretCaptures],
   )
   // While a token stream is live the growing bubble is aria-hidden, so a
@@ -192,7 +197,7 @@ export function OrgChatTranscript({
         <button
           type="button"
           onClick={autoScroll.jumpToLatest}
-          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground shadow-md hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card p-card-tight text-xs text-foreground shadow-md hover:bg-card-hover focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
         >
           <ArrowDown className="size-3.5" aria-hidden />
           Jump to latest

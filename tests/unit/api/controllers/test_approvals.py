@@ -12,6 +12,7 @@ import pytest
 from litestar.datastructures import State
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.controllers.approvals._decide import decision_dedup_key
 from synthorg.api.controllers.approvals._shared import _to_approval_response
 from synthorg.api.controllers.approvals.decisions import (
     ApprovalsDecisionsController,
@@ -39,6 +40,9 @@ from tests._shared import (
 )
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
+#: Hex length of a SHA-256 digest: the dedup key is fixed-width whatever the
+#: path parameter's length, which is the point of hashing it.
+_SHA256_HEX_LEN = 64
 _BASE = "/api/v1/approvals"
 _WRITE_HEADERS = make_auth_headers("ceo")
 _READ_HEADERS = make_auth_headers("observer")
@@ -732,7 +736,13 @@ class TestApprovalIdempotency:
             )
 
         assert captured["scope"] == scope
-        assert captured["key"] == f"{sid('bind-1')}:raw-token"
+        # A digest of (approval id, raw token), not the raw composite: the
+        # path parameter accepts 128 characters, so the composite could
+        # overflow the 255-char key column and 500 before the id ever
+        # resolved to a 404.
+        assert captured["key"] == decision_dedup_key(sid("bind-1"), "raw-token")
+        assert captured["key"] != decision_dedup_key(sid("bind-2"), "raw-token")
+        assert len(str(captured["key"])) == _SHA256_HEX_LEN
 
     async def test_decide_idempotent_maps_timed_out_to_conflict(self) -> None:
         # A concurrent in-flight claim that never resolves surfaces as
@@ -1002,7 +1012,7 @@ class TestResolveUrgencyThresholdsFallback:
         """
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals._shared import (
+        from synthorg.api.controllers.approvals._urgency import (
             _resolve_urgency_thresholds,
         )
 
@@ -1024,7 +1034,7 @@ class TestResolveUrgencyThresholdsFallback:
         import asyncio as _asyncio
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals._shared import (
+        from synthorg.api.controllers.approvals._urgency import (
             _resolve_urgency_thresholds,
         )
 
@@ -1039,7 +1049,7 @@ class TestResolveUrgencyThresholdsFallback:
     async def test_returns_resolved_values_on_success(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals._shared import (
+        from synthorg.api.controllers.approvals._urgency import (
             _resolve_urgency_thresholds,
         )
 
@@ -1073,7 +1083,7 @@ class TestResolveUrgencyThresholdsFallback:
         """
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals._shared import (
+        from synthorg.api.controllers.approvals._urgency import (
             _resolve_urgency_thresholds,
         )
 
@@ -1098,7 +1108,7 @@ class TestResolveUrgencyThresholdsFallback:
 
         import structlog.testing
 
-        from synthorg.api.controllers.approvals._shared import (
+        from synthorg.api.controllers.approvals._urgency import (
             _resolve_urgency_thresholds,
         )
         from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED

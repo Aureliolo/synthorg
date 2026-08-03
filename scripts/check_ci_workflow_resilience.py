@@ -278,6 +278,12 @@ _ENFORCED_ACTIONS: Final[frozenset[str]] = frozenset(
         # Required check (CodSpeed Pass); same OIDC class, would block PR
         # merges if a CodSpeed 503 went unguarded.
         "CodSpeedHQ/action",
+        # zizmor's online audits resolve every pinned action against
+        # github.com, and one upstream failure aborts the entire run
+        # ("fatal: no audit was performed") rather than the single audit,
+        # so a 503 on git-upload-pack fails the workflow-security check
+        # outright. Same blocking class as the two above.
+        "zizmorcore/zizmor-action",
     }
 )
 

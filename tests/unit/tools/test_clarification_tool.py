@@ -37,7 +37,8 @@ class TestToolCreation:
         assert schema is not None
         props = cast("JsonDict", schema)["properties"]
         assert "question" in props
-        assert schema["required"] == ["question"]
+        assert "reversibility" in props
+        assert schema["required"] == ["question", "reversibility"]
 
 
 class TestExecute:
@@ -49,7 +50,10 @@ class TestExecute:
         approval_store: ApprovalStore,
     ) -> None:
         result = await tool.execute(
-            arguments={"question": "Which database backend should I target?"},
+            arguments={
+                "question": "Which database backend should I target?",
+                "reversibility": "hard_to_reverse",
+            },
         )
         assert not result.is_error
         assert result.metadata["requires_parking"] is True
@@ -68,12 +72,53 @@ class TestExecute:
         assert item.task_id == "task-1"
         assert item.metadata["clarification"] == "true"
 
+    async def test_declared_reversibility_is_recorded(
+        self,
+        tool: RequestClarificationTool,
+        approval_store: ApprovalStore,
+    ) -> None:
+        result = await tool.execute(
+            arguments={
+                "question": "Drop the legacy column?",
+                "reversibility": "hard_to_reverse",
+            },
+        )
+        assert result.metadata["reversibility"] == "hard_to_reverse"
+        item = await approval_store.get(
+            cast("JsonDict", result.metadata)["approval_id"]
+        )
+        assert item is not None
+        assert item.metadata["reversibility"] == "hard_to_reverse"
+
+    async def test_reversibility_is_required(
+        self,
+        tool: RequestClarificationTool,
+    ) -> None:
+        # Judging materiality is part of deciding to ask, so the agent states
+        # it rather than the tool guessing a default on its behalf.
+        result = await tool.execute(arguments={"question": "Proceed?"})
+        assert result.is_error
+        assert "reversibility" in result.content
+
+    async def test_unknown_reversibility_rejected(
+        self,
+        tool: RequestClarificationTool,
+    ) -> None:
+        result = await tool.execute(
+            arguments={"question": "Proceed?", "reversibility": "maybe"},
+        )
+        assert result.is_error
+        assert "reversibility" in result.content
+
     async def test_question_in_content(
         self,
         tool: RequestClarificationTool,
     ) -> None:
         result = await tool.execute(
-            arguments={"question": "Use metric or imperial units?"},
+            arguments={
+                "question": "Use metric or imperial units?",
+                "reversibility": "reversible",
+            },
         )
         assert "Use metric or imperial units?" in result.content
 
@@ -86,7 +131,12 @@ class TestExecute:
             agent_id="agent-1",
             task_id=None,
         )
-        result = await tool.execute(arguments={"question": "Anything unclear?"})
+        result = await tool.execute(
+            arguments={
+                "question": "Anything unclear?",
+                "reversibility": "reversible",
+            }
+        )
         assert not result.is_error
         item = await approval_store.get(
             cast("JsonDict", result.metadata)["approval_id"]
@@ -98,7 +148,9 @@ class TestExecute:
         self,
         tool: RequestClarificationTool,
     ) -> None:
-        result = await tool.execute(arguments={"question": "   "})
+        result = await tool.execute(
+            arguments={"question": "   ", "reversibility": "reversible"}
+        )
         assert result.is_error
         # The failing field is named so the agent can self-correct.
         assert "question" in result.content
@@ -118,6 +170,8 @@ class TestErrorHandling:
 
         approval_store.add = _failing_add  # type: ignore[method-assign]
 
-        result = await tool.execute(arguments={"question": "Proceed?"})
+        result = await tool.execute(
+            arguments={"question": "Proceed?", "reversibility": "reversible"}
+        )
         assert result.is_error
         assert "Failed to create clarification request" in result.content

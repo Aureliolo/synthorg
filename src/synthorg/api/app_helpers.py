@@ -55,39 +55,45 @@ _AGENT_WORKSPACES_SUBDIR: Final[str] = "agent-workspaces"
 _POSTGRES_VOLUME_DATA_DIR: Final[str] = "/data"
 
 
-def _make_expire_callback(
+def _make_lifecycle_callback(
     channels_plugin: ChannelsPlugin,
+    event_type: WsEventType,
     clock: Clock | None = None,
 ) -> Callable[[ApprovalItem], None]:
-    """Create a sync callback that publishes APPROVAL_EXPIRED events.
+    """Create a sync callback publishing one approval-lifecycle event.
 
-    The callback is invoked by ``ApprovalStore._check_expiration_locked``
-    when lazy expiry transitions an item to EXPIRED.  Best-effort:
-    publish errors are logged and swallowed.
+    Both store-level hooks (a new item, a lazily expired one) publish the
+    same envelope shape and degrade the same way, so they share one body:
+    the only thing that differs is which event type the frame carries.
+
+    The un-enriched projection is deliberate. The hook runs inside a
+    synchronous store callback with no request scope, so resolving the
+    agent / task / project context is not available to it; the dashboard
+    upserts by approval id and fills the context from its own GET.
 
     Args:
         channels_plugin: Litestar channels plugin for WebSocket delivery.
+        event_type: Lifecycle event the frame announces.
         clock: Clock seam for the event timestamp; defaults to
             ``SystemClock`` so tests can inject a ``FakeClock`` for a
-            deterministic expiry timestamp.
+            deterministic timestamp.
 
     Returns:
-        Sync callback accepting an expired ``ApprovalItem``.
+        Sync callback accepting the ``ApprovalItem`` that changed.
     """
     resolved_clock = clock or SystemClock()
 
-    def _on_expire(item: ApprovalItem) -> None:
-        """Handle the expire event."""
+    def _publish(item: ApprovalItem) -> None:
+        """Handle one approval-lifecycle transition."""
         now = resolved_clock.now()
         # Build the event inside the guard: the WsEvent payload validator
         # rejects a malformed payload (e.g. a non-string approval_id) at
-        # construction, and this lazy-expiry callback must degrade to a
-        # logged no-op rather than let that error escape into the store's
-        # expiry sweep.
+        # construction, and a store callback must degrade to a logged
+        # no-op rather than let that error escape into the store.
         try:
             response = to_response_without_context(item, now=now)
             event = WsEvent(
-                event_type=WsEventType.APPROVAL_EXPIRED,
+                event_type=event_type,
                 channel=CHANNEL_APPROVALS,
                 timestamp=now,
                 payload={
@@ -105,12 +111,61 @@ def _make_expire_callback(
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=str(item.id),
-                event_type=WsEventType.APPROVAL_EXPIRED.value,
+                event_type=event_type.value,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
 
-    return _on_expire
+    return _publish
+
+
+def _make_submitted_callback(
+    channels_plugin: ChannelsPlugin,
+    clock: Clock | None = None,
+) -> Callable[[ApprovalItem], None]:
+    """Create the store's ``on_add`` hook, publishing APPROVAL_SUBMITTED.
+
+    Announcing from the store rather than from the REST create handler is
+    what makes the frame reach every producer. An agent that parks a
+    question calls ``store.add`` directly and never touches the endpoint,
+    so a handler-level publish left the dashboard's live path unreachable
+    for exactly the items an operator most needs to see arrive.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+        clock: Clock seam for the event timestamp.
+
+    Returns:
+        Sync callback accepting the newly stored ``ApprovalItem``.
+    """
+    return _make_lifecycle_callback(
+        channels_plugin,
+        WsEventType.APPROVAL_SUBMITTED,
+        clock,
+    )
+
+
+def _make_expire_callback(
+    channels_plugin: ChannelsPlugin,
+    clock: Clock | None = None,
+) -> Callable[[ApprovalItem], None]:
+    """Create the store's ``on_expire`` hook, publishing APPROVAL_EXPIRED.
+
+    Invoked by ``ApprovalStore._check_expiration_locked`` when lazy expiry
+    transitions an item to EXPIRED.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+        clock: Clock seam for the event timestamp.
+
+    Returns:
+        Sync callback accepting an expired ``ApprovalItem``.
+    """
+    return _make_lifecycle_callback(
+        channels_plugin,
+        WsEventType.APPROVAL_EXPIRED,
+        clock,
+    )
 
 
 def _resolve_artifact_dir_env(raw: str | None = None) -> str:

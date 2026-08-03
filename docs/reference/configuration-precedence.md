@@ -502,22 +502,37 @@ through `app_state.security_runtime_config`, which the
 `SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
 The same guardrail covers four more namespaces: `engine` (the completion-oracle
-keys, plus the three loop-routing keys `loop_auto_select_enabled`,
-`default_loop_type` and `loop_complexity_overrides`, where naming the sandboxed
-loop is the weakening direction), `tools` (MCP sandbox isolation, the
-credentialed-MCP grant, `openhands_enabled`, and each destructive tool family's
-enable + targets), `output_style` (disable, shadow, exemptions, pack swap), and
-`providers` (`gateway_enabled`).
+keys, the agent middleware, the three loop-routing keys
+`loop_auto_select_enabled`, `default_loop_type` and `loop_complexity_overrides`,
+where naming the sandboxed loop is the weakening direction, and the three
+human-ask toggles `ask_policy_enabled`, `clarification_enabled` and
+`scoping_enabled`, whose off direction removes the only in-run path by which an
+agent defers a material, hard-to-reverse choice to a human), `tools` (MCP
+sandbox isolation, the credentialed-MCP grant, `openhands_enabled`, and each
+destructive tool family's enable + targets), `output_style` (disable, shadow,
+exemptions, pack swap), and `providers` (`gateway_enabled`).
 
-Three of those toggles ship **on** (`providers.gateway_enabled`,
-`tools.openhands_enabled`, `tools.credentialed_mcp_enabled`), which changes what
-the guardrail treats as a decision. An unset key resolves to the registered
-default, so writing `true` over it restates the running posture and is
-unguarded; only an explicit stored `false` returning to `true` reopens the
-surface and needs confirm+reason+actor. The corollary is that the guardrail is a
-live-write control, not an upgrade-time one: a deployment that never wrote an
-explicit row inherits the new default on its next boot with no prompt, so a
-default flip on any of these belongs in the release notes.
+Six of those toggles ship **on**, and the guarded direction differs by what
+turning one on actually does.
+
+For the three **default-on capabilities** (`providers.gateway_enabled`,
+`tools.openhands_enabled`, `tools.credentialed_mcp_enabled`) the weakening
+direction is `false` -> `true`, because that is what reopens an egress or
+credential surface. An unset key already resolves to the registered `true`, so
+writing `true` over it restates the running posture and is unguarded; only an
+explicit stored `false` returning to `true` needs confirm+reason+actor.
+
+For the three **human-ask toggles** (`ask_policy_enabled`,
+`clarification_enabled`, `scoping_enabled`) it is the mirror image: turning one
+off is what removes the deferral path, so `true` -> `false` and `unset` ->
+`false` need confirm+reason+actor (unset counts because it resolves to the
+registered `true`), while `false` -> `true` restores the posture and is
+unguarded.
+
+Either way the guardrail is a live-write control, not an upgrade-time one: a
+deployment that never wrote an explicit row inherits the new default on its
+next boot with no prompt, so a default flip on any of these belongs in the
+release notes.
 
 `integrations.webhook_receipt_retention_days` is governed for a different reason:
 it relaxes no boundary, but **shortening** the window has the next sweep destroy

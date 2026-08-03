@@ -221,6 +221,16 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Vale's Google style package, pinned to a release URL in .vale.ini. The bare `Packages = Google` form resolves against the upstream releases feed at sync time, so a new release silently redefines what the prose gate enforces: v0.7.0 added WordListCase, the case-variant half of a rule .vale.ini deliberately disables, and put 810 findings into a corpus that had been drained to zero. Pinning stops the drift; this manager is what keeps the pin from going stale instead, by raising each bump as a PR where the new rules can be reviewed against the disable ledger.",
+      "managerFilePatterns": ["/^\\.vale\\.ini$/"],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s*Packages\\s*=\\s*https://github\\.com/[^/]+/[^/]+/releases/download/(?<currentValue>[^/]+)/"
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
     }
   ]
 }

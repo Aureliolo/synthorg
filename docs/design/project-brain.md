@@ -169,7 +169,8 @@ statuses is legal for its kind, so an open question can never be marked
 
 A `DECISION` entry is also written automatically at the project-decision gate:
 when a lead agent calls `request_project_decision` (gated by
-`engine.scoping_enabled`) and a human answers, the approvals-resume path
+`engine.scoping_enabled`, on by default, and carrying the agent's declared
+reversibility on the approval) and a human answers, the approvals-resume path
 appends an `ACCEPTED` `DECISION` entry whose `decision_outcome` is the chosen
 answer and whose `alternatives` are the offered options, with no explicit
 brain-write tool call. When the agent offered known options (each with a tradeoff

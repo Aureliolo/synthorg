@@ -66,6 +66,18 @@ _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
         "agent issue / PR body",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),
     ),
+    "src/synthorg/tools/_question_output_guard.py": (
+        "shared parked-question guard",
+        frozenset({"evaluate_output_policy"}),
+    ),
+    "src/synthorg/tools/clarification_tool.py": (
+        "agent clarification question",
+        frozenset({"guard_question_text"}),
+    ),
+    "src/synthorg/tools/decision_tool.py": (
+        "agent decision question / options",
+        frozenset({"guard_question_text"}),
+    ),
 }
 
 

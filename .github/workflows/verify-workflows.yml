@@ -22,9 +22,10 @@ jobs:
     name: zizmor
     runs-on: ubuntu-24.04
     # The impostor-commit audit shells out to `git ls-remote` against
-    # github.com for every pinned action SHA; 10 reaps a hung ls-remote
-    # rather than the 6-hour default on this workflow-file PR check.
-    timeout-minutes: 10
+    # github.com for every pinned action SHA, and one pass costs ~2m.
+    # 15 holds the 3-attempt ladder below (3 x ~2m + 45s backoff) while
+    # still reaping a hung ls-remote rather than the 6-hour default.
+    timeout-minutes: 15
     permissions:
       security-events: write
       contents: read
@@ -35,8 +36,23 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Run zizmor
+      # zizmor has no internal retry, and its online audits abort the
+      # WHOLE run on one upstream failure ("fatal: no audit was
+      # performed"), so a single 5xx from github.com fails this check
+      # outright. Observed: a 503 on
+      # github.com/actions/checkout.git/git-upload-pack took the job
+      # down while the same job had passed five times that hour. Hence
+      # the house step-duplication ladder: intermediate attempts carry
+      # continue-on-error so the run advances, the final attempt carries
+      # none so a genuinely persistent outage still fails CI loud.
+      # Retrying rather than relaxing `online-audits` is deliberate: the
+      # online half is what proves a pinned SHA is reachable from a real
+      # tag, so disabling it to dodge the flake would trade a security
+      # check for a green tick.
+      - name: Run zizmor (attempt 1/3)
+        id: zizmor1
         uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        continue-on-error: true
         env:
           # zizmor's ``impostor-commit`` audit shells out to git
           # ls-remote against the upstream repo of every pinned action
@@ -48,6 +64,42 @@ jobs:
           # ... HTTP 401 for git-upload-pack"). Setting GH_TOKEN here
           # lets zizmor authenticate the ls-remote with the workflow's
           # default token, sidestepping the anonymous-fetch flake.
+          GH_TOKEN: ${{ github.token }}
+        with:
+          config: .github/.zizmor.yml
+          advanced-security: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Backoff before attempt 2
+        if: steps.zizmor1.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::zizmor attempt 1 failed; waiting 15s before retry"
+          sleep 15
+
+      - name: Run zizmor (attempt 2/3)
+        id: zizmor2
+        if: steps.zizmor1.outcome == 'failure'
+        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          config: .github/.zizmor.yml
+          advanced-security: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Backoff before attempt 3
+        if: steps.zizmor1.outcome == 'failure' && steps.zizmor2.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::zizmor attempt 2 failed; waiting 30s before final retry"
+          sleep 30
+
+      # No ``continue-on-error``: if all three fail the check aborts with
+      # the underlying audit error surfaced.
+      - name: Run zizmor (attempt 3/3)
+        if: steps.zizmor1.outcome == 'failure' && steps.zizmor2.outcome == 'failure'
+        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        env:
           GH_TOKEN: ${{ github.token }}
         with:
           config: .github/.zizmor.yml

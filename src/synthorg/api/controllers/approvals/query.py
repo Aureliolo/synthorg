@@ -13,9 +13,9 @@ from synthorg.api.controllers.approvals._enrichment import resolve_approval_cont
 from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
     _get_approval_or_404,
-    _resolve_urgency_thresholds,
     _to_approval_response,
 )
+from synthorg.api.controllers.approvals._urgency import _resolve_urgency_thresholds
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (

@@ -16,25 +16,8 @@ across every request coroutine and the ``asyncio.to_thread`` prompt-build worker
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.normalization import normalize_identifier
-from synthorg.engine.output_style.models import HouseStyleDirective, ScopeKind
-
-
-def _in_scope(
-    directive: HouseStyleDirective, *, role_key: str | None, dept_key: str | None
-) -> bool:
-    """Whether a directive applies to an agent's role / department.
-
-    Returns:
-        ``True`` for an ``ALL``-scoped directive, a ``ROLE``-scoped directive
-        matching ``role_key``, or a ``DEPARTMENT``-scoped directive matching
-        ``dept_key``.
-    """
-    if directive.scope_kind is ScopeKind.ALL:
-        return True
-    scope_key = normalize_identifier(directive.scope)
-    if directive.scope_kind is ScopeKind.ROLE:
-        return role_key is not None and scope_key == role_key
-    return dept_key is not None and scope_key == dept_key
+from synthorg.engine.output_style.models import HouseStyleDirective
+from synthorg.engine.strategy.scoping import scope_matches
 
 
 @runtime_checkable
@@ -79,7 +62,12 @@ class SnapshotHouseStyleProvider:
         return tuple(
             directive
             for directive in self._directives
-            if _in_scope(directive, role_key=role_key, dept_key=dept_key)
+            if scope_matches(
+                scope_kind=directive.scope_kind,
+                scope=directive.scope,
+                role_key=role_key,
+                dept_key=dept_key,
+            )
         )
 
 

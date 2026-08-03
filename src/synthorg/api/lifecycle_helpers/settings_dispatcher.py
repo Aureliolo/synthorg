@@ -21,6 +21,7 @@ from synthorg.settings.subscribers import (
     A2AClientSettingsSubscriber,
     ApiBridgeSettingsSubscriber,
     ApiSecurityHeadersSettingsSubscriber,
+    AskPolicySettingsSubscriber,
     AuthTokenSizeSettingsSubscriber,
     BackupSettingsSubscriber,
     BudgetBenchmarkProviderSettingsSubscriber,
@@ -219,6 +220,10 @@ def _build_settings_dispatcher(
         knowledge_sub,
         simulations_sub,
         OutputStyleSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        AskPolicySettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

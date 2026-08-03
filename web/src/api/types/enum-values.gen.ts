@@ -797,6 +797,12 @@ export const PROVIDER_HEALTH_STATUS_VALUES = [
 ] as const
 export type ProviderHealthStatus = (typeof PROVIDER_HEALTH_STATUS_VALUES)[number]
 
+export const QUESTION_REVERSIBILITY_VALUES = [
+    'reversible',
+    'hard_to_reverse',
+] as const
+export type QuestionReversibility = (typeof QUESTION_REVERSIBILITY_VALUES)[number]
+
 export const QUOTA_WINDOW_VALUES = [
     'per_minute',
     'per_hour',

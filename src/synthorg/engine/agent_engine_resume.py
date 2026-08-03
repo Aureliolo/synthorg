@@ -59,7 +59,7 @@ class AgentEngineResumeMixin:
     injecting a second ``ToolResult`` for the same id would duplicate
     it and malform the provider message stream. The decision is
     therefore injected as a follow-up ``SYSTEM`` message
-    (``ApprovalGate.build_resume_message``, passed in as
+    (``build_resume_message``, passed in as
     ``decision_message``), semantically a continuation of the parked
     tool result rather than a competing return value. The conversation
     shape this relies on is locked by
@@ -91,7 +91,7 @@ class AgentEngineResumeMixin:
                 by ``ApprovalGate.resume_context``.
             approval_id: The approval item identifier (audit context).
             decision_message: The decision text built by
-                ``ApprovalGate.build_resume_message`` (already encodes
+                ``build_resume_message`` (already encodes
                 APPROVED/REJECTED, decider, and any reason).
             effective_autonomy: Autonomy level governing the resumed
                 tool invoker, or ``None`` to leave the rule engine

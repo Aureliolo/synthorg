@@ -183,4 +183,5 @@ privileged.
 
 - [Verification & Quality](verification-quality.md): the completion-gate chain the deliverable backstop composes into.
 - [Strategy](strategy.md): the principle-pack pattern and `ScopeKind` scoping the soft layer reuses.
+- [The Org Asks](org-questions.md): the sibling soft-prompt subsystem, registered the same way and scoped by the same `ScopeKind`.
 - [Agents](agents.md): the persona and prompt pipeline the soft layer injects into.

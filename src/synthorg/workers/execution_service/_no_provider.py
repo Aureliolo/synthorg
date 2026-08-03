@@ -1,6 +1,10 @@
 # module-kind: service
 """Empty-company worker execution backstop (no provider)."""
 
+from synthorg.approval.resume_annotations import (
+    DEFAULT_RESUME_ANNOTATIONS,
+    ResumeAnnotations,
+)
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
 )
@@ -71,6 +75,7 @@ class NoProviderExecutionService:
         approved: bool,
         decided_by: str,
         decision_reason: str | None,
+        annotations: ResumeAnnotations = DEFAULT_RESUME_ANNOTATIONS,
     ) -> None:
         """Reject: no provider means no agent engine to resume into.
 
@@ -89,6 +94,8 @@ class NoProviderExecutionService:
             approved=approved,
             decided_by=decided_by,
             has_reason=decision_reason is not None,
+            reason_provenance=annotations.reason_provenance.value,
+            has_system_note=annotations.system_note is not None,
             reason="no_provider_cannot_resume_agent",
         )
         msg = (

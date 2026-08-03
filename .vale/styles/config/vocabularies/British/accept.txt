@@ -58,6 +58,8 @@
 (?i)recognises
 (?i)recognising
 (?i)recognisable
+(?i)unrecognised
+(?i)unrecognisable
 (?i)optimise
 (?i)optimised
 (?i)optimiser
@@ -208,6 +210,11 @@
 (?i)serialises
 (?i)serialising
 (?i)serialisation
+(?i)sanitise
+(?i)sanitised
+(?i)sanitises
+(?i)sanitising
+(?i)sanitisation
 (?i)deserialise
 (?i)deserialised
 (?i)deserialises

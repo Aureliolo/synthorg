@@ -48,6 +48,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_APPROVAL_ADD_CALLBACK_FAILED,
     API_APPROVAL_CONFLICT,
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
@@ -72,6 +73,12 @@ class ApprovalStore(ApprovalExpirationMixin):
     database.  The in-memory dict serves as a read-through cache.
 
     Args:
+        on_add: Optional callback for newly added items. The store is the
+            only place every producer converges, so an observer that must
+            see EVERY new approval (the WebSocket announcement) belongs
+            here rather than on one caller: an agent parking a question
+            writes straight to the store and never touches the REST
+            create endpoint.
         on_expire: Optional callback for expired items.
         repo: Optional durable repository for persistence
             (protocol-typed; backend-agnostic).
@@ -80,11 +87,13 @@ class ApprovalStore(ApprovalExpirationMixin):
     def __init__(
         self,
         *,
+        on_add: Callable[[ApprovalItem], None] | None = None,
         on_expire: Callable[[ApprovalItem], None] | None = None,
         repo: ApprovalRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._items: dict[str, ApprovalItem] = {}
+        self._on_add = on_add
         self._on_expire = on_expire
         self._repo = repo
         # Clock seam: lazy-expiration checks on both the scalar
@@ -211,6 +220,29 @@ class ApprovalStore(ApprovalExpirationMixin):
                     )
                     raise ConflictError(msg) from None
             self._items[str(item.id)] = item
+        # Outside the lock: a subscriber that publishes must not be able to
+        # stall every other store mutation behind its own I/O.
+        self._fire_add_callback(item)
+
+    def _fire_add_callback(self, item: ApprovalItem) -> None:
+        """Best-effort fire of ``_on_add`` for a newly stored approval.
+
+        Mirrors :meth:`_fire_expire_callback`: the item is already
+        committed to the cache and the repo, so a subscriber failure
+        cannot unwind the add and must not surface to the producer.
+        """
+        if self._on_add is None:
+            return
+        try:
+            self._on_add(item)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            reraise_critical(exc)
+            logger.error(
+                API_APPROVAL_ADD_CALLBACK_FAILED,
+                approval_id=str(item.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Remove a single approval item by id (cache + persistent repo).

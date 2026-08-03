@@ -19,6 +19,7 @@ from synthorg.api.controllers._conversational_resume import (
 from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
 from synthorg.api.controllers._project_decision_record import record_project_decision
 from synthorg.api.state import AppState
+from synthorg.approval.resume_annotations import resume_annotations
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.critical_errors import reraise_critical
@@ -135,6 +136,7 @@ async def try_mid_execution_resume(
             approved=approved,
             decided_by=decided_by,
             decision_reason=decision_reason,
+            annotations=resume_annotations(item, approved=approved),
         )
     except MemoryError, RecursionError:
         raise

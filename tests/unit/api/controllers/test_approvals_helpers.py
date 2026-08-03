@@ -19,6 +19,7 @@ from synthorg.api.controllers.approvals._notify import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.resume_annotations import DEFAULT_RESUME_ANNOTATIONS
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
@@ -235,6 +236,7 @@ class TestSignalResumeIntent:
             approved=True,
             decided_by="admin",
             decision_reason=None,
+            annotations=DEFAULT_RESUME_ANNOTATIONS,
         )
         # Flow 2 must NOT run -- the mid-execution flow owns this id.
         mock_review.dispatch_completion.assert_not_awaited()

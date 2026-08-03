@@ -188,6 +188,12 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # messages
     "messages.delete": (100, 3600),
     # meta
+    # Answering a parked question is strictly tighter than the generic
+    # approvals decision (100/60) it delegates to, so the narrow door can never
+    # be the looser one, while still allowing an operator to clear a backlog.
+    "meta.chat.questions.answer": (30, 60),
+    "meta.chat.questions.decline": (30, 60),
+    "meta.chat.questions.list": (120, 60),
     "meta.chat.turn": (5, 60),
     # The streaming turn only classifies + streams a read (side-effecting
     # intents defer to the buffered ``meta.chat.turn`` for execution), so it

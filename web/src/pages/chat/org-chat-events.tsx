@@ -18,6 +18,7 @@ import type {
   SecretCaptureEvent,
   SteeringEvent,
 } from './org-chat-types'
+import { OrgQuestionCard } from './OrgQuestionCard'
 
 /**
  * Inline event cards for the unified org transcript: the visible escalations
@@ -121,11 +122,12 @@ function ActionCard({ event }: { event: ActionEvent }) {
 interface InviteCardProps {
   turnId: number
   event: InviteEvent
-  resolving: boolean
+  resolvingInvites: ReadonlySet<string>
   onResolve: (turnId: number, approvalId: string, accept: boolean) => void
 }
 
-function InviteCard({ turnId, event, resolving, onResolve }: InviteCardProps) {
+function InviteCard({ turnId, event, resolvingInvites, onResolve }: InviteCardProps) {
+  const resolving = event.approvalId ? resolvingInvites.has(event.approvalId) : false
   const target = event.targetRole
     ? `${event.targetName} (${event.targetRole})`
     : event.targetName
@@ -271,6 +273,24 @@ function CharterDraftedCard({ event }: { event: CharterDraftedEvent }) {
   )
 }
 
+/** The event cards that need nothing from the page beyond their own payload. */
+function StaticEventCard({
+  event,
+}: {
+  event: PlanDraftedEvent | SteeringEvent | ActionEvent | CharterDraftedEvent
+}) {
+  switch (event.type) {
+    case 'plan-drafted':
+      return <PlanDraftedCard event={event} />
+    case 'steering':
+      return <SteeringCard event={event} />
+    case 'action':
+      return <ActionCard event={event} />
+    case 'charter-drafted':
+      return <CharterDraftedCard event={event} />
+  }
+}
+
 export interface OrgEventCardProps {
   turnId: number
   event: OrgEvent
@@ -295,23 +315,19 @@ export function OrgEventCard({
   onSubmitSecretCaptures,
 }: OrgEventCardProps) {
   switch (event.type) {
-    case 'plan-drafted':
-      return <PlanDraftedCard event={event} />
-    case 'steering':
-      return <SteeringCard event={event} />
-    case 'action':
-      return <ActionCard event={event} />
     case 'invite':
       return (
         <InviteCard
           turnId={turnId}
           event={event}
-          resolving={event.approvalId ? resolvingInvites.has(event.approvalId) : false}
+          resolvingInvites={resolvingInvites}
           onResolve={onResolveInvite}
         />
       )
-    case 'charter-drafted':
-      return <CharterDraftedCard event={event} />
+    case 'question':
+      // Self-sufficient: it reads the questions store itself, so answering
+      // needs nothing threaded down from the page.
+      return <OrgQuestionCard event={event} />
     case 'secret-capture':
       return (
         <SecretCaptureCard
@@ -321,5 +337,7 @@ export function OrgEventCard({
           onSubmit={onSubmitSecretCaptures}
         />
       )
+    default:
+      return <StaticEventCard event={event} />
   }
 }

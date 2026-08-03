@@ -9,6 +9,9 @@ from synthorg.settings.subscribers.api_bridge_subscriber import (
 from synthorg.settings.subscribers.api_security_headers_subscriber import (
     ApiSecurityHeadersSettingsSubscriber,
 )
+from synthorg.settings.subscribers.ask_policy_subscriber import (
+    AskPolicySettingsSubscriber,
+)
 from synthorg.settings.subscribers.auth_token_size_subscriber import (
     AuthTokenSizeSettingsSubscriber,
 )
@@ -110,6 +113,7 @@ __all__ = [
     "A2AClientSettingsSubscriber",
     "ApiBridgeSettingsSubscriber",
     "ApiSecurityHeadersSettingsSubscriber",
+    "AskPolicySettingsSubscriber",
     "AuthTokenSizeSettingsSubscriber",
     "BackupSettingsSubscriber",
     "BudgetBenchmarkProviderSettingsSubscriber",

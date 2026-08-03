@@ -53,6 +53,17 @@ class TestProtocol:
         assert ("design", "image_generation_enabled") in watched
         assert ("design", "image_model") in watched
 
+    def test_watched_keys_keep_the_two_tool_gates(self) -> None:
+        # The tool gates change the agent toolset, which only a runtime rebuild
+        # can install, so they stay here rather than migrating to the
+        # ask-policy subscriber (which owns the prompt-only keys).
+        sub, _ = _make_subscriber()
+        watched = sub.watched_keys
+        assert ("engine", "clarification_enabled") in watched
+        assert ("engine", "scoping_enabled") in watched
+        assert ("engine", "ask_policy_enabled") not in watched
+        assert ("engine", "ask_policy_extra_directives") not in watched
+
     def test_watched_keys_include_auto_review_and_completion_oracle(self) -> None:
         sub, _ = _make_subscriber()
         watched = sub.watched_keys

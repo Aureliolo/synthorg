@@ -24,9 +24,9 @@ from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
     ApprovalRunSummary,
     ApprovalTaskRef,
-    _resolve_urgency_thresholds,
     _to_approval_response,
 )
+from synthorg.api.controllers.approvals._urgency import _resolve_urgency_thresholds
 from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.artifact import Artifact

@@ -26,6 +26,7 @@ from synthorg.api.app_builders import (
 from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
+    _make_submitted_callback,
     make_steering_notifier,
 )
 from synthorg.api.app_overrides import AppOverrides
@@ -353,11 +354,20 @@ def build_construction_services(
     meeting_scheduler = meeting_wire.meeting_scheduler
 
     channels_plugin = create_channels_plugin()
-    expire_callback = _make_expire_callback(channels_plugin)
+    # One boot clock shared between the uptime baseline, AppState and the
+    # approval-lifecycle callbacks, so an injected FakeClock also stamps the
+    # WS frames those hooks publish rather than leaving them on wall time.
+    boot_clock = clock if clock is not None else SystemClock()
+    # An injected store is a deliberate substitution and owns its own
+    # lifecycle hooks; only the default path wires the publishers, so a
+    # substitute that wants live delivery installs them itself.
     approval_store: ApprovalStoreProtocol = (
         overrides.approval_store
         if overrides.approval_store is not None
-        else ApprovalStore(on_expire=expire_callback)
+        else ApprovalStore(
+            on_add=_make_submitted_callback(channels_plugin, clock=boot_clock),
+            on_expire=_make_expire_callback(channels_plugin, clock=boot_clock),
+        )
     )
 
     # Wire meeting event publisher to the meetings WS channel.
@@ -402,11 +412,6 @@ def build_construction_services(
         effective_config.config.autonomy,
     )
 
-    # One boot clock shared between the uptime baseline and AppState so
-    # ``app_state.clock`` and ``startup_time`` cannot diverge. The optional
-    # ``clock`` seam lets a caller inject a FakeClock for a deterministic boot
-    # (tests); it defaults to ``SystemClock`` when not supplied.
-    boot_clock = clock if clock is not None else SystemClock()
     app_state = AppState(
         clock=boot_clock,
         config=effective_config,

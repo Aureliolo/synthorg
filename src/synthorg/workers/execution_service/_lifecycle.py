@@ -3,6 +3,10 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.approval.resume_annotations import (
+    DEFAULT_RESUME_ANNOTATIONS,
+    ResumeAnnotations,
+)
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     NotFoundError,
@@ -176,6 +180,7 @@ class LifecycleAdvancingExecutionService:
         approved: bool,
         decided_by: str,
         decision_reason: str | None,
+        annotations: ResumeAnnotations = DEFAULT_RESUME_ANNOTATIONS,
     ) -> None:
         """Reject: the lifecycle baseline has no agent engine to resume.
 
@@ -194,6 +199,8 @@ class LifecycleAdvancingExecutionService:
             approved=approved,
             decided_by=decided_by,
             has_reason=decision_reason is not None,
+            reason_provenance=annotations.reason_provenance.value,
+            has_system_note=annotations.system_note is not None,
             reason="lifecycle_baseline_cannot_resume_agent",
         )
         msg = (

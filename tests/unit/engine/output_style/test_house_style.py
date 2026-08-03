@@ -138,7 +138,15 @@ class TestIntegration:
 
     @pytest.mark.unit
     def test_should_inject_reflects_scope(self) -> None:
+        # Read the ambient provider the way the prompt build does, once, and
+        # hand the value in: the predicate never reaches for the global.
         set_house_style_provider(SnapshotHouseStyleProvider(_DIRECTIVES))
-        assert should_inject_house_style(_agent()) is True
+        assert (
+            should_inject_house_style(_agent(), provider=current_house_style_provider())
+            is True
+        )
         set_house_style_provider(None)
-        assert should_inject_house_style(_agent()) is False
+        assert (
+            should_inject_house_style(_agent(), provider=current_house_style_provider())
+            is False
+        )

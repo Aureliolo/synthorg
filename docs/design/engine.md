@@ -88,8 +88,13 @@ stateDiagram-v2
     - **AWAITING_INPUT** pauses an executing task while it waits for a human to
       answer a mid-task clarification (the `request_clarification` /
       `request_project_decision` tools, gated by `engine.clarification_enabled` /
-      `engine.scoping_enabled`); it returns to `IN_PROGRESS` when the answer
-      arrives, or to `CANCELLED`. Off-board while paused (see the Kanban board).
+      `engine.scoping_enabled`, both on by default); it returns to `IN_PROGRESS`
+      once a human responds, whether they answer or decline (a decline resumes
+      the run with an instruction to proceed on the agent's own judgement, so
+      `CANCELLED` is reached only by cancelling the task). Off-board while
+      paused (see the Kanban board). The question is answerable in the unified
+      conversation as well as in the approvals queue (see
+      [The Org Asks](org-questions.md)).
     - **COMPLETED**, **CANCELLED**, and **REJECTED** are terminal states with no
       outgoing transitions.
 

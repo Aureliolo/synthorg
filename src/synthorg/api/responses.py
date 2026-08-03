@@ -24,6 +24,7 @@ def require_resource_or_404[T](
     operation: LiteralString = "read",
     error_class: type[NotFoundError] = ResourceNotFoundError,
     extra_log_kwargs: Mapping[str, object] | None = None,
+    message: LiteralString | None = None,
 ) -> T:
     """Return ``resource`` or raise the supplied NotFoundError subclass.
 
@@ -63,6 +64,14 @@ def require_resource_or_404[T](
             Keys collide-protected: ``id`` / ``operation`` /
             ``resource`` always win to keep the audit-search shape
             stable.
+        message: Fixed client-visible message replacing the default
+            ``"<resource_type> <identifier!r> not found"``. A narrow
+            door whose 404 must not distinguish "no such row" from
+            "exists but out of scope" passes one constant here for
+            both cases; the default echoes the caller's identifier
+            back, which is an existence oracle. ``LiteralString`` so
+            the text can never be operator-controlled. The structured
+            log still records the real identifier.
 
     Returns:
         ``resource`` (narrowed to ``T``) when not ``None``.
@@ -71,6 +80,7 @@ def require_resource_or_404[T](
         NotFoundError: When ``resource`` is ``None``; the actual
             class is ``error_class`` (defaults to
             :class:`ResourceNotFoundError`), the message is
+            ``message`` when supplied and otherwise
             ``"<resource_type> <identifier!r> not found"``, and the
             ``error_code`` is the subclass's ClassVar.
     """
@@ -83,7 +93,8 @@ def require_resource_or_404[T](
     log_kwargs["operation"] = operation
     log_kwargs["resource"] = resource_type
     logger.warning(log_event, **log_kwargs)
-    msg = f"{resource_type} {identifier!r} not found"
+    default_msg = f"{resource_type} {identifier!r} not found"
+    msg = message if message is not None else default_msg
     raise error_class(msg)
 
 

@@ -54,3 +54,10 @@ export const SendDisabled: Story = {
 export const InputFrozen: Story = {
   args: { value: 'Cut the cloud budget by 20%', inputDisabled: true },
 }
+
+// A second send box on the same page needs its own accessible name.
+export const CustomSendLabel: Story = {
+  render: (args) => (
+    <Controlled {...args} label="Answer the question" sendLabel="Send answer" />
+  ),
+}

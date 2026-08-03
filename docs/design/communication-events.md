@@ -98,14 +98,20 @@ Two blocking interrupt types:
 
 **Mid-task clarification pause**: when an agent needs a human's answer
 mid-task, the `request_clarification` tool (gated by
-`engine.clarification_enabled`) does NOT mint a dedicated `INFO_REQUEST`
-interrupt. It parks the run through the same `ApprovalGate` machinery as a
-tool approval, creating an `ApprovalItem` (`source=PARKED_CONTEXT`,
-`metadata.clarification=true`) and moving the task to `AWAITING_INPUT`; the
-human's answer arrives through the standard approvals-decision endpoint and
-resumes the run with the answer injected. The `request_project_decision`
-tool (gated by `engine.scoping_enabled`) works the same way and additionally
-records the choice as a project-brain `DECISION` entry. When the choice is
+`engine.clarification_enabled`, on by default) does NOT mint a dedicated
+`INFO_REQUEST` interrupt. It parks the run through the same `ApprovalGate`
+machinery as a tool approval, creating an `ApprovalItem`
+(`source=PARKED_CONTEXT`, `metadata.clarification=true`, plus the agent's
+declared `metadata.reversibility`) and moving the task to `AWAITING_INPUT`; the
+human's answer arrives through the standard approvals-decision endpoint, or
+through the question-shaped door on the conversational surface
+(`POST /meta/chat/questions/{approval_id}/answer`, which delegates to the same
+decision write but requires a non-blank answer), and resumes the run with the
+answer injected. Declining to answer resumes the run with a fixed instruction to
+proceed on the agent's own judgement. See [The Org Asks](org-questions.md). The
+`request_project_decision` tool (gated by `engine.scoping_enabled`, also on by
+default) works the same way and additionally records the choice as a
+project-brain `DECISION` entry. When the choice is
 between known options, the agent supplies each with a title, a writeup of its
 tradeoffs, and a single recommendation; these ride on the `ApprovalItem`'s
 `EvidencePackage` (`options`, validated by the same decision-item invariants as a
