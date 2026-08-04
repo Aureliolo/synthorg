@@ -421,6 +421,52 @@ class TestCostIncurredEvents:
         assert evt.related_ids["agent_id"] == "agent-001"
         assert evt.related_ids["task_id"] == "task-001"
 
+    def test_an_unowned_call_names_no_agent_and_no_task(self) -> None:
+        """Work the system does for itself owns no ids, so it claims none.
+
+        ``CostRecord`` leaves both owners unset for a call that belongs to no
+        agent and no task (an embedding probe, a system prompt), because a
+        fabricated id matches no row and ``task_id`` is a real foreign key.
+        Projecting that absence through ``str()`` mints exactly the invented id
+        the model refuses to store, and it is truthy, so every downstream
+        absent-owner fallback is defeated by it.
+        """
+        record = CostRecord(
+            agent_id=None,
+            task_id=None,
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=4,
+            output_tokens=0,
+            cost=0.0,
+            currency="USD",
+            timestamp=_NOW,
+        )
+
+        evt = _cost_record_to_activity(record)
+
+        assert "agent_id" not in evt.related_ids
+        assert "task_id" not in evt.related_ids
+
+    def test_an_agentless_call_still_names_its_task(self) -> None:
+        """Each owner is judged on its own; one absence does not drop the other."""
+        record = CostRecord(
+            agent_id=None,
+            task_id="task-001",
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=4,
+            output_tokens=0,
+            cost=0.0,
+            currency="USD",
+            timestamp=_NOW,
+        )
+
+        evt = _cost_record_to_activity(record)
+
+        assert "agent_id" not in evt.related_ids
+        assert evt.related_ids["task_id"] == "task-001"
+
     def test_merge_with_cost_records(self) -> None:
         hired = _make_lifecycle_event(
             timestamp=_NOW - timedelta(hours=2),

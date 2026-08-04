@@ -211,7 +211,7 @@ auto-review trigger. Its natural home is the autonomous flow: with
 `engine.auto_review_on_completion` on by default a verified task self-completes
 and the oracle gates that completion; a human opening a review is gated by the
 same two gates. All the oracle settings (`completion_oracle_enabled`,
-`_shadow_mode`, `_min_stakes`, `_reviewer_model_tier`) are hot-reloadable: an
+`_shadow_mode`, `_min_stakes`, `_reviewer_model`) are hot-reloadable: an
 edit rebuilds the runtime and re-attaches the gates to the persistent review
 service on the next task, no restart.
 
@@ -273,9 +273,17 @@ APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
 (default `low`, so every task is reviewed) gates the expensive agent-session
 review; the deterministic build/test gate runs regardless of it.
 `completion_oracle_shadow_mode` runs the reviewer and surfaces the verdict
-without enforcing it, for an observation period before enforcement. The reviewer
-tier is pinned via `completion_oracle_reviewer_model_tier` (default `medium`),
-never inheriting the executor's tier.
+without enforcing it, for an observation period before enforcement.
+
+The reviewer names its own dispatch target: `completion_oracle_reviewer_model`
+is a `MODEL_REF` carrying an explicit `(provider, model)` pair, so it never
+inherits the executor's model and never falls back to a shared system provider.
+A provider here is a registered *connection*, with its own credentials and
+endpoint, so a bare model id would name no dispatch target at all: the same id
+on two connections is two different calls, billed and rate-limited separately.
+Unset (or half a pair) leaves the peer review **unarmed and says so** via
+`completion_oracle.runtime.reviewer_model_unset`; the deterministic build/test
+gate still runs, so a code task with no passing test evidence is still blocked.
 
 ## Order of Operations
 

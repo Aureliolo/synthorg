@@ -220,14 +220,22 @@ def _cost_record_to_activity(
         f"({record.input_tokens}+{record.output_tokens} tokens, "
         f"{format_cost_detail(record.cost, currency)})"
     )
+    # Both owners are optional on the record: work the system does for itself
+    # belongs to no agent and no task, and task_id is a real foreign key, so
+    # the model leaves them unset rather than inventing an id. Rendering that
+    # absence through str() would mint the invented id back, and "None" is
+    # truthy, so it defeats every absent-owner fallback downstream instead of
+    # reading as the absence it is.
+    related_ids: dict[str, str] = {}
+    if record.agent_id is not None:
+        related_ids["agent_id"] = str(record.agent_id)
+    if record.task_id is not None:
+        related_ids["task_id"] = str(record.task_id)
     return ActivityEvent(
         event_type=ActivityEventType.COST_INCURRED,
         timestamp=record.timestamp,
         description=desc,
-        related_ids={
-            "agent_id": str(record.agent_id),
-            "task_id": str(record.task_id),
-        },
+        related_ids=related_ids,
     )
 
 

@@ -16,14 +16,14 @@ from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.toolsmith.factory import ToolsmithRuntime
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
-from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.bound_model import resolve_bound_model
+from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -69,14 +69,13 @@ def _build_dynamic_tool_repo(
 
 def _build_toolsmith_runtime(
     *,
+    app_state: AppState,
     si_config: SelfImprovementConfig,
     provider_registry: ProviderRegistry,
+    model: ModelRef | None,
     persistence: PersistenceBackend,
     approval_store: ApprovalStoreProtocol | None,
     cost_tracker: CostTrackerProtocol | None,
-    workspace_root: Path,
-    config_resolver: ConfigResolver | None = None,
-    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> ToolsmithRuntime | None:
     """Resolve dependencies and build the toolsmith runtime, or None.
 
@@ -98,7 +97,11 @@ def _build_toolsmith_runtime(
     Returns:
         The built toolsmith runtime, or ``None`` when no provider is registered.
     """
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
+    )
     from synthorg.meta.toolsmith.factory import build_toolsmith  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
     from synthorg.tools.sandbox.factory import (  # noqa: PLC0415
         build_sandbox_backends,
     )
@@ -106,25 +109,33 @@ def _build_toolsmith_runtime(
         SandboxingConfig,
     )
 
-    # The toolsmith is a system actor with no dedicated per-feature model, so
-    # it dispatches on the explicit default system provider. When the default
-    # is ambiguous (several providers, none chosen) it stays unwired rather
-    # than routing to whichever provider sorts first.
-    provider = provider_registry.default_provider()
-    if provider is None:
+    # The toolsmith names its own connection. There is no shared system
+    # provider to inherit: a provider is a registered connection with its own
+    # credentials and endpoint, so the same model id reached through two of
+    # them is two different calls. Unbound, or bound to a connection that is
+    # not registered, leaves the toolsmith unwired rather than guessing.
+    if model is None:
         logger.warning(
             API_APP_STARTUP,
             service="toolsmith",
-            note=(
-                "no default system provider resolvable; toolsmith stays unwired "
-                "until providers.default_provider is set"
-            ),
+            note="toolsmith model unset; unwired until a provider + model is chosen",
         )
         return None
+    if model.provider not in provider_registry:
+        logger.warning(
+            API_APP_STARTUP,
+            service="toolsmith",
+            note="configured toolsmith provider not registered; stays unwired",
+            provider_name=model.provider,
+        )
+        return None
+    provider = provider_registry.get(model.provider)
     repo = _build_dynamic_tool_repo(persistence)
 
     sandboxing = SandboxingConfig()
-    backends = build_sandbox_backends(config=sandboxing, workspace=workspace_root)
+    backends = build_sandbox_backends(
+        config=sandboxing, workspace=agent_workspace_root_of(app_state)
+    )
 
     def _resolve_sandbox(blueprint: ToolBlueprint) -> SandboxBackend:
         return backends.get(
@@ -143,8 +154,8 @@ def _build_toolsmith_runtime(
         scorecard_provider=scorecard_provider,
         approval_store=approval_store,
         cost_tracker=cost_tracker,
-        config_resolver=config_resolver,
-        notification_dispatcher=notification_dispatcher,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
     )
 
 
@@ -272,16 +283,12 @@ async def wire_toolsmith(
     the existing ``meta.toolsmith_cycle_paused`` switch still pauses the
     scheduler. Idempotent for re-entered lifespans (shared-app fixtures).
     """
-    from synthorg.engine.workspace.state import (  # noqa: PLC0415
-        agent_workspace_root_of,
-    )
     from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
         ToolsmithStateSlice,
     )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
     )
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if (
         app_state.slice(ToolsmithStateSlice).service is not None
@@ -295,14 +302,18 @@ async def wire_toolsmith(
     si_config = await self_improvement_config_of(app_state)
     try:
         runtime = _build_toolsmith_runtime(
+            app_state=app_state,
             si_config=si_config,
             provider_registry=provider_registry,
+            model=await resolve_bound_model(
+                app_state,
+                namespace="meta",
+                key="toolsmith_model",
+                unset_event=API_APP_STARTUP,
+            ),
             persistence=persistence,
             approval_store=approval_store,
             cost_tracker=cost_tracker,
-            workspace_root=agent_workspace_root_of(app_state),
-            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
-            notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

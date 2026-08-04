@@ -196,6 +196,7 @@ class ProjectRollupService:
         replan_trigger: ReplanTriggerPort | None = None,
         integration: IntegrationPort | None = None,
         evaluation: EvaluationFactory | None = None,
+        ship_retro_capture: RetroCapturePort | None = None,
     ) -> None:
         """Fill in tail collaborators that a later boot phase resolved.
 
@@ -204,6 +205,11 @@ class ProjectRollupService:
         legitimately produce a rollup with no tail. Re-running the wiring after
         setup must not re-register the observer, so it attaches here instead
         and the tail comes online without a restart.
+
+        The retrospective capture is filled here for the same reason as the
+        three stages: it needs the provider and agent registries too, so a
+        rollup built before either existed has none, and leaving it to the
+        constructor alone would strand the consuming tail permanently.
 
         Only unset collaborators are filled: an already-wired stage keeps its
         instance, so a re-run never orphans one mid-flight. The evaluate stage
@@ -218,6 +224,8 @@ class ProjectRollupService:
             self._integration = integration
         if self._evaluation is None and evaluation is not None:
             self._evaluation = evaluation(self._replan_trigger)
+        if self._ship_retro_capture is None:
+            self._ship_retro_capture = ship_retro_capture
 
     def has_full_tail(self) -> bool:
         """Whether every tail collaborator is wired.

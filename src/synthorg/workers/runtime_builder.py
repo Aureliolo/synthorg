@@ -472,16 +472,14 @@ async def build_runtime_services(
         provider=decomposition_provider,
         decomposition_model=decomposition_model,
     )
-    red_team_runtime = build_red_team_runtime_or_none(
+    red_team_runtime = await build_red_team_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=default_provider_name,
         seed=red_team_seed,
     )
     completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=default_provider_name,
         seed=completion_oracle_seed,
         config=completion_oracle_config,
     )

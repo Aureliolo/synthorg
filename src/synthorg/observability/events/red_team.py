@@ -53,6 +53,11 @@ RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED: Final[str] = (
 )
 """Substrate checker found no wired knowledge service; degraded to heuristic."""
 
+RED_TEAM_MODEL_UNSET: Final[str] = "red_team.runtime.model_unset"
+"""No explicit provider + model pair is bound for the adversary (unset, half a
+pair, or a read failure), so the gate stays unarmed rather than borrowing a
+connection nobody chose for it."""
+
 RED_TEAM_GROUNDING_EXTRACTION_FAILED: Final[str] = (
     "red_team.grounding.extraction_failed"
 )

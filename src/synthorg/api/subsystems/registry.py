@@ -495,6 +495,15 @@ async def _activate_project_rollup(app_state: AppState) -> None:
     await wire_project_rollup_service(app_state)
 
 
+async def _activate_initiative_tail(app_state: AppState) -> None:
+    """Attach the integrate / evaluate / replan tail onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_initiative_tail,
+    )
+
+    await attach_initiative_tail(app_state)
+
+
 async def _activate_kanban_board(app_state: AppState) -> None:
     """Wire the Kanban board service."""
     from synthorg.api.lifecycle_helpers.kanban_wiring import (  # noqa: PLC0415
@@ -1049,6 +1058,26 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.PROJECT_ROLLUP_SERVICE,
         requires=(CapabilityId.PERSISTENCE, CapabilityId.TASK_ENGINE),
         activate=_activate_project_rollup,
+    ),
+    SubsystemSpec(
+        # Declared apart from the rollup it attaches to, because the two
+        # converge at different times: the rollup needs only persistence and
+        # the task engine, which are up before setup configures a provider,
+        # while every tail stage needs one of the three below. Folded into the
+        # rollup's spec, its early success stood for the tail's, and since the
+        # reconciler never revisits a subsystem it reads as converged, the tail
+        # could never come up on any boot.
+        name="initiative_tail",
+        provides=CapabilityId.INITIATIVE_TAIL,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.WORK_PIPELINE,
+            CapabilityId.COORDINATOR,
+        ),
+        activate=_activate_initiative_tail,
     ),
     SubsystemSpec(
         name="kanban_board",

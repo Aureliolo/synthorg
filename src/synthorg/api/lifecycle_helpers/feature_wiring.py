@@ -256,7 +256,17 @@ async def _build_and_wire_research(
         )
         return
     provider_name = ref.provider.strip()
-    if provider_name and provider_name not in provider_registry:
+    if not provider_name:
+        # Half a pair names no dispatch target: a provider is a registered
+        # connection with its own credentials and endpoint, so the same model
+        # id on two of them is two different calls. There is nothing to borrow.
+        logger.warning(
+            API_APP_STARTUP,
+            service="research_engine",
+            note="research model names no provider connection; wiring skipped",
+        )
+        return
+    if provider_name not in provider_registry:
         logger.warning(
             API_APP_STARTUP,
             service="research_engine",
@@ -264,21 +274,7 @@ async def _build_and_wire_research(
             provider_name=provider_name,
         )
         return
-    provider = (
-        provider_registry.get(provider_name)
-        if provider_name
-        else provider_registry.default_provider()
-    )
-    if provider is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="research_engine",
-            note=(
-                "no default system provider resolvable for research; wiring "
-                "skipped until providers.default_provider is set"
-            ),
-        )
-        return
+    provider = provider_registry.get(provider_name)
     service = build_research_service(
         runs_repo=persistence_of(app_state).research_runs,
         provider=provider,

@@ -37,6 +37,7 @@ class CapabilityId(StrEnum):
     AGENT_REGISTRY = "agent_registry"
     WORK_PIPELINE = "work_pipeline"
     TASK_ENGINE = "task_engine"
+    COORDINATOR = "coordinator"
     WORKSPACE_SERVICE = "workspace_service"
     SETTINGS_READ_SERVICE = "settings_read_service"
 
@@ -72,6 +73,7 @@ class CapabilityId(StrEnum):
     ROLE_VERSION_SERVICE = "role_version_service"
     BUDGET_VERSIONS_SERVICE = "budget_versions_service"
     PROJECT_ROLLUP_SERVICE = "project_rollup_service"
+    INITIATIVE_TAIL = "initiative_tail"
     KANBAN_BOARD = "kanban_board"
     STEERING_SERVICE = "steering_service"
     FINE_TUNE_ORCHESTRATOR = "fine_tune_orchestrator"

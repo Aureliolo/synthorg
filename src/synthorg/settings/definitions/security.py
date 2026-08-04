@@ -201,3 +201,26 @@ _r.register(
         max_value=600.0,
     )
 )
+
+# ── Adversarial red-team gate ───────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="red_team_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the adversarial red-team agent and its grounding"
+            " checker run on. A model reference (`{provider, model_id}`)"
+            " because a provider is a registered connection with its own"
+            " credentials and endpoint, so a bare model id names no dispatch"
+            " target. Named explicitly rather than borrowing another feature's"
+            " connection: the adversary attacks the deliverable, so an operator"
+            " chooses what it costs and where it runs. Unset leaves the gate"
+            " unarmed and says so."
+        ),
+        group="Red Team",
+        level=SettingLevel.ADVANCED,
+    )
+)

@@ -167,6 +167,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.META,
+        key="toolsmith_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the toolsmith authors tools with. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so"
+            " a bare model id names no dispatch target. The toolsmith writes"
+            " code that later runs in the org, so an operator names what does"
+            " the writing rather than it inheriting a connection chosen for"
+            " something else. Unset leaves the toolsmith unwired and says so."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
         key="scorecard_history_dir",
         type=SettingType.STRING,
         default="",

@@ -1,14 +1,23 @@
 # module-kind: orchestrator
-"""Startup wiring for the initiative rollup service.
+"""Startup wiring for the initiative rollup service and its tail.
 
-Constructs the :class:`ProjectRollupService` once the task engine and
-persistence exist, and registers it as a :class:`TaskEngine` observer so a
-task reaching a terminal status advances the plan, the project, and the
-objective task behind it.
-Best-effort and idempotent: a boot missing either dependency leaves the
-service unwired, and re-running after setup brings it online with no restart.
-A re-run after a successful wire is guarded by the state slice, so the observer
-is not registered twice.
+Two activations, because the two converge at different times.
+:func:`wire_project_rollup_service` constructs the
+:class:`ProjectRollupService` once the task engine and persistence exist, and
+registers it as a :class:`TaskEngine` observer so a task reaching a terminal
+status advances the plan, the project, and the objective task behind it. That
+happens well before setup has configured a provider, so the rollup it builds is
+deliberately tailless.
+
+:func:`attach_initiative_tail` fills the tail in later, once the provider
+registry, work pipeline and coordinator exist. It is a separate subsystem
+rather than a re-run of the first: liveness is read from what activation
+installed, so folding both into one made a wired rollup stand for a wired tail,
+and a reconciler never revisits what it reads as converged.
+
+Both are best-effort and idempotent. A re-run of the first is guarded by the
+state slice, so the observer is never registered twice; a re-run of the second
+returns early once the tail is full.
 """
 
 from synthorg.api.state import AppState
@@ -36,14 +45,12 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
     persistence = app_state.slice(PersistenceStateSlice).backend
-    existing = app_state.slice(EngineStateSlice).project_rollup_service
-    if existing is not None:
+    if app_state.slice(EngineStateSlice).project_rollup_service is not None:
         # Already wired: never re-register the observer (register_observer
         # appends unconditionally, so a re-run would double-fire it). The tail
-        # can still be missing, because the first wire happens before setup
-        # configures a provider, so attach whatever now resolves.
-        if persistence is not None and not existing.has_full_tail():
-            _attach_tail(app_state, persistence, existing)
+        # is not this function's to fill; the ``initiative_tail`` subsystem
+        # owns it, and owning it here too would be a second wiring path onto
+        # the same collaborators.
         return
 
     task_engine = app_state.slice(EngineStateSlice).task_engine
@@ -55,36 +62,19 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         )
         return
     try:
-        from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
-            build_evaluation_stage,
-            build_integration_stage,
-            build_replan_trigger,
-        )
         from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
 
-        plan_writer = PlanService(repo=persistence.plans, clock=app_state.clock)
-        replan_trigger = build_replan_trigger(app_state, persistence)
+        # Deliberately tailless. Every tail collaborator needs the provider
+        # registry, the work pipeline or the coordinator, none of which exist
+        # this early, so building them here would only ever produce the empty
+        # result the tail subsystem then has to replace.
         service = ProjectRollupService(
             persistence=persistence,
-            plan_status_writer=plan_writer,
+            plan_status_writer=PlanService(
+                repo=persistence.plans, clock=app_state.clock
+            ),
             clock=app_state.clock,
             task_engine=task_engine,
-            ship_retro_capture=_build_ship_retro_capture(app_state),
-            replan_trigger=replan_trigger,
-            integration=build_integration_stage(app_state, persistence),
-        )
-        # Built after the rollup exists, because the evaluate stage needs to
-        # call back into it: its verdict writes a plan status while mutating no
-        # task, so nothing else would ever re-derive the project, the objective
-        # task, or the retrospective behind it.
-        service.attach_tail(
-            evaluation=lambda trigger: build_evaluation_stage(
-                app_state,
-                persistence,
-                plan_status_writer=plan_writer,
-                replan_trigger=trigger,
-                reconcile=service,
-            ),
         )
         # Register the observer BEFORE committing the service to state, so a
         # failure here leaves the service unwired and a re-run retries cleanly
@@ -105,6 +95,30 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         )
         return
     logger.info(API_APP_STARTUP, service="project_rollup_service", note="wired")
+
+
+async def attach_initiative_tail(app_state: AppState) -> None:
+    """Bring the initiative tail online on the already-wired rollup.
+
+    The activation the ``initiative_tail`` subsystem declares. It is separate
+    from the rollup's own activation because the two converge at different
+    times: the rollup needs only persistence and the task engine, both of which
+    are up before setup has configured a provider, while every tail stage needs
+    the provider registry, the work pipeline or the coordinator. Declaring them
+    as one subsystem made the rollup's early success stand for the tail's, and
+    the reconciler never revisits a subsystem it reads as converged.
+
+    A no-op when the rollup is absent or already carries a full tail, so a
+    repeated pass costs nothing.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    rollup = app_state.slice(EngineStateSlice).project_rollup_service
+    if persistence is None or rollup is None or rollup.has_full_tail():
+        return
+    _attach_tail(app_state, persistence, rollup)
 
 
 def _attach_tail(
@@ -135,6 +149,9 @@ def _attach_tail(
                 replan_trigger=trigger,
                 reconcile=rollup,
             ),
+            # Needs the same registries the stages do, so a rollup built before
+            # they existed has none and only this pass can supply it.
+            ship_retro_capture=_build_ship_retro_capture(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log, continue
         reraise_critical(exc)

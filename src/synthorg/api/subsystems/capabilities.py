@@ -33,6 +33,7 @@ from synthorg.providers.tool_call_feedback.state import ToolCallFeedbackStateSli
 from synthorg.research.state import ResearchStateSlice
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.workers.state import RuntimeStateSlice
 
 # Stands in before the pipeline exists, so the four attachment probes stay
 # total without each repeating the same None check.
@@ -55,6 +56,21 @@ def _attachments(app_state: AppState) -> PipelineAttachments | None:
     """
     pipeline = app_state.slice(EngineStateSlice).work_pipeline
     return pipeline.attachments if pipeline is not None else None
+
+
+def _has_initiative_tail(app_state: AppState) -> bool:
+    """Report whether the rollup's tail stages are attached.
+
+    Args:
+        app_state: Application state carrying the engine slice.
+
+    Returns:
+        ``True`` once the replan trigger and both tail stages are attached to
+        a wired rollup; ``False`` before the rollup exists, and while it is up
+        but tailless.
+    """
+    rollup = app_state.slice(EngineStateSlice).project_rollup_service
+    return rollup is not None and rollup.has_full_tail()
 
 
 def _analytics_collector_configured() -> bool:
@@ -166,6 +182,10 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.TASK_ENGINE,
         present=lambda s: s.slice(EngineStateSlice).task_engine is not None,
+    ),
+    Capability(
+        id=CapabilityId.COORDINATOR,
+        present=lambda s: s.slice(RuntimeStateSlice).coordinator is not None,
     ),
     Capability(
         id=CapabilityId.WORKSPACE_SERVICE,
@@ -299,6 +319,15 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.PROJECT_ROLLUP_SERVICE,
         present=lambda s: s.slice(EngineStateSlice).project_rollup_service is not None,
     ),
+    # Read from the rollup's own attachment record rather than from the rollup
+    # existing, for the same reason as the four pipeline attachments below: the
+    # tail is attached onto an already-wired rollup and installs nothing else
+    # observable. The rollup comes up as soon as persistence and the task
+    # engine do, which is before a provider is configured, so its first wire
+    # legitimately leaves the tail unattached; reading the rollup's mere
+    # existence as a live tail would tell the reconciler this subsystem had
+    # converged and it would never revisit it.
+    Capability(id=CapabilityId.INITIATIVE_TAIL, present=_has_initiative_tail),
     Capability(
         id=CapabilityId.KANBAN_BOARD,
         present=lambda s: s.slice(EngineStateSlice).kanban_board_service is not None,
