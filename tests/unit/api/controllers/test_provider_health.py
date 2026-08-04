@@ -87,6 +87,79 @@ def _build_provider_client(
 
 
 @pytest.mark.unit
+class TestProviderHealthRecheck:
+    """Health can be re-derived on demand, not only by re-saving a provider.
+
+    The read endpoint replays what was recorded, so a provider whose fault an
+    operator has just fixed keeps reporting it. Recheck is the control that
+    calls the provider again and reports what that call found.
+    """
+
+    async def test_recheck_is_reachable_and_reports_a_summary(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            resp = await client.post(
+                "/api/v1/providers/test-provider/health/recheck",
+                headers=_HEADERS,
+            )
+
+            assert resp.status_code == 201
+            assert "health_status" in resp.json()["data"]
+
+    async def test_recheck_of_an_unknown_provider_is_404(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            resp = await client.post(
+                "/api/v1/providers/nonexistent/health/recheck",
+                headers=_HEADERS,
+            )
+
+            assert resp.status_code == 404
+
+    async def test_recheck_requires_auth(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        resp = await async_test_client.post(
+            "/api/v1/providers/test-provider/health/recheck",
+            headers={"Authorization": "Bearer invalid"},
+        )
+
+        assert resp.status_code == 401
+
+    async def test_recheck_all_reports_every_provider(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        # The Overview control asks this one question rather than making an
+        # operator open each provider in turn.
+        async with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            resp = await client.post(
+                "/api/v1/providers/health/recheck",
+                headers=_HEADERS,
+            )
+
+            assert resp.status_code == 201
+            assert "test-provider" in resp.json()["data"]
+
+
+@pytest.mark.unit
 class TestProviderHealth:
     async def test_provider_not_found(
         self,

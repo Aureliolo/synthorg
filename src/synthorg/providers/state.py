@@ -7,10 +7,17 @@ management services are wired lazily once persistence is connected.
 All fields are ``None`` until wired; readers guard accordingly.
 """
 
+from collections.abc import Awaitable, Callable
+
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.providers.embedding_endpoint import (
+    EmbeddingEndpoint,
+    resolve_embedding_endpoint,
+)
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.management.audit_service import (
     ProviderAuditService,
@@ -23,6 +30,7 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
+from synthorg.settings.state import config_resolver_of
 
 
 class ProvidersStateSlice(BaseFeatureStateSlice):
@@ -86,6 +94,30 @@ def provider_registry_of(app_state: AppStateSliceMixin) -> ProviderRegistry:
     return require_service(
         app_state.slice(ProvidersStateSlice).registry, "Provider Registry"
     )
+
+
+def embedding_endpoint_resolver_of(
+    app_state: AppStateSliceMixin,
+) -> Callable[[str], Awaitable[EmbeddingEndpoint]]:
+    """Bind embedding-endpoint lookup to this app's configs and credentials.
+
+    Every path that reaches an embedding model (boot wiring, the operator's
+    model picker, setup) needs the same answer to "where does this provider
+    live", so they share one resolver rather than each deciding whether to
+    pass a base URL at all.
+
+    Returns:
+        A resolver taking a provider name and returning its endpoint.
+    """
+
+    async def _resolve(provider: str) -> EmbeddingEndpoint:
+        return await resolve_embedding_endpoint(
+            provider,
+            config_resolver=config_resolver_of(app_state),
+            catalog=app_state.slice(IntegrationsStateSlice).connection_catalog,
+        )
+
+    return _resolve
 
 
 def provider_health_tracker_of(app_state: AppStateSliceMixin) -> ProviderHealthTracker:

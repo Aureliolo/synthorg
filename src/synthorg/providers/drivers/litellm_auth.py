@@ -57,12 +57,35 @@ def _raise_unresolved_credential(
     raise errors.AuthenticationError(msg, context={"provider": provider_name})
 
 
-def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
-    """Merge auth credentials onto ``kwargs`` per the provider auth type.
+@dataclass(frozen=True)
+class AuthMaterial:
+    """The credential a provider's auth type resolves to, transport-agnostic.
+
+    Attributes:
+        api_key: Credential litellm sends as ``api_key``, when there is one.
+        extra_headers: Custom auth headers, when the auth type uses them.
+    """
+
+    api_key: str | None = None
+    extra_headers: Mapping[str, str] | None = None
+
+
+def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
+    """Resolve a provider's credential per its auth type.
 
     Catalog-resolved credentials win. A wired-but-unresolved catalog
     fails closed (an unauthenticated request would leak the prompt),
     while the catalog-less degraded/test path omits the credential.
+
+    Shared by completion and embedding dispatch so one auth type cannot
+    mean two different things depending on which call is being made.
+
+    Returns:
+        The credential material to put on the outbound request.
+
+    Raises:
+        AuthenticationError: If a wired catalog did not resolve a
+            credential the auth type requires.
     """
     config = ctx.config
     resolved = ctx.resolved
@@ -72,8 +95,8 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             # not resolve it; with no catalog at all (degraded / test) omit.
             key = resolved.get("api_key") if resolved else None
             if key is not None:
-                kwargs["api_key"] = key
-            elif ctx.catalog_present:
+                return AuthMaterial(api_key=key)
+            if ctx.catalog_present:
                 _raise_unresolved_credential(
                     ctx.provider_name, ctx.litellm_model, "API-key"
                 )
@@ -85,8 +108,8 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             if resolved:
                 key = resolved.get("access_token") or resolved.get("api_key")
             if key is not None:
-                kwargs["api_key"] = key
-            elif ctx.catalog_present:
+                return AuthMaterial(api_key=key)
+            if ctx.catalog_present:
                 _raise_unresolved_credential(
                     ctx.provider_name, ctx.litellm_model, "OAuth"
                 )
@@ -102,7 +125,7 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             if header_value is None:
                 header_value = config.custom_header_value
             if header_name and header_value:
-                kwargs["extra_headers"] = {header_name: header_value}
+                return AuthMaterial(extra_headers={header_name: header_value})
         case AuthType.SUBSCRIPTION:
             # Pass as api_key -- the correct kwarg for LiteLLM
             # authentication.  Do NOT use "auth_token" -- it is
@@ -112,9 +135,19 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             if token is None:
                 token = config.subscription_token
             if token is not None:
-                kwargs["api_key"] = token
+                return AuthMaterial(api_key=token)
         case AuthType.NONE:
             pass
+    return AuthMaterial()
 
 
-__all__ = ["AuthContext", "apply_auth_kwargs"]
+def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
+    """Merge auth credentials onto ``kwargs`` per the provider auth type."""
+    material = resolve_auth_material(ctx)
+    if material.api_key is not None:
+        kwargs["api_key"] = material.api_key
+    if material.extra_headers is not None:
+        kwargs["extra_headers"] = dict(material.extra_headers)
+
+
+__all__ = ["AuthContext", "AuthMaterial", "apply_auth_kwargs", "resolve_auth_material"]

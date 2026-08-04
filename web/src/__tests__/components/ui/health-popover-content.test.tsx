@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dialog } from '@base-ui/react/dialog'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { HealthPopoverContent } from '@/components/ui/health-popover/HealthPopoverContent'
+import { useProvidersStore } from '@/stores/providers'
 import type { DerivedSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
 
@@ -77,6 +78,10 @@ function renderContent(
 }
 
 describe('HealthPopoverContent remediation links', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('points an unwired memory backend at the embedding-model row itself', () => {
     // `off` means no embedding model was ever named, which is the operator's to
     // fix, so the link carries the key the settings filter matches on.
@@ -151,6 +156,35 @@ describe('HealthPopoverContent remediation links', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Choose an embedding model' }))
 
     expect(onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('offers a recheck on an unhealthy provider card', async () => {
+    // The gap this covers: nothing re-derived provider health between probe
+    // cycles, so an operator who had just fixed a provider had no way to say
+    // "look again" short of opening it and re-saving it.
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    vi.spyOn(useProvidersStore, 'getState').mockReturnValue({
+      recheckAllHealth,
+    } as unknown as ReturnType<typeof useProvidersStore.getState>)
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+
+    expect(recheckAllHealth).toHaveBeenCalledOnce()
+  })
+
+  it('offers no recheck while providers are healthy', () => {
+    renderContent()
+
+    expect(screen.queryByRole('button', { name: 'Recheck now' })).toBeNull()
+  })
+
+  it('keeps recheck a button rather than a navigation link', () => {
+    // It acts on the spot; an anchor would promise a destination it has not
+    // got, and would be the wrong thing to open in a new tab.
+    renderContent({ providersState: 'down' })
+
+    expect(screen.getByRole('button', { name: 'Recheck now' }).tagName).toBe('BUTTON')
   })
 
   it('keeps the remedy a link rather than giving it button semantics', () => {

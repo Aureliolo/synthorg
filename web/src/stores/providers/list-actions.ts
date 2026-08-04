@@ -1,10 +1,12 @@
 import {
   listProviders,
   getProviderHealth,
+  recheckAllProviderHealth,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
+import { emitPlainErrorToast } from './crud-helpers'
 import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
 import type { ProvidersSet } from './types'
@@ -56,6 +58,27 @@ export function createListActions(set: ProvidersSet) {
         // skeleton stuck on.  The newer request flips it back to true
         // at its own start, so there is no flicker.
         if (isLatest()) set({ listLoading: false })
+      }
+    },
+
+    /**
+     * Call every provider now and adopt the health those calls produce.
+     *
+     * The operator's one control when the dashboard says a provider is
+     * unhealthy but they believe they have fixed it. Best-effort: the
+     * server keeps each provider's recorded health when its call fails,
+     * so a partial sweep still improves the picture.
+     */
+    recheckAllHealth: async () => {
+      set({ recheckingHealth: true })
+      try {
+        const healthMap = await recheckAllProviderHealth()
+        set({ healthMap })
+      } catch (err) {
+        log.warn('Provider recheck failed:', getErrorMessage(err))
+        emitPlainErrorToast('Could not recheck providers', err)
+      } finally {
+        set({ recheckingHealth: false })
       }
     },
 

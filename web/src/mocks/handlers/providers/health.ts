@@ -5,6 +5,8 @@ import type {
   getDiscoveryPolicy,
   getProviderHealth,
   probeLocal,
+  recheckAllProviderHealth,
+  recheckProviderHealth,
   removeAllowlistEntry,
 } from '@/api/endpoints/providers'
 import { successFor } from '../helpers'
@@ -13,6 +15,16 @@ const DEFAULT_DISCOVERY_POLICY = {
   host_port_allowlist: [],
   block_private_ips: true,
   entry_count: 0,
+} as const
+
+const UNKNOWN_HEALTH = {
+  last_check_timestamp: null,
+  avg_response_time_ms: null,
+  error_rate_percent_24h: 0,
+  calls_last_24h: 0,
+  health_status: 'unknown',
+  total_tokens_24h: 0,
+  total_cost_24h: 0,
 } as const
 
 export const healthHandlers = [
@@ -39,18 +51,18 @@ export const healthHandlers = [
       successFor<typeof removeAllowlistEntry>(DEFAULT_DISCOVERY_POLICY),
     )
   }),
-  http.get('/api/v1/providers/:name/health', () =>
+  http.post('/api/v1/providers/health/recheck', () =>
     HttpResponse.json(
-      successFor<typeof getProviderHealth>({
-        last_check_timestamp: null,
-        avg_response_time_ms: null,
-        error_rate_percent_24h: 0,
-        calls_last_24h: 0,
-        health_status: 'unknown',
-        total_tokens_24h: 0,
-        total_cost_24h: 0,
+      successFor<typeof recheckAllProviderHealth>({
+        'test-provider': UNKNOWN_HEALTH,
       }),
     ),
+  ),
+  http.get('/api/v1/providers/:name/health', () =>
+    HttpResponse.json(successFor<typeof getProviderHealth>(UNKNOWN_HEALTH)),
+  ),
+  http.post('/api/v1/providers/:name/health/recheck', () =>
+    HttpResponse.json(successFor<typeof recheckProviderHealth>(UNKNOWN_HEALTH)),
   ),
   http.post('/api/v1/providers/:name/discover-models', ({ params }) =>
     HttpResponse.json(

@@ -29,7 +29,7 @@ from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.embedding.probe import probe_embedder_dims
-from synthorg.memory.embedding.resolve import DimsProbe
+from synthorg.memory.embedding.resolve import DimsProbe, EndpointResolver
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_PROBE_FAILED,
@@ -397,6 +397,7 @@ async def bind_chosen_embedder(
     *,
     settings_svc: SettingsServiceProtocol,
     measure_dims: DimsProbe = probe_embedder_dims,
+    resolve_endpoint: EndpointResolver | None = None,
 ) -> EmbedderSelectResult:
     """Prove the embedder the operator chose can actually embed.
 
@@ -419,6 +420,9 @@ async def bind_chosen_embedder(
     Args:
         settings_svc: Settings service for reading the operator's choice.
         measure_dims: Probe used to exercise the chosen model.
+        resolve_endpoint: Looks up where the chosen provider is reachable,
+            so the probe proves the operator's own endpoint answers rather
+            than whichever host litellm defaults to.
 
     Returns:
         ``None`` on success, or a short human-readable reason string when
@@ -459,7 +463,15 @@ async def bind_chosen_embedder(
         return None
 
     try:
-        await measure_dims(provider=provider, model=model)
+        await measure_dims(
+            provider=provider,
+            model=model,
+            endpoint=(
+                await resolve_endpoint(provider)
+                if resolve_endpoint is not None
+                else None
+            ),
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reason = f"embedding model {model!r} did not answer a width probe"

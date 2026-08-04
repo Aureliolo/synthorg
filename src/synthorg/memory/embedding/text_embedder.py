@@ -27,6 +27,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.config import EmbedderConfig
 from synthorg.memory.embedding.dispatch import (
     DEFAULT_EMBED_TIMEOUT_SECONDS,
+    embedding_kwargs,
     embedding_retry_handler,
     format_model_ref,
     record_embedding_cost,
@@ -38,6 +39,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_FAILED,
     MEMORY_EMBEDDING_TRUNCATED,
 )
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 logger = get_logger(__name__)
 
@@ -50,6 +52,9 @@ class ProviderTextEmbedder:
         cost_tracker: Sink for per-batch spend. ``None`` leaves the call
             unmetered, which is correct only where no tracker exists
             (tests, the trackerless eval harness).
+        endpoint: Where the provider is reachable and how to authenticate.
+            Resolved once, with the binding, so a batch on the recall path
+            does not re-read the credential store per call.
         timeout_seconds: Wall-clock ceiling for one batch, retries
             included.
     """
@@ -59,10 +64,12 @@ class ProviderTextEmbedder:
         config: EmbedderConfig,
         *,
         cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
         timeout_seconds: float = DEFAULT_EMBED_TIMEOUT_SECONDS,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker
+        self._endpoint = endpoint
         self._timeout_seconds = timeout_seconds
         self._retry = embedding_retry_handler()
 
@@ -101,11 +108,14 @@ class ProviderTextEmbedder:
             return ()
         from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
+        kwargs = embedding_kwargs(
+            model_ref=self.model_ref,
+            inputs=list(texts),
+            endpoint=self._endpoint,
+        )
         try:
             response = await with_deadline(
-                lambda: self._retry.execute(
-                    lambda: aembedding(model=self.model_ref, input=list(texts))
-                ),
+                lambda: self._retry.execute(lambda: aembedding(**kwargs)),
                 timeout_seconds=self._timeout_seconds,
             )
         except builtins.MemoryError, RecursionError:

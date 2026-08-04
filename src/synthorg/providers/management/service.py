@@ -642,7 +642,52 @@ class ProviderManagementService(
             )
 
         model_id = request.model or _cheapest_probe_model_id(config.models)
-        return await self._do_test_connection(name, config, model_id)
+        response = await self._do_test_connection(name, config, model_id)
+        await self._record_test_outcome(name, response)
+        return response
+
+    async def _record_test_outcome(
+        self,
+        name: str,
+        response: TestConnectionResponse,
+    ) -> None:
+        """Let a connection test move the provider's health.
+
+        A test is a real call to the provider, so its verdict is exactly the
+        evidence health is derived from; leaving it unrecorded is what made a
+        provider read DOWN long after the operator had fixed it, with no
+        control short of re-saving the provider to say otherwise.
+
+        Best-effort: the test already has its answer for the caller, so a
+        tracker failure must not turn a completed test into an error.
+
+        Raises:
+            asyncio.CancelledError: Propagated so shutdown is not swallowed.
+        """
+        requester = self._probe_requester
+        if requester is None:
+            return
+        try:
+            await requester.record_outcome(
+                name,
+                success=response.success,
+                # A failure that never reached the wire has no round trip to
+                # report; 0.0 keeps it out of the latency average it would
+                # otherwise drag, while still counting as a failed call.
+                response_time_ms=response.latency_ms or 0.0,
+                error_message=response.error,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_HEALTH_PROBE_FAILED,
+                provider=name,
+                note="recording the connection-test outcome failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _do_test_connection(
         self,

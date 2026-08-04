@@ -32,6 +32,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   presetsError: null,
   testConnectionResult: null,
   testingConnection: false,
+  recheckingHealth: false,
   discoveringModels: false,
   mutating: false,
   pullingModel: false,

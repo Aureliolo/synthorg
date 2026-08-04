@@ -22,26 +22,35 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.embedding.resolve import resolve_embedder_config
 from synthorg.memory.errors import MemoryConfigError, MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
 
 
 def _probe(width: int) -> object:
-    """A dims probe answering a fixed width, recording its calls."""
+    """A dims probe answering a fixed width, recording its calls.
+
+    Records the endpoint alongside the binding: measuring the right model
+    at the wrong address is the failure this seam exists to prevent.
+    """
 
     calls: list[tuple[str, str]] = []
+    endpoints: list[EmbeddingEndpoint | None] = []
 
     async def _measure(
         *,
         provider: str,
         model: str,
         cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
     ) -> int:
         _ = cost_tracker
         calls.append((provider, model))
+        endpoints.append(endpoint)
         return width
 
     _measure.calls = calls  # type: ignore[attr-defined]
+    _measure.endpoints = endpoints  # type: ignore[attr-defined]
     return _measure
 
 
@@ -50,9 +59,10 @@ async def _failing_probe(
     provider: str,
     model: str,
     cost_tracker: CostTrackerProtocol | None = None,
+    endpoint: EmbeddingEndpoint | None = None,
 ) -> int:
     """A dims probe standing in for a model that cannot be reached."""
-    _ = provider, cost_tracker
+    _ = provider, cost_tracker, endpoint
     msg = f"could not measure {model!r}"
     raise MemoryEmbeddingError(msg)
 

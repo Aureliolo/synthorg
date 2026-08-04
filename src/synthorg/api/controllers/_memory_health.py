@@ -12,7 +12,7 @@ memory unless the surface probes for it.
 
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -103,6 +103,15 @@ class MemoryHealth(BaseModel):
     )
 
 
+#: Stands in when the last attempt recorded no reason of its own, which is
+#: the state before any wiring pass has run.
+_NO_EMBEDDER_REMEDY: Final[str] = (
+    "The usual cause is that no embedding model resolved: set "
+    "memory.embedder_model to a provider-bound reference, or connect a "
+    "provider that offers an embedding model."
+)
+
+
 def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
     """Judge agent memory from its wiring alone, without a probe.
 
@@ -114,16 +123,14 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
 
     backend_name = app_state.config.memory.backend
-    if app_state.slice(MemoryStateSlice).backend is None:
+    memory = app_state.slice(MemoryStateSlice)
+    if memory.backend is None:
         return MemoryHealth(
             state=MemoryState.OFF,
             backend=backend_name,
             detail=(
                 "No memory backend is wired, so agents start every task "
-                "with no recall. The usual cause is that no embedding "
-                "model resolved: set memory.embedder_model to a "
-                "provider-bound reference, or connect a provider that "
-                "offers an embedding model."
+                "with no recall. " + (memory.embedder_failure or _NO_EMBEDDER_REMEDY)
             ),
         )
     if backend_name == IN_MEMORY_BACKEND:

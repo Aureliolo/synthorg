@@ -16,6 +16,7 @@ from structlog.testing import capture_logs
 
 from synthorg.api.lifecycle_helpers.memory_backend_wiring import wire_memory_backend
 from synthorg.api.state import AppState
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.backends.sqlvector import SqlVectorBackend
@@ -30,7 +31,9 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.enums import AuthType
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
 
@@ -63,9 +66,38 @@ def _settings(provider: str, model: str, dims: int) -> Any:  # type: ignore[expl
     )
 
 
+def _config_resolver(base_url: str | None = None) -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
+    """A resolver holding the one provider these fixtures embed through.
+
+    Wiring reads it to learn where that provider is reachable, so a state
+    without one models a boot order the app does not have.
+    """
+    return mock_of[ConfigResolver](
+        get_provider_configs=AsyncMock(
+            return_value={
+                "test-provider": ProviderConfig(
+                    driver="scripted",
+                    auth_type=AuthType.NONE,
+                    base_url=base_url,
+                )
+            }
+        ),
+    )
+
+
+def _app_state(**overrides: Any) -> AppState:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
+    """App state carrying the provider configs every wiring pass reads.
+
+    Returns:
+        The composed state, with a provider resolver unless one is given.
+    """
+    overrides.setdefault("config_resolver", _config_resolver())
+    return make_app_state(**overrides)
+
+
 def _ephemeral_app_state() -> AppState:
     """App state configured for the discouraged ephemeral backend."""
-    return make_app_state(
+    return _app_state(
         config=RootConfig(
             company_name="test",
             memory=CompanyMemoryConfig(backend="inmemory"),
@@ -79,7 +111,7 @@ class TestDurableWiring:
     """The happy path: an explicit embedder yields a durable backend."""
 
     async def test_wires_the_durable_backend(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
@@ -92,7 +124,7 @@ class TestDurableWiring:
 
     async def test_embedding_width_reaches_the_repository(self) -> None:
         persistence = _persistence()
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=persistence,
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
@@ -102,7 +134,7 @@ class TestDurableWiring:
         persistence.memory_vectors.ensure_ready.assert_awaited_once_with(8)
 
     async def test_is_idempotent(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
@@ -118,7 +150,7 @@ class TestFailLoud:
     """No embedder must mean no memory, never a silent keyword fallback."""
 
     async def test_unresolvable_embedder_wires_no_backend(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("", "", 0),
         )
@@ -131,7 +163,7 @@ class TestFailLoud:
         # The precise regression: an ephemeral substring store published as
         # the shared backend reads as "memory works" while losing every
         # memory on restart and recalling the wrong things in between.
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("", "", 0),
         )
@@ -143,7 +175,7 @@ class TestFailLoud:
         )
 
     async def test_disconnected_persistence_wires_no_backend(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
 
@@ -159,7 +191,7 @@ class TestFailLoud:
         that matters most, a chosen model that cannot be reached, was only
         ever exercised at the resolve layer.
         """
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             # Falsy dims leaves the width unpinned, so the probe really runs.
             settings_service=_settings("test-provider", "test-embed-001", 0),
@@ -187,7 +219,7 @@ class TestFailLoud:
         """The user's hard constraint, at the boot path rather than in unit
         isolation: a model that cannot embed leaves memory off, and does not
         hand over to the lexical built-in."""
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("test-provider", "test-embed-001", 0),
         )
@@ -210,7 +242,7 @@ class TestFailLoud:
         settings = mock_of[SettingsService](
             get=AsyncMock(side_effect=RuntimeError("settings backend down")),
         )
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=settings,
         )
@@ -232,7 +264,7 @@ class TestFailLoud:
                 ),
             ),
         )
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=settings,
         )
@@ -249,7 +281,7 @@ class TestFailLoud:
         persistence.memory_vectors.ensure_ready = AsyncMock(
             side_effect=RuntimeError("index build failed")
         )
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=persistence,
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
@@ -267,7 +299,7 @@ class TestConsolidationSchedulerWiring:
     """The maintenance driver must actually start, or memory grows forever."""
 
     async def test_scheduler_is_wired_when_an_interval_is_set(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             persistence=_persistence(),
             settings_service=_settings("test-provider", "test-embed-001", 8),
         )
@@ -280,7 +312,7 @@ class TestConsolidationSchedulerWiring:
         await scheduler.stop()
 
     async def test_no_scheduler_when_the_interval_is_never(self) -> None:
-        app_state = make_app_state(
+        app_state = _app_state(
             config=RootConfig(
                 company_name="test",
                 memory=CompanyMemoryConfig(

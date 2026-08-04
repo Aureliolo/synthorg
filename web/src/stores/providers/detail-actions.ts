@@ -2,9 +2,11 @@ import {
   getProvider,
   getProviderModels,
   getProviderHealth,
+  recheckProviderHealth,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { emitPlainErrorToast } from './crud-helpers'
 import type { ProvidersSet } from './types'
 
 const log = createLogger('providers')
@@ -108,10 +110,32 @@ async function fetchProviderDetailImpl(
   }
 }
 
+async function recheckProviderHealthImpl(
+  set: ProvidersSet,
+  name: string,
+): Promise<void> {
+  // Calls the provider and lets the server record what that call found,
+  // then re-reads. A plain refetch would replay the same stored aggregate,
+  // which is why a fixed provider used to stay unhealthy on screen.
+  set({ recheckingHealth: true })
+  try {
+    const summary = await recheckProviderHealth(name)
+    set({ selectedProviderHealth: summary })
+  } catch (err) {
+    log.warn('Provider recheck failed:', getErrorMessage(err))
+    emitPlainErrorToast('Could not recheck this provider', err)
+  } finally {
+    set({ recheckingHealth: false })
+  }
+  await fetchProviderDetailImpl(set, name)
+}
+
 export function createDetailActions(set: ProvidersSet) {
   return {
     fetchProviderDetail: (name: string) =>
       fetchProviderDetailImpl(set, name),
+    recheckProviderHealth: (name: string) =>
+      recheckProviderHealthImpl(set, name),
     clearDetail: () => {
       _detailRequestId++ // invalidate in-flight requests
       set({

@@ -51,6 +51,8 @@ export interface ProvidersState {
   presetsError: string | null
   testConnectionResult: TestConnectionResponse | null
   testingConnection: boolean
+  /** True while an on-demand health recheck call is in flight. */
+  recheckingHealth: boolean
   discoveringModels: boolean
   mutating: boolean
 
@@ -94,6 +96,10 @@ export interface ProvidersState {
   // Actions
   fetchProviders: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
+  /** Call the provider now and adopt the health that call produces. */
+  recheckProviderHealth: (name: string) => Promise<void>
+  /** Call every provider now and adopt the health those calls produce. */
+  recheckAllHealth: () => Promise<void>
   fetchPresets: () => Promise<void>
   createProvider: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   createFromPreset: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>

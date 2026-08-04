@@ -13,10 +13,14 @@ from typing import Final
 import httpx
 from httpx import AsyncClient
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
+from synthorg.providers.enums import AuthType
+from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.health_prober_helpers import truncate
 from synthorg.tools.network_validator import DnsValidationOk
 from synthorg.tools.ssrf import build_pinned_transport
@@ -26,6 +30,40 @@ logger = get_logger(__name__)
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
 _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
+
+
+async def resolve_probe_api_key(
+    config: ProviderConfig,
+    catalog: ConnectionCatalog | None,
+) -> str | None:
+    """Resolve a provider's api_key from its catalog connection.
+
+    Non-API-key providers return ``None``. An ``API_KEY`` provider whose
+    key is unresolvable raises rather than probing unauthenticated.
+
+    Args:
+        config: Provider whose probe credential is being resolved.
+        catalog: Source of connection credentials; ``None`` disables the
+            lookup, which only a non-``API_KEY`` provider survives.
+
+    Returns:
+        The resolved api_key, or ``None`` when unresolvable by design.
+
+    Raises:
+        ProviderValidationError: When an ``API_KEY`` key is unresolvable.
+    """
+    # Gate by auth type: a non-API_KEY provider needs no key, so a
+    # failing/stale-connection lookup must not skip it.
+    if config.auth_type is not AuthType.API_KEY:
+        return None
+    key: str | None = None
+    if config.connection_name is not None and catalog is not None:
+        creds = await catalog.get_credentials(config.connection_name)
+        key = creds.get("api_key")
+    if key is None:
+        msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
+        raise ProviderValidationError(msg)
+    return key
 
 
 async def execute_probe(

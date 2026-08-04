@@ -43,6 +43,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_EMBEDDER_UNRESOLVED,
 )
+from synthorg.providers.state import embedding_endpoint_resolver_of
 
 logger = get_logger(__name__)
 
@@ -113,6 +114,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
         MemoryStateSlice,
         backend=backend,
         embedder_ref=embedder.model_ref if embedder is not None else None,
+        embedder_failure=None,
     )
     logger.info(
         MEMORY_BACKEND_WIRED,
@@ -327,11 +329,13 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
     )
 
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    resolve_endpoint = embedding_endpoint_resolver_of(app_state)
     try:
         config = await resolve_embedder_config(
             app_state.config.memory,
             settings_override=await _settings_override(app_state),
             cost_tracker=cost_tracker,
+            resolve_endpoint=resolve_endpoint,
         )
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
@@ -343,6 +347,15 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
             ),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+        )
+        # The health surface reads this. Without it an operator who has
+        # chosen a model is told to choose one, because an unwired slice
+        # cannot say which half of the binding failed.
+        from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+        app_state.wire(
+            MemoryStateSlice,
+            embedder_failure=safe_error_description(exc),
         )
         # Memory stays off, loudly. Starting the built-in embedder here
         # would turn a configuration the operator needs to fix into a
@@ -365,7 +378,11 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         ProviderTextEmbedder,
     )
 
-    return ProviderTextEmbedder(config, cost_tracker=cost_tracker)
+    return ProviderTextEmbedder(
+        config,
+        cost_tracker=cost_tracker,
+        endpoint=await resolve_endpoint(config.provider),
+    )
 
 
 async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | None:

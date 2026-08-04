@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { renderedSnapshot } from '@/stores/health'
+import { useProvidersStore } from '@/stores/providers'
 import { useWebSocketStore } from '@/stores/websocket'
 import { formatTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -177,6 +178,36 @@ function memoryRemediation(
   )
 }
 
+function providersActions(
+  states: DerivedSubsystemStates,
+  onDismiss: () => void,
+): ReactNode {
+  if (!needsAttention(states.providersState)) return undefined
+  // Recheck first: an operator who has just fixed a provider wants the
+  // dashboard to look again, not to be sent somewhere to look themselves.
+  // Nothing else re-derives provider health, so without this the only way
+  // to clear a stale verdict is to open the provider and re-save it.
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          void useProvidersStore.getState().recheckAllHealth()
+        }}
+      >
+        Recheck now
+      </Button>
+      <HealthRemediationLink
+        to={ROUTES.PROVIDERS}
+        label="Review providers"
+        onDismiss={onDismiss}
+      />
+    </div>
+  )
+}
+
 export interface HealthSubsystemGridProps {
   states: DerivedSubsystemStates
   onDismiss: () => void
@@ -233,15 +264,7 @@ function HealthSubsystemGrid({
         label="Providers"
         description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
         state={states.providersState}
-        action={
-          needsAttention(states.providersState) ? (
-            <HealthRemediationLink
-              to={ROUTES.PROVIDERS}
-              label="Review providers"
-              onDismiss={onDismiss}
-            />
-          ) : undefined
-        }
+        action={providersActions(states, onDismiss)}
       />
       <HealthStatusRow
         icon={Brain}

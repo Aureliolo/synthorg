@@ -13,6 +13,9 @@ from synthorg.api.controllers.setup._embedder_setup import (
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import (
+    EmbeddingEndpoint,
+)
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 
@@ -41,9 +44,10 @@ async def _probe_1536(
     provider: str,
     model: str,
     cost_tracker: CostTrackerProtocol | None = None,
+    endpoint: EmbeddingEndpoint | None = None,
 ) -> int:
     """A width probe standing in for a reachable model."""
-    _ = provider, model, cost_tracker
+    _ = provider, model, cost_tracker, endpoint
     return 1536
 
 
@@ -127,8 +131,9 @@ class TestBindChosenEmbedder:
             provider: str,
             model: str,
             cost_tracker: CostTrackerProtocol | None = None,
+            endpoint: EmbeddingEndpoint | None = None,
         ) -> int:
-            _ = provider, model, cost_tracker
+            _ = provider, model, cost_tracker, endpoint
             msg = "unreachable"
             raise MemoryEmbeddingError(msg)
 

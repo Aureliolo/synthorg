@@ -129,6 +129,21 @@ export const Degraded: Story = {
   },
 }
 
+// An unreachable provider is the one fault an operator commonly fixes outside
+// the dashboard, so the card carries an action that re-derives the verdict as
+// well as the link that navigates to it.
+export const ProvidersUnreachable: Story = {
+  args: {
+    ...Default.args,
+    loadState: {
+      state: 'ok',
+      data: { ...OK_PAYLOAD, status: 'unavailable', providers: false },
+      fetchedAt: STORY_FETCHED_AT,
+    },
+    states: { ...okStates, providersState: 'down' },
+  },
+}
+
 export const Loading: Story = {
   args: {
     loadState: { state: 'loading', previous: null },

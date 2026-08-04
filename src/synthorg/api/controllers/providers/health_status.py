@@ -1,0 +1,95 @@
+# module-kind: controller
+"""Reading provider health, and re-deriving it on demand.
+
+Split from the CRUD controller because these answer a different question:
+not what a provider is configured as, but whether it answers right now. The
+read replays what was recorded; the rechecks go and find out.
+"""
+
+from litestar import Controller, get, post
+from litestar.datastructures import State
+
+from synthorg.api.controllers._provider_helpers import (
+    read_provider_health,
+    recheck_all_provider_health,
+    recheck_provider_health,
+)
+from synthorg.api.dto import ApiResponse
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.path_params import PathName
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
+from synthorg.providers.health import ProviderHealthSummary
+
+
+class ProviderHealthController(Controller):
+    """Provider health reads and on-demand rechecks."""
+
+    path = "/providers"
+    tags = ("providers",)
+
+    @get(
+        "/{name:str}/health",
+        guards=[require_read_access],
+    )
+    async def get_provider_health(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[ProviderHealthSummary]:
+        """Get provider health summary (enriched with cost data).
+
+        Raises:
+            NotFoundError: If the provider is not found.
+
+        Returns:
+            ``ApiResponse[ProviderHealthSummary]`` instance.
+        """
+        app_state: AppState = state.app_state
+        return ApiResponse(data=await read_provider_health(app_state, name))
+
+    @post(
+        "/{name:str}/health/recheck",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.test", key="user"),
+        ],
+    )
+    async def recheck_provider_health(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[ProviderHealthSummary]:
+        """Call *name* now and report the health that call produces.
+
+        Raises:
+            NotFoundError: If the provider is not found.
+
+        Returns:
+            ``ApiResponse[ProviderHealthSummary]`` reflecting the new call.
+        """
+        app_state: AppState = state.app_state
+        return ApiResponse(data=await recheck_provider_health(app_state, name))
+
+    @post(
+        "/health/recheck",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.test", key="user"),
+        ],
+    )
+    async def recheck_all_provider_health(
+        self,
+        state: State,
+    ) -> ApiResponse[dict[str, ProviderHealthSummary]]:
+        """Call every configured provider now and report the results.
+
+        Serves the one control an operator has when the dashboard says a
+        provider is unhealthy but they believe they have fixed it, without
+        making them open each provider in turn.
+
+        Returns:
+            ``ApiResponse`` mapping provider name to its new health summary.
+        """
+        app_state: AppState = state.app_state
+        return ApiResponse(data=await recheck_all_provider_health(app_state))

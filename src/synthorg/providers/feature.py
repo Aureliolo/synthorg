@@ -17,6 +17,9 @@ from synthorg.api.controllers.providers.capabilities import (
 )
 from synthorg.api.controllers.providers.connection import ProviderConnectionController
 from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.health_status import (
+    ProviderHealthController,
+)
 from synthorg.api.controllers.providers.local_models import (
     ProviderLocalModelsController,
 )
@@ -35,6 +38,7 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=ProvidersStateSlice,
     controllers=(
         ProviderCrudController,
+        ProviderHealthController,
         ProviderConnectionController,
         ProviderModelsController,
         ProviderLocalModelsController,

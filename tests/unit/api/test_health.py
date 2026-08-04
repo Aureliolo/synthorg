@@ -346,6 +346,7 @@ class TestResolveMemoryHealth:
         scheduler: object = object(),
         configured: str = "sqlvector",
         embedder_ref: str | None = "test-provider/embed-model",
+        embedder_failure: str | None = None,
     ) -> AppState:
         app_state = MagicMock(spec=AppState)
         app_state.config = SimpleNamespace(memory=SimpleNamespace(backend=configured))
@@ -353,6 +354,7 @@ class TestResolveMemoryHealth:
             backend=backend,
             consolidation_scheduler=scheduler,
             embedder_ref=embedder_ref,
+            embedder_failure=embedder_failure,
         )
         return app_state
 
@@ -405,6 +407,29 @@ class TestResolveMemoryHealth:
     async def test_unwired_backend_is_off(self) -> None:
         result = await resolve_memory_state(self._app_state(backend=None))
         assert result.state is MemoryState.OFF
+
+    async def test_unwired_backend_without_a_reason_advises_choosing_a_model(
+        self,
+    ) -> None:
+        result = await resolve_memory_state(self._app_state(backend=None))
+        assert result.detail is not None
+        assert "no embedding model resolved" in result.detail
+
+    async def test_the_recorded_failure_replaces_the_generic_advice(self) -> None:
+        # Telling an operator who HAS chosen a model to choose one sends them
+        # to a setting that is not the problem; the recorded reason is.
+        result = await resolve_memory_state(
+            self._app_state(
+                backend=None,
+                embedder_failure=(
+                    "the endpoint at http://example.invalid did not answer"
+                ),
+            )
+        )
+
+        assert result.detail is not None
+        assert "http://example.invalid" in result.detail
+        assert "no embedding model resolved" not in result.detail
 
 
 @pytest.mark.unit

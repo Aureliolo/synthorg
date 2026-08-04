@@ -31,20 +31,17 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
-from synthorg.providers._probe_request import execute_probe
+from synthorg.providers._probe_request import execute_probe, resolve_probe_api_key
 from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
-from synthorg.providers.enums import AuthType
-from synthorg.providers.errors import (
-    ProviderLifecycleConflictError,
-    ProviderValidationError,
-)
-from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
+from synthorg.providers.errors import ProviderLifecycleConflictError
+from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     build_ping_url,
     probe_url_is_current,
 )
 from synthorg.providers.health_prober_targets import resolve_probe_target
+from synthorg.providers.health_recording import record_call_outcome
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
@@ -134,32 +131,6 @@ class ProviderHealthProber:
         # per cycle. The flag clears on the first successful resolution
         # so a re-failure surfaces a fresh warning.
         self._resolve_failed_logged: bool = False
-
-    async def _resolve_probe_api_key(self, config: ProviderConfig) -> str | None:
-        """Resolve a provider's api_key from its catalog connection.
-
-        Non-API-key providers return ``None``. An ``API_KEY`` provider whose
-        key is unresolvable raises rather than probing unauthenticated.
-
-        Returns:
-            The resolved api_key, or ``None`` when unresolvable by design.
-
-        Raises:
-            ProviderValidationError: When an ``API_KEY`` key is unresolvable.
-        """
-        # Gate by auth type: a non-API_KEY provider needs no key, so a
-        # failing/stale-connection lookup must not skip it.
-        if config.auth_type is not AuthType.API_KEY:
-            return None
-        catalog = self._connection_catalog
-        key: str | None = None
-        if config.connection_name is not None and catalog is not None:
-            creds = await catalog.get_credentials(config.connection_name)
-            key = creds.get("api_key")
-        if key is None:
-            msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
-            raise ProviderValidationError(msg)
-        return key
 
     async def start(self) -> None:
         """Start the background probe loop.
@@ -563,7 +534,7 @@ class ProviderHealthProber:
             ollama_port=ollama_port,
         )
         auth_type = str(config.auth_type)
-        api_key = await self._resolve_probe_api_key(config)
+        api_key = await resolve_probe_api_key(config, self._connection_catalog)
         headers = build_auth_headers(auth_type, api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
@@ -590,25 +561,46 @@ class ProviderHealthProber:
             )
             return
 
-        record = ProviderHealthRecord(
-            provider_name=name,
-            timestamp=self._clock.now(),
+        latency = await record_call_outcome(
+            self._health_tracker,
+            name,
+            clock=self._clock,
             success=success,
-            response_time_ms=round(elapsed_ms, 1),
+            response_time_ms=elapsed_ms,
             error_message=error_msg,
         )
-        await self._health_tracker.record(record)
-
         if success:
             logger.info(
-                PROVIDER_HEALTH_PROBE_SUCCESS,
-                provider=name,
-                latency_ms=round(elapsed_ms, 1),
+                PROVIDER_HEALTH_PROBE_SUCCESS, provider=name, latency_ms=latency
             )
         else:
             logger.warning(
                 PROVIDER_HEALTH_PROBE_FAILED,
                 provider=name,
                 error=error_msg,
-                latency_ms=round(elapsed_ms, 1),
+                latency_ms=latency,
             )
+
+    async def record_outcome(
+        self,
+        name: str,
+        *,
+        success: bool,
+        response_time_ms: float,
+        error_message: str | None = None,
+    ) -> None:
+        """Record an observed call outcome against *name*'s health.
+
+        Serves a caller that made its own call rather than asking for a
+        probe: a connection test reaches a provider with no ``base_url``,
+        which :meth:`probe_provider` skips as ineligible. That caller
+        reports the outcome itself, so nothing is logged here.
+        """
+        _ = await record_call_outcome(
+            self._health_tracker,
+            name,
+            clock=self._clock,
+            success=success,
+            response_time_ms=response_time_ms,
+            error_message=error_message,
+        )
