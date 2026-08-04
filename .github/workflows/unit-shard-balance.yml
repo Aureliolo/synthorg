@@ -51,15 +51,18 @@ jobs:
 
           # By filename, not display name: the display name is prose and has
           # already been rewritten once (ci.yml -> verify-backend.yml,
-          # "CI" -> "Verify - Backend"), which would silently return no runs
-          # and leave this reporting "nothing to measure" forever.
+          # "CI" -> "Verify - Backend"). A filename that no longer resolves is
+          # a 404 that `set -e` turns into a failed step; an empty list is the
+          # different case where the workflow exists but no completed run on
+          # main does. Both are a failure to measure rather than a verdict
+          # about drift, so neither may report one.
           run_ids=$(gh run list --workflow verify-backend.yml --branch main \
             --status completed --limit "$RUN_WINDOW" \
             --json databaseId --jq '.[].databaseId')
           if [ -z "$run_ids" ]; then
-            echo "no completed CI run on main; nothing to measure"
-            echo "drifted=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "no completed verify-backend.yml run on main; nothing to" >&2
+            echo "measure a shard spread from" >&2
+            exit 1
           fi
 
           # `--slurp` folds `--paginate`'s one-document-per-page output into a
@@ -141,9 +144,9 @@ jobs:
     needs: check-balance
     # `== 'failure'` alone: the drift issue above is filed by the job itself
     # on what it measured, so this sink is for the measurement breaking --
-    # a gh API error, an unparseable timings document, or a whole window of
-    # runs with no shard job to read. A run that never finished measured
-    # nothing at all and goes to report-stalled.
+    # a gh API error, an unparseable timings document, no completed run to
+    # read at all, or a whole window of runs with no shard job in them. A run
+    # that never finished measured nothing at all and goes to report-stalled.
     if: >-
       always()
       && github.event_name == 'schedule'
