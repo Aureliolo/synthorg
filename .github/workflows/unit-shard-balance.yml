@@ -60,19 +60,18 @@ jobs:
             exit 0
           fi
 
-          # Durations come from the job start/finish stamps rather than the
-          # log, so this never has to parse pytest output. `--slurp` because
-          # `--paginate` emits one document per page: a run with more jobs
-          # than one page holds would otherwise produce several arrays, and
-          # the `--argjson` below would reject the resulting ratio.
+          # `--slurp` folds `--paginate`'s one-document-per-page output into a
+          # single array, which the `--argjson` ratio below needs, but gh
+          # refuses `--slurp` alongside `--jq`, so the selection runs in its
+          # own jq rather than inline.
           timings=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
-            --paginate --slurp --jq '
-              [ .[] | .jobs[]
-                | select(.name | startswith("Test Unit (shard"))
-                | select(.started_at != null and .completed_at != null)
-                | { name: .name,
-                    seconds: (((.completed_at | fromdateiso8601)
-                             - (.started_at | fromdateiso8601))) } ]')
+            --paginate --slurp \
+            | jq '[ .[] | .jobs[]
+                    | select(.name | startswith("Test Unit (shard"))
+                    | select(.started_at != null and .completed_at != null)
+                    | { name: .name,
+                        seconds: (((.completed_at | fromdateiso8601)
+                                 - (.started_at | fromdateiso8601))) } ]')
 
           count=$(jq 'length' <<<"$timings")
           if [ "$count" -lt 2 ]; then
