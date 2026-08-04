@@ -26,8 +26,8 @@
 #   - On exit 0: prints captured output, exits 0.
 #   - On exit non-0:
 #     * (image mode only) Output contains `createLogEntryConflict` ->
-#       already signed, emit `::notice::` and exit 0 (preserves the
-#       idempotency branch the inline shell blocks used to carry).
+#       already signed, emit `::notice::` and exit 0 (a re-sign that lost
+#       the Rekor createLogEntry race is success, not failure).
 #     * Output matches the shared transient regex sourced from
 #       docker_push_with_retry.sh (single source of truth for
 #       "is this a registry / Rekor / Fulcio flake?") -> warn + sleep +
@@ -69,6 +69,7 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # `bash "$RETRY" ...`; a bare `"$SCRIPT_DIR/..."` would fail
 # "Permission denied" on the Linux runner.
 TRANSIENT_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-re)"
+AMBIGUOUS_DENIAL_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-ambiguous-denial-re)"
 # Surface a drift in the sibling helper loudly: an empty regex disables
 # the transient classifier (every error becomes terminal at line ~98),
 # so without this warning a flurry of "non-transient" cosign failures
@@ -121,18 +122,25 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
   # the 64 KB pipe buffer) makes the early-exiting `grep -q` close the
   # pipe while printf is still writing, so printf takes EPIPE and the
-  # pipeline inherits its non-zero status -- the match is masked and a
+  # pipeline inherits its non-zero status: the match is masked and a
   # transient error is misclassified as terminal. A here-string is not a
   # pipeline, so the status is purely grep's.
   if [ "$MODE" = "image" ] && grep -q 'createLogEntryConflict' <<<"$out"; then
     printf '%s\n' "$out"
-    echo "::notice::Image ${SUBJECT} already signed -- skipping"
+    echo "::notice::Image ${SUBJECT} already signed: skipping"
     exit 0
   fi
 
+  # A token-endpoint denial that survived the whole ladder gets named: see
+  # the sibling helper's exhaustion branch for why the generic line is not
+  # enough on its own.
   if [ "$i" -eq "$ATTEMPTS" ]; then
     printf '%s\n' "$out"
-    echo "::error::${ACTION} ${SUBJECT} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
+    if [[ -n "$AMBIGUOUS_DENIAL_RE" ]] && grep -qiE "$AMBIGUOUS_DENIAL_RE" <<<"$out"; then
+      echo "::error::${ACTION} ${SUBJECT} failed after ${ATTEMPTS} attempts (last exit ${rc}): GHCR refused to mint a token every time. Sustained throttling and a repository the credential cannot reach both present this way, so check the package exists and the workflow grants packages: write before assuming an outage." >&2
+    else
+      echo "::error::${ACTION} ${SUBJECT} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
+    fi
     exit "$rc"
   fi
 
@@ -143,7 +151,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Grep a here-string, not `printf "$out" | grep -qi`: see the
   # idempotency branch above. A GHCR 5xx HTML error body overruns the
   # 64 KB pipe buffer, so the piped form takes EPIPE on the early
-  # `grep -q` exit and `pipefail` masks the match -- which is exactly
+  # `grep -q` exit and `pipefail` masks the match, which is exactly
   # how a transient `502 Bad Gateway` got misclassified as terminal and
   # left an image unsigned.
   if [[ -n "$TRANSIENT_RE" ]] && grep -qiE "$TRANSIENT_RE" <<<"$out"; then
@@ -156,9 +164,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
 
   # Non-transient: surface output and bubble up immediately.
   # Repository-level auth denials, malformed digests, Rekor schema
-  # rejections, etc. will never improve on a retry. A denial from GHCR's
-  # token endpoint is the exception and is classified above, because the
-  # registry reuses that response for throttling.
+  # rejections, etc. will never improve on a retry.
   printf '%s\n' "$out"
   echo "::error::${ACTION} ${SUBJECT} failed with non-transient error (exit ${rc}); not retrying" >&2
   exit "$rc"
