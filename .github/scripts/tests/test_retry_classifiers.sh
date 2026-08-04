@@ -221,6 +221,21 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
+# Exhausting the ladder on this pattern must name it. The generic
+# exhaustion line is indistinguishable from an outage, and the retry only
+# exists because the response is ambiguous, so the terminal message has to
+# carry that ambiguity to whoever reads the annotation panel. Asserted
+# separately from the retry above because they are different defects: a
+# lost retry and a lost diagnostic fail for different reasons, and each
+# helper owns its own exhaustion branch, so neither one's assertion covers
+# the other.
+if grep -q 'refused to mint a token every time' <<<"$out"; then
+  pass "docker_push names the ambiguity when a token denial exhausts the ladder"
+else
+  fail "docker_push fell back to the generic exhaustion message"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
 cat >"$STUB_DIR/cosign" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$GHCR_TOKEN_DENIED_MSG"
@@ -239,10 +254,8 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
-# Exhausting the ladder on this pattern must name it. The generic
-# exhaustion line is indistinguishable from an outage, and the retry only
-# exists because the response is ambiguous, so the terminal message has to
-# carry that ambiguity to whoever reads the annotation panel.
+# The cosign helper's own exhaustion branch, held to the same bar; see the
+# docker_push case above for why the generic line is not enough.
 if grep -q 'refused to mint a token every time' <<<"$out"; then
   pass "cosign_sign names the ambiguity when a token denial exhausts the ladder"
 else
