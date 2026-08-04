@@ -16,7 +16,8 @@ from collections.abc import Awaitable
 from typing import Protocol
 
 from synthorg.core.clock import Clock
-from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
+from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health_tracker import ProviderHealthTracker
 
 
 async def record_call_outcome(

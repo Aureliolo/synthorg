@@ -15,10 +15,8 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import AuthenticationError
-from synthorg.providers.health import (
-    ProviderHealthRecord,
-    ProviderHealthTracker,
-)
+from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import LoopAsyncClient

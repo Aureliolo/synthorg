@@ -15,7 +15,7 @@ from synthorg.api.lifecycle_helpers.settings_dependent_services import (
 from synthorg.api.state import AppState
 from synthorg.infrastructure.services import ProviderReadService, SettingsReadService
 from synthorg.infrastructure.state import FacadesStateSlice
-from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice

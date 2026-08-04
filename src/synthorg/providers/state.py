@@ -18,7 +18,7 @@ from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
     resolve_embedding_endpoint,
 )
-from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.management.audit_service import (
     ProviderAuditService,
 )

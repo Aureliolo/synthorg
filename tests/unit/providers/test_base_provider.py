@@ -26,8 +26,8 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
-from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_recording import outcome_recorder_for
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,

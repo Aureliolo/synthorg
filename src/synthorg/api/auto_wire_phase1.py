@@ -30,7 +30,7 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers._driver_binding import bind_health_recorders
 from synthorg.providers.cassette import CassetteConfig
-from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.distributed_protocols import (
     DistributedBackendServicesHandle,

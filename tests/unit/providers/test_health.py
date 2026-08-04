@@ -15,8 +15,8 @@ from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthStatus,
     ProviderHealthSummary,
-    ProviderHealthTracker,
 )
+from synthorg.providers.health_tracker import ProviderHealthTracker
 
 
 def _make_record(

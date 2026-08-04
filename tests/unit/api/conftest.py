@@ -46,7 +46,7 @@ from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.settings.registry import get_registry

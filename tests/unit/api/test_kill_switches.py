@@ -157,7 +157,7 @@ class TestHealthProberKillSwitch:
 
     @staticmethod
     def _make_prober(resolver: AsyncMock) -> ProviderHealthProber:
-        from synthorg.providers.health import ProviderHealthTracker
+        from synthorg.providers.health_tracker import ProviderHealthTracker
 
         tracker = ProviderHealthTracker()
         return ProviderHealthProber(

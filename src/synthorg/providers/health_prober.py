@@ -40,7 +40,6 @@ from synthorg.observability.events.provider import (
 from synthorg.providers._probe_request import execute_probe, resolve_probe_api_key
 from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
 from synthorg.providers.errors import ProviderLifecycleConflictError
-from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     ping_identity,
@@ -48,6 +47,7 @@ from synthorg.providers.health_prober_helpers import (
 )
 from synthorg.providers.health_prober_targets import resolve_probe_target
 from synthorg.providers.health_recording import record_call_outcome
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk

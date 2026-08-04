@@ -10,8 +10,8 @@ rather than growing a wiring phase.
 
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_recording import outcome_recorder_for
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 
 

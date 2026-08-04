@@ -26,10 +26,8 @@ from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.health import (
-    ProviderHealthRecord,
-    ProviderHealthTracker,
-)
+from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
