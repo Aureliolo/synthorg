@@ -26,6 +26,15 @@ from tests._shared.initiative_doubles import RecordingReplanTrigger
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
+from tests._shared.model_binding import (
+    TEST_MODEL_ID,
+    TEST_PROVIDER,
+    bound_model,
+    bound_ref,
+    connections,
+    model_ref_resolver,
+    one_connection,
+)
 from tests._shared.process_doubles import FakeCommandResult, FakeProcess
 from tests._shared.recall import recall_request
 from tests._shared.settings_fake import FakeSettingsService
@@ -37,6 +46,8 @@ from tests._shared.work_pipeline import (
 
 __all__ = [
     "FIXTURE_SOURCE",
+    "TEST_MODEL_ID",
+    "TEST_PROVIDER",
     "AsgiDict",
     "CapturingErrorLogger",
     "FakeClock",
@@ -52,12 +63,17 @@ __all__ = [
     "StubWorkPipeline",
     "as_pk",
     "as_uuid",
+    "bound_model",
+    "bound_ref",
     "build_test_app",
     "coerce_id",
+    "connections",
     "make_app_state",
     "make_in_memory_catalog",
     "make_pipeline_result",
     "mock_of",
+    "model_ref_resolver",
+    "one_connection",
     "recall_request",
     "resolve_bash",
     "sid",

@@ -17,7 +17,7 @@ from synthorg.hr.training.service import TrainingService
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import HR_TRAINING_CONFIG_INVALID
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.model_binding import BoundCompletion
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
@@ -66,7 +66,7 @@ def build_training_service(
     registry: AgentRegistryService,
     approval_store: ApprovalStoreProtocol,
     tool_tracker: ToolInvocationTracker,
-    provider: CompletionProvider | None = None,
+    curation_binding: BoundCompletion | None = None,
 ) -> TrainingService:
     """Build a fully wired ``TrainingService`` from configuration.
 
@@ -77,7 +77,8 @@ def build_training_service(
         registry: Agent registry.
         approval_store: Approval store for review gate.
         tool_tracker: Tool invocation tracker.
-        provider: LLM completion provider (optional).
+        curation_binding: Connection + model the ``llm_curated`` strategy
+            dispatches on; ``None`` degrades it to relevance scoring.
 
     Returns:
         Configured training service.
@@ -92,7 +93,7 @@ def build_training_service(
         memory_backend=memory_backend,
         tool_tracker=tool_tracker,
     )
-    curation = _build_curation(config, provider=provider)
+    curation = _build_curation(config, binding=curation_binding)
     guards = _build_guards(config, approval_store=approval_store)
 
     return TrainingService(
@@ -291,14 +292,14 @@ def _build_extractors(
 def _build_relevance_curation(
     config: TrainingConfig,
     *,
-    provider: CompletionProvider | None,
+    binding: BoundCompletion | None,
 ) -> CurationStrategy:
     """Build relevance curation.
 
     Returns:
         Result of type ``CurationStrategy``.
     """
-    del provider  # heuristic curation does not need an LLM
+    del binding  # heuristic curation does not need an LLM
     from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
         RelevanceScoreCuration,
     )
@@ -314,7 +315,7 @@ def _build_relevance_curation(
 def _build_llm_curation(
     config: TrainingConfig,
     *,
-    provider: CompletionProvider | None,
+    binding: BoundCompletion | None,
 ) -> CurationStrategy:
     """Build llm curation.
 
@@ -330,7 +331,7 @@ def _build_llm_curation(
         field_name="curation_strategy_config.top_k",
         default=50,
     )
-    return LLMCurated(provider=provider, top_k=top_k)
+    return LLMCurated(binding=binding, top_k=top_k)
 
 
 _CURATION_REGISTRY: StrategyRegistry[CurationStrategy] = StrategyRegistry(
@@ -345,7 +346,7 @@ _CURATION_REGISTRY: StrategyRegistry[CurationStrategy] = StrategyRegistry(
 def _build_curation(
     config: TrainingConfig,
     *,
-    provider: CompletionProvider | None,
+    binding: BoundCompletion | None,
 ) -> CurationStrategy:
     """Build curation strategy from config.
 
@@ -355,7 +356,7 @@ def _build_curation(
     return _CURATION_REGISTRY.build(
         str(config.curation_strategy_type),
         config,
-        provider=provider,
+        binding=binding,
     )
 
 

@@ -47,17 +47,20 @@ from synthorg.observability.events.meta import (
     META_CODE_SCOPE_VIOLATION,
     META_PROPOSAL_GENERATED,
 )
-from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.errors import ProviderError
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.bound_model import resolve_bound_model_live
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_model_with_fallback
-from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.kill_switch import require_configured_model
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
 # Confidence for an autonomous code-modification proposal.
 _CONFIDENCE_CODE_MODIFICATION: Final[float] = 0.5
+
+_MODEL_KEY: Final[str] = "code_modification_model"
 
 _SYSTEM_PROMPT = """\
 You are a framework improvement analyst for SynthOrg, a framework \
@@ -100,13 +103,15 @@ class CodeModificationStrategy:
 
     Args:
         config: Self-improvement configuration.
-        provider: Completion provider for LLM calls.
+        connections: Resolves the connection the code-modification model
+            names, so the call lands on the operator's chosen provider
+            rather than whichever client was injected at construction.
         scope_validator: Validates proposed file paths.
-        config_resolver: Optional resolver for the live
-            ``self_improvement.code_modification_model`` read. When ``None``
-            (test harness, anonymous boot) the model falls back to the baked
-            ``code_modification.llm_model``. The capability itself stays
-            restart-bound; only the model identifier is hot.
+        config_resolver: Resolver for the live
+            ``self_improvement.code_modification_model`` read, re-read per
+            proposal. Unset, or ``None`` here, refuses the call rather than
+            generating code on a connection nobody chose; the capability
+            itself stays restart-bound, only the assignment is hot.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.META_CODE_MODIFICATION
@@ -120,14 +125,14 @@ class CodeModificationStrategy:
         self,
         *,
         config: SelfImprovementConfig,
-        provider: BaseCompletionProvider,
+        connections: ConnectionSelector,
         scope_validator: ScopeValidator,
         cost_tracker: CostTrackerProtocol | None = None,
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker
-        self._provider = provider
+        self._connections = connections
         self._scope_validator = scope_validator
         self._code_config = config.code_modification
         self._config_resolver = config_resolver
@@ -328,20 +333,25 @@ class CodeModificationStrategy:
             temperature=self._code_config.temperature,
             max_tokens=self._code_config.max_tokens,
         )
-        model = await resolve_model_with_fallback(
-            resolver=self._config_resolver,
+        model = require_configured_model(
+            await resolve_bound_model_live(
+                self._config_resolver,
+                namespace=SettingNamespace.SELF_IMPROVEMENT,
+                key=_MODEL_KEY,
+                unset_event=META_CODE_GEN_FAILED,
+            ),
             namespace=SettingNamespace.SELF_IMPROVEMENT,
-            key="code_modification_model",
-            fallback=str(self._code_config.llm_model),
+            key=_MODEL_KEY,
+            feature_label="Code modification",
         )
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
-            response = await self._provider.complete(
+            response = await self._connections(model.provider).complete(
                 messages=messages,
-                model=model,
+                model=model.model_id,
                 config=config,
             )
         return response.content

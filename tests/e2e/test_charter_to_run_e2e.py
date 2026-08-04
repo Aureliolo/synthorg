@@ -80,6 +80,7 @@ from tests._shared import (
 from tests._shared.conversation_fakes import (
     FakeConversationRepo as _FakeConversationRepo,
 )
+from tests._shared.model_binding import bound_ref, one_connection
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -487,15 +488,17 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     forecast_repo = _FakeForecastRepo()
     service = CharterInterviewService(
         strategy=LLMCharterInterviewer(
-            provider=ScriptedProvider(
-                responses=[
-                    make_text_response(_Q1),
-                    make_text_response(_Q2),
-                    make_text_response(_DRAFT),
-                ]
+            connections=one_connection(
+                ScriptedProvider(
+                    responses=[
+                        make_text_response(_Q1),
+                        make_text_response(_Q2),
+                        make_text_response(_DRAFT),
+                    ]
+                )
             ),
         ),
-        config=CharterConfig(interview_model=NotBlankStr("test-model-001")),
+        config=CharterConfig(interview_model=NotBlankStr(bound_ref("test-model-001"))),
         conversation_repo=conversation_repo,
         turn_repo=_FakeTurnRepo(),
         charter_repo=charter_repo,

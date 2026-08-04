@@ -49,10 +49,12 @@ def _write(root: Path, relpath: str, body: str) -> None:
 
 
 def test_clean_tree_passes(tmp_path: Path) -> None:
+    # Resolution by explicit name is what the gate exists to protect: it is
+    # the only way to reach a connection, so it must never be flagged.
     _write(
         tmp_path,
         "clean.py",
-        "def f(r):\n    return r.default_provider()\n",
+        "def f(r, ref):\n    return r.get(ref.provider)\n",
     )
     assert _load().main(["--repo-root", str(tmp_path)]) == 0
 
@@ -117,6 +119,39 @@ def test_annotated_bound_name_index_is_flagged(tmp_path: Path) -> None:
 
 def test_resolve_for_model_reference_is_flagged(tmp_path: Path) -> None:
     _write(tmp_path, "d.py", "def f(r):\n    return r.resolve_for_model('m')\n")
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+@pytest.mark.parametrize(
+    "accessor",
+    [
+        "default_provider",
+        "default_provider_name",
+        "default_provider_resolved_name",
+        "bind_default_provider",
+    ],
+)
+def test_removed_default_provider_surface_is_flagged(
+    tmp_path: Path, accessor: str
+) -> None:
+    """Reintroducing the shared house connection is itself an auto-pick.
+
+    A connection carries its own credentials, endpoint and quota, so a
+    registry-level default hands one consumer's key to another. The whole
+    accessor family stays gone, not just the picking of it.
+    """
+    _write(tmp_path, "default.py", f"def f(r):\n    return r.{accessor}()\n")
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_default_provider_settings_read_is_flagged(tmp_path: Path) -> None:
+    """The settings key is gone too: nothing may read a house default back."""
+    _write(
+        tmp_path,
+        "setting.py",
+        "async def f(r):\n"
+        '    return await r.get_str("providers", "default_provider")\n',
+    )
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
 
 

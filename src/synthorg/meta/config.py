@@ -170,14 +170,15 @@ class PromptTuningConfig(BaseModel):
 class CodeModificationConfig(BaseModel):
     """Configuration for code modification strategy behavior.
 
-    Controls which source paths the strategy may propose changes to,
-    the LLM model used for code generation, and CI validation settings.
+    Controls which source paths the strategy may propose changes to, and the
+    CI validation settings. The generation model is not here: it is the
+    operator's ``self_improvement.code_modification_model`` pair, re-read per
+    proposal.
 
     Attributes:
         allowed_paths: Glob patterns for paths the strategy may modify.
         forbidden_paths: Glob patterns for paths the strategy must not
             touch (security, auth, compliance).
-        llm_model: LLM model identifier for code generation.
         temperature: Sampling temperature (lower = more deterministic).
         max_tokens: Token budget for code generation responses.
         max_files_per_proposal: Maximum files changed per proposal.
@@ -209,11 +210,6 @@ class CodeModificationConfig(BaseModel):
         NotBlankStr("src/synthorg/core/security/*"),
         NotBlankStr("src/synthorg/auth/*"),
         NotBlankStr("src/synthorg/api/middleware/*"),
-    )
-    llm_model: NotBlankStr = Field(
-        # lint-allow: hardcoded-model-default -- internal code-modification default
-        default=NotBlankStr("example-large-001"),
-        description="Model for code generation LLM calls",
     )
     temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     max_tokens: int = Field(default=8000, ge=100)
@@ -328,7 +324,6 @@ class SelfImprovementConfig(BaseModel):
             telemetry (opt-in, disabled by default).
         toolsmith: Self-extending toolkit configuration
             (gap thresholds, sandbox policy, validation).
-        analysis_model: LLM model identifier for proposal analysis.
         analysis_temperature: Sampling temperature for analysis.
         analysis_max_tokens: Token budget for analysis responses.
     """
@@ -370,11 +365,6 @@ class SelfImprovementConfig(BaseModel):
 
     toolsmith: ToolsmithConfig = Field(default_factory=ToolsmithConfig)
 
-    analysis_model: NotBlankStr = Field(
-        # lint-allow: hardcoded-model-default -- internal analysis default
-        default=NotBlankStr("example-small-001"),
-        description="Model for proposal analysis LLM calls",
-    )
     analysis_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     analysis_max_tokens: int = Field(default=4000, ge=100)
 

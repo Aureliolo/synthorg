@@ -22,8 +22,6 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.settings.bound_model import resolve_bound_model
-from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -72,15 +70,13 @@ def _build_toolsmith_runtime(
     app_state: AppState,
     si_config: SelfImprovementConfig,
     provider_registry: ProviderRegistry,
-    model: ModelRef | None,
     persistence: PersistenceBackend,
     approval_store: ApprovalStoreProtocol | None,
     cost_tracker: CostTrackerProtocol | None,
-) -> ToolsmithRuntime | None:
-    """Resolve dependencies and build the toolsmith runtime, or None.
+) -> ToolsmithRuntime:
+    """Resolve dependencies and build the toolsmith runtime.
 
-    Returns ``None`` when no provider is registered (nothing to author
-    with). The sandbox resolver maps each blueprint's declared backend to
+    The sandbox resolver maps each blueprint's declared backend to
     a concrete sandbox built from the default sandboxing config, so a
     Docker-declared authored tool runs under Docker and a subprocess one
     under subprocess. The sandbox workspace pins to the app's resolved
@@ -95,7 +91,7 @@ def _build_toolsmith_runtime(
     end-to-end.
 
     Returns:
-        The built toolsmith runtime, or ``None`` when no provider is registered.
+        The built toolsmith runtime.
     """
     from synthorg.engine.workspace.state import (  # noqa: PLC0415
         agent_workspace_root_of,
@@ -109,27 +105,6 @@ def _build_toolsmith_runtime(
         SandboxingConfig,
     )
 
-    # The toolsmith names its own connection. There is no shared system
-    # provider to inherit: a provider is a registered connection with its own
-    # credentials and endpoint, so the same model id reached through two of
-    # them is two different calls. Unbound, or bound to a connection that is
-    # not registered, leaves the toolsmith unwired rather than guessing.
-    if model is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="toolsmith",
-            note="toolsmith model unset; unwired until a provider + model is chosen",
-        )
-        return None
-    if model.provider not in provider_registry:
-        logger.warning(
-            API_APP_STARTUP,
-            service="toolsmith",
-            note="configured toolsmith provider not registered; stays unwired",
-            provider_name=model.provider,
-        )
-        return None
-    provider = provider_registry.get(model.provider)
     repo = _build_dynamic_tool_repo(persistence)
 
     sandboxing = SandboxingConfig()
@@ -146,9 +121,16 @@ def _build_toolsmith_runtime(
         si_config.toolsmith.validation.golden_scorecard_provider
     )
 
+    # The toolsmith names its own connection at dispatch time, from the
+    # operator's ``meta.toolsmith_model`` pair. A provider is a registered
+    # connection with its own credentials and endpoint, so the same model id
+    # reached through two of them is two different calls, and there is no
+    # shared provider to inherit. Handing over the whole registry keeps the
+    # assignment live: choosing a model later arms authoring on the next gap
+    # rather than the next boot, and an unset one raises where it is used.
     return build_toolsmith(
         si_config=si_config,
-        provider=provider,
+        connections=provider_registry.get,
         repo=repo,
         sandbox_resolver=_resolve_sandbox,
         scorecard_provider=scorecard_provider,
@@ -305,12 +287,6 @@ async def wire_toolsmith(
             app_state=app_state,
             si_config=si_config,
             provider_registry=provider_registry,
-            model=await resolve_bound_model(
-                app_state,
-                namespace="meta",
-                key="toolsmith_model",
-                unset_event=API_APP_STARTUP,
-            ),
             persistence=persistence,
             approval_store=approval_store,
             cost_tracker=cost_tracker,
@@ -324,8 +300,6 @@ async def wire_toolsmith(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
-    if runtime is None:
         return
     # Install the layered MCP surface BEFORE the once-only AppState
     # mutation. ``set_toolsmith_service`` cannot be replayed on

@@ -26,7 +26,8 @@ from synthorg.communication.conflict_resolution.protocol import JudgeEvaluator
 from synthorg.config.schema import RootConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -43,16 +44,16 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
     escalation_store: EscalationQueueStore,
     escalation_processor: DecisionProcessor,
     escalation_registry: PendingFuturesRegistry,
-    provider_registry: ProviderRegistry | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> None:
     """Build + install the conflict-resolution service on the comms slice.
 
     The hierarchy is built from the boot-time company snapshot (same
     lifecycle as the escalation wiring), and the human resolver reuses the
-    escalation store/processor/registry already wired. When a provider is
-    registered, an :class:`LlmJudgeEvaluator` is built and shared by the
-    debate and hybrid resolvers so their auto-resolution arms are live.
+    escalation store/processor/registry already wired. An
+    :class:`LlmJudgeEvaluator` is shared by the debate and hybrid resolvers
+    so their auto-resolution arms are live.
     """
     from synthorg.communication.conflict_resolution.factory import (  # noqa: PLC0415
         build_conflict_resolution_service,
@@ -76,7 +77,9 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
         escalation_registry=escalation_registry,
         event_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         message_bus=message_bus,
-        judge_evaluator=_build_judge_evaluator(provider_registry, cost_tracker),
+        judge_evaluator=_build_judge_evaluator(
+            app_state, cost_tracker, config_resolver
+        ),
     )
     app_state.wire(
         CommunicationStateSlice,
@@ -85,52 +88,46 @@ def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collabora
 
 
 def _build_judge_evaluator(
-    provider_registry: ProviderRegistry | None,
+    app_state: AppState,
     cost_tracker: CostTrackerProtocol | None,
-) -> JudgeEvaluator | None:
-    """Build the LLM judge on the explicit default system provider.
+    config_resolver: ConfigResolverProtocol | None,
+) -> JudgeEvaluator:
+    """Build the LLM judge over its own operator-chosen connection.
 
-    The judge is a system actor, not a company agent, and has no dedicated
-    per-feature model setting, so it dispatches on the explicit default system
-    provider (:meth:`ProviderRegistry.default_provider`) with the
-    provider-agnostic ``CONFLICT_JUDGE`` tier archetype as its model (the
-    driver maps the archetype to a real model by tier). There is no
-    first-registered fallback: when the default is ambiguous (several
-    providers, none chosen) or unset, the judge stays unwired and the
-    debate/hybrid resolvers fall back to authority.
+    The judge names its pair through ``communication.conflict_judge_model``
+    and re-reads it per judgement, so what it holds is a *selector* over the
+    live registry rather than one client captured at boot: an operator
+    reassigning the judge arms the next arbitration instead of the next
+    boot, and a provider reload that swaps the registry does not strand it
+    on a dead one. An unset pair, or a registry that is not wired yet,
+    raises at the call, where the debate/hybrid resolvers fall back to
+    authority.
 
     Returns:
-        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no default
-        provider is resolvable.
+        A wired :class:`LlmJudgeEvaluator`.
     """
-    if provider_registry is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="conflict_judge",
-            note="no provider registry wired; conflict judge stays unwired",
-        )
-        return None
     from synthorg.communication.conflict_resolution.llm_judge_evaluator import (  # noqa: PLC0415
         LlmJudgeEvaluator,
     )
-    from synthorg.llm.model_pins import pin_for  # noqa: PLC0415
-    from synthorg.llm.prompt_purpose import PromptPurposeId  # noqa: PLC0415
+    from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
 
-    provider = provider_registry.default_provider()
-    if provider is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="conflict_judge",
-            note=(
-                "no default system provider resolvable; conflict judge stays "
-                "unwired and debate/hybrid resolvers fall back to authority"
-            ),
-        )
-        return None
+    def _connection(name: str) -> CompletionProvider:
+        """Resolve *name* against the registry wired right now.
+
+        Returns:
+            The registered completion client.
+        """
+        return provider_registry_of(app_state).get(name)
+
+    logger.info(
+        API_APP_STARTUP,
+        service="conflict_judge",
+        note="judge resolves its (provider, model) pair per judgement",
+    )
     return LlmJudgeEvaluator(
-        provider=provider,
-        model=pin_for(PromptPurposeId.CONFLICT_JUDGE).model,
+        connections=_connection,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
 
 

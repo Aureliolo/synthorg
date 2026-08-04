@@ -1,9 +1,10 @@
 """Tests for evolution factory assembly."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.config import (
     EvolutionConfig,
     ProposerConfig,
@@ -13,14 +14,17 @@ from synthorg.engine.evolution.factory import build_evolution_service
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.model_binding import BoundCompletion
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.versioning.service import VersioningService
-from tests._shared import as_uuid
+from tests._shared import as_uuid, mock_of
+from tests._shared.model_binding import TEST_MODEL_ID
 
 
 def _build_service(
     config: EvolutionConfig | None = None,
     *,
-    provider: MagicMock | None = None,
+    binding: BoundCompletion | None = None,
 ) -> EvolutionService:
     """Build a service from config with mock dependencies."""
     if config is None:
@@ -31,7 +35,7 @@ def _build_service(
         registry=AgentRegistryService(),
         versioning=VersioningService(repo),
         tracker=PerformanceTracker(),
-        provider=provider,
+        proposer_binding=binding,
     )
 
 
@@ -58,8 +62,8 @@ class TestBuildEvolutionService:
         assert isinstance(service, EvolutionService)
 
     @pytest.mark.unit
-    def test_composite_proposer_without_provider(self) -> None:
-        """Without a provider, falls back to self_report."""
+    def test_composite_proposer_without_binding(self) -> None:
+        """Without an operator-chosen pair, falls back to self_report."""
         config = EvolutionConfig(
             proposer=ProposerConfig(type="composite"),
         )
@@ -67,12 +71,17 @@ class TestBuildEvolutionService:
         assert isinstance(service, EvolutionService)
 
     @pytest.mark.unit
-    def test_separate_analyzer_with_provider(self) -> None:
+    def test_separate_analyzer_with_binding(self) -> None:
         config = EvolutionConfig(
             proposer=ProposerConfig(type="separate_analyzer"),
         )
-        provider = MagicMock()
-        service = _build_service(config, provider=provider)
+        binding = BoundCompletion(
+            provider=mock_of[CompletionProvider](
+                complete=AsyncMock(spec=CompletionProvider.complete),
+            ),
+            model=NotBlankStr(TEST_MODEL_ID),
+        )
+        service = _build_service(config, binding=binding)
         assert isinstance(service, EvolutionService)
 
 

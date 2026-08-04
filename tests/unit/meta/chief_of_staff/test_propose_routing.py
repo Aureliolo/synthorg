@@ -15,8 +15,8 @@ from synthorg.meta.chief_of_staff.responder import (
 )
 from synthorg.meta.chief_of_staff.routing import KeywordRoleRouter
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.registry import ProviderRegistry
 from tests._shared import mock_of
+from tests._shared.model_binding import bound_model, connections
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import (
     build_proposer,
@@ -168,27 +168,32 @@ class TestRoutingDisabled:
 
 class TestProviderResolution:
     def test_routed_responder_resolves_agent_provider(self) -> None:
-        default_provider = ScriptedProvider(responses=[])
         agent_provider = mock_of[BaseCompletionProvider]()
-        registry = ProviderRegistry({"cfo-provider": agent_provider})
         cfo = make_identity(name="Casey", role="CFO", provider="cfo-provider")
 
         resolved = resolve_responder_provider(
             responder_for_identity(cfo),
-            default=default_provider,
-            registry=registry,
+            connections=connections({"cfo-provider": agent_provider}),
         )
 
         assert resolved is agent_provider
 
-    def test_generic_responder_uses_default_provider(self) -> None:
-        default_provider = ScriptedProvider(responses=[])
-        registry = ProviderRegistry({"cfo-provider": mock_of[BaseCompletionProvider]()})
+    def test_generic_responder_resolves_its_own_connection(self) -> None:
+        # The generic responder names a connection too: there is no shared
+        # default to inherit, so its ``propose_model`` pair decides where the
+        # turn dispatches.
+        cos_provider = mock_of[BaseCompletionProvider]()
 
         resolved = resolve_responder_provider(
-            generic_responder(model=NotBlankStr("propose-model")),
-            default=default_provider,
-            registry=registry,
+            generic_responder(
+                model=bound_model("propose-model", provider="cos-provider")
+            ),
+            connections=connections(
+                {
+                    "cfo-provider": mock_of[BaseCompletionProvider](),
+                    "cos-provider": cos_provider,
+                }
+            ),
         )
 
-        assert resolved is default_provider
+        assert resolved is cos_provider

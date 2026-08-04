@@ -57,7 +57,6 @@ def _service(
     provider: CompletionProvider,
     memory_backend: MemoryBackend | None = None,
     registry: AgentRegistryService | None = None,
-    default_provider: CompletionProvider | None = None,
     config_resolver: ConfigResolver | None = None,
     provider_selector: ProviderSelector | None = None,
 ) -> ShipRetroCaptureService:
@@ -68,7 +67,6 @@ def _service(
         memory_backend=memory_backend or InMemoryBackend(),
         org_backend=org_backend,
         provider_selector=provider_selector or (lambda _identity: provider),
-        default_provider=default_provider,
         config_resolver=config_resolver,
         clock=FakeClock(),
     )
@@ -152,7 +150,6 @@ async def test_completed_objective_writes_org_and_agent_learnings() -> None:
         memory_backend=agent_memory,
         org_backend=org_backend,
         provider_selector=lambda _identity: provider,
-        default_provider=None,
         config_resolver=None,
         clock=FakeClock(),
     )
@@ -193,7 +190,6 @@ async def test_capture_skipped_when_already_captured() -> None:
         memory_backend=InMemoryBackend(),
         org_backend=org_backend,
         provider_selector=lambda _identity: provider,
-        default_provider=None,
         config_resolver=None,
         clock=FakeClock(),
     )
@@ -288,7 +284,6 @@ async def test_capture_skipped_when_no_provider() -> None:
     service = _service(
         org_backend=org_backend,
         provider=ScriptedProvider([make_text_response("unused")]),
-        default_provider=None,
         provider_selector=_select,
     )
 

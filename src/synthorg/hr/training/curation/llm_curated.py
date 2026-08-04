@@ -1,16 +1,16 @@
 """LLM-curated curation strategy.
 
-Opt-in strategy that uses a dedicated analyzer agent to review
-candidate items and select the most valuable subset. Falls back
-to RelevanceScoreCuration when no provider is available or when
-the provider call fails.
+Opt-in strategy that uses a dedicated analyzer agent to review candidate items
+and select the most valuable subset, dispatching on the operator's
+``hr.training_curation_model`` pair. Falls back to RelevanceScoreCuration when
+no pair is configured or when the provider call fails.
 """
 
 from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTrackerProtocol`` and ``CompletionProvider`` are part of
+# ``CostTrackerProtocol`` and ``BoundCompletion`` are part of
 # ``LLMCurated.__init__``'s public annotation, so they must resolve
 # at runtime when downstream tooling evaluates type hints (DI
 # containers, doc generators).
@@ -36,11 +36,11 @@ from synthorg.observability.events.training import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
+from synthorg.providers.model_binding import BoundCompletion
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
 )
-from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
@@ -65,10 +65,12 @@ class LLMCurated:
     and the fallback is logged explicitly.
 
     Args:
-        provider: LLM completion provider (optional).
-        model: Model name for the analyzer.
+        binding: Connection + model the analyzer dispatches on; ``None``
+            degrades to relevance scoring rather than curating on a
+            connection nobody chose.
         temperature: Sampling temperature.
         top_k: Maximum items to return.
+        cost_tracker: Optional cost tracker for the curation call.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.HR_TRAINING_CURATION
@@ -81,8 +83,7 @@ class LLMCurated:
     def __init__(
         self,
         *,
-        provider: CompletionProvider | None = None,
-        model: str = "example-small-001",
+        binding: BoundCompletion | None = None,
         temperature: float = _DEFAULT_TEMPERATURE,
         top_k: int = _DEFAULT_TOP_K,
         cost_tracker: CostTrackerProtocol | None = None,
@@ -90,8 +91,7 @@ class LLMCurated:
         if top_k <= 0:
             msg = f"top_k must be a positive integer, got {top_k}"
             raise ValueError(msg)
-        self._provider = provider
-        self._model = model
+        self._binding = binding
         self._temperature = temperature
         self._top_k = top_k
         self._cost_tracker = cost_tracker
@@ -125,12 +125,13 @@ class LLMCurated:
         if not items:
             return ()
 
-        if self._provider is None:
+        binding = self._binding
+        if binding is None:
             logger.warning(
                 HR_TRAINING_CURATION_FALLBACK,
                 strategy="llm_curated",
                 fallback="relevance",
-                reason="no_provider",
+                reason="no_bound_model",
             )
             return await self._fallback.curate(
                 items,
@@ -154,7 +155,7 @@ class LLMCurated:
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
+                response = await binding.provider.complete(
                     messages=[
                         ChatMessage(
                             role=MessageRole.SYSTEM,
@@ -165,7 +166,7 @@ class LLMCurated:
                             content=user_prompt,
                         ),
                     ],
-                    model=self._model,
+                    model=binding.model,
                     config=CompletionConfig(
                         temperature=self._temperature,
                         max_tokens=_MAX_TOKENS,

@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.strategies.code_modification import CodeModificationStrategy
 from synthorg.meta.validation.scope_validator import ScopeValidator
@@ -20,6 +21,7 @@ from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from tests._shared.model_binding import connections
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
@@ -42,12 +44,11 @@ def _strategy(
         code_modification=CodeModificationConfig(
             github_token="t",
             github_repo="owner/repo",
-            llm_model="baked-codemod-001",
         ),
     )
     return CodeModificationStrategy(
         config=cfg,
-        provider=provider,
+        connections=connections({"first-conn": provider, "second-conn": provider}),
         scope_validator=ScopeValidator(allowed_paths=(), forbidden_paths=()),
         config_resolver=ConfigResolver(
             settings_service=settings, config=RootConfig(company_name="test")
@@ -55,18 +56,36 @@ def _strategy(
     )
 
 
+async def test_code_modification_refuses_without_a_configured_pair(
+    settings: SettingsService,
+) -> None:
+    """No pair means no generation: there is no connection to borrow."""
+    provider = AsyncMock(spec=BaseCompletionProvider)
+    strategy = _strategy(settings, provider=provider)
+
+    with pytest.raises(ServiceUnavailableError, match="code_modification_model"):
+        await strategy._call_llm("prompt")
+    provider.complete.assert_not_called()
+
+
 async def test_code_modification_model_read_live(settings: SettingsService) -> None:
-    """The provider call uses the live model, falling back to the baked one."""
+    """The provider call retargets to the live pair, both halves of it."""
     provider = AsyncMock(spec=BaseCompletionProvider)
     provider.complete.return_value = SimpleNamespace(content="[]")
     strategy = _strategy(settings, provider=provider)
 
-    await strategy._call_llm("prompt")
-    assert provider.complete.await_args.kwargs["model"] == "baked-codemod-001"
-
-    live = serialize_model_ref(
-        ModelRef(provider="example-provider", model_id="live-codemod")
+    await settings.set(
+        "self_improvement",
+        "code_modification_model",
+        serialize_model_ref(ModelRef(provider="first-conn", model_id="first-codemod")),
     )
-    await settings.set("self_improvement", "code_modification_model", live)
+    await strategy._call_llm("prompt")
+    assert provider.complete.await_args.kwargs["model"] == "first-codemod"
+
+    await settings.set(
+        "self_improvement",
+        "code_modification_model",
+        serialize_model_ref(ModelRef(provider="second-conn", model_id="live-codemod")),
+    )
     await strategy._call_llm("prompt")
     assert provider.complete.await_args.kwargs["model"] == "live-codemod"

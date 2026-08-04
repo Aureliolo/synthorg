@@ -17,7 +17,7 @@ calls, so the runtime comes online for an empty company.
 
 import os
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 from synthorg.budget.state import BudgetStateSlice
@@ -25,7 +25,6 @@ from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import ClientStateSlice
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.quality.verification_config import (
     DecomposerVariant,
@@ -43,7 +42,6 @@ from synthorg.engine.review.factory import (
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.verification import VerificationReviewStage
 from synthorg.engine.state import task_engine_of
-from synthorg.llm.model_tier_policy import tier_model_id
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -55,7 +53,7 @@ from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import parse_bool
-from synthorg.settings.model_ref import parse_model_ref
+from synthorg.settings.model_ref import ModelRef, parse_model_ref
 from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
@@ -74,21 +72,45 @@ _REVIEW_PIPELINE_STRATEGY_KEY = "review_pipeline_strategy"
 _VERIFICATION_ENABLED_KEY = "verification_review_enabled"
 _VERIFICATION_GRADER_KEY = "verification_grader"
 _VERIFICATION_DECOMPOSER_KEY = "verification_decomposer"
+_VERIFICATION_GRADER_MODEL_KEY = "verification_grader_model"
+_VERIFICATION_DECOMPOSER_MODEL_KEY = "verification_decomposer_model"
 _DEFAULT_STRATEGY = "direct"
 
 
-def _select_provider(app_state: AppState) -> CompletionProvider | None:
-    """Return the explicit default system provider, or ``None``.
+@dataclass(frozen=True, slots=True)
+class _VerificationChoices:
+    """The verification stage's resolved settings.
 
-    The verification-stage grader/decomposer and the boot agent-intake
-    strategy are system actors with no dedicated per-feature model, so they
-    dispatch on the explicit ``providers.default_provider`` (a sole registered
-    provider resolves automatically; several with none chosen resolve to
-    ``None``). There is no first-registered fallback.
+    Attributes:
+        enabled: Whether the stage joins the review pipeline at all.
+        grader: The grader variant discriminator.
+        decomposer: The decomposer variant discriminator.
+        grader_model: The grader's ``(provider, model)`` pair; unbound when
+            the operator has not chosen one, which degrades an ``llm`` grader
+            to the deterministic ``heuristic``.
+        decomposer_model: The decomposer's pair, with the same degrade to
+            ``identity`` when unbound.
     """
-    if not has_active_provider(app_state):
+
+    enabled: bool
+    grader: str
+    decomposer: str
+    grader_model: ModelRef
+    decomposer_model: ModelRef
+
+
+def _registered_pair(app_state: AppState, model: ModelRef) -> ModelRef | None:
+    """Return *model* when its connection is registered, else ``None``.
+
+    Returns:
+        The pair when it is bound and its provider is a registered
+        connection; ``None`` otherwise, so the caller degrades to the
+        deterministic variant instead of dispatching on a connection nobody
+        chose.
+    """
+    if not model.is_bound or not has_active_provider(app_state):
         return None
-    return provider_registry_of(app_state).default_provider()
+    return model if model.provider in provider_registry_of(app_state) else None
 
 
 def _resolve_intake_settings(
@@ -143,66 +165,70 @@ def _resolve_review_pipeline_strategy(
     return cast("ReviewPipelineStrategy", value)
 
 
-def _resolve_verification_choices(env: Mapping[str, str]) -> tuple[bool, str, str]:
-    """Resolve ``(enabled, grader, decomposer)`` from the bootstrap chain.
+def _resolve_verification_choices(env: Mapping[str, str]) -> _VerificationChoices:
+    """Resolve the verification stage's settings from the bootstrap chain.
 
     Boot helper (env > registered default). The reload path resolves these
-    same three keys through the DB-backed ``ConfigResolver`` instead.
+    same keys through the DB-backed ``ConfigResolver`` instead.
 
     Returns:
-        The ``(enabled, grader, decomposer)`` triple.
+        The resolved :class:`_VerificationChoices`.
     """
-    enabled = bool(
-        resolve_init_value(
-            SettingNamespace.SIMULATIONS,
-            _VERIFICATION_ENABLED_KEY,
-            env=env,
-            parse=parse_bool,
-        ).value
+
+    def _read(key: str) -> str:
+        return str(resolve_init_value(SettingNamespace.SIMULATIONS, key, env=env).value)
+
+    return _VerificationChoices(
+        enabled=bool(
+            resolve_init_value(
+                SettingNamespace.SIMULATIONS,
+                _VERIFICATION_ENABLED_KEY,
+                env=env,
+                parse=parse_bool,
+            ).value
+        ),
+        grader=_read(_VERIFICATION_GRADER_KEY),
+        decomposer=_read(_VERIFICATION_DECOMPOSER_KEY),
+        grader_model=parse_model_ref(_read(_VERIFICATION_GRADER_MODEL_KEY)),
+        decomposer_model=parse_model_ref(_read(_VERIFICATION_DECOMPOSER_MODEL_KEY)),
     )
-    grader = str(
-        resolve_init_value(
-            SettingNamespace.SIMULATIONS, _VERIFICATION_GRADER_KEY, env=env
-        ).value
-    )
-    decomposer = str(
-        resolve_init_value(
-            SettingNamespace.SIMULATIONS, _VERIFICATION_DECOMPOSER_KEY, env=env
-        ).value
-    )
-    return enabled, grader, decomposer
 
 
 def _make_verification_config(
     grader: str,
     decomposer: str,
     *,
-    has_provider: bool,
+    grader_model: ModelRef | None,
+    decomposer_model: ModelRef | None,
 ) -> VerificationConfig:
     """Build the verification config from resolved grader/decomposer choices.
 
-    The ``llm`` variants degrade to the deterministic ``heuristic`` /
-    ``identity`` variants when no provider is registered (empty company),
-    so the stage always comes online without a provider.
+    An ``llm`` variant degrades to its deterministic sibling (``heuristic`` /
+    ``identity``) when its own ``(provider, model)`` pair is unset or names an
+    unregistered connection, so the stage always comes online rather than
+    grading on a connection nobody chose.
 
     Returns:
         The resolved :class:`VerificationConfig`.
     """
-    if not has_provider and (grader == "llm" or decomposer == "llm"):
+    if grader == "llm" and grader_model is None:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
-            note="verification llm variant requested without a provider; "
-            "degrading to deterministic heuristic/identity",
-            grader=grader,
-            decomposer=decomposer,
+            note="verification llm grader has no registered (provider, model) "
+            "pair; degrading to the deterministic heuristic grader",
+            setting=f"{SettingNamespace.SIMULATIONS.value}."
+            f"{_VERIFICATION_GRADER_MODEL_KEY}",
         )
-        # Degrade only the setting that asked for "llm"; leave the other so
-        # GraderVariant / DecomposerVariant still validates and rejects an
-        # otherwise-invalid value instead of having it silently rewritten.
-        if grader == "llm":
-            grader = "heuristic"
-        if decomposer == "llm":
-            decomposer = "identity"
+        grader = "heuristic"
+    if decomposer == "llm" and decomposer_model is None:
+        logger.warning(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            note="verification llm decomposer has no registered (provider, model) "
+            "pair; degrading to the deterministic identity decomposer",
+            setting=f"{SettingNamespace.SIMULATIONS.value}."
+            f"{_VERIFICATION_DECOMPOSER_MODEL_KEY}",
+        )
+        decomposer = "identity"
     return VerificationConfig(
         grader=GraderVariant(grader),
         decomposer=DecomposerVariant(decomposer),
@@ -210,47 +236,46 @@ def _make_verification_config(
 
 
 def _build_verification_stage(
+    app_state: AppState,
     *,
-    enabled: bool,
-    grader: str,
-    decomposer: str,
-    provider: CompletionProvider | None,
+    choices: _VerificationChoices,
     cost_tracker: CostTrackerProtocol | None,
 ) -> VerificationReviewStage | None:
     """Build the rubric-grading review stage when enabled.
 
-    The ``enabled`` / ``grader`` / ``decomposer`` choices are resolved by the
-    caller (DB-backed on the reload path, env on the boot path) so the stage
-    rebuilds with the operator's live values on a settings change.
+    Every choice is resolved by the caller (DB-backed on the reload path, env
+    on the boot path) so the stage rebuilds with the operator's live values on
+    a settings change. Each LLM variant dispatches on its own pair, so a
+    grader and a decomposer can legitimately run on different connections.
 
     Returns:
         A :class:`VerificationReviewStage` when
         ``simulations.verification_review_enabled`` is set, otherwise
         ``None`` (the stage is omitted from the pipeline).
     """
-    if not enabled:
+    if not choices.enabled:
         return None
+    grader_model = _registered_pair(app_state, choices.grader_model)
+    decomposer_model = _registered_pair(app_state, choices.decomposer_model)
     config = _make_verification_config(
-        grader, decomposer, has_provider=provider is not None
+        choices.grader,
+        choices.decomposer,
+        grader_model=grader_model,
+        decomposer_model=decomposer_model,
     )
-    # Honour the requested tier via the model-tier policy (large -> medium ->
-    # small archetype id) rather than discarding it and pinning one model, so
-    # an LLM-backed decomposer/grader selects the model its tier policy maps to.
-    tier_resolver = (
-        (lambda tier: NotBlankStr(tier_model_id(tier)))
-        if provider is not None
-        else None
+    connections = (
+        provider_registry_of(app_state).get if has_active_provider(app_state) else None
     )
     decomposer_impl = build_decomposer(
         config,
-        provider=provider,
-        tier_resolver=tier_resolver,
+        connections=connections,
+        model=decomposer_model,
         cost_tracker=cost_tracker,
     )
     grader_impl = build_grader(
         config,
-        provider=provider,
-        tier_resolver=tier_resolver,
+        connections=connections,
+        model=grader_model,
         cost_tracker=cost_tracker,
     )
     return VerificationReviewStage(decomposer=decomposer_impl, grader=grader_impl)
@@ -325,9 +350,7 @@ def _build_simulation_components(
     model: str | None,
     default_project: str,
     review_strategy: ReviewPipelineStrategy,
-    verification_enabled: bool,
-    verification_grader: str,
-    verification_decomposer: str,
+    verification: _VerificationChoices,
 ) -> tuple[IntakeEngine, ReviewPipeline]:
     """Build the config-driven simulation components from resolved choices.
 
@@ -336,18 +359,17 @@ def _build_simulation_components(
     ``direct`` when unsatisfiable. Only these two config-driven objects are
     rebuilt, so the reload path can swap them onto the existing state and keep
     the mutable stores intact. Every config-driven choice (intake, review, and
-    the three verification-stage settings) is resolved by the caller (DB-backed
-    on reload, env on boot), so an operator change to any of them is picked up
-    on the next reload without a restart.
+    the verification-stage settings) is resolved by the caller (DB-backed on
+    reload, env on boot), so an operator change to any of them is picked up on
+    the next reload without a restart.
 
     Returns:
         The ``(intake_engine, review_pipeline)`` pair.
     """
     task_engine = task_engine_of(app_state)
-    provider = _select_provider(app_state)
-    # The agent intake honours the model ref's provider; the verification
-    # stage keeps the active provider (its grader/decomposer models are their
-    # own settings, not the intake model).
+    # Each consumer honours its own model ref's connection: the intake
+    # strategy, the grader and the decomposer are three separate assignments,
+    # and none borrows another's.
     intake_ref = parse_model_ref(model or "")
     intake_model = intake_ref.model_id or None
     # Only resolve a provider when an intake model is actually set: an unset
@@ -373,10 +395,8 @@ def _build_simulation_components(
         cost_tracker=cost_tracker,
     )
     verification_stage = _build_verification_stage(
-        enabled=verification_enabled,
-        grader=verification_grader,
-        decomposer=verification_decomposer,
-        provider=provider,
+        app_state,
+        choices=verification,
         cost_tracker=cost_tracker,
     )
     review_pipeline = build_review_pipeline(
@@ -387,7 +407,7 @@ def _build_simulation_components(
         CLIENT_SIMULATION_RUNTIME_WIRED,
         requested_strategy=requested_strategy,
         effective_strategy=effective_strategy,
-        has_provider=provider is not None,
+        has_provider=has_active_provider(app_state),
         review_stages=list(review_pipeline.stage_names),
         verification_stage_active=verification_stage is not None,
         intake_default_project=default_project,
@@ -423,18 +443,13 @@ def build_client_simulation_runtime(
     """
     requested_strategy, model, default_project = _resolve_intake_settings(env)
     review_strategy = _resolve_review_pipeline_strategy(env)
-    verification_enabled, verification_grader, verification_decomposer = (
-        _resolve_verification_choices(env)
-    )
     intake_engine, review_pipeline = _build_simulation_components(
         app_state,
         requested_strategy=requested_strategy,
         model=model,
         default_project=default_project,
         review_strategy=review_strategy,
-        verification_enabled=verification_enabled,
-        verification_grader=verification_grader,
-        verification_decomposer=verification_decomposer,
+        verification=_resolve_verification_choices(env),
     )
     return ClientSimulationState(
         intake_engine=intake_engine,
@@ -470,9 +485,7 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
             os.environ
         )
         review_strategy = _resolve_review_pipeline_strategy(os.environ)
-        verification_enabled, verification_grader, verification_decomposer = (
-            _resolve_verification_choices(os.environ)
-        )
+        verification = _resolve_verification_choices(os.environ)
     else:
         namespace = SettingNamespace.SIMULATIONS.value
         try:
@@ -486,14 +499,20 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
                 "ReviewPipelineStrategy",
                 await resolver.get_str(namespace, _REVIEW_PIPELINE_STRATEGY_KEY),
             )
-            verification_enabled = await resolver.get_bool(
-                namespace, _VERIFICATION_ENABLED_KEY
-            )
-            verification_grader = await resolver.get_str(
-                namespace, _VERIFICATION_GRADER_KEY
-            )
-            verification_decomposer = await resolver.get_str(
-                namespace, _VERIFICATION_DECOMPOSER_KEY
+            verification = _VerificationChoices(
+                enabled=await resolver.get_bool(namespace, _VERIFICATION_ENABLED_KEY),
+                grader=await resolver.get_str(namespace, _VERIFICATION_GRADER_KEY),
+                decomposer=await resolver.get_str(
+                    namespace, _VERIFICATION_DECOMPOSER_KEY
+                ),
+                grader_model=parse_model_ref(
+                    await resolver.get_str(namespace, _VERIFICATION_GRADER_MODEL_KEY)
+                ),
+                decomposer_model=parse_model_ref(
+                    await resolver.get_str(
+                        namespace, _VERIFICATION_DECOMPOSER_MODEL_KEY
+                    )
+                ),
             )
         except Exception as exc:
             # Log which subsystem's resolve failed before propagating: on the
@@ -522,9 +541,7 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
         model=model,
         default_project=default_project,
         review_strategy=review_strategy,
-        verification_enabled=verification_enabled,
-        verification_grader=verification_grader,
-        verification_decomposer=verification_decomposer,
+        verification=verification,
     )
     existing = app_state.slice(ClientStateSlice).simulation_state
     if existing is None:

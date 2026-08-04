@@ -37,7 +37,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
     require_configured_model,
@@ -53,7 +53,7 @@ _PROSE_MAX: int = 8192
 class NarrativeSynthesiser:
     """Generates the connective prose for one run narrative."""
 
-    __slots__ = ("_config", "_config_resolver", "_cost_tracker", "_provider")
+    __slots__ = ("_config", "_config_resolver", "_connections", "_cost_tracker")
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_NARRATIVE
 
@@ -65,12 +65,12 @@ class NarrativeSynthesiser:
     def __init__(
         self,
         *,
-        provider: CompletionProvider,
+        connections: ConnectionSelector,
         config: ChiefOfStaffConfig,
         cost_tracker: CostTrackerProtocol | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
-        self._provider = provider
+        self._connections = connections
         self._config = config
         self._cost_tracker = cost_tracker
         self._config_resolver = config_resolver
@@ -162,9 +162,9 @@ class NarrativeSynthesiser:
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 return await asyncio.wait_for(
-                    self._provider.complete(
+                    self._connections(model.provider).complete(
                         messages,
-                        model,
+                        model.model_id,
                         config=config,
                     ),
                     timeout=self._config.agent_call_timeout_seconds,

@@ -19,7 +19,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
-from synthorg.settings.model_ref import parse_model_ref
+from synthorg.settings.model_ref import ModelRef, parse_model_ref
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
@@ -251,8 +251,8 @@ async def resolve_model_with_fallback(
     namespace: str,
     key: str,
     fallback: str,
-) -> str:
-    """Resolve a live model identifier, falling back on a malformed value.
+) -> ModelRef:
+    """Resolve a live model reference, falling back on a malformed value.
 
     Wraps :func:`resolve_str_with_fallback` and additionally rejects a
     resolved value that is not a clean single-line model identifier,
@@ -270,70 +270,75 @@ async def resolve_model_with_fallback(
             lookup fails, the value is blank, or the value is malformed.
 
     Returns:
-        The resolved clean model identifier, or *fallback* otherwise.
+        The resolved :class:`ModelRef`, carrying BOTH the provider connection
+        and the model id, or the parsed *fallback* otherwise.
     """
     resolved = await resolve_str_with_fallback(
         resolver=resolver, namespace=namespace, key=key, fallback=fallback
     )
     # A model-assignment setting stores a ``ModelRef`` -- canonical
-    # ``{"provider", "model_id"}`` JSON -- so the provider hint travels with
-    # the model. The provider call needs only the bare model id, so project
-    # both the resolved value and the fallback (either may be a stored
-    # ``ModelRef`` or a legacy bare model string) through the same parse.
-    model_id = parse_model_ref(resolved).model_id
-    fallback_id = parse_model_ref(fallback).model_id
-    if model_id == fallback_id or _is_clean_model_id(model_id):
-        return model_id
+    # ``{"provider", "model_id"}`` JSON. Both halves are returned: a provider
+    # is a registered CONNECTION, with its own credentials, endpoint and
+    # quota, so the same model id reached through two of them is two different
+    # calls. Projecting the pair down to its model id here would silently
+    # dispatch the operator's choice on whichever connection the caller
+    # happened to hold, which is the failure this pair exists to prevent.
+    ref = parse_model_ref(resolved)
+    fallback_ref = parse_model_ref(fallback)
+    if ref.model_id == fallback_ref.model_id or _is_clean_model_id(ref.model_id):
+        return ref
     logger.warning(
         SETTINGS_FETCH_FAILED,
         namespace=namespace,
         key=key,
         error_type="MalformedModelIdentifier",
         error="resolved model identifier failed structural validation",
-        fallback=fallback_id,
+        fallback=fallback_ref.model_id,
     )
-    return fallback_id
+    return fallback_ref
 
 
 def require_configured_model(
-    model: str | None,
+    model: ModelRef | str | None,
     *,
     namespace: str,
     key: str,
     feature_label: str,
-) -> str:
-    """Return *model* when configured; raise a settings-pointing 503 otherwise.
+) -> ModelRef:
+    """Return the bound pair when configured; raise a 503 otherwise.
 
     A per-feature model that resolves blank means no model has been selected
     yet (no placeholder is ever shipped as a default). Rather than call a
     provider with an empty model identifier, surface a clear
     ``ServiceUnavailableError`` naming the setting the operator must configure.
 
+    Half a pair is refused for the same reason as none of one. A provider is a
+    registered connection, carrying its own credentials, endpoint and quota, so
+    a model id with no connection names no dispatch target: the same id on two
+    connections is two different calls. Accepting the model alone would mean
+    dispatching on whichever connection the caller happened to hold.
+
     Args:
-        model: The live-resolved model identifier, possibly blank/``None``.
+        model: The live-resolved reference, possibly blank/``None``.
         namespace: Setting namespace (e.g. ``"chief_of_staff"``).
         key: Model setting key within the namespace.
         feature_label: Human-readable capability name for the 503 message.
 
     Returns:
-        The non-blank *model* identifier.
+        The bound :class:`ModelRef`, carrying both halves.
 
     Raises:
-        ServiceUnavailableError: When *model* is blank or ``None``.
+        ServiceUnavailableError: When either half is missing.
     """
-    # The final gate before a provider call: a caller may hand a stored
-    # ``ModelRef`` (canonical ``{"provider", "model_id"}`` JSON) or an
-    # already-projected bare model id. Projecting here is idempotent with
-    # ``resolve_model_with_fallback`` (a bare id parses to itself), so every
-    # completion path lands on the bare model id whichever gate it came from.
-    resolved = parse_model_ref(model).model_id if model else ""
-    if resolved:
-        return resolved
+    ref = model if isinstance(model, ModelRef) else parse_model_ref(model or "")
+    if ref.is_bound:
+        return ref
     # Plain quotes, not RST double-backticks: this message is surfaced verbatim
     # in the dashboard (e.g. the charter interview error banner), where markup
     # would render literally.
+    missing = "model" if ref.provider.strip() else "provider and model"
     msg = (
-        f"{feature_label} has no model configured. Set '{namespace}.{key}'"
-        " in dashboard Settings."
+        f"{feature_label} has no {missing} configured. Set"
+        f" '{namespace}.{key}' in dashboard Settings."
     )
     raise ServiceUnavailableError(msg)

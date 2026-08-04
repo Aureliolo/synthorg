@@ -1,11 +1,11 @@
-"""Gate: no alphabetical / first-registered provider auto-pick.
+"""Gate: no auto-picked and no shared-default provider.
 
-Every LLM dispatch must resolve an explicit ``(provider, model)`` pair. A
-provider is chosen either from a bound ``{provider, model_id}`` reference or
-from the explicit ``providers.default_provider`` (via
-``ProviderRegistry.default_provider`` / ``default_provider_resolved_name``);
-it is NEVER auto-picked as "whichever provider sorts first". This gate
-AST-scans ``src/synthorg/`` and fails on a reintroduction of any of:
+Every LLM dispatch resolves the connection named by its own bound
+``{provider, model_id}`` reference. A provider is a registered *connection*
+with its own credentials, endpoint and quota, so there is no "system default"
+to borrow and no "whichever provider sorts first" to fall back to: a feature
+either has its own pair or it is off. This gate AST-scans ``src/synthorg/``
+and fails on a reintroduction of any of:
 
 1. ``<registry>.list_providers()[0]`` -- indexing the sorted provider list.
 2. ``<name>[0]`` where ``<name>`` was assigned from a ``.list_providers()``
@@ -13,6 +13,10 @@ AST-scans ``src/synthorg/`` and fails on a reintroduction of any of:
    ``names[0]`` idiom).
 3. Any reference to the removed ``resolve_for_model`` method (the bare-model
    auto-resolver that picked the alphabetically-first serving provider).
+4. Any reference to the removed shared default: the ``default_provider`` /
+   ``default_provider_name`` / ``default_provider_resolved_name`` /
+   ``bind_default_provider`` registry surface, or a ``providers`` settings
+   read of ``default_provider``.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: provider-auto-pick -- <reason>`` on the offending line (e.g.
@@ -58,6 +62,17 @@ _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
 )
 _LIST_PROVIDERS: Final[str] = "list_providers"
 _REMOVED_RESOLVER: Final[str] = "resolve_for_model"
+#: The removed shared-default surface. Each name resolved a provider for a
+#: caller that had not named one, which is exactly the ambiguity a
+#: ``(provider, model)`` pair exists to remove.
+_REMOVED_DEFAULT_SURFACE: Final[frozenset[str]] = frozenset(
+    {
+        "default_provider",
+        "default_provider_name",
+        "default_provider_resolved_name",
+        "bind_default_provider",
+    }
+)
 
 
 def _is_list_providers_call(node: ast.expr) -> bool:
@@ -156,6 +171,21 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
             and not _allowed(node.lineno)
         ):
             findings.append(f"{relpath}:{node.lineno}:{_REMOVED_RESOLVER}")
+        # 4: the removed shared-default surface, as an attribute access
+        # (``registry.default_provider()``) or as a settings key literal
+        # (``get_str("providers", "default_provider")``).
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in _REMOVED_DEFAULT_SURFACE
+            and not _allowed(node.lineno)
+        ):
+            findings.append(f"{relpath}:{node.lineno}:{node.attr}")
+        if (
+            isinstance(node, ast.Constant)
+            and node.value == "default_provider"
+            and not _allowed(node.lineno)
+        ):
+            findings.append(f"{relpath}:{node.lineno}:setting:default_provider")
 
     # 2: name[0] where name came from a list_providers() result in the same func.
     for node in ast.walk(tree):
@@ -246,9 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     new = sorted(findings - _read_baseline(baseline_path))
     if new:
         print(
-            "error: provider auto-pick(s) found (resolve an explicit provider "
-            "via a bound ref or providers.default_provider, never the first "
-            "registered):",
+            "error: provider auto-pick(s) found (name the connection through "
+            "the consumer's own MODEL_REF pair; there is no shared default "
+            "and never the first registered):",
             file=sys.stderr,
         )
         for ident in new:

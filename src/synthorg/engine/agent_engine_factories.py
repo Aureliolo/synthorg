@@ -11,6 +11,7 @@ from synthorg.engine._agent_tool_registry import (
     registry_with_forge_tools,
 )
 from synthorg.engine._security_factory import (
+    SecurityLlmInfra,
     make_security_interceptor,
     registry_with_approval_tool,
     registry_with_external_api_tool,
@@ -311,8 +312,22 @@ class AgentEngineFactoriesMixin:
             self._audit_log,
             approval_store=self._approval_store,
             effective_autonomy=effective_autonomy,
+            llm_infra=self._security_llm_infra(),
+        )
+
+    def _security_llm_infra(self) -> SecurityLlmInfra | None:
+        """Bundle the provider infrastructure the security LLM features need.
+
+        Returns:
+            The bundle, or ``None`` when no provider registry is wired and
+            every LLM-backed security feature therefore stays unwired.
+        """
+        if self._provider_registry is None:
+            return None
+        return SecurityLlmInfra(
             provider_registry=self._provider_registry,
-            provider_configs=self._provider_configs,
+            provider_configs=self._provider_configs or {},
+            config_resolver=self._config_resolver,
             model_resolver=self._model_resolver,
             cost_tracker=self._cost_tracker,
         )

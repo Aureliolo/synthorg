@@ -22,7 +22,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.project_brain.service import ProjectBrainService
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every collaborator
     config: ChiefOfStaffConfig,
     *,
-    provider: CompletionProvider | None,
+    connections: ConnectionSelector | None,
     docs_service: DocsService | None,
     brain_service: ProjectBrainService | None,
     frames: FlightRecorderFrameRepository | None,
@@ -50,7 +50,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
 
     Args:
         config: Chief-of-Staff configuration (baked fallback for the gate).
-        provider: Completion provider for the connective-prose call.
+        connections: Resolves the connection the narrative model names.
         docs_service: Living-docs engine the narrative is persisted through.
         brain_service: Project-brain read seam (decisions, open items).
         frames: Flight-recorder frame store (who did what, metrics).
@@ -67,7 +67,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         collaborator is missing.
     """
     if (
-        provider is None
+        connections is None
         or docs_service is None
         or brain_service is None
         or frames is None
@@ -83,7 +83,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         frames=frames, brain=brain_service, task_repo=task_repo, currency=currency
     )
     synthesiser = NarrativeSynthesiser(
-        provider=provider,
+        connections=connections,
         config=config,
         cost_tracker=cost_tracker,
         config_resolver=config_resolver,

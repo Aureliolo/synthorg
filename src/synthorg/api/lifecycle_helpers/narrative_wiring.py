@@ -106,7 +106,9 @@ def _attach_narrator(
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    provider = resolve_feature_provider(
+    # Presence check only: the narrative model is read live per run, so the
+    # connection it names is resolved at dispatch rather than pinned here.
+    configured = resolve_feature_provider(
         provider_registry,
         config.narrative_model,
         feature="chief_of_staff_narrator",
@@ -115,7 +117,7 @@ def _attach_narrator(
     currency = budget_config.currency if budget_config else DEFAULT_CURRENCY
     narrator = build_chief_of_staff_narrator(
         config,
-        provider=provider,
+        connections=provider_registry.get if configured is not None else None,
         docs_service=app_state.slice(DocsStateSlice).service,
         brain_service=app_state.slice(ProjectBrainStateSlice).service,
         frames=persistence_of(app_state).flight_recorder_frames,

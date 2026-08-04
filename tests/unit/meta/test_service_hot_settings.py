@@ -14,6 +14,7 @@ import pytest
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.meta.appliers.config_applier import SettingsWritePort
 from synthorg.meta.config import SelfImprovementConfig
@@ -219,12 +220,17 @@ async def test_a_running_service_never_grows_code_modification(
     assert ProposalAltitude.CODE_MODIFICATION not in svc._appliers
 
 
-async def test_analysis_settings_model_is_live(settings: SettingsService) -> None:
-    """``analysis_model`` resolves live with a baked fallback."""
-    svc = _svc(settings)
+async def test_analysis_settings_refuse_an_unset_pair(
+    settings: SettingsService,
+) -> None:
+    """No pair means no analysis: there is no baked model to fall back to."""
+    with pytest.raises(ServiceUnavailableError, match="analysis_model"):
+        await _svc(settings).resolve_analysis_settings()
 
-    baked = await svc.resolve_analysis_settings()
-    assert baked.llm_model == SelfImprovementConfig().analysis_model
+
+async def test_analysis_settings_model_is_live(settings: SettingsService) -> None:
+    """``analysis_model`` resolves both halves of the pair live."""
+    svc = _svc(settings)
 
     await settings.set(
         "self_improvement",
@@ -234,7 +240,8 @@ async def test_analysis_settings_model_is_live(settings: SettingsService) -> Non
         ),
     )
     live = await svc.resolve_analysis_settings()
-    assert live.llm_model == "live-analysis-001"
+    assert live.model.model_id == "live-analysis-001"
+    assert live.model.provider == "example-provider"
     # Sampling parameters stay baked (blob-only, not registered settings).
     assert live.temperature == SelfImprovementConfig().analysis_temperature
     assert live.max_tokens == SelfImprovementConfig().analysis_max_tokens

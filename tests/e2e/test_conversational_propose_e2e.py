@@ -79,6 +79,7 @@ from tests._shared.conversation_fakes import (
     FakeConversationRepo,
     FakeTurnRepo,
 )
+from tests._shared.model_binding import TEST_PROVIDER, bound_ref, one_connection
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -281,15 +282,18 @@ async def test_work_brief_drafts_a_plan_over_the_real_pipeline(
         dispatch_port=port,
     )
     proposer = ChiefOfStaffProposer(
-        provider=ScriptedProvider(
-            responses=[
-                make_text_response(_CLARIFY_JSON),
-                make_text_response(_WORK_JSON),
-            ]
+        connections=one_connection(
+            ScriptedProvider(
+                responses=[
+                    make_text_response(_CLARIFY_JSON),
+                    make_text_response(_WORK_JSON),
+                ]
+            ),
+            name=TEST_PROVIDER,
         ),
         config=ChiefOfStaffConfig(
             propose_enabled=True,
-            propose_model=NotBlankStr("test-model-001"),
+            propose_model=NotBlankStr(bound_ref("test-model-001")),
         ),
         conversation_repo=FakeConversationRepo(),
         turn_repo=FakeTurnRepo(),

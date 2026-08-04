@@ -32,11 +32,7 @@ def _make_state() -> AppState:
     )
 
 
-def _resolver(
-    configs: dict[str, ProviderConfig],
-    *,
-    default_provider: str = "",
-) -> ConfigResolver:
+def _resolver(configs: dict[str, ProviderConfig]) -> ConfigResolver:
     async def _get_provider_configs() -> dict[str, ProviderConfig]:
         return configs
 
@@ -45,8 +41,6 @@ def _resolver(
         raise SettingNotFoundError(msg)
 
     async def _get_str(namespace: str, key: str) -> str:
-        if (namespace, key) == ("providers", "default_provider"):
-            return default_provider
         msg = f"{namespace}.{key} not registered"
         raise SettingNotFoundError(msg)
 
@@ -82,9 +76,13 @@ class TestReloadPersistedProviderRegistry:
         assert has_active_provider(state)
         assert registry.list_providers() == ("test-provider",)
 
-    async def test_binds_persisted_default_provider(self) -> None:
-        # The cold-boot reload must bind the persisted providers.default_provider
-        # onto the rebuilt registry, not leave it unset.
+    async def test_every_persisted_connection_is_reachable_by_name(self) -> None:
+        """The reload registers each persisted connection under its own name.
+
+        There is no house connection to nominate: a feature reaches the one
+        its own ``(provider, model)`` pair names, so what the cold boot owes
+        is that every persisted connection answers to its name.
+        """
         state = _make_state()
         state.wire(
             SettingsStateSlice,
@@ -92,9 +90,11 @@ class TestReloadPersistedProviderRegistry:
                 {
                     "test-provider": ProviderConfig(
                         driver="scripted", connection_name="conn-scripted"
-                    )
+                    ),
+                    "test-provider-2": ProviderConfig(
+                        driver="scripted", connection_name="conn-scripted-2"
+                    ),
                 },
-                default_provider="test-provider",
             ),
         )
         state.wire(
@@ -105,7 +105,8 @@ class TestReloadPersistedProviderRegistry:
         registry = await reload_persisted_provider_registry(state)
 
         assert registry is not None
-        assert registry.default_provider_name() == "test-provider"
+        assert registry.list_providers() == ("test-provider", "test-provider-2")
+        assert registry.get("test-provider") is not registry.get("test-provider-2")
 
     async def test_no_resolver_is_a_noop(self) -> None:
         state = _make_state()

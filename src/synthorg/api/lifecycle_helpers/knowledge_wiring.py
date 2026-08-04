@@ -252,17 +252,16 @@ def _resolve_synthesis_provider(
         return None
     if provider_name:
         return provider_registry.get(provider_name)
-    # No explicit synthesis provider on the model ref: dispatch on the explicit
-    # default system provider, never a first-registered pick. Retrieval-only
-    # when the default is ambiguous (several providers, none chosen) or unset.
-    provider = provider_registry.default_provider()
-    if provider is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note=(
-                "synthesis enabled but no default system provider is resolvable;"
-                " retrieval-only until providers.default_provider is set"
-            ),
-        )
-    return provider
+    # Half a pair names no dispatch target: a provider is a registered
+    # connection with its own credentials and endpoint, so the same model id
+    # on two of them is two different calls. There is nothing to borrow, so
+    # synthesis stays off and the engine serves retrieval only.
+    logger.warning(
+        API_APP_STARTUP,
+        service="knowledge_engine",
+        note=(
+            "synthesis model names no provider connection; retrieval-only until"
+            " knowledge.synthesis_model names a provider and a model"
+        ),
+    )
+    return None

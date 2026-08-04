@@ -121,7 +121,10 @@ _r.register(
         description=(
             "Provider + model for self-improvement proposal analysis, selected"
             " through the model picker (a `{provider, model_id}` reference)."
-            " Empty keeps the built-in default. Read live per analysis call."
+            " Read live per analysis call. Unset refuses the call rather than"
+            " analysing on a connection nobody chose: a provider is a"
+            " registered connection with its own credentials and endpoint, so"
+            " there is no built-in default to fall back to."
         ),
         group=_GROUP,
         level=SettingLevel.ADVANCED,
@@ -137,8 +140,11 @@ _r.register(
         description=(
             "Provider + model for code-modification proposals, selected"
             " through the model picker (a `{provider, model_id}` reference)."
-            " Empty keeps the built-in default. Read live per generation"
-            " (the capability itself stays restart-required)."
+            " Read live per generation (the capability itself stays"
+            " restart-required). Unset refuses the call rather than generating"
+            " code on a connection nobody chose: a provider is a registered"
+            " connection with its own credentials and endpoint, so there is no"
+            " built-in default to fall back to."
         ),
         group=_GROUP,
         level=SettingLevel.ADVANCED,

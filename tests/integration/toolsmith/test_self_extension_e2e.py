@@ -30,6 +30,7 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -58,8 +59,10 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock, mock_of
+from tests._shared.model_binding import bound_ref, one_connection
 
 pytestmark = pytest.mark.integration
 
@@ -300,6 +303,18 @@ class _InMemoryApprovalStore:
         return self.items.get(str(approval_id))
 
 
+def _resolver() -> ConfigResolver:
+    """Resolve the operator's toolsmith pair for every read.
+
+    Returns:
+        A resolver naming the connection the fake provider is registered as.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_str=AsyncMock(return_value=bound_ref("example-medium-001")),
+    )
+    return resolver
+
+
 def _config() -> SelfImprovementConfig:
     return SelfImprovementConfig(
         enabled=True,
@@ -323,7 +338,8 @@ class TestSelfExtensionE2E:
         approvals = _InMemoryApprovalStore()
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),
+            connections=one_connection(_FakeProvider()),
+            config_resolver=_resolver(),
             repo=repo,
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_FakeScorecard(),
@@ -378,7 +394,8 @@ class TestSelfExtensionE2E:
         clock = FakeClock(start=_NOW)
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),
+            connections=one_connection(_FakeProvider()),
+            config_resolver=_resolver(),
             repo=_InMemoryRepo(),
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_FakeScorecard(),
@@ -404,7 +421,8 @@ class TestSelfExtensionE2E:
 
         runtime = build_toolsmith(
             si_config=_config(),
-            provider=_FakeProvider(),
+            connections=one_connection(_FakeProvider()),
+            config_resolver=_resolver(),
             repo=repo,
             sandbox_resolver=lambda _bp: _LocalPythonSandbox(),
             scorecard_provider=_RegressingScorecard(),

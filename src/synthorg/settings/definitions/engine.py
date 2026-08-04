@@ -344,6 +344,26 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="evolution_proposer_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the evolution proposers analyse agent"
+            " performance on. A model reference (`{provider, model_id}`)"
+            " because a provider is a registered connection with its own"
+            " credentials and endpoint, so a bare model id names no dispatch"
+            " target. Unset leaves the LLM proposers unwired: evolution then"
+            " proposes nothing rather than analysing on a connection nobody"
+            " chose."
+        ),
+        group="Evolution",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Quality + classification thresholds ─────────────────────────
 
 _r.register(

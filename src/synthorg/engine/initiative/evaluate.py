@@ -63,7 +63,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_SKIPPED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.providers.protocol import ProviderSelector
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.base import BaseTool
 from synthorg.tools.file_system.list_directory import ListDirectoryTool
@@ -96,10 +96,9 @@ class EvaluationStageService:
         persistence: Backend supplying the plan and project repositories.
         agent_registry: Resolves the accountable lead.
         provider_selector: Resolves the completion client for the lead's bound
-            provider, so the judgement runs on the lead's provider.
-        default_provider: Fallback completion client (the explicit system
-            default) used when the lead's provider is unresolvable; ``None``
-            parks the plan rather than dispatching to an arbitrary provider.
+            provider, so the judgement runs on the connection the lead names.
+            An unregistered one parks the plan rather than dispatching the
+            judgement to a connection nobody chose.
         plan_status_writer: The audited plan-status write path, used for the
             one transition only this stage may make.
         replan_trigger: Fired when the objective is not met, so the gap becomes
@@ -119,7 +118,6 @@ class EvaluationStageService:
         "_attempts",
         "_config_resolver",
         "_cost_tracker",
-        "_default_provider",
         "_persistence",
         "_plan_writer",
         "_provider_selector",
@@ -137,7 +135,6 @@ class EvaluationStageService:
         persistence: PersistenceBackend,
         agent_registry: AgentRegistryService,
         provider_selector: ProviderSelector,
-        default_provider: CompletionProvider | None,
         plan_status_writer: PlanStatusWriter,
         replan_trigger: ReplanTriggerPort | None = None,
         reconcile: PlanReconcilePort | None = None,
@@ -150,7 +147,6 @@ class EvaluationStageService:
         self._persistence = persistence
         self._registry = agent_registry
         self._provider_selector = provider_selector
-        self._default_provider = default_provider
         self._plan_writer = plan_status_writer
         self._replan_trigger = replan_trigger
         self._reconcile = reconcile
@@ -280,7 +276,6 @@ class EvaluationStageService:
         provider = resolve_lead_provider(
             self._provider_selector,
             lead,
-            default_provider=self._default_provider,
             skipped_event=INITIATIVE_EVALUATION_SKIPPED,
         )
         if provider is None:

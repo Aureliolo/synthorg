@@ -43,7 +43,10 @@ from synthorg.persistence.state import (
     code_execution_records_of,
     project_repository_of,
 )
+from synthorg.providers.model_binding import resolve_bound_completion
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.state import SecurityStateSlice
+from synthorg.settings.bound_model import resolve_bound_model
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.base import BaseTool
@@ -358,9 +361,8 @@ async def _build_auto_review_pipeline_or_none(
     return build_review_pipeline()
 
 
-def _build_evolution_service_or_none(
+async def _build_evolution_service_or_none(
     app_state: AppState,
-    provider: CompletionProvider,
 ) -> EvolutionService | None:
     """Build the agent self-evolution service when enabled at boot.
 
@@ -405,7 +407,15 @@ def _build_evolution_service_or_none(
             versioning=VersioningService(persistence.identity_versions),
             tracker=tracker,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
-            provider=provider,
+            # Evolution rewrites agent identities, so what analyses them is
+            # the operator's explicit choice, never a borrowed connection.
+            proposer_binding=await resolve_bound_completion(
+                app_state,
+                namespace="engine",
+                key="evolution_proposer_model",
+                unset_event=API_APP_STARTUP,
+                subject="evolution proposer",
+            ),
             outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -513,7 +523,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         coordination_metrics_collector=coordination_metrics_collector,
         error_taxonomy_config=error_taxonomy_config,
         classification_sinks=classification_sinks,
-        evolution_service=_build_evolution_service_or_none(app_state, provider),
+        evolution_service=await _build_evolution_service_or_none(app_state),
         policy_engine=app_state.slice(SecurityStateSlice).policy_engine,
         provider=provider,
         provider_registry=registry,
@@ -616,22 +626,21 @@ def _build_recovery_strategy(app_state: AppState) -> RecoveryStrategy:
     )
 
 
-def _build_vision_gate_or_none(
+async def _build_vision_gate_or_none(
     *,
     app_state: AppState,
     workspace_root: Path,
-    provider: CompletionProvider | None,
 ) -> VisionVerifierGate | None:
     """Construct the vision verifier gate when the subsystem is enabled.
 
     Pulls :class:`VisionVerifyConfig` from
     ``app_state.config.security.vision_verify``. The ``heuristic`` /
     ``noop`` verifiers need only the workspace; the ``llm_vision``
-    verifier additionally needs the active provider, pinned to the
-    vendor-agnostic ``example-medium-001`` model id (operators override
-    via the post-init swap path). A misconfigured ``llm_vision`` with no
-    provider (empty company) degrades the gate to ``None`` with a
-    warning rather than crashing boot.
+    verifier additionally needs the operator's
+    ``security.vision_verify_model`` pair, because only they know which of
+    their registered connections serves a model that can see. An
+    ``llm_vision`` selection with no such pair degrades the gate to ``None``
+    with a warning rather than crashing boot or guessing a model id.
 
     Returns:
         The ``VisionVerifierGate`` when the subsystem is enabled and
@@ -641,15 +650,27 @@ def _build_vision_gate_or_none(
         build_vision_verifier_gate,
     )
 
-    tier_resolver = (
-        (lambda _tier: "example-medium-001") if provider is not None else None
+    registry = app_state.slice(ProvidersStateSlice).registry
+    model = await resolve_bound_model(
+        app_state,
+        namespace="security",
+        key="vision_verify_model",
+        unset_event=API_APP_STARTUP,
     )
+    if model is not None and (registry is None or model.provider not in registry):
+        logger.warning(
+            API_APP_STARTUP,
+            service="runtime_services",
+            note="configured vision-verify connection is not registered",
+            provider_name=model.provider,
+        )
+        model = None
     try:
         return build_vision_verifier_gate(
             app_state.config.security.vision_verify,
             workspace=workspace_root,
-            provider=provider,
-            tier_resolver=tier_resolver,
+            connections=registry.get if registry is not None else None,
+            model=model,
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             clock=app_state.clock,
         )

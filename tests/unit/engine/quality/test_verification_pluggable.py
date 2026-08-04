@@ -28,12 +28,8 @@ from synthorg.engine.quality.verification_factory import (
     build_grader,
 )
 from tests._shared import mock_of
+from tests._shared.model_binding import TEST_MODEL_ID, bound_model, one_connection
 from tests.unit.providers.conftest import FakeProvider
-
-
-def _tier_resolver(tier: str) -> str:
-    return f"test-{tier}-001"
-
 
 # -- Protocol conformance ----------------------------------------
 
@@ -72,15 +68,16 @@ class TestFactory:
         assert isinstance(d, IdentityCriteriaDecomposer)
         assert d.name == "identity"
 
-    def test_build_llm_decomposer_requires_provider(self) -> None:
+    def test_build_llm_decomposer_requires_connections(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
         with pytest.raises(ValueError, match="LLM decomposer requires"):
-            build_decomposer(cfg)
+            build_decomposer(cfg, model=bound_model())
 
-    def test_build_llm_decomposer_requires_tier_resolver(self) -> None:
+    def test_build_llm_decomposer_requires_a_bound_pair(self) -> None:
+        """A connection alone is not a target: the operator names the model."""
         cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
         with pytest.raises(ValueError, match="LLM decomposer requires"):
-            build_decomposer(cfg, provider=FakeProvider())
+            build_decomposer(cfg, connections=one_connection(FakeProvider()))
 
     def test_build_llm_decomposer_with_dependencies(self) -> None:
         cfg = VerificationConfig(
@@ -89,14 +86,14 @@ class TestFactory:
         )
         d = build_decomposer(
             cfg,
-            provider=FakeProvider(),
-            tier_resolver=_tier_resolver,
+            connections=one_connection(FakeProvider()),
+            model=bound_model(),
         )
         assert isinstance(d, LLMCriteriaDecomposer)
         assert d.name == "llm"
         # VerificationConfig values must propagate into the decomposer.
         assert d._max_probes_per_criterion == cfg.max_probes_per_criterion
-        assert d._model_id == _tier_resolver(cfg.decomposer_model_tier)
+        assert d._model_id == TEST_MODEL_ID
 
     def test_build_llm_decomposer_forwards_cost_tracker(self) -> None:
         """The factory forwards cost_tracker so probes are cost-tracked."""
@@ -104,8 +101,8 @@ class TestFactory:
         tracker = mock_of[CostTrackerProtocol]()
         d = build_decomposer(
             cfg,
-            provider=FakeProvider(),
-            tier_resolver=_tier_resolver,
+            connections=one_connection(FakeProvider()),
+            model=bound_model(),
             cost_tracker=tracker,
         )
         assert isinstance(d, LLMCriteriaDecomposer)
@@ -117,15 +114,16 @@ class TestFactory:
         assert isinstance(g, HeuristicRubricGrader)
         assert g.name == "heuristic"
 
-    def test_build_llm_grader_requires_provider(self) -> None:
+    def test_build_llm_grader_requires_connections(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.LLM)
         with pytest.raises(ValueError, match="LLM grader requires"):
-            build_grader(cfg)
+            build_grader(cfg, model=bound_model())
 
-    def test_build_llm_grader_requires_tier_resolver(self) -> None:
+    def test_build_llm_grader_requires_a_bound_pair(self) -> None:
+        """A connection alone is not a target: the operator names the model."""
         cfg = VerificationConfig(grader=GraderVariant.LLM)
         with pytest.raises(ValueError, match="LLM grader requires"):
-            build_grader(cfg, provider=FakeProvider())
+            build_grader(cfg, connections=one_connection(FakeProvider()))
 
     def test_build_llm_grader_with_dependencies(self) -> None:
         cfg = VerificationConfig(
@@ -134,14 +132,14 @@ class TestFactory:
         )
         g = build_grader(
             cfg,
-            provider=FakeProvider(),
-            tier_resolver=_tier_resolver,
+            connections=one_connection(FakeProvider()),
+            model=bound_model(),
         )
         assert isinstance(g, LLMRubricGrader)
         assert g.name == "llm"
         # VerificationConfig values must propagate into the grader.
         assert g._min_confidence_override == cfg.min_confidence_override
-        assert g._model_id == _tier_resolver(cfg.grader_model_tier)
+        assert g._model_id == TEST_MODEL_ID
 
     def test_build_llm_grader_forwards_cost_tracker(self) -> None:
         """The factory forwards cost_tracker so grading calls are tracked."""
@@ -149,8 +147,8 @@ class TestFactory:
         tracker = mock_of[CostTrackerProtocol]()
         g = build_grader(
             cfg,
-            provider=FakeProvider(),
-            tier_resolver=_tier_resolver,
+            connections=one_connection(FakeProvider()),
+            model=bound_model(),
             cost_tracker=tracker,
         )
         assert isinstance(g, LLMRubricGrader)
@@ -172,8 +170,6 @@ class TestVerificationConfig:
         cfg = VerificationConfig()
         assert cfg.decomposer == DecomposerVariant.IDENTITY
         assert cfg.grader == GraderVariant.HEURISTIC
-        assert cfg.decomposer_model_tier == "medium"
-        assert cfg.grader_model_tier == "medium"
 
     def test_frozen(self) -> None:
         cfg = VerificationConfig()

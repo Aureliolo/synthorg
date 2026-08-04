@@ -34,30 +34,14 @@ class TestCoordinationSectionConfigDefaults:
         cfg = CoordinationSectionConfig()
         assert cfg.base_branch == "main"
 
-    def test_default_decomposition_model(self) -> None:
-        cfg = CoordinationSectionConfig()
-        assert cfg.decomposition_model == "example-medium-001"
-
-    def test_custom_decomposition_model(self) -> None:
-        cfg = CoordinationSectionConfig(decomposition_model="example-large-001")
-        assert cfg.decomposition_model == "example-large-001"
-
-    def test_decomposition_model_must_not_be_blank(self) -> None:
+    def test_company_yaml_cannot_carry_a_decomposition_model(self) -> None:
         from pydantic import ValidationError
 
-        with pytest.raises(ValidationError):
-            CoordinationSectionConfig(decomposition_model="  ")
-
-    def test_decomposition_model_env_mirror(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(
-            "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL",
-            "env-model-001",
-        )
-        cfg = CoordinationSectionConfig()
-        assert cfg.decomposition_model == "env-model-001"
+        # The decomposition model is a provider + model pair the operator
+        # assigns through settings, not a bare model id a company YAML can
+        # bake in: half a pair names no dispatch target.
+        with pytest.raises(ValidationError, match="extra"):
+            CoordinationSectionConfig(decomposition_model="some-model")  # type: ignore[call-arg]
 
     def test_default_auto_topology_rules(self) -> None:
         cfg = CoordinationSectionConfig()

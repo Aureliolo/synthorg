@@ -135,21 +135,18 @@ async def wire_fine_tune_orchestrator(app_state: AppState) -> None:
             if not provider_name:
                 # A bound MODEL_REF always carries its provider (the write-time
                 # validator rejects a provider-less ref), so a blank provider
-                # here means the model id was set without one: fall back to the
-                # explicit default system provider, never a first-registered
-                # pick (``None`` when the default is ambiguous/unset).
-                provider = registry.default_provider()
-                if provider is None:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        service="fine_tune_orchestrator",
-                        note=(
-                            "fine_tune_query_model has no provider and "
-                            "providers.default_provider is ambiguous/unset; "
-                            "using the extractive query generator"
-                        ),
-                        fine_tune_query_model=query_model,
-                    )
+                # here means the model id was set without one. There is no
+                # connection to substitute: the same id on two connections is
+                # two different calls, billed and rate-limited separately.
+                logger.warning(
+                    API_APP_STARTUP,
+                    service="fine_tune_orchestrator",
+                    note=(
+                        "fine_tune_query_model names a model but no provider; "
+                        "using the extractive query generator"
+                    ),
+                    fine_tune_query_model=query_model,
+                )
             elif provider_name in registry:
                 provider = registry.get(provider_name)
             else:

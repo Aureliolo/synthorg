@@ -155,10 +155,28 @@ _r.register(
         description=(
             "Grader variant for the verification review stage."
             " 'heuristic' is deterministic and needs no provider;"
-            " 'llm' grades via the registered completion provider and"
-            " degrades to 'heuristic' when no provider is present."
+            " 'llm' grades on the `simulations.verification_grader_model`"
+            " pair and degrades to 'heuristic' when that pair is unset."
             " SimulationsSettingsSubscriber rebuilds the review pipeline"
             " on a change, so it applies without a restart."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
+        key="verification_grader_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the 'llm' verification grader runs on. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so a"
+            " bare model id names no dispatch target. Unset degrades the grader"
+            " to 'heuristic' rather than grading on a connection nobody chose."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
@@ -175,11 +193,30 @@ _r.register(
         description=(
             "Decomposer variant for the verification review stage."
             " 'identity' maps each acceptance criterion to one probe"
-            " with no LLM call; 'llm' decomposes via the registered"
-            " completion provider and degrades to 'identity' when no"
-            " provider is present. SimulationsSettingsSubscriber rebuilds"
-            " the review pipeline on a change, so it applies without a"
+            " with no LLM call; 'llm' decomposes on the"
+            " `simulations.verification_decomposer_model` pair and degrades to"
+            " 'identity' when that pair is unset. SimulationsSettingsSubscriber"
+            " rebuilds the review pipeline on a change, so it applies without a"
             " restart."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
+        key="verification_decomposer_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the 'llm' verification decomposer runs on. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so a"
+            " bare model id names no dispatch target. Unset degrades the"
+            " decomposer to 'identity' rather than probing on a connection"
+            " nobody chose."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,

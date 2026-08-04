@@ -621,6 +621,9 @@ async def _run_startup(  # noqa: PLR0913
                 from synthorg._core.features import (  # noqa: PLC0415
                     require_service,
                 )
+                from synthorg.providers.model_binding import (  # noqa: PLC0415
+                    resolve_bound_completion,
+                )
 
                 _ts = build_training_service(
                     config=effective_config.training,
@@ -632,6 +635,17 @@ async def _run_startup(  # noqa: PLR0913
                         "Approval Store",
                     ),
                     tool_tracker=tool_invocation_tracker_of(app_state),
+                    # The curator reads candidate training material and decides
+                    # what a new hire learns, so the connection it runs on is
+                    # the operator's explicit choice; unset degrades the
+                    # ``llm_curated`` strategy to deterministic scoring.
+                    curation_binding=await resolve_bound_completion(
+                        app_state,
+                        namespace="hr",
+                        key="training_curation_model",
+                        unset_event=API_APP_STARTUP,
+                        subject="training curation",
+                    ),
                 )
                 app_state.wire(HrStateSlice, training_service=_ts)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

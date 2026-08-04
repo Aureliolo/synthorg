@@ -5,27 +5,24 @@ returning ``None`` when the subsystem is disabled so the
 ReviewGateService short-circuits as if the gate were absent.
 """
 
-from collections.abc import Callable
 from pathlib import Path
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
-from synthorg.core.types import ModelTier
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.security.visionverify.config import VisionVerifyConfig
 from synthorg.security.visionverify.factory import build_vision_verifier
 from synthorg.security.visionverify.gate import VisionVerifierGateService
 from synthorg.security.visionverify.protocol import VisionVerifierGate
-
-type TierResolver = Callable[[ModelTier], str | None]
+from synthorg.settings.model_ref import ModelRef
 
 
 def build_vision_verifier_gate(
     config: VisionVerifyConfig,
     *,
     workspace: Path,
-    provider: CompletionProvider | None = None,
-    tier_resolver: TierResolver | None = None,
+    connections: ConnectionSelector | None = None,
+    model: ModelRef | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
 ) -> VisionVerifierGate | None:
@@ -36,14 +33,14 @@ def build_vision_verifier_gate(
         verification is disabled.
 
     Raises:
-        VisionVerifyConfigError: When ``llm_vision`` is selected without
-            its required provider / tier resolver.
+        VisionVerifyConfigError: When ``llm_vision`` is selected without a
+            bound pair to dispatch on.
     """
     verifier = build_vision_verifier(
         config,
         workspace=workspace,
-        provider=provider,
-        tier_resolver=tier_resolver,
+        connections=connections,
+        model=model,
         cost_tracker=cost_tracker,
     )
     if verifier is None:

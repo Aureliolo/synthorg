@@ -30,7 +30,6 @@ class CapabilityId(StrEnum):
     SETTINGS_RESOLVER = "settings_resolver"
     SETTINGS_SERVICE = "settings_service"
     PROVIDER_REGISTRY = "provider_registry"
-    DEFAULT_PROVIDER = "default_provider"
     COST_TRACKER = "cost_tracker"
     APPROVAL_STORE = "approval_store"
     MESSAGE_BUS = "message_bus"

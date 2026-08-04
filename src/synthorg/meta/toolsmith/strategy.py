@@ -47,8 +47,11 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_STARTED,
     TOOLSMITH_PROPOSAL_GUARD_REJECTED,
 )
-from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.kill_switch import require_configured_model
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -83,13 +86,20 @@ class LLMToolBlueprintGenerator:
     """Authors a :class:`ToolBlueprint` from a capability gap via the LLM.
 
     Args:
-        config: Toolsmith configuration (allowlist, sandbox policy, model).
-        provider: Completion provider for the authoring call.
+        config: Toolsmith configuration (allowlist, sandbox policy).
+        connections: Resolves the connection the authoring model names, so
+            the call lands on the operator's chosen provider rather than on
+            whichever one the boot layer happened to hold.
         cost_tracker: Optional cost tracker for the LLM call.
         clock: Time source for the blueprint's ``created_at``.
+        config_resolver: Live source for the ``meta.toolsmith_model``
+            assignment, re-read per authoring call so a reassignment takes
+            effect on the next gap rather than the next boot.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.TOOLSMITH_AUTHOR
+    _MODEL_NAMESPACE: ClassVar[str] = "meta"
+    _MODEL_KEY: ClassVar[str] = "toolsmith_model"
 
     @property
     def metadata(self) -> ModelPinMetadata:
@@ -100,14 +110,16 @@ class LLMToolBlueprintGenerator:
         self,
         *,
         config: ToolsmithConfig,
-        provider: BaseCompletionProvider,
+        connections: ConnectionSelector,
         cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._config = config
-        self._provider = provider
+        self._connections = connections
         self._cost_tracker = cost_tracker
         self._clock = clock or SystemClock()
+        self._config_resolver = config_resolver
 
     async def author(
         self,
@@ -176,6 +188,7 @@ class LLMToolBlueprintGenerator:
 
         Raises:
             ToolAuthoringError: Raised on the corresponding failure path.
+            ServiceUnavailableError: No authoring pair is configured.
         """
         from synthorg.providers.enums import MessageRole  # noqa: PLC0415
         from synthorg.providers.models import (  # noqa: PLC0415
@@ -183,6 +196,17 @@ class LLMToolBlueprintGenerator:
             CompletionConfig,
         )
 
+        model = require_configured_model(
+            await resolve_bound_model_live(
+                self._config_resolver,
+                namespace=self._MODEL_NAMESPACE,
+                key=self._MODEL_KEY,
+                unset_event=TOOLSMITH_AUTHOR_FAILED,
+            ),
+            namespace=self._MODEL_NAMESPACE,
+            key=self._MODEL_KEY,
+            feature_label="Toolsmith authoring",
+        )
         user_prompt = self._build_user_prompt(gap, existing_capabilities)
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
@@ -197,9 +221,9 @@ class LLMToolBlueprintGenerator:
             purpose=self.metadata.prompt_class_id,
             call_category=LLMCallCategory.SYSTEM,
         ):
-            response = await self._provider.complete(
+            response = await self._connections(model.provider).complete(
                 messages=messages,
-                model=str(self._config.authoring.model),
+                model=model.model_id,
                 config=config,
             )
         content = response.content

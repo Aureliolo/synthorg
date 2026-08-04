@@ -39,7 +39,7 @@ from synthorg.observability.events.charter import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import require_configured_model
 
@@ -111,7 +111,8 @@ class LLMCharterInterviewer:
     the next interview turn without a restart.
 
     Args:
-        provider: LLM completion provider.
+        connections: Resolves the connection the configured
+            ``charter.interview_model`` pair names.
         cost_tracker: Optional cost tracker for LLM accounting.
     """
 
@@ -125,10 +126,10 @@ class LLMCharterInterviewer:
     def __init__(
         self,
         *,
-        provider: CompletionProvider,
+        connections: ConnectionSelector,
         cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
-        self._provider = provider
+        self._connections = connections
         self._cost_tracker = cost_tracker
 
     async def run_turn(
@@ -179,9 +180,9 @@ class LLMCharterInterviewer:
                 purpose=self.metadata.prompt_class_id,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
+                response = await self._connections(model.provider).complete(
                     messages,
-                    model,
+                    model.model_id,
                     config=completion_config,
                 )
         except Exception as exc:

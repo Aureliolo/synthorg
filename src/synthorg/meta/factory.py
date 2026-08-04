@@ -73,7 +73,7 @@ from synthorg.observability.events.meta import (
     META_CONFIG_LOADED,
     META_STRATEGY_REGISTERED,
 )
-from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -107,7 +107,7 @@ def build_rule_engine(
 def build_strategies(
     config: SelfImprovementConfig,
     *,
-    provider: BaseCompletionProvider | None = None,
+    connections: ConnectionSelector | None = None,
     config_resolver: ConfigResolver | None = None,
 ) -> tuple[ImprovementStrategy, ...]:
     """Build the improvement strategy set for the meta-loop.
@@ -126,7 +126,7 @@ def build_strategies(
 
     Args:
         config: Self-improvement configuration.
-        provider: Completion provider for LLM-based strategies
+        connections: Resolves the connection a strategy's own model names
             (required when code_modification_enabled is True).
         config_resolver: Optional resolver threaded into
             ``CodeModificationStrategy`` for the live
@@ -145,7 +145,7 @@ def build_strategies(
     logger.debug(META_STRATEGY_REGISTERED, altitude="architecture")
     logger.debug(META_STRATEGY_REGISTERED, altitude="prompt_tuning")
     if config.code_modification_enabled:
-        if provider is None:
+        if connections is None:
             logger.warning(
                 META_STRATEGY_REGISTERED,
                 altitude="code_modification",
@@ -167,7 +167,7 @@ def build_strategies(
             strategies.append(
                 CodeModificationStrategy(
                     config=config,
-                    provider=provider,
+                    connections=connections,
                     scope_validator=scope_validator,
                     config_resolver=config_resolver,
                 ),

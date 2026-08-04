@@ -25,14 +25,19 @@ from synthorg.observability.events.chief_of_staff import (
     COS_LEARNING_ENABLED,
     COS_OUTCOME_RECORD_FAILED,
 )
+from synthorg.observability.events.meta import META_CYCLE_FAILED
+from synthorg.settings.bound_model import resolve_bound_model_live
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
+    require_configured_model,
     resolve_bool_with_fallback,
-    resolve_model_with_fallback,
 )
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+_ANALYSIS_MODEL_KEY: Final[str] = "analysis_model"
 
 # Strategy altitudes whose ``self_improvement`` toggle is read live each
 # cycle. ``ProposalAltitude.CODE_MODIFICATION`` is deliberately absent: it
@@ -50,17 +55,17 @@ _TOGGLEABLE_ALTITUDES: Final[frozenset[ProposalAltitude]] = frozenset(
 
 
 class AnalysisSettings(BaseModel):
-    """Live proposal-analysis model + sampling parameters.
+    """Live proposal-analysis binding + sampling parameters.
 
-    The model identifier is read live per call so an operator can retarget
-    analysis without a restart; the sampling parameters come from the baked
-    structural config. No strategy consumes this yet -- it is the live seam an
-    LLM analysis pass will read once one is added.
+    The ``(provider, model)`` pair is read live per call so an operator can
+    retarget analysis without a restart; the sampling parameters come from the
+    baked structural config. No strategy consumes this yet -- it is the live
+    seam an LLM analysis pass will read once one is added.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    llm_model: NotBlankStr
+    model: ModelRef
     temperature: float
     max_tokens: int
 
@@ -182,14 +187,18 @@ class SelfImprovementLiveConfigMixin:
         Returns:
             The resolved analysis settings.
         """
-        model = await resolve_model_with_fallback(
-            resolver=self._config_resolver,
-            namespace=SettingNamespace.SELF_IMPROVEMENT,
-            key="analysis_model",
-            fallback=self._config.analysis_model,
-        )
         return AnalysisSettings(
-            llm_model=NotBlankStr(model),
+            model=require_configured_model(
+                await resolve_bound_model_live(
+                    self._config_resolver,
+                    namespace=SettingNamespace.SELF_IMPROVEMENT,
+                    key=_ANALYSIS_MODEL_KEY,
+                    unset_event=META_CYCLE_FAILED,
+                ),
+                namespace=SettingNamespace.SELF_IMPROVEMENT,
+                key=_ANALYSIS_MODEL_KEY,
+                feature_label="Proposal analysis",
+            ),
             temperature=self._config.analysis_temperature,
             max_tokens=self._config.analysis_max_tokens,
         )

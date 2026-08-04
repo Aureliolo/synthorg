@@ -434,15 +434,19 @@ model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
 called and the `CostRecord.provider` name are always the same provider (attribution
 parity). If the routed provider cannot be resolved from the registry, the engine keeps
 the pre-routing provider + identity together so a routing miss is never a
-mis-attribution. System / infra services that carry no dedicated per-feature
-model (decomposition, evolution, compaction, red-team, vision, the conflict
-judge, the security evaluators, the work pipeline) dispatch on the explicit
-operator-set `providers.default_provider`, resolved through
-`ProviderRegistry.default_provider()`: a sole registered provider is that
-default automatically, but with two or more providers the operator must name
-one and there is NO alphabetical / first-registered fallback (an ambiguous
-default leaves those services unwired rather than silently routing to whichever
-provider sorts first). Enforced by `check_no_provider_auto_pick.py`.
+mis-attribution. System / infra services (decomposition, evolution, compaction,
+red-team, vision, the conflict judge, the security evaluators, the work
+pipeline) each carry their own `MODEL_REF` setting and dispatch on the
+`(provider, model)` pair it names. There is no shared house connection to
+inherit: a provider is a registered *connection* carrying its own credentials,
+endpoint and quota, so the same model id reached through two of them is two
+different calls, billed and rate-limited separately, and a registry-level
+default would spend one feature's key on another's work. A service whose pair
+is unset stays off and says so, rather than borrowing a connection nobody chose
+for it. Enforced by `check_no_provider_auto_pick.py` (no auto-pick, and the
+whole `default_provider` accessor family stays removed) and
+`check_explicit_model_binding.py` (no placeholder value, no bare model
+default).
 
 ### Multi-Provider Model Resolution
 
@@ -465,8 +469,8 @@ binding decides which one an agent uses.
 - **No bare-ref auto-resolution.** There is no "resolve this model id against
   whichever provider happens to serve it" path. A model assignment always names
   its provider: a MODEL_REF setting rejects an unbound (provider-less) value at
-  write-time, and feature builders resolve the ref's explicit provider (or the
-  explicit default system provider), never a first-registered pick. The
+  write-time, and feature builders resolve the ref's explicit provider, never a
+  first-registered pick and never a shared default. The
   provider-agnostic tier archetype (`example-<tier>-001`) a pin records is still
   vendor-neutral; it is the *provider* that must be explicit, resolved once at
   dispatch, never auto-selected across gateways.

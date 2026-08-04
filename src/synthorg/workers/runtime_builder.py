@@ -53,7 +53,6 @@ from synthorg.observability.events.workers import (
     WORKERS_RUNTIME_RELOADED,
 )
 from synthorg.persistence.state import project_repository_of
-from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
@@ -62,6 +61,7 @@ from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
     build_red_team_tool_seed,
 )
+from synthorg.settings.bound_model import resolve_bound_model
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
@@ -79,9 +79,10 @@ from synthorg.workers._completion_oracle_runtime import (
     resolve_completion_oracle_config,
 )
 from synthorg.workers._coordinator_assembly import (
+    _DECOMPOSITION_KEY,
+    _DECOMPOSITION_NS,
     _build_runtime_coordinator,
     _build_runtime_work_pipeline,
-    decomposition_model_is_configured,
 )
 from synthorg.workers._engine_assembly import (
     _build_external_api_runtime,
@@ -107,17 +108,15 @@ from synthorg.workers.execution_service import (
 logger = get_logger(__name__)
 
 
-def _select_active_provider(
-    app_state: AppState,
-) -> tuple[ProviderRegistry, tuple[str, ...]] | None:
+def _select_active_provider(app_state: AppState) -> ProviderRegistry | None:
     """Resolve the active provider registry, or ``None`` for empty-company.
 
-    Logs the empty-company path and the unsupported multi-provider
-    fan-in so the boot decision is observable.
+    Logs the empty-company path and the multi-provider fan-in so the boot
+    decision is observable.
 
     Returns:
-        A ``(registry, provider_names)`` pair, or ``None`` for the
-        empty-company (no usable provider) path.
+        The registry, or ``None`` for the empty-company (nothing registered
+        to dispatch on) path.
     """
     security = app_state.config.security
     if not has_active_provider(app_state):
@@ -153,28 +152,25 @@ def _select_active_provider(
             API_APP_STARTUP,
             service="runtime_services",
             note=(
-                "multiple providers registered; system dispatch uses the "
-                "explicit providers.default_provider (no alphabetical default) "
-                "and stakes routing picks the cheapest model per tier per task"
+                "multiple providers registered; each feature dispatches on its "
+                "own configured (provider, model) pair, and stakes routing "
+                "picks the cheapest model per tier per task"
             ),
-            default_provider=registry.default_provider_resolved_name(),
             providers=list(names),
         )
-    return registry, names
+    return registry
 
 
-def _no_active_provider_services(
+async def _no_active_provider_services(
     app_state: AppState,
     workspace_root: Path,
     *,
     oracle_enabled: bool,
 ) -> RuntimeServices:
-    """Boot the no-provider mode: no usable default provider for the engine.
+    """Boot the no-provider mode: nothing registered to dispatch on.
 
-    Reached when no provider is registered, or when several are but none is
-    the explicit ``providers.default_provider`` (the default is ambiguous and
-    there is no alphabetical fallback). The deterministic build/test gate
-    still attaches; only the provider-dependent runtimes stay off.
+    The deterministic build/test gate still attaches; only the
+    provider-dependent runtimes stay off.
 
     Returns:
         No-provider ``RuntimeServices`` (``NoProviderExecutionService``,
@@ -185,34 +181,32 @@ def _no_active_provider_services(
         coordinator=None,
         work_pipeline=None,
         completion_oracle_enabled=oracle_enabled,
-        vision_gate=_build_vision_gate_or_none(
+        vision_gate=await _build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
-            provider=None,
         ),
     )
 
 
-def _degraded_no_coordinator(
+async def _degraded_no_coordinator(
     app_state: AppState,
     workspace_root: Path,
-    provider: CompletionProvider,
     *,
     oracle_enabled: bool,
     error: BaseException | None = None,
 ) -> RuntimeServices:
     """Boot the degraded no-coordinator mode: task execution rejected at the seam.
 
-    Used when a provider is configured but ``coordination.decomposition_model``
-    is unset (e.g. a capability toggle rebuilt the coordinator mid-setup before
-    the model landed). Reject task execution at the seam until a coordination
-    model is configured, instead of crashing the boot / reload. Setting the
-    model triggers a watched-key rebuild that succeeds, so this self-heals.
+    Used when a provider is registered but ``coordination.decomposition_model``
+    names no registered ``(provider, model)`` pair (e.g. a capability toggle
+    rebuilt the coordinator mid-setup before the assignment landed). Reject
+    task execution at the seam until a coordination pair is configured, instead
+    of crashing the boot / reload. Setting it triggers a watched-key rebuild
+    that succeeds, so this self-heals.
 
     Args:
         app_state: Live application state.
         workspace_root: Absolute filesystem root for the vision gate.
-        provider: The active provider (its vision gate still boots).
         oracle_enabled: Whether the completion oracle is enabled, so the
             deterministic build/test gate still attaches in degraded mode
             (it needs no coordinator, only the execution-record store).
@@ -236,9 +230,9 @@ def _degraded_no_coordinator(
         service="runtime_services",
         mode="no_coordinator",
         note=(
-            "provider present but coordination.decomposition_model is unset; "
-            "task execution rejected at the seam until a coordination model "
-            "is configured"
+            "provider registered but coordination.decomposition_model names no "
+            "registered (provider, model) pair; task execution rejected at the "
+            "seam until a coordination pair is configured"
         ),
         **error_fields,
     )
@@ -247,10 +241,9 @@ def _degraded_no_coordinator(
         coordinator=None,
         work_pipeline=None,
         completion_oracle_enabled=oracle_enabled,
-        vision_gate=_build_vision_gate_or_none(
+        vision_gate=await _build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
-            provider=provider,
         ),
     )
 
@@ -282,56 +275,40 @@ async def build_runtime_services(
     # build/test gate's enablement survives the no-provider and degraded paths;
     # only the peer-review runtime depends on an active provider.
     completion_oracle_config = await resolve_completion_oracle_config(app_state)
-    selected = _select_active_provider(app_state)
-    if selected is None:
-        return _no_active_provider_services(
+    registry = _select_active_provider(app_state)
+    if registry is None:
+        return await _no_active_provider_services(
             app_state,
             workspace_root,
             oracle_enabled=completion_oracle_config.enabled,
         )
-    registry, names = selected
-    # Resolve the default provider by name once (the single source of the
-    # explicit-bound / sole-provider / ambiguous-None branch logic), then take
-    # its driver -- no separate default_provider() call that re-runs the same
-    # resolution and leaves an unreachable guard behind.
-    default_provider_name = registry.default_provider_resolved_name()
-    if default_provider_name is None:
-        # Two or more providers are registered but none is the explicit
-        # providers.default_provider, so the default system provider is
-        # ambiguous. Refuse to auto-pick the alphabetically-first one; boot
-        # the no-provider mode until the operator names a default. Self-heals
-        # on the watched-key rebuild when the setting lands.
-        logger.warning(
-            API_APP_STARTUP,
-            service="runtime_services",
-            mode="no_default_provider",
-            note=(
-                "multiple providers registered but providers.default_provider "
-                "is unset or unregistered; system dispatch stays unwired until "
-                "an explicit default is chosen (no alphabetical fallback)"
-            ),
-            providers=list(names),
-        )
-        return _no_active_provider_services(
-            app_state,
-            workspace_root,
-            oracle_enabled=completion_oracle_config.enabled,
-        )
-    provider = registry.get(default_provider_name)
-
     # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
-    # the coordination model is unset the coordinator build would raise anyway,
+    # the coordination pair is unset the coordinator build would raise anyway,
     # so short-circuit to degraded mode here rather than tearing down and
     # reconnecting live MCP sessions only to discard the result. This keeps the
-    # self-heal reload path (an unrelated watched-key write while the model is
+    # self-heal reload path (an unrelated watched-key write while the pair is
     # still blank) from churning healthy resources.
-    if not await decomposition_model_is_configured(app_state):
-        return _degraded_no_coordinator(
+    #
+    # That same pair also supplies the engine's connection. There is no shared
+    # "default provider" to inherit: a provider is a registered connection with
+    # its own credentials, endpoint and quota, so every dispatch names one.
+    # Agents dispatch on their own bound pair through the registry; this client
+    # is what the engine holds when no registry is wired at all, and taking it
+    # from the one pair the runtime already requires means it is never a
+    # connection nobody chose.
+    decomposition = await resolve_bound_model(
+        app_state,
+        namespace=_DECOMPOSITION_NS,
+        key=_DECOMPOSITION_KEY,
+        unset_event=API_APP_STARTUP,
+    )
+    if decomposition is None or decomposition.provider not in registry:
+        return await _degraded_no_coordinator(
             app_state,
             workspace_root,
-            provider,
             oracle_enabled=completion_oracle_config.enabled,
         )
+    provider = registry.get(decomposition.provider)
 
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
@@ -414,10 +391,9 @@ async def build_runtime_services(
         # Backstop for the case the pre-check cannot catch: the model was
         # cleared between the pre-check read and this eager build. Degrade to
         # the same no-coordinator mode the pre-check returns.
-        return _degraded_no_coordinator(
+        return await _degraded_no_coordinator(
             app_state,
             workspace_root,
-            provider,
             oracle_enabled=completion_oracle_config.enabled,
             error=exc,
         )
@@ -426,7 +402,7 @@ async def build_runtime_services(
         API_APP_STARTUP,
         service="runtime_services",
         mode="agent_engine",
-        provider=default_provider_name,
+        provider=decomposition.provider,
         tool_count=tool_count,
         security_enabled=security.enabled,
         security_enforcement_mode=security.enforcement_mode.value,
@@ -483,10 +459,9 @@ async def build_runtime_services(
         seed=completion_oracle_seed,
         config=completion_oracle_config,
     )
-    vision_gate = _build_vision_gate_or_none(
+    vision_gate = await _build_vision_gate_or_none(
         app_state=app_state,
         workspace_root=workspace_root,
-        provider=provider,
     )
     logger.info(
         API_APP_STARTUP,

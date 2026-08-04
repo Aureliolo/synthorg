@@ -24,6 +24,9 @@ from synthorg.meta.models import (
     ProposalStatus,
 )
 from synthorg.meta.service import SelfImprovementService
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
+from tests._shared.model_binding import bound_ref, one_connection
 
 pytestmark = pytest.mark.integration
 
@@ -84,6 +87,18 @@ def _mock_provider() -> AsyncMock:
     return provider
 
 
+def _resolver() -> ConfigResolver:
+    """Resolve the operator's code-modification pair for every read.
+
+    Returns:
+        A resolver naming the connection ``_mock_provider`` is registered as.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_str=AsyncMock(return_value=bound_ref("example-medium-001")),
+    )
+    return resolver
+
+
 class TestCodeModificationCycleIntegration:
     """End-to-end cycle with code modification altitude."""
 
@@ -105,7 +120,8 @@ class TestCodeModificationCycleIntegration:
                 code_modification_enabled=True,
                 code_modification=_CODE_MOD_CFG,
             ),
-            provider=provider,
+            connections=one_connection(provider),
+            config_resolver=_resolver(),
             approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
@@ -131,7 +147,8 @@ class TestCodeModificationCycleIntegration:
                 config_tuning_enabled=True,
                 code_modification_enabled=False,
             ),
-            provider=provider,
+            connections=one_connection(provider),
+            config_resolver=_resolver(),
             approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
@@ -151,7 +168,8 @@ class TestCodeModificationCycleIntegration:
                 code_modification_enabled=True,
                 code_modification=_CODE_MOD_CFG,
             ),
-            provider=provider,
+            connections=one_connection(provider),
+            config_resolver=_resolver(),
             approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(
@@ -172,7 +190,8 @@ class TestCodeModificationCycleIntegration:
                 code_modification_enabled=True,
                 code_modification=_CODE_MOD_CFG,
             ),
-            provider=provider,
+            connections=one_connection(provider),
+            config_resolver=_resolver(),
             approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap())

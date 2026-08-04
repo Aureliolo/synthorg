@@ -33,6 +33,7 @@ from synthorg.providers.models import (
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from tests._shared import as_uuid, mock_of, sid
+from tests._shared.model_binding import bound_model
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import (
     build_registry as _registry,
@@ -451,10 +452,14 @@ class TestBuildRoleRouter:
 
 class TestResponderFactories:
     def test_generic_responder_uses_chief_of_staff_persona(self) -> None:
-        responder = generic_responder(model=NotBlankStr("propose-model"))
+        responder = generic_responder(
+            model=bound_model("propose-model", provider="cos-provider")
+        )
         assert responder.persona == GENERIC_RESPONDER_PERSONA
         assert responder.model == "propose-model"
-        assert responder.provider_name is None
+        # The generic responder names a connection like any other: there is no
+        # shared default for it to leave unset.
+        assert responder.provider_name == "cos-provider"
         assert responder.agent_id is None
         assert not responder.is_routed
 

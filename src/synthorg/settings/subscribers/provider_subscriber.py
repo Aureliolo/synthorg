@@ -18,7 +18,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("providers", "routing_strategy"),
         ("providers", "retry_max_attempts"),
-        ("providers", "default_provider"),
     }
 )
 
@@ -84,9 +83,9 @@ class ProviderSettingsSubscriber:
         """Handle a provider setting change.
 
         ``routing_strategy`` triggers a :class:`ModelRouter` rebuild;
-        ``retry_max_attempts`` and ``default_provider`` each trigger a
-        :class:`ProviderRegistry` rebuild so the new retry cap / bound default
-        goes live. Other keys are advisory and logged at INFO level.
+        ``retry_max_attempts`` triggers a :class:`ProviderRegistry` rebuild so
+        the new retry cap goes live. Other keys are advisory and logged at
+        INFO level.
 
         Args:
             namespace: Changed setting namespace.
@@ -94,10 +93,7 @@ class ProviderSettingsSubscriber:
         """
         if namespace == "providers" and key == "routing_strategy":
             await self._rebuild_router()
-        elif namespace == "providers" and key in (
-            "retry_max_attempts",
-            "default_provider",
-        ):
+        elif namespace == "providers" and key == "retry_max_attempts":
             await self._rebuild_registry(key)
         else:
             logger.info(
@@ -153,11 +149,11 @@ class ProviderSettingsSubscriber:
     async def _rebuild_registry(self, key: str) -> None:
         """Rebuild the ProviderRegistry from live settings and swap it in.
 
-        Triggered by a ``retry_max_attempts`` or ``default_provider`` change;
-        *key* names which and is echoed in the telemetry. Resolves the live
-        retry cap, the bound default provider, and the current provider set
-        (the DB-persisted blob, falling back to the boot template), rebuilds
-        the registry with the catalogue re-bound, and hot-swaps it. Skipped
+        Triggered by a ``retry_max_attempts`` change; *key* names it and is
+        echoed in the telemetry. Resolves the live retry cap and the current
+        provider set (the DB-persisted blob, falling back to the boot
+        template), rebuilds the registry with the catalogue re-bound, and
+        hot-swaps it. Skipped
         while a cassette session is active, since the recorded-LLM seam is
         baked in at process start and the change then applies on the next
         restart. On failure the existing registry stays in place; the error is
@@ -167,7 +163,6 @@ class ProviderSettingsSubscriber:
             provider_credential_catalog_of,
         )
         from synthorg.providers.management._persistence import (  # noqa: PLC0415
-            resolve_default_provider_name,
             resolve_retry_max_attempts,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
@@ -186,14 +181,12 @@ class ProviderSettingsSubscriber:
                 return
             resolver = config_resolver_of(self._app_state)
             retry_max_attempts = await resolve_retry_max_attempts(resolver)
-            default_provider = await resolve_default_provider_name(resolver)
             provider_configs = dict(await resolver.get_provider_configs())
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
                 connection_catalog=provider_credential_catalog_of(self._app_state),
                 retry_max_attempts=retry_max_attempts,
             )
-            new_registry.bind_default_provider(default_provider)
             # Re-read after the awaits: a concurrent setup-complete reinit may
             # have installed a cassette-bound registry while we were resolving
             # configs. Swapping over it would silently route recorded-LLM

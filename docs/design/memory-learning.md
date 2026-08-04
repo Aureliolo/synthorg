@@ -179,9 +179,10 @@ prior retros and avoid restating them, is fed a fenced summary of the objective,
 its acceptance criteria, and the completed plan items, and finally calls the
 terminal `submit_retrospective` tool. The session is bounded by a turn cap, a
 per-session cost ceiling, and a wall-clock timeout; it runs on the lead's own
-bound provider (the explicit `providers.default_provider` when that is
-unresolvable). When no lead is staffed the most senior team member stands in, so
-an owned initiative always has an accountable author.
+bound `(provider, model)` pair, and a lead whose connection is not registered
+parks the capture rather than borrowing one. When no lead is staffed the most
+senior team member stands in, so an owned initiative always has an accountable
+author.
 
 ### The write side and its governance
 

@@ -82,6 +82,7 @@ from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared.model_binding import bound_ref, one_connection
 from tests._shared.scripted_provider import make_e2e_identity
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 
@@ -249,10 +250,12 @@ class TestNarrativeRoundTrip:
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(
                 narrative_enabled=True,
-                narrative_model=NotBlankStr("example-small-001"),
+                narrative_model=NotBlankStr(bound_ref("example-small-001")),
             ),
-            provider=mock_of[CompletionProvider](
-                complete=AsyncMock(return_value=_prose_response())
+            connections=one_connection(
+                mock_of[CompletionProvider](
+                    complete=AsyncMock(return_value=_prose_response())
+                )
             ),
             docs_service=docs_service,
             brain_service=brain,
@@ -288,8 +291,10 @@ class TestNarrativeRoundTrip:
         """
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(),
-            provider=mock_of[CompletionProvider](
-                complete=AsyncMock(return_value=_prose_response())
+            connections=one_connection(
+                mock_of[CompletionProvider](
+                    complete=AsyncMock(return_value=_prose_response())
+                )
             ),
             docs_service=docs_service,
             brain_service=mock_of[ProjectBrainService](),
@@ -339,10 +344,12 @@ def _real_narrator(docs_service: DocsService) -> object:
     narrator = build_chief_of_staff_narrator(
         ChiefOfStaffConfig(
             narrative_enabled=True,
-            narrative_model=NotBlankStr("example-small-001"),
+            narrative_model=NotBlankStr(bound_ref("example-small-001")),
         ),
-        provider=mock_of[CompletionProvider](
-            complete=AsyncMock(return_value=_prose_response())
+        connections=one_connection(
+            mock_of[CompletionProvider](
+                complete=AsyncMock(return_value=_prose_response())
+            )
         ),
         docs_service=docs_service,
         brain_service=brain,

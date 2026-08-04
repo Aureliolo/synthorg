@@ -417,3 +417,21 @@ _r.register(
         max_value=60.0,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="conflict_judge_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the LLM conflict judge runs on. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so"
+            " a bare model id names no dispatch target. Unset leaves the judge"
+            " unwired and the debate / hybrid resolvers fall back to authority."
+        ),
+        group="Conflict Resolution",
+        level=SettingLevel.ADVANCED,
+    )
+)

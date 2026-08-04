@@ -197,7 +197,10 @@ def build_chief_of_staff_chat(
         chat_model=str(chief_of_staff_config.chat_model),
     )
     return ChiefOfStaffChat(
-        provider=provider,
+        # The live model setting names the connection to dispatch on, so the
+        # service resolves it per call rather than holding whichever client
+        # was resolved here at boot.
+        connections=provider_registry.get,
         config=chief_of_staff_config,
         cost_tracker=cost_tracker,
         config_resolver=config_resolver,
@@ -264,7 +267,6 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         propose_model=str(chief_of_staff_config.propose_model),
     )
     return ChiefOfStaffProposer(
-        provider=provider,
         config=chief_of_staff_config,
         conversation_repo=repositories.conversation_repo,
         turn_repo=repositories.turn_repo,
@@ -272,7 +274,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         clock=clock,
         cost_tracker=cost_tracker,
         role_router=role_router,
-        provider_registry=provider_registry,
+        connections=provider_registry.get,
         config_resolver=config_resolver,
         master_enabled=master_enabled,
     )

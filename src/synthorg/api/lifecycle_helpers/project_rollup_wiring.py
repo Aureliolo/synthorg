@@ -235,7 +235,6 @@ def _construct_ship_retro_capture(
             memory_backend=memory_backend,
             org_backend=org_backend,
             provider_selector=_select_provider,
-            default_provider=registry.default_provider(),
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             config_resolver=config_resolver_of(app_state),
             clock=app_state.clock,

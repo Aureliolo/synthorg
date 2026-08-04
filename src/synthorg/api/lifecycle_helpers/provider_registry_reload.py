@@ -42,7 +42,6 @@ async def reload_persisted_provider_registry(
         provider_credential_catalog_of,
     )
     from synthorg.providers.management._persistence import (  # noqa: PLC0415
-        resolve_default_provider_name,
         resolve_retry_max_attempts,
     )
 
@@ -58,7 +57,6 @@ async def reload_persisted_provider_registry(
         connection_catalog=provider_credential_catalog_of(app_state),
         retry_max_attempts=retry_max_attempts,
     )
-    registry.bind_default_provider(await resolve_default_provider_name(resolver))
     # This registry's drivers are new, so they report their completions
     # nowhere until they are pointed at the tracker.
     rebind_health_recorders(app_state, registry)

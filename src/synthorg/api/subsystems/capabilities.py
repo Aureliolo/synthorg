@@ -119,24 +119,6 @@ def _has_plan_dispatcher(app_state: AppState) -> bool:
     return proposer is not None and proposer.has_plan_dispatcher
 
 
-def _has_default_provider(app_state: AppState) -> bool:
-    """Report whether an explicit provider binding is resolvable.
-
-    Distinct from the registry merely existing: a registry holding several
-    providers with no default chosen resolves nothing, and the features that
-    dispatch without a per-feature model stay correctly unwired rather than
-    picking one alphabetically.
-
-    Args:
-        app_state: Application state carrying the provider slice.
-
-    Returns:
-        ``True`` when a default provider resolves.
-    """
-    registry = app_state.slice(ProvidersStateSlice).registry
-    return registry is not None and registry.default_provider() is not None
-
-
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PERSISTENCE,
@@ -150,7 +132,6 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.PROVIDER_REGISTRY,
         present=lambda s: s.slice(ProvidersStateSlice).registry is not None,
     ),
-    Capability(id=CapabilityId.DEFAULT_PROVIDER, present=_has_default_provider),
     Capability(
         id=CapabilityId.COST_TRACKER,
         present=lambda s: s.slice(BudgetStateSlice).cost_tracker is not None,

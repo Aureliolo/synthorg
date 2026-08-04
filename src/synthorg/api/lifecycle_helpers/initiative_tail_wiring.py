@@ -194,7 +194,6 @@ def build_evaluation_stage(
             persistence=persistence,
             agent_registry=agent_registry_of(app_state),
             provider_selector=_select_provider,
-            default_provider=registry.default_provider(),
             plan_status_writer=plan_status_writer,
             replan_trigger=replan_trigger,
             reconcile=reconcile,

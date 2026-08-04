@@ -165,7 +165,6 @@ def _wire_communication_services(
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
     meeting_orchestrator: MeetingOrchestrator | None,
-    provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
     agent_registry: AgentRegistryService,
 ) -> ConfigResolver | None:
@@ -182,8 +181,6 @@ def _wire_communication_services(
         message_bus: The auto-wired message bus, or ``None``.
         persistence: The persistence backend (may be ``None``).
         meeting_orchestrator: The auto-wired meeting orchestrator, or ``None``.
-        provider_registry: The provider registry, so the conflict-resolution
-            service can build its LLM judge (``None`` -> no judge).
         cost_tracker: The cost tracker the LLM judge attributes spend to.
         agent_registry: The agent registry the meeting-conflict bridge reads
             department/role from to build conflict positions.
@@ -244,8 +241,8 @@ def _wire_communication_services(
         escalation_store=escalation_store,
         escalation_processor=escalation_processor,
         escalation_registry=escalation_registry,
-        provider_registry=provider_registry,
         cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
     )
     _wire_meeting_conflict_bridge(
         app_state,
@@ -550,7 +547,6 @@ def build_construction_services(
         message_bus=message_bus,
         persistence=persistence,
         meeting_orchestrator=meeting_orchestrator,
-        provider_registry=provider_registry,
         cost_tracker=phase1.cost_tracker,
         agent_registry=agent_registry,
     )

@@ -5,14 +5,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.curation.llm_curated import LLMCurated
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.providers.errors import ProviderError
+from synthorg.providers.model_binding import BoundCompletion
 from synthorg.providers.protocol import CompletionProvider
+from tests._shared.model_binding import TEST_MODEL_ID
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _binding(provider: AsyncMock) -> BoundCompletion:
+    """Bind *provider* to the operator-chosen curation model.
+
+    Returns:
+        The resolved dispatch target the strategy calls.
+    """
+    return BoundCompletion(provider=provider, model=NotBlankStr(TEST_MODEL_ID))
 
 
 def _make_item(
@@ -36,8 +48,8 @@ class TestLLMCurated:
         curation = LLMCurated()
         assert curation.name == "llm_curated"
 
-    async def test_falls_back_when_no_provider(self) -> None:
-        curation = LLMCurated(provider=None)
+    async def test_falls_back_when_no_binding(self) -> None:
+        curation = LLMCurated(binding=None)
         items = tuple(_make_item(content=f"Item {i}") for i in range(5))
         result = await curation.curate(
             items,
@@ -64,7 +76,7 @@ class TestLLMCurated:
         provider.complete.return_value = response
 
         items = tuple(_make_item(content=f"Item {i}") for i in range(4))
-        curation = LLMCurated(provider=provider, top_k=10)
+        curation = LLMCurated(binding=_binding(provider), top_k=10)
         result = await curation.curate(
             items,
             new_agent_role="engineer",
@@ -81,7 +93,7 @@ class TestLLMCurated:
         provider.complete.side_effect = ProviderError("provider unavailable")
 
         items = tuple(_make_item(content=f"Item {i}") for i in range(5))
-        curation = LLMCurated(provider=provider, top_k=3)
+        curation = LLMCurated(binding=_binding(provider), top_k=3)
         result = await curation.curate(
             items,
             new_agent_role="engineer",
@@ -97,7 +109,7 @@ class TestLLMCurated:
         provider.complete.return_value = response
 
         items = tuple(_make_item(content=f"Item {i}") for i in range(5))
-        curation = LLMCurated(provider=provider, top_k=3)
+        curation = LLMCurated(binding=_binding(provider), top_k=3)
         result = await curation.curate(
             items,
             new_agent_role="engineer",

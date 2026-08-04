@@ -22,20 +22,20 @@ from synthorg.settings.mirrors import (
 
 
 class ToolAuthoringConfig(BaseModel):
-    """LLM settings for authoring a tool blueprint from a capability gap.
+    """Sampling settings for authoring a tool blueprint from a capability gap.
+
+    The authoring model itself is not here: it is the operator's
+    ``meta.toolsmith_model`` assignment, a provider + model pair re-read per
+    call. Baking a model id into config would name half a dispatch target and
+    ship a placeholder as the other half.
 
     Attributes:
-        model: LLM model identifier for blueprint generation.
         temperature: Sampling temperature (low for structured output).
         max_tokens: Token budget per authoring response.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    model: NotBlankStr = Field(
-        # lint-allow: hardcoded-model-default -- internal toolsmith default
-        default=NotBlankStr("example-large-001")
-    )
     temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4000, ge=100)
 

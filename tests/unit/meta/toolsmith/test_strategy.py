@@ -20,6 +20,7 @@ from synthorg.meta.toolsmith.models import (
 from synthorg.meta.toolsmith.strategy import LLMToolBlueprintGenerator
 from synthorg.providers.base import BaseCompletionProvider
 from tests._shared import FakeClock, mock_of
+from tests._shared.model_binding import model_ref_resolver, one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -70,10 +71,13 @@ def _generator(
     )
     return LLMToolBlueprintGenerator(
         config=config,
-        provider=mock_of[BaseCompletionProvider](
-            complete=AsyncMock(return_value=_FakeResponse(content)),
+        connections=one_connection(
+            mock_of[BaseCompletionProvider](
+                complete=AsyncMock(return_value=_FakeResponse(content)),
+            )
         ),
         clock=FakeClock(start=_NOW),
+        config_resolver=model_ref_resolver(),
     )
 
 

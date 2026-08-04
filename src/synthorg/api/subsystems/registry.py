@@ -830,9 +830,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="toolsmith",
         provides=CapabilityId.TOOLSMITH,
-        # The default provider, not merely a registry: toolsmith dispatches
-        # with no per-feature model, so an unbound registry resolves nothing.
-        requires=(CapabilityId.PERSISTENCE, CapabilityId.DEFAULT_PROVIDER),
+        # The registry, not a resolved model: the toolsmith names its own
+        # ``meta.toolsmith_model`` pair and re-reads it per authoring call, so
+        # choosing one later arms authoring on the next gap, not the next boot.
+        requires=(CapabilityId.PERSISTENCE, CapabilityId.PROVIDER_REGISTRY),
         activate=_activate_toolsmith,
     ),
     SubsystemSpec(

@@ -18,6 +18,7 @@ from synthorg.meta.factory import (
     build_strategies,
 )
 from synthorg.meta.models import ProposalAltitude
+from tests._shared.model_binding import one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -118,7 +119,7 @@ class TestBuildStrategies:
                 github_repo="test/repo",
             ),
         )
-        strategies = build_strategies(cfg, provider=None)
+        strategies = build_strategies(cfg, connections=None)
         altitudes = {s.altitude for s in strategies}
         assert ProposalAltitude.CODE_MODIFICATION not in altitudes
 
@@ -136,7 +137,7 @@ class TestBuildStrategies:
             ),
         )
         provider = AsyncMock()
-        strategies = build_strategies(cfg, provider=provider)
+        strategies = build_strategies(cfg, connections=one_connection(provider))
         altitudes = {s.altitude for s in strategies}
         assert ProposalAltitude.CODE_MODIFICATION in altitudes
 

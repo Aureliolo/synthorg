@@ -170,7 +170,6 @@ class TestSafetyClassifierVerdictBehaviour:
         """Every labelled (response, expected classification) pair grades."""
         classifier = SafetyClassifier(
             provider_registry=ProviderRegistry(drivers={}),
-            provider_configs={},
             config=SafetyClassifierConfig(enabled=True),
             clock=FakeClock(),
         )

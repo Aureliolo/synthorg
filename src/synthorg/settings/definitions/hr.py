@@ -406,3 +406,22 @@ _r.register(
         max_value=1000,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="training_curation_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the `llm_curated` training-curation strategy"
+            " runs on. A model reference (`{provider, model_id}`) because a"
+            " provider is a registered connection with its own credentials and"
+            " endpoint, so a bare model id names no dispatch target. Unset"
+            " degrades curation to deterministic relevance scoring rather than"
+            " deciding what a new hire learns on a connection nobody chose."
+        ),
+        group="Training",
+        level=SettingLevel.ADVANCED,
+    )
+)

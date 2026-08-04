@@ -149,7 +149,6 @@ async def _seed(
         persistence=backend,
         agent_registry=mock_of[AgentRegistryService](get=AsyncMock(return_value=lead)),
         provider_selector=selector,
-        default_provider=provider,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
         replan_trigger=replan_trigger,
         reconcile=reconcile,

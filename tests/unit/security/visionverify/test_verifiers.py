@@ -28,6 +28,7 @@ from synthorg.security.visionverify.verifiers._image import (
     mean_rgb,
     resolve_screenshot,
 )
+from tests._shared.model_binding import bound_model, one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -124,12 +125,12 @@ class TestFactory:
         verifier = build_vision_verifier(config, workspace=tmp_path)
         assert isinstance(verifier, HeuristicVisionVerifier)
 
-    def test_llm_vision_missing_provider_raises(self, tmp_path: Path) -> None:
+    def test_llm_vision_missing_connections_raises(self, tmp_path: Path) -> None:
         config = VisionVerifyConfig(
             enabled=True,
             verifier_kind=VisionVerifierKind.LLM_VISION,
         )
-        with pytest.raises(VisionVerifyConfigError, match="CompletionProvider"):
+        with pytest.raises(VisionVerifyConfigError, match="connection selector"):
             build_vision_verifier(config, workspace=tmp_path)
 
     def test_llm_vision_tier_resolves_none_raises(self, tmp_path: Path) -> None:
@@ -148,12 +149,12 @@ class TestFactory:
             enabled=True,
             verifier_kind=VisionVerifierKind.LLM_VISION,
         )
-        with pytest.raises(VisionVerifyConfigError, match=r"no\s+model"):
+        with pytest.raises(VisionVerifyConfigError, match="vision_verify_model"):
             build_vision_verifier(
                 config,
                 workspace=tmp_path,
-                provider=provider,
-                tier_resolver=lambda _tier: None,
+                connections=one_connection(provider),
+                model=None,
             )
 
     def test_llm_vision_dispatch(self, tmp_path: Path) -> None:
@@ -175,8 +176,8 @@ class TestFactory:
         verifier = build_vision_verifier(
             config,
             workspace=tmp_path,
-            provider=provider,
-            tier_resolver=lambda _tier: "example-medium-001",
+            connections=one_connection(provider),
+            model=bound_model(),
         )
         assert isinstance(verifier, LLMVisionVerifier)
 

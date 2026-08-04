@@ -13,8 +13,10 @@ from synthorg.settings.kill_switch import (
     resolve_model_with_fallback,
     resolve_str_with_fallback,
 )
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import mock_of
+from tests._shared.model_binding import bound_model, bound_ref
 
 pytestmark = pytest.mark.unit
 
@@ -250,14 +252,14 @@ async def test_float_system_errors_propagate(exc_type: type[BaseException]) -> N
 
 async def test_model_returns_clean_live_value() -> None:
     resolver = AsyncMock()
-    resolver.get_str = AsyncMock(return_value="provider/live-model:tag")
+    resolver.get_str = AsyncMock(return_value=bound_ref("live-model:tag"))
     result = await resolve_model_with_fallback(
         resolver=resolver,
         namespace="chief_of_staff",
         key="chat_model",
-        fallback="baked-model",
+        fallback=bound_ref("baked-model"),
     )
-    assert result == "provider/live-model:tag"
+    assert result == bound_model("live-model:tag")
 
 
 async def test_model_blank_resolves_to_fallback() -> None:
@@ -267,9 +269,9 @@ async def test_model_blank_resolves_to_fallback() -> None:
         resolver=resolver,
         namespace="chief_of_staff",
         key="chat_model",
-        fallback="baked-model",
+        fallback=bound_ref("baked-model"),
     )
-    assert result == "baked-model"
+    assert result == bound_model("baked-model")
 
 
 @pytest.mark.parametrize(
@@ -292,60 +294,65 @@ async def test_model_malformed_falls_back(malformed: str) -> None:
     still passes (operators are not constrained to an allowlist).
     """
     resolver = AsyncMock()
-    resolver.get_str = AsyncMock(return_value=malformed)
+    resolver.get_str = AsyncMock(return_value=bound_ref(malformed))
     result = await resolve_model_with_fallback(
         resolver=resolver,
         namespace="chief_of_staff",
         key="chat_model",
-        fallback="baked-model",
+        fallback=bound_ref("baked-model"),
     )
-    assert result == "baked-model"
+    assert result == bound_model("baked-model")
 
 
-async def test_model_ref_json_projects_to_bare_model_id() -> None:
-    """A stored ``ModelRef`` projects to the bare model id for the provider call."""
+async def test_model_ref_keeps_both_halves_of_the_pair() -> None:
+    """A stored ``ModelRef`` resolves to the pair, connection included.
+
+    Projecting down to the bare model id would leave the caller dispatching
+    on whichever connection it happened to hold, so the connection travels
+    with the id all the way to the call.
+    """
     resolver = AsyncMock()
     resolver.get_str = AsyncMock(
-        return_value='{"provider": "ollama-cloud", "model_id": "glm-5.2"}'
+        return_value=bound_ref("live-model", provider="chosen-conn")
     )
     result = await resolve_model_with_fallback(
         resolver=resolver,
         namespace="chief_of_staff",
         key="chat_model",
-        fallback="baked-model",
+        fallback=bound_ref("baked-model"),
     )
-    assert result == "glm-5.2"
+    assert result == ModelRef(provider="chosen-conn", model_id="live-model")
 
 
-async def test_model_ref_fallback_projects_when_resolver_blank() -> None:
-    """A ``ModelRef`` fallback also projects to its bare model id."""
+async def test_model_ref_fallback_keeps_its_connection_when_resolver_blank() -> None:
+    """A ``ModelRef`` fallback also carries its own connection."""
     resolver = AsyncMock()
     resolver.get_str = AsyncMock(return_value="")
     result = await resolve_model_with_fallback(
         resolver=resolver,
         namespace="charter",
         key="interview_model",
-        fallback='{"provider": "ollama", "model_id": "baked-id"}',
+        fallback=bound_ref("baked-id", provider="baked-conn"),
     )
-    assert result == "baked-id"
+    assert result == ModelRef(provider="baked-conn", model_id="baked-id")
 
 
-def test_require_configured_model_projects_model_ref() -> None:
-    """The final gate projects a ``ModelRef`` JSON to the bare model id."""
+def test_require_configured_model_returns_the_bound_pair() -> None:
+    """The final gate hands back both halves, never the id alone."""
     result = require_configured_model(
-        '{"provider": "ollama-cloud", "model_id": "glm-5.2"}',
+        bound_ref("live-model", provider="chosen-conn"),
         namespace="charter",
         key="interview_model",
         feature_label="Charter interview",
     )
-    assert result == "glm-5.2"
+    assert result == ModelRef(provider="chosen-conn", model_id="live-model")
 
 
 def test_require_configured_model_raises_on_provider_only_ref() -> None:
     """A ref with a provider but no model id is unconfigured -> 503."""
     with pytest.raises(ServiceUnavailableError, match="no model configured"):
         require_configured_model(
-            '{"provider": "ollama-cloud", "model_id": ""}',
+            bound_ref("", provider="chosen-conn"),
             namespace="charter",
             key="interview_model",
             feature_label="Charter interview",
