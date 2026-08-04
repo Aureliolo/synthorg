@@ -2,10 +2,11 @@ name: Maint - Link Rot
 
 # Weekly external-link checker for README, every CLAUDE.md tier, and
 # every Markdown under docs/. Runs lychee ONLINE (no ``--offline``):
-# every remote link is probed and any non-200 is surfaced. This is the
-# counterpart to the blocking gate in ``.github/workflows/verify-links.yml``,
-# which runs ``--offline`` and only validates internal links so a
-# third-party host can never block a merge. External rot is real but is
+# every remote link is probed and any response outside ``lychee.toml``'s
+# ``accept`` list is surfaced. This is the counterpart to the blocking
+# gate in ``.github/workflows/verify-links.yml``, which runs ``--offline``
+# and only validates internal links so a third-party host can never block
+# a merge. External rot is real but is
 # not the committer's to fix, so it is reported here off the critical
 # path: the lychee job goes red for visibility, and on a scheduled
 # failure the report-failure job files (or updates) an ``External link
@@ -70,8 +71,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          # No ``--offline``: probe every remote link. A non-200 fails
-          # the step (pipefail propagates lychee's exit through tee), so
+          # No ``--offline``: probe every remote link. An unaccepted status
+          # fails the step (pipefail propagates lychee's exit through tee), so
           # the job goes red and the report-failure job below opens the
           # tracking issue. The markdown report lands in the run summary.
           lychee \
