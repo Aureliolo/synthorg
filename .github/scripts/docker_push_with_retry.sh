@@ -7,8 +7,10 @@
 # from the first successful attempt.
 #
 # Real failures (auth denied, permission, repository not found, malformed
-# image) are NOT retried -- their output never matches the transient
+# image) are NOT retried: their output never matches the transient
 # patterns below, so this wrapper exits 1 on the first attempt for them.
+# The single exception is a denial from GHCR's token endpoint, which the
+# registry also emits under throttling; see the pattern note below.
 #
 # Usage:
 #   docker_push_with_retry.sh "label for log" docker push <ref>
@@ -42,7 +44,7 @@ set -euo pipefail
 # These are the canonical transient signatures `i/o timeout` misses on the
 # GHCR HTTP path: the underlying socket may be healthy while the HTTP
 # response just never arrives in time. Both the headers and body variants
-# are kept so a stall after the upload starts streaming also retries --
+# are kept so a stall after the upload starts streaming also retries;
 # `docker push` is idempotent, so re-pushing on a body-timeout is safe.
 #
 # `network timeout` and `error fetching tlog entry` cover the Sigstore
@@ -51,17 +53,45 @@ set -euo pipefail
 # that times out reading or writing a Rekor tlog entry is exactly as
 # transient as a GHCR 5xx, and re-running it is safe (a fresh keyless
 # signature over the same bytes is equally valid). These signatures are
-# definitionally transient -- a terminal cosign error (auth denial, malformed
-# digest, Rekor schema rejection) never phrases itself as a network/fetch
-# timeout -- so adding them never masks a real failure on the push path.
-TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled|network timeout|error fetching tlog entry'
+# definitionally transient (a terminal cosign error such as an auth denial,
+# a malformed digest or a Rekor schema rejection never phrases itself as a
+# network or fetch timeout), so adding them never masks a real failure on
+# the push path.
+#
+# A denial is treated as transient in exactly one shape: refused BY the
+# token endpoint. GHCR answers a throttled token exchange with `DENIED`
+# rather than the 429 or 503 the rest of this list keys on, so that
+# response alone cannot say whether the registry means "you may not push
+# here" or "not right now".
+#
+# Narrowing it to the token endpoint is what keeps the rest terminal, and
+# it costs less than it appears to. GHCR mints a `push,pull` token
+# anonymously for these packages, so an under-scoped credential is not
+# refused at the token endpoint at all: it is refused later at the write,
+# as the repository-level `denied: requested access to the resource is
+# denied`, which carries no token URL and so still fails on the first
+# attempt. `[^[:space:]]*` holds the match inside one response line rather
+# than letting `.*` reach an unrelated `denied` further along the line.
+# The negative controls in tests/test_retry_classifiers.sh pin both
+# halves: the token-endpoint form retries, a bare `DENIED` does not.
+#
+# Held separately from the list below because the exhaustion path needs to
+# name it again: it is the one pattern whose retry says nothing about
+# which of the two meanings applied, so an operator reading a failure that
+# survived the whole ladder needs telling that the ambiguity is why.
+AMBIGUOUS_DENIAL_RE='ghcr\.io/token\?scope=[^[:space:]]*: DENIED'
+TRANSIENT_RE="page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled|network timeout|error fetching tlog entry|${AMBIGUOUS_DENIAL_RE}"
 
-# Discovery flag: callers that need to share the same regex (for example the
+# Discovery flags: callers that need to share these regexes (for example the
 # inline retag-inspect retry loop, which must drop a couple of patterns the
-# inspect path cannot benefit from) source it from here so a new pattern added
-# here automatically propagates.
+# inspect path cannot benefit from) source them from here so a new pattern
+# added here automatically propagates.
 if [ "${1:-}" = "--print-transient-re" ]; then
   printf '%s\n' "$TRANSIENT_RE"
+  exit 0
+fi
+if [ "${1:-}" = "--print-ambiguous-denial-re" ]; then
+  printf '%s\n' "$AMBIGUOUS_DENIAL_RE"
   exit 0
 fi
 
@@ -106,9 +136,19 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   fi
 
   # Final attempt: surface output to caller and bubble up the failure.
+  # A token-endpoint denial that survived the whole ladder gets named,
+  # because by this point the annotation panel shows only a run of
+  # transient warnings and a generic exhaustion line, which is the same
+  # shape a genuine outage produces. The retry existed precisely because
+  # that response is ambiguous, so the failure has to say which
+  # possibilities remain rather than leaving them in the expanded log.
   if [ "$i" -eq "$ATTEMPTS" ]; then
     printf '%s\n' "$out"
-    echo "::error::${LABEL} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
+    if grep -qiE "$AMBIGUOUS_DENIAL_RE" <<<"$out"; then
+      echo "::error::${LABEL} failed after ${ATTEMPTS} attempts (last exit ${rc}): GHCR refused to mint a token every time. Sustained throttling and a repository the credential cannot reach both present this way, so check the package exists and the workflow grants packages: write before assuming an outage." >&2
+    else
+      echo "::error::${LABEL} failed after ${ATTEMPTS} attempts (last exit ${rc})" >&2
+    fi
     exit "$rc"
   fi
 
@@ -120,7 +160,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
   # the 64 KB pipe buffer) makes the early-exiting `grep -q` close the
   # pipe while printf is still writing, so printf takes EPIPE and the
-  # pipeline inherits its non-zero status -- the match is masked and a
+  # pipeline inherits its non-zero status: the match is masked and a
   # transient push error is misclassified as terminal. A here-string is
   # not a pipeline, so the status is purely grep's.
   if grep -qiE "$TRANSIENT_RE" <<<"$out"; then
