@@ -29,9 +29,15 @@ max_retries = 1
 retry_wait_time = 1
 timeout = 10
 
-# Treat ONLY 200 OK as success. A non-OK response is a real link-rot
-# signal worth surfacing in the weekly external report.
-accept = ["200"]
+# The success family. 200 is a fetch that reached the target. 202 is an
+# edge accepting the request before it reaches origin, which is how an
+# anti-bot challenge answers (build.nvidia.com serves one via AWS WAF,
+# `x-amzn-waf-action: challenge` with an empty body). Admitting it is a
+# deliberate trade: a 202 shows the host answered but NOT that the target
+# exists, since a path that does not exist gets the same challenge, so a
+# dead link behind such a host reads as healthy here. Every other status
+# is real link rot worth surfacing in the weekly external report.
+accept = ["200", "202"]
 
 # Mail links are not real HTTP targets and lychee SMTP probing is noisy
 # on shared hosts. The schema spells this as `include_mail = false`,
