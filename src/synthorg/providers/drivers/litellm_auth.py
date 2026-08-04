@@ -123,6 +123,31 @@ def _resolve_custom_header(ctx: AuthContext) -> Mapping[str, str] | None:
     return None
 
 
+def _unresolved(ctx: AuthContext, kind: str) -> AuthMaterial:
+    """Answer for an auth type whose credential nothing supplied.
+
+    A wired catalog owed this credential, so not having it is a failure
+    rather than a licence to send the request on unauthenticated: that
+    would leak the prompt to an endpoint that never accepted it. With no
+    catalog wired at all (the degraded and test paths) there was nothing
+    to resolve from, and omitting the credential is the honest answer.
+
+    Args:
+        ctx: The resolution context, read for the catalog and the names
+            the error reports.
+        kind: What the missing credential is called, for the error.
+
+    Returns:
+        Empty material, on the catalog-less path only.
+
+    Raises:
+        AuthenticationError: If a catalog is wired.
+    """
+    if ctx.catalog_present:
+        _raise_unresolved_credential(ctx.provider_name, ctx.litellm_model, kind)
+    return AuthMaterial()
+
+
 def _resolve_subscription(ctx: AuthContext) -> str | None:
     """Resolve the subscription token, preferring the catalog.
 
@@ -152,36 +177,33 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
         AuthenticationError: If a wired catalog did not resolve a
             credential the auth type requires.
     """
-    # ``kind`` names the credential in the fail-closed error, so every
-    # branch that can fall through sets it. Passing the request on
-    # unauthenticated would leak the prompt to an endpoint that never
-    # accepted it, so the fall-through raises rather than returning empty
-    # whenever a catalog is wired.
+    # Every arm returns, so the match has to stay exhaustive over
+    # AuthType: a new member added without an arm here falls off the end
+    # and mypy reports the missing return. The alternative, a shared
+    # fall-through, would let that member reach the wire with no
+    # credential and no complaint.
     match ctx.config.auth_type:
         case AuthType.API_KEY:
             if (key := _resolve_bearer(ctx)) is not None:
                 return AuthMaterial(api_key=key)
-            kind = "API-key"
+            return _unresolved(ctx, "API-key")
         case AuthType.OAUTH:
             if (key := _resolve_oauth(ctx)) is not None:
                 return AuthMaterial(api_key=key)
-            kind = "OAuth"
+            return _unresolved(ctx, "OAuth")
         case AuthType.CUSTOM_HEADER:
             if (headers := _resolve_custom_header(ctx)) is not None:
                 return AuthMaterial(extra_headers=headers)
-            kind = "Custom-header"
+            return _unresolved(ctx, "Custom-header")
         case AuthType.SUBSCRIPTION:
             # Passed as api_key -- the correct kwarg for LiteLLM
             # authentication. Do NOT use "auth_token"; it is not a
             # litellm.completion() parameter and is silently discarded.
             if (token := _resolve_subscription(ctx)) is not None:
                 return AuthMaterial(api_key=token)
-            kind = "Subscription"
+            return _unresolved(ctx, "Subscription")
         case AuthType.NONE:
             return AuthMaterial()
-    if ctx.catalog_present:
-        _raise_unresolved_credential(ctx.provider_name, ctx.litellm_model, kind)
-    return AuthMaterial()
 
 
 def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
