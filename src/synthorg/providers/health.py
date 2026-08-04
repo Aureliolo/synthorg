@@ -1,16 +1,15 @@
-"""Provider health tracking -- models and in-memory tracker.
+# module-kind: code
+"""What a provider's health is, and how a set of outcomes becomes one.
 
-Records individual provider call outcomes and aggregates them
-into health summaries for the API layer.
+The vocabulary every health surface speaks: the record one call leaves
+behind, the summary a window of them aggregates to, and the status that
+summary reports. :mod:`synthorg.providers.health_tracker` accumulates the
+records and calls the aggregation here; nothing in this module holds
+state.
 """
 
-import asyncio
 import math
-from collections import defaultdict
-from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Final, Self
 
 from pydantic import (
@@ -23,19 +22,13 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.provider import (
-    PROVIDER_HEALTH_AUTO_PRUNED,
-    PROVIDER_HEALTH_CLEARED,
-    PROVIDER_HEALTH_PRUNED,
-)
 
-logger = get_logger(__name__)
+#: Trailing window every aggregate is computed over. Read by the tracker
+#: too, which prunes to exactly the span that can still be summarised.
+HEALTH_WINDOW_HOURS: Final[int] = 24
 
-_HEALTH_WINDOW_HOURS: Final[int] = 24
 _DEGRADED_THRESHOLD: Final[float] = 10.0  # error_rate >= 10% -> DEGRADED
 _DOWN_THRESHOLD: Final[float] = 50.0  # error_rate >= 50% -> DOWN
-_AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
 
 
 class ProviderHealthStatus(StrEnum):
@@ -97,7 +90,7 @@ class ProviderHealthSummary(BaseModel):
     """Aggregated provider health for API response.
 
     ``total_tokens_24h`` and ``total_cost_24h`` default to 0 from
-    :func:`_aggregate_records` and are populated externally via
+    :func:`aggregate_records` and are populated externally via
     ``model_copy(update=...)`` by the provider controller's usage
     enrichment step.
 
@@ -187,7 +180,7 @@ def _derive_health_status(error_rate: float) -> ProviderHealthStatus:
     return ProviderHealthStatus.UP
 
 
-def _aggregate_records(
+def aggregate_records(
     records: list[ProviderHealthRecord],
 ) -> ProviderHealthSummary:
     """Aggregate a non-empty list of health records into a summary.
@@ -215,226 +208,10 @@ def _aggregate_records(
     )
 
 
-class ProviderHealthTracker:
-    """In-memory tracker for provider call outcomes with TTL-based eviction.
-
-    Concurrency-safe via ``asyncio.Lock``.  Follows the same
-    TTL-based eviction pattern as
-    :class:`~synthorg.budget.tracker.CostTracker`: memory is bounded by
-    a soft auto-prune that removes records older than 24 hours when the
-    record count exceeds *auto_prune_threshold*.
-
-    Args:
-        auto_prune_threshold: Maximum record count before auto-pruning
-            is triggered on snapshot.  Defaults to 100,000.
-
-    Raises:
-        ValueError: If *auto_prune_threshold* < 1.
-    """
-
-    __slots__ = ("_auto_prune_threshold", "_lock", "_records")
-
-    def __init__(
-        self,
-        *,
-        auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
-    ) -> None:
-        if auto_prune_threshold < 1:
-            msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
-            raise ValueError(msg)
-        self._records: list[ProviderHealthRecord] = []
-        self._lock = asyncio.Lock()
-        self._auto_prune_threshold = auto_prune_threshold
-
-    def clear(self) -> None:
-        """Reset all health records for test isolation."""
-        cleared_count = len(self._records)
-        self._records.clear()
-        logger.info(PROVIDER_HEALTH_CLEARED, cleared_count=cleared_count)
-
-    async def record(self, record: ProviderHealthRecord) -> None:
-        """Append a health record.
-
-        Args:
-            record: Immutable call outcome record.
-        """
-        async with self._lock:
-            self._records.append(record)
-
-    async def prune_expired(self, *, now: datetime | None = None) -> int:
-        """Remove records older than the 24-hour health window.
-
-        Call periodically from long-running services to bound
-        memory growth.
-
-        Args:
-            now: Reference time.  Defaults to current UTC time.
-
-        Returns:
-            Number of records removed.
-        """
-        ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
-        async with self._lock:
-            pruned = self._prune_before(cutoff)
-            if pruned:
-                logger.info(
-                    PROVIDER_HEALTH_PRUNED,
-                    pruned=pruned,
-                    remaining=len(self._records),
-                )
-            return pruned
-
-    async def get_summary(
-        self,
-        provider_name: str,
-        *,
-        now: datetime | None = None,
-    ) -> ProviderHealthSummary:
-        """Build an aggregated health summary for a provider.
-
-        Only considers records within the last 24 hours.
-
-        Args:
-            provider_name: Provider to summarise.
-            now: Reference time for the 24h window.  Defaults to
-                current UTC time.
-
-        Returns:
-            Aggregated health summary.
-        """
-        ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
-
-        snapshot = await self._snapshot(now=ref)
-        recent = [
-            r
-            for r in snapshot
-            if r.provider_name == provider_name and cutoff <= r.timestamp <= ref
-        ]
-
-        if not recent:
-            return ProviderHealthSummary()
-
-        return _aggregate_records(recent)
-
-    async def are_all_reachable(
-        self,
-        *,
-        now: datetime | None = None,
-    ) -> bool:
-        """Return True when no tracked provider is currently DOWN.
-
-        Reported on the health surface, never used to gate traffic:
-        a third-party outage is the same for every replica, so draining
-        on it turns a degraded feature into a total one. Providers whose
-        recent call window contains too many failures derive a
-        :attr:`ProviderHealthStatus.DOWN` status; any single one of
-        those flips the reachability bit. ``DEGRADED`` providers stay
-        reachable because partial traffic is preferable to a full
-        outage; ``UNKNOWN`` (no recent calls) is also treated as
-        reachable so a fresh boot never reports unreachable before the
-        first provider call lands.
-        """
-        summaries = await self.get_all_summaries(now=now)
-        return not any(
-            summary.health_status is ProviderHealthStatus.DOWN
-            for summary in summaries.values()
-        )
-
-    async def get_all_summaries(
-        self,
-        *,
-        now: datetime | None = None,
-        limit: int | None = None,
-        offset: int = 0,
-    ) -> Mapping[str, ProviderHealthSummary]:
-        """Build summaries for all known providers, optionally paginated.
-
-        Args:
-            now: Reference time for the 24h window.
-            limit: Maximum providers to include (``None`` for unbounded;
-                preserves the historical contract used by callers that
-                need every provider's status, e.g. the readiness probe).
-            offset: Page offset honoured only when ``limit`` is set.
-
-        Returns:
-            Immutable mapping of provider name to health summary,
-            wrapped in :class:`types.MappingProxyType` so callers
-            cannot mutate the aggregate view.
-        """
-        ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
-
-        snapshot = await self._snapshot(now=ref)
-        by_provider: dict[str, list[ProviderHealthRecord]] = defaultdict(list)
-        for r in snapshot:
-            if cutoff <= r.timestamp <= ref:
-                by_provider[r.provider_name].append(r)
-
-        items = sorted(by_provider.items())
-        if limit is not None:
-            offset = max(0, offset)
-            end = offset + max(0, limit)
-            items = items[offset:end]
-        return MappingProxyType(
-            {name: _aggregate_records(records) for name, records in items}
-        )
-
-    async def count_all_summaries(
-        self,
-        *,
-        now: datetime | None = None,
-    ) -> int:
-        """Return the count of providers with records inside the 24h window.
-
-        Companion to :meth:`get_all_summaries` for paginated controllers
-        that need a total alongside the page.
-        """
-        ref = now or datetime.now(UTC)
-        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
-        snapshot = await self._snapshot(now=ref)
-        names = {r.provider_name for r in snapshot if cutoff <= r.timestamp <= ref}
-        return len(names)
-
-    async def _snapshot(
-        self,
-        *,
-        now: datetime | None = None,
-    ) -> tuple[ProviderHealthRecord, ...]:
-        """Return an immutable snapshot of all current records.
-
-        When the record count exceeds the auto-prune threshold,
-        expired records are removed before the snapshot is taken.
-
-        Args:
-            now: Reference time for auto-prune cutoff.  Defaults to
-                current UTC time.
-
-        Returns:
-            Immutable tuple of all current health records.
-        """
-        async with self._lock:
-            if len(self._records) > self._auto_prune_threshold:
-                ref = now or datetime.now(UTC)
-                cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
-                pruned = self._prune_before(cutoff)
-                if pruned:
-                    logger.info(
-                        PROVIDER_HEALTH_AUTO_PRUNED,
-                        pruned=pruned,
-                        remaining=len(self._records),
-                    )
-            return tuple(self._records)
-
-    def _prune_before(self, cutoff: datetime) -> int:
-        """Remove records older than *cutoff*.  Caller must hold ``_lock``.
-
-        Returns:
-            The number of records removed that were older than *cutoff*.
-        """
-        if not self._records:
-            return 0
-        before = len(self._records)
-        self._records = [r for r in self._records if r.timestamp >= cutoff]
-        return before - len(self._records)
+__all__ = [
+    "HEALTH_WINDOW_HOURS",
+    "ProviderHealthRecord",
+    "ProviderHealthStatus",
+    "ProviderHealthSummary",
+    "aggregate_records",
+]

@@ -260,6 +260,10 @@ async function testConnectionImpl(
       return null
     }
     set({ testConnectionResult: result, testingConnection: false })
+    // A test is a real call to the provider, so the server records its
+    // verdict against health. Without this refresh the badge keeps showing
+    // the aggregate from before the test that just ran.
+    await refreshAfterWrite(get, targetProvider)
     return result
   } catch (err) {
     if (get().selectedProvider?.name !== targetProvider) {

@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ROUTES } from '@/router/routes'
 import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
@@ -25,14 +26,21 @@ interface ProviderDetailHeaderProps {
   refreshing?: boolean
   onPullModel?: () => void
   supportsPull?: boolean
+  /** Call the provider now so its status reflects the present. */
+  onRecheckHealth: () => void
+  recheckingHealth: boolean
 }
 
 function ProviderTitleMeta({
   provider,
   health,
+  onRecheckHealth,
+  recheckingHealth,
 }: {
   provider: ProviderWithName
   health: ProviderHealthSummary | null
+  onRecheckHealth: () => void
+  recheckingHealth: boolean
 }) {
   const authLabel = provider.auth_type.replaceAll('_', ' ')
   return (
@@ -40,6 +48,22 @@ function ProviderTitleMeta({
       <div className="flex items-center gap-3">
         <h1 className="truncate text-xl font-semibold text-foreground">{provider.name}</h1>
         {health && <ProviderHealthBadge status={health.health_status} label />}
+        {/* Beside the badge rather than in the action row: it corrects that
+            badge, and nothing else re-derives it between probe cycles. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          title="Call this provider now and update its status"
+          disabled={recheckingHealth}
+          aria-busy={recheckingHealth}
+          onClick={onRecheckHealth}
+        >
+          <RefreshCw
+            className={cn('size-3.5 mr-1.5', recheckingHealth && 'animate-spin')}
+          />
+          {recheckingHealth ? 'Checking...' : 'Recheck'}
+        </Button>
         {!provider.agent_eligible && (
           <StatusPill
             tone="warning"
@@ -164,6 +188,8 @@ export function ProviderDetailHeader({
   refreshing = false,
   onPullModel,
   supportsPull = false,
+  onRecheckHealth,
+  recheckingHealth,
 }: ProviderDetailHeaderProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -176,7 +202,12 @@ export function ProviderDetailHeader({
       </Link>
 
       <div className="flex items-start justify-between gap-4">
-        <ProviderTitleMeta provider={provider} health={health} />
+        <ProviderTitleMeta
+          provider={provider}
+          health={health}
+          onRecheckHealth={onRecheckHealth}
+          recheckingHealth={recheckingHealth}
+        />
         <ProviderHeaderActions
           onEdit={onEdit}
           onDelete={onDelete}

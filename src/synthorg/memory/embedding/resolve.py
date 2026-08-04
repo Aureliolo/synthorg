@@ -38,8 +38,21 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_UNRESOLVED,
     MEMORY_EMBEDDER_WIDTH_REJECTED,
 )
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 logger = get_logger(__name__)
+
+
+class EndpointResolver(Protocol):
+    """Looks up where a named provider's embedding calls should be sent.
+
+    Injected rather than imported so resolution stays free of the app state
+    that owns the provider configs and the credential catalog.
+    """
+
+    def __call__(self, provider: str, /) -> Awaitable[EmbeddingEndpoint]:
+        """Return the endpoint *provider* is reachable at."""
+        ...
 
 
 class DimsProbe(Protocol):
@@ -55,6 +68,7 @@ class DimsProbe(Protocol):
         provider: str,
         model: str,
         cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
     ) -> Awaitable[int]:
         """Return the width *model* emits, which must be at least one."""
         ...
@@ -100,6 +114,7 @@ async def resolve_embedder_config(
     settings_override: EmbedderOverrideConfig | None = None,
     measure_dims: DimsProbe = probe_embedder_dims,
     cost_tracker: CostTrackerProtocol | None = None,
+    resolve_endpoint: EndpointResolver | None = None,
 ) -> EmbedderConfig:
     """Resolve the operator's embedder choice into a usable binding.
 
@@ -110,6 +125,11 @@ async def resolve_embedder_config(
             operator has not pinned one.
         cost_tracker: Sink for the probe's spend. The probe is a billable
             call on the same quota as retrieval traffic.
+        resolve_endpoint: Looks up where the chosen provider is reachable.
+            Applied after the merge, because the provider that wins is only
+            known then, and forwarded to the probe so it measures the model
+            the operator configured rather than one at litellm's default
+            address.
 
     Returns:
         A fully-populated ``EmbedderConfig``.
@@ -138,6 +158,13 @@ async def resolve_embedder_config(
 
     provider, model = _chosen_or_refused(provider, model)
     builtin = is_builtin_embedder(provider, model)
+    # The built-in embedder runs in-process, so it has no endpoint to look
+    # up and asking for one would fail on a provider that does not exist.
+    endpoint = (
+        await resolve_endpoint(provider)
+        if resolve_endpoint is not None and not builtin
+        else None
+    )
     if builtin:
         logger.warning(
             MEMORY_EMBEDDER_BUILTIN_SELECTED,
@@ -158,6 +185,7 @@ async def resolve_embedder_config(
                 provider=provider,
                 model=model,
                 cost_tracker=cost_tracker,
+                endpoint=endpoint,
             )
         )
     _within_storage_ceiling(dims, model=model)
@@ -242,4 +270,4 @@ def _within_storage_ceiling(dims: int, *, model: str) -> None:
     raise MemoryConfigError(msg)
 
 
-__all__ = ["DimsProbe", "resolve_embedder_config"]
+__all__ = ["DimsProbe", "EndpointResolver", "resolve_embedder_config"]

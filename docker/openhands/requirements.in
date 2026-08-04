@@ -9,3 +9,10 @@
 # plus the rest); it is bundled whole by design.
 openhands-sdk==1.36.1
 openhands-tools==1.36.1
+
+# Security floors on transitive packages the SDK closure would otherwise
+# resolve to a version the image scanner rejects. Neither is imported here;
+# each floor exists solely to keep the resolver above a known-vulnerable
+# release, so a floor may be dropped once the closure cannot reach below it.
+aiohttp>=3.14.3       # CVE-2026-69244
+cryptography>=50.0.0  # CVE-2026-69247

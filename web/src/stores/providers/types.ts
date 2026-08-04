@@ -51,6 +51,17 @@ export interface ProvidersState {
   presetsError: string | null
   testConnectionResult: TestConnectionResponse | null
   testingConnection: boolean
+  /** True while the selected provider's own recheck is in flight. */
+  recheckingHealth: boolean
+  /**
+   * True while the every-provider sweep is in flight.
+   *
+   * Separate from `recheckingHealth` because the two run from different
+   * surfaces that are visible at once: the global health dialog can start a
+   * sweep while a provider's detail page is open, and one flag would let
+   * whichever finished first re-enable the other's button mid-request.
+   */
+  recheckingAllHealth: boolean
   discoveringModels: boolean
   mutating: boolean
 
@@ -94,6 +105,10 @@ export interface ProvidersState {
   // Actions
   fetchProviders: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
+  /** Call the provider now and adopt the health that call produces. */
+  recheckProviderHealth: (name: string) => Promise<void>
+  /** Call every provider now and adopt the health those calls produce. */
+  recheckAllHealth: () => Promise<void>
   fetchPresets: () => Promise<void>
   createProvider: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   createFromPreset: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>

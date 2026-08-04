@@ -19,6 +19,7 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
 
@@ -52,6 +53,27 @@ def _patch_aembedding(
     return asked
 
 
+def _patch_aembedding_kwargs(
+    monkeypatch: pytest.MonkeyPatch,
+    result: object,
+) -> list[dict[str, object]]:
+    """Stand in for ``litellm.aembedding``, recording every kwarg it got.
+
+    Returns:
+        The list the stub appends each call's keyword arguments to.
+    """
+    import litellm
+
+    seen: list[dict[str, object]] = []
+
+    async def _stub(**kwargs: object) -> Any:  # type: ignore[explicit-any]  # litellm returns an untyped response
+        seen.append(kwargs)
+        return result
+
+    monkeypatch.setattr(litellm, "aembedding", _stub)
+    return seen
+
+
 class TestBuiltin:
     def test_is_builtin_matches_both_halves(self) -> None:
         assert is_builtin_embedder(BUILTIN_EMBEDDER_PROVIDER, BUILTIN_EMBEDDER_MODEL)
@@ -65,6 +87,59 @@ class TestBuiltin:
         )
         assert width == BUILTIN_EMBEDDER_DIMS
         assert asked == []
+
+
+class TestEndpointBinding:
+    """The probe measures the operator's endpoint, not litellm's default.
+
+    A model reference alone leaves litellm to pick a host from its own
+    defaults. For a self-hosted provider that is the wrong machine, and no
+    provider configuration corrects it: memory stayed off forever while the
+    provider it was configured against answered fine.
+    """
+
+    async def test_the_configured_base_url_reaches_litellm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = _patch_aembedding_kwargs(monkeypatch, _response([0.1] * 8))
+
+        await probe_embedder_dims(
+            provider="test-provider",
+            model="test-embed-001",
+            endpoint=EmbeddingEndpoint(api_base="http://localhost:11434"),
+        )
+
+        assert seen[0]["api_base"] == "http://localhost:11434"
+
+    async def test_the_credential_reaches_litellm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = _patch_aembedding_kwargs(monkeypatch, _response([0.1] * 8))
+
+        await probe_embedder_dims(
+            provider="test-provider",
+            model="test-embed-001",
+            endpoint=EmbeddingEndpoint(
+                api_base="http://localhost:11434",
+                api_key="probe-secret",
+                extra_headers={"X-Test-Auth": "probe-secret"},
+            ),
+        )
+
+        assert seen[0]["api_key"] == "probe-secret"
+        assert seen[0]["extra_headers"] == {"X-Test-Auth": "probe-secret"}
+
+    async def test_no_endpoint_sends_no_transport_keys(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A hosted provider declares no base URL, and passing an explicit
+        # ``api_base=None`` is not the same as omitting it.
+        seen = _patch_aembedding_kwargs(monkeypatch, _response([0.1] * 8))
+
+        await probe_embedder_dims(provider="test-provider", model="test-embed-001")
+
+        assert "api_base" not in seen[0]
+        assert "api_key" not in seen[0]
 
 
 class TestMeasurement:

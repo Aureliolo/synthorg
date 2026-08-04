@@ -75,6 +75,29 @@ export const DegradedWithRemediation: Story = {
   },
 }
 
+// Two actions side by side: one that acts on the spot and one that navigates.
+// The pair has to stay legible at the card's width, which a single-action
+// story cannot show.
+export const DownWithActionAndRemediation: Story = {
+  args: {
+    icon: Database,
+    label: 'Providers',
+    description:
+      'Configured LLM providers reachable. An unreachable provider blocks readiness.',
+    state: 'down',
+    action: (
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => undefined}>
+          Recheck now
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/providers">Review providers</Link>
+        </Button>
+      </div>
+    ),
+  },
+}
+
 export const Loading: Story = {
   args: {
     ...Default.args,

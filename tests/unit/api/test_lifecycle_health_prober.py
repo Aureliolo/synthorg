@@ -15,8 +15,8 @@ import pytest
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.api.lifecycle import _maybe_start_health_prober
 from synthorg.api.state import AppState
-from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober import ProviderHealthProber
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.resolver import ConfigResolver

@@ -26,10 +26,8 @@ from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.providers.health import (
-    ProviderHealthRecord,
-    ProviderHealthTracker,
-)
+from synthorg.providers.health import ProviderHealthRecord
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
@@ -346,6 +344,7 @@ class TestResolveMemoryHealth:
         scheduler: object = object(),
         configured: str = "sqlvector",
         embedder_ref: str | None = "test-provider/embed-model",
+        wiring_failure: str | None = None,
     ) -> AppState:
         app_state = MagicMock(spec=AppState)
         app_state.config = SimpleNamespace(memory=SimpleNamespace(backend=configured))
@@ -353,6 +352,7 @@ class TestResolveMemoryHealth:
             backend=backend,
             consolidation_scheduler=scheduler,
             embedder_ref=embedder_ref,
+            wiring_failure=wiring_failure,
         )
         return app_state
 
@@ -405,6 +405,41 @@ class TestResolveMemoryHealth:
     async def test_unwired_backend_is_off(self) -> None:
         result = await resolve_memory_state(self._app_state(backend=None))
         assert result.state is MemoryState.OFF
+
+    async def test_unwired_backend_without_a_reason_advises_choosing_a_model(
+        self,
+    ) -> None:
+        result = await resolve_memory_state(self._app_state(backend=None))
+        assert result.detail is not None
+        assert "no embedding model resolved" in result.detail
+
+    async def test_the_recorded_failure_replaces_the_generic_advice(self) -> None:
+        # Telling an operator who HAS chosen a model to choose one sends them
+        # to a setting that is not the problem; the recorded reason is.
+        wiring_failure = "the configured embedding endpoint did not answer"
+        result = await resolve_memory_state(
+            self._app_state(backend=None, wiring_failure=wiring_failure)
+        )
+
+        assert result.detail is not None
+        assert wiring_failure in result.detail
+        assert "no embedding model resolved" not in result.detail
+
+    async def test_a_store_failure_is_named_rather_than_blamed_on_the_model(
+        self,
+    ) -> None:
+        # The embedder resolved; the store refused. Repeating the embedding
+        # advice here sends the operator to re-pick a model that already works.
+        result = await resolve_memory_state(
+            self._app_state(
+                backend=None,
+                wiring_failure="The sqlvector store refused the connection: down",
+            )
+        )
+
+        assert result.detail is not None
+        assert "sqlvector store refused the connection" in result.detail
+        assert "no embedding model resolved" not in result.detail
 
 
 @pytest.mark.unit

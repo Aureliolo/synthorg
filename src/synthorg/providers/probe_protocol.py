@@ -23,3 +23,27 @@ class ProviderProbeRequester(Protocol):
         ``ProviderManagementService._probe_after_mutation``.
         """
         ...
+
+    async def record_outcome(
+        self,
+        name: str,
+        *,
+        success: bool,
+        response_time_ms: float,
+        error_message: str | None = None,
+    ) -> None:
+        """Record a call outcome *the caller already observed* against health.
+
+        The reachability probe only covers a provider that declares a
+        ``base_url``; a hosted one is ineligible, so its health would never
+        move no matter how often an operator asked. A connection test reaches
+        every provider because it issues a real completion, and this hands
+        that verdict to the same tracker rather than to a second one.
+
+        Args:
+            name: Provider the outcome belongs to.
+            success: Whether the call the caller made succeeded.
+            response_time_ms: Round-trip time the caller measured.
+            error_message: Redacted failure description, when it failed.
+        """
+        ...

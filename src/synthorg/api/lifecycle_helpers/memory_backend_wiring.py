@@ -43,6 +43,8 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_EMBEDDER_UNRESOLVED,
 )
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
+from synthorg.providers.state import embedding_endpoint_resolver_of
 
 logger = get_logger(__name__)
 
@@ -68,6 +70,18 @@ async def wire_memory_backend(app_state: AppState) -> None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
         logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="persistence_not_connected")
+        # Replaced rather than left alone: a pass that failed on the embedder
+        # earlier left its reason here, and the health surface would go on
+        # quoting it while the thing actually blocking memory is the database.
+        app_state.wire(
+            MemoryStateSlice,
+            wiring_failure=(
+                "The database memory stores its vectors in is not connected, "
+                "so no backend could be built. Check the persistence "
+                "connection; memory wires itself on the next pass once it is "
+                "back."
+            ),
+        )
         return
 
     memory_config = await _resolved_memory_config(app_state)
@@ -77,6 +91,11 @@ async def wire_memory_backend(app_state: AppState) -> None:
         if embedder is None:
             logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
             return
+    # Cleared the moment the embedder is known good, not once the whole pass
+    # succeeds: anything that fails after this point is not the embedder, and
+    # leaving a previous pass's reason on the slice would send an operator to
+    # fix the half they already fixed.
+    app_state.wire(MemoryStateSlice, wiring_failure=None)
 
     backend = create_memory_backend(
         memory_config,
@@ -96,6 +115,16 @@ async def wire_memory_backend(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        # Named on the slice for the same reason an embedder failure is: the
+        # health surface would otherwise fall back to advice about choosing an
+        # embedding model, which is the half that just worked.
+        app_state.wire(
+            MemoryStateSlice,
+            wiring_failure=(
+                f"The {memory_config.backend} store refused the connection: "
+                f"{safe_error_description(exc)}"
+            ),
+        )
         return
     except BaseException:
         # A shutdown delivered inside ``connect()`` leaves a half-open
@@ -113,6 +142,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
         MemoryStateSlice,
         backend=backend,
         embedder_ref=embedder.model_ref if embedder is not None else None,
+        wiring_failure=None,
     )
     logger.info(
         MEMORY_BACKEND_WIRED,
@@ -327,11 +357,29 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
     )
 
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    # Resolved endpoints are kept so the serving embedder below reuses the one
+    # the probe already looked up. Every resolution decrypts a credential, and
+    # doing it a second time outside the guard below would put the one failure
+    # this function exists to report on a path that cannot report it.
+    resolved: dict[str, EmbeddingEndpoint] = {}
+    lookup = embedding_endpoint_resolver_of(app_state)
+
+    async def resolve_endpoint(provider: str) -> EmbeddingEndpoint:
+        """Resolve *provider*'s endpoint once per wiring pass.
+
+        Returns:
+            Where the provider is reachable, and how to authenticate.
+        """
+        if provider not in resolved:
+            resolved[provider] = await lookup(provider)
+        return resolved[provider]
+
     try:
         config = await resolve_embedder_config(
             app_state.config.memory,
             settings_override=await _settings_override(app_state),
             cost_tracker=cost_tracker,
+            resolve_endpoint=resolve_endpoint,
         )
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
@@ -343,6 +391,15 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
             ),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+        )
+        # The health surface reads this. Without it an operator who has
+        # chosen a model is told to choose one, because an unwired slice
+        # cannot say which half of the binding failed.
+        from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+        app_state.wire(
+            MemoryStateSlice,
+            wiring_failure=safe_error_description(exc),
         )
         # Memory stays off, loudly. Starting the built-in embedder here
         # would turn a configuration the operator needs to fix into a
@@ -365,7 +422,13 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         ProviderTextEmbedder,
     )
 
-    return ProviderTextEmbedder(config, cost_tracker=cost_tracker)
+    # A plain read, not a resolution: the probe above already looked this
+    # provider up inside the guarded block, so nothing here can fail.
+    return ProviderTextEmbedder(
+        config,
+        cost_tracker=cost_tracker,
+        endpoint=resolved.get(config.provider),
+    )
 
 
 async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | None:

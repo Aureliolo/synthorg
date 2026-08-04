@@ -18,6 +18,7 @@ from typing import Final
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.dispatch import (
+    embedding_kwargs,
     embedding_retry_handler,
     format_model_ref,
     record_embedding_cost,
@@ -34,6 +35,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_PROBE_FAILED,
     MEMORY_EMBEDDER_PROBED,
 )
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 logger = get_logger(__name__)
 
@@ -63,6 +65,7 @@ async def probe_embedder_dims(
     provider: str,
     model: str,
     cost_tracker: CostTrackerProtocol | None = None,
+    endpoint: EmbeddingEndpoint | None = None,
     timeout_seconds: float = DEFAULT_PROBE_TIMEOUT_SECONDS,
 ) -> int:
     """Return the vector width *model* actually emits.
@@ -78,6 +81,10 @@ async def probe_embedder_dims(
         cost_tracker: Sink for the probe's own spend. The probe is a real
             billable call against the same quota as retrieval traffic, so
             it is attributed rather than issued invisibly.
+        endpoint: Where to send the call and how to authenticate it. Without
+            it litellm picks a host from its own defaults, so a self-hosted
+            provider is probed at the wrong address no matter what the
+            operator configured.
         timeout_seconds: Wall-clock ceiling for the whole attempt.
 
     Returns:
@@ -101,12 +108,13 @@ async def probe_embedder_dims(
     model_ref = format_model_ref(provider, model)
     from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
+    kwargs = embedding_kwargs(
+        model_ref=model_ref, inputs=[_PROBE_TEXT], endpoint=endpoint
+    )
     retry = embedding_retry_handler()
     try:
         response = await with_deadline(
-            lambda: retry.execute(
-                lambda: aembedding(model=model_ref, input=[_PROBE_TEXT])
-            ),
+            lambda: retry.execute(lambda: aembedding(**kwargs)),
             timeout_seconds=timeout_seconds,
         )
     except builtins.MemoryError, RecursionError:

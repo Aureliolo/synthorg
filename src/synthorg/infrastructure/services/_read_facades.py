@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from synthorg.api.auth.service import AuthService
     from synthorg.backup.models import BackupComponent, BackupTrigger
     from synthorg.backup.service import BackupService as CoreBackupService
-    from synthorg.providers.health import ProviderHealthTracker
+    from synthorg.providers.health_tracker import ProviderHealthTracker
     from synthorg.providers.management.service import ProviderManagementService
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.settings.service import SettingsService

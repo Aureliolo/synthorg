@@ -40,6 +40,7 @@ from ._call_instrumentation import (
     record_call_failure,
     record_call_success,
     record_cost_if_in_scope,
+    report_health_outcome,
 )
 from ._resilience import aclose_quietly, rate_limited_call, resilient_execute
 from ._tool_call_signals import (
@@ -50,6 +51,7 @@ from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
 from .enums import StreamEventType
 from .errors import classify_provider_error
+from .health_recording import CallOutcomeRecorder
 from .models import (
     ChatMessage,
     CompletionConfig,
@@ -103,6 +105,22 @@ class BaseCompletionProvider(ABC):
         self._retry_handler = retry_handler
         self._rate_limiter = rate_limiter
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._health_recorder: CallOutcomeRecorder | None = None
+
+    def bind_health_recorder(self, recorder: CallOutcomeRecorder | None) -> None:
+        """Bind where this driver reports the outcome of each completion.
+
+        Provider health is derived from recorded call outcomes, and real
+        traffic is the largest and most honest source of them: a reachability
+        sweep sees whether a host answers, while a completion sees whether the
+        provider actually serves. Bound after construction, like the credential
+        catalog, because the tracker is wired once persistence is connected.
+
+        Args:
+            recorder: Sink for this driver's call outcomes, or ``None`` to
+                leave the driver unmonitored (tests, the trackerless harness).
+        """
+        self._health_recorder = recorder
 
     def bind_credential_catalog(  # noqa: B027 -- intentional concrete no-op default
         self, catalog: ConnectionCatalog | None
@@ -244,6 +262,13 @@ class BaseCompletionProvider(ABC):
                     latency_ms=latency_ms,
                 )
                 await emit_tool_call_failure_signal(exc, provider_label, model, tools)
+                await report_health_outcome(
+                    self._health_recorder,
+                    provider_label=provider_label,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error_message=safe_error_description(exc),
+                )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             record_call_success(
@@ -251,6 +276,12 @@ class BaseCompletionProvider(ABC):
                 provider_label=provider_label,
                 model=model,
                 call_type="complete",
+                latency_ms=latency_ms,
+            )
+            await report_health_outcome(
+                self._health_recorder,
+                provider_label=provider_label,
+                success=True,
                 latency_ms=latency_ms,
             )
             if retry_info is not None:
@@ -365,6 +396,13 @@ class BaseCompletionProvider(ABC):
                     latency_ms=latency_ms,
                 )
                 await emit_tool_call_failure_signal(exc, provider_label, model, tools)
+                await report_health_outcome(
+                    self._health_recorder,
+                    provider_label=provider_label,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error_message=safe_error_description(exc),
+                )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             record_call_success(
@@ -372,6 +410,16 @@ class BaseCompletionProvider(ABC):
                 provider_label=provider_label,
                 model=model,
                 call_type="stream",
+                latency_ms=latency_ms,
+            )
+            # Setup only, matching the span: a mid-stream failure happens in
+            # the consumer's scope, where this frame is already gone. Without
+            # this, a stream-only workload contributes no outcome at all and
+            # its provider reads as never having been called.
+            await report_health_outcome(
+                self._health_recorder,
+                provider_label=provider_label,
+                success=True,
                 latency_ms=latency_ms,
             )
         # Token counts surface only on the terminal USAGE chunk; emit a

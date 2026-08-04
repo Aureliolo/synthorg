@@ -14,7 +14,7 @@ import math
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from functools import cache
-from typing import Final
+from typing import Final, TypedDict
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -28,6 +28,11 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_RETRIED,
 )
 from synthorg.providers.cost_recording import resolve_currency
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
+from synthorg.providers.transport_policy import (
+    require_confidential_transport,
+    require_credentialed_endpoint,
+)
 
 logger = get_logger(__name__)
 
@@ -102,6 +107,68 @@ def format_model_ref(provider: str, model: str) -> str:
         ``"{provider}/{model}"``.
     """
     return f"{provider}{PROVIDER_MODEL_SEPARATOR}{model}"
+
+
+class _EmbeddingRequiredKwargs(TypedDict):
+    """Keyword arguments every ``aembedding`` call sets."""
+
+    model: str
+    input: list[str]
+
+
+class EmbeddingKwargs(_EmbeddingRequiredKwargs, total=False):
+    """Typed view of the arguments handed to ``litellm.aembedding``.
+
+    The transport keys are optional because a hosted provider that declares
+    no base URL and needs no credential legitimately sets none of them;
+    litellm types the parameters individually, so splatting an opaque dict
+    would not type-check at the call site.
+    """
+
+    api_base: str
+    api_key: str
+    extra_headers: dict[str, str]
+
+
+def embedding_kwargs(
+    *,
+    model_ref: str,
+    inputs: list[str],
+    endpoint: EmbeddingEndpoint | None,
+) -> EmbeddingKwargs:
+    """Assemble one ``aembedding`` call, addressed at the operator's endpoint.
+
+    A model reference alone leaves litellm to pick a host from its own
+    defaults, which for a self-hosted provider is the wrong machine and no
+    amount of provider configuration can correct. Both embedding call sites
+    build their request here so neither can regress to that.
+
+    Returns:
+        The keyword arguments for ``litellm.aembedding``.
+
+    Raises:
+        ProviderValidationError: If the endpoint would be addressed in
+            cleartext beyond this machine's own network, or carries a
+            credential with no endpoint to send it to. Re-checked here
+            rather than trusted from resolution because this is the
+            boundary every embedding call passes through, and an endpoint
+            can be constructed without going through one.
+    """
+    kwargs: EmbeddingKwargs = {"model": model_ref, "input": inputs}
+    if endpoint is None:
+        return kwargs
+    # ``inputs`` is the text being embedded, so the destination is checked
+    # whether or not a credential rides along with it.
+    require_confidential_transport(endpoint.api_base, field="Embedding endpoint")
+    if endpoint.api_key is not None or endpoint.extra_headers:
+        require_credentialed_endpoint(endpoint.api_base, field="Embedding endpoint")
+    if endpoint.api_base is not None:
+        kwargs["api_base"] = endpoint.api_base
+    if endpoint.api_key is not None:
+        kwargs["api_key"] = endpoint.api_key
+    if endpoint.extra_headers:
+        kwargs["extra_headers"] = dict(endpoint.extra_headers)
+    return kwargs
 
 
 def is_retryable_embedding_error(exc: Exception) -> bool:
@@ -241,6 +308,8 @@ __all__ = [
     "RETRY_BASE_SECONDS",
     "RETRY_CAP_SECONDS",
     "RETRY_MAX_ATTEMPTS",
+    "EmbeddingKwargs",
+    "embedding_kwargs",
     "embedding_retry_handler",
     "format_model_ref",
     "is_retryable_embedding_error",

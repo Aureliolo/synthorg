@@ -66,6 +66,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.providers.state import (
     ProvidersStateSlice,
+    embedding_endpoint_resolver_of,
     provider_management_of,
 )
 from synthorg.settings.service_protocol import SettingsServiceProtocol
@@ -163,6 +164,7 @@ async def _validate_persisted_agents(
 
 
 async def _run_embedder_binding(
+    app_state: AppState,
     settings_svc: SettingsServiceProtocol,
 ) -> str | None:
     """Bind the operator's chosen embedder. Returns failure reason or None.
@@ -177,7 +179,10 @@ async def _run_embedder_binding(
         The ``str`` value when present, ``None`` otherwise.
     """
     try:
-        return await bind_chosen_embedder(settings_svc=settings_svc)
+        return await bind_chosen_embedder(
+            settings_svc=settings_svc,
+            resolve_endpoint=embedding_endpoint_resolver_of(app_state),
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -301,7 +306,7 @@ async def _finalize_completion(
     """
     await _check_setup_not_complete(settings_svc)
     await _validate_completion_prereqs(app_state, settings_svc)
-    embedder_failure_reason = await _run_embedder_binding(settings_svc)
+    embedder_failure_reason = await _run_embedder_binding(app_state, settings_svc)
     # The coordinator builds eagerly during reinit and requires a non-blank
     # decomposition model; the wizard's picker is optional, so fill a sensible
     # default from the matched roster before the rebuild.

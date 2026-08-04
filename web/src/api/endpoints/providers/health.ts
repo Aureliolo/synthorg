@@ -15,6 +15,30 @@ export async function getProviderHealth(name: string): Promise<ProviderHealthSum
 }
 
 /**
+ * Call the provider now and return the health that call produces.
+ *
+ * The read endpoint can only replay what was already recorded, so a
+ * provider whose fault an operator has just fixed keeps reporting it until
+ * something calls it again.
+ */
+export async function recheckProviderHealth(name: string): Promise<ProviderHealthSummary> {
+  const response = await apiClient.post<ApiResponse<ProviderHealthSummary>>(
+    `/providers/${encodeURIComponent(name)}/health/recheck`,
+    {},
+  )
+  return unwrap(response)
+}
+
+/** Call every configured provider now, returning each one's new health. */
+export async function recheckAllProviderHealth(): Promise<Record<string, ProviderHealthSummary>> {
+  const response = await apiClient.post<ApiResponse<Record<string, ProviderHealthSummary>>>(
+    '/providers/health/recheck',
+    {},
+  )
+  return unwrap(response)
+}
+
+/**
  * Probe every local preset's candidate URLs in one batch.
  *
  * Server-side fan-out via ``asyncio.TaskGroup``; a single rate-limit

@@ -22,27 +22,55 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.embedding.resolve import resolve_embedder_config
 from synthorg.memory.errors import MemoryConfigError, MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
 
 
-def _probe(width: int) -> object:
-    """A dims probe answering a fixed width, recording its calls."""
+class _RecordingProbe:
+    """A dims probe answering a fixed width, recording its calls.
 
-    calls: list[tuple[str, str]] = []
+    A class rather than a closure with attributes bolted on, so ``calls`` and
+    ``endpoints`` are declared and every call site reads them without a type
+    ignore. ``mock_of[DimsProbe]`` is the usual double, but the Protocol
+    declares ``__call__`` returning ``Awaitable[int]`` rather than as ``async
+    def``, so autospec produces a sync mock whose result cannot be awaited.
 
-    async def _measure(
+    Records the endpoint alongside the binding: measuring the right model
+    at the wrong address is the failure this seam exists to prevent.
+    """
+
+    def __init__(self, width: int) -> None:
+        self.width = width
+        self.calls: list[tuple[str, str]] = []
+        self.endpoints: list[EmbeddingEndpoint | None] = []
+
+    async def __call__(
+        self,
         *,
         provider: str,
         model: str,
         cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
     ) -> int:
-        _ = cost_tracker
-        calls.append((provider, model))
-        return width
+        """Record the call and answer the fixed width.
 
-    _measure.calls = calls  # type: ignore[attr-defined]
-    return _measure
+        Returns:
+            The width this probe was built with.
+        """
+        _ = cost_tracker
+        self.calls.append((provider, model))
+        self.endpoints.append(endpoint)
+        return self.width
+
+
+def _probe(width: int) -> _RecordingProbe:
+    """Build a recording dims probe answering *width*.
+
+    Returns:
+        A probe satisfying ``DimsProbe`` that remembers what it was asked.
+    """
+    return _RecordingProbe(width)
 
 
 async def _failing_probe(
@@ -50,9 +78,10 @@ async def _failing_probe(
     provider: str,
     model: str,
     cost_tracker: CostTrackerProtocol | None = None,
+    endpoint: EmbeddingEndpoint | None = None,
 ) -> int:
     """A dims probe standing in for a model that cannot be reached."""
-    _ = provider, cost_tracker
+    _ = provider, cost_tracker, endpoint
     msg = f"could not measure {model!r}"
     raise MemoryEmbeddingError(msg)
 
@@ -67,7 +96,7 @@ class TestOperatorChoice:
         result = await resolve_embedder_config(
             CompanyMemoryConfig(embedder=None),
             settings_override=override,
-            measure_dims=_probe(4096),  # type: ignore[arg-type]
+            measure_dims=_probe(4096),
         )
         assert result.provider == "override-provider"
         assert result.model == "override-model"
@@ -84,7 +113,7 @@ class TestOperatorChoice:
         )
         result = await resolve_embedder_config(
             CompanyMemoryConfig(embedder=yaml_override),
-            measure_dims=_probe(4096),  # type: ignore[arg-type]
+            measure_dims=_probe(4096),
         )
         assert result.provider == "yaml-provider"
         assert result.model == "yaml-model"
@@ -100,7 +129,7 @@ class TestOperatorChoice:
             settings_override=EmbedderOverrideConfig(
                 provider="settings-provider", model="settings-model", dims=512
             ),
-            measure_dims=_probe(4096),  # type: ignore[arg-type]
+            measure_dims=_probe(4096),
         )
         assert result.provider == "settings-provider"
         assert result.model == "settings-model"
@@ -111,7 +140,7 @@ class TestRefusals:
         with pytest.raises(MemoryConfigError, match="No embedding model"):
             await resolve_embedder_config(
                 CompanyMemoryConfig(embedder=None),
-                measure_dims=_probe(768),  # type: ignore[arg-type]
+                measure_dims=_probe(768),
             )
 
     async def test_model_without_a_provider_is_refused(self) -> None:
@@ -121,7 +150,7 @@ class TestRefusals:
             await resolve_embedder_config(
                 CompanyMemoryConfig(embedder=None),
                 settings_override=EmbedderOverrideConfig(model="lonely-model"),
-                measure_dims=_probe(768),  # type: ignore[arg-type]
+                measure_dims=_probe(768),
             )
 
     async def test_width_above_the_storage_ceiling_is_refused(self) -> None:
@@ -131,7 +160,7 @@ class TestRefusals:
                 settings_override=EmbedderOverrideConfig(
                     provider="test-provider", model="very-wide"
                 ),
-                measure_dims=_probe(STORAGE_MAX_DIMENSIONS + 1),  # type: ignore[arg-type]
+                measure_dims=_probe(STORAGE_MAX_DIMENSIONS + 1),
             )
 
     async def test_a_model_that_cannot_be_probed_propagates(self) -> None:
@@ -154,11 +183,11 @@ class TestMeasuredWidth:
             settings_override=EmbedderOverrideConfig(
                 provider="test-provider", model="test-embed-001"
             ),
-            measure_dims=probe,  # type: ignore[arg-type]
+            measure_dims=probe,
         )
         assert result.dims == 1536
         assert result.dims_explicit is False
-        assert probe.calls == [("test-provider", "test-embed-001")]  # type: ignore[attr-defined]
+        assert probe.calls == [("test-provider", "test-embed-001")]
 
     async def test_a_pinned_width_is_not_measured(self) -> None:
         probe = _probe(4096)
@@ -167,10 +196,10 @@ class TestMeasuredWidth:
             settings_override=EmbedderOverrideConfig(
                 provider="test-provider", model="test-embed-001", dims=2000
             ),
-            measure_dims=probe,  # type: ignore[arg-type]
+            measure_dims=probe,
         )
         assert result.dims == 2000
-        assert probe.calls == []  # type: ignore[attr-defined]
+        assert probe.calls == []
 
     async def test_a_settings_dims_pin_applies_to_a_yaml_model(self) -> None:
         """The documented manual-override workflow.
@@ -190,13 +219,13 @@ class TestMeasuredWidth:
                 )
             ),
             settings_override=EmbedderOverrideConfig(dims=2000),
-            measure_dims=probe,  # type: ignore[arg-type]
+            measure_dims=probe,
         )
         assert result.provider == "test-provider"
         assert result.model == "test-embed-wide"
         assert result.dims == 2000
         assert result.dims_explicit is True
-        assert probe.calls == []  # type: ignore[attr-defined]
+        assert probe.calls == []
 
     async def test_a_width_pin_with_no_model_anywhere_is_still_refused(self) -> None:
         """Completeness moved altitude; it did not disappear."""
@@ -204,7 +233,7 @@ class TestMeasuredWidth:
             await resolve_embedder_config(
                 CompanyMemoryConfig(embedder=None),
                 settings_override=EmbedderOverrideConfig(dims=2000),
-                measure_dims=_probe(768),  # type: ignore[arg-type]
+                measure_dims=_probe(768),
             )
 
     async def test_width_exactly_at_the_storage_ceiling_is_accepted(self) -> None:
@@ -214,7 +243,7 @@ class TestMeasuredWidth:
             settings_override=EmbedderOverrideConfig(
                 provider="test-provider", model="test-embed-widest"
             ),
-            measure_dims=_probe(STORAGE_MAX_DIMENSIONS),  # type: ignore[arg-type]
+            measure_dims=_probe(STORAGE_MAX_DIMENSIONS),
         )
         assert result.dims == STORAGE_MAX_DIMENSIONS
 
@@ -227,7 +256,7 @@ class TestMeasuredWidth:
             settings_override=EmbedderOverrideConfig(
                 provider="test-provider", model="test-embed-wide"
             ),
-            measure_dims=_probe(width),  # type: ignore[arg-type]
+            measure_dims=_probe(width),
         )
         assert result.dims == width
 
@@ -240,11 +269,11 @@ class TestBuiltin:
             settings_override=EmbedderOverrideConfig(
                 provider=BUILTIN_EMBEDDER_PROVIDER, model=BUILTIN_EMBEDDER_MODEL
             ),
-            measure_dims=probe,  # type: ignore[arg-type]
+            measure_dims=probe,
         )
         assert result.provider == BUILTIN_EMBEDDER_PROVIDER
         assert result.dims == BUILTIN_EMBEDDER_DIMS
-        assert probe.calls == []  # type: ignore[attr-defined]
+        assert probe.calls == []
 
     async def test_choosing_the_builtin_is_recorded(self) -> None:
         """Deliberate, but still logged: an operator debugging poor recall
@@ -257,7 +286,76 @@ class TestBuiltin:
                 settings_override=EmbedderOverrideConfig(
                     provider=BUILTIN_EMBEDDER_PROVIDER, model=BUILTIN_EMBEDDER_MODEL
                 ),
-                measure_dims=_probe(BUILTIN_EMBEDDER_DIMS),  # type: ignore[arg-type]
+                measure_dims=_probe(BUILTIN_EMBEDDER_DIMS),
             )
         events = [entry["event"] for entry in logs]
         assert "memory.embedder.builtin_selected" in events
+
+    async def test_the_builtin_never_asks_for_an_endpoint(self) -> None:
+        # Asking would look up a provider named "builtin", which cannot
+        # exist, and fail the one embedder that is always available.
+        asked: list[str] = []
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            msg = f"provider {provider!r} is not configured"
+            raise AssertionError(msg)
+
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider=BUILTIN_EMBEDDER_PROVIDER, model=BUILTIN_EMBEDDER_MODEL
+            ),
+            measure_dims=_probe(BUILTIN_EMBEDDER_DIMS),
+            resolve_endpoint=_resolve,
+        )
+
+        assert result.provider == BUILTIN_EMBEDDER_PROVIDER
+        assert asked == []
+
+
+class TestResolvedEndpointReachesTheProbe:
+    """The resolver's endpoint has to arrive at the probe, not just exist.
+
+    Nothing else observes it: dropping ``endpoint=`` from the probe call
+    leaves resolution succeeding, the width measured, and boot probing a
+    self-hosted model at whatever host the driver defaults to.
+    """
+
+    async def test_a_provider_backed_model_probes_the_resolved_endpoint(
+        self,
+    ) -> None:
+        asked: list[str] = []
+        resolved = EmbeddingEndpoint(api_base="https://models.invalid")
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            return resolved
+
+        probe = _probe(1536)
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider="test-provider", model="test-embed-001"
+            ),
+            measure_dims=probe,
+            resolve_endpoint=_resolve,
+        )
+
+        assert result.dims == 1536
+        assert asked == ["test-provider"]
+        assert probe.endpoints == [resolved]
+
+    async def test_no_resolver_leaves_the_probe_unaddressed(self) -> None:
+        # A caller that supplies none is letting the driver route itself,
+        # which is correct only for a provider hosted at its own API.
+        probe = _probe(1536)
+        _ = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider="test-provider", model="test-embed-001"
+            ),
+            measure_dims=probe,
+        )
+
+        assert probe.endpoints == [None]

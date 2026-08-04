@@ -15,8 +15,8 @@ import pytest
 
 from synthorg.config.schema import ProviderConfig
 from synthorg.providers.errors import ProviderLifecycleConflictError
-from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober import ProviderHealthProber
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit

@@ -12,11 +12,16 @@ memory unless the surface probes for it.
 
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.state import AppState
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.memory import MEMORY_BACKEND_UNREACHABLE
+
+logger = get_logger(__name__)
 
 
 class ProbeService(Protocol):
@@ -96,11 +101,20 @@ class MemoryHealth(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     state: MemoryState = Field(description="How agent memory is running")
-    backend: str = Field(description="Configured memory backend name")
+    backend: NotBlankStr = Field(description="Configured memory backend name")
     detail: str | None = Field(
         default=None,
         description="Operator-facing remedy, when action is needed",
     )
+
+
+#: Stands in when the last attempt recorded no reason of its own, which is
+#: the state before any wiring pass has run.
+_NO_EMBEDDER_REMEDY: Final[str] = (
+    "The usual cause is that no embedding model resolved: set "
+    "memory.embedder_model to a provider-bound reference, or connect a "
+    "provider that offers an embedding model."
+)
 
 
 def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
@@ -114,16 +128,14 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
 
     backend_name = app_state.config.memory.backend
-    if app_state.slice(MemoryStateSlice).backend is None:
+    memory = app_state.slice(MemoryStateSlice)
+    if memory.backend is None:
         return MemoryHealth(
             state=MemoryState.OFF,
             backend=backend_name,
             detail=(
                 "No memory backend is wired, so agents start every task "
-                "with no recall. The usual cause is that no embedding "
-                "model resolved: set memory.embedder_model to a "
-                "provider-bound reference, or connect a provider that "
-                "offers an embedding model."
+                "with no recall. " + (memory.wiring_failure or _NO_EMBEDDER_REMEDY)
             ),
         )
     if backend_name == IN_MEMORY_BACKEND:
@@ -239,6 +251,15 @@ async def resolve_memory_health(
         component="memory",
     )
     if not healthy:
+        # Logged as well as returned: this is the one memory state that
+        # blocks readiness, and it is reached from a read nobody may be
+        # watching. Everything else here is a wiring outcome the wiring
+        # path already recorded at the moment it happened.
+        logger.warning(
+            MEMORY_BACKEND_UNREACHABLE,
+            backend=backend_name,
+            note="wired but did not answer a health probe",
+        )
         return MemoryHealth(
             state=MemoryState.UNREACHABLE,
             backend=backend_name,

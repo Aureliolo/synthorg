@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { Link } from 'react-router'
+import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   Archive,
@@ -16,7 +17,8 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { renderedSnapshot } from '@/stores/health'
+import { renderedSnapshot, useHealthStore } from '@/stores/health'
+import { useProvidersStore } from '@/stores/providers'
 import { useWebSocketStore } from '@/stores/websocket'
 import { formatTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -177,6 +179,49 @@ function memoryRemediation(
   )
 }
 
+async function recheckProvidersAndRefresh(): Promise<void> {
+  await useProvidersStore.getState().recheckAllHealth()
+  // This card renders from the health snapshot, not the providers store, so
+  // the sweep alone would move the badges on the Providers page while the
+  // dialog that offered the action kept showing the state it just corrected.
+  await useHealthStore.getState().fetchHealth()
+}
+
+function providersActions(
+  states: DerivedSubsystemStates,
+  onDismiss: () => void,
+  rechecking: boolean,
+  onRecheck: () => void,
+): ReactNode {
+  if (!needsAttention(states.providersState)) return undefined
+  // Recheck first: an operator who has just fixed a provider wants the
+  // dashboard to look again, not to be sent somewhere to look themselves.
+  // Nothing else re-derives provider health, so without this the only way
+  // to clear a stale verdict is to open the provider and re-save it.
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={rechecking}
+        aria-busy={rechecking}
+        onClick={onRecheck}
+      >
+        <RefreshCw
+          className={cn('size-3.5 mr-1.5', rechecking && 'animate-spin')}
+        />
+        {rechecking ? 'Checking...' : 'Recheck now'}
+      </Button>
+      <HealthRemediationLink
+        to={ROUTES.PROVIDERS}
+        label="Review providers"
+        onDismiss={onDismiss}
+      />
+    </div>
+  )
+}
+
 export interface HealthSubsystemGridProps {
   states: DerivedSubsystemStates
   onDismiss: () => void
@@ -186,6 +231,19 @@ function HealthSubsystemGrid({
   states,
   onDismiss,
 }: HealthSubsystemGridProps) {
+  const sweeping = useProvidersStore((s) => s.recheckingAllHealth)
+  // The store clears its own flag when the sweep returns, but this card
+  // renders from the health snapshot, which the refresh below is still
+  // fetching. Binding the button to the store flag alone re-enables it
+  // mid-refresh, and a second click starts another all-provider sweep.
+  const [refreshingSnapshot, setRefreshingSnapshot] = useState(false)
+  const onRecheck = useCallback(() => {
+    setRefreshingSnapshot(true)
+    void recheckProvidersAndRefresh().finally(() => {
+      setRefreshingSnapshot(false)
+    })
+  }, [])
+  const recheckingProviders = sweeping || refreshingSnapshot
   const wsAction = states.wsState === 'down'
     ? (
         <Button
@@ -233,15 +291,12 @@ function HealthSubsystemGrid({
         label="Providers"
         description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
         state={states.providersState}
-        action={
-          needsAttention(states.providersState) ? (
-            <HealthRemediationLink
-              to={ROUTES.PROVIDERS}
-              label="Review providers"
-              onDismiss={onDismiss}
-            />
-          ) : undefined
-        }
+        action={providersActions(
+          states,
+          onDismiss,
+          recheckingProviders,
+          onRecheck,
+        )}
       />
       <HealthStatusRow
         icon={Brain}

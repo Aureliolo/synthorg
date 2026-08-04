@@ -6,6 +6,7 @@ from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -14,8 +15,8 @@ from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthStatus,
     ProviderHealthSummary,
-    ProviderHealthTracker,
 )
+from synthorg.providers.health_tracker import ProviderHealthTracker
 
 
 def _make_record(
@@ -639,3 +640,90 @@ class TestAutoEviction:
     ) -> None:
         with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
             ProviderHealthTracker(auto_prune_threshold=value)
+
+
+@pytest.mark.unit
+class TestWritePathEviction:
+    """Growth is bounded by writing, not only by someone happening to read.
+
+    A connection test, an on-demand recheck and the periodic sweep all write
+    here, and real completion traffic does too. A deployment that writes far
+    more often than it reads would otherwise hold every record it ever made
+    until something asked for a summary.
+    """
+
+    _NOW = datetime(2026, 3, 15, tzinfo=UTC)
+
+    async def test_writing_past_the_threshold_evicts_expired_records(
+        self,
+    ) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=10)
+        for i in range(8):
+            await tracker.record(
+                _make_record(timestamp=self._NOW - timedelta(hours=25, seconds=i)),
+            )
+        for i in range(4):
+            await tracker.record(
+                _make_record(timestamp=self._NOW - timedelta(minutes=i)),
+            )
+
+        # Nothing has read a summary, so only the write path can have run.
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 0
+
+    async def test_writing_below_the_threshold_evicts_nothing(self) -> None:
+        # The prune rebuilds the list, so running it on every append would
+        # make a sweep quadratic in the records it just wrote.
+        tracker = ProviderHealthTracker(auto_prune_threshold=10)
+        for i in range(3):
+            await tracker.record(
+                _make_record(timestamp=self._NOW - timedelta(hours=25, seconds=i)),
+            )
+
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 3
+
+    async def test_a_record_inside_the_window_survives_the_write_prune(
+        self,
+    ) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=2)
+        keep = _make_record(timestamp=self._NOW - timedelta(hours=1))
+        await tracker.record(keep)
+        for i in range(4):
+            await tracker.record(
+                _make_record(timestamp=self._NOW - timedelta(minutes=i)),
+            )
+
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
+        assert summary.calls_last_24h == 5
+
+    async def test_a_full_window_does_not_rebuild_on_every_write(self) -> None:
+        # Once 24 hours of traffic is larger than the threshold, every append
+        # finds the list over the line and the rebuild that follows frees
+        # nothing. Attempting one per append is what makes ordinary load
+        # quadratic; the spacing rule is the only thing preventing it.
+        threshold = 10
+        writes = 100
+        tracker = ProviderHealthTracker(auto_prune_threshold=threshold)
+        attempts = 0
+        real_prune = ProviderHealthTracker._prune_before
+
+        def _counting_prune(
+            instance: ProviderHealthTracker,
+            cutoff: datetime,
+        ) -> int:
+            nonlocal attempts
+            attempts += 1
+            return real_prune(instance, cutoff)
+
+        # Patched on the class: ``__slots__`` leaves no instance dict for
+        # a per-object override to live in.
+        with patch.object(ProviderHealthTracker, "_prune_before", _counting_prune):
+            for i in range(writes):
+                await tracker.record(
+                    _make_record(timestamp=self._NOW - timedelta(seconds=i)),
+                )
+
+        assert attempts <= writes // threshold
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
+        assert summary.calls_last_24h == writes

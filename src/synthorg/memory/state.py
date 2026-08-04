@@ -29,6 +29,12 @@ class MemoryStateSlice(BaseFeatureStateSlice):
 
     backend: MemoryBackend | None = None
     embedder_ref: str | None = None
+    # Why the last wiring attempt produced no backend. Held because an
+    # unwired slice on its own cannot distinguish "no model was ever
+    # chosen" from "the chosen model's endpoint did not answer" from "the
+    # store refused the connection", and the health surface was telling
+    # operators to pick a model they had already picked.
+    wiring_failure: str | None = None
     fine_tune_orchestrator: FineTuneOrchestrator | None = None
     service: MemoryService | None = None
     org_memory_backend: OrgMemoryBackend | None = None

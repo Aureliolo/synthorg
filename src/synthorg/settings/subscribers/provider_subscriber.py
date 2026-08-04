@@ -254,11 +254,17 @@ class ProviderSettingsSubscriber:
         committed swap un-reloaded. ``MemoryError`` / ``RecursionError`` skip the
         rollback so a fatal condition is not driven through a second reload.
         """
+        from synthorg.providers._driver_binding import (  # noqa: PLC0415
+            rebind_health_recorders,
+        )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
+        # The rebuilt registry's drivers are new and report nowhere until
+        # they are pointed at the tracker, so bind before the swap commits.
+        rebind_health_recorders(self._app_state, new_registry)
         self._app_state.swap_provider_registry(new_registry)
         try:
             await reload_runtime_services(self._app_state, trigger=trigger)

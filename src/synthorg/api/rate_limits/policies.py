@@ -48,6 +48,7 @@ from synthorg.settings.definitions.api import (
     MEMORY_FINE_TUNE_INFLIGHT_MAX,
     METRICS_INFLIGHT_MAX,
     PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX,
+    PROVIDERS_HEALTH_RECHECK_ALL_INFLIGHT_MAX,
     PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
 )
 
@@ -260,6 +261,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.delete_model": (20, 60),
     "providers.delete_preset_override": (10, 60),
     "providers.discover_models": (5, 60),
+    # One request fans out a billed completion to every configured provider,
+    # so the ceiling is on the sweep, not on a per-provider call: sharing
+    # ``providers.test``'s budget would price N calls as one.
+    "providers.health_recheck_all": (2, 60),
     "providers.list_models": (60, 60),
     "providers.model_refresh_decide": (20, 60),
     "providers.model_refresh_trigger": (2, 300),
@@ -379,6 +384,7 @@ _INFLIGHT_POLICIES: Final[dict[str, int]] = {
     "memory.checkpoint_rollback": MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,
     "memory.fine_tune": MEMORY_FINE_TUNE_INFLIGHT_MAX,
     "providers.discover_models": PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX,
+    "providers.health_recheck_all": PROVIDERS_HEALTH_RECHECK_ALL_INFLIGHT_MAX,
     "providers.pull_model": PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
 }
 

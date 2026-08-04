@@ -55,6 +55,10 @@ MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX: Final[int] = 1
 MEMORY_FINE_TUNE_INFLIGHT_MAX: Final[int] = 1
 PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX: Final[int] = 2
 PROVIDERS_PULL_MODEL_INFLIGHT_MAX: Final[int] = 2
+# One recheck-all already calls every configured provider concurrently, so
+# a second concurrent sweep multiplies billed calls without answering a
+# question the first is not already answering.
+PROVIDERS_HEALTH_RECHECK_ALL_INFLIGHT_MAX: Final[int] = 1
 # Brownfield codebase intake is a heavy, multi-minute operation (clone,
 # scan, index): a single-slot cap per user keeps a single operator from
 # pinning the runtime by firing several imports back-to-back, while the
@@ -868,6 +872,56 @@ _r.register(
         group="Providers",
         level=SettingLevel.ADVANCED,
         min_value=0.1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="health_recheck_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Ceiling on a single provider's on-demand health recheck. Sized"
+            " apart from the post-mutation probe because a recheck issues a"
+            " real completion rather than a reachability ping: a provider"
+            " configured without a base URL is ineligible for the ping sweep,"
+            " so a completion is the only call that reaches it, and a model"
+            " that has to load answers far slower than a GET. The recheck is"
+            " awaited on the request, so without a ceiling one unreachable"
+            " provider holds the response open; the sweep across every"
+            " provider runs them concurrently, so this bounds it too."
+            " Exceeding the budget leaves that provider's recorded health"
+            " unchanged. Resolved per recheck, so a change applies without a"
+            " restart."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="health_recheck_max_providers",
+        type=SettingType.INTEGER,
+        default="25",
+        description=(
+            "Ceiling on how many providers one recheck-all request may call."
+            " The rate limit bounds how often the sweep runs; this bounds what"
+            " a single run costs, which the rate limit cannot: every provider"
+            " in the sweep is issued a real billed completion, so an operator"
+            " who configures many providers turns one allowed request into"
+            " proportionally more spend. Exceeding the ceiling refuses the"
+            " sweep rather than truncating it, because a partial sweep"
+            " silently answers a different question than the one asked."
+            " Per-provider rechecks are unaffected. Resolved per request, so a"
+            " change applies without a restart."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
     )
 )
 

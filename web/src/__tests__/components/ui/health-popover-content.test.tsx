@@ -1,11 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dialog } from '@base-ui/react/dialog'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { HealthPopoverContent } from '@/components/ui/health-popover/HealthPopoverContent'
+import { useProvidersStore } from '@/stores/providers'
+import { useHealthStore } from '@/stores/health'
 import type { DerivedSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
+
+const INITIAL_PROVIDERS = useProvidersStore.getState()
+const INITIAL_HEALTH = useHealthStore.getState()
 
 /**
  * A card that names a fault has to offer the route that clears it.
@@ -77,6 +82,18 @@ function renderContent(
 }
 
 describe('HealthPopoverContent remediation links', () => {
+  // Restored before each test rather than after: these override single fields
+  // on the real stores, and writing to them in teardown updates a tree React
+  // has not unmounted yet.
+  beforeEach(() => {
+    useProvidersStore.setState(INITIAL_PROVIDERS, true)
+    useHealthStore.setState(INITIAL_HEALTH, true)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('points an unwired memory backend at the embedding-model row itself', () => {
     // `off` means no embedding model was ever named, which is the operator's to
     // fix, so the link carries the key the settings filter matches on.
@@ -151,6 +168,92 @@ describe('HealthPopoverContent remediation links', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Choose an embedding model' }))
 
     expect(onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('offers a recheck on an unhealthy provider card', async () => {
+    // The gap this covers: nothing re-derived provider health between probe
+    // cycles, so an operator who had just fixed a provider had no way to say
+    // "look again" short of opening it and re-saving it.
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => Promise.resolve())
+    // One field overridden on the real store rather than a whole replacement
+    // snapshot: anything else the tree reads would otherwise be undefined and
+    // hide a genuine mismatch. The trailing refresh is stubbed as well, so the
+    // press is not left half-finished against a live snapshot fetch.
+    useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Recheck now' })).toBeEnabled()
+    })
+
+    expect(recheckAllHealth).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes the health snapshot the card itself renders from', async () => {
+    // The sweep writes the providers store; this card reads the health
+    // snapshot. Without the refetch the dialog offering the action would keep
+    // showing the state it just corrected.
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => Promise.resolve())
+    useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+
+    expect(fetchHealth).toHaveBeenCalledOnce()
+  })
+
+  it('stays busy until the snapshot refresh settles, not just the sweep', async () => {
+    // The store clears its own flag when the sweep returns, but this card
+    // renders from the snapshot the refresh is still fetching. Re-enabling
+    // in that window lets a second press bill every provider again.
+    let releaseFetch = (): void => {}
+    const fetchHeld = new Promise<void>((resolve) => {
+      releaseFetch = resolve
+    })
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => fetchHeld)
+    useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+
+    const busy = screen.getByRole('button', { name: 'Checking...' })
+    expect(busy).toBeDisabled()
+    expect(busy).toHaveAttribute('aria-busy', 'true')
+
+    releaseFetch()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Recheck now' })).toBeEnabled()
+    })
+  })
+
+  it('disables the recheck while a sweep is already in flight', () => {
+    // Without this the button re-fires, and each press bills a completion
+    // against every configured provider.
+    useProvidersStore.setState({ recheckingAllHealth: true })
+    renderContent({ providersState: 'down' })
+
+    expect(screen.getByRole('button', { name: 'Checking...' })).toBeDisabled()
+  })
+
+  it('offers no recheck while providers are healthy', () => {
+    renderContent()
+
+    expect(screen.queryByRole('button', { name: 'Recheck now' })).toBeNull()
+  })
+
+  it('keeps recheck a button rather than a navigation link', () => {
+    // It acts on the spot; an anchor would promise a destination it has not
+    // got, and would be the wrong thing to open in a new tab.
+    renderContent({ providersState: 'down' })
+
+    expect(screen.getByRole('button', { name: 'Recheck now' }).tagName).toBe('BUTTON')
   })
 
   it('keeps the remedy a link rather than giving it button semantics', () => {

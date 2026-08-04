@@ -176,6 +176,7 @@ function ProviderDetailBody({
   testingConnection,
 }: ProviderDetailBodyProps) {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
+  const recheckingHealth = useProvidersStore((s) => s.recheckingHealth)
   const reenablingModelIds = useProvidersStore((s) => s.reenablingModelIds)
   const [testModel, setTestModel] = useState('')
   return (
@@ -204,6 +205,10 @@ function ProviderDetailBody({
           refreshing={discoveringModels}
           onPullModel={() => d.setPullOpen(true)}
           supportsPull={provider.supports_model_pull}
+          onRecheckHealth={() => {
+            void useProvidersStore.getState().recheckProviderHealth(decodedName)
+          }}
+          recheckingHealth={recheckingHealth}
         />
       </ErrorBoundary>
 

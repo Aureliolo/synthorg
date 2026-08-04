@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import override
+from datetime import UTC, datetime
+from typing import Final, override
 
 import pytest
 import structlog
@@ -25,6 +26,8 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
+from synthorg.providers.health_recording import outcome_recorder_for
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -33,6 +36,12 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import FakeClock
+
+#: One reference instant for both the recorded timestamps and the window
+#: they are aggregated over. Left to wall time, the two are read from
+#: different moments, so the window boundary moves under the assertion.
+_HEALTH_NOW: Final[datetime] = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
 class _StubProvider(BaseCompletionProvider):
@@ -85,6 +94,125 @@ class _StubProvider(BaseCompletionProvider):
 
 def _msg(content: str = "hi") -> ChatMessage:
     return ChatMessage(role=MessageRole.USER, content=content)
+
+
+@pytest.mark.unit
+class TestCompletionOutcomesReachHealth:
+    """Real traffic is evidence about whether a provider is serving.
+
+    Without this the 24h error rate describes only the reachability sweep's
+    own pings, so a provider answering every agent call could still read
+    however the last ping left it.
+    """
+
+    async def test_a_successful_call_is_recorded(self) -> None:
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        _ = await provider.complete([_msg()], "test-small-001")
+
+        summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 0.0
+
+    async def test_a_failed_call_is_recorded_and_still_raises(self) -> None:
+        class _Failing(_StubProvider):
+            @override
+            async def _do_complete(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> CompletionResponse:
+                msg = "upstream refused"
+                raise InvalidRequestError(msg)
+
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _Failing()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        with pytest.raises(InvalidRequestError):
+            _ = await provider.complete([_msg()], "test-small-001")
+
+        summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 100.0
+
+    async def test_a_recorder_fault_does_not_fail_the_call(self) -> None:
+        # The caller already has its answer; a tracker fault must not turn a
+        # completed call into an error it did not have.
+        async def _explodes(**_kwargs: object) -> None:
+            msg = "tracker exploded"
+            raise RuntimeError(msg)
+
+        provider = _StubProvider()
+        provider.bind_health_recorder(_explodes)
+
+        result = await provider.complete([_msg()], "test-small-001")
+
+        assert result.content == "hello"
+
+    async def test_an_unbound_provider_records_nothing(self) -> None:
+        # The tracker is wired once persistence is connected, so a driver
+        # built before that must still complete.
+        result = await _StubProvider().complete([_msg()], "test-small-001")
+
+        assert result.content == "hello"
+
+    async def test_a_stream_setup_is_recorded(self) -> None:
+        # A stream-only workload otherwise contributes no outcome at all, so
+        # its provider reads as never having been called however much traffic
+        # it is actually serving.
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        stream = await provider.stream([_msg()], "test-small-001")
+        _ = [chunk async for chunk in stream]
+
+        summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 0.0
+
+    async def test_a_failed_stream_setup_is_recorded_as_a_failure(self) -> None:
+        class _FailingStream(_StubProvider):
+            @override
+            async def _do_stream(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> AsyncIterator[StreamChunk]:
+                msg = "upstream refused the stream"
+                raise InvalidRequestError(msg)
+
+        tracker = ProviderHealthTracker()
+        clock = FakeClock(start=_HEALTH_NOW)
+        provider = _FailingStream()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=clock)
+        )
+
+        with pytest.raises(InvalidRequestError):
+            _ = await provider.stream([_msg()], "test-small-001")
+
+        summary = await tracker.get_summary("test-provider", now=_HEALTH_NOW)
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 100.0
 
 
 @pytest.mark.unit

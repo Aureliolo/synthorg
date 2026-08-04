@@ -24,6 +24,8 @@ export {
   getDiscoveryPolicy,
   getProviderHealth,
   probeLocal,
+  recheckAllProviderHealth,
+  recheckProviderHealth,
   removeAllowlistEntry,
 } from './providers/health'
 

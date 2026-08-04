@@ -22,7 +22,6 @@ from synthorg.providers.discovery_policy import (
 from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthStatus,
-    ProviderHealthTracker,
 )
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.providers.health_prober_helpers import (
@@ -36,6 +35,7 @@ from synthorg.providers.health_prober_targets import (
     _base_url_is_required,
     resolve_probe_target,
 )
+from synthorg.providers.health_tracker import ProviderHealthTracker
 from synthorg.settings import (
     definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
 )

@@ -12,7 +12,15 @@ from synthorg.api.controllers.setup._embedder_setup import (
     pick_model_ref_for_tier,
 )
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.memory.embedding.hashing import (
+    BUILTIN_EMBEDDER_MODEL,
+    BUILTIN_EMBEDDER_PROVIDER,
+)
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import (
+    EmbeddingEndpoint,
+)
+from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 
@@ -41,10 +49,133 @@ async def _probe_1536(
     provider: str,
     model: str,
     cost_tracker: CostTrackerProtocol | None = None,
+    endpoint: EmbeddingEndpoint | None = None,
 ) -> int:
     """A width probe standing in for a reachable model."""
-    _ = provider, model, cost_tracker
+    _ = provider, model, cost_tracker, endpoint
     return 1536
+
+
+class _RecordingProbe:
+    """A width probe that keeps the endpoint it was addressed at.
+
+    Discarding it, as a plain stand-in does, leaves the resolver's result
+    unobserved: dropping ``endpoint=`` from the call would still resolve a
+    provider, still return a width, and still pass.
+    """
+
+    def __init__(self) -> None:
+        self.endpoints: list[EmbeddingEndpoint | None] = []
+
+    async def __call__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
+    ) -> int:
+        """Record *endpoint* and answer a width.
+
+        Returns:
+            A fixed width; this fake is about the endpoint, not the number.
+        """
+        _ = provider, model, cost_tracker
+        self.endpoints.append(endpoint)
+        return 1536
+
+
+@pytest.mark.unit
+class TestBuiltinEmbedderNeedsNoEndpoint:
+    """Choosing the built-in embedder must not require a configured provider.
+
+    Its width is definitional and it runs in-process, so there is no endpoint
+    to look up. Resolving one anyway asks for a provider named ``builtin``,
+    which cannot exist, and fails the one choice that is always available.
+    """
+
+    async def test_the_builtin_binds_without_resolving_an_endpoint(self) -> None:
+        settings_svc = _settings_reading(
+            {
+                "embedder_model": _bound(
+                    BUILTIN_EMBEDDER_PROVIDER, BUILTIN_EMBEDDER_MODEL
+                ),
+                "embedder_dims": "",
+            }
+        )
+        asked: list[str] = []
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            msg = f"Embedding provider {provider!r} is not configured"
+            raise ProviderNotFoundError(msg)
+
+        probe = _RecordingProbe()
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc,
+            measure_dims=probe,
+            resolve_endpoint=_resolve,
+        )
+
+        assert reason is None
+        assert asked == []
+        # Probed with no endpoint at all, which is the built-in's whole
+        # point: it runs in-process and has nowhere to be addressed.
+        assert probe.endpoints == [None]
+
+    async def test_a_provider_backed_model_still_resolves_one(self) -> None:
+        # The guard is on the built-in specifically, not on resolution. The
+        # probe records what it was addressed at, so dropping ``endpoint=``
+        # from the call fails here rather than passing on the lookup alone.
+        settings_svc = _settings_reading(
+            {
+                "embedder_model": _bound("test-provider", "test-embed-001"),
+                "embedder_dims": "",
+            }
+        )
+        asked: list[str] = []
+        resolved = EmbeddingEndpoint(api_base="https://models.invalid")
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            return resolved
+
+        probe = _RecordingProbe()
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc,
+            measure_dims=probe,
+            resolve_endpoint=_resolve,
+        )
+
+        assert reason is None
+        assert asked == ["test-provider"]
+        assert probe.endpoints == [resolved]
+
+    async def test_an_unresolvable_provider_is_not_reported_as_a_probe_failure(
+        self,
+    ) -> None:
+        # A provider that cannot be located is a configuration fault; calling
+        # it "did not answer a width probe" sends the operator to the model.
+        settings_svc = _settings_reading(
+            {
+                "embedder_model": _bound("missing-provider", "test-embed-001"),
+                "embedder_dims": "",
+            }
+        )
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            msg = f"Embedding provider {provider!r} is not configured"
+            raise ProviderNotFoundError(msg)
+
+        reason = await bind_chosen_embedder(
+            settings_svc=settings_svc,
+            measure_dims=_probe_1536,
+            resolve_endpoint=_resolve,
+        )
+
+        assert reason is not None
+        assert "could not be resolved" in reason
+        assert "width probe" not in reason
 
 
 @pytest.mark.unit
@@ -127,8 +258,9 @@ class TestBindChosenEmbedder:
             provider: str,
             model: str,
             cost_tracker: CostTrackerProtocol | None = None,
+            endpoint: EmbeddingEndpoint | None = None,
         ) -> int:
-            _ = provider, model, cost_tracker
+            _ = provider, model, cost_tracker, endpoint
             msg = "unreachable"
             raise MemoryEmbeddingError(msg)
 

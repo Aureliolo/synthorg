@@ -20,11 +20,12 @@ from synthorg.core.vector_limits import (
     IndexSupport,
     index_support_for,
 )
-from synthorg.memory.embedding.probe import probe_embedder_dims
+from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
 )
+from synthorg.providers.state import embedding_endpoint_resolver_of
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.model_ref import ModelRef, parse_model_ref
 from synthorg.settings.state import SettingsStateSlice
@@ -215,10 +216,20 @@ class MemoryEmbedderController(Controller):
                 answers with no vector, so its width is unknown.
         """
         app_state: AppState = state.app_state
+        # Resolved behind the built-in guard rather than inline in the call:
+        # an argument expression is evaluated before the callee runs, so
+        # inlining it would look up a provider named "builtin" that cannot
+        # exist and raise past the width the built-in answers by definition.
+        endpoint = (
+            None
+            if is_builtin_embedder(data.provider, data.model_id)
+            else await embedding_endpoint_resolver_of(app_state)(data.provider)
+        )
         dims = await probe_embedder_dims(
             provider=data.provider,
             model=data.model_id,
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            endpoint=endpoint,
         )
         return ApiResponse(
             data=EmbedderProbeResponse(

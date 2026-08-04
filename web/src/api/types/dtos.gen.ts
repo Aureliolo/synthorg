@@ -181,6 +181,7 @@ export type WorkflowDiffEnvelope = components['schemas']['ApiResponse_WorkflowDi
 export type WorkflowExecutionEnvelope = components['schemas']['ApiResponse_WorkflowExecution_']
 export type WorkflowValidationResultEnvelope = components['schemas']['ApiResponse_WorkflowValidationResult_']
 export type WsTicketResponseEnvelope = components['schemas']['ApiResponse_WsTicketResponse_']
+export type dict_str_ProviderHealthSummaryEnvelope = components['schemas']['ApiResponse_dict_str_ProviderHealthSummary_']
 export type dict_str_Union_int_strEnvelope = components['schemas']['ApiResponse_dict_str_Union_int_str_']
 export type dict_str_intEnvelope = components['schemas']['ApiResponse_dict_str_int_']
 export type dict_str_objectEnvelope = components['schemas']['ApiResponse_dict_str_object_']

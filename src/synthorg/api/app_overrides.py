@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from synthorg.hr.training.service import TrainingService
     from synthorg.persistence.artifact_storage import ArtifactStorageBackend
     from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.providers.health import ProviderHealthTracker
+    from synthorg.providers.health_tracker import ProviderHealthTracker
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.audit import AuditLog
     from synthorg.settings.service import SettingsService

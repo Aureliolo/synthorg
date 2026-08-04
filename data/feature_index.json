@@ -938,6 +938,7 @@
       "state_slice_fields": [
         "backend",
         "embedder_ref",
+        "wiring_failure",
         "fine_tune_orchestrator",
         "service",
         "org_memory_backend",
@@ -1223,6 +1224,7 @@
     {
       "controllers": [
         "ProviderCrudController",
+        "ProviderHealthController",
         "ProviderConnectionController",
         "ProviderModelsController",
         "ProviderLocalModelsController",
@@ -1512,6 +1514,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-02T16:00:20.250303Z",
+  "generated_at": "2026-08-04T10:00:08.491296Z",
   "schema_version": 1
 }

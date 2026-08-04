@@ -14,6 +14,7 @@ choice or reports that none was made.
 import asyncio
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK
 from synthorg.api.controllers.setup.company_helpers import read_name_locales
@@ -28,8 +29,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.memory.embedding.probe import probe_embedder_dims
-from synthorg.memory.embedding.resolve import DimsProbe
+from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
+from synthorg.memory.embedding.resolve import DimsProbe, EndpointResolver
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_PROBE_FAILED,
@@ -43,6 +44,7 @@ from synthorg.observability.events.setup import (
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.state import provider_management_of
 from synthorg.settings.model_ref import ModelRef, parse_model_ref, serialize_model_ref
 from synthorg.settings.service_protocol import SettingsServiceProtocol
@@ -397,6 +399,7 @@ async def bind_chosen_embedder(
     *,
     settings_svc: SettingsServiceProtocol,
     measure_dims: DimsProbe = probe_embedder_dims,
+    resolve_endpoint: EndpointResolver | None = None,
 ) -> EmbedderSelectResult:
     """Prove the embedder the operator chose can actually embed.
 
@@ -419,6 +422,9 @@ async def bind_chosen_embedder(
     Args:
         settings_svc: Settings service for reading the operator's choice.
         measure_dims: Probe used to exercise the chosen model.
+        resolve_endpoint: Looks up where the chosen provider is reachable,
+            so the probe proves the operator's own endpoint answers rather
+            than whichever host litellm defaults to.
 
     Returns:
         ``None`` on success, or a short human-readable reason string when
@@ -427,30 +433,10 @@ async def bind_chosen_embedder(
         failure) keeps the caller free to pass the result straight to
         ``SetupCompleteResponse.embedder_failure_reason``.
     """
-    ref = parse_model_ref(await _setting_text(settings_svc, "embedder_model"))
-    provider, model = ref.provider, ref.model_id
-    if not model:
-        reason = "no embedding model chosen; agents will run without recall"
-        logger.warning(
-            MEMORY_EMBEDDER_UNRESOLVED,
-            stage="setup_completion",
-            reason="no_model_chosen",
-            remedy="set memory.embedder_model to a provider-bound reference",
-        )
-        return reason
-    if not provider:
-        reason = (
-            f"embedding model {model!r} has no provider bound to it; "
-            f"set memory.embedder_model to a provider-bound reference"
-        )
-        logger.warning(
-            MEMORY_EMBEDDER_UNRESOLVED,
-            stage="setup_completion",
-            reason="model_missing_provider",
-            model=model,
-            remedy="set memory.embedder_model to a provider-bound reference",
-        )
-        return reason
+    chosen = await _chosen_embedder(settings_svc)
+    if chosen.failure_reason is not None:
+        return chosen.failure_reason
+    provider, model = chosen.provider, chosen.model
 
     if await _setting_text(settings_svc, "embedder_dims"):
         # An operator who pinned a width is asking for that width, usually
@@ -458,8 +444,14 @@ async def bind_chosen_embedder(
         # would neither change nor validate that request.
         return None
 
+    located = await locate_embedding_endpoint(
+        provider, model, resolve_endpoint=resolve_endpoint
+    )
+    if located.failure_reason is not None:
+        return located.failure_reason
+
     try:
-        await measure_dims(provider=provider, model=model)
+        await measure_dims(provider=provider, model=model, endpoint=located.endpoint)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reason = f"embedding model {model!r} did not answer a width probe"
@@ -477,6 +469,128 @@ async def bind_chosen_embedder(
         )
         return reason
     return None
+
+
+@dataclass(frozen=True)
+class ChosenEmbedder:
+    """The operator's embedder pair, or why there is not one.
+
+    Attributes:
+        provider: Provider the chosen model is bound to.
+        model: The chosen model id.
+        failure_reason: Operator-facing reason no usable pair was read,
+            or ``None`` when one was.
+    """
+
+    provider: str = ""
+    model: str = ""
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class LocatedEndpoint:
+    """Where a width probe should be addressed, or why it cannot be.
+
+    Attributes:
+        endpoint: Where the provider answers. ``None`` is a success too:
+            the built-in embedder needs no lookup, and a caller that
+            supplied no resolver is letting the driver route itself.
+        failure_reason: Operator-facing reason the lookup failed, or
+            ``None`` when it did not.
+    """
+
+    endpoint: EmbeddingEndpoint | None = None
+    failure_reason: str | None = None
+
+
+async def _chosen_embedder(
+    settings_svc: SettingsServiceProtocol,
+) -> ChosenEmbedder:
+    """Read the operator's chosen embedder pair.
+
+    Returns:
+        The pair, or the reason there is no usable one. An unbound model
+        is a distinct failure from no model at all: the first is a
+        half-finished choice, the second is no choice.
+    """
+    ref = parse_model_ref(await _setting_text(settings_svc, "embedder_model"))
+    provider, model = ref.provider, ref.model_id
+    if not model:
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="no_model_chosen",
+            remedy="set memory.embedder_model to a provider-bound reference",
+        )
+        return ChosenEmbedder(
+            failure_reason=("no embedding model chosen; agents will run without recall")
+        )
+    if not provider:
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            reason="model_missing_provider",
+            model=model,
+            remedy="set memory.embedder_model to a provider-bound reference",
+        )
+        return ChosenEmbedder(
+            failure_reason=(
+                f"embedding model {model!r} has no provider bound to it; "
+                f"set memory.embedder_model to a provider-bound reference"
+            )
+        )
+    return ChosenEmbedder(provider=provider, model=model)
+
+
+async def locate_embedding_endpoint(
+    provider: str,
+    model: str,
+    *,
+    resolve_endpoint: EndpointResolver | None,
+) -> LocatedEndpoint:
+    """Look up where *provider* answers, mapping a failure to its reason.
+
+    Shared by every path that has to address an embedding model at the
+    operator's own endpoint rather than at whichever host the driver
+    would default to, so the built-in bypass and the failure wording
+    cannot drift between them.
+
+    Args:
+        provider: Provider the model is bound to.
+        model: The model id, for the failure message.
+        resolve_endpoint: The lookup; ``None`` leaves routing to the
+            driver, which is correct only for a hosted provider.
+
+    Returns:
+        Where the provider answers, or the reason it could not be found.
+    """
+    # Resolved before any probe, and skipped for the built-in: an argument
+    # expression is evaluated before the callee runs, so inlining this would
+    # look up a provider named "builtin" that cannot exist and fail the one
+    # embedder whose width needs no lookup at all.
+    if resolve_endpoint is None or is_builtin_embedder(provider, model):
+        return LocatedEndpoint()
+    try:
+        return LocatedEndpoint(endpoint=await resolve_endpoint(provider))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # Distinct from a probe failure: the provider could not be located
+        # or authenticated, which is a binding the operator fixes in
+        # configuration, not a model that failed to answer.
+        reason = (
+            f"embedding provider {provider!r} could not be resolved, so "
+            f"{model!r} has no endpoint to answer from"
+        )
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
+            provider=provider,
+            model=model,
+            reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return LocatedEndpoint(failure_reason=reason)
 
 
 async def _setting_text(
