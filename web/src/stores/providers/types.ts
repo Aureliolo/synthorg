@@ -51,8 +51,17 @@ export interface ProvidersState {
   presetsError: string | null
   testConnectionResult: TestConnectionResponse | null
   testingConnection: boolean
-  /** True while an on-demand health recheck call is in flight. */
+  /** True while the selected provider's own recheck is in flight. */
   recheckingHealth: boolean
+  /**
+   * True while the every-provider sweep is in flight.
+   *
+   * Separate from `recheckingHealth` because the two run from different
+   * surfaces that are visible at once: the global health dialog can start a
+   * sweep while a provider's detail page is open, and one flag would let
+   * whichever finished first re-enable the other's button mid-request.
+   */
+  recheckingAllHealth: boolean
   discoveringModels: boolean
   mutating: boolean
 

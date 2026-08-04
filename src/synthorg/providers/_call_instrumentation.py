@@ -9,18 +9,23 @@ OTLP exporter.  Extracting the common shape keeps
 the success and error paths stay in lockstep across both methods.
 """
 
+import asyncio
 from typing import Final, Protocol, runtime_checkable
 
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.provider import PROVIDER_CALL_ERROR
+from synthorg.observability.events.provider import (
+    PROVIDER_CALL_ERROR,
+    PROVIDER_HEALTH_RECORD_FAILED,
+)
 from synthorg.observability.metrics_hub import (
     record_provider_call_duration,
     record_provider_error,
@@ -32,6 +37,7 @@ from .cost_recording import (
     emit_cost_record_from_usage,
 )
 from .errors import classify_provider_error
+from .health_recording import CallOutcomeRecorder
 from .models import CompletionResponse, TokenUsage
 from .resilience.retry import RetryResult
 
@@ -214,6 +220,52 @@ async def record_image_cost_if_in_scope(
             model=model,
             provider=provider,
             call_category=LLMCallCategory.IMAGE_GENERATION,
+        )
+
+
+async def report_health_outcome(
+    recorder: CallOutcomeRecorder | None,
+    *,
+    provider_label: str,
+    success: bool,
+    latency_ms: float,
+    error_message: str | None = None,
+) -> None:
+    """Report one finished call to the driver's bound health recorder.
+
+    Best-effort: the call already has its answer for the caller, so a tracker
+    failure must not turn a completed call into an error, nor a failed call
+    into a different error than the one that actually happened.
+
+    Args:
+        recorder: Sink bound to this driver, or ``None`` when unmonitored.
+        provider_label: Provider named in the warning if recording fails.
+        success: Whether the call succeeded.
+        latency_ms: Round-trip time measured for the call.
+        error_message: Redacted failure description, when it failed.
+
+    Raises:
+        asyncio.CancelledError: Propagated so shutdown is not swallowed.
+    """
+    if recorder is None:
+        return
+    try:
+        await recorder(
+            success=success,
+            response_time_ms=latency_ms,
+            error_message=error_message,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
+        # lint-allow: swallow-ok -- health is a side channel; the call itself
+        # already has its outcome and must report that, not this.
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_HEALTH_RECORD_FAILED,
+            provider=provider_label,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
 

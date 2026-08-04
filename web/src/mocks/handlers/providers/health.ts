@@ -27,6 +27,19 @@ const UNKNOWN_HEALTH = {
   total_cost_24h: 0,
 } as const
 
+// A recheck has just called the provider, so its happy path has a call in the
+// window and a derived verdict. ``unknown`` means nothing has called it at
+// all, which this endpoint cannot return.
+const RECHECKED_HEALTH = {
+  last_check_timestamp: '2026-01-01T00:00:00Z',
+  avg_response_time_ms: 12,
+  error_rate_percent_24h: 0,
+  calls_last_24h: 1,
+  health_status: 'up',
+  total_tokens_24h: 0,
+  total_cost_24h: 0,
+} as const
+
 export const healthHandlers = [
   http.post('/api/v1/providers/probe-local', () =>
     HttpResponse.json(
@@ -54,7 +67,7 @@ export const healthHandlers = [
   http.post('/api/v1/providers/health/recheck', () =>
     HttpResponse.json(
       successFor<typeof recheckAllProviderHealth>({
-        'test-provider': UNKNOWN_HEALTH,
+        'test-provider': RECHECKED_HEALTH,
       }),
     ),
   ),
@@ -62,7 +75,7 @@ export const healthHandlers = [
     HttpResponse.json(successFor<typeof getProviderHealth>(UNKNOWN_HEALTH)),
   ),
   http.post('/api/v1/providers/:name/health/recheck', () =>
-    HttpResponse.json(successFor<typeof recheckProviderHealth>(UNKNOWN_HEALTH)),
+    HttpResponse.json(successFor<typeof recheckProviderHealth>(RECHECKED_HEALTH)),
   ),
   http.post('/api/v1/providers/:name/discover-models', ({ params }) =>
     HttpResponse.json(

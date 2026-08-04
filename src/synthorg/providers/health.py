@@ -253,13 +253,33 @@ class ProviderHealthTracker:
         logger.info(PROVIDER_HEALTH_CLEARED, cleared_count=cleared_count)
 
     async def record(self, record: ProviderHealthRecord) -> None:
-        """Append a health record.
+        """Append a health record, reclaiming the window on the way past.
+
+        Every aggregate is computed over the trailing 24 hours, so a record
+        older than that can never be read again and only costs memory.
+        Pruning here rather than only on read is what bounds the list: a
+        deployment that writes far more often than it reads (a connection
+        test, an on-demand recheck and the periodic sweep all land here)
+        would otherwise grow until something happened to ask for a summary.
+
+        Bounded by the same threshold the read path uses, because the prune
+        rebuilds the list: running it on every append would make a sweep
+        across N providers quadratic in the records it just wrote.
 
         Args:
             record: Immutable call outcome record.
         """
         async with self._lock:
             self._records.append(record)
+            if len(self._records) > self._auto_prune_threshold:
+                cutoff = record.timestamp - timedelta(hours=_HEALTH_WINDOW_HOURS)
+                pruned = self._prune_before(cutoff)
+                if pruned:
+                    logger.debug(
+                        PROVIDER_HEALTH_PRUNED,
+                        pruned_count=pruned,
+                        remaining=len(self._records),
+                    )
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
         """Remove records older than the 24-hour health window.

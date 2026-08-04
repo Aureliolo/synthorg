@@ -33,6 +33,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   testConnectionResult: null,
   testingConnection: false,
   recheckingHealth: false,
+  recheckingAllHealth: false,
   discoveringModels: false,
   mutating: false,
   pullingModel: false,
@@ -59,8 +60,8 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   presetOverridePresetName: null,
 
   // Actions (delegated to focused modules)
-  ...createListActions(set),
-  ...createDetailActions(set),
+  ...createListActions(set, get),
+  ...createDetailActions(set, get),
   ...createCrudActions(set, get),
   ...createModelMutationActions(set, get),
   ...createLocalModelActions(set, get),

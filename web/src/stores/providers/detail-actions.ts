@@ -6,8 +6,12 @@ import {
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-import { emitPlainErrorToast } from './crud-helpers'
-import type { ProvidersSet } from './types'
+import {
+  emitPlainErrorToast,
+  emitSuccessToast,
+  refreshActiveDetail,
+} from './crud-helpers'
+import type { ProvidersGet, ProvidersSet } from './types'
 
 const log = createLogger('providers')
 
@@ -112,6 +116,7 @@ async function fetchProviderDetailImpl(
 
 async function recheckProviderHealthImpl(
   set: ProvidersSet,
+  get: ProvidersGet,
   name: string,
 ): Promise<void> {
   // Calls the provider and lets the server record what that call found,
@@ -120,22 +125,27 @@ async function recheckProviderHealthImpl(
   set({ recheckingHealth: true })
   try {
     const summary = await recheckProviderHealth(name)
+    if (get().selectedProvider?.name !== name) return
     set({ selectedProviderHealth: summary })
+    // Announced, not just rendered: the badge is the only thing that moves,
+    // and a colour change is invisible to a screen reader that was not
+    // already on it.
+    emitSuccessToast(`"${name}" is ${summary.health_status}`)
   } catch (err) {
     log.warn('Provider recheck failed:', getErrorMessage(err))
     emitPlainErrorToast('Could not recheck this provider', err)
   } finally {
     set({ recheckingHealth: false })
   }
-  await fetchProviderDetailImpl(set, name)
+  await refreshActiveDetail(get, name)
 }
 
-export function createDetailActions(set: ProvidersSet) {
+export function createDetailActions(set: ProvidersSet, get: ProvidersGet) {
   return {
     fetchProviderDetail: (name: string) =>
       fetchProviderDetailImpl(set, name),
     recheckProviderHealth: (name: string) =>
-      recheckProviderHealthImpl(set, name),
+      recheckProviderHealthImpl(set, get, name),
     clearDetail: () => {
       _detailRequestId++ // invalidate in-flight requests
       set({

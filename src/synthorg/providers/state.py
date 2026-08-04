@@ -13,7 +13,7 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
-from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
     resolve_embedding_endpoint,
@@ -106,6 +106,11 @@ def embedding_endpoint_resolver_of(
     live", so they share one resolver rather than each deciding whether to
     pass a base URL at all.
 
+    Credentials come from the always-on catalog, not the one gated on
+    ``integrations.enabled``: embedding authenticates against the same
+    provider completion does, so gating it would send the embedded text out
+    unauthenticated on a minimal install while completions kept working.
+
     Returns:
         A resolver taking a provider name and returning its endpoint.
     """
@@ -114,7 +119,7 @@ def embedding_endpoint_resolver_of(
         return await resolve_embedding_endpoint(
             provider,
             config_resolver=config_resolver_of(app_state),
-            catalog=app_state.slice(IntegrationsStateSlice).connection_catalog,
+            catalog=provider_credential_catalog_of(app_state),
         )
 
     return _resolve

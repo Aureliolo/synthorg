@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dialog } from '@base-ui/react/dialog'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { HealthPopoverContent } from '@/components/ui/health-popover/HealthPopoverContent'
 import { useProvidersStore } from '@/stores/providers'
+import { useHealthStore } from '@/stores/health'
 import type { DerivedSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/stores/health'
+
+const INITIAL_PROVIDERS = useProvidersStore.getState()
+const INITIAL_HEALTH = useHealthStore.getState()
 
 /**
  * A card that names a fault has to offer the route that clears it.
@@ -78,6 +82,14 @@ function renderContent(
 }
 
 describe('HealthPopoverContent remediation links', () => {
+  // Restored before each test rather than after: these override single fields
+  // on the real stores, and writing to them in teardown updates a tree React
+  // has not unmounted yet.
+  beforeEach(() => {
+    useProvidersStore.setState(INITIAL_PROVIDERS, true)
+    useHealthStore.setState(INITIAL_HEALTH, true)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })
@@ -163,14 +175,39 @@ describe('HealthPopoverContent remediation links', () => {
     // cycles, so an operator who had just fixed a provider had no way to say
     // "look again" short of opening it and re-saving it.
     const recheckAllHealth = vi.fn(() => Promise.resolve())
-    vi.spyOn(useProvidersStore, 'getState').mockReturnValue({
-      recheckAllHealth,
-    } as unknown as ReturnType<typeof useProvidersStore.getState>)
+    // One field overridden on the real store rather than a whole replacement
+    // snapshot: anything else the tree reads would otherwise be undefined and
+    // hide a genuine mismatch.
+    useProvidersStore.setState({ recheckAllHealth })
     renderContent({ providersState: 'down' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
 
     expect(recheckAllHealth).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes the health snapshot the card itself renders from', async () => {
+    // The sweep writes the providers store; this card reads the health
+    // snapshot. Without the refetch the dialog offering the action would keep
+    // showing the state it just corrected.
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => Promise.resolve())
+    useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+
+    expect(fetchHealth).toHaveBeenCalledOnce()
+  })
+
+  it('disables the recheck while a sweep is already in flight', () => {
+    // Without this the button re-fires, and each press bills a completion
+    // against every configured provider.
+    useProvidersStore.setState({ recheckingAllHealth: true })
+    renderContent({ providersState: 'down' })
+
+    expect(screen.getByRole('button', { name: 'Checking...' })).toBeDisabled()
   })
 
   it('offers no recheck while providers are healthy', () => {

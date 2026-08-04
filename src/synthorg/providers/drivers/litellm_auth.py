@@ -142,7 +142,14 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
 
 
 def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
-    """Merge auth credentials onto ``kwargs`` per the provider auth type."""
+    """Merge auth credentials onto ``kwargs`` per the provider auth type.
+
+    Raises:
+        AuthenticationError: Propagated from :func:`resolve_auth_material`
+            when a wired catalog did not resolve a credential the auth type
+            requires; sending the request unauthenticated would leak the
+            prompt to an endpoint that never accepted it.
+    """
     material = resolve_auth_material(ctx)
     if material.api_key is not None:
         kwargs["api_key"] = material.api_key

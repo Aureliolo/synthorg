@@ -48,6 +48,7 @@ an operator alerts on to learn that agent memory is off.
 """
 
 MEMORY_BACKEND_WIRE_FAILED: Final[str] = "memory.backend.wire_failed"
+MEMORY_BACKEND_UNREACHABLE: Final[str] = "memory.backend.unreachable"
 """Emitted at ERROR when the backend could not be built or connected."""
 MEMORY_BACKEND_SYSTEM_ERROR: Final[str] = "memory.backend.system_error"
 

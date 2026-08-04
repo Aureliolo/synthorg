@@ -56,7 +56,78 @@ describe('provider health recheck', () => {
     expect(healthReads).toBeGreaterThan(0)
   })
 
-  it('adopts the summary the recheck returns', async () => {
+  it('calls the provider and adopts the health that call produced', async () => {
+    useProvidersStore.setState({
+      selectedProvider: { name: 'test-provider' } as never,
+      selectedProviderHealth: { health_status: 'down' } as never,
+    })
+    let rechecks = 0
+    const healthy = {
+      last_check_timestamp: null,
+      avg_response_time_ms: 12,
+      error_rate_percent_24h: 0,
+      calls_last_24h: 1,
+      health_status: 'up',
+      total_tokens_24h: 0,
+      total_cost_24h: 0,
+    }
+    server.use(
+      http.post('/api/v1/providers/:name/health/recheck', () => {
+        rechecks += 1
+        return HttpResponse.json({
+          success: true,
+          data: healthy,
+          error: null,
+          error_detail: null,
+        })
+      }),
+      // The trailing detail refetch re-reads this, so it has to agree with
+      // what the recheck just recorded or the badge would flap back.
+      http.get('/api/v1/providers/:name/health', () =>
+        HttpResponse.json({
+          success: true,
+          data: healthy,
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    await useProvidersStore.getState().recheckProviderHealth('test-provider')
+
+    expect(rechecks).toBe(1)
+    const health = useProvidersStore.getState().selectedProviderHealth
+    expect(health?.health_status).toBe('up')
+    expect(health?.calls_last_24h).toBe(1)
+    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
+  })
+
+  it('leaves a readable badge and no stuck spinner when a recheck fails', async () => {
+    // The server's recorded health is still the best answer available, so a
+    // failed recheck falls back to re-reading it rather than blanking.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'test-provider' } as never,
+      selectedProviderHealth: { health_status: 'degraded' } as never,
+    })
+    server.use(
+      http.post('/api/v1/providers/:name/health/recheck', () =>
+        HttpResponse.json({ success: false }, { status: 500 }),
+      ),
+    )
+
+    await useProvidersStore.getState().recheckProviderHealth('test-provider')
+
+    expect(useProvidersStore.getState().selectedProviderHealth).not.toBeNull()
+    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
+  })
+
+  it('ignores a recheck that resolves after the operator moved on', async () => {
+    // The trailing refetch would otherwise overwrite the provider now on
+    // screen with the one whose recheck happened to finish later.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'other-provider' } as never,
+      selectedProviderHealth: { health_status: 'degraded' } as never,
+    })
     server.use(
       http.post('/api/v1/providers/:name/health/recheck', () =>
         HttpResponse.json({
@@ -78,21 +149,10 @@ describe('provider health recheck', () => {
 
     await useProvidersStore.getState().recheckProviderHealth('test-provider')
 
-    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
-  })
-
-  it('keeps the page usable when a recheck fails', async () => {
-    // The recorded health is still the best answer available, so a failed
-    // recheck must not blank the badge or wedge the spinner on.
-    server.use(
-      http.post('/api/v1/providers/:name/health/recheck', () =>
-        HttpResponse.json({ success: false }, { status: 500 }),
-      ),
+    expect(useProvidersStore.getState().selectedProvider?.name).toBe('other-provider')
+    expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe(
+      'degraded',
     )
-
-    await useProvidersStore.getState().recheckProviderHealth('test-provider')
-
-    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
   })
 
   it('replaces the whole health map on a recheck-all', async () => {
@@ -120,10 +180,46 @@ describe('provider health recheck', () => {
     await useProvidersStore.getState().recheckAllHealth()
 
     expect(useProvidersStore.getState().healthMap['test-provider']?.health_status).toBe('up')
-    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
+    expect(useProvidersStore.getState().recheckingAllHealth).toBe(false)
+  })
+
+  it('refreshes the open detail badge from a sweep that covered it', async () => {
+    // The detail page reads selectedProviderHealth, not the list's map, so a
+    // sweep that covered it has to say so there too.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'test-provider' } as never,
+      selectedProviderHealth: { health_status: 'down' } as never,
+    })
+    server.use(
+      http.post('/api/v1/providers/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            'test-provider': {
+              last_check_timestamp: null,
+              avg_response_time_ms: 9,
+              error_rate_percent_24h: 0,
+              calls_last_24h: 1,
+              health_status: 'up',
+              total_tokens_24h: 0,
+              total_cost_24h: 0,
+            },
+          },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    await useProvidersStore.getState().recheckAllHealth()
+
+    expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe('up')
   })
 
   it('keeps the recorded map when a recheck-all fails', async () => {
+    useProvidersStore.setState({
+      healthMap: { 'test-provider': { health_status: 'degraded' } as never },
+    })
     server.use(
       http.post('/api/v1/providers/health/recheck', () =>
         HttpResponse.json({ success: false }, { status: 500 }),
@@ -132,6 +228,22 @@ describe('provider health recheck', () => {
 
     await useProvidersStore.getState().recheckAllHealth()
 
+    expect(useProvidersStore.getState().healthMap['test-provider']?.health_status).toBe(
+      'degraded',
+    )
+    expect(useProvidersStore.getState().recheckingAllHealth).toBe(false)
+  })
+
+  it('keeps the two recheck flags independent', async () => {
+    // Both surfaces are reachable at once, so one flag would let whichever
+    // finished first re-enable the other's button mid-request.
     expect(useProvidersStore.getState().recheckingHealth).toBe(false)
+    expect(useProvidersStore.getState().recheckingAllHealth).toBe(false)
+
+    const sweep = useProvidersStore.getState().recheckAllHealth()
+    expect(useProvidersStore.getState().recheckingAllHealth).toBe(true)
+    expect(useProvidersStore.getState().recheckingHealth).toBe(false)
+
+    await sweep
   })
 })

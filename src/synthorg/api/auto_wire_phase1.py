@@ -15,6 +15,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.config import NatsConfig
 from synthorg.config.schema import RootConfig
+from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
@@ -27,6 +28,7 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers._driver_binding import bind_health_recorders
 from synthorg.providers.cassette import CassetteConfig
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
@@ -118,6 +120,13 @@ def auto_wire_phase1(
         provider_health_tracker = ProviderHealthTracker()
         logger.info(API_SERVICE_AUTO_WIRED, service="provider_health_tracker")
     _bind_connection_health_to_tracker(provider_health_tracker)
+    if provider_registry is not None:
+        # Real completion traffic is the broadest evidence of whether a
+        # provider is serving; without this the 24h error rate describes
+        # only the reachability sweep's own pings.
+        bind_health_recorders(
+            provider_registry, provider_health_tracker, clock=SystemClock()
+        )
 
     if persistence is None:
         logger.warning(

@@ -11,6 +11,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.clock import SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.provider import (
@@ -25,6 +26,8 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
+from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.health_recording import outcome_recorder_for
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -85,6 +88,77 @@ class _StubProvider(BaseCompletionProvider):
 
 def _msg(content: str = "hi") -> ChatMessage:
     return ChatMessage(role=MessageRole.USER, content=content)
+
+
+@pytest.mark.unit
+class TestCompletionOutcomesReachHealth:
+    """Real traffic is evidence about whether a provider is serving.
+
+    Without this the 24h error rate describes only the reachability sweep's
+    own pings, so a provider answering every agent call could still read
+    however the last ping left it.
+    """
+
+    async def test_a_successful_call_is_recorded(self) -> None:
+        tracker = ProviderHealthTracker()
+        provider = _StubProvider()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=SystemClock())
+        )
+
+        _ = await provider.complete([_msg()], "test-small-001")
+
+        summary = await tracker.get_summary("test-provider")
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 0.0
+
+    async def test_a_failed_call_is_recorded_and_still_raises(self) -> None:
+        class _Failing(_StubProvider):
+            @override
+            async def _do_complete(
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                *,
+                tools: list[ToolDefinition] | None = None,
+                config: CompletionConfig | None = None,
+            ) -> CompletionResponse:
+                msg = "upstream refused"
+                raise InvalidRequestError(msg)
+
+        tracker = ProviderHealthTracker()
+        provider = _Failing()
+        provider.bind_health_recorder(
+            outcome_recorder_for(tracker, "test-provider", clock=SystemClock())
+        )
+
+        with pytest.raises(InvalidRequestError):
+            _ = await provider.complete([_msg()], "test-small-001")
+
+        summary = await tracker.get_summary("test-provider")
+        assert summary.calls_last_24h == 1
+        assert summary.error_rate_percent_24h == 100.0
+
+    async def test_a_recorder_fault_does_not_fail_the_call(self) -> None:
+        # The caller already has its answer; a tracker fault must not turn a
+        # completed call into an error it did not have.
+        async def _explodes(**_kwargs: object) -> None:
+            msg = "tracker exploded"
+            raise RuntimeError(msg)
+
+        provider = _StubProvider()
+        provider.bind_health_recorder(_explodes)
+
+        result = await provider.complete([_msg()], "test-small-001")
+
+        assert result.content == "hello"
+
+    async def test_an_unbound_provider_records_nothing(self) -> None:
+        # The tracker is wired once persistence is connected, so a driver
+        # built before that must still complete.
+        result = await _StubProvider().complete([_msg()], "test-small-001")
+
+        assert result.content == "hello"
 
 
 @pytest.mark.unit

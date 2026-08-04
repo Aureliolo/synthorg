@@ -5,12 +5,21 @@ real call to the provider. Leaving its verdict unrecorded is what left a
 provider reading DOWN long after an operator had fixed it: the only control
 that moved health was re-saving the provider, so testing it and refreshing
 the page both reported the old aggregate back.
+
+Every test here mocks the driver's completion call. The probe reaches
+``LiteLLMDriver`` regardless of the configured driver name, so an unmocked
+test would resolve a real host and spend its retry backoff on the wall clock.
 """
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from synthorg.providers.errors import AuthenticationError
 
 # Aliased because pytest collects any module-level ``Test*`` name as a test
 # class, and the request model is not one.
@@ -22,6 +31,8 @@ from synthorg.providers.probe_protocol import ProviderProbeRequester
 from tests._shared import mock_of
 
 from .conftest import make_create_request
+
+_ACOMPLETION = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 #: Configured mock, typed loosely for the unittest.mock API.
 _Configured = Any  # type: ignore[explicit-any]
@@ -36,6 +47,36 @@ def _requester() -> _Configured:
     return mock_of[ProviderProbeRequester]()
 
 
+@contextmanager
+def _answers() -> Iterator[None]:
+    """Stand in for a provider that completes the probe."""
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = "pong"
+    response.choices[0].finish_reason = "stop"
+    response.usage = MagicMock()
+    response.usage.prompt_tokens = 1
+    response.usage.completion_tokens = 1
+    response.id = "test-id"
+    with patch(_ACOMPLETION, new_callable=AsyncMock, return_value=response):
+        yield
+
+
+@contextmanager
+def _refuses() -> Iterator[None]:
+    """Stand in for a provider that rejects the probe.
+
+    An authentication failure rather than a transport error, because it is
+    classified non-retryable: a retryable one would spend real backoff.
+    """
+    with patch(
+        _ACOMPLETION,
+        new_callable=AsyncMock,
+        side_effect=AuthenticationError("Invalid key"),
+    ):
+        yield
+
+
 @pytest.mark.unit
 class TestConnectionTestRecordsHealth:
     async def test_the_outcome_is_recorded(
@@ -47,12 +88,14 @@ class TestConnectionTestRecordsHealth:
         requester = _requester()
         service.set_probe_requester(requester)
 
-        response = await service.test_connection(request.name, ConnTestRequest())
+        with _answers():
+            response = await service.test_connection(request.name, ConnTestRequest())
 
+        assert response.success is True
         requester.record_outcome.assert_awaited_once()
         call = requester.record_outcome.await_args
         assert call.args[0] == request.name
-        assert call.kwargs["success"] is response.success
+        assert call.kwargs["success"] is True
 
     async def test_a_failing_test_is_recorded_as_a_failure(
         self,
@@ -65,12 +108,28 @@ class TestConnectionTestRecordsHealth:
         requester = _requester()
         service.set_probe_requester(requester)
 
-        response = await service.test_connection(
-            request.name, ConnTestRequest(model="no-such-model")
-        )
+        with _refuses():
+            response = await service.test_connection(request.name, ConnTestRequest())
 
-        if not response.success:
-            assert requester.record_outcome.await_args.kwargs["success"] is False
+        assert response.success is False
+        requester.record_outcome.assert_awaited_once()
+        assert requester.record_outcome.await_args.kwargs["success"] is False
+
+    async def test_a_failure_records_no_invented_latency(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        # A call that never reached the wire has no round trip to report, and
+        # inventing one would drag the average it is folded into.
+        request = make_create_request()
+        await service.create_provider(request)
+        requester = _requester()
+        service.set_probe_requester(requester)
+
+        with _refuses():
+            _ = await service.test_connection(request.name, ConnTestRequest())
+
+        assert requester.record_outcome.await_args.kwargs["response_time_ms"] == 0.0
 
     async def test_a_provider_with_no_models_records_nothing(
         self,
@@ -99,8 +158,10 @@ class TestConnectionTestRecordsHealth:
         requester.record_outcome.side_effect = RuntimeError("tracker exploded")
         service.set_probe_requester(requester)
 
-        response = await service.test_connection(request.name, ConnTestRequest())
+        with _answers():
+            response = await service.test_connection(request.name, ConnTestRequest())
 
+        assert response.success is True
         assert response.model_tested is not None
 
     async def test_cancellation_is_not_swallowed(
@@ -113,7 +174,7 @@ class TestConnectionTestRecordsHealth:
         requester.record_outcome.side_effect = asyncio.CancelledError()
         service.set_probe_requester(requester)
 
-        with pytest.raises(asyncio.CancelledError):
+        with _answers(), pytest.raises(asyncio.CancelledError):
             _ = await service.test_connection(request.name, ConnTestRequest())
 
     async def test_it_works_without_a_wired_requester(
@@ -124,6 +185,8 @@ class TestConnectionTestRecordsHealth:
         request = make_create_request()
         await service.create_provider(request)
 
-        response = await service.test_connection(request.name, ConnTestRequest())
+        with _answers():
+            response = await service.test_connection(request.name, ConnTestRequest())
 
+        assert response.success is True
         assert response.model_tested is not None

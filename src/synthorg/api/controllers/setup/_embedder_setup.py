@@ -28,7 +28,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ProviderTierCoverageInsufficientError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.memory.embedding.probe import probe_embedder_dims
+from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.embedding.resolve import DimsProbe, EndpointResolver
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
@@ -462,16 +462,39 @@ async def bind_chosen_embedder(
         # would neither change nor validate that request.
         return None
 
+    # Resolved before the probe, and skipped for the built-in: an argument
+    # expression is evaluated before the callee runs, so inlining this would
+    # look up a provider named "builtin" that cannot exist and fail the one
+    # embedder whose width needs no lookup at all.
+    builtin = is_builtin_embedder(provider, model)
     try:
-        await measure_dims(
+        endpoint = (
+            await resolve_endpoint(provider)
+            if resolve_endpoint is not None and not builtin
+            else None
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # Distinct from the probe reason below: the provider could not be
+        # located or authenticated, which is a binding the operator fixes in
+        # configuration, not a model that failed to answer.
+        reason = (
+            f"embedding provider {provider!r} could not be resolved, so "
+            f"{model!r} has no endpoint to answer from"
+        )
+        logger.warning(
+            MEMORY_EMBEDDER_UNRESOLVED,
+            stage="setup_completion",
             provider=provider,
             model=model,
-            endpoint=(
-                await resolve_endpoint(provider)
-                if resolve_endpoint is not None
-                else None
-            ),
+            reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
+        return reason
+
+    try:
+        await measure_dims(provider=provider, model=model, endpoint=endpoint)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         reason = f"embedding model {model!r} did not answer a width probe"

@@ -214,6 +214,14 @@ class TestFailLoud:
         unresolved = [e for e in logs if e["event"] == MEMORY_EMBEDDER_UNRESOLVED]
         assert unresolved, "an operator gets no other signal that memory is off"
         assert unresolved[-1]["log_level"] == "error"
+        # The reason has to reach the slice, not just the log: the health
+        # surface reads it, and without it an operator who HAS chosen a model
+        # is told to choose one. Redacted rather than raw, so it names the
+        # failure class and the binding, never the upstream's own text.
+        recorded = app_state.slice(MemoryStateSlice).wiring_failure
+        assert recorded is not None
+        assert "MemoryEmbeddingError" in recorded
+        assert "test-embed-001" in recorded
 
     async def test_a_probe_failure_never_starts_the_builtin(self) -> None:
         """The user's hard constraint, at the boot path rather than in unit
@@ -293,6 +301,31 @@ class TestFailLoud:
         failures = [e for e in logs if e["event"] == MEMORY_BACKEND_WIRE_FAILED]
         assert len(failures) == 1
         assert failures[0]["log_level"] == "error"
+        # Named as a store fault. The embedder resolved fine here, so falling
+        # back to the generic "choose an embedding model" advice would send
+        # the operator to re-pick a model that is not the problem.
+        recorded = app_state.slice(MemoryStateSlice).wiring_failure
+        assert recorded is not None
+        assert "refused the connection" in recorded
+
+    async def test_a_fixed_embedder_clears_a_previous_failure(self) -> None:
+        # An operator who fixes the embedder but hits an unrelated store fault
+        # must not keep reading the embedder reason they already resolved.
+        persistence = _persistence()
+        persistence.memory_vectors.ensure_ready = AsyncMock(
+            side_effect=RuntimeError("index build failed")
+        )
+        app_state = _app_state(
+            persistence=persistence,
+            settings_service=_settings("test-provider", "test-embed-001", 8),
+        )
+        app_state.wire(MemoryStateSlice, wiring_failure="a stale embedder reason")
+
+        await wire_memory_backend(app_state)
+
+        recorded = app_state.slice(MemoryStateSlice).wiring_failure
+        assert recorded is not None
+        assert "a stale embedder reason" not in recorded
 
 
 class TestConsolidationSchedulerWiring:
@@ -334,9 +367,6 @@ class TestConsolidationSchedulerWiring:
 
 class TestDiscouragedFallback:
     """The ephemeral store stays reachable, but only when chosen."""
-
-    async def test_explicit_opt_in_selects_the_ephemeral_backend(self) -> None:
-        await wire_memory_backend(_ephemeral_app_state())
 
     async def test_ephemeral_opt_in_needs_no_embedder(self) -> None:
         # Requiring an embedder for a store that cannot use one would make

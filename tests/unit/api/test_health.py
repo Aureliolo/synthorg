@@ -346,7 +346,7 @@ class TestResolveMemoryHealth:
         scheduler: object = object(),
         configured: str = "sqlvector",
         embedder_ref: str | None = "test-provider/embed-model",
-        embedder_failure: str | None = None,
+        wiring_failure: str | None = None,
     ) -> AppState:
         app_state = MagicMock(spec=AppState)
         app_state.config = SimpleNamespace(memory=SimpleNamespace(backend=configured))
@@ -354,7 +354,7 @@ class TestResolveMemoryHealth:
             backend=backend,
             consolidation_scheduler=scheduler,
             embedder_ref=embedder_ref,
-            embedder_failure=embedder_failure,
+            wiring_failure=wiring_failure,
         )
         return app_state
 
@@ -421,7 +421,7 @@ class TestResolveMemoryHealth:
         result = await resolve_memory_state(
             self._app_state(
                 backend=None,
-                embedder_failure=(
+                wiring_failure=(
                     "the endpoint at http://example.invalid did not answer"
                 ),
             )
@@ -429,6 +429,22 @@ class TestResolveMemoryHealth:
 
         assert result.detail is not None
         assert "http://example.invalid" in result.detail
+        assert "no embedding model resolved" not in result.detail
+
+    async def test_a_store_failure_is_named_rather_than_blamed_on_the_model(
+        self,
+    ) -> None:
+        # The embedder resolved; the store refused. Repeating the embedding
+        # advice here sends the operator to re-pick a model that already works.
+        result = await resolve_memory_state(
+            self._app_state(
+                backend=None,
+                wiring_failure="The sqlvector store refused the connection: down",
+            )
+        )
+
+        assert result.detail is not None
+        assert "sqlvector store refused the connection" in result.detail
         assert "no embedding model resolved" not in result.detail
 
 

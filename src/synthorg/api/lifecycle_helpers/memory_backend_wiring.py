@@ -43,6 +43,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_EMBEDDER_UNRESOLVED,
 )
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.state import embedding_endpoint_resolver_of
 
 logger = get_logger(__name__)
@@ -78,6 +79,11 @@ async def wire_memory_backend(app_state: AppState) -> None:
         if embedder is None:
             logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
             return
+    # Cleared the moment the embedder is known good, not once the whole pass
+    # succeeds: anything that fails after this point is not the embedder, and
+    # leaving a previous pass's reason on the slice would send an operator to
+    # fix the half they already fixed.
+    app_state.wire(MemoryStateSlice, wiring_failure=None)
 
     backend = create_memory_backend(
         memory_config,
@@ -97,6 +103,16 @@ async def wire_memory_backend(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        # Named on the slice for the same reason an embedder failure is: the
+        # health surface would otherwise fall back to advice about choosing an
+        # embedding model, which is the half that just worked.
+        app_state.wire(
+            MemoryStateSlice,
+            wiring_failure=(
+                f"The {memory_config.backend} store refused the connection: "
+                f"{safe_error_description(exc)}"
+            ),
+        )
         return
     except BaseException:
         # A shutdown delivered inside ``connect()`` leaves a half-open
@@ -114,7 +130,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
         MemoryStateSlice,
         backend=backend,
         embedder_ref=embedder.model_ref if embedder is not None else None,
-        embedder_failure=None,
+        wiring_failure=None,
     )
     logger.info(
         MEMORY_BACKEND_WIRED,
@@ -329,7 +345,23 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
     )
 
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    resolve_endpoint = embedding_endpoint_resolver_of(app_state)
+    # Resolved endpoints are kept so the serving embedder below reuses the one
+    # the probe already looked up. Every resolution decrypts a credential, and
+    # doing it a second time outside the guard below would put the one failure
+    # this function exists to report on a path that cannot report it.
+    resolved: dict[str, EmbeddingEndpoint] = {}
+    lookup = embedding_endpoint_resolver_of(app_state)
+
+    async def resolve_endpoint(provider: str) -> EmbeddingEndpoint:
+        """Resolve *provider*'s endpoint once per wiring pass.
+
+        Returns:
+            Where the provider is reachable, and how to authenticate.
+        """
+        if provider not in resolved:
+            resolved[provider] = await lookup(provider)
+        return resolved[provider]
+
     try:
         config = await resolve_embedder_config(
             app_state.config.memory,
@@ -355,7 +387,7 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
 
         app_state.wire(
             MemoryStateSlice,
-            embedder_failure=safe_error_description(exc),
+            wiring_failure=safe_error_description(exc),
         )
         # Memory stays off, loudly. Starting the built-in embedder here
         # would turn a configuration the operator needs to fix into a
@@ -378,10 +410,12 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         ProviderTextEmbedder,
     )
 
+    # A plain read, not a resolution: the probe above already looked this
+    # provider up inside the guarded block, so nothing here can fail.
     return ProviderTextEmbedder(
         config,
         cost_tracker=cost_tracker,
-        endpoint=await resolve_endpoint(config.provider),
+        endpoint=resolved.get(config.provider),
     )
 
 

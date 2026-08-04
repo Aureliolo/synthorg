@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.settings.resolver import ConfigResolver
 
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
 
@@ -111,6 +112,32 @@ def probe_url_is_current(
         config.base_url, config.litellm_provider, ollama_port=ollama_port
     )
     return live == url
+
+
+async def probe_target_still_current(
+    name: str,
+    url: str,
+    *,
+    config_resolver: ConfigResolver,
+) -> bool:
+    """Re-read the live config and report whether *url* is still *name*'s.
+
+    The reading half of :func:`probe_url_is_current`: the port is re-read
+    alongside the configs because it is the other input to the ping URL, and
+    for a provider with no explicit ``litellm_provider`` it alone decides
+    root versus ``/models``.
+
+    Args:
+        name: Provider name.
+        url: Ping URL the in-flight probe used.
+        config_resolver: Source of the live provider configs and port.
+
+    Returns:
+        True when the live configuration still yields *url*.
+    """
+    live = await config_resolver.get_provider_configs()
+    live_port = await config_resolver.get_int("providers", "ollama_default_port")
+    return probe_url_is_current(name, url, live, ollama_port=live_port)
 
 
 def truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:

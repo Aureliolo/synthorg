@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { ROUTES } from '@/router/routes'
 import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
@@ -53,13 +54,13 @@ function ProviderTitleMeta({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Recheck this provider's health"
           title="Call this provider now and update its status"
           disabled={recheckingHealth}
+          aria-busy={recheckingHealth}
           onClick={onRecheckHealth}
         >
           <RefreshCw
-            className={`size-3.5 mr-1.5 ${recheckingHealth ? 'animate-spin' : ''}`}
+            className={cn('size-3.5 mr-1.5', recheckingHealth && 'animate-spin')}
           />
           {recheckingHealth ? 'Checking...' : 'Recheck'}
         </Button>

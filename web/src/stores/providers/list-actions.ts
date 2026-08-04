@@ -6,16 +6,16 @@ import {
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
-import { emitPlainErrorToast } from './crud-helpers'
+import { emitPlainErrorToast, emitSuccessToast } from './crud-helpers'
 import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
-import type { ProvidersSet } from './types'
+import type { ProvidersGet, ProvidersSet } from './types'
 
 const log = createLogger('providers')
 
 let _listRequestId = 0
 
-export function createListActions(set: ProvidersSet) {
+export function createListActions(set: ProvidersSet, get: ProvidersGet) {
   return {
     fetchProviders: async () => {
       const requestId = ++_listRequestId
@@ -70,15 +70,27 @@ export function createListActions(set: ProvidersSet) {
      * so a partial sweep still improves the picture.
      */
     recheckAllHealth: async () => {
-      set({ recheckingHealth: true })
+      set({ recheckingAllHealth: true })
       try {
         const healthMap = await recheckAllProviderHealth()
-        set({ healthMap })
+        // The open detail page reads ``selectedProviderHealth``, not the
+        // list's map, so a sweep that covered it has to say so there too or
+        // that badge keeps the verdict the sweep just replaced.
+        const selected = get().selectedProvider?.name
+        const refreshed = selected === undefined ? undefined : healthMap[selected]
+        set(
+          refreshed === undefined
+            ? { healthMap }
+            : { healthMap, selectedProviderHealth: refreshed },
+        )
+        emitSuccessToast(
+          `Rechecked ${Object.keys(healthMap).length} providers`,
+        )
       } catch (err) {
         log.warn('Provider recheck failed:', getErrorMessage(err))
         emitPlainErrorToast('Could not recheck providers', err)
       } finally {
-        set({ recheckingHealth: false })
+        set({ recheckingAllHealth: false })
       }
     },
 

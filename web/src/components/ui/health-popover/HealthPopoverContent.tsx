@@ -16,7 +16,7 @@ import {
   XCircle,
   type LucideIcon,
 } from 'lucide-react'
-import { renderedSnapshot } from '@/stores/health'
+import { renderedSnapshot, useHealthStore } from '@/stores/health'
 import { useProvidersStore } from '@/stores/providers'
 import { useWebSocketStore } from '@/stores/websocket'
 import { formatTime } from '@/utils/format'
@@ -178,9 +178,18 @@ function memoryRemediation(
   )
 }
 
+async function recheckProvidersAndRefresh(): Promise<void> {
+  await useProvidersStore.getState().recheckAllHealth()
+  // This card renders from the health snapshot, not the providers store, so
+  // the sweep alone would move the badges on the Providers page while the
+  // dialog that offered the action kept showing the state it just corrected.
+  await useHealthStore.getState().fetchHealth()
+}
+
 function providersActions(
   states: DerivedSubsystemStates,
   onDismiss: () => void,
+  rechecking: boolean,
 ): ReactNode {
   if (!needsAttention(states.providersState)) return undefined
   // Recheck first: an operator who has just fixed a provider wants the
@@ -193,11 +202,16 @@ function providersActions(
         type="button"
         variant="outline"
         size="sm"
+        disabled={rechecking}
+        aria-busy={rechecking}
         onClick={() => {
-          void useProvidersStore.getState().recheckAllHealth()
+          void recheckProvidersAndRefresh()
         }}
       >
-        Recheck now
+        <RefreshCw
+          className={cn('size-3.5 mr-1.5', rechecking && 'animate-spin')}
+        />
+        {rechecking ? 'Checking...' : 'Recheck now'}
       </Button>
       <HealthRemediationLink
         to={ROUTES.PROVIDERS}
@@ -217,6 +231,7 @@ function HealthSubsystemGrid({
   states,
   onDismiss,
 }: HealthSubsystemGridProps) {
+  const recheckingProviders = useProvidersStore((s) => s.recheckingAllHealth)
   const wsAction = states.wsState === 'down'
     ? (
         <Button
@@ -264,7 +279,7 @@ function HealthSubsystemGrid({
         label="Providers"
         description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
         state={states.providersState}
-        action={providersActions(states, onDismiss)}
+        action={providersActions(states, onDismiss, recheckingProviders)}
       />
       <HealthStatusRow
         icon={Brain}

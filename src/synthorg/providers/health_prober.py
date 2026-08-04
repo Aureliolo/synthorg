@@ -2,9 +2,15 @@
 
 Periodically pings provider endpoints with lightweight HTTP GET
 requests (model list or root URL -- does not trigger inference or
-model loading into memory) to detect reachability.  Real API call
-outcomes recorded in :class:`ProviderHealthTracker` automatically
-reset the probe interval for that provider.
+model loading into memory) to detect reachability.
+
+Reachability is one source of health, not the only one. Real completion
+outcomes reach :class:`ProviderHealthTracker` from the drivers themselves
+(``BaseCompletionProvider`` reports every call), and a connection test or an
+on-demand recheck files its verdict there too. This prober covers the gap
+those leave: a provider nothing has called yet still needs a verdict, and a
+provider that went unreachable between calls should not read healthy until
+something happens to use it.
 """
 
 import asyncio
@@ -38,7 +44,7 @@ from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     build_ping_url,
-    probe_url_is_current,
+    probe_target_still_current,
 )
 from synthorg.providers.health_prober_targets import resolve_probe_target
 from synthorg.providers.health_recording import record_call_outcome
@@ -543,19 +549,9 @@ class ProviderHealthProber:
         )
         elapsed_ms, success, error_msg = result
 
-        # The config snapshot this probe started with can go stale while the
-        # request is in flight, and the periodic sweep can be probing the same
-        # provider concurrently with the immediate post-mutation probe. Whoever
-        # records last would otherwise win, pinning health to an endpoint the
-        # operator has already replaced.
-        # The port is re-read alongside the configs: it is the other input to
-        # the ping URL, and for a provider with no explicit litellm_provider
-        # it alone decides root versus /models.
-        live = await self._config_resolver.get_provider_configs()
-        live_port = await self._config_resolver.get_int(
-            "providers", "ollama_default_port"
-        )
-        if not probe_url_is_current(name, url, live, ollama_port=live_port):
+        if not await probe_target_still_current(
+            name, url, config_resolver=self._config_resolver
+        ):
             logger.debug(
                 PROVIDER_HEALTH_PROBE_SKIPPED, provider=name, reason="config_changed"
             )

@@ -75,7 +75,11 @@ class ProviderHealthController(Controller):
         "/health/recheck",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit_from_policy("providers.test", key="user"),
+            # Its own budget rather than the per-provider one: a single call
+            # here issues a billed completion to every configured provider,
+            # so charging it as one call would let provider count set the
+            # spend an operator can trigger.
+            per_op_rate_limit_from_policy("providers.health_recheck_all", key="user"),
         ],
     )
     async def recheck_all_provider_health(

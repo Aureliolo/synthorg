@@ -120,3 +120,25 @@ class TestEndpointResolution:
                 config_resolver=_resolver(),
                 catalog=None,
             )
+
+    async def test_a_header_auth_provider_carries_its_headers(self) -> None:
+        # Embedding authenticates exactly as completion does, so an auth type
+        # that signs with a header has to reach the embedding call too.
+        endpoint = await resolve_embedding_endpoint(
+            "test-provider",
+            config_resolver=_resolver(
+                **{
+                    "test-provider": ProviderConfig(
+                        driver="scripted",
+                        auth_type=AuthType.CUSTOM_HEADER,
+                        custom_header_name="X-Test-Auth",
+                        custom_header_value="header-secret",
+                        base_url="http://models.invalid:11434",
+                    )
+                }
+            ),
+            catalog=None,
+        )
+
+        assert endpoint.extra_headers == {"X-Test-Auth": "header-secret"}
+        assert endpoint.api_key is None

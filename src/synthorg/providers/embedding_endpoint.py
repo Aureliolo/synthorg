@@ -8,12 +8,17 @@ guess a default host, which for a self-hosted provider is the wrong machine
 and cannot be corrected by any amount of configuration.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.observability import get_logger
+from synthorg.observability.events.provider import PROVIDER_NOT_FOUND
 from synthorg.providers.drivers.litellm_auth import AuthContext, resolve_auth_material
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.settings.resolver import ConfigResolver
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -26,11 +31,13 @@ class EmbeddingEndpoint:
             hosted provider that declares no base URL.
         api_key: Resolved credential, when the auth type carries one.
         extra_headers: Custom auth headers, when the auth type uses them.
+            A read-only view, matching :class:`AuthMaterial`: the frozen
+            dataclass protects the field, not the mapping it points at.
     """
 
     api_base: str | None = None
     api_key: str | None = None
-    extra_headers: dict[str, str] | None = None
+    extra_headers: Mapping[str, str] | None = None
 
 
 async def resolve_embedding_endpoint(
@@ -63,6 +70,7 @@ async def resolve_embedding_endpoint(
             f"Embedding provider {provider!r} is not configured, so there is "
             f"no endpoint to send its embedding calls to"
         )
+        logger.warning(PROVIDER_NOT_FOUND, provider=provider, usage="embedding")
         raise ProviderNotFoundError(msg)
     resolved = (
         await catalog.get_credentials(config.connection_name)
@@ -81,7 +89,7 @@ async def resolve_embedding_endpoint(
     return EmbeddingEndpoint(
         api_base=config.base_url,
         api_key=material.api_key,
-        extra_headers=dict(material.extra_headers) if material.extra_headers else None,
+        extra_headers=material.extra_headers,
     )
 
 

@@ -16,6 +16,7 @@ from synthorg.observability.events.api import (
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
 from synthorg.providers.health import ProviderHealthSummary
 from synthorg.providers.management.dtos import TestConnectionRequest
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
@@ -112,23 +113,87 @@ async def _require_provider(app_state: AppState, name: str) -> None:
 async def _call_provider(app_state: AppState, name: str) -> None:
     """Call one provider so its recorded health reflects the present.
 
-    Contained per provider: a sweep across every provider must not lose the
-    verdicts it already gathered because one of them raised, which a bare
-    ``TaskGroup`` member would cause by cancelling its siblings.
+    Bounded by ``api.health_recheck_timeout_seconds``: the call is awaited on
+    the request, and it is a completion rather than a ping, so an unreachable
+    provider would otherwise hold the response open for whatever the driver's
+    own connect timeout happens to be. Timing out costs only this reading,
+    which the provider's recorded health still answers.
+
+    Raises:
+        Exception: Whatever the call raised. Callers decide whether that is
+            fatal: the sweep contains it per provider, the single-provider
+            recheck surfaces it rather than reporting a stale summary as new.
     """
-    try:
+    budget = await config_resolver_of(app_state).get_float(
+        "api", "health_recheck_timeout_seconds"
+    )
+    async with asyncio.timeout(budget):
         _ = await provider_management_of(app_state).test_connection(
             name, TestConnectionRequest()
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+
+
+async def _call_provider_contained(app_state: AppState, name: str) -> None:
+    """Call one provider, keeping its failure to itself.
+
+    The sweep's containment, and only the sweep's: a run across every provider
+    must not lose the verdicts it already gathered because one of them raised,
+    which a bare ``TaskGroup`` member would cause by cancelling its siblings.
+    The single-provider recheck deliberately does not use this, because there
+    it would turn a failed call into a stale summary presented as a fresh one.
+
+    Raises:
+        asyncio.CancelledError: Propagated so shutdown is not swallowed.
+    """
+    try:
+        await _call_provider(app_state, name)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
+        # lint-allow: swallow-ok -- one provider's fault must not discard the
+        # sweep's other verdicts; the caller reports this provider unchanged.
         reraise_critical(exc)
         logger.warning(
-            API_PROVIDER_HEALTH_RECHECKED,
+            PROVIDER_HEALTH_PROBE_FAILED,
             provider=name,
             note="recheck call failed; health keeps its recorded value",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def _safe_resolve_health_summary(
+    app_state: AppState,
+    name: str,
+) -> ProviderHealthSummary | None:
+    """Read *name*'s summary, or ``None`` if the read itself failed.
+
+    Contained for the same reason the call is: by the time summaries are read
+    every billed completion has already succeeded, so letting one provider's
+    read cancel its siblings would discard work that cannot be cheaply redone.
+
+    Returns:
+        The provider's summary, or ``None`` when it could not be read.
+
+    Raises:
+        asyncio.CancelledError: Propagated so shutdown is not swallowed.
+    """
+    try:
+        return await _resolve_health_summary(app_state, name)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
+        # lint-allow: swallow-ok -- the sweep reports the providers it could
+        # read; omitting one beats discarding every other provider's result.
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_HEALTH_PROBE_FAILED,
+            provider=name,
+            note="health summary could not be read after a recheck",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 async def read_provider_health(
@@ -167,11 +232,19 @@ async def recheck_provider_health(
     without a ``base_url`` is ineligible for that sweep and would otherwise
     have no way to be rechecked at all.
 
+    The call is deliberately uncontained here. Swallowing it would return the
+    summary that was already on file under a promise that it reflects a fresh
+    call, so an operator who had just fixed the provider would read their fix
+    as having failed. A provider that is merely unreachable is not this case:
+    that answers normally with an unsuccessful verdict, which is recorded and
+    reported like any other.
+
     Returns:
         The health summary the fresh call produced.
 
     Raises:
         NotFoundError: If the provider is not found.
+        TimeoutError: If the call outran ``api.health_recheck_timeout_seconds``.
     """
     await _require_provider(app_state, name)
     await _call_provider(app_state, name)
@@ -189,19 +262,30 @@ async def recheck_all_provider_health(
 ) -> dict[str, ProviderHealthSummary]:
     """Call every configured provider now and report the results.
 
+    Each provider is called and then read in one task, rather than calling
+    every provider and only then reading every summary: the summaries are
+    per-provider with nothing to share, so a barrier between the two halves
+    would make every provider wait for the slowest call before any summary
+    is read, for no gain.
+
     Returns:
         Mapping of provider name to the health its fresh call produced.
+        A provider whose summary could not be read is omitted rather than
+        failing the sweep.
     """
     providers = await config_resolver_of(app_state).get_provider_configs()
+
+    async def _recheck(name: str) -> ProviderHealthSummary | None:
+        await _call_provider_contained(app_state, name)
+        return await _safe_resolve_health_summary(app_state, name)
+
     async with asyncio.TaskGroup() as tg:
-        for name in providers:
-            _ = tg.create_task(_call_provider(app_state, name))
-    async with asyncio.TaskGroup() as tg:
-        summaries = {
-            name: tg.create_task(_resolve_health_summary(app_state, name))
-            for name in providers
-        }
-    return {name: task.result() for name, task in summaries.items()}
+        tasks = {name: tg.create_task(_recheck(name)) for name in providers}
+    return {
+        name: summary
+        for name, task in tasks.items()
+        if (summary := task.result()) is not None
+    }
 
 
 def apply_usage(
