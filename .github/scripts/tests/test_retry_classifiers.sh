@@ -188,6 +188,61 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
+# --- GHCR token-endpoint denial: transient, and only in that form -------
+# GHCR answers a throttled token exchange with `DENIED: denied` instead of
+# a 429 or 503, so the classifier cannot read intent from the word alone.
+# The verbatim string below is the one that failed `Publish Sandbox Base`
+# six seconds after the same credential had pushed both arch images and
+# the manifest list to that same repository.
+GHCR_TOKEN_DENIED_MSG='Error: signing [ghcr.io/aureliolo/synthorg-sandbox-base@sha256:dfe98965abdab49f17ac1a3e1057c7d3a66da3e39c8e6faaa49c526f1f9f58c6]: signing digest: failed to upload layer: GET https://ghcr.io/token?scope=repository%3Aaureliolo%2Fsynthorg-sandbox-base%3Apush%2Cpull&service=ghcr.io: DENIED: denied'
+
+out="$(DOCKER_PUSH_RETRY_ATTEMPTS=2 DOCKER_PUSH_RETRY_BACKOFF=0 \
+  bash "$PUSH_HELPER" "selftest-token-denied" \
+  bash -c "echo '${GHCR_TOKEN_DENIED_MSG}'; exit 1" 2>&1)" || true
+if grep -q 'hit transient registry error' <<<"$out" \
+  && ! grep -q 'non-transient error' <<<"$out"; then
+  pass "docker_push retries a GHCR token-endpoint denial"
+else
+  fail "docker_push did not retry a GHCR token-endpoint denial"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+echo '${GHCR_TOKEN_DENIED_MSG}'
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=2 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" "ghcr.io/example/image@${fake_digest}" 2>&1)" || true
+if grep -q 'hit transient error' <<<"$out" && ! grep -q 'non-transient error' <<<"$out"; then
+  pass "cosign_sign retries a GHCR token-endpoint denial"
+else
+  fail "cosign_sign did not retry a GHCR token-endpoint denial"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# The token-endpoint prefix is what carries the classification, not the
+# word. An uppercase `DENIED: denied` with no token URL must still be
+# terminal, so the pattern cannot be trimmed to a bare `DENIED` without
+# turning every repository-level permission error into a 4-attempt stall.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "unexpected status from PUT request to https://ghcr.io/v2/example/image/manifests/latest: DENIED: denied"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" "ghcr.io/example/image@${fake_digest}" 2>&1)" || true
+if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient error' <<<"$out"; then
+  pass "cosign_sign keeps a non-token-endpoint DENIED terminal"
+else
+  fail "cosign_sign retried a DENIED outside the token endpoint (pattern too broad)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   printf '\nretry-helper self-test FAILED\n' >&2
   exit 1

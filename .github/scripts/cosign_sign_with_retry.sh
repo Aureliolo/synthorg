@@ -8,10 +8,10 @@
 # CLI-checksums path) is likewise safe to re-run: a retry overwrites the
 # `--bundle` output file and mints a fresh keyless signature over the
 # same bytes, which verifies identically. Transient GHCR/Rekor/Fulcio
-# errors (5xx, 429, TLS handshake stalls, connection resets, Rekor tlog
-# fetch timeouts) almost always settle inside the next attempt window, so
-# a bounded retry turns a noisy infra blip into a green run instead of
-# failing the whole workflow.
+# errors (5xx, 429, throttled token exchanges, TLS handshake stalls,
+# connection resets, Rekor tlog fetch timeouts) almost always settle
+# inside the next attempt window, so a bounded retry turns a noisy infra
+# blip into a green run instead of failing the whole workflow.
 #
 # Usage:
 #   cosign_sign_with_retry.sh <ref>
@@ -154,9 +154,11 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
     continue
   fi
 
-  # Non-transient: surface output and bubble up immediately. Auth
-  # denials, malformed digests, Rekor schema rejections, etc. will
-  # never improve on a retry.
+  # Non-transient: surface output and bubble up immediately.
+  # Repository-level auth denials, malformed digests, Rekor schema
+  # rejections, etc. will never improve on a retry. A denial from GHCR's
+  # token endpoint is the exception and is classified above, because the
+  # registry reuses that response for throttling.
   printf '%s\n' "$out"
   echo "::error::${ACTION} ${SUBJECT} failed with non-transient error (exit ${rc}); not retrying" >&2
   exit "$rc"

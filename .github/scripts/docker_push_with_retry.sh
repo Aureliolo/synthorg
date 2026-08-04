@@ -9,6 +9,8 @@
 # Real failures (auth denied, permission, repository not found, malformed
 # image) are NOT retried -- their output never matches the transient
 # patterns below, so this wrapper exits 1 on the first attempt for them.
+# The single exception is a denial from GHCR's token endpoint, which the
+# registry also emits under throttling; see the pattern note below.
 #
 # Usage:
 #   docker_push_with_retry.sh "label for log" docker push <ref>
@@ -54,7 +56,25 @@ set -euo pipefail
 # definitionally transient -- a terminal cosign error (auth denial, malformed
 # digest, Rekor schema rejection) never phrases itself as a network/fetch
 # timeout -- so adding them never masks a real failure on the push path.
-TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled|network timeout|error fetching tlog entry'
+#
+# `ghcr.io/token?scope=...DENIED` is the one denial treated as transient,
+# and only in that token-endpoint form. GHCR answers a throttled token
+# exchange with `DENIED: denied` rather than the 429 or 503 the rest of
+# this list keys on, so the string alone cannot distinguish "you may not
+# push here" from "not right now". Everything else can: a credential that
+# has just pushed two images and a manifest list to the very repository
+# whose token is refused seconds later has not lost permission. The plain
+# repository-level `denied: requested access to the resource is denied`
+# stays terminal because it lacks the token-endpoint prefix, which is what
+# the negative controls in tests/test_retry_classifiers.sh assert.
+#
+# A genuinely missing `packages: write` matches this pattern too and now
+# costs the full ~1m45s backoff ladder before failing. That is the price
+# of the trade, and it is the right way round: the failure is still loud
+# and total, whereas without the retry a registry hiccup skips every
+# downstream image build and strands the release retag on images that
+# were never published.
+TRANSIENT_RE='page is taking too long|unknown blob|blob unknown|blob upload invalid|manifest unknown|received unexpected HTTP status: 5[0-9]{2}|HTTP/[0-9.]+ 5[0-9]{2}|HTTP 5[0-9]{2}|status: 5[0-9]{2}|429 Too Many Requests|temporarily unavailable|server is currently unable|service unavailable|bad gateway|gateway time-?out|i/o timeout|tls handshake|connection reset|connection refused|EOF|unexpected EOF|read: connection|net/http: TLS handshake|context deadline exceeded|Client\.Timeout exceeded|timeout awaiting response headers|timeout awaiting response body|request canceled|network timeout|error fetching tlog entry|ghcr\.io/token\?scope=.*DENIED'
 
 # Discovery flag: callers that need to share the same regex (for example the
 # inline retag-inspect retry loop, which must drop a couple of patterns the
