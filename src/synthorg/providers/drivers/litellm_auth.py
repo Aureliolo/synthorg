@@ -126,6 +126,10 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
                 header_value = config.custom_header_value
             if header_name and header_value:
                 return AuthMaterial(extra_headers={header_name: header_value})
+            if ctx.catalog_present:
+                _raise_unresolved_credential(
+                    ctx.provider_name, ctx.litellm_model, "Custom-header"
+                )
         case AuthType.SUBSCRIPTION:
             # Pass as api_key -- the correct kwarg for LiteLLM
             # authentication.  Do NOT use "auth_token" -- it is
@@ -136,6 +140,10 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
                 token = config.subscription_token
             if token is not None:
                 return AuthMaterial(api_key=token)
+            if ctx.catalog_present:
+                _raise_unresolved_credential(
+                    ctx.provider_name, ctx.litellm_model, "Subscription"
+                )
         case AuthType.NONE:
             pass
     return AuthMaterial()

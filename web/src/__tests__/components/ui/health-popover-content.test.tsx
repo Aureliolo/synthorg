@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dialog } from '@base-ui/react/dialog'
 import { createMemoryRouter, RouterProvider } from 'react-router'
@@ -199,6 +199,32 @@ describe('HealthPopoverContent remediation links', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
 
     expect(fetchHealth).toHaveBeenCalledOnce()
+  })
+
+  it('stays busy until the snapshot refresh settles, not just the sweep', async () => {
+    // The store clears its own flag when the sweep returns, but this card
+    // renders from the snapshot the refresh is still fetching. Re-enabling
+    // in that window lets a second press bill every provider again.
+    let releaseFetch = (): void => {}
+    const fetchHeld = new Promise<void>((resolve) => {
+      releaseFetch = resolve
+    })
+    const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => fetchHeld)
+    useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
+    renderContent({ providersState: 'down' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+
+    const busy = screen.getByRole('button', { name: 'Checking...' })
+    expect(busy).toBeDisabled()
+    expect(busy).toHaveAttribute('aria-busy', 'true')
+
+    releaseFetch()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Recheck now' })).toBeEnabled()
+    })
   })
 
   it('disables the recheck while a sweep is already in flight', () => {

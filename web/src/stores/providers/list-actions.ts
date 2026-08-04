@@ -7,6 +7,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
 import { emitPlainErrorToast, emitSuccessToast } from './crud-helpers'
+import { bumpHealthRevision } from './health-revision'
 import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
 import type { ProvidersGet, ProvidersSet } from './types'
@@ -78,6 +79,10 @@ export function createListActions(set: ProvidersSet, get: ProvidersGet) {
         // that badge keeps the verdict the sweep just replaced.
         const selected = get().selectedProvider?.name
         const refreshed = selected === undefined ? undefined : healthMap[selected]
+        // Claimed before applying, so a detail read still in flight from an
+        // individual recheck drops its own health rather than resolving last
+        // and restoring the verdict this sweep just replaced.
+        bumpHealthRevision()
         set(
           refreshed === undefined
             ? { healthMap }

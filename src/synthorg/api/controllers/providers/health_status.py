@@ -64,6 +64,9 @@ class ProviderHealthController(Controller):
 
         Raises:
             NotFoundError: If the provider is not found.
+            ProviderTimeoutError: If the provider did not answer within
+                ``api.health_recheck_timeout_seconds``; answers 504 and
+                retryable, so a client knows to try again.
 
         Returns:
             ``ApiResponse[ProviderHealthSummary]`` reflecting the new call.

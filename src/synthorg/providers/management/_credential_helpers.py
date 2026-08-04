@@ -10,7 +10,9 @@ catalog-only: a secret supplied at the boundary is minted into a
 ``ConnectionCatalog`` entry and referenced by ``connection_name``.
 """
 
+import asyncio
 import contextlib
+from collections.abc import Coroutine
 
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig
@@ -21,7 +23,10 @@ from synthorg.integrations.errors import (
 )
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
+from synthorg.observability.events.provider import (
+    PROVIDER_CONFIG_PERSIST_FAILED,
+    PROVIDER_VALIDATION_FAILED,
+)
 from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
@@ -29,6 +34,46 @@ from synthorg.providers.management._config_transforms import apply_update
 from synthorg.providers.management.dtos import UpdateProviderRequest
 
 logger = get_logger(__name__)
+
+
+async def unwind(
+    cleanup: Coroutine[object, object, object],
+    *,
+    provider: str,
+    step: str,
+) -> None:
+    """Run one rollback step without letting it mask what it unwinds.
+
+    Shielded because the failure being unwound is often a cancellation,
+    and an unshielded await inside that handler is cancelled the moment
+    the loop delivers the next one, abandoning the rollback half-done: an
+    update would be left with the credential rotated, the config persisted
+    against the old one, and nothing to say so.
+
+    Reported rather than raised, because a rollback that fails is not the
+    failure the caller is being told about, and substituting it would hide
+    the original cause behind its own cleanup.
+
+    Args:
+        cleanup: The rollback step to run.
+        provider: Provider being unwound, for the log line.
+        step: Which rollback step this is, for the log line.
+    """
+    try:
+        _ = await asyncio.shield(cleanup)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
+        # lint-allow: swallow-ok -- the caller is already raising the
+        # failure this unwinds; replacing it with the rollback's own error
+        # would lose the cause and report the symptom.
+        reraise_critical(exc)
+        logger.error(
+            PROVIDER_CONFIG_PERSIST_FAILED,
+            provider=provider,
+            step=step,
+            note="rollback step failed; provider state may be inconsistent",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def credential_connection_name(provider_name: str) -> str:

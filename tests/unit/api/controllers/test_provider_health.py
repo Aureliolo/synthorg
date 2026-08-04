@@ -1,9 +1,11 @@
 """Tests for provider health endpoint."""
 
 import asyncio
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,6 +50,13 @@ def _make_health_record(
 
 
 _ACOMPLETION = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
+
+#: Recheck budget the timeout test configures, and how much longer than it
+#: the round trip may take. The tolerance covers request plumbing and a
+#: loaded CI worker, and is still far below any driver-level timeout, which
+#: is the alternative the assertion has to be able to tell it apart from.
+_RECHECK_BUDGET_SECONDS: Final[float] = 0.1
+_TIMEOUT_TOLERANCE_SECONDS: Final[float] = 5.0
 
 
 def _provider(name: str) -> ProviderConfig:
@@ -151,12 +160,17 @@ class TestProviderHealthRecheck:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         # The whole point: a provider recorded DOWN, whose fault the operator
-        # has since fixed, reads healthy again without re-saving it.
+        # has since fixed, stops reading DOWN without re-saving it.
+        #
+        # One failure against one success sits exactly on the DOWN threshold,
+        # so a single fresh success is enough to cross it. A deeper hole would
+        # only prove the counters moved: the verdict is an aggregate over the
+        # 24h window, and no one call can outvote a window full of failures.
         tracker = ProviderHealthTracker()
-        for _ in range(4):
-            await tracker.record(
-                _make_health_record(success=False, error_message="refused")
-            )
+        await tracker.record(
+            _make_health_record(success=False, error_message="refused")
+        )
+        await tracker.record(_make_health_record(success=True))
 
         async with _build_provider_client(
             fake_persistence=fake_persistence,
@@ -176,11 +190,15 @@ class TestProviderHealthRecheck:
 
             assert resp.status_code == 201
             data = resp.json()["data"]
-            # The fresh call is counted: five calls now, and the 24h error
-            # rate falls from 100%. Only a real call can move either, which
+            # The fresh call is counted: three calls now, and the 24h error
+            # rate falls from 50%. Only a real call can move either, which
             # is the whole point of the endpoint.
-            assert data["calls_last_24h"] == 5
-            assert data["error_rate_percent_24h"] == 80.0
+            assert data["calls_last_24h"] == 3
+            assert data["error_rate_percent_24h"] == pytest.approx(33.33, abs=0.01)
+            # The verdict itself, not only the counters it derives from: a
+            # result still reading "down" would satisfy both of those and
+            # leave the operator exactly where they started.
+            assert data["health_status"] == "degraded"
 
     async def test_a_recheck_on_a_working_provider_reads_healthy(
         self,
@@ -279,17 +297,25 @@ class TestProviderHealthRecheck:
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
         ) as client:
-            await _set_recheck_budget(client, seconds=0.1)
+            await _set_recheck_budget(client, seconds=_RECHECK_BUDGET_SECONDS)
             with patch(_ACOMPLETION, new=_never_answers):
+                start = time.monotonic()
                 resp = await client.post(
                     "/api/v1/providers/test-provider/health/recheck",
                     headers=_HEADERS,
                 )
+                elapsed = time.monotonic() - start
 
             assert started.is_set()
+            # Measured against the configured budget, not merely against the
+            # suite timeout: an endpoint that ignored the setting and returned
+            # on the driver's own (much longer) timeout would still finish
+            # inside the suite and pass on the status code alone. The ceiling
+            # is loose because it covers request plumbing as well as the wait.
+            assert elapsed < _RECHECK_BUDGET_SECONDS + _TIMEOUT_TOLERANCE_SECONDS
             # Bounded rather than hung: the budget elapsed and the request
             # came back instead of waiting out the driver.
-            assert resp.status_code >= 500
+            assert resp.status_code == 504
 
     async def test_recheck_of_an_unknown_provider_is_404(
         self,

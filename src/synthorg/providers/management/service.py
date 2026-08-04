@@ -50,6 +50,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_HEALTH_PROBE_FAILED,
+    PROVIDER_HEALTH_PROBE_SKIPPED,
     PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
     PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
@@ -72,6 +73,11 @@ from synthorg.providers.errors import (
     ProviderNotFoundError,
     ProviderValidationError,
 )
+from synthorg.providers.health_prober_helpers import (
+    ProbeIdentity,
+    call_identity,
+    call_identity_still_current,
+)
 from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
 )
@@ -86,6 +92,7 @@ from synthorg.providers.management._credential_helpers import (
     resolve_provider_api_key,
     rollback_credential,
     store_provider_api_key,
+    unwind,
 )
 from synthorg.providers.management._discovery_mixin import ProviderDiscoveryMixin
 from synthorg.providers.management._persistence import apply_provider_change
@@ -434,16 +441,20 @@ class ProviderManagementService(
             new_config = build_provider_config(request, connection_name=conn_name)
             new_providers = {**providers, request.name: new_config}
             await self._validate_and_persist(new_providers)
-        except Exception:
+        except BaseException:
             # Pre-persist failure (build / validate / persist): nothing is
             # durably stored, so drop the minted secret to avoid an
             # orphaned connection with no owning provider.
             if conn_name is not None:
-                await delete_provider_credential(self._app_state, request.name)
+                await unwind(
+                    delete_provider_credential(self._app_state, request.name),
+                    provider=request.name,
+                    step="delete_credential",
+                )
             raise
         try:
             await self._allowlist.update_for_create(new_config)
-        except Exception:
+        except BaseException:
             # Post-persist failure: the config (referencing conn_name) is
             # already stored, so roll it back to the pre-create snapshot
             # BEFORE dropping the secret -- otherwise the persisted config
@@ -453,7 +464,11 @@ class ProviderManagementService(
             # references would orphan it.
             restored = await self._restore_providers(providers)
             if restored and conn_name is not None:
-                await delete_provider_credential(self._app_state, request.name)
+                await unwind(
+                    delete_provider_credential(self._app_state, request.name),
+                    provider=request.name,
+                    step="delete_credential",
+                )
             raise
         return new_config
 
@@ -553,21 +568,29 @@ class ProviderManagementService(
             )
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
-        except Exception:
-            await rollback_credential(
-                self._app_state, name, prior_api_key, mutated=credential_mutated
+        except BaseException:
+            await unwind(
+                rollback_credential(
+                    self._app_state, name, prior_api_key, mutated=credential_mutated
+                ),
+                provider=name,
+                step="rollback_credential",
             )
             raise
         try:
             await self._allowlist.update_for_update(existing, updated, new_providers)
-        except Exception:
+        except BaseException:
             # Roll the config back first; only mutate the credential if the
             # restore succeeded, else the still-persisted updated config
             # would be left referencing a rolled-back credential.
             restored = await self._restore_providers(providers)
             if restored:
-                await rollback_credential(
-                    self._app_state, name, prior_api_key, mutated=credential_mutated
+                await unwind(
+                    rollback_credential(
+                        self._app_state, name, prior_api_key, mutated=credential_mutated
+                    ),
+                    provider=name,
+                    step="rollback_credential",
                 )
             raise
         return updated
@@ -689,14 +712,16 @@ class ProviderManagementService(
             )
 
         model_id = request.model or _cheapest_probe_model_id(config.models)
+        identity = call_identity(config)
         response = await self._do_test_connection(name, config, model_id)
-        await self._record_test_outcome(name, response)
+        await self._record_test_outcome(name, response, identity)
         return response
 
     async def _record_test_outcome(
         self,
         name: str,
         response: TestConnectionResponse,
+        identity: ProbeIdentity,
     ) -> None:
         """Let a connection test move the provider's health.
 
@@ -705,14 +730,34 @@ class ProviderManagementService(
         provider read DOWN long after the operator had fixed it, with no
         control short of re-saving the provider to say otherwise.
 
+        Discarded when the provider no longer matches *identity*: a test is a
+        long call, and an operator who repointed the endpoint or rotated the
+        credential while it ran would otherwise see the old configuration's
+        verdict land on the new one and stay there until something else calls
+        it.
+
         Best-effort: the test already has its answer for the caller, so a
         tracker failure must not turn a completed test into an error.
+
+        Args:
+            name: Provider the test ran against.
+            response: What the test found.
+            identity: The configuration the test was a statement about.
 
         Raises:
             asyncio.CancelledError: Propagated so shutdown is not swallowed.
         """
         requester = self._probe_requester
         if requester is None:
+            return
+        if not await call_identity_still_current(
+            name, identity, config_resolver=self._config_resolver
+        ):
+            logger.debug(
+                PROVIDER_HEALTH_PROBE_SKIPPED,
+                provider=name,
+                reason="config_changed",
+            )
             return
         try:
             await requester.record_outcome(

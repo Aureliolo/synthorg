@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { Link } from 'react-router'
+import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   Archive,
@@ -190,6 +191,7 @@ function providersActions(
   states: DerivedSubsystemStates,
   onDismiss: () => void,
   rechecking: boolean,
+  onRecheck: () => void,
 ): ReactNode {
   if (!needsAttention(states.providersState)) return undefined
   // Recheck first: an operator who has just fixed a provider wants the
@@ -204,9 +206,7 @@ function providersActions(
         size="sm"
         disabled={rechecking}
         aria-busy={rechecking}
-        onClick={() => {
-          void recheckProvidersAndRefresh()
-        }}
+        onClick={onRecheck}
       >
         <RefreshCw
           className={cn('size-3.5 mr-1.5', rechecking && 'animate-spin')}
@@ -231,7 +231,19 @@ function HealthSubsystemGrid({
   states,
   onDismiss,
 }: HealthSubsystemGridProps) {
-  const recheckingProviders = useProvidersStore((s) => s.recheckingAllHealth)
+  const sweeping = useProvidersStore((s) => s.recheckingAllHealth)
+  // The store clears its own flag when the sweep returns, but this card
+  // renders from the health snapshot, which the refresh below is still
+  // fetching. Binding the button to the store flag alone re-enables it
+  // mid-refresh, and a second click starts another all-provider sweep.
+  const [refreshingSnapshot, setRefreshingSnapshot] = useState(false)
+  const onRecheck = useCallback(() => {
+    setRefreshingSnapshot(true)
+    void recheckProvidersAndRefresh().finally(() => {
+      setRefreshingSnapshot(false)
+    })
+  }, [])
+  const recheckingProviders = sweeping || refreshingSnapshot
   const wsAction = states.wsState === 'down'
     ? (
         <Button
@@ -279,7 +291,12 @@ function HealthSubsystemGrid({
         label="Providers"
         description="Configured LLM providers reachable. An unreachable provider blocks readiness, so it needs somewhere to show."
         state={states.providersState}
-        action={providersActions(states, onDismiss, recheckingProviders)}
+        action={providersActions(
+          states,
+          onDismiss,
+          recheckingProviders,
+          onRecheck,
+        )}
       />
       <HealthStatusRow
         icon={Brain}

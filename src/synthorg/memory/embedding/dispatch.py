@@ -29,6 +29,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.cost_recording import resolve_currency
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
+from synthorg.providers.transport_policy import require_credential_safe_transport
 
 logger = get_logger(__name__)
 
@@ -141,10 +142,19 @@ def embedding_kwargs(
 
     Returns:
         The keyword arguments for ``litellm.aembedding``.
+
+    Raises:
+        ProviderValidationError: If the endpoint carries a credential that
+            would be sent in cleartext beyond this machine's own network.
+            Re-checked here rather than trusted from resolution because
+            this is the boundary every embedding call passes through, and
+            an endpoint can be constructed without going through one.
     """
     kwargs: EmbeddingKwargs = {"model": model_ref, "input": inputs}
     if endpoint is None:
         return kwargs
+    if endpoint.api_key is not None or endpoint.extra_headers:
+        require_credential_safe_transport(endpoint.api_base, field="Embedding endpoint")
     if endpoint.api_base is not None:
         kwargs["api_base"] = endpoint.api_base
     if endpoint.api_key is not None:

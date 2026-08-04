@@ -396,6 +396,13 @@ class BaseCompletionProvider(ABC):
                     latency_ms=latency_ms,
                 )
                 await emit_tool_call_failure_signal(exc, provider_label, model, tools)
+                await report_health_outcome(
+                    self._health_recorder,
+                    provider_label=provider_label,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error_message=safe_error_description(exc),
+                )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             record_call_success(
@@ -403,6 +410,16 @@ class BaseCompletionProvider(ABC):
                 provider_label=provider_label,
                 model=model,
                 call_type="stream",
+                latency_ms=latency_ms,
+            )
+            # Setup only, matching the span: a mid-stream failure happens in
+            # the consumer's scope, where this frame is already gone. Without
+            # this, a stream-only workload contributes no outcome at all and
+            # its provider reads as never having been called.
+            await report_health_outcome(
+                self._health_recorder,
+                provider_label=provider_label,
+                success=True,
                 latency_ms=latency_ms,
             )
         # Token counts surface only on the terminal USAGE chunk; emit a

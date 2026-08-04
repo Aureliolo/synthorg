@@ -43,8 +43,8 @@ from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
-    build_ping_url,
-    probe_target_still_current,
+    ping_identity,
+    ping_identity_still_current,
 )
 from synthorg.providers.health_prober_targets import resolve_probe_target
 from synthorg.providers.health_recording import record_call_outcome
@@ -534,23 +534,23 @@ class ProviderHealthProber:
         """
         # base_url is guaranteed non-None: _probe_all filters out
         # providers without it before calling _probe_one.
-        url = build_ping_url(
-            config.base_url,  # type: ignore[arg-type]
-            config.litellm_provider,
-            ollama_port=ollama_port,
-        )
+        # base_url is guaranteed non-None here, so the identity is too:
+        # _probe_all filters out providers without one before calling in.
+        identity = ping_identity(config, ollama_port=ollama_port)
+        if identity is None or identity.url is None:
+            return
         auth_type = str(config.auth_type)
         api_key = await resolve_probe_api_key(config, self._connection_catalog)
         headers = build_auth_headers(auth_type, api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
         result = await execute_probe(
-            url, headers, clock=self._clock, validation=validation
+            identity.url, headers, clock=self._clock, validation=validation
         )
         elapsed_ms, success, error_msg = result
 
-        if not await probe_target_still_current(
-            name, url, config_resolver=self._config_resolver
+        if not await ping_identity_still_current(
+            name, identity, config_resolver=self._config_resolver
         ):
             logger.debug(
                 PROVIDER_HEALTH_PROBE_SKIPPED, provider=name, reason="config_changed"

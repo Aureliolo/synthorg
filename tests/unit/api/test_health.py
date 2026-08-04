@@ -418,17 +418,13 @@ class TestResolveMemoryHealth:
     async def test_the_recorded_failure_replaces_the_generic_advice(self) -> None:
         # Telling an operator who HAS chosen a model to choose one sends them
         # to a setting that is not the problem; the recorded reason is.
+        wiring_failure = "the configured embedding endpoint did not answer"
         result = await resolve_memory_state(
-            self._app_state(
-                backend=None,
-                wiring_failure=(
-                    "the endpoint at http://example.invalid did not answer"
-                ),
-            )
+            self._app_state(backend=None, wiring_failure=wiring_failure)
         )
 
         assert result.detail is not None
-        assert "http://example.invalid" in result.detail
+        assert wiring_failure in result.detail
         assert "no embedding model resolved" not in result.detail
 
     async def test_a_store_failure_is_named_rather_than_blamed_on_the_model(

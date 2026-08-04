@@ -290,3 +290,72 @@ class TestBuiltin:
             )
         events = [entry["event"] for entry in logs]
         assert "memory.embedder.builtin_selected" in events
+
+    async def test_the_builtin_never_asks_for_an_endpoint(self) -> None:
+        # Asking would look up a provider named "builtin", which cannot
+        # exist, and fail the one embedder that is always available.
+        asked: list[str] = []
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            msg = f"provider {provider!r} is not configured"
+            raise AssertionError(msg)
+
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider=BUILTIN_EMBEDDER_PROVIDER, model=BUILTIN_EMBEDDER_MODEL
+            ),
+            measure_dims=_probe(BUILTIN_EMBEDDER_DIMS),
+            resolve_endpoint=_resolve,
+        )
+
+        assert result.provider == BUILTIN_EMBEDDER_PROVIDER
+        assert asked == []
+
+
+class TestResolvedEndpointReachesTheProbe:
+    """The resolver's endpoint has to arrive at the probe, not just exist.
+
+    Nothing else observes it: dropping ``endpoint=`` from the probe call
+    leaves resolution succeeding, the width measured, and boot probing a
+    self-hosted model at whatever host the driver defaults to.
+    """
+
+    async def test_a_provider_backed_model_probes_the_resolved_endpoint(
+        self,
+    ) -> None:
+        asked: list[str] = []
+        resolved = EmbeddingEndpoint(api_base="https://models.invalid")
+
+        async def _resolve(provider: str) -> EmbeddingEndpoint:
+            asked.append(provider)
+            return resolved
+
+        probe = _probe(1536)
+        result = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider="test-provider", model="test-embed-001"
+            ),
+            measure_dims=probe,
+            resolve_endpoint=_resolve,
+        )
+
+        assert result.dims == 1536
+        assert asked == ["test-provider"]
+        assert probe.endpoints == [resolved]
+
+    async def test_no_resolver_leaves_the_probe_unaddressed(self) -> None:
+        # A caller that supplies none is letting the driver route itself,
+        # which is correct only for a provider hosted at its own API.
+        probe = _probe(1536)
+        _ = await resolve_embedder_config(
+            CompanyMemoryConfig(embedder=None),
+            settings_override=EmbedderOverrideConfig(
+                provider="test-provider", model="test-embed-001"
+            ),
+            measure_dims=probe,
+        )
+
+        assert probe.endpoints == [None]

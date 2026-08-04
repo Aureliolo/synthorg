@@ -56,6 +56,35 @@ async def _probe_1536(
     return 1536
 
 
+class _RecordingProbe:
+    """A width probe that keeps the endpoint it was addressed at.
+
+    Discarding it, as a plain stand-in does, leaves the resolver's result
+    unobserved: dropping ``endpoint=`` from the call would still resolve a
+    provider, still return a width, and still pass.
+    """
+
+    def __init__(self) -> None:
+        self.endpoints: list[EmbeddingEndpoint | None] = []
+
+    async def __call__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        cost_tracker: CostTrackerProtocol | None = None,
+        endpoint: EmbeddingEndpoint | None = None,
+    ) -> int:
+        """Record *endpoint* and answer a width.
+
+        Returns:
+            A fixed width; this fake is about the endpoint, not the number.
+        """
+        _ = provider, model, cost_tracker
+        self.endpoints.append(endpoint)
+        return 1536
+
+
 @pytest.mark.unit
 class TestBuiltinEmbedderNeedsNoEndpoint:
     """Choosing the built-in embedder must not require a configured provider.
@@ -81,17 +110,23 @@ class TestBuiltinEmbedderNeedsNoEndpoint:
             msg = f"Embedding provider {provider!r} is not configured"
             raise ProviderNotFoundError(msg)
 
+        probe = _RecordingProbe()
         reason = await bind_chosen_embedder(
             settings_svc=settings_svc,
-            measure_dims=_probe_1536,
+            measure_dims=probe,
             resolve_endpoint=_resolve,
         )
 
         assert reason is None
         assert asked == []
+        # Probed with no endpoint at all, which is the built-in's whole
+        # point: it runs in-process and has nowhere to be addressed.
+        assert probe.endpoints == [None]
 
     async def test_a_provider_backed_model_still_resolves_one(self) -> None:
-        # The guard is on the built-in specifically, not on resolution.
+        # The guard is on the built-in specifically, not on resolution. The
+        # probe records what it was addressed at, so dropping ``endpoint=``
+        # from the call fails here rather than passing on the lookup alone.
         settings_svc = _settings_reading(
             {
                 "embedder_model": _bound("test-provider", "test-embed-001"),
@@ -99,19 +134,22 @@ class TestBuiltinEmbedderNeedsNoEndpoint:
             }
         )
         asked: list[str] = []
+        resolved = EmbeddingEndpoint(api_base="https://models.invalid")
 
         async def _resolve(provider: str) -> EmbeddingEndpoint:
             asked.append(provider)
-            return EmbeddingEndpoint(api_base="http://models.invalid:11434")
+            return resolved
 
+        probe = _RecordingProbe()
         reason = await bind_chosen_embedder(
             settings_svc=settings_svc,
-            measure_dims=_probe_1536,
+            measure_dims=probe,
             resolve_endpoint=_resolve,
         )
 
         assert reason is None
         assert asked == ["test-provider"]
+        assert probe.endpoints == [resolved]
 
     async def test_an_unresolvable_provider_is_not_reported_as_a_probe_failure(
         self,

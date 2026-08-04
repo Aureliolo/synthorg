@@ -14,9 +14,9 @@ from synthorg.observability.events.api import (
     API_PROVIDER_HEALTH_QUERIED,
     API_PROVIDER_HEALTH_RECHECKED,
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
-    API_RESOURCE_NOT_FOUND,
 )
 from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
+from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.health import ProviderHealthSummary
 from synthorg.providers.management.dtos import TestConnectionRequest
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
@@ -106,7 +106,6 @@ async def _require_provider(app_state: AppState, name: str) -> None:
     providers = await config_resolver_of(app_state).get_provider_configs()
     if name not in providers:
         msg = f"Provider {name!r} not found"
-        logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
         raise NotFoundError(msg)
 
 
@@ -120,17 +119,30 @@ async def _call_provider(app_state: AppState, name: str) -> None:
     which the provider's recorded health still answers.
 
     Raises:
-        Exception: Whatever the call raised. Callers decide whether that is
-            fatal: the sweep contains it per provider, the single-provider
+        ProviderTimeoutError: If the call outran the budget. Translated from
+            the bare ``TimeoutError`` ``asyncio.timeout`` raises, which the
+            handler table can only read as an unexpected 500; a provider that
+            was too slow is a retryable upstream condition (504), and saying
+            so is what tells an operator to try again rather than to go
+            looking for a fault in the dashboard.
+        Exception: Whatever else the call raised. Callers decide whether that
+            is fatal: the sweep contains it per provider, the single-provider
             recheck surfaces it rather than reporting a stale summary as new.
     """
     budget = await config_resolver_of(app_state).get_float(
         "api", "health_recheck_timeout_seconds"
     )
-    async with asyncio.timeout(budget):
-        _ = await provider_management_of(app_state).test_connection(
-            name, TestConnectionRequest()
+    try:
+        async with asyncio.timeout(budget):
+            _ = await provider_management_of(app_state).test_connection(
+                name, TestConnectionRequest()
+            )
+    except TimeoutError as exc:
+        msg = (
+            f"Provider {name!r} did not answer within {budget}s "
+            f"(api.health_recheck_timeout_seconds)"
         )
+        raise ProviderTimeoutError(msg, context={"provider": name}) from exc
 
 
 async def _call_provider_contained(app_state: AppState, name: str) -> None:
@@ -244,7 +256,9 @@ async def recheck_provider_health(
 
     Raises:
         NotFoundError: If the provider is not found.
-        TimeoutError: If the call outran ``api.health_recheck_timeout_seconds``.
+        ProviderTimeoutError: If the call outran
+            ``api.health_recheck_timeout_seconds``, which answers 504 and
+            retryable rather than 500.
     """
     await _require_provider(app_state, name)
     await _call_provider(app_state, name)

@@ -6,7 +6,7 @@ Stateless URL/header/truncation utilities split out of
 budget. No I/O or lifecycle state lives here.
 """
 
-from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlparse
 
@@ -80,64 +80,127 @@ def build_auth_headers(
     return {}
 
 
-def probe_url_is_current(
-    name: str,
-    url: str,
-    providers: Mapping[str, ProviderConfig],
-    *,
-    ollama_port: int,
-) -> bool:
-    """Whether *url* still matches what *providers* configures for *name*.
+@dataclass(frozen=True)
+class ProbeIdentity:
+    """The configuration a health verdict is a statement about.
 
-    A probe carries the configuration snapshot it started with for as
-    long as the request is in flight, and two entry points can be in
-    flight at once: the periodic sweep and the immediate probe a
-    provider mutation triggers. Without this check the loser of that
-    race records last, so an endpoint the operator has already replaced
-    can become the reported health state until the next sweep.
+    A health check carries the configuration snapshot it started with for
+    as long as the request is in flight, and several entry points can be
+    in flight at once: the periodic sweep, the immediate probe a provider
+    mutation triggers, and an operator's connection test. Without an
+    identity to compare, the loser of that race records last, so a
+    verdict about configuration the operator has already replaced becomes
+    the reported health state until the next sweep.
 
-    Args:
-        name: Provider name.
-        url: Ping URL the in-flight probe used.
-        providers: Provider configs read back after the probe completed.
-        ollama_port: Resolved ``providers.ollama_default_port``.
+    The URL alone does not settle it. Rotating a credential, repointing a
+    connection or switching auth type all change what the provider would
+    answer while leaving the address untouched, so a verdict from before
+    the change says nothing about the provider after it.
+
+    Attributes:
+        url: Where the request went; ``None`` for a provider configured
+            without a base URL, whose driver addresses its hosted API.
+        auth_type: How the request authenticated.
+        connection_name: Which stored connection supplied the credential;
+            repointing it swaps the credential without touching the rest.
+    """
+
+    url: str | None
+    auth_type: str
+    connection_name: str | None
+
+
+def _identity(config: ProviderConfig, url: str | None) -> ProbeIdentity:
+    """Bind *url* to the authentication a request to it would carry.
 
     Returns:
-        True when the live configuration still yields *url*.
+        The identity a verdict about that request is about.
     """
-    config = providers.get(name)
-    if config is None or config.base_url is None:
-        return False
-    live = build_ping_url(
+    return ProbeIdentity(
+        url=url,
+        auth_type=str(config.auth_type),
+        connection_name=config.connection_name,
+    )
+
+
+def ping_identity(config: ProviderConfig, *, ollama_port: int) -> ProbeIdentity | None:
+    """The identity of a reachability ping against *config*.
+
+    Args:
+        config: Provider configuration the ping would use.
+        ollama_port: Resolved ``providers.ollama_default_port``, the other
+            input to the ping URL: for a provider with no explicit
+            ``litellm_provider`` it alone decides root versus ``/models``.
+
+    Returns:
+        The identity, or ``None`` for a provider with no base URL, which
+        the sweep does not ping at all.
+    """
+    if config.base_url is None:
+        return None
+    url = build_ping_url(
         config.base_url, config.litellm_provider, ollama_port=ollama_port
     )
-    return live == url
+    return _identity(config, url)
 
 
-async def probe_target_still_current(
+def call_identity(config: ProviderConfig) -> ProbeIdentity:
+    """The identity of a real completion call against *config*.
+
+    The connection test issues a driver call rather than a ping, so it is
+    addressed at the base URL itself.
+
+    Returns:
+        The identity a connection-test verdict is about.
+    """
+    return _identity(config, config.base_url)
+
+
+async def ping_identity_still_current(
     name: str,
-    url: str,
+    identity: ProbeIdentity,
     *,
     config_resolver: ConfigResolver,
 ) -> bool:
-    """Re-read the live config and report whether *url* is still *name*'s.
-
-    The reading half of :func:`probe_url_is_current`: the port is re-read
-    alongside the configs because it is the other input to the ping URL, and
-    for a provider with no explicit ``litellm_provider`` it alone decides
-    root versus ``/models``.
+    """Re-read the live config and report whether *identity* still holds.
 
     Args:
         name: Provider name.
-        url: Ping URL the in-flight probe used.
+        identity: What the in-flight ping was a statement about.
         config_resolver: Source of the live provider configs and port.
 
     Returns:
-        True when the live configuration still yields *url*.
+        True when the live configuration still yields *identity*.
     """
     live = await config_resolver.get_provider_configs()
     live_port = await config_resolver.get_int("providers", "ollama_default_port")
-    return probe_url_is_current(name, url, live, ollama_port=live_port)
+    config = live.get(name)
+    if config is None:
+        return False
+    return ping_identity(config, ollama_port=live_port) == identity
+
+
+async def call_identity_still_current(
+    name: str,
+    identity: ProbeIdentity,
+    *,
+    config_resolver: ConfigResolver,
+) -> bool:
+    """Re-read the live config and report whether *identity* still holds.
+
+    Args:
+        name: Provider name.
+        identity: What the completed call was a statement about.
+        config_resolver: Source of the live provider configs.
+
+    Returns:
+        True when the live configuration still yields *identity*.
+    """
+    live = await config_resolver.get_provider_configs()
+    config = live.get(name)
+    if config is None:
+        return False
+    return call_identity(config) == identity
 
 
 def truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:

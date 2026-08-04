@@ -277,7 +277,7 @@ class ProviderHealthTracker:
                 if pruned:
                     logger.debug(
                         PROVIDER_HEALTH_PRUNED,
-                        pruned_count=pruned,
+                        pruned=pruned,
                         remaining=len(self._records),
                     )
 

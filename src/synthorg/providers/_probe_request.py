@@ -8,6 +8,8 @@ error)`` tuple so the orchestrator stays free of httpx detail.
 """
 
 import asyncio
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
 import httpx
@@ -22,6 +24,7 @@ from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.health_prober_helpers import truncate
+from synthorg.providers.transport_policy import require_credential_safe_transport
 from synthorg.tools.network_validator import DnsValidationOk
 from synthorg.tools.ssrf import build_pinned_transport
 
@@ -31,6 +34,18 @@ _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
 _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
+#: Which catalog credential field each bearer auth type stores its token
+#: under, mirroring the completion driver's own mapping. The keys are the
+#: auth types :func:`build_auth_headers` emits an ``Authorization`` header
+#: for, so the two stay one decision rather than two that can diverge.
+_CREDENTIAL_FIELDS: Final[Mapping[AuthType, str]] = MappingProxyType(
+    {
+        AuthType.API_KEY: "api_key",
+        AuthType.SUBSCRIPTION: "subscription_token",
+    }
+)
+_BEARER_AUTH_TYPES: Final[frozenset[AuthType]] = frozenset(_CREDENTIAL_FIELDS)
+
 
 async def resolve_probe_api_key(
     config: ProviderConfig,
@@ -38,31 +53,38 @@ async def resolve_probe_api_key(
 ) -> str | None:
     """Resolve a provider's api_key from its catalog connection.
 
-    Non-API-key providers return ``None``. An ``API_KEY`` provider whose
-    key is unresolvable raises rather than probing unauthenticated.
+    Providers whose auth type carries no bearer credential return
+    ``None``. One whose key is unresolvable raises rather than probing
+    unauthenticated, because an anonymous probe against an endpoint that
+    requires a key reports a healthy provider as down.
 
     Args:
         config: Provider whose probe credential is being resolved.
         catalog: Source of connection credentials; ``None`` disables the
-            lookup, which only a non-``API_KEY`` provider survives.
+            lookup, which only a credential-less provider survives.
 
     Returns:
         The resolved api_key, or ``None`` when unresolvable by design.
 
     Raises:
-        ProviderValidationError: When an ``API_KEY`` key is unresolvable.
+        ProviderValidationError: When a bearer credential is unresolvable,
+            or when sending it would cross cleartext to a non-local target.
     """
-    # Gate by auth type: a non-API_KEY provider needs no key, so a
-    # failing/stale-connection lookup must not skip it.
-    if config.auth_type is not AuthType.API_KEY:
+    # Gated on the same set ``build_auth_headers`` sends a bearer token
+    # for. Resolving a narrower set than that one sends means every
+    # provider in the difference is probed anonymously and reported
+    # unavailable, while resolving a wider set decrypts a credential the
+    # probe would not use.
+    if config.auth_type not in _BEARER_AUTH_TYPES:
         return None
     key: str | None = None
     if config.connection_name is not None and catalog is not None:
         creds = await catalog.get_credentials(config.connection_name)
-        key = creds.get("api_key")
+        key = creds.get(_CREDENTIAL_FIELDS[config.auth_type])
     if key is None:
         msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
         raise ProviderValidationError(msg)
+    require_credential_safe_transport(config.base_url, field="Provider base_url")
     return key
 
 

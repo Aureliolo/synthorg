@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test-setup'
 import { useProvidersStore } from '@/stores/providers'
+import { resetHealthRevision } from '@/stores/providers/health-revision'
 
 /**
  * Provider health has to be re-derivable from the dashboard.
@@ -14,13 +15,26 @@ import { useProvidersStore } from '@/stores/providers'
 
 const INITIAL = useProvidersStore.getState()
 
+/** A health row with every required field, varied per case by spread. */
+const HEALTH_ROW = {
+  last_check_timestamp: null,
+  avg_response_time_ms: 9,
+  error_rate_percent_24h: 0,
+  calls_last_24h: 1,
+  health_status: 'up',
+  total_tokens_24h: 0,
+  total_cost_24h: 0,
+} as const
+
 beforeEach(() => {
   useProvidersStore.setState(INITIAL, true)
+  resetHealthRevision()
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
   useProvidersStore.setState(INITIAL, true)
+  resetHealthRevision()
 })
 
 describe('provider health recheck', () => {
@@ -212,6 +226,57 @@ describe('provider health recheck', () => {
     )
 
     await useProvidersStore.getState().recheckAllHealth()
+
+    expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe('up')
+  })
+
+  it('keeps a sweep verdict a slower detail read would have overwritten', async () => {
+    // An individual recheck fires a trailing detail read. A sweep that lands
+    // while that read is in flight holds the newer verdict, so the read must
+    // not resolve last and restore the one the sweep replaced.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'test-provider' } as never,
+      selectedProviderHealth: { health_status: 'down' } as never,
+    })
+    let releaseDetailHealth = (): void => {}
+    const detailHealthHeld = new Promise<void>((resolve) => {
+      releaseDetailHealth = resolve
+    })
+    server.use(
+      // The detail read's health leg, held open until the sweep has applied.
+      http.get('/api/v1/providers/:name/health', async () => {
+        await detailHealthHeld
+        return HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'down' },
+          error: null,
+          error_detail: null,
+        })
+      }),
+      http.post('/api/v1/providers/:name/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'degraded' },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+      http.post('/api/v1/providers/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: { 'test-provider': { ...HEALTH_ROW, health_status: 'up' } },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    const trailing = useProvidersStore
+      .getState()
+      .recheckProviderHealth('test-provider')
+    await useProvidersStore.getState().recheckAllHealth()
+    releaseDetailHealth()
+    await trailing
 
     expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe('up')
   })

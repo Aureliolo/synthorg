@@ -70,6 +70,18 @@ async def wire_memory_backend(app_state: AppState) -> None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
         logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="persistence_not_connected")
+        # Replaced rather than left alone: a pass that failed on the embedder
+        # earlier left its reason here, and the health surface would go on
+        # quoting it while the thing actually blocking memory is the database.
+        app_state.wire(
+            MemoryStateSlice,
+            wiring_failure=(
+                "The database memory stores its vectors in is not connected, "
+                "so no backend could be built. Check the persistence "
+                "connection; memory wires itself on the next pass once it is "
+                "back."
+            ),
+        )
         return
 
     memory_config = await _resolved_memory_config(app_state)

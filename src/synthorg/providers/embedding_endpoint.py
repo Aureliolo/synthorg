@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_NOT_FOUND
 from synthorg.providers.drivers.litellm_auth import AuthContext, resolve_auth_material
 from synthorg.providers.errors import ProviderNotFoundError
+from synthorg.providers.transport_policy import require_credential_safe_transport
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -62,6 +63,8 @@ async def resolve_embedding_endpoint(
             binding the operator has to fix rather than one to guess past.
         AuthenticationError: If a wired catalog did not resolve a credential
             the provider's auth type requires.
+        ProviderValidationError: If the resolved credential would be sent in
+            cleartext to a target outside this machine's own network.
     """
     configs = await config_resolver.get_provider_configs()
     config = configs.get(provider)
@@ -86,6 +89,10 @@ async def resolve_embedding_endpoint(
             litellm_model=provider,
         )
     )
+    if material.api_key is not None or material.extra_headers:
+        require_credential_safe_transport(
+            config.base_url, field=f"Embedding provider {provider!r}"
+        )
     return EmbeddingEndpoint(
         api_base=config.base_url,
         api_key=material.api_key,
