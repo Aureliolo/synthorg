@@ -11,10 +11,10 @@
 #
 # Ad-hoc local invocations should also pass `--config lychee.toml`.
 #
-# Strictness preset: STRICT. Every non-200 response counts as link rot.
-# Per-host pacing keeps the strict run polite. These network settings
-# apply to the weekly online run; the offline gate makes no network
-# probes and ignores them.
+# Strictness preset: STRICT. Every response outside `accept` below counts
+# as link rot. Per-host pacing keeps the strict run polite. These network
+# settings apply to the weekly online run; the offline gate makes no
+# network probes and ignores them.
 
 # Local on-disk cache (.lycheecache, gitignored). Only repeated manual
 # local online runs benefit from it: the offline gate makes no requests,
@@ -29,9 +29,12 @@ max_retries = 1
 retry_wait_time = 1
 timeout = 10
 
-# Treat ONLY 200 OK as success. A non-OK response is a real link-rot
-# signal worth surfacing in the weekly external report.
-accept = ["200"]
+# 202 joins 200 because it is how an anti-bot edge challenge answers (AWS
+# WAF's Challenge action: empty body, `x-amzn-waf-action: challenge`,
+# returned for every path including ones that do not exist). It therefore
+# shows the host answered, NOT that the target exists, so a dead link
+# behind such a host reads as healthy here.
+accept = ["200", "202"]
 
 # Mail links are not real HTTP targets and lychee SMTP probing is noisy
 # on shared hosts. The schema spells this as `include_mail = false`,
