@@ -106,10 +106,10 @@ class TestEndpointBinding:
         await probe_embedder_dims(
             provider="test-provider",
             model="test-embed-001",
-            endpoint=EmbeddingEndpoint(api_base="http://models.invalid:11434"),
+            endpoint=EmbeddingEndpoint(api_base="http://localhost:11434"),
         )
 
-        assert seen[0]["api_base"] == "http://models.invalid:11434"
+        assert seen[0]["api_base"] == "http://localhost:11434"
 
     async def test_the_credential_reaches_litellm(
         self, monkeypatch: pytest.MonkeyPatch
@@ -120,6 +120,7 @@ class TestEndpointBinding:
             provider="test-provider",
             model="test-embed-001",
             endpoint=EmbeddingEndpoint(
+                api_base="http://localhost:11434",
                 api_key="probe-secret",
                 extra_headers={"X-Test-Auth": "probe-secret"},
             ),

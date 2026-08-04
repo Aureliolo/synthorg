@@ -29,7 +29,10 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.cost_recording import resolve_currency
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
-from synthorg.providers.transport_policy import require_credential_safe_transport
+from synthorg.providers.transport_policy import (
+    require_confidential_transport,
+    require_credentialed_endpoint,
+)
 
 logger = get_logger(__name__)
 
@@ -144,17 +147,21 @@ def embedding_kwargs(
         The keyword arguments for ``litellm.aembedding``.
 
     Raises:
-        ProviderValidationError: If the endpoint carries a credential that
-            would be sent in cleartext beyond this machine's own network.
-            Re-checked here rather than trusted from resolution because
-            this is the boundary every embedding call passes through, and
-            an endpoint can be constructed without going through one.
+        ProviderValidationError: If the endpoint would be addressed in
+            cleartext beyond this machine's own network, or carries a
+            credential with no endpoint to send it to. Re-checked here
+            rather than trusted from resolution because this is the
+            boundary every embedding call passes through, and an endpoint
+            can be constructed without going through one.
     """
     kwargs: EmbeddingKwargs = {"model": model_ref, "input": inputs}
     if endpoint is None:
         return kwargs
+    # ``inputs`` is the text being embedded, so the destination is checked
+    # whether or not a credential rides along with it.
+    require_confidential_transport(endpoint.api_base, field="Embedding endpoint")
     if endpoint.api_key is not None or endpoint.extra_headers:
-        require_credential_safe_transport(endpoint.api_base, field="Embedding endpoint")
+        require_credentialed_endpoint(endpoint.api_base, field="Embedding endpoint")
     if endpoint.api_base is not None:
         kwargs["api_base"] = endpoint.api_base
     if endpoint.api_key is not None:

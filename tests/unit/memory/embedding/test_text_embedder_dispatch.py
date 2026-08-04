@@ -62,18 +62,22 @@ class TestServingEndpointBinding:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seen = _patch_aembedding(monkeypatch, dims=4)
-        embedder = _embedder(EmbeddingEndpoint(api_base="http://models.invalid:11434"))
+        embedder = _embedder(EmbeddingEndpoint(api_base="http://localhost:11434"))
 
         await embedder.embed_many(("remember this",))
 
-        assert seen[0]["api_base"] == "http://models.invalid:11434"
+        assert seen[0]["api_base"] == "http://localhost:11434"
         assert seen[0]["model"] == "test-provider/test-embed-001"
 
     async def test_the_credential_reaches_litellm(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         seen = _patch_aembedding(monkeypatch, dims=4)
-        embedder = _embedder(EmbeddingEndpoint(api_key="serving-secret"))
+        embedder = _embedder(
+            EmbeddingEndpoint(
+                api_base="http://localhost:11434", api_key="serving-secret"
+            )
+        )
 
         await embedder.embed_many(("remember this",))
 
@@ -95,10 +99,13 @@ class TestServingEndpointBinding:
         # Batching is what the recall path uses, so a per-call regression
         # would show up there first.
         seen = _patch_aembedding(monkeypatch, dims=4)
-        embedder = _embedder(EmbeddingEndpoint(api_base="http://models.invalid:11434"))
+        embedder = _embedder(EmbeddingEndpoint(api_base="http://localhost:11434"))
 
         vectors = await embedder.embed_many(("one", "two", "three"))
 
         assert len(vectors) == 3
         assert len(seen) == 1
-        assert seen[0]["api_base"] == "http://models.invalid:11434"
+        # The whole batch, in order: a count alone would pass on a call that
+        # dropped or reordered texts, and each vector is returned by index.
+        assert seen[0]["input"] == ["one", "two", "three"]
+        assert seen[0]["api_base"] == "http://localhost:11434"

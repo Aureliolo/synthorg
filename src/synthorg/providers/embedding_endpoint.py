@@ -16,7 +16,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_NOT_FOUND
 from synthorg.providers.drivers.litellm_auth import AuthContext, resolve_auth_material
 from synthorg.providers.errors import ProviderNotFoundError
-from synthorg.providers.transport_policy import require_credential_safe_transport
+from synthorg.providers.transport_policy import (
+    require_confidential_transport,
+    require_credentialed_endpoint,
+)
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -63,8 +66,9 @@ async def resolve_embedding_endpoint(
             binding the operator has to fix rather than one to guess past.
         AuthenticationError: If a wired catalog did not resolve a credential
             the provider's auth type requires.
-        ProviderValidationError: If the resolved credential would be sent in
-            cleartext to a target outside this machine's own network.
+        ProviderValidationError: If the endpoint would be addressed in
+            cleartext beyond this machine's own network, or a credential
+            resolved with no endpoint to send it to.
     """
     configs = await config_resolver.get_provider_configs()
     config = configs.get(provider)
@@ -89,10 +93,14 @@ async def resolve_embedding_endpoint(
             litellm_model=provider,
         )
     )
+    # Checked for every provider, not only credentialed ones: the request
+    # body is the text being embedded, which is company memory, so an
+    # AuthType.NONE provider at a public http:// endpoint leaks the thing
+    # the credential was only protecting access to.
+    field = f"Embedding provider {provider!r}"
+    require_confidential_transport(config.base_url, field=field)
     if material.api_key is not None or material.extra_headers:
-        require_credential_safe_transport(
-            config.base_url, field=f"Embedding provider {provider!r}"
-        )
+        require_credentialed_endpoint(config.base_url, field=field)
     return EmbeddingEndpoint(
         api_base=config.base_url,
         api_key=material.api_key,

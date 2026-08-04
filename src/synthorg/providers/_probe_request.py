@@ -24,7 +24,10 @@ from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.health_prober_helpers import truncate
-from synthorg.providers.transport_policy import require_credential_safe_transport
+from synthorg.providers.transport_policy import (
+    require_confidential_transport,
+    require_credentialed_endpoint,
+)
 from synthorg.tools.network_validator import DnsValidationOk
 from synthorg.tools.ssrf import build_pinned_transport
 
@@ -68,7 +71,8 @@ async def resolve_probe_api_key(
 
     Raises:
         ProviderValidationError: When a bearer credential is unresolvable,
-            or when sending it would cross cleartext to a non-local target.
+            when sending it would cross cleartext to a non-local target, or
+            when there is no configured endpoint to send it to.
     """
     # Gated on the same set ``build_auth_headers`` sends a bearer token
     # for. Resolving a narrower set than that one sends means every
@@ -84,7 +88,8 @@ async def resolve_probe_api_key(
     if key is None:
         msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
         raise ProviderValidationError(msg)
-    require_credential_safe_transport(config.base_url, field="Provider base_url")
+    require_confidential_transport(config.base_url, field="Provider base_url")
+    require_credentialed_endpoint(config.base_url, field="Provider base_url")
     return key
 
 

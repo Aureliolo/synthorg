@@ -6,6 +6,7 @@ from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -695,3 +696,34 @@ class TestWritePathEviction:
 
         summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 5
+
+    async def test_a_full_window_does_not_rebuild_on_every_write(self) -> None:
+        # Once 24 hours of traffic is larger than the threshold, every append
+        # finds the list over the line and the rebuild that follows frees
+        # nothing. Attempting one per append is what makes ordinary load
+        # quadratic; the spacing rule is the only thing preventing it.
+        threshold = 10
+        writes = 100
+        tracker = ProviderHealthTracker(auto_prune_threshold=threshold)
+        attempts = 0
+        real_prune = ProviderHealthTracker._prune_before
+
+        def _counting_prune(
+            instance: ProviderHealthTracker,
+            cutoff: datetime,
+        ) -> int:
+            nonlocal attempts
+            attempts += 1
+            return real_prune(instance, cutoff)
+
+        # Patched on the class: ``__slots__`` leaves no instance dict for
+        # a per-object override to live in.
+        with patch.object(ProviderHealthTracker, "_prune_before", _counting_prune):
+            for i in range(writes):
+                await tracker.record(
+                    _make_record(timestamp=self._NOW - timedelta(seconds=i)),
+                )
+
+        assert attempts <= writes // threshold
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
+        assert summary.calls_last_24h == writes

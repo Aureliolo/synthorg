@@ -12,11 +12,12 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PROVIDER_HEALTH_QUERIED,
+    API_PROVIDER_HEALTH_RECHECK_REFUSED,
     API_PROVIDER_HEALTH_RECHECKED,
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
 )
 from synthorg.observability.events.provider import PROVIDER_HEALTH_PROBE_FAILED
-from synthorg.providers.errors import ProviderTimeoutError
+from synthorg.providers.errors import ProviderTimeoutError, ProviderValidationError
 from synthorg.providers.health import ProviderHealthSummary
 from synthorg.providers.management.dtos import TestConnectionRequest
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
@@ -145,7 +146,47 @@ async def _call_provider(app_state: AppState, name: str) -> None:
         raise ProviderTimeoutError(msg, context={"provider": name}) from exc
 
 
-async def _call_provider_contained(app_state: AppState, name: str) -> None:
+async def _require_affordable_fan_out(
+    app_state: AppState,
+    *,
+    provider_count: int,
+) -> None:
+    """Refuse a sweep whose fan-out costs more than the operator allowed.
+
+    The rate limit bounds how often this runs; it cannot bound what one run
+    costs, because that scales with a number the requester does not choose.
+    Every provider in the sweep is issued a real billed completion, so an
+    install with many providers turns one permitted request into
+    proportionally more spend.
+
+    Args:
+        app_state: Application state, for the resolver.
+        provider_count: How many providers the sweep would call.
+
+    Raises:
+        ProviderValidationError: If *provider_count* exceeds
+            ``api.health_recheck_max_providers``.
+    """
+    ceiling = await config_resolver_of(app_state).get_int(
+        "api", "health_recheck_max_providers"
+    )
+    if provider_count <= ceiling:
+        return
+    msg = (
+        f"Rechecking all {provider_count} providers exceeds the "
+        f"{ceiling}-provider ceiling for one sweep, and each one costs a "
+        f"billed completion. Raise api.health_recheck_max_providers, or "
+        f"recheck providers individually."
+    )
+    logger.warning(
+        API_PROVIDER_HEALTH_RECHECK_REFUSED,
+        provider_count=provider_count,
+        ceiling=ceiling,
+    )
+    raise ProviderValidationError(msg)
+
+
+async def _call_provider_contained(app_state: AppState, name: str) -> bool:
     """Call one provider, keeping its failure to itself.
 
     The sweep's containment, and only the sweep's: a run across every provider
@@ -153,6 +194,12 @@ async def _call_provider_contained(app_state: AppState, name: str) -> None:
     which a bare ``TaskGroup`` member would cause by cancelling its siblings.
     The single-provider recheck deliberately does not use this, because there
     it would turn a failed call into a stale summary presented as a fresh one.
+
+    Returns:
+        True when the call completed. The sweep needs to know, because a
+        provider whose call never happened has only its previously recorded
+        summary to report, and this endpoint's whole promise is that what it
+        returns came from a call it just made.
 
     Raises:
         asyncio.CancelledError: Propagated so shutdown is not swallowed.
@@ -163,15 +210,17 @@ async def _call_provider_contained(app_state: AppState, name: str) -> None:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; see below
         # lint-allow: swallow-ok -- one provider's fault must not discard the
-        # sweep's other verdicts; the caller reports this provider unchanged.
+        # sweep's other verdicts; the caller omits this provider instead.
         reraise_critical(exc)
         logger.warning(
             PROVIDER_HEALTH_PROBE_FAILED,
             provider=name,
-            note="recheck call failed; health keeps its recorded value",
+            note="recheck call failed; provider omitted from the sweep",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        return False
+    return True
 
 
 async def _safe_resolve_health_summary(
@@ -283,14 +332,22 @@ async def recheck_all_provider_health(
     is read, for no gain.
 
     Returns:
-        Mapping of provider name to the health its fresh call produced.
-        A provider whose summary could not be read is omitted rather than
-        failing the sweep.
+        Mapping of provider name to the health its fresh call produced. A
+        provider is omitted when its call failed or its summary could not be
+        read, because this endpoint's answer is "what calling it just found";
+        returning the summary already on file for a provider that was never
+        successfully called would present a stale verdict as a fresh one.
+
+    Raises:
+        ProviderFanOutTooLargeError: If the configured provider count exceeds
+            ``api.health_recheck_max_providers``.
     """
     providers = await config_resolver_of(app_state).get_provider_configs()
+    await _require_affordable_fan_out(app_state, provider_count=len(providers))
 
     async def _recheck(name: str) -> ProviderHealthSummary | None:
-        await _call_provider_contained(app_state, name)
+        if not await _call_provider_contained(app_state, name):
+            return None
         return await _safe_resolve_health_summary(app_state, name)
 
     async with asyncio.TaskGroup() as tg:

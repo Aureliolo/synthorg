@@ -44,8 +44,9 @@ def _catalog(**credentials: str) -> _Configured:
 
 class TestEndpointResolution:
     async def test_the_configured_base_url_is_returned(self) -> None:
-        # Cleartext and credential-less: the shape every self-hosted preset
-        # ships, which the transport rule deliberately leaves alone.
+        # Cleartext and credential-less on the local network: the shape
+        # every self-hosted preset ships, which the transport rule
+        # deliberately leaves alone.
         endpoint = await resolve_embedding_endpoint(
             "test-provider",
             config_resolver=_resolver(
@@ -53,14 +54,14 @@ class TestEndpointResolution:
                     "test-provider": ProviderConfig(
                         driver="scripted",
                         auth_type=AuthType.NONE,
-                        base_url="http://models.invalid:11434",
+                        base_url="http://localhost:11434",
                     )
                 }
             ),
             catalog=None,
         )
 
-        assert endpoint.api_base == "http://models.invalid:11434"
+        assert endpoint.api_base == "http://localhost:11434"
         assert endpoint.api_key is None
 
     async def test_a_provider_without_a_base_url_resolves_to_none(self) -> None:
@@ -149,8 +150,8 @@ class TestEndpointResolution:
         assert endpoint.api_key is None
 
 
-class TestCleartextCredentials:
-    """A credential may cross http only to this machine's own network."""
+class TestCleartextTransport:
+    """An embedding call may cross http only to this machine's own network."""
 
     async def _resolve(self, base_url: str, **catalog: str) -> EmbeddingEndpoint:
         """Resolve an API-key provider configured at *base_url*."""
@@ -173,6 +174,25 @@ class TestCleartextCredentials:
         with pytest.raises(ProviderValidationError):
             _ = await self._resolve(
                 "http://models.invalid:11434", api_key="embed-secret"
+            )
+
+    async def test_a_remote_cleartext_endpoint_is_refused_uncredentialed(self) -> None:
+        # The request body is the text being embedded, which is company
+        # memory, so a provider that needs no credential still may not send
+        # it across the open internet in the clear.
+        with pytest.raises(ProviderValidationError):
+            _ = await resolve_embedding_endpoint(
+                "test-provider",
+                config_resolver=_resolver(
+                    **{
+                        "test-provider": ProviderConfig(
+                            driver="scripted",
+                            auth_type=AuthType.NONE,
+                            base_url="http://models.invalid:11434",
+                        )
+                    }
+                ),
+                catalog=None,
             )
 
     @pytest.mark.parametrize(

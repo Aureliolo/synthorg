@@ -85,8 +85,15 @@ async def apply_provider_change(
     # router is stale. On failure the DB write is rolled back so the
     # persisted blob and the running registry stay consistent, and an ERROR
     # alert fires reporting whether the rollback actually restored storage.
+    from synthorg.providers._driver_binding import (  # noqa: PLC0415
+        rebind_health_recorders,
+    )
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
+    # Bound before the swap, so the registry is never reachable in an
+    # unbound state: every driver in it is new, and an unbound one reports
+    # its completions nowhere.
+    rebind_health_recorders(app_state, registry)
     try:
         app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:

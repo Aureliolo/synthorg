@@ -904,6 +904,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="health_recheck_max_providers",
+        type=SettingType.INTEGER,
+        default="25",
+        description=(
+            "Ceiling on how many providers one recheck-all request may call."
+            " The rate limit bounds how often the sweep runs; this bounds what"
+            " a single run costs, which the rate limit cannot: every provider"
+            " in the sweep is issued a real billed completion, so an operator"
+            " who configures many providers turns one allowed request into"
+            " proportionally more spend. Exceeding the ceiling refuses the"
+            " sweep rather than truncating it, because a partial sweep"
+            " silently answers a different question than the one asked."
+            " Per-provider rechecks are unaffected. Resolved per request, so a"
+            " change applies without a restart."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="webhook_receipt_cleanup_enabled",
         type=SettingType.BOOLEAN,
         default="true",

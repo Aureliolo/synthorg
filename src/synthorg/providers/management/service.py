@@ -61,7 +61,6 @@ from synthorg.observability.events.security import (
     SECURITY_PROVIDER_DELETED,
     SECURITY_PROVIDER_UPDATED,
 )
-from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
 )
@@ -84,15 +83,9 @@ from synthorg.providers.management._capabilities_mixin import (
 from synthorg.providers.management._capability_helpers import delete_local_model
 from synthorg.providers.management._config_transforms import (
     apply_update,
-    build_provider_config,
 )
 from synthorg.providers.management._credential_helpers import (
-    apply_update_with_credential,
     delete_provider_credential,
-    resolve_provider_api_key,
-    rollback_credential,
-    store_provider_api_key,
-    unwind,
 )
 from synthorg.providers.management._discovery_mixin import ProviderDiscoveryMixin
 from synthorg.providers.management._persistence import apply_provider_change
@@ -100,6 +93,7 @@ from synthorg.providers.management._preset_creation import create_provider_from_
 from synthorg.providers.management._tool_call_capability_mixin import (
     ProviderToolCallCapabilityMixin,
 )
+from synthorg.providers.management._transaction_mixin import ProviderTransactionMixin
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.dtos import (
@@ -257,7 +251,10 @@ def _cheapest_probe_model_id(models: tuple[ProviderModelConfig, ...]) -> str:
 
 
 class ProviderManagementService(
-    ProviderDiscoveryMixin, ProviderCapabilitiesMixin, ProviderToolCallCapabilityMixin
+    ProviderDiscoveryMixin,
+    ProviderCapabilitiesMixin,
+    ProviderToolCallCapabilityMixin,
+    ProviderTransactionMixin,
 ):
     """Runtime CRUD service for LLM providers.
 
@@ -323,6 +320,13 @@ class ProviderManagementService(
         # wiring, after this service exists. ``None`` leaves a mutation
         # unprobed rather than failing it.
         self._probe_requester: ProviderProbeRequester | None = None
+        # One in-flight connection test per provider. A test is a real billed
+        # completion, and the dashboard reaches this from a per-provider
+        # recheck, an all-provider sweep and the connection-test button at
+        # once, so without this three arrivals for one provider bill three
+        # calls to answer the same question. Keyed per provider rather than
+        # shared, so a slow provider cannot hold up a test of a different one.
+        self._test_locks: dict[str, asyncio.Lock] = {}
 
     def set_probe_requester(self, requester: ProviderProbeRequester) -> None:
         """Wire the health prober used to probe a provider on mutation.
@@ -401,77 +405,6 @@ class ProviderManagementService(
             raise ProviderNotFoundError(msg)
         return config
 
-    async def _persist_new_provider(
-        self,
-        request: CreateProviderRequest,
-        providers: Mapping[str, ProviderConfig],
-    ) -> ProviderConfig:
-        """Mint the credential, persist the config, and unwind on any failure.
-
-        Catalog-only credentials: an api_key supplied at the boundary is
-        minted into a ConnectionCatalog connection FIRST, then threaded into
-        the config as connection_name -- API_KEY auth mandates it, so the
-        config could not validate with the secret embedded or absent. The
-        secret is never persisted on the ProviderConfig.
-
-        Args:
-            request: The create request carrying the optional api_key.
-            providers: Pre-create snapshot, restored if persistence succeeds
-                and a later step then fails.
-
-        Returns:
-            The persisted config.
-
-        Raises:
-            Exception: Whatever failed, after the credential and the config
-                have been unwound to the pre-create state.
-        """
-        mints_api_key = AUTH_TYPE_DESCRIPTORS[request.auth_type].supports_api_key
-        conn_name: str | None = None
-        if mints_api_key and request.api_key is not None:
-            conn_name = await store_provider_api_key(
-                self._app_state,
-                request.name,
-                request.api_key.get_secret_value(),
-            )
-        try:
-            # Config construction stays inside the try: a validation
-            # failure here must also unwind the catalog mint above,
-            # else the secret is left orphaned with no owning provider.
-            new_config = build_provider_config(request, connection_name=conn_name)
-            new_providers = {**providers, request.name: new_config}
-            await self._validate_and_persist(new_providers)
-        except BaseException:
-            # Pre-persist failure (build / validate / persist): nothing is
-            # durably stored, so drop the minted secret to avoid an
-            # orphaned connection with no owning provider.
-            if conn_name is not None:
-                await unwind(
-                    delete_provider_credential(self._app_state, request.name),
-                    provider=request.name,
-                    step="delete_credential",
-                )
-            raise
-        try:
-            await self._allowlist.update_for_create(new_config)
-        except BaseException:
-            # Post-persist failure: the config (referencing conn_name) is
-            # already stored, so roll it back to the pre-create snapshot
-            # BEFORE dropping the secret -- otherwise the persisted config
-            # would point at a deleted credential. Only drop the secret if
-            # the restore actually succeeded; a swallowed restore failure
-            # leaves the config persisted, so deleting the credential it
-            # references would orphan it.
-            restored = await self._restore_providers(providers)
-            if restored and conn_name is not None:
-                await unwind(
-                    delete_provider_credential(self._app_state, request.name),
-                    provider=request.name,
-                    step="delete_credential",
-                )
-            raise
-        return new_config
-
     async def create_provider(
         self,
         request: CreateProviderRequest,
@@ -521,79 +454,6 @@ class ProviderManagementService(
         # itself, so it needs no exclusion.
         await self._probe_after_mutation(request.name)
         return new_config
-
-    async def _persist_updated_provider(
-        self,
-        name: str,
-        request: UpdateProviderRequest,
-        existing: ProviderConfig,
-        providers: Mapping[str, ProviderConfig],
-    ) -> ProviderConfig:
-        """Apply the update, persist it, and unwind both halves on failure.
-
-        ``apply_update_with_credential`` mutates the catalog in both
-        directions: it mints/replaces the secret when an api_key is supplied,
-        and DELETES the backing connection when the update clears the key or
-        switches to an auth type that has none. The prior secret is snapshotted
-        before any of those so a failed persist / allowlist step restores it.
-
-        Args:
-            name: Provider being updated.
-            request: The update to apply.
-            existing: Config as it stands before the update.
-            providers: Pre-update snapshot, restored if a later step fails.
-
-        Returns:
-            The persisted, updated config.
-
-        Raises:
-            Exception: Whatever failed, after the credential and the config
-                have been unwound to the pre-update state.
-        """
-        final_auth_type = (
-            request.auth_type if request.auth_type is not None else existing.auth_type
-        )
-        supports_api_key = AUTH_TYPE_DESCRIPTORS[final_auth_type].supports_api_key
-        credential_mutated = (
-            supports_api_key and (request.api_key is not None or request.clear_api_key)
-        ) or (not supports_api_key and existing.connection_name is not None)
-        prior_api_key: str | None = (
-            await resolve_provider_api_key(self._app_state, existing)
-            if credential_mutated
-            else None
-        )
-        try:
-            updated = await apply_update_with_credential(
-                self._app_state, name, existing, request
-            )
-            new_providers = {**providers, name: updated}
-            await self._validate_and_persist(new_providers)
-        except BaseException:
-            await unwind(
-                rollback_credential(
-                    self._app_state, name, prior_api_key, mutated=credential_mutated
-                ),
-                provider=name,
-                step="rollback_credential",
-            )
-            raise
-        try:
-            await self._allowlist.update_for_update(existing, updated, new_providers)
-        except BaseException:
-            # Roll the config back first; only mutate the credential if the
-            # restore succeeded, else the still-persisted updated config
-            # would be left referencing a rolled-back credential.
-            restored = await self._restore_providers(providers)
-            if restored:
-                await unwind(
-                    rollback_credential(
-                        self._app_state, name, prior_api_key, mutated=credential_mutated
-                    ),
-                    provider=name,
-                    step="rollback_credential",
-                )
-            raise
-        return updated
 
     async def update_provider(
         self,
@@ -687,6 +547,11 @@ class ProviderManagementService(
     ) -> TestConnectionResponse:
         """Test connectivity to a provider.
 
+        Single-flight per provider: concurrent callers asking about the same
+        provider wait on one in-flight test rather than each billing their
+        own completion. Serialising by name rather than globally keeps a slow
+        provider from delaying a test of a different one.
+
         Returns:
             A ``TestConnectionResponse`` with the probe outcome (success,
             latency, model tested, and any error message).
@@ -697,6 +562,38 @@ class ProviderManagementService(
                 by the probe itself and by the health recording that follows
                 it. A provider that simply could not be reached is not this
                 case; that returns an unsuccessful response.
+        """
+        async with self._test_lock_for(name):
+            return await self._test_connection_once(name, request)
+
+    def _test_lock_for(self, name: str) -> asyncio.Lock:
+        """The single-flight lock guarding tests of *name*.
+
+        Created on first use and kept, because the set of providers is
+        operator-sized and a lock is cheap; evicting one would need to prove
+        nothing is waiting on it, which is the bug this guards against.
+
+        Returns:
+            The lock for *name*.
+        """
+        lock = self._test_locks.get(name)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._test_locks[name] = lock
+        return lock
+
+    async def _test_connection_once(
+        self,
+        name: str,
+        request: TestConnectionRequest,
+    ) -> TestConnectionResponse:
+        """Run one connection test, already serialised per provider.
+
+        Returns:
+            A ``TestConnectionResponse`` with the probe outcome.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
         """
         providers = await self._config_resolver.get_provider_configs()
         config = providers.get(name)

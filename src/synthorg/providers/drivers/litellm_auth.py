@@ -70,6 +70,71 @@ class AuthMaterial:
     extra_headers: Mapping[str, str] | None = None
 
 
+def _catalog_bound(ctx: AuthContext) -> bool:
+    """Whether the catalog is the sole source of this provider's credential.
+
+    A provider naming a connection has had its credential moved into the
+    catalog, so the embedded config fields are whatever was there before
+    that move. Reading them once the catalog is wired resurrects a
+    credential the operator has since rotated or revoked.
+
+    Returns:
+        True when the embedded config fields must not be consulted.
+    """
+    return ctx.catalog_present and ctx.config.connection_name is not None
+
+
+def _resolve_bearer(ctx: AuthContext) -> str | None:
+    """Resolve the catalog-only bearer key for ``API_KEY``.
+
+    Returns:
+        The key, or ``None`` when the catalog did not supply one.
+    """
+    return ctx.resolved.get("api_key") if ctx.resolved else None
+
+
+def _resolve_oauth(ctx: AuthContext) -> str | None:
+    """Resolve the OAuth bearer, which has no embedded fallback.
+
+    Returns:
+        The token under ``access_token`` (or the ``api_key`` fallback),
+        or ``None`` when the catalog supplied neither.
+    """
+    if not ctx.resolved:
+        return None
+    return ctx.resolved.get("access_token") or ctx.resolved.get("api_key")
+
+
+def _resolve_custom_header(ctx: AuthContext) -> Mapping[str, str] | None:
+    """Resolve the custom auth header, preferring the catalog.
+
+    Returns:
+        The single-entry header mapping, or ``None`` when either half is
+        missing from every source this provider may read.
+    """
+    resolved = ctx.resolved
+    name = resolved.get("custom_header_name") if resolved else None
+    value = resolved.get("custom_header_value") if resolved else None
+    if not _catalog_bound(ctx):
+        name = name or ctx.config.custom_header_name
+        value = value or ctx.config.custom_header_value
+    if name and value:
+        return {name: value}
+    return None
+
+
+def _resolve_subscription(ctx: AuthContext) -> str | None:
+    """Resolve the subscription token, preferring the catalog.
+
+    Returns:
+        The token, or ``None`` when no readable source has one.
+    """
+    token = ctx.resolved.get("subscription_token") if ctx.resolved else None
+    if token is None and not _catalog_bound(ctx):
+        token = ctx.config.subscription_token
+    return token
+
+
 def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
     """Resolve a provider's credential per its auth type.
 
@@ -87,65 +152,35 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
         AuthenticationError: If a wired catalog did not resolve a
             credential the auth type requires.
     """
-    config = ctx.config
-    resolved = ctx.resolved
-    match config.auth_type:
+    # ``kind`` names the credential in the fail-closed error, so every
+    # branch that can fall through sets it. Passing the request on
+    # unauthenticated would leak the prompt to an endpoint that never
+    # accepted it, so the fall-through raises rather than returning empty
+    # whenever a catalog is wired.
+    match ctx.config.auth_type:
         case AuthType.API_KEY:
-            # Catalog-only key. Fail closed when a catalog is wired but did
-            # not resolve it; with no catalog at all (degraded / test) omit.
-            key = resolved.get("api_key") if resolved else None
-            if key is not None:
+            if (key := _resolve_bearer(ctx)) is not None:
                 return AuthMaterial(api_key=key)
-            if ctx.catalog_present:
-                _raise_unresolved_credential(
-                    ctx.provider_name, ctx.litellm_model, "API-key"
-                )
+            kind = "API-key"
         case AuthType.OAUTH:
-            # Catalog-backed OAuth: bearer under ``access_token`` (or the
-            # fallback ``api_key`` key). No embedded credential, so fail
-            # closed when a catalog is wired but neither resolves.
-            key = None
-            if resolved:
-                key = resolved.get("access_token") or resolved.get("api_key")
-            if key is not None:
+            if (key := _resolve_oauth(ctx)) is not None:
                 return AuthMaterial(api_key=key)
-            if ctx.catalog_present:
-                _raise_unresolved_credential(
-                    ctx.provider_name, ctx.litellm_model, "OAuth"
-                )
+            kind = "OAuth"
         case AuthType.CUSTOM_HEADER:
-            # Prefer catalog-resolved credentials so a ``connection_name``
-            # provider can ship the header without duplicating it in
-            # config. Fall back to the embedded fields for the
-            # catalog-less path.
-            header_name = resolved.get("custom_header_name") if resolved else None
-            if header_name is None:
-                header_name = config.custom_header_name
-            header_value = resolved.get("custom_header_value") if resolved else None
-            if header_value is None:
-                header_value = config.custom_header_value
-            if header_name and header_value:
-                return AuthMaterial(extra_headers={header_name: header_value})
-            if ctx.catalog_present:
-                _raise_unresolved_credential(
-                    ctx.provider_name, ctx.litellm_model, "Custom-header"
-                )
+            if (headers := _resolve_custom_header(ctx)) is not None:
+                return AuthMaterial(extra_headers=headers)
+            kind = "Custom-header"
         case AuthType.SUBSCRIPTION:
-            # Pass as api_key -- the correct kwarg for LiteLLM
-            # authentication.  Do NOT use "auth_token" -- it is
-            # not a litellm.completion() parameter and is silently
-            # discarded.
-            token = resolved.get("subscription_token") if resolved else None
-            if token is None:
-                token = config.subscription_token
-            if token is not None:
+            # Passed as api_key -- the correct kwarg for LiteLLM
+            # authentication. Do NOT use "auth_token"; it is not a
+            # litellm.completion() parameter and is silently discarded.
+            if (token := _resolve_subscription(ctx)) is not None:
                 return AuthMaterial(api_key=token)
-            if ctx.catalog_present:
-                _raise_unresolved_credential(
-                    ctx.provider_name, ctx.litellm_model, "Subscription"
-                )
+            kind = "Subscription"
         case AuthType.NONE:
-            pass
+            return AuthMaterial()
+    if ctx.catalog_present:
+        _raise_unresolved_credential(ctx.provider_name, ctx.litellm_model, kind)
     return AuthMaterial()
 
 

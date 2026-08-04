@@ -43,6 +43,8 @@ import { installStorageShim } from '@/storage-shim'
 import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { resetDashboardPrefs } from '@/stores/dashboard-prefs'
 import { resetHealthStore } from '@/stores/health'
+// Pure module-scope counter (imports nothing), so it is safe here.
+import { resetHealthRevision } from '@/stores/providers/health-revision'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
@@ -328,6 +330,10 @@ afterEach(() => {
   // do not bleed into the next in the same worker, and so a probe still in
   // flight cannot land on the next test's state.
   resetHealthStore()
+  // The provider-health revision counter lives in module scope, so a test
+  // that rechecks leaves it advanced and the next test's health reads
+  // silently drop themselves as stale.
+  resetHealthRevision()
   // Plan-forecast store holds a per-view forecast + request token; clear it so
   // a prior test's forecast does not bleed into the next in the same worker.
   usePlanForecastStore.getState().clear()

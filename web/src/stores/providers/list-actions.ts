@@ -7,7 +7,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
 import { emitPlainErrorToast, emitSuccessToast } from './crud-helpers'
-import { bumpHealthRevision } from './health-revision'
+import { bumpHealthRevision, currentHealthRevision } from './health-revision'
 import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
 import type { ProvidersGet, ProvidersSet } from './types'
@@ -15,6 +15,37 @@ import type { ProvidersGet, ProvidersSet } from './types'
 const log = createLogger('providers')
 
 let _listRequestId = 0
+
+/**
+ * Read each provider's recorded health, best-effort and per provider.
+ *
+ * @returns The map to apply, or `null` when a recheck landed while the
+ * reads were in flight: these replay the stored aggregate, so they are no
+ * fresher than the verdict they would undo.
+ */
+async function readHealthMap(
+  names: readonly string[],
+): Promise<Record<string, ProviderHealthSummary> | null> {
+  const healthRevision = currentHealthRevision()
+  const results = await Promise.allSettled(
+    names.map((name) => getProviderHealth(name)),
+  )
+  if (currentHealthRevision() !== healthRevision) return null
+  const healthMap: Record<string, ProviderHealthSummary> = {}
+  for (let i = 0; i < names.length; i++) {
+    const result = results[i]!
+    if (result.status === 'fulfilled') {
+      healthMap[names[i]!] = result.value
+    } else {
+      log.warn(
+        'Failed to fetch health for provider:',
+        names[i],
+        getErrorMessage(result.reason),
+      )
+    }
+  }
+  return healthMap
+}
 
 export function createListActions(set: ProvidersSet, get: ProvidersGet) {
   return {
@@ -28,26 +59,8 @@ export function createListActions(set: ProvidersSet, get: ProvidersGet) {
         const providers = normalizeProviders(record)
         set({ providers })
 
-        // Fetch health in parallel (best-effort, with logging)
-        const names = providers.map((p) => p.name)
-        const healthResults = await Promise.allSettled(
-          names.map((name) => getProviderHealth(name)),
-        )
-        if (!isLatest()) return
-        const healthMap: Record<string, ProviderHealthSummary> = {}
-        for (let i = 0; i < names.length; i++) {
-          const result = healthResults[i]!
-          if (result.status === 'fulfilled') {
-            healthMap[names[i]!] = result.value
-          } else {
-            const reason = getErrorMessage(result.reason)
-            log.warn(
-              'Failed to fetch health for provider:',
-              names[i],
-              reason,
-            )
-          }
-        }
+        const healthMap = await readHealthMap(providers.map((p) => p.name))
+        if (!isLatest() || healthMap === null) return
         set({ healthMap })
       } catch (err) {
         if (!isLatest()) return

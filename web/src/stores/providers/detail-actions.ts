@@ -137,9 +137,17 @@ async function recheckProviderHealthImpl(
   set({ recheckingHealth: true })
   try {
     const summary = await recheckProviderHealth(name)
-    if (get().selectedProvider?.name !== name) return
+    const stillSelected = get().selectedProvider?.name === name
     bumpHealthRevision()
-    set({ selectedProviderHealth: summary })
+    // The list's map is written whether or not this provider is still the
+    // open one: the verdict is about the provider, not about what happens
+    // to be on screen, and the grid badge reads only from the map. Without
+    // this, going back to the list showed the verdict the recheck replaced.
+    set((state) => ({
+      healthMap: { ...state.healthMap, [name]: summary },
+      ...(stillSelected ? { selectedProviderHealth: summary } : {}),
+    }))
+    if (!stillSelected) return
     // Announced, not just rendered: the badge is the only thing that moves,
     // and a colour change is invisible to a screen reader that was not
     // already on it.

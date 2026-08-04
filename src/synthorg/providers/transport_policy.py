@@ -1,18 +1,24 @@
 # module-kind: code
-"""Whether a provider credential may travel to a configured endpoint.
+"""Whether a configured endpoint may be addressed in the clear.
 
 A provider's ``base_url`` is allowed to be cleartext, because the whole
 point of the field is self-hosted inference: the shipped presets address
-Ollama, LM Studio and vLLM over plain HTTP. Attaching a credential to one
-of those requests is a different question, and it is the one this module
-answers: a bearer token or custom auth header sent over ``http://`` is
-readable by anything on the path between here and the endpoint.
+Ollama, LM Studio and vLLM over plain HTTP. Leaving the operator's own
+network in the clear is a different question, and it is the one this
+module answers.
 
-The rule is transport-scoped rather than credential-scoped, so both
-embedding dispatch and the health prober decide it the same way: a
-credential may cross cleartext only to a target that is this machine or
-its own private network, where "the path" does not leave the operator's
-trust boundary. A cleartext endpoint carrying no credential is untouched.
+The rule is about the destination, not about what the request happens to
+carry, because both halves of an outbound request are confidential. A
+bearer token or custom auth header over ``http://`` is readable by
+anything on the path; so is the text an embedding request is asking to be
+embedded, which is company memory. Keying the check on the credential
+alone would leave a provider that needs no credential sending memory to a
+public host in cleartext.
+
+So an explicit endpoint may be cleartext only when it names this machine
+or its own private network, where "the path" does not leave the
+operator's trust boundary. Everything else must use TLS. Local self-hosted
+inference is untouched, which is the configuration the field exists for.
 
 The residual gap is deliberate: a private-network endpoint addressed by a
 DNS name (``http://vllm.lan:8000``) cannot be classified without
@@ -21,101 +27,99 @@ refused rather than guessed at. An operator reaches it by naming its
 address or by serving it over TLS.
 """
 
-import ipaddress
 from typing import Final
 from urllib.parse import urlparse
 
+from synthorg.core.url_locality import is_local_url
 from synthorg.providers.errors import ProviderValidationError
 
 _SECURE_SCHEME: Final[str] = "https"
 _CLEARTEXT_SCHEME: Final[str] = "http"
 
-#: Names that resolve to this machine by definition rather than by
-#: configuration. ``host.docker.internal`` is Docker's reserved alias for
-#: the container host, so it can no more reach a third party than
-#: ``localhost`` can; the shipped self-hosted presets use both.
-_LOCAL_HOSTNAMES: Final[frozenset[str]] = frozenset(
-    {"localhost", "host.docker.internal"}
-)
 
-
-def _is_local_target(host: str) -> bool:
-    """Whether *host* names this machine or its own private network.
-
-    Returns:
-        True when a cleartext request to *host* stays inside the
-        operator's trust boundary.
-    """
-    # A trailing dot is a fully-qualified form of the same name, and case
-    # is not significant in a hostname, so neither may decide the verdict.
-    normalized = host.rstrip(".").lower()
-    if normalized in _LOCAL_HOSTNAMES:
-        return True
-    try:
-        addr = ipaddress.ip_address(normalized)
-    except ValueError:
-        # A DNS name that is not a known-local alias. Classifying it would
-        # take a resolution whose answer can change between now and the
-        # request, so it is not local as far as this decision goes.
-        return False
-    # IPv4-mapped IPv6 (``::ffff:127.0.0.1``) reports neither ``is_private``
-    # nor ``is_loopback`` on the IPv6Address, so unwrap before asking.
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-        addr = addr.ipv4_mapped
-    return addr.is_loopback or addr.is_private or addr.is_link_local
-
-
-def is_credential_safe_transport(url: str | None) -> bool:
-    """Whether a credential sent to *url* stays out of a stranger's reach.
+def is_confidential_transport(url: str | None) -> bool:
+    """Whether a request to *url* stays out of a stranger's reach.
 
     Args:
         url: The configured endpoint, or ``None`` when none is configured
             and the driver addresses the provider's own hosted API.
 
     Returns:
-        True when *url* may carry a credential.
+        True when *url* may carry confidential content.
     """
     if url is None:
         # Nothing is configured, so the driver addresses the provider's own
         # hosted API over its published (TLS) endpoint. There is no
-        # operator-supplied target here to send a credential to.
+        # operator-supplied target here to send anything to.
         return True
-    parsed = urlparse(url)
-    if parsed.scheme == _SECURE_SCHEME:
+    try:
+        scheme = urlparse(url).scheme
+    except ValueError:
+        # A malformed authority (a bad port) makes the target unreadable,
+        # so there is nothing to classify.
+        return False
+    if scheme == _SECURE_SCHEME:
         return True
-    if parsed.scheme != _CLEARTEXT_SCHEME:
+    if scheme != _CLEARTEXT_SCHEME:
         # Every configured URL is validated to http(s) upstream, so an
         # unknown scheme here is a target this rule cannot reason about.
         return False
-    try:
-        host = parsed.hostname
-    except ValueError:
-        # A malformed authority (a bad port) makes the host unreadable, so
-        # there is nothing to classify.
-        return False
-    return host is not None and _is_local_target(host)
+    # Locality is asked of the same classifier the rest of the system uses,
+    # so "local" cannot mean one thing to the model matcher and another
+    # here. A DNS name it cannot place is not local: settling it would take
+    # a resolution whose answer can change before the request goes out.
+    return is_local_url(url)
 
 
-def require_credential_safe_transport(url: str | None, *, field: str) -> None:
-    """Refuse to send a credential over cleartext to a non-local target.
+def require_confidential_transport(url: str | None, *, field: str) -> None:
+    """Refuse to address a non-local target in the clear.
 
     Args:
-        url: The configured endpoint the credential would be sent to.
+        url: The configured endpoint the request would be sent to.
         field: What the endpoint is, for the operator-facing message.
 
     Raises:
-        ProviderValidationError: When *url* would carry the credential in
-            the clear beyond this machine's own network.
+        ProviderValidationError: When *url* would carry the request in the
+            clear beyond this machine's own network.
     """
-    if is_credential_safe_transport(url):
+    if is_confidential_transport(url):
         return
     msg = (
-        f"{field} is configured over http, so its credential would be sent "
-        f"in cleartext to a target outside this machine's own network. "
-        f"Serve the endpoint over https, or address it by its private "
-        f"network address if it is self-hosted."
+        f"{field} is configured over http to a target outside this machine's "
+        f"own network, so both its credential and the content it sends would "
+        f"travel in cleartext. Serve the endpoint over https, or address it "
+        f"by its private network address if it is self-hosted."
     )
     raise ProviderValidationError(msg)
 
 
-__all__ = ["is_credential_safe_transport", "require_credential_safe_transport"]
+def require_credentialed_endpoint(url: str | None, *, field: str) -> None:
+    """Refuse to attach a credential with no endpoint to attach it to.
+
+    A credential and no ``api_base`` leaves the driver to route from its
+    own defaults, which for several providers is a cleartext localhost
+    guess. The credential then goes wherever that guess lands, which is
+    neither the operator's choice nor necessarily their machine.
+
+    Args:
+        url: The configured endpoint, which must be present here.
+        field: What the endpoint is, for the operator-facing message.
+
+    Raises:
+        ProviderValidationError: When *url* is absent.
+    """
+    if url is not None:
+        return
+    msg = (
+        f"{field} resolved a credential but no endpoint to send it to, so "
+        f"the driver would route it by its own default. Configure the "
+        f"provider's base_url."
+    )
+    raise ProviderValidationError(msg)
+
+
+__all__ = [
+    "is_confidential_transport",
+    "require_confidential_transport",
+    "require_credentialed_endpoint",
+]

@@ -175,13 +175,19 @@ describe('HealthPopoverContent remediation links', () => {
     // cycles, so an operator who had just fixed a provider had no way to say
     // "look again" short of opening it and re-saving it.
     const recheckAllHealth = vi.fn(() => Promise.resolve())
+    const fetchHealth = vi.fn(() => Promise.resolve())
     // One field overridden on the real store rather than a whole replacement
     // snapshot: anything else the tree reads would otherwise be undefined and
-    // hide a genuine mismatch.
+    // hide a genuine mismatch. The trailing refresh is stubbed as well, so the
+    // press is not left half-finished against a live snapshot fetch.
     useProvidersStore.setState({ recheckAllHealth })
+    useHealthStore.setState({ fetchHealth })
     renderContent({ providersState: 'down' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Recheck now' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Recheck now' })).toBeEnabled()
+    })
 
     expect(recheckAllHealth).toHaveBeenCalledOnce()
   })

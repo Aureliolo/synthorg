@@ -3,6 +3,9 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test-setup'
 import { useProvidersStore } from '@/stores/providers'
 import { resetHealthRevision } from '@/stores/providers/health-revision'
+import { buildProvider } from '@/mocks/handlers/providers/crud'
+import { paginatedEnvelopeFor } from '@/mocks/handlers/helpers'
+import type { listProviders } from '@/api/endpoints/providers'
 
 /**
  * Provider health has to be re-derivable from the dashboard.
@@ -166,6 +169,112 @@ describe('provider health recheck', () => {
     expect(useProvidersStore.getState().selectedProvider?.name).toBe('other-provider')
     expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe(
       'degraded',
+    )
+  })
+
+  it('writes the list map from an individual recheck too', async () => {
+    // The grid badge reads only the map, so a recheck that moved the detail
+    // badge and nothing else showed the corrected provider as still broken
+    // the moment the operator went back to the list.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'test-provider' } as never,
+      healthMap: { 'test-provider': { health_status: 'down' } as never },
+    })
+    server.use(
+      http.post('/api/v1/providers/:name/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'up' },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+      http.get('/api/v1/providers/:name/health', () =>
+        HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'up' },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    await useProvidersStore.getState().recheckProviderHealth('test-provider')
+
+    expect(useProvidersStore.getState().healthMap['test-provider']?.health_status).toBe(
+      'up',
+    )
+  })
+
+  it('records a recheck in the map even after the operator moved on', async () => {
+    // The verdict is about the provider, not about what is on screen: the
+    // detail badge is left alone, but the map still learns what the call found.
+    useProvidersStore.setState({
+      selectedProvider: { name: 'other-provider' } as never,
+      selectedProviderHealth: { health_status: 'degraded' } as never,
+    })
+    server.use(
+      http.post('/api/v1/providers/:name/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'up' },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    await useProvidersStore.getState().recheckProviderHealth('test-provider')
+
+    expect(useProvidersStore.getState().healthMap['test-provider']?.health_status).toBe(
+      'up',
+    )
+    expect(useProvidersStore.getState().selectedProviderHealth?.health_status).toBe(
+      'degraded',
+    )
+  })
+
+  it('drops a list health read that a recheck overtook', async () => {
+    // The list's per-provider reads replay the stored aggregate, so one that
+    // resolves after a sweep is older than what it would overwrite.
+    let releaseListHealth = (): void => {}
+    const listHealthHeld = new Promise<void>((resolve) => {
+      releaseListHealth = resolve
+    })
+    server.use(
+      http.get('/api/v1/providers', () =>
+        HttpResponse.json(
+          paginatedEnvelopeFor<typeof listProviders>([
+            buildProvider({ name: 'test-provider' }),
+          ]),
+        ),
+      ),
+      http.get('/api/v1/providers/:name/health', async () => {
+        await listHealthHeld
+        return HttpResponse.json({
+          success: true,
+          data: { ...HEALTH_ROW, health_status: 'down' },
+          error: null,
+          error_detail: null,
+        })
+      }),
+      http.post('/api/v1/providers/health/recheck', () =>
+        HttpResponse.json({
+          success: true,
+          data: { 'test-provider': { ...HEALTH_ROW, health_status: 'up' } },
+          error: null,
+          error_detail: null,
+        }),
+      ),
+    )
+
+    const listing = useProvidersStore.getState().fetchProviders()
+    await useProvidersStore.getState().recheckAllHealth()
+    releaseListHealth()
+    await listing
+
+    expect(useProvidersStore.getState().healthMap['test-provider']?.health_status).toBe(
+      'up',
     )
   })
 

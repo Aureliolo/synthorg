@@ -221,18 +221,26 @@ class ProviderHealthTracker:
     Concurrency-safe via ``asyncio.Lock``.  Follows the same
     TTL-based eviction pattern as
     :class:`~synthorg.budget.tracker.CostTracker`: memory is bounded by
-    a soft auto-prune that removes records older than 24 hours when the
-    record count exceeds *auto_prune_threshold*.
+    a soft auto-prune that removes records older than 24 hours once the
+    record count exceeds *auto_prune_threshold*. On the write path that
+    pass is additionally spaced to one per threshold's worth of appends
+    (see :meth:`_write_prune_is_due`).
 
     Args:
-        auto_prune_threshold: Maximum record count before auto-pruning
-            is triggered on snapshot.  Defaults to 100,000.
+        auto_prune_threshold: Record count above which auto-pruning is
+            attempted, and the write path's minimum spacing between
+            attempts.  Defaults to 100,000.
 
     Raises:
         ValueError: If *auto_prune_threshold* < 1.
     """
 
-    __slots__ = ("_auto_prune_threshold", "_lock", "_records")
+    __slots__ = (
+        "_appends_since_prune",
+        "_auto_prune_threshold",
+        "_lock",
+        "_records",
+    )
 
     def __init__(
         self,
@@ -245,12 +253,40 @@ class ProviderHealthTracker:
         self._records: list[ProviderHealthRecord] = []
         self._lock = asyncio.Lock()
         self._auto_prune_threshold = auto_prune_threshold
+        self._appends_since_prune = 0
 
     def clear(self) -> None:
         """Reset all health records for test isolation."""
         cleared_count = len(self._records)
         self._records.clear()
+        self._appends_since_prune = 0
         logger.info(PROVIDER_HEALTH_CLEARED, cleared_count=cleared_count)
+
+    def _write_prune_is_due(self) -> bool:
+        """Whether the write path has earned another rebuild.
+
+        Size alone is the wrong trigger here once the window itself is
+        bigger than the threshold: every record thereafter finds the list
+        over the line, and the rebuild that follows frees nothing, so a
+        full pass lands on every single call while reclaiming nothing.
+        Real completion traffic feeds this tracker, so that state is
+        reached by ordinary load rather than by abuse.
+
+        Requiring a threshold's worth of new records between attempts
+        keeps the write path amortised at one pass per threshold appends,
+        and leaves the memory bound at the window's own size plus at most
+        that much slack. Nothing can shrink it below the window: a
+        24-hour aggregate is computed from 24 hours of records. The read
+        path needs no such spacing, because it runs once per reader
+        rather than once per recorded call.
+
+        Returns:
+            True when a rebuild should be attempted now.
+        """
+        return (
+            len(self._records) > self._auto_prune_threshold
+            and self._appends_since_prune >= self._auto_prune_threshold
+        )
 
     async def record(self, record: ProviderHealthRecord) -> None:
         """Append a health record, reclaiming the window on the way past.
@@ -262,7 +298,7 @@ class ProviderHealthTracker:
         test, an on-demand recheck and the periodic sweep all land here)
         would otherwise grow until something happened to ask for a summary.
 
-        Bounded by the same threshold the read path uses, because the prune
+        Rate-limited by :meth:`_write_prune_is_due`, because the prune
         rebuilds the list: running it on every append would make a sweep
         across N providers quadratic in the records it just wrote.
 
@@ -271,7 +307,8 @@ class ProviderHealthTracker:
         """
         async with self._lock:
             self._records.append(record)
-            if len(self._records) > self._auto_prune_threshold:
+            self._appends_since_prune += 1
+            if self._write_prune_is_due():
                 cutoff = record.timestamp - timedelta(hours=_HEALTH_WINDOW_HOURS)
                 pruned = self._prune_before(cutoff)
                 if pruned:
@@ -424,8 +461,12 @@ class ProviderHealthTracker:
     ) -> tuple[ProviderHealthRecord, ...]:
         """Return an immutable snapshot of all current records.
 
-        When the record count exceeds the auto-prune threshold,
-        expired records are removed before the snapshot is taken.
+        When the record count exceeds the auto-prune threshold, expired
+        records are removed before the snapshot is taken. Unspaced,
+        unlike the write path: a read happens once per reader, so a pass
+        here cannot compound the way one per recorded call does, and this
+        is the only prune that gets to use the reader's own reference
+        time rather than a record's.
 
         Args:
             now: Reference time for auto-prune cutoff.  Defaults to
@@ -453,6 +494,9 @@ class ProviderHealthTracker:
         Returns:
             The number of records removed that were older than *cutoff*.
         """
+        # Reset even on the empty-list shortcut: the pass ran, so the next
+        # automatic one waits its full interval either way.
+        self._appends_since_prune = 0
         if not self._records:
             return 0
         before = len(self._records)

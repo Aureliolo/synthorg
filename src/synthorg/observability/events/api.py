@@ -141,6 +141,7 @@ API_AGENT_HISTORY_QUERIED: Final[str] = "api.agent.history_queried"
 API_DEPARTMENT_HEALTH_QUERIED: Final[str] = "api.department.health_queried"
 API_PROVIDER_HEALTH_QUERIED: Final[str] = "api.provider.health_queried"
 API_PROVIDER_HEALTH_RECHECKED: Final[str] = "api.provider.health_rechecked"
+API_PROVIDER_HEALTH_RECHECK_REFUSED: Final[str] = "api.provider.health_recheck_refused"
 API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
     "api.provider.usage_enrichment_failed"
 )

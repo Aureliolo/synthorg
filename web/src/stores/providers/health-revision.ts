@@ -1,16 +1,17 @@
 /**
  * Ordering for provider-health writes that race each other.
  *
- * Two health writers reach `selectedProviderHealth`: the all-provider
- * sweep, and the trailing detail read an individual recheck fires to
- * refresh the rest of the page. The detail read guards itself against
- * newer *detail* reads, but nothing told it about a newer *health* write,
- * so a slow detail read could resolve after a sweep and put the verdict
- * the sweep had just replaced back on screen.
+ * A recheck asks the provider now and produces a verdict nothing else
+ * has; a read replays whatever verdict the server last stored. So the two
+ * are not interchangeable, and a read that resolves late must not be
+ * allowed to undo a recheck that landed while it was in flight. Both the
+ * detail read and the list's per-provider health fan-out could do exactly
+ * that, each guarding only against newer reads of its own kind.
  *
- * A health writer bumps this before it applies; a trailing read captures
- * it first and drops its own health if the number has moved on. The rest
- * of that read's payload still applies, because only health is contested.
+ * Only a recheck bumps this, immediately before it applies. A read
+ * captures the number before it goes out and drops its own health if it
+ * has moved on, keeping the rest of its payload, because only health is
+ * contested.
  */
 
 let revision = 0
