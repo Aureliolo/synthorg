@@ -232,6 +232,11 @@ class ForecastGate:
             claimed = await self._claim_for_submission(
                 existing, work_item, brief_hash=brief_hash
             )
+            if claimed is None:
+                # Another submission took the estimate between the read and
+                # the claim. This one is not covered by it, so it falls
+                # through to a forecast of its own.
+                return await self._mint_and_refuse(work_item, signal, brief_hash)
             if claimed.decision is ForecastDecision.APPROVED:
                 # Carry the operator-approved ceiling onto the work item so
                 # the intake phase can stamp it onto the Task; without this
@@ -247,22 +252,19 @@ class ForecastGate:
 
         # No matching forecast via the caller's id: reuse a pending row for
         # this brief if one exists, else mint one.
+        return await self._mint_and_refuse(work_item, signal, brief_hash)
+
+    async def _mint_and_refuse(
+        self, work_item: WorkItem, signal: BriefSignal, brief_hash: str
+    ) -> NoReturn:
+        """Give the submission its own pending forecast and refuse dispatch.
+
+        Raises:
+            CostForecastApprovalRequiredError: Always; the submission has
+                a forecast of its own now and the operator decides it.
+        """
         forecast = await self._forecast_for_brief(work_item, signal, brief_hash)
-        # Inlined (rather than via _raise_approval_required) so the static
-        # analyser sees run() always terminates in a return or raise.
-        self._log_approval_required(forecast)
-        msg = (
-            f"Pre-flight cost forecast required: "
-            f"estimated {forecast.estimated_cost:.4f} {forecast.currency} "
-            f"awaiting operator approval"
-        )
-        raise CostForecastApprovalRequiredError(
-            msg,
-            forecast_id=forecast.forecast_id,
-            brief_hash=forecast.brief_hash,
-            estimated_cost=forecast.estimated_cost,
-            currency=forecast.currency,
-        )
+        self._raise_approval_required(forecast)
 
     async def _resolve_skeleton(self) -> BriefRoleSkeleton:
         """Resolve the role skeleton for this dispatch, once.
@@ -313,9 +315,11 @@ class ForecastGate:
         """
         pending = await self._pending_forecast_for_brief(brief_hash)
         if pending is not None:
-            return await self._claim_for_submission(
+            claimed = await self._claim_for_submission(
                 pending, work_item, brief_hash=brief_hash
             )
+            if claimed is not None:
+                return claimed
         estimated = await self._forecaster.forecast(signal)
         # The work item rides along with the estimate it blocked, so approving
         # the forecast can run the work. Without it the caller's 202 is a lie:
@@ -330,14 +334,21 @@ class ForecastGate:
             raced = await self._pending_forecast_for_brief(brief_hash)
             if raced is None:
                 raise
-            return await self._claim_for_submission(
+            claimed = await self._claim_for_submission(
                 raced, work_item, brief_hash=brief_hash
             )
+            if claimed is None:
+                # The winner's row is spoken for and its digest moved with
+                # it, so this digest is free again and the estimate this
+                # submission already paid for is the one to persist.
+                await self._forecast_repo.save(fresh)
+                return fresh
+            return claimed
         return fresh
 
     async def _claim_for_submission(
         self, existing: Forecast, work_item: WorkItem, *, brief_hash: str
-    ) -> Forecast:
+    ) -> Forecast | None:
         """Bind an unclaimed forecast to the submission now carrying it.
 
         A row that gates nothing cannot be redispatched on approval, so
@@ -348,20 +359,37 @@ class ForecastGate:
         caller of the same brief reuse a row that is already spoken for.
         Once claimed the row answers only to its own submission.
 
+        The claim is a conditional write rather than a read then a save,
+        because what a claimed estimate carries is an approved ceiling:
+        two submissions that each read the row free and each wrote would
+        both dispatch, spending one operator approval twice.
+
         Returns:
-            The row, carrying the work item it gates; unchanged when it
-            was already claimed.
+            The row, carrying the work item it gates; unchanged when this
+            submission already holds it; ``None`` when another submission
+            claimed it first, so this one needs a forecast of its own.
         """
         if existing.gated_work_item is not None:
             return existing
-        claimed = existing.model_copy(
-            update={
-                "gated_work_item": work_item.model_dump(mode="json"),
-                "brief_hash": NotBlankStr(brief_hash),
-            },
+        held = work_item.model_dump(mode="json")
+        won = await self._forecast_repo.claim_if_unclaimed(
+            existing.forecast_id,
+            gated_work_item=held,
+            brief_hash=NotBlankStr(brief_hash),
+            updated_at=existing.updated_at,
         )
-        await self._forecast_repo.save(claimed)
-        return claimed
+        if not won:
+            logger.warning(
+                BUDGET_FORECAST_SUPERSEDED,
+                forecast_id=str(existing.forecast_id),
+                stored_brief_hash=existing.brief_hash,
+                work_item_brief_hash=brief_hash,
+                reason="claimed_by_another_submission",
+            )
+            return None
+        return existing.model_copy(
+            update={"gated_work_item": held, "brief_hash": NotBlankStr(brief_hash)},
+        )
 
     def _raise_approval_required(self, forecast: Forecast) -> NoReturn:
         """Log and raise the approval-required signal for a pending forecast.

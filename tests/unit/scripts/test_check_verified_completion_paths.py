@@ -547,6 +547,23 @@ class TestPostExecutionGuards:
 
         assert any("bound 2 times" in m for m in messages)
 
+    def test_a_rebinding_inside_a_match_case_is_caught(self, repo: Path) -> None:
+        """``match`` keeps its branches on ``cases``, not on ``body``.
+
+        A walk that followed only the common statement fields would miss
+        every match branch, which is the same hiding place as an ``if``.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION
+            + "\n\nmatch True:\n    case _:\n        _UNFINISHED_REASONS = {}\n",
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("bound 2 times" in m for m in messages)
+
     def test_a_same_named_local_in_a_function_is_not_a_binding(
         self, repo: Path
     ) -> None:

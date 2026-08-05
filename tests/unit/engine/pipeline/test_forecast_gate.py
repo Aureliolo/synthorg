@@ -1,11 +1,12 @@
 """Unit tests for the pre-flight ForecastGate."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Final, override
 from uuid import UUID
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import (
@@ -89,6 +90,7 @@ class _FakeForecastRepo:
     def __init__(self) -> None:
         self.saves: list[Forecast] = []
         self.rows: dict[UUID, Forecast] = {}
+        self.claims: list[UUID] = []
 
     async def save(self, entity: Forecast) -> None:
         self.saves.append(entity)
@@ -120,6 +122,32 @@ class _FakeForecastRepo:
         if row is None or row.decision is not from_state:
             return False
         self.rows[entity_id] = row.model_copy(update={"decision": to_state})
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Claim the row only while it is free, as the backends do.
+
+        Returns:
+            ``True`` when this call claimed the free row.
+        """
+        row = self.rows.get(entity_id)
+        if row is None or row.gated_work_item is not None:
+            return False
+        self.rows[entity_id] = row.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
+        )
+        self.claims.append(entity_id)
         return True
 
     async def raise_ceiling_if_halted(
@@ -171,6 +199,10 @@ class _RacingForecastRepo(_FakeForecastRepo):
         super().__init__()
         self._winner = winner
         self._save_attempted = False
+        # The winner is a row in the table, not just something the query
+        # answers with: the conditional claim reads it by id, and a fake
+        # that only produced it from a query would report every claim lost.
+        self.rows[winner.forecast_id] = winner
 
     @override
     async def save(self, entity: Forecast) -> None:
@@ -204,6 +236,27 @@ class _RacingForecastRepo(_FakeForecastRepo):
         ):
             return (self._winner,)
         return await super().query(filter_spec, limit=limit, offset=offset)
+
+
+class _ClaimLostForecastRepo(_FakeForecastRepo):
+    """Repo double where the claim always loses the compare-and-set.
+
+    Stands in for a concurrent submission that took the row between this
+    one's read and its write, which is the only window the conditional
+    write exists to close and the one an in-memory fake would otherwise
+    never produce.
+    """
+
+    @override
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        return False
 
 
 def _gate(
@@ -369,8 +422,10 @@ class TestForecastGate:
         with pytest.raises(CostForecastApprovalRequiredError) as info:
             await gate.run(_work_item(forecast_id=existing.forecast_id))
         assert info.value.forecast_id == existing.forecast_id
-        # No fresh row minted, no dispatch.
-        assert [save.forecast_id for save in repo.saves] == [existing.forecast_id]
+        # Claimed in place, never duplicated: a second row for one
+        # brief_hash would trip the partial-unique index.
+        assert repo.saves == []
+        assert repo.claims == [existing.forecast_id]
         assert repo.rows[existing.forecast_id].gated_work_item is not None
         assert work_pipeline.calls == []
 
@@ -400,9 +455,8 @@ class TestForecastGate:
         with pytest.raises(CostForecastApprovalRequiredError) as info:
             await gate.run(_work_item(forecast_id=None))
         assert info.value.forecast_id == existing.forecast_id
-        assert len(repo.saves) == 1
-        attached = repo.saves[0]
-        assert attached.forecast_id == existing.forecast_id
+        assert repo.claims == [existing.forecast_id]
+        attached = repo.rows[existing.forecast_id]
         assert attached.gated_work_item is not None
         assert attached.gated_work_item["correlation_id"] == "submission-1"
         assert work_pipeline.calls == []
@@ -615,6 +669,38 @@ class TestForecastGate:
         minted = repo.rows[second.value.forecast_id].gated_work_item
         assert minted is not None
         assert minted["correlation_id"] == "submission-b"
+
+    async def test_a_claim_lost_to_a_racing_submission_mints_its_own(self) -> None:
+        """Losing the claim is not a licence to run under someone's approval.
+
+        The row read free and was taken between the read and the write,
+        which is the window a read-then-save claim cannot close. The loser
+        is refused against a forecast of its own rather than dispatching
+        on the winner's approved ceiling.
+        """
+        repo = _ClaimLostForecastRepo()
+        approved = Forecast(
+            forecast_id=_STORED_FORECAST_ID,
+            brief_hash=_BRIEF_ONLY_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.APPROVED,
+            decided_at=_NOW,
+            decided_by="op-1",
+            ceiling_amount=2.5,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[approved.forecast_id] = approved
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=approved.forecast_id))
+
+        assert work_pipeline.calls == []
+        assert info.value.forecast_id != approved.forecast_id
 
     async def test_approved_estimate_linked_by_id_still_covers_the_brief(
         self,

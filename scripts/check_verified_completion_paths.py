@@ -404,6 +404,12 @@ def _module_scope_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
         if isinstance(handlers, list):
             for handler in handlers:
                 yield from _module_scope_statements(handler.body)
+        # A ``match`` keeps its branches on ``cases``, not on ``body``, so
+        # without this a rebinding inside one is invisible to a walk that
+        # only follows the common statement fields.
+        if isinstance(node, ast.Match):
+            for case in node.cases:
+                yield from _module_scope_statements(case.body)
 
 
 def _table_bindings(tree: ast.Module, table: str) -> list[ast.expr | None]:

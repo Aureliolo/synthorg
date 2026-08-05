@@ -34,6 +34,7 @@ from synthorg.budget.forecast_models import (
     HaltContext,
 )
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
     CostForecastRepository,
@@ -255,6 +256,74 @@ class TestCostForecastRepository:
         fetched = await repo.get(forecast.forecast_id)
         assert fetched is not None
         assert fetched.ceiling_amount == pytest.approx(1.50)
+
+    async def test_claim_if_unclaimed_takes_a_free_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A free estimate becomes the claiming submission's, digest and all."""
+        repo = _repo(backend)
+        estimate = _make_forecast(forecast_id="cl1", brief_hash="t" * 64)
+        await repo.save(estimate)
+
+        claimed = await repo.claim_if_unclaimed(
+            estimate.forecast_id,
+            gated_work_item={"correlation_id": "submission-a"},
+            brief_hash=NotBlankStr("u" * 64),
+            updated_at=_NOW.replace(second=9),
+        )
+        assert claimed is True
+
+        fetched = await repo.get(estimate.forecast_id)
+        assert fetched is not None
+        assert fetched.gated_work_item == {"correlation_id": "submission-a"}
+        assert fetched.brief_hash == "u" * 64
+
+    async def test_claim_if_unclaimed_loses_to_the_first_claimer(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """One approved ceiling is spent once: the second claim is refused.
+
+        The condition lives in the statement, so the loser is told it lost
+        instead of overwriting the winner's work item and dispatching a
+        second run under the same operator approval.
+        """
+        repo = _repo(backend)
+        estimate = _make_forecast(forecast_id="cl2", brief_hash="v" * 64)
+        await repo.save(estimate)
+        first = await repo.claim_if_unclaimed(
+            estimate.forecast_id,
+            gated_work_item={"correlation_id": "submission-a"},
+            brief_hash=NotBlankStr("w" * 64),
+            updated_at=_NOW.replace(second=9),
+        )
+        assert first is True
+
+        second = await repo.claim_if_unclaimed(
+            estimate.forecast_id,
+            gated_work_item={"correlation_id": "submission-b"},
+            brief_hash=NotBlankStr("x" * 64),
+            updated_at=_NOW.replace(second=10),
+        )
+
+        assert second is False
+        fetched = await repo.get(estimate.forecast_id)
+        assert fetched is not None
+        assert fetched.gated_work_item == {"correlation_id": "submission-a"}
+
+    async def test_claim_if_unclaimed_false_when_absent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A row that is not there cannot be claimed."""
+        repo = _repo(backend)
+
+        claimed = await repo.claim_if_unclaimed(
+            _uuid("cl3-missing"),
+            gated_work_item={"correlation_id": "submission-a"},
+            brief_hash=NotBlankStr("y" * 64),
+            updated_at=_NOW,
+        )
+
+        assert claimed is False
 
     async def test_save_rejects_currency_mismatch(
         self, backend: PersistenceBackend

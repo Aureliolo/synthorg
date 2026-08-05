@@ -17,12 +17,13 @@ End-to-end through the REAL components, no mocks on the seam under test:
 Zero real LLM spend: every provider is scripted/deterministic.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid5
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
@@ -344,6 +345,26 @@ class _FakeForecastRepo:
         if cur is None or cur.decision is not from_state:
             return False
         self.items[str(entity_id)] = cur.model_copy(update={"decision": to_state})
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: object,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        cur = self.items.get(str(entity_id))
+        if cur is None or cur.gated_work_item is not None:
+            return False
+        self.items[str(entity_id)] = cur.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
+        )
         return True
 
     async def raise_ceiling_if_halted(

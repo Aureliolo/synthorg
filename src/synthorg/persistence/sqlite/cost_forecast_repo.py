@@ -15,16 +15,18 @@ repository boundary so silent re-stamping cannot poison aggregates. Row
 
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
 import aiosqlite
+from pydantic import JsonValue
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -39,6 +41,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence._shared.cost_forecast_marshalling import (
     COST_FORECAST_COLUMNS,
+    FORECAST_CLAIM_SQL_QMARK,
     FORECAST_CLEAR_HALT_SQL_QMARK,
     build_cost_forecast_where,
     forecast_save_params,
@@ -415,6 +418,58 @@ class SQLiteCostForecastRepository:
                 logger.warning(
                     PERSISTENCE_COST_FORECAST_FAILED,
                     operation="transition_if",
+                    forecast_id=str(entity_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return _db_rowcount > 0
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Attach the work item and re-key the digest, if the row is free.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): updates
+        only while ``gated_work_item IS NULL``, so of two submissions
+        naming one standalone estimate exactly one claims it and the
+        other is told it lost rather than spending the same approved
+        ceiling a second time.
+
+        Returns:
+            ``True`` when the free row became this submission's;
+            ``False`` when another submission holds it or the row is
+            missing.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params = (
+            json.dumps(dict(gated_work_item)),
+            str(brief_hash),
+            format_iso_utc(updated_at),
+            str(entity_id),
+        )
+        async with self._write_context():
+            try:
+                async with self._db.execute(FORECAST_CLAIM_SQL_QMARK, params) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="claim_if_unclaimed",
+                    forecast_id=str(entity_id),
+                )
+                msg = f"Failed to claim forecast {entity_id!r}"
+                logger.warning(
+                    PERSISTENCE_COST_FORECAST_FAILED,
+                    operation="claim_if_unclaimed",
                     forecast_id=str(entity_id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

@@ -7,11 +7,13 @@ rather than touching the repository directly). These cover the generate
 double.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import override
 from uuid import UUID
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
@@ -75,6 +77,31 @@ class _FakeForecastRepo:
             return False
         self.rows[str(entity_id)] = existing.model_copy(
             update={"decision": to_state, **updates},
+        )
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Claim the row only while it holds no work item.
+
+        Returns:
+            ``True`` when this call claimed the free row.
+        """
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.gated_work_item is not None:
+            return False
+        self.rows[str(entity_id)] = existing.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
         )
         return True
 

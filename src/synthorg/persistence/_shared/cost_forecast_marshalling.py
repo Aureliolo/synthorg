@@ -262,8 +262,37 @@ FORECAST_CLEAR_HALT_SQL_PCT: LiteralString = _clear_halt_sql("%s")
 """Halt-guarded ceiling-raise UPDATE (Postgres ``%s`` token)."""
 
 
+def _claim_sql(placeholder: LiteralString) -> LiteralString:
+    """Assemble the unclaimed-guarded work-item claim for one placeholder.
+
+    Attaches the work item and re-keys the digest to the claiming
+    submission only while the row is still free (``gated_work_item IS
+    NULL``). A standalone estimate carries an approved ceiling, so two
+    submissions reading it free and both writing would spend one approval
+    twice; the condition in the statement leaves the loser unmatched, and
+    it is told so rather than sharing the winner's approval.
+
+    Returns:
+        The full conditional ``UPDATE`` statement.
+    """
+    return (
+        f"UPDATE cost_forecasts SET gated_work_item = {placeholder}, "  # noqa: S608 -- constants only
+        f"brief_hash = {placeholder}, updated_at = {placeholder} "
+        f"WHERE forecast_id = {placeholder} AND gated_work_item IS NULL"
+    )
+
+
+FORECAST_CLAIM_SQL_QMARK: LiteralString = _claim_sql("?")
+"""Unclaimed-guarded work-item claim (SQLite ``?`` token)."""
+
+FORECAST_CLAIM_SQL_PCT: LiteralString = _claim_sql("%s")
+"""Unclaimed-guarded work-item claim (Postgres ``%s`` token)."""
+
+
 __all__ = [
     "COST_FORECAST_COLUMNS",
+    "FORECAST_CLAIM_SQL_PCT",
+    "FORECAST_CLAIM_SQL_QMARK",
     "FORECAST_CLEAR_HALT_SQL_PCT",
     "FORECAST_CLEAR_HALT_SQL_QMARK",
     "JsonBinder",
