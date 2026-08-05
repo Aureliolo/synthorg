@@ -30,6 +30,7 @@ from pydantic import JsonValue
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.paths import PROJECTS_SUBDIR
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import ContainerLogShippingConfig
 from synthorg.observability.events.docker import (
@@ -85,7 +86,6 @@ logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
-_PROJECTS_SUBDIR: Final[str] = "projects"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 
 
@@ -341,7 +341,7 @@ class DockerSandbox(
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg)
         projects_root = await asyncio.to_thread(
-            (self._workspace / _PROJECTS_SUBDIR).resolve
+            (self._workspace / PROJECTS_SUBDIR).resolve
         )
         try:
             root = await asyncio.to_thread((projects_root / pid).resolve)

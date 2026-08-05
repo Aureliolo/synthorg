@@ -83,6 +83,7 @@ def _deliverable(content: str) -> RedTeamReviewInput:
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=content,
+        agent_summary=content,
         acceptance_criteria=("A phased rollout.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SEMI,

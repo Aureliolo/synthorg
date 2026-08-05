@@ -95,6 +95,7 @@ def _clean_input(deliverable: str = "Backend service done.") -> RedTeamReviewInp
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=deliverable,
+        agent_summary="Delivered the change described in the brief.",
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SUPERVISED,

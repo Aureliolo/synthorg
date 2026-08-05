@@ -22,6 +22,7 @@ def _input(deliverable: str = "Backend service done.") -> RedTeamReviewInput:
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=deliverable,
+        agent_summary="Delivered the change described in the brief.",
         acceptance_criteria=("Service exposes a login endpoint.",),
         assigned_agent_id="agent-7",
         autonomy=AutonomyLevel.SUPERVISED,

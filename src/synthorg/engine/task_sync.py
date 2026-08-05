@@ -22,7 +22,10 @@ from synthorg.engine._task_sync_transitions import (
     transition_to_awaiting_input,
     transition_to_interrupted,
 )
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
+from synthorg.engine.artifacts.expected_artifact_check import (
+    ArtifactPresence,
+    ExpectedArtifactProbe,
+)
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.review_gate import ReviewGateService
 from synthorg.observability.events.execution import (
+    EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
 )
@@ -260,8 +264,8 @@ async def apply_post_execution_transitions(
     # for. An agent that read files, wrote nothing and stopped passes the
     # proxy, so ask the workspace whether the declared deliverables exist.
     if task_expects_artifacts and not justified and empty_run_fails:
-        absent = _absent_artifacts(artifact_probe, ctx)
-        if absent is not None and len(absent) == len(expected):
+        presence = await _absent_artifacts(artifact_probe, ctx)
+        if presence is not None and presence.nothing_delivered:
             return await _transition_to_failed(
                 execution_result,
                 ctx,
@@ -269,7 +273,9 @@ async def apply_post_execution_transitions(
                 task_id=task_id,
                 task_engine=task_engine,
                 approval_store=approval_store,
-                reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(absent)),
+                reason=_MISSING_ARTIFACTS_REASON.format(
+                    paths=", ".join(presence.missing)
+                ),
             )
 
     return await _transition_to_review(
@@ -284,10 +290,10 @@ async def apply_post_execution_transitions(
     )
 
 
-def _absent_artifacts(
+async def _absent_artifacts(
     artifact_probe: ExpectedArtifactProbe | None,
     ctx: AgentContext,
-) -> tuple[str, ...] | None:
+) -> ArtifactPresence | None:
     """Ask the workspace which declared artifacts are missing.
 
     Args:
@@ -296,10 +302,15 @@ def _absent_artifacts(
         ctx: The finished run's context, carrying the task and its project.
 
     Returns:
-        The absent declared paths, or ``None`` when the question could not
-        be asked -- no probe, no project, or a probe that raised. An
-        unanswerable question must never read as a delivered task, so the
-        caller treats ``None`` as "no verdict" and lets review proceed.
+        What the workspace says, or ``None`` when the question could not be
+        asked -- no probe, no project, or a probe that raised.
+
+        ``None`` lets review proceed rather than failing the task, because a
+        storage fault is not evidence an agent delivered nothing. It is not
+        silent: a probe that raised is logged at ERROR, and the same fault
+        makes the deliverable reader hand the reviewer an explicit
+        unreadable-workspace marker, so the run reaches review carrying the
+        fact that it could not be verified rather than looking verified.
     """
     if artifact_probe is None or ctx.task_execution is None:
         return None
@@ -308,13 +319,13 @@ def _absent_artifacts(
     if not project_id.strip():
         return None
     try:
-        return artifact_probe(project_id, task.artifacts_expected)
+        return await artifact_probe(project_id, task.artifacts_expected)
     except OSError as exc:
         reraise_critical(exc)
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
+        logger.error(
+            EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
             task_id=str(task.id),
-            context="Expected-artifact probe failed; skipping the check",
+            project_id=project_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

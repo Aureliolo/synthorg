@@ -252,6 +252,7 @@ def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=content,
+        agent_summary=content,
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,

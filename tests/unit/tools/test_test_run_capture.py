@@ -147,6 +147,52 @@ class TestIsTestRun:
         assert is_test_run("PYTEST -q")
 
 
+class TestForgedTestEvidence:
+    """The classifier decides whether a build can be verified at all.
+
+    The command is model-supplied, so an agent whose suite failed must not
+    be able to mint a passing receipt. Every case here exits 0 while running
+    no suite; each would flip the build/test oracle from blocked to verified
+    and reach the initiative judge labelled "written by the sandbox, not
+    reported by an agent".
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "echo pytest",
+            "echo 'go test'",
+            "cat pytest.ini",
+            "grep -r pytest .",
+            "pip install pytest",
+            "npm install jest",
+            "gem install rspec",
+            "true # pytest",
+            "ls jest",
+        ],
+    )
+    def test_naming_a_runner_is_not_running_one(self, command: str) -> None:
+        assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "pytest || true",
+            "pytest ; echo done",
+            "pytest -q && echo ok",
+            "pytest -q | tee out.txt",
+            "pytest -q > out.txt",
+        ],
+    )
+    def test_a_compound_command_is_refused(self, command: str) -> None:
+        """The recorded ``passed`` would describe the tail, not the suite.
+
+        Each of these exits 0 whatever pytest did, so accepting one records
+        a green suite for a red one.
+        """
+        assert not is_test_run(command)
+
+
 class TestRecordIfTestRun:
     async def test_a_test_run_is_recorded(self) -> None:
         store = _RecordingStore()

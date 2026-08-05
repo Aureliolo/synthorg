@@ -1,7 +1,14 @@
 """Base class for file system tools.
 
 Provides the common ``ToolCategory.FILE_SYSTEM`` category and a
-``PathValidator`` instance bound to the workspace root.
+``PathValidator`` scoped to the workspace of the project being worked on.
+
+The scope is resolved per call from the bound execution identity, not fixed
+at construction, because the registry is built once per boot and shared by
+every agent and every project. A single root would put two projects' files
+in one directory, and it would put them somewhere neither the sandbox (which
+runs in ``<base>/projects/<project_id>``) nor the artifact check looks, so a
+delivered file would read as never produced.
 """
 
 from abc import ABC
@@ -9,6 +16,8 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
+from synthorg.core.execution_identity import current_execution_identity
+from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import safe_error_description
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool
@@ -84,14 +93,39 @@ class BaseFileSystemTool(BaseTool, ABC):
             parameters_schema=parameters_schema,
             action_type=action_type,
         )
-        self._path_validator = PathValidator(workspace_root)
+        self._base_root = workspace_root
+        self._base_validator = PathValidator(workspace_root)
+        self._scoped: dict[str, PathValidator] = {}
 
     @property
     def workspace_root(self) -> Path:
-        """The resolved workspace root directory."""
-        return self._path_validator.workspace_root
+        """The directory bounding file access for the current execution."""
+        return self.path_validator.workspace_root
 
     @property
     def path_validator(self) -> PathValidator:
-        """The path validator instance."""
-        return self._path_validator
+        """The path validator for the project this execution belongs to.
+
+        Falls back to the shared base root outside a bound execution scope
+        (a tool exercised directly, or a run with no project), which is the
+        only case where there is no project to scope to.
+
+        Returns:
+            A validator rooted at the current project's workspace.
+        """
+        identity = current_execution_identity()
+        project_id = identity.project_id if identity is not None else None
+        if project_id is None:
+            return self._base_validator
+        cached = self._scoped.get(project_id)
+        if cached is not None:
+            return cached
+        root = project_workspace_dir(self._base_root, project_id)
+        # Created on resolve, matching how the base root itself is resolved:
+        # PathValidator refuses a missing directory, and a project whose
+        # workspace was never provisioned would otherwise fail every file
+        # call rather than starting empty.
+        root.mkdir(parents=True, exist_ok=True)
+        validator = PathValidator(root)
+        self._scoped[project_id] = validator
+        return validator

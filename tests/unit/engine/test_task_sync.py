@@ -14,6 +14,10 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.artifacts.expected_artifact_check import (
+    ArtifactPresence,
+    ExpectedArtifactProbe,
+)
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (
@@ -39,6 +43,30 @@ from tests._shared import mock_of
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+
+
+def _fake_probe(*, missing: tuple[str, ...] | None = None) -> ExpectedArtifactProbe:
+    """Build a probe reporting *missing* against whatever was declared.
+
+    Args:
+        missing: The declared paths to report absent. ``None`` reports every
+            declared path absent, which is the delivered-nothing case.
+
+    Returns:
+        An async probe matching the ``ExpectedArtifactProbe`` shape.
+    """
+
+    async def _run(
+        _project: str, expected: Sequence[ExpectedArtifact]
+    ) -> ArtifactPresence:
+        declared = tuple(str(artifact.path) for artifact in expected)
+        return ArtifactPresence(
+            probed=declared,
+            missing=declared if missing is None else missing,
+        )
+
+    return _run
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -860,9 +888,7 @@ class TestApplyPostExecutionTransitions:
             task_id=str(work_task.id),
             task_engine=mock_te,
             approval_store=approval_store,
-            artifact_probe=lambda _project, expected: tuple(
-                str(a.path) for a in expected
-            ),
+            artifact_probe=_fake_probe(),
         )
 
         assert out.context.task_execution is not None
@@ -898,7 +924,7 @@ class TestApplyPostExecutionTransitions:
             agent_id=str(sample_agent_with_personality.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
-            artifact_probe=lambda _project, _expected: ("tests/x.py",),
+            artifact_probe=_fake_probe(missing=("tests/x.py",)),
         )
 
         assert out.context.task_execution is not None
@@ -925,7 +951,7 @@ class TestApplyPostExecutionTransitions:
             agent_id=str(sample_agent_with_personality.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
-            artifact_probe=lambda _project, _expected: (),
+            artifact_probe=_fake_probe(missing=()),
         )
 
         assert out.context.task_execution is not None
@@ -948,9 +974,9 @@ class TestApplyPostExecutionTransitions:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result_with_tool_calls(ctx)
 
-        def _raises(
+        async def _raises(
             _project: str, _expected: Sequence[ExpectedArtifact]
-        ) -> tuple[str, ...]:
+        ) -> ArtifactPresence:
             msg = "workspace volume unavailable"
             raise OSError(msg)
 

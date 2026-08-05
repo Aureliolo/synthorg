@@ -2,30 +2,46 @@
 """Read the files a task declared, so a reviewer judges the deliverable.
 
 The completion oracle's peer reviewer is the most load-bearing gate in the
-chain: fail-closed, on by default, reviewing every task. Until now the
-"deliverable" it read was the agent's own closing message, so an APPROVE
-verdict said the agent wrote a convincing summary, not that the work is
-there. This reads what the task promised: the files at its declared paths.
+chain: fail-closed, on by default, reviewing every task. Reading only the
+agent's closing message would let an APPROVE verdict mean "wrote a convincing
+summary" rather than "the work is there". This reads what the task promised:
+the files at its declared paths.
 
-Content is bounded twice, per file and in total, because a reviewer prompt
-is a fixed budget and one large generated file would otherwise crowd out
-every other deliverable. Truncation is announced in the text rather than
-silent, so the reviewer knows it is judging an excerpt.
+The report is JSON, not delimited text. Path, status and content occupy
+separate slots, so a file cannot spell a second artifact, a forged
+"further artifacts omitted" note, or a second closing message inside its own
+body and have the reviewer read it as structure. Delimiter-formatted output
+would make the evidence forgeable by the very content it is evidence about.
+
+Content is bounded twice, per file and in total, because a reviewer prompt is
+a fixed budget and one large generated file would otherwise crowd out every
+other deliverable. Each file is read up to its bound rather than read whole
+and sliced, so a declared path pointing at something enormous cannot exhaust
+memory before the bound applies. Truncation and omission are reported in the
+document rather than left silent.
+
+Only a relative, path-shaped declaration is read, and only from inside the
+project workspace. An absolute declaration is never opened: the read runs in
+the backend process, not the sandbox, so honouring one would hand any file
+that process can reach to an external model.
 
 The files are agent-written and therefore untrusted: whatever the reviewer
-receives is fenced by the caller with ``wrap_untrusted`` before it reaches
-a prompt.
+receives is fenced by the caller before it reaches a prompt.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+import json
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
+from pydantic import JsonValue
+
 from synthorg.core.artifact import ExpectedArtifact
+from synthorg.engine.artifacts.expected_artifact_check import is_probeable_path
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.red_team import RED_TEAM_NO_DELIVERABLE
+from synthorg.observability.events.deliverable import DELIVERABLE_READ_FAILED
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import resolve_int_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -41,24 +57,70 @@ _FALLBACK_MAX_CHARS_TOTAL: Final[int] = 60000
 _MAX_PER_FILE_KEY: Final[str] = "review_artifact_max_chars_per_file"
 _MAX_TOTAL_KEY: Final[str] = "review_artifact_max_chars_total"
 
-#: Marker closing a file whose content was cut at the per-file bound.
-_TRUNCATED_NOTE: Final[str] = "\n... (truncated)"
+#: Longest path label carried into the document. A declaration is planner
+#: free text with no length bound of its own, and the label is charged
+#: against the same budget as content, so it needs its own ceiling.
+_MAX_PATH_LABEL: Final[int] = 256
 
-#: Marker replacing the files dropped once the total bound was reached.
-_OMITTED_NOTE: Final[str] = "... ({count} further artifact(s) omitted)"
+#: What the reader found at a declared path. ``not_a_path`` is a prose
+#: deliverable rather than a file, which the reviewer can still judge; it is
+#: reported so the reviewer knows the declaration was not simply missed.
+_STATUS_READ: Final[str] = "read"
+_STATUS_ABSENT: Final[str] = "not_produced"
+_STATUS_DIRECTORY: Final[str] = "directory"
+_STATUS_UNREADABLE: Final[str] = "unreadable"
+_STATUS_NOT_A_PATH: Final[str] = "not_a_path"
+_STATUS_OMITTED: Final[str] = "omitted_for_budget"
 
-#: Reported in place of content for a declared path that is not a file.
-_ABSENT_NOTE: Final[str] = "(not produced)"
-_DIRECTORY_NOTE: Final[str] = "(directory)"
-_UNREADABLE_NOTE: Final[str] = "(unreadable: {reason})"
-
-#: Resolves ``(project_id, expected) -> the deliverable text``, or ``None``
-#: when nothing readable was produced. Async because the bounds are operator
-#: settings read live per review, so a retune arms the next review rather
-#: than the next boot.
+#: Resolves ``(project_id, expected) -> the artifacts section``, or ``None``
+#: when the task declared nothing. A mapping rather than serialised text: the
+#: caller merges it with the agent's closing message and serialises once, so
+#: the document is never parsed back out of its own rendering. Async because
+#: the bounds are operator settings read live per review, so a retune arms
+#: the next review rather than the next boot.
 type DeliverableReader = Callable[
-    [str, Sequence[ExpectedArtifact]], Awaitable[str | None]
+    [str, Sequence[ExpectedArtifact]], Awaitable[Mapping[str, JsonValue] | None]
 ]
+
+
+def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
+    """Read one declared artifact, bounded at *limit* characters.
+
+    Returns:
+        Its entry in the document: always a ``path`` and a ``status``, plus
+        ``content`` and ``truncated`` when something was read. A status is
+        content too: "not_produced" is exactly what a reviewer needs to see,
+        and hiding it would leave the reviewer judging a deliverable it does
+        not know is missing.
+    """
+    label = declared[:_MAX_PATH_LABEL]
+    if not is_probeable_path(declared):
+        return {"path": label, "status": _STATUS_NOT_A_PATH}
+    resolved = (root / Path(declared)).resolve()
+    if not resolved.is_relative_to(root):
+        # A path the run could not legitimately have written is not the
+        # task's output, so it is reported as absent rather than read.
+        return {"path": label, "status": _STATUS_ABSENT}
+    if not resolved.exists():
+        return {"path": label, "status": _STATUS_ABSENT}
+    if resolved.is_dir():
+        return {"path": label, "status": _STATUS_DIRECTORY}
+    try:
+        with resolved.open(encoding="utf-8", errors="replace") as handle:
+            text = handle.read(limit + 1)
+    except OSError as exc:
+        return {
+            "path": label,
+            "status": _STATUS_UNREADABLE,
+            "reason": safe_error_description(exc),
+        }
+    truncated = len(text) > limit
+    return {
+        "path": label,
+        "status": _STATUS_READ,
+        "truncated": truncated,
+        "content": text[:limit],
+    }
 
 
 def read_declared_artifacts(
@@ -67,62 +129,41 @@ def read_declared_artifacts(
     workspace: Path,
     max_bytes_per_file: int,
     max_total_bytes: int,
-) -> str | None:
-    """Assemble the declared artifacts' content into one reviewable text.
+) -> dict[str, JsonValue] | None:
+    """Assemble the declared artifacts into one reviewable section.
 
     Args:
         expected: The artifacts the task declared it would produce.
         workspace: The project's workspace directory.
         max_bytes_per_file: Per-file content bound, in characters.
-        max_total_bytes: Total content bound across every file.
+        max_total_bytes: Total bound across the whole section.
 
     Returns:
-        A path-labelled rendering of what was produced, or ``None`` when
-        the task declared nothing.
+        A mapping naming every declaration and what was found at it, or
+        ``None`` when the task declared nothing.
     """
     if not expected:
         return None
     root = workspace.resolve()
-    sections: list[str] = []
+    entries: list[JsonValue] = []
     budget = max_total_bytes
     for index, artifact in enumerate(expected):
         if budget <= 0:
-            sections.append(_OMITTED_NOTE.format(count=len(expected) - index))
+            entries.append(
+                {
+                    "status": _STATUS_OMITTED,
+                    "count": len(expected) - index,
+                }
+            )
             break
-        body = _read_one(artifact, root=root, limit=min(max_bytes_per_file, budget))
-        budget -= len(body)
-        sections.append(f"--- {artifact.path} ---\n{body}")
-    return "\n\n".join(sections)
-
-
-def _read_one(artifact: ExpectedArtifact, *, root: Path, limit: int) -> str:
-    """Read one declared artifact, bounded at *limit* characters.
-
-    Returns:
-        The file's (possibly truncated) text, or a note naming why there
-        is none. A note is content too: "not produced" is exactly what a
-        reviewer needs to see, and hiding it would leave the reviewer
-        judging a deliverable it does not know is missing.
-    """
-    candidate = Path(artifact.path)
-    resolved = (
-        candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
-    )
-    if not candidate.is_absolute() and not resolved.is_relative_to(root):
-        # A path the run could not legitimately have written is not the
-        # task's output, so it is reported as absent rather than read.
-        return _ABSENT_NOTE
-    if not resolved.exists():
-        return _ABSENT_NOTE
-    if resolved.is_dir():
-        return _DIRECTORY_NOTE
-    try:
-        text = resolved.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        return _UNREADABLE_NOTE.format(reason=safe_error_description(exc))
-    if len(text) <= limit:
-        return text
-    return text[:limit] + _TRUNCATED_NOTE
+        entry = _read_one(
+            str(artifact.path), root=root, limit=min(max_bytes_per_file, budget)
+        )
+        # Charge the rendered entry, not just its content: the path label is
+        # planner free text and reaches the same prompt budget.
+        budget -= len(json.dumps(entry))
+        entries.append(entry)
+    return {"declared": len(expected), "artifacts": entries}
 
 
 def workspace_deliverable_reader(
@@ -143,12 +184,18 @@ def workspace_deliverable_reader(
 
     async def _read(
         project_id: str, expected: Sequence[ExpectedArtifact]
-    ) -> str | None:
+    ) -> Mapping[str, JsonValue] | None:
         """Read *project_id*'s declared artifacts.
 
         Returns:
-            The deliverable text, or ``None`` when it could not be read.
+            The artifacts section, or ``None`` when nothing was declared.
+            A workspace that could not be read yields a section saying so
+            rather than ``None``: the reviewer must be able to tell "could
+            not verify" from "nothing was promised", since collapsing them
+            is what would let a storage fault read as a clean review.
         """
+        if not expected:
+            return None
         per_file = await resolve_int_with_fallback(
             resolver=config_resolver,
             namespace=SettingNamespace.ENGINE,
@@ -170,15 +217,17 @@ def workspace_deliverable_reader(
                 max_total_bytes=total,
             )
         except OSError as exc:
-            # A reviewer given no artifacts falls back to the closing
-            # message; refusing to review at all would be worse.
-            logger.warning(
-                RED_TEAM_NO_DELIVERABLE,
-                reason="artifact_read_failed",
+            logger.error(
+                DELIVERABLE_READ_FAILED,
+                project_id=project_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return None
+            return {
+                "declared": len(expected),
+                "workspace_error": "the project workspace could not be read, "
+                "so the declared deliverables were not verified",
+            }
 
     return _read
 

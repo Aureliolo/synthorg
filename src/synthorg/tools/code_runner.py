@@ -50,6 +50,14 @@ _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "bash": ("bash", "-c"),
 }
 
+#: The one language whose snippet IS a command line. A bash snippet running
+#: ``pytest -q`` really did invoke the suite, so it is classified exactly as
+#: the same line would be through ``shell_command``. A python or JavaScript
+#: snippet is source text: classifying it would let a program that merely
+#: contains the word "pytest" in a comment or a string mint evidence that a
+#: suite passed, which is the forgery the classifier exists to prevent.
+_SHELL_LANGUAGE: Final[str] = "bash"
+
 #: Maximum characters of captured stdout/stderr kept on a test record.
 _OUTPUT_TAIL_LIMIT: Final[int] = 2000
 #: Maximum characters of the executed command kept on a test record.
@@ -139,9 +147,6 @@ class CodeRunnerTool(BaseTool):
         timeout = args.timeout
 
         command, flag = _LANGUAGE_COMMANDS[language]
-        # The classifier reads the whole invocation, so a snippet that shells
-        # out to the suite (``pytest -q``) is recognised as the test run it is.
-        command_line = f"{command} {flag} {code}"
 
         logger.debug(
             CODE_RUNNER_EXECUTE_START,
@@ -169,14 +174,15 @@ class CodeRunnerTool(BaseTool):
                 metadata={"language": language},
             )
 
-        await record_if_test_run(
-            result,
-            command=command_line,
-            records=self._code_execution_records,
-            clock=self._clock,
-            command_repr_limit=_COMMAND_REPR_LIMIT,
-            output_tail_limit=self._output_tail_limit,
-        )
+        if language == _SHELL_LANGUAGE:
+            await record_if_test_run(
+                result,
+                command=code,
+                records=self._code_execution_records,
+                clock=self._clock,
+                command_repr_limit=_COMMAND_REPR_LIMIT,
+                output_tail_limit=self._output_tail_limit,
+            )
 
         if result.success:
             logger.debug(

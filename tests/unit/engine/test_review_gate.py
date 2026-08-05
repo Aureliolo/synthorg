@@ -491,6 +491,7 @@ class TestReviewGateServiceDecisionRecording:
             task_id="task-1",
             execution_id="exec-1",
             deliverable_content="Service complete.",
+            agent_summary="Service complete.",
             acceptance_criteria=("Login works",),
             assigned_agent_id="alice",
             autonomy=AutonomyLevel.SUPERVISED,
