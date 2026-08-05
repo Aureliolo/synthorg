@@ -83,12 +83,19 @@ def _task() -> Task:
     )
 
 
-def _deliverable(content: str) -> RedTeamReviewInput:
+def _deliverable(content: str, *, summary: str | None = None) -> RedTeamReviewInput:
+    """Build a review input, with the two policy inputs separable.
+
+    ``summary`` defaults to ``content`` for the tests that do not care, but
+    it is a distinct parameter so a test can put prohibited text in one
+    field and clean text in the other. Feeding both from one string would
+    let a regression that evaluated the wrong field keep passing.
+    """
     return RedTeamReviewInput(
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=content,
-        agent_summary=content,
+        agent_summary=content if summary is None else summary,
         acceptance_criteria=("A phased rollout.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SEMI,
@@ -359,6 +366,50 @@ class TestDeliverableGate:
         )
         assert approved is True
         assert target is TaskStatus.COMPLETED
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    def test_produced_source_does_not_block_this_backstop(self) -> None:
+        """This gate reads the agent's prose, not the files it composed.
+
+        The composed body carries produced source, and a hard rule matching
+        a character inside a generated file is not something the agent can
+        rewrite from here; the ``write_file`` / ``edit_file`` guards cover
+        that boundary at the point of writing. Asserted explicitly because
+        the two policy inputs used to share one string, so nothing said
+        which of them the gate actually reads.
+        """
+        target, _reason, _event, approved = apply_output_policy_gate(
+            deliverable=_deliverable(
+                f"The rollout plan {_EM_DASH} phase one ships first.",
+                summary="The rollout plan: phase one ships first.",
+            ),
+            task=_task(),
+            target=TaskStatus.COMPLETED,
+            transition_reason="ok",
+            event="evt",
+            approved=True,
+        )
+        assert approved is True
+        assert target is TaskStatus.COMPLETED
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    def test_prohibited_summary_is_caught_behind_clean_content(self) -> None:
+        """The other direction: the closing message is the agent's own prose."""
+        target, _reason, _event, approved = apply_output_policy_gate(
+            deliverable=_deliverable(
+                "The rollout plan: phase one ships first.",
+                summary=f"Shipped it {_EM_DASH} all criteria met.",
+            ),
+            task=_task(),
+            target=TaskStatus.COMPLETED,
+            transition_reason="ok",
+            event="evt",
+            approved=True,
+        )
+        assert approved is False
+        assert target is TaskStatus.IN_PROGRESS
 
     @pytest.mark.unit
     def test_gate_passes_through_when_unwired(self) -> None:

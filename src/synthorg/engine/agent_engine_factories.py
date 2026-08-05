@@ -284,11 +284,19 @@ class AgentEngineFactoriesMixin:
     def _security_llm_infra(self) -> SecurityLlmInfra | None:
         """Bundle the provider infrastructure the security LLM features need.
 
+        Both halves are required. A registry with no resolver builds the
+        features and then cannot read a single ``MODEL_REF``, so every
+        dispatch resolves to nothing and the classifier proceeds without the
+        auto-rejection it was switched on for, with no disabled-feature
+        warning anywhere. Returning ``None`` routes that through the same
+        path as a missing registry, which does warn.
+
         Returns:
-            The bundle, or ``None`` when no provider registry is wired and
-            every LLM-backed security feature therefore stays unwired.
+            The bundle, or ``None`` when either the provider registry or the
+            settings resolver is absent, leaving every LLM-backed security
+            feature unwired and saying so.
         """
-        if self._provider_registry is None:
+        if self._provider_registry is None or self._config_resolver is None:
             return None
         return SecurityLlmInfra(
             provider_registry=self._provider_registry,

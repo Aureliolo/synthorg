@@ -36,10 +36,19 @@ async def settings() -> AsyncIterator[SettingsService]:
 
 
 async def test_chat_model_read_live(settings: SettingsService) -> None:
-    provider = AsyncMock(spec=CompletionProvider)
-    provider.complete.return_value = SimpleNamespace(content="An answer.")
+    """A reassignment moves the dispatch to the newly named connection.
+
+    The two connections get their own doubles. Sharing one would let a
+    dispatch that ignores ``ModelRef.provider`` and always selects
+    ``baked-conn`` satisfy every assertion, since the model id would still
+    arrive on the only mock there was.
+    """
+    baked = AsyncMock(spec=CompletionProvider)
+    baked.complete.return_value = SimpleNamespace(content="An answer.")
+    live_provider = AsyncMock(spec=CompletionProvider)
+    live_provider.complete.return_value = SimpleNamespace(content="An answer.")
     chat = ChiefOfStaffChat(
-        connections=connections({"baked-conn": provider, "live-conn": provider}),
+        connections=connections({"baked-conn": baked, "live-conn": live_provider}),
         config=ChiefOfStaffConfig(
             chat_model=bound_ref("baked-chat-001", provider="baked-conn")
         ),
@@ -50,9 +59,11 @@ async def test_chat_model_read_live(settings: SettingsService) -> None:
     query = ChatQuery(question="What changed?")
 
     await chat.ask(query, _snap())
-    assert provider.complete.await_args.args[1] == "baked-chat-001"
+    assert baked.complete.await_args.args[1] == "baked-chat-001"
+    live_provider.complete.assert_not_awaited()
 
     live = serialize_model_ref(ModelRef(provider="live-conn", model_id="live-chat-001"))
     await settings.set("chief_of_staff", "chat_model", live)
     await chat.ask(query, _snap())
-    assert provider.complete.await_args.args[1] == "live-chat-001"
+    assert live_provider.complete.await_args.args[1] == "live-chat-001"
+    assert baked.complete.await_count == 1

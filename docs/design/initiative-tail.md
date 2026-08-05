@@ -66,14 +66,20 @@ Three shape decisions carry weight:
 | `plan_id` set, `plan_item_id` unset | it belongs to the initiative without implementing any plan item, so every derivation over items ignores it and it cannot distort the rollup that opened the stage |
 | id derived from the plan id (`uuid5`) | idempotency with no "already started" flag to drift from reality: a re-fired stage finds the existing row and stops |
 
-It declares two expected artifacts, the integrated runnable deliverable and the
-end-to-end test run over it. Both are named in prose rather than as paths, so
-the declared-artifact check does not probe them (see
-[agent-execution.md](agent-execution.md#declared-artifact-check)); the
-zero-tool-call proxy still applies, and the assembly is judged by the same
-review chain as any other task. It runs one stakes level above the plan's highest item, because
-assembly is the first point the whole thing runs and the last point before
-delivery. Its acceptance criteria are the objective's own.
+It declares two expected artifacts, `.synthorg/integration/report.md` (what was
+assembled, where the runnable deliverable is, what had to be fixed) and
+`.synthorg/integration/end-to-end.txt` (the run's own output, verbatim). They
+are workspace-relative paths rather than prose because the declared-artifact
+check can only probe a path (see
+[agent-execution.md](agent-execution.md#declared-artifact-check)), and a stage
+whose declarations are unprobeable arms nothing: a chat-only integration would
+reach review with the check silently abstaining. The stage cannot know where a
+given objective's deliverable lives, so it does not guess at that path; it names
+two files of its own that the brief instructs the agent to write, and checks
+those. The zero-tool-call proxy still applies, and the assembly is judged by the
+same review chain as any other task. It runs one stakes level above the plan's
+highest item, because assembly is the first point the whole thing runs and the
+last point before delivery. Its acceptance criteria are the objective's own.
 
 Outcome, read from the task's persisted status on the next rollup recompute:
 

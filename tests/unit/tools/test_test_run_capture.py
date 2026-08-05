@@ -23,28 +23,12 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.tools._test_run_capture import is_test_run, record_if_test_run
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock, mock_of
+from tests.unit.deliverable_receipts._fakes import RecordingCodeExecutionStore
 
 pytestmark = pytest.mark.unit
 
 _COMMAND_LIMIT = 500
 _TAIL_LIMIT = 2000
-
-
-class _RecordingStore:
-    """Append-only double capturing what the tools write.
-
-    Wraps a typed ``mock_of`` because typeguard checks the whole protocol
-    on the argument, not just the one method under test.
-    """
-
-    def __init__(self) -> None:
-        self.records: list[CodeExecutionRecord] = []
-        self.repository: CodeExecutionRecordRepository = mock_of[
-            CodeExecutionRecordRepository
-        ](append=self._append)
-
-    async def _append(self, record: CodeExecutionRecord, /) -> None:
-        self.records.append(record)
 
 
 def _result(*, returncode: int = 0, timed_out: bool = False) -> SandboxResult:
@@ -62,7 +46,7 @@ def _result(*, returncode: int = 0, timed_out: bool = False) -> SandboxResult:
 
 
 async def _capture(
-    store: _RecordingStore,
+    store: RecordingCodeExecutionStore,
     command: str,
     *,
     clock: Clock | None = None,
@@ -195,7 +179,7 @@ class TestForgedTestEvidence:
 
 class TestRecordIfTestRun:
     async def test_a_test_run_is_recorded(self) -> None:
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
 
         await _capture(store, "pytest -q tests/")
 
@@ -207,7 +191,7 @@ class TestRecordIfTestRun:
 
     async def test_a_non_test_run_writes_nothing(self) -> None:
         """A general command produces no evidence, so none is invented."""
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
 
         await _capture(store, "echo hello")
 
@@ -215,7 +199,7 @@ class TestRecordIfTestRun:
 
     async def test_a_failing_suite_is_recorded_as_failed(self) -> None:
         """Evidence of failure is evidence: the oracle needs the verdict."""
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
 
         await _capture(store, "pytest", result=_result(returncode=1))
 
@@ -223,7 +207,7 @@ class TestRecordIfTestRun:
         assert store.records[0].returncode == 1
 
     async def test_a_timed_out_suite_is_recorded(self) -> None:
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
 
         await _capture(store, "pytest", result=_result(returncode=124, timed_out=True))
 
@@ -232,7 +216,7 @@ class TestRecordIfTestRun:
 
     async def test_outside_an_execution_scope_writes_nothing(self) -> None:
         """No bound run means no task to attribute the receipt to."""
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
 
         await record_if_test_run(
             _result(),
@@ -279,7 +263,7 @@ class TestRecordIfTestRun:
             )
 
     async def test_command_and_output_are_length_bounded(self) -> None:
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
         long_command = "pytest " + ("x" * 1000)
 
         with execution_identity_scope(

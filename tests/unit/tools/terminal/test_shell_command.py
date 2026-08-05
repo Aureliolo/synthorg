@@ -1,5 +1,8 @@
 """Unit tests for ShellCommandTool."""
 
+from datetime import UTC, datetime
+from typing import Final
+
 import pytest
 
 from synthorg.core.execution_identity import (
@@ -9,32 +12,18 @@ from synthorg.core.execution_identity import (
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
-    CodeExecutionRecord,
-    CodeExecutionRecordRepository,
 )
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.terminal.config import TerminalConfig
 from synthorg.tools.terminal.shell_command import ShellCommandTool
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock
+from tests.unit.deliverable_receipts._fakes import RecordingCodeExecutionStore
 
 from .conftest import MockSandbox
 
-
-class _RecordingStore:
-    """Append-only double capturing what the tool writes.
-
-    Wraps a typed ``mock_of`` because typeguard checks the whole protocol
-    on the argument, not just the one method under test.
-    """
-
-    def __init__(self) -> None:
-        self.records: list[CodeExecutionRecord] = []
-        self.repository: CodeExecutionRecordRepository = mock_of[
-            CodeExecutionRecordRepository
-        ](append=self._append)
-
-    async def _append(self, record: CodeExecutionRecord, /) -> None:
-        self.records.append(record)
+#: A time no wall clock will return, so a record carrying it can only have
+#: come from the injected seam.
+_STAMPED_AT: Final[datetime] = datetime(2019, 3, 14, 15, 9, 26, tzinfo=UTC)
 
 
 class TestTestRunCaptureWiring:
@@ -47,11 +36,12 @@ class TestTestRunCaptureWiring:
 
     @pytest.mark.unit
     async def test_a_suite_run_through_the_shell_leaves_a_receipt(self) -> None:
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
+        clock = FakeClock(start=_STAMPED_AT)
         tool = ShellCommandTool(
             sandbox=MockSandbox(),
             code_execution_records=store.repository,
-            clock=FakeClock(),
+            clock=clock,
         )
         identity = ExecutionIdentity(
             execution_id=NotBlankStr("exec-1"),
@@ -68,10 +58,14 @@ class TestTestRunCaptureWiring:
         assert record.command == "pytest -q"
         assert record.task_id == "task-1"
         assert record.project_id == "proj-1"
+        # The class docstring names a dropped clock as a failure mode this
+        # suite must catch; without this a tool that ignored the seam and
+        # read wall-clock time would keep every assertion above green.
+        assert record.executed_at == _STAMPED_AT
 
     @pytest.mark.unit
     async def test_a_non_suite_command_leaves_none(self) -> None:
-        store = _RecordingStore()
+        store = RecordingCodeExecutionStore()
         tool = ShellCommandTool(
             sandbox=MockSandbox(),
             code_execution_records=store.repository,

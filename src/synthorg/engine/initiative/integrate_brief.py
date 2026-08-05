@@ -18,13 +18,24 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
+#: Where the integration task records what it did, relative to the project
+#: workspace. Paths rather than prose, because the workspace probe can only
+#: ask about a path: a declaration like "the integrated deliverable" is not
+#: probeable, so it contributes nothing to the check and an integration run
+#: that produced only chat would reach review with the guard never armed.
+#: The stage cannot know where a given objective's deliverable lives, so it
+#: does not guess: it names two files of its own that the brief instructs the
+#: agent to write, and checks those.
+INTEGRATION_REPORT_PATH: Final[str] = ".synthorg/integration/report.md"
+INTEGRATION_TEST_OUTPUT_PATH: Final[str] = ".synthorg/integration/end-to-end.txt"
+
 #: What the integration task must produce. Two declarations, because the stage
 #: only means something if both land: the assembled thing that runs, and the
 #: end-to-end run that shows it does. They also arm the fail-loud zero-artifact
 #: guard, so a chat-only integration run terminates NO_OP rather than passing.
 INTEGRATION_ARTIFACTS: Final[tuple[str, ...]] = (
-    "the integrated, runnable deliverable",
-    "the end-to-end test run over the integrated deliverable",
+    INTEGRATION_REPORT_PATH,
+    INTEGRATION_TEST_OUTPUT_PATH,
 )
 
 
@@ -62,6 +73,15 @@ def build_integration_brief(plan: Plan) -> str:
                 "runs, fix whatever only shows up once the pieces meet, and prove "
                 "it end to end by running it. A run that produces no integrated "
                 "deliverable and no test evidence is not an integration."
+            ),
+            (
+                f"Record what you did in `{INTEGRATION_REPORT_PATH}`: what you "
+                "assembled, where the runnable deliverable is, and what you had "
+                "to fix. Put the end-to-end run's own output, verbatim, in "
+                f"`{INTEGRATION_TEST_OUTPUT_PATH}`. Both paths are relative to "
+                "the project workspace, and both are checked: a run that leaves "
+                "them empty is recorded as having delivered nothing, whatever "
+                "it says here."
             ),
             wrap_untrusted(TAG_TASK_DATA, "\n".join(report)),
         ]

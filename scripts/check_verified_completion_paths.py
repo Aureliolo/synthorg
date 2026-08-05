@@ -44,6 +44,7 @@ import argparse
 import ast
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
@@ -74,8 +75,22 @@ _ARTIFACT_VALIDATOR_CALL: Final[str] = "validate_expected_artifacts"
 #: something checks the declaration; leaving an unfinished run untransitioned
 #: only matters because the stall derivation reads IN_PROGRESS as progress.
 _POST_EXECUTION_TRANSITIONS: Final[str] = "src/synthorg/engine/task_sync.py"
+_POST_EXECUTION_ENTRY: Final[str] = "apply_post_execution_transitions"
 _ARTIFACT_PROBE_CALL: Final[str] = "_absent_artifacts"
 _UNFINISHED_REASON_TABLE: Final[str] = "_UNFINISHED_REASONS"
+
+#: Test evidence is what the build/test oracle judges, so where it comes from
+#: is an invariant and not a detail. It is minted from the executed command,
+#: by one module. A tool that took a ``purpose`` argument would put the
+#: decision back in the model's hands: an agent that produced no passing suite
+#: could label a run as tests and arm the oracle with nothing behind it.
+_TEST_EVIDENCE_OWNER: Final[str] = "src/synthorg/tools/_test_run_capture.py"
+_TEST_PURPOSE_MEMBER: Final[str] = "TESTS"
+_PURPOSE_PARAMETER: Final[str] = "purpose"
+_MODEL_FACING_TOOLS: Final[tuple[str, ...]] = (
+    "src/synthorg/tools/code_runner.py",
+    "src/synthorg/tools/terminal/shell_command.py",
+)
 #: Every termination reason that stops a run without finishing it. Each must
 #: reach a terminal status of its own; left out, a task sits at IN_PROGRESS
 #: forever and its initiative can never be replanned or completed.
@@ -313,6 +328,177 @@ def _check_artifact_invariant(root: Path) -> list[str]:
     return messages
 
 
+def _functions_by_name(tree: ast.Module) -> dict[str, ast.AST]:
+    """Index every top-level function in *tree* by name.
+
+    Returns:
+        Each ``def`` / ``async def`` at module scope, keyed by its name.
+    """
+    return {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def _calls_in(node: ast.AST) -> set[str]:
+    """Collect the bare names invoked as calls anywhere under *node*.
+
+    Returns:
+        The set of ``f(...)`` names, ignoring attribute calls.
+    """
+    return {
+        sub.func.id
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+    }
+
+
+def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
+    """Whether *target* is called from *entry*, directly or through helpers.
+
+    A whole-module name match would accept a module where the probe is
+    called only from a helper nothing reaches, which is the shape a
+    refactor produces by accident and a gate is supposed to catch. Walking
+    the call graph accepts the honest refactor -- the guard moved into a
+    helper the entry point calls -- and rejects the stranded one.
+
+    Returns:
+        ``True`` when a path of same-module calls leads from *entry* to
+        *target*.
+    """
+    seen: set[str] = set()
+    frontier = [entry]
+    while frontier:
+        current = frontier.pop()
+        if current in seen or current not in functions:
+            continue
+        seen.add(current)
+        called = _calls_in(functions[current])
+        if target in called:
+            return True
+        frontier.extend(called)
+    return False
+
+
+def _table_reasons(tree: ast.Module, table: str) -> set[str] | None:
+    """Read the ``TerminationReason`` members keyed in the *table* assignment.
+
+    Returns:
+        The member names in the table's own value, or ``None`` when no
+        module-level assignment to *table* exists.
+    """
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets: list[ast.expr] = list(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        if not any(
+            isinstance(target, ast.Name) and target.id == table for target in targets
+        ):
+            continue
+        if node.value is None:
+            return set()
+        return {
+            sub.attr
+            for sub in ast.walk(node.value)
+            if isinstance(sub, ast.Attribute)
+            and isinstance(sub.value, ast.Name)
+            and sub.value.id == "TerminationReason"
+        }
+    return None
+
+
+def _check_test_evidence_provenance(root: Path) -> list[str]:
+    """Check test evidence is still minted from the command, by one module.
+
+    Two ways the provenance breaks, both leaving the oracle judging a claim
+    rather than a run: a model-facing tool regaining a ``purpose`` argument,
+    so the agent labels its own run; and a second module stamping
+    ``CodeExecutionPurpose.TESTS``, so command recognition stops being the
+    only door.
+
+    Returns:
+        One message per break.
+    """
+    messages: list[str] = []
+    for rel in _MODEL_FACING_TOOLS:
+        parsed = _read(root, rel)
+        if parsed is None:
+            messages.append(f"{rel}: unreadable; test-evidence provenance unchecked")
+            continue
+        _source, tree = parsed
+        if _stamps_test_purpose(tree):
+            messages.append(
+                f"{rel}: stamps CodeExecutionPurpose.{_TEST_PURPOSE_MEMBER} itself. "
+                f"Evidence is minted in {_TEST_EVIDENCE_OWNER} from the executed "
+                "command; a second source is a second thing to keep honest."
+            )
+        if _declares_purpose(tree):
+            messages.append(
+                f"{rel}: names a `purpose` parameter again. A model-supplied "
+                "purpose lets an agent that ran no suite arm the build/test "
+                "oracle with a label."
+            )
+    owner = _read(root, _TEST_EVIDENCE_OWNER)
+    if owner is None:
+        return [
+            *messages,
+            f"{_TEST_EVIDENCE_OWNER}: unreadable; nothing mints test evidence",
+        ]
+    if not _stamps_test_purpose(owner[1]):
+        messages.append(
+            f"{_TEST_EVIDENCE_OWNER}: no longer stamps CodeExecutionPurpose."
+            f"{_TEST_PURPOSE_MEMBER}, so no run produces test evidence and the "
+            "build/test oracle abstains on every task."
+        )
+    return messages
+
+
+def _declares_purpose(tree: ast.AST) -> bool:
+    """Whether *tree* declares a ``purpose`` the caller can set.
+
+    A declaration is what hands the decision back to the model: a
+    parameter on a signature, or a field on the tool's args model. A
+    ``purpose=`` keyword the module passes on to something else is the
+    opposite -- the module deciding -- so it is not matched here, and the
+    one that matters is caught by the ``TESTS`` check instead.
+
+    Returns:
+        ``True`` when a parameter or attribute named ``purpose`` is
+        declared anywhere in the module.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arg) and node.arg == _PURPOSE_PARAMETER:
+            return True
+        if isinstance(node, ast.AnnAssign):
+            target: ast.expr = node.target
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        else:
+            continue
+        if isinstance(target, ast.Name) and target.id == _PURPOSE_PARAMETER:
+            return True
+    return False
+
+
+def _stamps_test_purpose(tree: ast.AST) -> bool:
+    """Whether *tree* assigns ``CodeExecutionPurpose.TESTS`` anywhere.
+
+    Returns:
+        ``True`` when the member is referenced as an attribute.
+    """
+    return any(
+        isinstance(node, ast.Attribute)
+        and node.attr == _TEST_PURPOSE_MEMBER
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "CodeExecutionPurpose"
+        for node in ast.walk(tree)
+    )
+
+
 def _check_post_execution_guards(root: Path) -> list[str]:
     """Check the post-execution transition still guards both failure shapes.
 
@@ -325,6 +511,13 @@ def _check_post_execution_guards(root: Path) -> list[str]:
       cap, exhausted its budget or stagnated stays at IN_PROGRESS, where
       the stall derivation reads it as still moving.
 
+    Both are checked structurally rather than by searching the module
+    text. A name match passes on a module where the probe sits in a
+    helper the entry point never calls, and on one whose table is empty
+    while the reason names appear in a comment or an unrelated branch:
+    exactly the two states this gate exists to distinguish from a working
+    guard.
+
     Returns:
         One message per missing guard.
     """
@@ -332,20 +525,25 @@ def _check_post_execution_guards(root: Path) -> list[str]:
     parsed = _read(root, rel)
     if parsed is None:
         return [f"{rel}: unreadable; the post-execution guards are unchecked"]
-    source, tree = parsed
+    _source, tree = parsed
     messages: list[str] = []
-    calls = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    if _ARTIFACT_PROBE_CALL not in calls:
+    functions = _functions_by_name(tree)
+    if _POST_EXECUTION_ENTRY not in functions:
+        return [
+            (
+                f"{rel}: {_POST_EXECUTION_ENTRY} is gone, so nothing applies "
+                "the post-execution guards at all."
+            )
+        ]
+    if not _reaches(_POST_EXECUTION_ENTRY, _ARTIFACT_PROBE_CALL, functions):
         messages.append(
-            f"{rel}: no longer calls {_ARTIFACT_PROBE_CALL}. Without it the "
-            "only empty-run signal is the zero-tool-call proxy, so a run that "
-            "read files and wrote nothing reaches review as delivered."
+            f"{rel}: {_POST_EXECUTION_ENTRY} no longer reaches "
+            f"{_ARTIFACT_PROBE_CALL}. Without it the only empty-run signal is "
+            "the zero-tool-call proxy, so a run that read files and wrote "
+            "nothing reaches review as delivered."
         )
-    if _UNFINISHED_REASON_TABLE not in source:
+    reasons = _table_reasons(tree, _UNFINISHED_REASON_TABLE)
+    if reasons is None:
         messages.append(
             f"{rel}: {_UNFINISHED_REASON_TABLE} is gone. A run that stopped "
             "without finishing would stay IN_PROGRESS, which the stall "
@@ -357,7 +555,7 @@ def _check_post_execution_guards(root: Path) -> list[str]:
         f"{rel}: {_UNFINISHED_REASON_TABLE} no longer terminalises {reason}. "
         "That run would sit at IN_PROGRESS forever."
         for reason in _UNFINISHED_REASONS_REQUIRED
-        if f"TerminationReason.{reason}" not in source
+        if reason not in reasons
     )
     return messages
 
@@ -389,6 +587,7 @@ def main(argv: list[str] | None = None) -> int:
         *_check_plan_completion_writers(root),
         *_check_artifact_invariant(root),
         *_check_post_execution_guards(root),
+        *_check_test_evidence_provenance(root),
     ]
     if messages:
         for message in messages:

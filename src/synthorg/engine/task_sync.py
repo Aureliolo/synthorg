@@ -214,74 +214,20 @@ async def apply_post_execution_transitions(
             reason=unfinished,
         )
 
-    justified = bool(execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY))
-    expected = ctx.task_execution.task.artifacts_expected
-    task_expects_artifacts = bool(expected)
-    # A resumed/replayed run only carries the current segment's turns, so its
-    # zero-tool-call count is not a valid proxy for total task output: earlier
-    # segments (before an approval park) may already have produced artifacts.
-    # Exempt a continued run from the empty-run failure so a legitimately
-    # progressed task is never discarded; a genuinely empty continued run
-    # still completes to review rather than FAILED.
-    empty_run_fails = not is_resumed_run()
-
-    # A silent no-op success is a failure: a WORK task (one that declared
-    # expected artifacts) that produced none (proxied by zero tool calls) is
-    # failed unless an explicit no-op justification was recorded. Enforced in
-    # two layers: the react loop classifies the empty run as NO_OP, and this
-    # transition also guards a COMPLETED that slipped through from another loop.
-    if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
-        return await _transition_to_failed(
-            execution_result,
-            ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-            approval_store=approval_store,
-            reason=_EMPTY_RUN_REASON,
-        )
-
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
         return execution_result
 
-    if (
-        task_expects_artifacts
-        and execution_result.total_tool_calls == 0
-        and not justified
-        and empty_run_fails
-    ):
-        return await _transition_to_failed(
-            execution_result,
-            ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-            approval_store=approval_store,
-            reason=_EMPTY_RUN_REASON,
-        )
-
-    # The tool-call count above is a proxy; this is the question it stands in
-    # for. An agent that read files, wrote nothing and stopped passes the
-    # proxy, so ask the workspace whether the declared deliverables exist.
-    # Deliberately not exempted for a resumed run: the resume exemption exists
-    # because this segment's turn count says nothing about earlier segments,
-    # and the filesystem has no such blind spot. Whatever an earlier segment
-    # produced is still on disk, so a resumed run with none of its declared
-    # paths present delivered nothing, whichever segment was supposed to.
-    if task_expects_artifacts and not justified:
-        presence = await _absent_artifacts(artifact_probe, ctx)
-        if presence is not None and presence.nothing_delivered:
-            return await _transition_to_failed(
-                execution_result,
-                ctx,
-                agent_id=agent_id,
-                task_id=task_id,
-                task_engine=task_engine,
-                approval_store=approval_store,
-                reason=_MISSING_ARTIFACTS_REASON.format(
-                    paths=", ".join(presence.missing)
-                ),
-            )
+    undelivered = await _failed_for_no_delivery(
+        execution_result,
+        ctx,
+        agent_id=agent_id,
+        task_id=task_id,
+        task_engine=task_engine,
+        approval_store=approval_store,
+        artifact_probe=artifact_probe,
+    )
+    if undelivered is not None:
+        return undelivered
 
     return await _transition_to_review(
         execution_result,
@@ -293,6 +239,86 @@ async def apply_post_execution_transitions(
         review_gate=review_gate,
         review_pipeline=review_pipeline,
     )
+
+
+async def _failed_for_no_delivery(
+    execution_result: ExecutionResult,
+    ctx: AgentContext,
+    *,
+    agent_id: str,
+    task_id: str,
+    task_engine: TaskEngine | None,
+    approval_store: ApprovalStoreProtocol | None,
+    artifact_probe: ExpectedArtifactProbe | None,
+) -> ExecutionResult | None:
+    """Fail a run that finished having delivered nothing, or return ``None``.
+
+    One question asked three ways, weakest evidence first: the loop's own
+    NO_OP classification, the zero-tool-call proxy, and finally the
+    workspace itself. Kept together because they are one decision -- did
+    this run produce what it promised -- and splitting them across the
+    caller made the order they must be asked in a matter of reading
+    control flow rather than of reading one function.
+
+    Returns:
+        The transitioned-to-FAILED result, or ``None`` when the run may
+        proceed to review.
+    """
+    reason = execution_result.termination_reason
+    if execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY):
+        # Recording why nothing was produced is the one sanctioned way to
+        # finish a run empty-handed, and it answers every question below.
+        return None
+    task_execution = ctx.task_execution
+    task_expects_artifacts = task_execution is not None and bool(
+        task_execution.task.artifacts_expected
+    )
+    # A resumed/replayed run only carries the current segment's turns, so its
+    # zero-tool-call count is not a valid proxy for total task output: earlier
+    # segments (before an approval park) may already have produced artifacts.
+    # Exempt a continued run from the empty-run failure so a legitimately
+    # progressed task is never discarded; a genuinely empty continued run
+    # still completes to review rather than FAILED.
+    empty_run_fails = not is_resumed_run()
+
+    async def _fail(failure_reason: str) -> ExecutionResult:
+        return await _transition_to_failed(
+            execution_result,
+            ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            approval_store=approval_store,
+            reason=failure_reason,
+        )
+
+    # A silent no-op success is a failure: a WORK task (one that declared
+    # expected artifacts) that produced none (proxied by zero tool calls) is
+    # failed unless an explicit no-op justification was recorded. Enforced in
+    # two layers: the react loop classifies the empty run as NO_OP, and this
+    # transition also guards a COMPLETED that slipped through from another loop.
+    if empty_run_fails and (
+        reason == TerminationReason.NO_OP
+        or (task_expects_artifacts and execution_result.total_tool_calls == 0)
+    ):
+        return await _fail(_EMPTY_RUN_REASON)
+
+    # The tool-call count above is a proxy; this is the question it stands in
+    # for. An agent that read files, wrote nothing and stopped passes the
+    # proxy, so ask the workspace whether the declared deliverables exist.
+    # Deliberately not exempted for a resumed run: the resume exemption exists
+    # because this segment's turn count says nothing about earlier segments,
+    # and the filesystem has no such blind spot. Whatever an earlier segment
+    # produced is still on disk, so a resumed run with none of its declared
+    # paths present delivered nothing, whichever segment was supposed to.
+    if not task_expects_artifacts:
+        return None
+    presence = await _absent_artifacts(artifact_probe, ctx)
+    if presence is not None and presence.nothing_delivered:
+        return await _fail(
+            _MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing))
+        )
+    return None
 
 
 async def _absent_artifacts(

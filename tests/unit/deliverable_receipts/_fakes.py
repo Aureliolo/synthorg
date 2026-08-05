@@ -23,6 +23,7 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionRecord,
+    CodeExecutionRecordRepository,
 )
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
@@ -35,6 +36,7 @@ from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageFilterSpec,
     KnowledgeUsageRecord,
 )
+from tests._shared import mock_of
 
 
 class InMemoryDeliverableReceiptRepository:
@@ -197,6 +199,29 @@ class InMemoryCodeExecutionRecordRepository:
         removed = len(self._records) - len(keep)
         self._records = keep
         return removed
+
+
+class RecordingCodeExecutionStore:
+    """Append-only double capturing, in order, what a tool wrote.
+
+    Shared by the two producers of a ``CodeExecutionRecord``
+    (``code_runner`` and ``shell_command``) so their suites cannot drift
+    apart on what the double does as the protocol grows. Distinct from
+    :class:`InMemoryCodeExecutionRecordRepository`, which answers queries
+    newest-first; these tests assert on write order and write count.
+
+    Wraps a typed ``mock_of`` because typeguard checks the whole protocol
+    on the argument, not just the one method under test.
+    """
+
+    def __init__(self) -> None:
+        self.records: list[CodeExecutionRecord] = []
+        self.repository: CodeExecutionRecordRepository = mock_of[
+            CodeExecutionRecordRepository
+        ](append=self._append)
+
+    async def _append(self, record: CodeExecutionRecord, /) -> None:
+        self.records.append(record)
 
 
 class InMemoryEvaluationReportRepository:

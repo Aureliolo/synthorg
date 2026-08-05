@@ -13,6 +13,7 @@ from synthorg.security.config import (
     SecurityConfig,
     UncertaintyCheckConfig,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import mock_of
 
 
@@ -35,6 +36,7 @@ def _llm_infra(*, model_resolver: ModelResolver | None = None) -> SecurityLlmInf
     }
     return SecurityLlmInfra(
         provider_registry=registry,
+        config_resolver=mock_of[ConfigResolverProtocol](),
         provider_configs=configs,
         model_resolver=model_resolver,
     )

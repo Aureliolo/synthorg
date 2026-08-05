@@ -232,14 +232,13 @@ class TestReadDeclaredArtifacts:
         """
         target = tmp_path / "locked.py"
         target.write_text("secret", encoding="utf-8")
-        original = Path.open
 
-        def _refuse(self: Path, *args: object, **kwargs: object) -> object:
-            if self.name == "locked.py":
-                msg = "permission denied"
-                raise OSError(msg)
-            return original(self, *args, **kwargs)  # type: ignore[arg-type]
+        def _refuse(*_args: object, **_kwargs: object) -> object:
+            msg = "permission denied"
+            raise OSError(msg)
 
+        # Unconditional: the only file this call opens is the declared one,
+        # and a permission fault is not portably reproducible on Windows.
         monkeypatch.setattr(Path, "open", _refuse)
 
         entries = _entries(_read(_expected("locked.py"), tmp_path))

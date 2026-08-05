@@ -62,27 +62,39 @@ class TestBuildEvolutionService:
         assert isinstance(service, EvolutionService)
 
     @pytest.mark.unit
-    def test_composite_proposer_without_binding(self) -> None:
-        """Without an operator-chosen pair, falls back to self_report."""
+    def test_composite_proposer_without_binding_proposes_nothing(self) -> None:
+        """No operator-chosen pair means no proposals, not a borrowed one.
+
+        Constructing the service proves nothing on its own: the interesting
+        question is what the proposer does, and without a binding the answer
+        must be nothing rather than a dispatch on a connection nobody chose.
+        """
         config = EvolutionConfig(
             proposer=ProposerConfig(type="composite"),
         )
         service = _build_service(config)
         assert isinstance(service, EvolutionService)
+        assert type(service._proposer).__name__ == "_NoOpProposer"
 
     @pytest.mark.unit
-    def test_separate_analyzer_with_binding(self) -> None:
+    def test_separate_analyzer_binding_reaches_the_proposer(self) -> None:
+        """The chosen pair is what the proposer dispatches on, both halves."""
         config = EvolutionConfig(
             proposer=ProposerConfig(type="separate_analyzer"),
         )
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(spec=CompletionProvider.complete),
+        )
         binding = BoundCompletion(
-            provider=mock_of[CompletionProvider](
-                complete=AsyncMock(spec=CompletionProvider.complete),
-            ),
+            provider=provider,
             model=NotBlankStr(TEST_MODEL_ID),
         )
         service = _build_service(config, binding=binding)
         assert isinstance(service, EvolutionService)
+        proposer = service._proposer
+        assert type(proposer).__name__ == "SeparateAnalyzerProposer"
+        assert proposer._provider is provider  # type: ignore[attr-defined]
+        assert proposer._model == TEST_MODEL_ID  # type: ignore[attr-defined]
 
 
 class TestBuildShadowGuard:

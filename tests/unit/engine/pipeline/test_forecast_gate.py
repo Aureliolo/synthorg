@@ -18,7 +18,7 @@ from synthorg.budget.forecast_roles import (
     BriefRoleSkeleton,
     RoleSkeletonProvider,
 )
-from synthorg.budget.forecaster import BriefSignal, CostForecaster, compute_brief_hash
+from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
@@ -67,6 +67,14 @@ _BRIEF_HASH = compute_brief_hash(
     _signal_from_work_item(
         _work_item(), currency="USD", skeleton=DEFAULT_ROLE_SKELETON
     ),
+)
+# The same brief with no submission attached: what a forecast asked for on
+# its own through ``POST /budget/forecast`` is keyed by, since no work item
+# existed when it was generated.
+_BRIEF_ONLY_HASH = compute_brief_hash(
+    _signal_from_work_item(
+        _work_item(), currency="USD", skeleton=DEFAULT_ROLE_SKELETON
+    ).model_copy(update={"correlation_id": None}),
 )
 
 
@@ -422,16 +430,7 @@ class TestForecastGate:
         repo = _FakeForecastRepo()
         estimate_only = Forecast(
             forecast_id=uuid4(),
-            brief_hash=compute_brief_hash(
-                BriefSignal(
-                    brief_text="A focused brief about the marketing site rebuild.",
-                    project=NotBlankStr("marketing"),
-                    requested_by=NotBlankStr("operator-1"),
-                    role_skeleton=DEFAULT_ROLE_SKELETON.roles,
-                    model_assignments=DEFAULT_ROLE_SKELETON.model_assignments,
-                    currency=NotBlankStr("USD"),
-                )
-            ),
+            brief_hash=_BRIEF_ONLY_HASH,
             estimated_cost=0.5,
             lower_bound=0.3,
             upper_bound=0.7,
@@ -528,6 +527,40 @@ class TestForecastGate:
         dispatched = work_pipeline.calls[0]
         assert dispatched.hard_ceiling == 1.8
         assert dispatched.forecast_id == approved.forecast_id
+
+    async def test_approved_estimate_linked_by_id_still_covers_the_brief(
+        self,
+    ) -> None:
+        """An estimate approved before any submission releases the work.
+
+        The operator asks for a standalone estimate, approves it, then
+        submits the brief naming that forecast. The row was keyed before a
+        submission existed, so its digest carries no correlation id, while
+        the arriving work item's does. Only the brief drifting should
+        supersede an approval, and it has not drifted here.
+        """
+        repo = _FakeForecastRepo()
+        approved = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_ONLY_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.APPROVED,
+            decided_at=_NOW,
+            decided_by="op-1",
+            ceiling_amount=2.5,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[approved.forecast_id] = approved
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        await gate.run(_work_item(forecast_id=approved.forecast_id))
+
+        assert len(work_pipeline.calls) == 1
+        assert work_pipeline.calls[0].hard_ceiling == 2.5
 
     async def test_approved_forecast_for_other_brief_is_ignored(self) -> None:
         """A reused forecast_id whose brief_hash no longer matches the

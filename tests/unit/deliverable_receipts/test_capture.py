@@ -147,6 +147,22 @@ class TestCodeExecutionCapture:
         rows = await records.query(CodeExecutionFilterSpec())
         assert rows == ()
 
+    async def test_source_text_naming_a_runner_is_not_recorded(self) -> None:
+        """Source text is not a command line; only shell snippets classify.
+
+        ``print(1)`` above would be rejected by the classifier on its own,
+        so it exercises nothing about the language gate. This body names a
+        runner, so deleting that gate would mint evidence from a comment.
+        """
+        records = InMemoryCodeExecutionRecordRepository()
+        tool = CodeRunnerTool(sandbox=_sandbox(), code_execution_records=records)
+        with execution_identity_scope(_IDENTITY):
+            await tool.execute(
+                arguments={"code": "# pytest\nprint(1)", "language": "python"},
+            )
+        rows = await records.query(CodeExecutionFilterSpec())
+        assert rows == ()
+
     async def test_test_run_skipped_without_scope(self) -> None:
         records = InMemoryCodeExecutionRecordRepository()
         tool = CodeRunnerTool(sandbox=_sandbox(), code_execution_records=records)

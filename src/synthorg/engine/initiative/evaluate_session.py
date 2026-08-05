@@ -95,6 +95,34 @@ class _EvaluationCapture:
         self.report: EvaluationReport | None = None
 
 
+def _refuse(
+    message: str,
+    *,
+    reason: str,
+    warn: bool = False,
+    **fields: object,
+) -> ToolExecutionResult:
+    """Log a refused submission and build the result the lead reads.
+
+    Every refusal is the same two steps and differs only in what it says,
+    so they share one shape: the reason reaching the event stream and the
+    remedy reaching the model cannot drift apart per branch.
+
+    Args:
+        message: What the lead is told, including how to proceed.
+        reason: The ``reason=`` field on the skipped event.
+        warn: Emit at WARNING rather than DEBUG. A correctable rejection is
+            not an operator's problem; a duplicate submission is.
+        **fields: Extra structured fields for the event.
+
+    Returns:
+        The error result the tool returns to the session.
+    """
+    emit = logger.warning if warn else logger.debug
+    emit(INITIATIVE_EVALUATION_SKIPPED, reason=reason, **fields)
+    return ToolExecutionResult(content=message, is_error=True)
+
+
 class SubmitEvaluationTool(BaseTool):
     """Terminal tool: the session submits its verdict through it.
 
@@ -172,17 +200,12 @@ class SubmitEvaluationTool(BaseTool):
             # First verdict wins. A later call can only overwrite a judgement
             # already reached, and the content that would prompt one comes
             # from the workspace this session is judging.
-            logger.warning(
-                INITIATIVE_EVALUATION_SKIPPED,
+            return _refuse(
+                "You have already submitted your evaluation. "
+                "The first verdict stands. Stop now.",
                 reason="duplicate_submit",
+                warn=True,
                 note="verdict already submitted; the second call is ignored",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "You have already submitted your evaluation. "
-                    "The first verdict stands. Stop now."
-                ),
-                is_error=True,
             )
         try:
             report = args_to_evaluation(
@@ -193,33 +216,21 @@ class SubmitEvaluationTool(BaseTool):
             # Not the stage failing: the lead can correct and resubmit in the
             # same session. Kept off the FAILED event so that stream stays a
             # list of evaluations that genuinely did not produce a verdict.
-            logger.debug(
-                INITIATIVE_EVALUATION_SKIPPED,
+            return _refuse(
+                f"Evaluation rejected: {safe_error_description(exc)}. "
+                "Fix the issue and call submit_evaluation again.",
                 reason="submit_rejected",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return ToolExecutionResult(
-                content=(
-                    f"Evaluation rejected: {safe_error_description(exc)}. "
-                    "Fix the issue and call submit_evaluation again."
-                ),
-                is_error=True,
-            )
         style_rejection = self._style_rejection(report)
         if style_rejection is not None:
-            logger.debug(
-                INITIATIVE_EVALUATION_SKIPPED,
+            return _refuse(
+                f"Evaluation rejected: {style_rejection}. "
+                "Rewrite the wording and call submit_evaluation again; "
+                "your verdict on each criterion need not change.",
                 reason="submit_rejected_by_output_policy",
                 note=style_rejection,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Evaluation rejected: {style_rejection}. "
-                    "Rewrite the wording and call submit_evaluation again; "
-                    "your verdict on each criterion need not change."
-                ),
-                is_error=True,
             )
         self._capture.report = report
         return ToolExecutionResult(

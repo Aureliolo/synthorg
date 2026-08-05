@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
@@ -65,7 +66,7 @@ def _make_task_metric(
         run_outcome=run_outcome,
         duration_seconds=duration_seconds,
         cost=cost,
-        currency="USD",
+        currency=DEFAULT_CURRENCY,
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,
@@ -91,7 +92,7 @@ def _make_cost_record(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
-        currency="USD",
+        currency=DEFAULT_CURRENCY,
         timestamp=timestamp,
     )
 
@@ -264,7 +265,7 @@ class TestMergeActivityTimeline:
         timeline = merge_activity_timeline(
             lifecycle_events=(),
             task_metrics=(task,),
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
         )
         completed = [e for e in timeline if e.event_type == "task_completed"]
         assert len(completed) == 1
@@ -439,7 +440,7 @@ class TestCostIncurredEvents:
             input_tokens=4,
             output_tokens=0,
             cost=0.0,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW,
         )
 
@@ -458,7 +459,7 @@ class TestCostIncurredEvents:
             input_tokens=4,
             output_tokens=0,
             cost=0.0,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW,
         )
 
@@ -876,7 +877,7 @@ class TestRedactCostEvents:
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW,
         )
         event = _cost_record_to_activity(record, currency="EUR")

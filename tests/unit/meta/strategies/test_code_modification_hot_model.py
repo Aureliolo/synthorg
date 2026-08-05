@@ -36,7 +36,10 @@ async def settings() -> AsyncIterator[SettingsService]:
 
 
 def _strategy(
-    settings: SettingsService, *, provider: AsyncMock
+    settings: SettingsService,
+    *,
+    provider: AsyncMock,
+    second: AsyncMock | None = None,
 ) -> CodeModificationStrategy:
     cfg = SelfImprovementConfig(
         enabled=True,
@@ -48,7 +51,9 @@ def _strategy(
     )
     return CodeModificationStrategy(
         config=cfg,
-        connections=connections({"first-conn": provider, "second-conn": provider}),
+        connections=connections(
+            {"first-conn": provider, "second-conn": second or provider}
+        ),
         scope_validator=ScopeValidator(allowed_paths=(), forbidden_paths=()),
         config_resolver=ConfigResolver(
             settings_service=settings, config=RootConfig(company_name="test")
@@ -69,10 +74,18 @@ async def test_code_modification_refuses_without_a_configured_pair(
 
 
 async def test_code_modification_model_read_live(settings: SettingsService) -> None:
-    """The provider call retargets to the live pair, both halves of it."""
-    provider = AsyncMock(spec=BaseCompletionProvider)
-    provider.complete.return_value = SimpleNamespace(content="[]")
-    strategy = _strategy(settings, provider=provider)
+    """The provider call retargets to the live pair, both halves of it.
+
+    Each connection gets its own double. Mapped to one, a dispatch that
+    ignored ``ModelRef.provider`` and always chose ``first-conn`` would
+    still show the new model id on the only mock in play, so the provider
+    half of the pair would be untested.
+    """
+    first = AsyncMock(spec=BaseCompletionProvider)
+    first.complete.return_value = SimpleNamespace(content="[]")
+    second = AsyncMock(spec=BaseCompletionProvider)
+    second.complete.return_value = SimpleNamespace(content="[]")
+    strategy = _strategy(settings, provider=first, second=second)
 
     await settings.set(
         "self_improvement",
@@ -80,7 +93,8 @@ async def test_code_modification_model_read_live(settings: SettingsService) -> N
         serialize_model_ref(ModelRef(provider="first-conn", model_id="first-codemod")),
     )
     await strategy._call_llm("prompt")
-    assert provider.complete.await_args.kwargs["model"] == "first-codemod"
+    assert first.complete.await_args.kwargs["model"] == "first-codemod"
+    second.complete.assert_not_awaited()
 
     await settings.set(
         "self_improvement",
@@ -88,4 +102,5 @@ async def test_code_modification_model_read_live(settings: SettingsService) -> N
         serialize_model_ref(ModelRef(provider="second-conn", model_id="live-codemod")),
     )
     await strategy._call_llm("prompt")
-    assert provider.complete.await_args.kwargs["model"] == "live-codemod"
+    assert second.complete.await_args.kwargs["model"] == "live-codemod"
+    assert first.complete.await_count == 1

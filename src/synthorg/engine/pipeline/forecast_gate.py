@@ -425,19 +425,31 @@ class ForecastGate:
         onto the new brief. On a mismatch the gate falls through to
         issue a fresh forecast for the current brief.
 
+        Two digests are accepted, because a stored row can have been
+        keyed either way and both mean "this forecast is for this brief".
+        A row this gate minted is keyed to the submission, so it matches
+        the submission-scoped digest. A row generated on its own through
+        ``POST /budget/forecast`` and then linked by id -- the operator
+        saying "run this work under that approved estimate" -- was keyed
+        before any submission existed, so it matches the brief-only one.
+        The question here is whether the *brief* drifted, and neither
+        answer to it turns on which submission is carrying it.
+
         Returns:
-            ``True`` when the existing forecast's brief hash matches
-            the current work item; ``False`` when the brief has
-            drifted (a fresh forecast is required).
+            ``True`` when the existing forecast is for this brief;
+            ``False`` when the brief has drifted (a fresh forecast is
+            required).
         """
-        expected = compute_brief_hash(
-            _signal_from_work_item(
-                work_item,
-                currency=self._budget_config.currency,
-                skeleton=skeleton,
-            ),
+        signal = _signal_from_work_item(
+            work_item,
+            currency=self._budget_config.currency,
+            skeleton=skeleton,
         )
-        if existing.brief_hash == expected:
+        expected = compute_brief_hash(signal)
+        brief_only = compute_brief_hash(
+            signal.model_copy(update={"correlation_id": None})
+        )
+        if existing.brief_hash in {expected, brief_only}:
             return True
         logger.warning(
             BUDGET_FORECAST_SUPERSEDED,

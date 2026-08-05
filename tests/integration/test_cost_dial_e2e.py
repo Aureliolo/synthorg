@@ -45,6 +45,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
@@ -180,6 +181,10 @@ def _task(
 
 
 def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
+    # One submission, dispatched twice: the correlation id is pinned because
+    # it scopes the brief digest, and re-dispatch after approval carries the
+    # very work item the forecast gated rather than a fresh submission of the
+    # same text.
     return WorkItem(
         origin_adapter_id="intake-entry-adapter",
         source=WorkSource.INTAKE,
@@ -187,6 +192,7 @@ def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
         raw_intent="Build a landing experience that converts.",
         project="marketing",
         requested_by="operator-1",
+        correlation_id=NotBlankStr("submission-cost-dial"),
         forecast_id=forecast_id,
     )
 

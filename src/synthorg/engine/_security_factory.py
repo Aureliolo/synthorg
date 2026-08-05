@@ -64,10 +64,13 @@ class SecurityLlmInfra:
 
     Attributes:
         provider_registry: Registry of provider drivers.
-        provider_configs: Provider configs keyed by name, for the vendor
-            family comparison the LLM evaluator warns on.
         config_resolver: Live source of each feature's own
             ``(provider, model)`` assignment, re-read per evaluation.
+            Required, not optional: without it no assignment can be read, so
+            a feature built with a registry alone dispatches nowhere while
+            reporting itself enabled.
+        provider_configs: Provider configs keyed by name, for the vendor
+            family comparison the LLM evaluator warns on.
         model_resolver: Model resolver for the multi-provider uncertainty
             check, which deliberately fans out across providers.
         cost_tracker: Cost tracker so security-evaluation calls emit
@@ -76,8 +79,8 @@ class SecurityLlmInfra:
     """
 
     provider_registry: ProviderRegistry
+    config_resolver: ConfigResolverProtocol
     provider_configs: Mapping[str, ProviderConfig] = field(default_factory=dict)
-    config_resolver: ConfigResolverProtocol | None = None
     model_resolver: ModelResolver | None = None
     cost_tracker: CostTrackerProtocol | None = None
 
