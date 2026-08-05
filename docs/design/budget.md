@@ -380,7 +380,7 @@ Every LLM provider call is tracked with comprehensive metadata (per-call cost an
 
 The framework tracks **cumulative risk** alongside monetary cost. While the
 `RiskClassifier` assigns per-action risk levels (LOW/MEDIUM/HIGH/CRITICAL),
-the risk budget tracks risk _accumulation_: an agent executing 50 MEDIUM-risk
+the risk budget tracks risk *accumulation*: an agent executing 50 MEDIUM-risk
 actions in a row should trigger escalation even though each individual action
 is approved.
 
@@ -443,7 +443,7 @@ per-agent/per-task/total aggregation queries.
 | `disabled` | No evaluation, always ALLOW |
 
 Shadow mode enables pre-deployment calibration: operators can observe what
-_would_ have been blocked without disrupting agent work, then tune risk
+*would* have been blocked without disrupting agent work, then tune risk
 weights and limits before switching to active enforcement.
 
 ## Automated Reporting
