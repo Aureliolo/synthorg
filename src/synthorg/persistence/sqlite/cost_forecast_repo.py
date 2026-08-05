@@ -17,6 +17,7 @@ import json
 import sqlite3
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import LiteralString
 from uuid import UUID
 
 import aiosqlite
@@ -49,7 +50,7 @@ from synthorg.persistence._shared.cost_forecast_marshalling import (
     validate_cost_forecast_update_keys,
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
-from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import WriteContext, conditional_write
 
 logger = get_logger(__name__)
 
@@ -449,33 +450,18 @@ class SQLiteCostForecastRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params = (
-            json.dumps(dict(gated_work_item)),
-            str(brief_hash),
-            format_iso_utc(updated_at),
-            str(entity_id),
+        return await self._conditional_write(
+            FORECAST_CLAIM_SQL_QMARK,
+            (
+                json.dumps(dict(gated_work_item)),
+                str(brief_hash),
+                format_iso_utc(updated_at),
+                str(entity_id),
+            ),
+            entity_id=entity_id,
+            operation="claim_if_unclaimed",
+            failure="Failed to claim forecast",
         )
-        async with self._write_context():
-            try:
-                async with self._db.execute(FORECAST_CLAIM_SQL_QMARK, params) as cursor:
-                    await self._db.commit()
-                    _db_rowcount = cursor.rowcount
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(
-                    self._db,
-                    operation="claim_if_unclaimed",
-                    forecast_id=str(entity_id),
-                )
-                msg = f"Failed to claim forecast {entity_id!r}"
-                logger.warning(
-                    PERSISTENCE_COST_FORECAST_FAILED,
-                    operation="claim_if_unclaimed",
-                    forecast_id=str(entity_id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
-        return _db_rowcount > 0
 
     async def raise_ceiling_if_halted(
         self,
@@ -498,30 +484,39 @@ class SQLiteCostForecastRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params = (float(new_ceiling), format_iso_utc(updated_at), str(entity_id))
-        async with self._write_context():
-            try:
-                async with self._db.execute(
-                    FORECAST_CLEAR_HALT_SQL_QMARK, params
-                ) as cursor:
-                    await self._db.commit()
-                    _db_rowcount = cursor.rowcount
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(
-                    self._db,
-                    operation="raise_ceiling_if_halted",
-                    forecast_id=str(entity_id),
-                )
-                msg = f"Failed to raise ceiling for forecast {entity_id!r}"
-                logger.warning(
-                    PERSISTENCE_COST_FORECAST_FAILED,
-                    operation="raise_ceiling_if_halted",
-                    forecast_id=str(entity_id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
-        return _db_rowcount > 0
+        return await self._conditional_write(
+            FORECAST_CLEAR_HALT_SQL_QMARK,
+            (float(new_ceiling), format_iso_utc(updated_at), str(entity_id)),
+            entity_id=entity_id,
+            operation="raise_ceiling_if_halted",
+            failure="Failed to raise ceiling for forecast",
+        )
+
+    async def _conditional_write(
+        self,
+        sql: LiteralString,
+        params: tuple[object, ...],
+        *,
+        entity_id: UUID,
+        operation: str,
+        failure: str,
+    ) -> bool:
+        """Run a guarded UPDATE and report whether it matched a row.
+
+        Returns:
+            ``True`` when the statement matched a row, ``False`` when the
+            guard excluded it or no such row exists.
+        """
+        return await conditional_write(
+            self._db,
+            self._write_context,
+            sql,
+            params,
+            operation=operation,
+            event=PERSISTENCE_COST_FORECAST_FAILED,
+            failure=f"{failure} {entity_id!r}",
+            logger=logger,
+        )
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete a forecast by id.

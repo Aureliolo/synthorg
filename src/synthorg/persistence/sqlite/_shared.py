@@ -2,10 +2,11 @@
 
 import sqlite3
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Protocol
+from typing import Any, LiteralString, Protocol
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import safe_error_description
 
 
@@ -86,3 +87,49 @@ async def rollback_after_failed_write(  # type: ignore[explicit-any]  # logger: 
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def conditional_write(  # type: ignore[explicit-any]  # logger: structlog lazy proxy
+    db: aiosqlite.Connection,
+    write_context: WriteContext,
+    sql: LiteralString,
+    params: tuple[object, ...],
+    *,
+    operation: str,
+    event: str,
+    failure: str,
+    logger: Any,
+) -> bool:
+    """Run a guarded UPDATE and report whether it matched a row.
+
+    An optimistic-concurrency write (ADR-0001 D7) puts its guard in the
+    statement, so "did this caller win" is the rowcount and nothing
+    else. Shared because the surrounding shape never varies: serialise,
+    execute, commit, and on a driver error roll back before the failure
+    surfaces. ``failure`` is the caller's own message, so a repository
+    still says which write of its own could not be made.
+
+    Returns:
+        ``True`` when the statement matched a row; ``False`` when the
+        guard excluded it or no such row exists.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
+    async with write_context():
+        try:
+            async with db.execute(sql, params) as cursor:
+                await db.commit()
+                matched = cursor.rowcount
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            await rollback_after_failed_write(
+                db, operation=operation, event=event, logger=logger
+            )
+            logger.warning(
+                event,
+                operation=operation,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(failure) from exc
+    return matched > 0
