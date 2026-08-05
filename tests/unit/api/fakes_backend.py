@@ -894,8 +894,8 @@ class FakePersistenceBackend(PersistenceBackend):
         msg = "FakePersistenceBackend does not expose a real DB"
         raise NotImplementedError(msg)
 
-    @override
     @property
+    @override
     def kind(self) -> PersistenceBackendKind:
         # FakePersistenceBackend has no real backend kind; callers that
         # branch on ``kind`` should not be using the fake. Return
@@ -903,15 +903,15 @@ class FakePersistenceBackend(PersistenceBackend):
         # in-memory store the fake actually provides.
         return PersistenceBackendKind.SQLITE
 
-    @override
     @property
+    @override
     def config(self) -> SQLiteConfig | PostgresConfig:
         # Paired with ``kind`` so the discriminator and the connection details
         # cannot disagree: an in-memory store is what ``:memory:`` names.
         return SQLiteConfig(path=":memory:")
 
-    @override
     @property
+    @override
     def supports_conversational_approvals(self) -> bool:
         # The in-memory fake durably retains approvals for the test's
         # lifetime, so it does not impose the SQLite persistence limit.
@@ -933,317 +933,317 @@ class FakePersistenceBackend(PersistenceBackend):
     async def migrate(self) -> None:
         pass
 
-    @override
     @property
+    @override
     def is_connected(self) -> bool:
         return self._connected
 
-    @override
     @property
+    @override
     def backend_name(self) -> str:
         return "fake"
 
-    @override
     @property
+    @override
     def artifacts(self) -> FakeArtifactRepository:
         return self._artifacts
 
-    @override
     @property
+    @override
     def projects(self) -> FakeProjectRepository:
         return self._projects
 
-    @override
     @property
+    @override
     def plans(self) -> FakePlanRepository:
         return self._plans
 
-    @override
     @property
+    @override
     def plan_comments(self) -> FakePlanItemCommentRepository:
         return self._plan_comments
 
-    @override
     @property
+    @override
     def project_workspaces(self) -> FakeProjectWorkspaceRepository:
         return self._project_workspaces
 
-    @override
     @property
+    @override
     def codebase_structure_maps(self) -> FakeCodebaseStructureMapRepository:
         return self._codebase_structure_maps
 
-    @override
     @property
+    @override
     def project_environments(self) -> FakeProjectEnvironmentRepository:
         return self._project_environments
 
-    @override
     @property
+    @override
     def project_docs(self) -> FakeDocsRepository:
         return self._project_docs
 
-    @override
     @property
+    @override
     def project_brain(self) -> FakeProjectBrainRepository:
         return self._project_brain
 
-    @override
     @property
+    @override
     def knowledge_sources(self) -> FakeKnowledgeSourceRepository:
         return self._knowledge_sources
 
-    @override
     @property
+    @override
     def knowledge_provenance(self) -> FakeChunkProvenanceRepository:
         return self._knowledge_provenance
 
-    @override
     @property
+    @override
     def research_runs(self) -> InMemoryResearchRunRepository:
         return self._research_runs
 
-    @override
     @property
+    @override
     def deliverable_receipts(self) -> InMemoryDeliverableReceiptRepository:
         return self._deliverable_receipts
 
-    @override
     @property
+    @override
     def knowledge_usage_records(self) -> InMemoryKnowledgeUsageRecordRepository:
         return self._knowledge_usage_records
 
-    @override
     @property
+    @override
     def code_execution_records(self) -> InMemoryCodeExecutionRecordRepository:
         return self._code_execution_records
 
-    @override
     @property
+    @override
     def evaluation_reports(self) -> InMemoryEvaluationReportRepository:
         return self._evaluation_reports
 
-    @override
     @property
+    @override
     def tasks(self) -> FakeTaskRepository:
         return self._tasks
 
-    @override
     @property
+    @override
     def cost_records(self) -> FakeCostRecordRepository:
         return self._cost_records
 
-    @override
     @property
+    @override
     def messages(self) -> FakeMessageRepository:
         return self._messages
 
-    @override
     @property
+    @override
     def lifecycle_events(self) -> FakeLifecycleEventRepository:
         return self._lifecycle_events
 
-    @override
     @property
+    @override
     def task_metrics(self) -> FakeTaskMetricRepository:
         return self._task_metrics
 
-    @override
     @property
+    @override
     def collaboration_metrics(self) -> FakeCollaborationMetricRepository:
         return self._collaboration_metrics
 
-    @override
     @property
+    @override
     def parked_contexts(self) -> FakeParkedContextRepository:
         return self._parked_contexts
 
-    @override
     @property
+    @override
     def resume_intents(self) -> FakeResumeIntentRepository:
         return self._resume_intents
 
-    @override
     @property
+    @override
     def audit_entries(self) -> FakeAuditRepository:
         return self._audit_entries
 
-    @override
     @property
+    @override
     def provider_audit_events(self) -> _FakeProviderAuditRepo:
         return self._provider_audit_events
 
-    @override
     @property
+    @override
     def preset_overrides(self) -> _FakePresetOverrideRepo:
         return self._preset_overrides
 
-    @override
     @property
+    @override
     def decision_records(self) -> FakeDecisionRepository:
         return self._decision_records
 
-    @override
     @property
+    @override
     def users(self) -> FakeUserRepository:
         return self._users
 
-    @override
     @property
+    @override
     def api_keys(self) -> FakeApiKeyRepository:
         return self._api_keys
 
-    @override
     @property
+    @override
     def checkpoints(self) -> FakeCheckpointRepository:
         return self._checkpoints
 
-    @override
     @property
+    @override
     def flight_recorder_frames(self) -> FakeFlightRecorderFrameRepository:
         return self._flight_recorder_frames
 
-    @override
     @property
+    @override
     def red_team_reports(self) -> FakeRedTeamReportArchiveRepository:
         return self._red_team_reports
 
-    @override
     @property
+    @override
     def completion_oracle_reports(
         self,
     ) -> FakeCompletionOracleReportArchiveRepository:
         return self._completion_oracle_reports
 
-    @override
     @property
+    @override
     def heartbeats(self) -> FakeHeartbeatRepository:
         return self._heartbeats
 
-    @override
     @property
+    @override
     def agent_states(self) -> FakeAgentStateRepository:
         return self._agent_states
 
-    @override
     @property
+    @override
     def settings(self) -> FakeSettingsRepository:
         return self._settings_repo
 
-    @override
     @property
+    @override
     def custom_presets(self) -> FakePersonalityPresetRepository:
         return self._custom_presets
 
-    @override
     @property
+    @override
     def workflow_definitions(self) -> FakeWorkflowDefinitionRepository:
         return self._workflow_definitions
 
-    @override
     @property
+    @override
     def workflow_executions(self) -> FakeWorkflowExecutionRepository:
         return self._workflow_executions
 
-    @override
     @property
+    @override
     def subworkflows(self) -> FakeSubworkflowRepository:
         return self._subworkflows
 
-    @override
     @property
+    @override
     def workflow_versions(self) -> FakeWorkflowVersionRepository:
         return self._workflow_versions
 
-    @override
     @property
+    @override
     def identity_versions(self) -> FakeVersionRepository[AgentIdentity]:
         return self._identity_versions
 
-    @override
     @property
+    @override
     def evaluation_config_versions(self) -> FakeVersionRepository[EvaluationConfig]:
         return self._evaluation_config_versions
 
-    @override
     @property
+    @override
     def budget_config_versions(self) -> FakeVersionRepository[BudgetConfig]:
         return self._budget_config_versions
 
-    @override
     @property
+    @override
     def company_versions(self) -> FakeVersionRepository[Company]:
         return self._company_versions
 
-    @override
     @property
+    @override
     def role_versions(self) -> FakeVersionRepository[Role]:
         return self._role_versions
 
-    @override
     @property
+    @override
     def risk_overrides(self) -> FakeRiskOverrideRepository:
         return self._risk_overrides
 
-    @override
     @property
+    @override
     def ssrf_violations(self) -> FakeSsrfViolationRepository:
         return self._ssrf_violations
 
-    @override
     @property
+    @override
     def circuit_breaker_state(self) -> FakeCircuitBreakerStateRepository:
         return self._circuit_breaker_state
 
-    @override
     @property
+    @override
     def model_tool_call_signals(self) -> FakeModelToolCallSignalRepository:
         return self._model_tool_call_signals
 
-    @override
     @property
+    @override
     def connections(self) -> InMemoryConnectionRepository:
         """In-memory connection repository."""
         return self._connections_stub
 
-    @override
     @property
+    @override
     def connection_secrets(self) -> InMemoryConnectionSecretRepository:
         """In-memory connection secret repository."""
         return self._connection_secrets_stub
 
-    @override
     @property
+    @override
     def oauth_states(self) -> InMemoryOAuthStateRepository:
         """In-memory OAuth state repository."""
         return self._oauth_states_stub
 
-    @override
     @property
+    @override
     def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
         """In-memory webhook receipt repository."""
         return self._webhook_receipts_stub
 
-    @override
     @property
+    @override
     def training_plans(self) -> FakeTrainingPlanRepository:
         """Fake training plan repository."""
         return self._training_plans_repo
 
-    @override
     @property
+    @override
     def training_results(self) -> FakeTrainingResultRepository:
         """Fake training result repository."""
         return self._training_results_repo
 
-    @override
     @property
+    @override
     def custom_rules(self) -> FakeCustomRuleRepository:
         """Fake custom rule repository."""
         return self._custom_rules_repo
 
-    @override
     @property
+    @override
     def sessions(self) -> AsyncMock:
         """Cached fake session repository.
 
@@ -1261,8 +1261,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._sessions_stub = stub
         return self._sessions_stub
 
-    @override
     @property
+    @override
     def refresh_tokens(self) -> AsyncMock:
         """Cached fake refresh-token repository."""
         from unittest.mock import AsyncMock
@@ -1273,8 +1273,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._refresh_tokens_stub = AsyncMock(spec=RefreshTokenRepository)
         return self._refresh_tokens_stub
 
-    @override
     @property
+    @override
     def mcp_installations(self) -> AsyncMock:
         """Cached fake MCP installations repository."""
         from unittest.mock import AsyncMock
@@ -1285,8 +1285,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._mcp_installations_stub = AsyncMock(spec=McpInstallationRepository)
         return self._mcp_installations_stub
 
-    @override
     @property
+    @override
     def memory_vectors(self) -> AsyncMock:
         """Cached fake agent-memory vector repository."""
         from unittest.mock import AsyncMock
@@ -1303,8 +1303,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._memory_vectors_stub = stub
         return self._memory_vectors_stub
 
-    @override
     @property
+    @override
     def org_facts(self) -> AsyncMock:
         """Cached fake org fact repository."""
         from unittest.mock import AsyncMock
@@ -1315,8 +1315,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._org_facts_stub = AsyncMock(spec=OrgFactRepository)
         return self._org_facts_stub
 
-    @override
     @property
+    @override
     def ontology_entities(self) -> AsyncMock:
         """Cached fake ontology entity repository."""
         from unittest.mock import AsyncMock
@@ -1327,8 +1327,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._ontology_entities_stub = AsyncMock(spec=OntologyEntityRepository)
         return self._ontology_entities_stub
 
-    @override
     @property
+    @override
     def ontology_drift(self) -> AsyncMock:
         """Cached fake ontology drift-report repository."""
         from unittest.mock import AsyncMock
@@ -1341,8 +1341,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._ontology_drift_stub = AsyncMock(spec=OntologyDriftReportRepository)
         return self._ontology_drift_stub
 
-    @override
     @property
+    @override
     def project_cost_aggregates(self) -> AsyncMock:
         """Cached fake project cost aggregate repository."""
         from unittest.mock import AsyncMock
@@ -1357,8 +1357,8 @@ class FakePersistenceBackend(PersistenceBackend):
             )
         return self._project_cost_aggregates_stub
 
-    @override
     @property
+    @override
     def project_cost_claim_seen(self) -> AsyncMock:
         """Cached fake durable cost-claim dedup repository."""
         from unittest.mock import AsyncMock
@@ -1373,8 +1373,8 @@ class FakePersistenceBackend(PersistenceBackend):
             )
         return self._project_cost_claim_seen_stub
 
-    @override
     @property
+    @override
     def fine_tune_checkpoints(self) -> AsyncMock:
         """Cached fake fine-tune checkpoint repository."""
         from unittest.mock import AsyncMock
@@ -1389,8 +1389,8 @@ class FakePersistenceBackend(PersistenceBackend):
             )
         return self._fine_tune_checkpoints_stub
 
-    @override
     @property
+    @override
     def fine_tune_runs(self) -> AsyncMock:
         """Cached fake fine-tune run repository."""
         from unittest.mock import AsyncMock
@@ -1401,8 +1401,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._fine_tune_runs_stub = AsyncMock(spec=FineTuneRunRepository)
         return self._fine_tune_runs_stub
 
-    @override
     @property
+    @override
     def meeting_cooldown(self) -> AsyncMock:
         """Cached fake meeting cooldown repository."""
         from unittest.mock import AsyncMock
@@ -1417,8 +1417,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._meeting_cooldown_stub = stub
         return self._meeting_cooldown_stub
 
-    @override
     @property
+    @override
     def ceremony_scheduler_state(self) -> AsyncMock:
         """Cached fake ceremony scheduler state repository."""
         from unittest.mock import AsyncMock
@@ -1434,8 +1434,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._ceremony_scheduler_state_stub = stub
         return self._ceremony_scheduler_state_stub
 
-    @override
     @property
+    @override
     def tracked_containers(self) -> AsyncMock:
         """Cached fake tracked-container repository."""
         from unittest.mock import AsyncMock
@@ -1451,8 +1451,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._tracked_container_stub = stub
         return self._tracked_container_stub
 
-    @override
     @property
+    @override
     def idempotency_keys(self) -> AsyncMock:
         """Cached fake idempotency-keys repository."""
         from unittest.mock import AsyncMock
@@ -1463,8 +1463,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._idempotency_keys_stub = AsyncMock(spec=IdempotencyRepository)
         return self._idempotency_keys_stub
 
-    @override
     @property
+    @override
     def seen_claims(self) -> AsyncMock:
         """Cached fake seen-claims repository (worker claim dedup)."""
         from unittest.mock import AsyncMock
@@ -1478,8 +1478,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._seen_claims_stub = stub
         return self._seen_claims_stub
 
-    @override
     @property
+    @override
     def principle_overrides(self) -> AsyncMock:
         """Cached fake principle-overrides repository (rollback overlays)."""
         from unittest.mock import AsyncMock
@@ -1495,8 +1495,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._principle_overrides_stub = stub
         return self._principle_overrides_stub
 
-    @override
     @property
+    @override
     def hiring_requests(self) -> AsyncMock:
         """Cached fake hiring-request repository."""
         from synthorg.persistence.hiring_request_protocol import (
@@ -1511,8 +1511,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._hiring_requests_stub = stub
         return self._hiring_requests_stub
 
-    @override
     @property
+    @override
     def agent_contributions(self) -> AsyncMock:
         """Cached fake agent-contribution repository."""
         from synthorg.persistence.agent_contribution_protocol import (
@@ -1525,8 +1525,8 @@ class FakePersistenceBackend(PersistenceBackend):
             self._agent_contributions_stub = stub
         return self._agent_contributions_stub
 
-    @override
     @property
+    @override
     def audit_chain_entries(self) -> AsyncMock:
         """Cached fake audit-chain-entry repository."""
         from synthorg.persistence.audit_chain_protocol import AuditChainRepository

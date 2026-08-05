@@ -42,7 +42,7 @@ from synthorg.providers.models import (
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
 
-from .conftest import make_e2e_identity, make_e2e_task
+from .conftest import e2e_tool_workspace, make_e2e_identity, make_e2e_task
 
 pytestmark = pytest.mark.e2e
 
@@ -168,7 +168,8 @@ class TestRecordThenReplayByteIdentical:
 
         assert recorded.is_success is True
         assert recorded.termination_reason == TerminationReason.COMPLETED
-        assert (rec_ws / "output.txt").read_text(encoding="utf-8") == "Hello cassette"
+        rec_written = e2e_tool_workspace(rec_ws) / "output.txt"
+        assert rec_written.read_text(encoding="utf-8") == "Hello cassette"
 
         # -- Replay: NO real driver; a raising spy proves zero calls. -
         rep_ws = tmp_path / "rep_ws"
@@ -208,7 +209,8 @@ class TestRecordThenReplayByteIdentical:
         assert rep_te.status == rec_te.status == TaskStatus.IN_REVIEW
 
         # The replay reproduced the on-disk artefact too.
-        assert (rep_ws / "output.txt").read_text(encoding="utf-8") == "Hello cassette"
+        rep_written = e2e_tool_workspace(rep_ws) / "output.txt"
+        assert rep_written.read_text(encoding="utf-8") == "Hello cassette"
 
     async def test_second_replay_is_stable(self, tmp_path: Path) -> None:
         """Replaying twice yields identical results (no cursor leak)."""
@@ -255,7 +257,8 @@ class TestRecordThenReplayByteIdentical:
             # so assert real success before comparing.
             assert result.is_success is True
             assert result.termination_reason == TerminationReason.COMPLETED
-            assert (ws / "output.txt").read_text(encoding="utf-8") == ("Hello cassette")
+            written = e2e_tool_workspace(ws) / "output.txt"
+            assert written.read_text(encoding="utf-8") == "Hello cassette"
             assert result.completion_summary is not None
             summaries.append(result.completion_summary)
         assert summaries[0] == summaries[1]

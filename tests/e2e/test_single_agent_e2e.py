@@ -31,6 +31,7 @@ from tests._shared import make_in_memory_catalog
 
 from .conftest import (
     ScriptedProvider,
+    e2e_tool_workspace,
     make_e2e_identity,
     make_e2e_task,
     make_text_response,
@@ -93,7 +94,7 @@ class TestFileToolAgent:
         assert result.total_turns == 2
 
         # File exists on disk with correct content
-        output_file = e2e_workspace / "output.txt"
+        output_file = e2e_tool_workspace(e2e_workspace) / "output.txt"
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8") == "Hello from agent"
 
@@ -259,7 +260,7 @@ class TestPermissionDeniedRecovery:
         assert "Permission denied" in tool_msgs[0].tool_result.content
 
         # File was NOT created on disk
-        assert not (e2e_workspace / "output.txt").exists()
+        assert not (e2e_tool_workspace(e2e_workspace) / "output.txt").exists()
 
         # Task at IN_REVIEW (agent completed, awaiting review)
         task_execution = result.execution_result.context.task_execution
@@ -360,8 +361,9 @@ class TestMaxTurnsExhausted:
         assert provider.call_count == 2
 
         # Files were actually written to disk
-        assert (e2e_workspace / "file1.txt").exists()
-        assert (e2e_workspace / "file2.txt").exists()
+        written = e2e_tool_workspace(e2e_workspace)
+        assert (written / "file1.txt").exists()
+        assert (written / "file2.txt").exists()
 
         # Tool results are present in conversation (tools were executed)
         conversation = result.execution_result.context.conversation

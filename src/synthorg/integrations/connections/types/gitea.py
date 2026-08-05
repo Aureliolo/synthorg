@@ -71,8 +71,8 @@ class _GiteaFamilyAuthenticator(ABC):
 class GiteaAuthenticator(_GiteaFamilyAuthenticator):
     """Validates Gitea connection credentials."""
 
-    @override
     @property
+    @override
     def connection_type(self) -> ConnectionType:
         """The connection type this authenticator handles."""
         return ConnectionType.GITEA
@@ -81,8 +81,8 @@ class GiteaAuthenticator(_GiteaFamilyAuthenticator):
 class ForgejoAuthenticator(_GiteaFamilyAuthenticator):
     """Validates Forgejo connection credentials."""
 
-    @override
     @property
+    @override
     def connection_type(self) -> ConnectionType:
         """The connection type this authenticator handles."""
         return ConnectionType.FORGEJO
