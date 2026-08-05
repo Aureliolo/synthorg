@@ -346,10 +346,12 @@ class TestMaxTurnsExhausted:
         assert result.termination_reason == TerminationReason.MAX_TURNS
         assert result.total_turns == 2
 
-        # Task stays IN_PROGRESS (only COMPLETED/SHUTDOWN/ERROR trigger transitions)
+        # A run that stopped without finishing is FAILED, not still moving:
+        # left at IN_PROGRESS the stall derivation reads it as in flight, so
+        # its initiative could never be replanned or completed.
         task_execution = result.execution_result.context.task_execution
         assert task_execution is not None
-        assert task_execution.status == TaskStatus.IN_PROGRESS
+        assert task_execution.status == TaskStatus.FAILED
 
         # No error message for MAX_TURNS
         assert result.execution_result.error_message is None
