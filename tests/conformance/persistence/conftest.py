@@ -6,9 +6,10 @@ against SQLite and once against Postgres, both freshly connected and
 migrated.
 
 SQLite arm:
-    Uses ``migrations.copy_revisions`` to seed a per-test SQLite file
-    on-disk tempfile database, so concurrent xdist workers do not
-    contend on the shared revisions directory lock.
+    Copies the session-wide migrated template built once per run by
+    ``tests.conftest._get_template_db`` into a per-test on-disk file,
+    so setup cost is one file copy rather than a replay of the whole
+    yoyo chain and stays flat as the schema grows.
 
 Postgres arm:
     Uses ONE ``testcontainers.postgres.PostgresContainer`` running
@@ -27,6 +28,7 @@ Postgres arm:
 import asyncio
 import json
 import os
+import shutil
 import sys
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
@@ -37,7 +39,6 @@ import pytest
 from filelock import FileLock
 
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
@@ -510,11 +511,15 @@ async def backend(
     backend_name = request.param
     if backend_name == "sqlite":
         db_path = tmp_path / "conformance.db"
-        rev_path = migrations.copy_revisions(tmp_path / "revisions", backend="sqlite")
-        await migrations.migrate_apply(
-            migrations.to_sqlite_url(str(db_path)),
-            revisions_path=rev_path,
-        )
+        # Copy the session-wide migrated template, the same way the
+        # postgres arm clones its template database. Replaying the yoyo
+        # chain per test made every one of the ~990 tests pay for the
+        # whole schema's history, so each revision added cost the suite
+        # ~990 replays and the shard walked into the session timeout.
+        from tests.conftest import _get_template_db
+
+        template = await _get_template_db(request.getfixturevalue("tmp_path_factory"))
+        await asyncio.to_thread(shutil.copy2, str(template), str(db_path))
         sqlite_backend = SQLitePersistenceBackend(SQLiteConfig(path=str(db_path)))
         await sqlite_backend.connect()
         try:

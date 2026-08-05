@@ -513,6 +513,23 @@ class TestPostExecutionGuards:
 
         assert len(messages) == 3
 
+    def test_a_second_binding_of_the_table_is_caught(self, repo: Path) -> None:
+        """One name, one table: the runtime reads the last binding.
+
+        A valid table followed by an emptied replacement leaves the gate
+        reading one mapping while the module runs another, which is a
+        passing gate over a guard that terminalises nothing.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION + "\n\n_UNFINISHED_REASONS = {}\n",
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("bound 2 times" in m for m in messages)
+
     def test_a_missing_entry_point_is_caught(self, repo: Path) -> None:
         """Nothing applies the guards if the function they live in is gone."""
         _write(

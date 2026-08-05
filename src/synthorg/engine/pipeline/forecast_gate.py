@@ -432,15 +432,15 @@ class ForecastGate:
         onto the new brief. On a mismatch the gate falls through to
         issue a fresh forecast for the current brief.
 
-        Two digests are accepted, because a stored row can have been
-        keyed either way and both mean "this forecast is for this brief".
-        A row this gate minted is keyed to the submission, so it matches
-        the submission-scoped digest. A row generated on its own through
-        ``POST /budget/forecast`` and then linked by id -- the operator
-        saying "run this work under that approved estimate" -- was keyed
-        before any submission existed, so it matches the brief-only one.
-        The question here is whether the *brief* drifted, and neither
-        answer to it turns on which submission is carrying it.
+        Two digests are accepted, because a stored row can have been keyed
+        either way. A row this gate minted is keyed to the submission, so
+        it matches the submission-scoped digest whoever is carrying it. A
+        row generated on its own through ``POST /budget/forecast`` was
+        keyed before any submission existed, so it matches the brief-only
+        one -- but only while it is still free: once it gates a work item
+        it belongs to that submission, and a second submission naming the
+        same id would otherwise be told to await an approval that releases
+        the first one's work and never its own.
 
         Returns:
             ``True`` when the existing forecast is for this brief;
@@ -453,10 +453,12 @@ class ForecastGate:
             skeleton=skeleton,
         )
         expected = compute_brief_hash(signal)
+        if existing.brief_hash == expected:
+            return True
         brief_only = compute_brief_hash(
             signal.model_copy(update={"correlation_id": None})
         )
-        if existing.brief_hash in {expected, brief_only}:
+        if existing.gated_work_item is None and existing.brief_hash == brief_only:
             return True
         logger.warning(
             BUDGET_FORECAST_SUPERSEDED,

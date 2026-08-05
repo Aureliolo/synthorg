@@ -562,6 +562,55 @@ class TestForecastGate:
         assert held["correlation_id"] == "submission-1"
         assert work_pipeline.calls == []
 
+    async def test_a_taken_estimate_stops_covering_a_second_submission(self) -> None:
+        """A standalone estimate belongs to whoever reached it first.
+
+        Both submissions name the same free-standing estimate. The first
+        takes it and its work item rides on the row. Were the second still
+        covered by the brief-only digest, it would be told to await an
+        approval that releases the first submission's work and never its
+        own, which is the dropped-brief failure keyed digests exist to
+        close.
+        """
+        repo = _FakeForecastRepo()
+        estimate_only = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_ONLY_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[estimate_only.forecast_id] = estimate_only
+        gate, _, _ = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as first:
+            await gate.run(
+                _work_item(
+                    forecast_id=estimate_only.forecast_id,
+                    correlation_id="submission-a",
+                )
+            )
+        with pytest.raises(CostForecastApprovalRequiredError) as second:
+            await gate.run(
+                _work_item(
+                    forecast_id=estimate_only.forecast_id,
+                    correlation_id="submission-b",
+                )
+            )
+
+        assert first.value.forecast_id == estimate_only.forecast_id
+        assert second.value.forecast_id != estimate_only.forecast_id
+        held = repo.rows[estimate_only.forecast_id].gated_work_item
+        assert held is not None
+        assert held["correlation_id"] == "submission-a"
+        minted = repo.rows[second.value.forecast_id].gated_work_item
+        assert minted is not None
+        assert minted["correlation_id"] == "submission-b"
+
     async def test_approved_estimate_linked_by_id_still_covers_the_brief(
         self,
     ) -> None:

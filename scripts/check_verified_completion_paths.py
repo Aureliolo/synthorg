@@ -381,20 +381,14 @@ def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
     return False
 
 
-def _table_reasons(tree: ast.Module, table: str) -> set[str] | None:
-    """Read the ``TerminationReason`` members keyed in the *table* assignment.
-
-    Only the mapping's keys count. A reason appearing on the value side is
-    the failure message, not an entry, so a table keyed by something else
-    that merely mentions the reasons terminalises none of them. The literal
-    is found inside whatever wraps it (``MappingProxyType`` today), and an
-    assignment carrying no mapping at all reads as no keys, which fails
-    closed.
+def _table_bindings(tree: ast.Module, table: str) -> list[ast.expr | None]:
+    """Collect every module-level assignment to *table*, in source order.
 
     Returns:
-        The member names used as keys of the table's mapping, or ``None``
-        when no module-level assignment to *table* exists.
+        One entry per binding: the assigned value, or ``None`` for a bare
+        annotation that binds nothing.
     """
+    bindings: list[ast.expr | None] = []
     for node in tree.body:
         if isinstance(node, ast.Assign):
             targets: list[ast.expr] = list(node.targets)
@@ -402,26 +396,41 @@ def _table_reasons(tree: ast.Module, table: str) -> set[str] | None:
             targets = [node.target]
         else:
             continue
-        if not any(
+        if any(
             isinstance(target, ast.Name) and target.id == table for target in targets
         ):
-            continue
-        if node.value is None:
-            return set()
-        mapping = next(
-            (sub for sub in ast.walk(node.value) if isinstance(sub, ast.Dict)),
-            None,
-        )
-        if mapping is None:
-            return set()
-        return {
-            key.attr
-            for key in mapping.keys
-            if isinstance(key, ast.Attribute)
-            and isinstance(key.value, ast.Name)
-            and key.value.id == "TerminationReason"
-        }
-    return None
+            bindings.append(node.value)
+    return bindings
+
+
+def _table_reasons(value: ast.expr | None) -> set[str]:
+    """Read the ``TerminationReason`` members keyed in a table's *value*.
+
+    Only the mapping's keys count. A reason appearing on the value side is
+    the failure message, not an entry, so a table keyed by something else
+    that merely mentions the reasons terminalises none of them. The literal
+    is found inside whatever wraps it (``MappingProxyType`` today), and a
+    binding carrying no mapping at all reads as no keys, which fails
+    closed.
+
+    Returns:
+        The member names used as keys of the table's mapping.
+    """
+    if value is None:
+        return set()
+    mapping = next(
+        (sub for sub in ast.walk(value) if isinstance(sub, ast.Dict)),
+        None,
+    )
+    if mapping is None:
+        return set()
+    return {
+        key.attr
+        for key in mapping.keys
+        if isinstance(key, ast.Attribute)
+        and isinstance(key.value, ast.Name)
+        and key.value.id == "TerminationReason"
+    }
 
 
 def _check_test_evidence_provenance(root: Path) -> list[str]:
@@ -555,8 +564,8 @@ def _check_post_execution_guards(root: Path) -> list[str]:
             "the zero-tool-call proxy, so a run that read files and wrote "
             "nothing reaches review as delivered."
         )
-    reasons = _table_reasons(tree, _UNFINISHED_REASON_TABLE)
-    if reasons is None:
+    bindings = _table_bindings(tree, _UNFINISHED_REASON_TABLE)
+    if not bindings:
         messages.append(
             f"{rel}: {_UNFINISHED_REASON_TABLE} is gone. A run that stopped "
             "without finishing would stay IN_PROGRESS, which the stall "
@@ -564,6 +573,17 @@ def _check_post_execution_guards(root: Path) -> list[str]:
             "be replanned or completed."
         )
         return messages
+    if len(bindings) != 1:
+        # Whichever binding this gate read, the runtime reads the last one.
+        # A table checked here and a different table in force is the shape
+        # that lets an emptied replacement ship behind a passing gate.
+        messages.append(
+            f"{rel}: {_UNFINISHED_REASON_TABLE} is bound "
+            f"{len(bindings)} times at module level. One name, one table: "
+            "reduce it to a single binding so what is checked is what runs."
+        )
+        return messages
+    reasons = _table_reasons(bindings[0])
     messages.extend(
         f"{rel}: {_UNFINISHED_REASON_TABLE} no longer terminalises {reason}. "
         "That run would sit at IN_PROGRESS forever."
