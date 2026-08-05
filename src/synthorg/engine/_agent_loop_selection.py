@@ -14,6 +14,7 @@ outcome.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.task import Task
 from synthorg.engine.loop_protocol import ExecutionLoop
@@ -34,7 +35,7 @@ type BudgetUtilizationReader = Callable[[], Awaitable[float | None]]
 type LoopBuilder = Callable[[str], ExecutionLoop]
 
 #: The loop candidate whose selection the budget can override.
-_BUDGET_SENSITIVE_LOOP: str = "hybrid"
+_BUDGET_SENSITIVE_LOOP: Final[str] = "hybrid"
 
 
 async def resolve_loop(

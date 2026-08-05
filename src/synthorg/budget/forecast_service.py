@@ -151,6 +151,11 @@ class BudgetForecastService:
             DomainError: When the gated work exists but cannot be
                 dispatched, so the operator learns it did not start.
         """
+        # Checked before the state change, not after: the decision commits
+        # atomically and there is no transition back out of APPROVED, so an
+        # unwired dispatcher discovered afterwards would leave the row
+        # approved, the work un-run, and a retry rejected as not-pending.
+        await self._require_dispatchable(forecast_id)
         transitioned = await self._repo.transition_if(
             forecast_id,
             ForecastDecision.PENDING,
@@ -169,6 +174,31 @@ class BudgetForecastService:
         )
         await self._dispatch_gated_work(forecast)
         return forecast
+
+    async def _require_dispatchable(self, forecast_id: UUID) -> None:
+        """Refuse an approval whose work could not be run once committed.
+
+        Raises:
+            ServiceUnavailableError: When the forecast holds gated work and
+                no dispatcher is wired. The dispatcher attaches late in
+                boot, so this window is real rather than theoretical.
+        """
+        forecast = await self._repo.get(forecast_id)
+        if forecast is None or forecast.gated_work_item is None:
+            return
+        if self._dispatcher is not None:
+            return
+        msg = (
+            f"Cost forecast {forecast_id} holds gated work but no dispatcher"
+            f" is wired; approving now would drop the approved work"
+        )
+        logger.warning(
+            BUDGET_FORECAST_REDISPATCH_FAILED,
+            forecast_id=str(forecast_id),
+            reason="dispatcher_unwired",
+            error_type=ServiceUnavailableError.__name__,
+        )
+        raise ServiceUnavailableError(msg)
 
     async def _dispatch_gated_work(self, forecast: Forecast) -> None:
         """Run the work *forecast* gated, if it gated any.

@@ -336,7 +336,15 @@ def require_configured_model(
     # Plain quotes, not RST double-backticks: this message is surfaced verbatim
     # in the dashboard (e.g. the charter interview error banner), where markup
     # would render literally.
-    missing = "model" if ref.provider.strip() else "provider and model"
+    # Three-way, because a bare model string parses to a real model id with
+    # the provider left unset: saying "no provider and model" when the model
+    # is right there sends the operator looking for the wrong thing.
+    if not ref.provider.strip() and not ref.model_id.strip():
+        missing = "provider and model"
+    elif not ref.provider.strip():
+        missing = "provider"
+    else:
+        missing = "model"
     msg = (
         f"{feature_label} has no {missing} configured. Set"
         f" '{namespace}.{key}' in dashboard Settings."

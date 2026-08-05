@@ -29,6 +29,7 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared._filter_clauses import (
     build_evaluation_report_filter_clauses,
 )
+from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.evaluation_report_protocol import (
     EvaluationReportFilterSpec,
@@ -212,7 +213,10 @@ def _row_to_model(row: DictRow) -> EvaluationReportRecord:
                 "summary": row["verdict_summary"],
                 "verdicts": json.loads(raw) if isinstance(raw, str) else raw,
                 "objective_met": row["objective_met"],
-                "evaluated_at": row["evaluated_at"],
+                # psycopg renders TIMESTAMPTZ in the session timezone, so a
+                # server that is not UTC would otherwise put its own offset
+                # on the wire and disagree with the SQLite backend.
+                "evaluated_at": coerce_row_timestamp(row["evaluated_at"]),
             }
         )
     except (ValidationError, json.JSONDecodeError) as exc:

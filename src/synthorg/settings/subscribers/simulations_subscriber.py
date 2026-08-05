@@ -30,6 +30,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("simulations", "verification_review_enabled"),
         ("simulations", "verification_grader"),
         ("simulations", "verification_decomposer"),
+        # The model pairs, not just the strategy discriminators beside them:
+        # both are baked into VerificationConfig at rebuild time, so naming a
+        # grader model without watching it arms nothing until an unrelated
+        # watched key is written.
+        ("simulations", "verification_grader_model"),
+        ("simulations", "verification_decomposer_model"),
     }
 )
 

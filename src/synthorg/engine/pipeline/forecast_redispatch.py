@@ -19,6 +19,7 @@ from pydantic import JsonValue, ValidationError
 
 from synthorg.budget.forecast_models import Forecast
 from synthorg.core.boundary import parse_typed
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.observability import get_logger
@@ -53,12 +54,17 @@ class ForecastGateRedispatcher:
         """Spawn the run for the work *forecast* gated.
 
         Raises:
-            ValidationError: When the stored work item no longer parses,
-                which means the approval cannot be honoured and the
+            ServiceUnavailableError: When the stored work item no longer
+                parses, which means the approval cannot be honoured and the
                 operator must be told rather than shown a success.
         """
         stored = forecast.gated_work_item
         if stored is None:
+            logger.warning(
+                BUDGET_FORECAST_REDISPATCH_FAILED,
+                forecast_id=str(forecast.forecast_id),
+                reason="no_gated_work_item",
+            )
             return
         work_item = self._rebuild(forecast, stored)
         task = asyncio.create_task(self._run(work_item))
@@ -80,18 +86,26 @@ class ForecastGateRedispatcher:
             gate resolves the approved row rather than minting a new one.
 
         Raises:
-            ValidationError: When the stored payload no longer matches the
-                current :class:`WorkItem` shape.
+            ServiceUnavailableError: When the stored payload no longer
+                matches the current :class:`WorkItem` shape. Translated from
+                the validation failure so the approval path raises a domain
+                error rather than leaking a third-party exception through a
+                port that promises one.
         """
         try:
             work_item = parse_typed("budget.forecast_redispatch", stored, WorkItem)
-        except ValidationError:
-            logger.warning(
+        except ValidationError as exc:
+            msg = (
+                f"Cost forecast {forecast.forecast_id} holds work that no longer"
+                f" matches the current shape; the approved work cannot be run"
+            )
+            logger.error(
                 BUDGET_FORECAST_REDISPATCH_FAILED,
                 forecast_id=str(forecast.forecast_id),
                 reason="stored_work_item_unparseable",
+                error_type=type(exc).__name__,
             )
-            raise
+            raise ServiceUnavailableError(msg) from exc
         return work_item.model_copy(update={"forecast_id": forecast.forecast_id})
 
     async def _run(self, work_item: WorkItem) -> None:

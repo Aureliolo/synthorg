@@ -90,10 +90,9 @@ class _LlmEvaluatorSupportMixin:
             unset_event=SECURITY_LLM_EVAL_NO_PROVIDER,
         )
         if ref is None:
-            logger.warning(
-                SECURITY_LLM_EVAL_NO_PROVIDER,
-                agent_provider=agent_provider_name,
-            )
+            # No second log: resolve_bound_model_live already emitted this
+            # event under unset_event above, and two WARNING lines for one
+            # unset pair reads as two separate failures.
             return None
         if ref.provider not in self._registry:
             logger.warning(

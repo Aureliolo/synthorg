@@ -10,9 +10,10 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.pipeline.forecast_redispatch import ForecastGateRedispatcher
 from tests._shared import StubWorkPipeline, as_uuid
 
@@ -104,11 +105,16 @@ async def test_a_forecast_holding_no_work_dispatches_nothing() -> None:
 
 
 async def test_an_unparseable_stored_item_is_refused_not_dropped() -> None:
-    """Silence here would recreate the dead-end one layer down."""
+    """Silence here would recreate the dead-end one layer down.
+
+    Raised as a domain error rather than the underlying validation failure:
+    the port and the approving service both promise one, and a third-party
+    exception crossing that boundary is not something a caller can handle.
+    """
     redispatcher, gate, _ = _redispatcher()
     forecast = _forecast(gated_work_item={"title": "no other fields"})
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ServiceUnavailableError):
         await redispatcher.dispatch(forecast)
 
     assert gate.calls == []

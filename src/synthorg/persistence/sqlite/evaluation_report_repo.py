@@ -23,7 +23,10 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared._filter_clauses import (
     build_evaluation_report_filter_clauses,
 )
-from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+)
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.evaluation_report_protocol import (
     EvaluationReportFilterSpec,
@@ -216,7 +219,9 @@ def _row_to_model(row: dict[str, object]) -> EvaluationReportRecord:
                 "summary": row["verdict_summary"],
                 "verdicts": json.loads(str(row.get("verdicts") or "[]")),
                 "objective_met": bool(row.get("objective_met")),
-                "evaluated_at": row["evaluated_at"],
+                # Shared with the Postgres sibling so both backends put the
+                # same offset on the wire whatever the driver hands back.
+                "evaluated_at": coerce_row_timestamp(row["evaluated_at"]),
             }
         )
     except (ValidationError, json.JSONDecodeError) as exc:

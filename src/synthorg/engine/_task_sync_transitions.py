@@ -1,3 +1,4 @@
+# module-kind: code
 """The mechanical half of the post-execution task transitions.
 
 ``task_sync`` decides *which* status a finished run belongs in; this module
@@ -6,10 +7,11 @@ the unfinished-run table, the artifact probe) readable on its own, and gives
 the two statuses that carry no decision at all (a shutdown interrupt, a
 clarification park) a home away from it.
 
-Every write here follows the same shape: apply the local transition, log it,
-then sync best-effort to the central engine. A transition that raises leaves
-the caller's result untouched rather than reporting a state change that did
-not land.
+Every write here follows the same shape: apply the local transition, sync
+best-effort to the central engine, then log it. A transition that raises
+leaves the caller's result untouched rather than reporting a state change
+that did not land, and the log follows the write it describes rather than
+announcing one that may not have happened.
 """
 
 from synthorg.core.task_enums import TaskStatus
@@ -46,16 +48,20 @@ async def transition_and_sync(
         The updated :class:`AgentContext` after the local transition, and
         whether the central engine now reflects the transition (see
         :func:`sync_to_task_engine`).
+
+    Raises:
+        ExecutionStateError: When *ctx* carries no task execution. Every
+            caller guards this today, but the function is importable on its
+            own, and an ``AttributeError`` here is not among the exceptions
+            those callers catch, so it would propagate uncaught instead of
+            degrading like every other failure in this module.
     """
-    prev_status = ctx.task_execution.status  # type: ignore[union-attr]
+    execution = ctx.task_execution
+    if execution is None:
+        msg = "transition_and_sync requires a context carrying a task execution"
+        raise ExecutionStateError(msg)
+    prev_status = execution.status
     ctx = ctx.with_task_transition(target_status, reason=reason)
-    logger.info(
-        EXECUTION_ENGINE_TASK_TRANSITION,
-        agent_id=agent_id,
-        task_id=task_id,
-        from_status=prev_status.value,
-        to_status=target_status.value,
-    )
     synced = await sync_to_task_engine(
         task_engine,
         target_status=target_status,
@@ -63,6 +69,14 @@ async def transition_and_sync(
         agent_id=agent_id,
         reason=reason,
         critical=critical,
+    )
+    logger.info(
+        EXECUTION_ENGINE_TASK_TRANSITION,
+        agent_id=agent_id,
+        task_id=task_id,
+        from_status=prev_status.value,
+        to_status=target_status.value,
+        synced=synced,
     )
     return ctx, synced
 

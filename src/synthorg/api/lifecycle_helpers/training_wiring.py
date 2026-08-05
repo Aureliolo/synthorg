@@ -1,3 +1,4 @@
+# module-kind: code
 """On-startup auto-wire for the training service.
 
 Deferred to startup rather than construction because it needs the durable

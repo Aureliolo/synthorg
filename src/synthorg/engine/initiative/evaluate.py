@@ -25,6 +25,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.evaluation_verdict import CriterionOutcome
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -276,32 +277,53 @@ class EvaluationStageService:
         A failed write degrades the history, not the decision. Refusing to
         complete a met objective because its audit row would not persist
         would trade a real delivery for a record of one.
+
+        The attempt number is derived by reading the current maximum and
+        adding one, which is a read-modify-write across a network call. The
+        unique key on ``(plan_id, attempt)`` turns a lost race into a
+        ``DuplicateRecordError`` rather than an overwrite, and the retry
+        re-reads and tries again: a second worker's judgement is a second
+        judgement, not a duplicate of the first, so dropping it would lose
+        exactly what this table exists to keep.
         """
         repo = self._persistence.evaluation_reports
         plan_id = NotBlankStr(str(plan.id))
-        try:
-            previous = await repo.query(EvaluationReportFilterSpec(plan_id=plan_id))
-            attempt = previous[0].attempt + 1 if previous else 1
-            await repo.append(
-                EvaluationReportRecord(
-                    plan_id=plan_id,
-                    project_id=NotBlankStr(str(plan.project)),
-                    attempt=attempt,
-                    summary=report.summary,
-                    verdicts=report.verdicts,
-                    objective_met=report.objective_met,
-                    evaluated_at=self._clock.now(),
+        attempt = 0
+        for _ in range(MAX_WRITE_ATTEMPTS):
+            try:
+                previous = await repo.query(EvaluationReportFilterSpec(plan_id=plan_id))
+                attempt = max((row.attempt for row in previous), default=0) + 1
+                await repo.append(
+                    EvaluationReportRecord(
+                        plan_id=plan_id,
+                        project_id=NotBlankStr(str(plan.project)),
+                        attempt=attempt,
+                        summary=report.summary,
+                        verdicts=report.verdicts,
+                        objective_met=report.objective_met,
+                        evaluated_at=self._clock.now(),
+                    )
                 )
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- verdict history; the delivery decision
-            # below must not hinge on whether its audit row landed
-            reraise_critical(exc)
+            except DuplicateRecordError:
+                continue
+            except QueryError as exc:
+                # lint-allow: swallow-ok -- verdict history; the delivery
+                # decision below must not hinge on whether its audit row
+                # landed. Narrow to the store's own failure so a genuine bug
+                # in this method surfaces instead of being absorbed here.
+                logger.error(
+                    INITIATIVE_EVALUATION_RECORD_FAILED,
+                    plan_id=str(plan.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return
+            break
+        else:
             logger.error(
                 INITIATIVE_EVALUATION_RECORD_FAILED,
                 plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                reason="attempt_number_contended",
             )
             return
         logger.info(
