@@ -2248,7 +2248,8 @@ CREATE TABLE initiative_evaluation_report (
     plan_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     attempt INTEGER NOT NULL CHECK (attempt >= 1),
-    summary TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(summary)) > 0),
+    verdict_summary TEXT NOT NULL
+    CHECK (CHAR_LENGTH(TRIM(verdict_summary)) > 0),
     verdicts JSONB NOT NULL,
     -- Parity note: SQLite stores ``objective_met`` as INTEGER 0/1;
     -- Postgres stores it as BOOLEAN, so the CHECK differs in encoding only.

@@ -11,7 +11,7 @@ its declared artifact paths. The agent's closing message travels
 *alongside* it as context, never instead of it, because a reviewer given
 only the closing message approves a convincing summary rather than
 working code. Both halves are agent-authored, so both are fenced with
-``wrap_untrusted`` before they can reach a prompt (SEC-1).
+``wrap_untrusted`` before they can reach a prompt.
 
 A task that declared no artifacts, or whose workspace cannot be read,
 falls back to the recorded closing message alone: weaker evidence is
@@ -123,7 +123,7 @@ class DeliverableReviewInputBuilder:
         the point of assembly cannot be forgotten by a later consumer.
 
         Returns:
-            The reviewable deliverable text, SEC-1 fenced.
+            The reviewable deliverable text, fenced as untrusted content.
         """
         artifacts = await self._read_artifacts(task)
         if artifacts is None:

@@ -37,13 +37,13 @@ from synthorg.persistence.sqlite._shared import (
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "record_id, plan_id, project_id, attempt, summary, verdicts, "
+    "record_id, plan_id, project_id, attempt, verdict_summary, verdicts, "
     "objective_met, evaluated_at"
 )
 
 _INSERT_SQL = f"""\
 INSERT INTO initiative_evaluation_report ({_COLUMNS}) VALUES (
-    :record_id, :plan_id, :project_id, :attempt, :summary, :verdicts,
+    :record_id, :plan_id, :project_id, :attempt, :verdict_summary, :verdicts,
     :objective_met, :evaluated_at
 )"""
 
@@ -188,7 +188,7 @@ def _to_row(record: EvaluationReportRecord) -> dict[str, object]:
         "plan_id": record.plan_id,
         "project_id": record.project_id,
         "attempt": record.attempt,
-        "summary": record.summary,
+        "verdict_summary": record.summary,
         "verdicts": json.dumps(
             [v.model_dump(mode="json") for v in record.verdicts],
         ),
@@ -209,9 +209,14 @@ def _row_to_model(row: dict[str, object]) -> EvaluationReportRecord:
     try:
         return EvaluationReportRecord.model_validate(
             {
-                **row,
+                "record_id": row["record_id"],
+                "plan_id": row["plan_id"],
+                "project_id": row["project_id"],
+                "attempt": row["attempt"],
+                "summary": row["verdict_summary"],
                 "verdicts": json.loads(str(row.get("verdicts") or "[]")),
                 "objective_met": bool(row.get("objective_met")),
+                "evaluated_at": row["evaluated_at"],
             }
         )
     except (ValidationError, json.JSONDecodeError) as exc:

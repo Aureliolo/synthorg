@@ -14,7 +14,7 @@ silent, so the reviewer knows it is judging an excerpt.
 
 The files are agent-written and therefore untrusted: whatever the reviewer
 receives is fenced by the caller with ``wrap_untrusted`` before it reaches
-a prompt (SEC-1).
+a prompt.
 """
 
 import asyncio

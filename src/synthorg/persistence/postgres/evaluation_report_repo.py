@@ -38,14 +38,14 @@ from synthorg.persistence.evaluation_report_protocol import (
 logger = get_logger(__name__)
 
 _COLUMNS = (
-    "record_id, plan_id, project_id, attempt, summary, verdicts, "
+    "record_id, plan_id, project_id, attempt, verdict_summary, verdicts, "
     "objective_met, evaluated_at"
 )
 
 _INSERT_SQL = f"""\
 INSERT INTO initiative_evaluation_report ({_COLUMNS}) VALUES (
-    %(record_id)s, %(plan_id)s, %(project_id)s, %(attempt)s, %(summary)s,
-    %(verdicts)s, %(objective_met)s, %(evaluated_at)s
+    %(record_id)s, %(plan_id)s, %(project_id)s, %(attempt)s,
+    %(verdict_summary)s, %(verdicts)s, %(objective_met)s, %(evaluated_at)s
 )"""
 
 
@@ -185,7 +185,7 @@ def _to_row(record: EvaluationReportRecord) -> dict[str, object]:
         "plan_id": record.plan_id,
         "project_id": record.project_id,
         "attempt": record.attempt,
-        "summary": record.summary,
+        "verdict_summary": record.summary,
         "verdicts": Jsonb([v.model_dump(mode="json") for v in record.verdicts]),
         "objective_met": record.objective_met,
         "evaluated_at": normalize_utc(record.evaluated_at),
@@ -205,8 +205,14 @@ def _row_to_model(row: DictRow) -> EvaluationReportRecord:
     try:
         return EvaluationReportRecord.model_validate(
             {
-                **row,
+                "record_id": row["record_id"],
+                "plan_id": row["plan_id"],
+                "project_id": row["project_id"],
+                "attempt": row["attempt"],
+                "summary": row["verdict_summary"],
                 "verdicts": json.loads(raw) if isinstance(raw, str) else raw,
+                "objective_met": row["objective_met"],
+                "evaluated_at": row["evaluated_at"],
             }
         )
     except (ValidationError, json.JSONDecodeError) as exc:

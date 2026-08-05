@@ -3,7 +3,7 @@
 import type { PlanStatus } from './enum-values.gen'
 
 export type { CriterionOutcome, PlanStatus } from './enum-values.gen'
-export { CRITERION_OUTCOME_VALUES, PLAN_STATUS_VALUES } from './enum-values.gen'
+export { PLAN_STATUS_VALUES } from './enum-values.gen'
 export type {
   CriterionVerdict,
   EditPlanRequest,
