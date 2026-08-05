@@ -2251,8 +2251,9 @@ CREATE TABLE initiative_evaluation_report (
     verdict_summary TEXT NOT NULL
     CHECK (CHAR_LENGTH(TRIM(verdict_summary)) > 0),
     verdicts JSONB NOT NULL,
-    -- Parity note: SQLite stores ``objective_met`` as INTEGER 0/1;
-    -- Postgres stores it as BOOLEAN, so the CHECK differs in encoding only.
+    -- Parity note: BOOLEAN enforces true/false natively, so no CHECK is
+    -- needed here. SQLite has no boolean type, so its sibling column needs
+    -- an explicit ``objective_met IN (0, 1)`` to get the same domain.
     objective_met BOOLEAN NOT NULL,
     evaluated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)

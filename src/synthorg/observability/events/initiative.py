@@ -28,16 +28,3 @@ INITIATIVE_EVALUATION_SKIPPED: Final[str] = "initiative.evaluation.skipped"
 INITIATIVE_EVALUATION_FAILED: Final[str] = "initiative.evaluation.failed"
 INITIATIVE_EVALUATION_RECORDED: Final[str] = "initiative.evaluation.recorded"
 INITIATIVE_EVALUATION_RECORD_FAILED: Final[str] = "initiative.evaluation.record_failed"
-
-PERSISTENCE_EVALUATION_REPORT_SAVE_FAILED: Final[str] = (
-    "initiative.persistence.evaluation_report_save_failed"
-)
-PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED: Final[str] = (
-    "initiative.persistence.evaluation_report_query_failed"
-)
-PERSISTENCE_EVALUATION_REPORT_DELETE_FAILED: Final[str] = (
-    "initiative.persistence.evaluation_report_delete_failed"
-)
-PERSISTENCE_EVALUATION_REPORT_DESERIALIZE_FAILED: Final[str] = (
-    "initiative.persistence.evaluation_report_deserialize_failed"
-)

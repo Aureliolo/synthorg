@@ -44,26 +44,22 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
-from synthorg.persistence.evaluation_report_protocol import EvaluationReportFilterSpec
 from synthorg.persistence.state import persistence_of
 
 _DEFAULT_LIMIT: Final[int] = 50
-
-#: Judgement history a single read returns. The evaluate stage caps its own
-#: attempts well below this, so the page holds every verdict a plan can have
-#: while still refusing to stream an unbounded history into the dashboard.
-_MAX_EVALUATION_ATTEMPTS: Final[int] = 20
 
 
 def _service(state: State) -> PlanService:
     """Build the per-request :class:`PlanService` instance.
 
     Returns:
-        ``PlanService`` bound to this backend's plan repository and clock.
+        ``PlanService`` bound to this backend's plan and judgement stores.
     """
+    persistence = persistence_of(state.app_state)
     return PlanService(
-        repo=persistence_of(state.app_state).plans,
+        repo=persistence.plans,
         clock=state.app_state.clock,
+        evaluation_reports=persistence.evaluation_reports,
     )
 
 
@@ -219,17 +215,15 @@ class PlanController(Controller):
         Returns:
             The recorded judgements, newest first, or 404 if no such plan.
         """
+        service = _service(state)
         require_resource_or_404(
-            await _service(state).get(plan_id),
+            await service.get(plan_id),
             resource_type="Plan",
             identifier=plan_id,
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
         )
-        records = await persistence_of(state.app_state).evaluation_reports.query(
-            EvaluationReportFilterSpec(plan_id=plan_id),
-            limit=_MAX_EVALUATION_ATTEMPTS,
-        )
+        records = await service.evaluation_history(plan_id)
         payload = PlanEvaluationResponse(
             plan_id=plan_id,
             attempts=tuple(

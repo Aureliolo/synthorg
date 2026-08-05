@@ -2340,10 +2340,16 @@ CREATE TABLE initiative_evaluation_report (
     verdict_summary TEXT NOT NULL
     CHECK (LENGTH(TRIM(verdict_summary)) > 0),
     verdicts TEXT NOT NULL,
-    -- Parity note: Postgres stores ``objective_met`` as BOOLEAN; SQLite
-    -- stores it as INTEGER 0/1, so the CHECK differs in encoding only.
+    -- Parity note: SQLite has no boolean type, so this CHECK is what gives
+    -- the column the domain Postgres gets natively from BOOLEAN. The
+    -- Postgres sibling therefore carries no CHECK, by design.
     objective_met INTEGER NOT NULL CHECK (objective_met IN (0, 1)),
-    evaluated_at TEXT NOT NULL,
+    -- The ordering this table is read by is ``evaluated_at DESC`` on TEXT,
+    -- which is only correct while every value carries the same fixed
+    -- offset. The CHECK is what keeps that true rather than leaving it to
+    -- the single writer's convention.
+    evaluated_at TEXT NOT NULL
+        CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
     CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
 );
 

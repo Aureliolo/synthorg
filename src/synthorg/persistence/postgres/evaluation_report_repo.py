@@ -18,7 +18,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.initiative import (
+from synthorg.observability.events.persistence.evaluation_report import (
     PERSISTENCE_EVALUATION_REPORT_DELETE_FAILED,
     PERSISTENCE_EVALUATION_REPORT_DESERIALIZE_FAILED,
     PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED,

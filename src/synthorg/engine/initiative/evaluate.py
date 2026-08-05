@@ -488,13 +488,28 @@ class EvaluationStageService:
         written.
 
         Returns:
-            Workspace read tools when a root is wired; an empty tuple
-            otherwise. Never a write tool: a session that could change what it
-            is judging could turn its own failing verdict into a pass.
+            Workspace read tools when a root is wired and the project's
+            workspace exists; an empty tuple otherwise. Never a write tool:
+            a session that could change what it is judging could turn its
+            own failing verdict into a pass.
+
+            An absent workspace yields no tools rather than raising. The
+            file tools refuse a missing root, and letting that propagate
+            would abort the judgement, burn every attempt and park the plan
+            over a project that was simply never provisioned.
         """
         if self._workspace_root is None:
             return ()
         workspace = project_workspace_dir(self._workspace_root, str(plan.project))
+        if not workspace.is_dir():
+            logger.warning(
+                INITIATIVE_EVALUATION_SKIPPED,
+                plan_id=str(plan.id),
+                project_id=str(plan.project),
+                reason="workspace_absent",
+                note="judging without workspace reads",
+            )
+            return ()
         return (
             ReadFileTool(workspace_root=workspace),
             ListDirectoryTool(workspace_root=workspace),

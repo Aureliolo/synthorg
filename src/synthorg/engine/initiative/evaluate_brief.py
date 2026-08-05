@@ -49,9 +49,17 @@ def _test_run_lines(records: tuple[CodeExecutionRecord, ...]) -> list[str]:
     """Render what the recorded test runs actually did.
 
     The judgement's hardest criterion is usually "the suite passes", and
-    without this the only source for it is an agent's claim. These rows are
-    written by the sandbox at execution time, so they say what ran and how
-    it ended rather than what anyone reported.
+    without this the only source for it is an agent's claim. The outcome
+    fields are computed by the recorder at execution time, so they say how
+    a run ended rather than what anyone reported.
+
+    The command itself is not rendered. It is model-supplied text with no
+    newline restriction, so a single command spelling further bullet rows
+    would present them under a header vouching for their provenance; and a
+    command line can carry a credential in an argument, which would then
+    leave the trust boundary inside the judge's prompt. The runner name is
+    computed here instead, from the same classifier that decided the row
+    was a test run at all.
 
     Returns:
         A header plus one line per recorded run, or nothing when none ran.
@@ -62,16 +70,17 @@ def _test_run_lines(records: tuple[CodeExecutionRecord, ...]) -> list[str]:
         return []
     lines = [
         (
-            "Test runs actually recorded during this initiative "
-            "(written by the sandbox, not reported by an agent):"
+            "Test runs recorded by the sandbox during this initiative. The"
+            " outcomes below were computed at execution time, not reported"
+            " by an agent:"
         ),
     ]
     lines.extend(
-        f"- {record.command} -> "
+        f"- run {index}: "
         f"{'passed' if record.passed else 'failed'}"
         f"{' (timed out)' if record.timed_out else ''}"
         f", exit {record.returncode}"
-        for record in records
+        for index, record in enumerate(records, start=1)
     )
     return lines
 

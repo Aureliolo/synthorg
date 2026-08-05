@@ -22,7 +22,8 @@ CREATE TABLE initiative_evaluation_report (
     CHECK (LENGTH(TRIM(verdict_summary)) > 0),
     verdicts TEXT NOT NULL,
     objective_met INTEGER NOT NULL CHECK (objective_met IN (0, 1)),
-    evaluated_at TEXT NOT NULL,
+    evaluated_at TEXT NOT NULL
+        CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
     CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
 );
 
