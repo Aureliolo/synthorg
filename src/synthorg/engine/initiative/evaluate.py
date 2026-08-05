@@ -69,7 +69,6 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_SKIPPED,
 )
 from synthorg.persistence.evaluation_report_protocol import (
-    EvaluationReportFilterSpec,
     EvaluationReportRecord,
 )
 from synthorg.persistence.protocol import PersistenceBackend
@@ -265,19 +264,28 @@ class EvaluationStageService:
         report = await self._judge(fresh, project)
         if report is None:
             return
-        await self._record(fresh, report)
+        if not await self._record(fresh, report):
+            # A verdict nobody can read afterwards is, to every later reader,
+            # no verdict: the plan would complete with nothing to point at
+            # when asked why. No verdict parks the plan, so an unrecordable
+            # one parks it too. The next recompute re-judges, up to the
+            # attempt cap, so the cost is a re-judgement rather than a
+            # delivery permanently marked done on absent evidence.
+            return
         await self._apply(fresh, report)
 
-    async def _record(self, plan: Plan, report: EvaluationReport) -> None:
+    async def _record(self, plan: Plan, report: EvaluationReport) -> bool:
         """Persist the verdict before anything can act on it.
 
         Written first so a contended completion write no longer destroys a
         judgement that cost real money: the row outlives the plan's status
         and is the only account an operator gets of which criteria failed.
 
-        A failed write degrades the history, not the decision. Refusing to
-        complete a met objective because its audit row would not persist
-        would trade a real delivery for a record of one.
+        Returns:
+            Whether the judgement was stored. ``False`` leaves the plan at
+            EVALUATING: this stage's whole posture is that an absent verdict
+            parks rather than completes, and a verdict that did not persist
+            is absent from the moment the process ends.
 
         The attempt number is derived by reading the current maximum and
         adding one, which is a read-modify-write across a network call. The
@@ -286,14 +294,20 @@ class EvaluationStageService:
         re-reads and tries again: a second worker's judgement is a second
         judgement, not a duplicate of the first, so dropping it would lose
         exactly what this table exists to keep.
+
+        The maximum comes from a dedicated read rather than from ``query``,
+        which is paginated and ordered by time: the largest attempt is only
+        in the first page while the two orders agree, and where they do not
+        the writer proposes an attempt that already exists, every retry
+        proposes it again, and the budget runs out on a verdict that could
+        have been stored.
         """
         repo = self._persistence.evaluation_reports
         plan_id = NotBlankStr(str(plan.id))
         attempt = 0
         for _ in range(MAX_WRITE_ATTEMPTS):
             try:
-                previous = await repo.query(EvaluationReportFilterSpec(plan_id=plan_id))
-                attempt = max((row.attempt for row in previous), default=0) + 1
+                attempt = await repo.max_attempt(plan_id) + 1
                 await repo.append(
                     EvaluationReportRecord(
                         plan_id=plan_id,
@@ -308,17 +322,16 @@ class EvaluationStageService:
             except DuplicateRecordError:
                 continue
             except QueryError as exc:
-                # lint-allow: swallow-ok -- verdict history; the delivery
-                # decision below must not hinge on whether its audit row
-                # landed. Narrow to the store's own failure so a genuine bug
-                # in this method surfaces instead of being absorbed here.
+                # lint-allow: swallow-ok -- surfaced as a False return, which
+                # parks the plan; narrowed to the store's own failure so a
+                # genuine bug in this method raises instead of being absorbed.
                 logger.error(
                     INITIATIVE_EVALUATION_RECORD_FAILED,
                     plan_id=str(plan.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                return
+                return False
             break
         else:
             logger.error(
@@ -326,7 +339,7 @@ class EvaluationStageService:
                 plan_id=str(plan.id),
                 reason="attempt_number_contended",
             )
-            return
+            return False
         logger.info(
             INITIATIVE_EVALUATION_RECORDED,
             plan_id=str(plan.id),
@@ -334,6 +347,7 @@ class EvaluationStageService:
             objective_met=report.objective_met,
             criteria=len(report.verdicts),
         )
+        return True
 
     async def _judge(self, plan: Plan, project: Project) -> EvaluationReport | None:
         """Run the bounded session that produces the verdict.

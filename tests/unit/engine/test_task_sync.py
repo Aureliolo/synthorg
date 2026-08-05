@@ -791,6 +791,47 @@ class TestApplyPostExecutionTransitions:
         assert out.context.task_execution is not None
         assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
+    async def test_resumed_run_still_answers_to_the_workspace(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The resume exemption covers the turn-count proxy, not the disk.
+
+        A resumed segment's zero tool calls say nothing about earlier
+        segments, which is why the proxy is exempted. The filesystem has no
+        such blind spot: whatever an earlier segment produced is still
+        there. So a resumed run with none of its declared paths present
+        delivered nothing, and exempting it too would let any task reach
+        review by being resumed once."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+
+        async def _nothing_delivered(
+            _project: str, _expected: Sequence[ExpectedArtifact]
+        ) -> ArtifactPresence:
+            return ArtifactPresence(probed=("src/x.py",), missing=("src/x.py",))
+
+        with resumed_run_scope():
+            out = await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(work_task.id),
+                task_engine=_make_mock_task_engine(),
+                artifact_probe=_nothing_delivered,
+            )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+
     @pytest.mark.parametrize(
         ("reason", "expected_fragment"),
         [
@@ -962,7 +1003,16 @@ class TestApplyPostExecutionTransitions:
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """A probe that cannot answer is not evidence of an empty run."""
+        """A probe that cannot answer is not evidence of an empty run.
+
+        Failing here would discard genuinely delivered work whenever a
+        volume blips, so the run proceeds to review. It does not proceed
+        unlabelled: the same fault makes the deliverable reader emit
+        ``produced_artifacts.status == "not_verified"`` (covered in
+        ``test_review_gate_inputs``), so the fail-CLOSED peer reviewer sees
+        an unverified deliverable rather than prose it might mistake for
+        evidence. The gap this leaves is a reviewer decision, not a silent
+        pass."""
         work_task = sample_task_with_criteria.model_copy(
             update={
                 "artifacts_expected": (

@@ -234,6 +234,23 @@ def test_unrelated_zero_index_is_not_flagged(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 0
 
 
+def test_a_docstring_naming_the_removed_key_is_not_a_read(tmp_path: Path) -> None:
+    # Prose about the deleted setting is how its removal gets explained; the
+    # rule is about reading the key, not about mentioning it.
+    _write(tmp_path, "d.py", '"""default_provider"""\n\n\ndef f():\n    """x"""\n')
+    assert _load().main(["--repo-root", str(tmp_path)]) == 0
+
+
+def test_the_removed_key_as_a_value_is_still_flagged(tmp_path: Path) -> None:
+    # The exemption is docstring position only, not the literal anywhere.
+    _write(
+        tmp_path,
+        "d.py",
+        'def f(r):\n    return r.get_str("providers", "default_provider")\n',
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
 def test_no_baseline_suppression_exists(tmp_path: Path) -> None:
     # A suppression file would let an unbound dispatch ship for as long as
     # nobody drained the list, so the gate offers no way to record one.

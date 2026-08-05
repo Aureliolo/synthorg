@@ -33,6 +33,7 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_JUDGE_EVALUATED,
+    CONFLICT_JUDGE_MODEL_UNSET,
     CONFLICT_JUDGE_OUTPUT_INVALID,
 )
 from synthorg.providers.protocol import ConnectionSelector
@@ -151,7 +152,7 @@ class LlmJudgeEvaluator:
                 self._config_resolver,
                 namespace=_MODEL_NAMESPACE,
                 key=_MODEL_KEY,
-                unset_event=CONFLICT_JUDGE_OUTPUT_INVALID,
+                unset_event=CONFLICT_JUDGE_MODEL_UNSET,
             ),
             namespace=_MODEL_NAMESPACE,
             key=_MODEL_KEY,

@@ -147,9 +147,39 @@ def _provider_list_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[st
     return bound
 
 
+def _docstring_constants(tree: ast.Module) -> set[int]:
+    """Identify every docstring constant in *tree*.
+
+    The settings-key rule matches the bare literal ``"default_provider"``
+    wherever it appears, deliberately: a key read is a key read whatever call
+    shape carries it, and narrowing to one ``get_*`` signature would miss the
+    others. A docstring is the one position where that literal is prose about
+    the removed surface rather than a read of it, so it is excluded by
+    identity rather than by guessing from the surrounding syntax.
+
+    Returns:
+        The ``id()`` of each string constant serving as a module, class or
+        function docstring.
+    """
+    docstrings: set[int] = set()
+    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, holders):
+            continue
+        first = node.body[0] if node.body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            docstrings.add(id(first.value))
+    return docstrings
+
+
 def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     """Return every provider-auto-pick finding in one module."""
     findings: list[str] = []
+    docstrings = _docstring_constants(tree)
 
     def _allowed(lineno: int) -> bool:
         return 1 <= lineno <= len(lines) and bool(_ALLOW_RE.search(lines[lineno - 1]))
@@ -181,6 +211,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
         if (
             isinstance(node, ast.Constant)
             and node.value == "default_provider"
+            and id(node) not in docstrings
             and not _allowed(node.lineno)
         ):
             findings.append(f"{relpath}:{node.lineno}:setting:default_provider")

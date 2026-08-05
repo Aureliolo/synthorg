@@ -97,6 +97,11 @@ class BudgetForecastService:
     ) -> Forecast:
         """Generate a fresh pending forecast for a brief and persist it.
 
+        The row gates nothing: it carries no work item, and its digest
+        carries no ``correlation_id``, so no submission arriving at the
+        gate can reuse it and inherit an approval granted for an estimate
+        nobody attached work to.
+
         Returns:
             The stored :class:`Forecast`.
         """

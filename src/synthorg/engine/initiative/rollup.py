@@ -193,14 +193,25 @@ class ProjectRollupService:
         It captured both memory backends at construction, so once either is
         replaced the capture writes into layers nothing else reads. Dropping it
         is also what the reconciler reads as this subsystem being down, since
-        liveness comes from the rollup's own attachment record. Drained first:
-        an in-flight retrospective abandoned mid-write is the partial state the
-        shutdown drain exists to avoid, and a rebuild is no different.
+        liveness comes from the rollup's own attachment record. Drained before
+        it is released: an in-flight retrospective abandoned mid-write is the
+        partial state the shutdown drain exists to avoid, and a rebuild is no
+        different.
+
+        The slot is cleared BEFORE the drain, not after. The drain awaits, and
+        the rollup shares an event loop with the task-state callback, so a
+        recompute arriving during that await would otherwise still find this
+        capture and schedule onto it: a retrospective started on an instance
+        already being dropped, never drained again, writing into the very
+        backends the rebuild exists to replace. Clearing first also makes the
+        liveness probe report the subsystem down from the moment teardown
+        begins rather than when it finishes.
         """
-        if self._ship_retro_capture is None:
+        capture = self._ship_retro_capture
+        if capture is None:
             return
-        await self._ship_retro_capture.drain(timeout_sec=timeout_sec)
         self._ship_retro_capture = None
+        await capture.drain(timeout_sec=timeout_sec)
 
     def replan_trigger(self) -> ReplanTriggerPort | None:
         """Return the attached replan trigger, or ``None``.

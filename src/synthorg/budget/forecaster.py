@@ -86,8 +86,9 @@ class BriefSignal(BaseModel):
     The fields are exactly what the estimator needs and what
     :func:`compute_brief_hash` hashes into the canonical
     ``brief_hash``: the brief text (verbatim), who asked for it and where
-    it lands, the ordered role skeleton, the per-role model-tier
-    assignment, and the currency the estimate should be denominated in.
+    it lands, the submission it gates, the ordered role skeleton, the
+    per-role model-tier assignment, and the currency the estimate should
+    be denominated in.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -95,6 +96,13 @@ class BriefSignal(BaseModel):
     brief_text: NotBlankStr = Field(description="The brief as written by the operator")
     project: NotBlankStr = Field(description="Project the work lands in")
     requested_by: NotBlankStr = Field(description="Who asked for the work")
+    correlation_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Trace id of the submission this estimate gates; None for an"
+            " estimate asked for on its own, which gates nothing"
+        ),
+    )
     role_skeleton: tuple[NotBlankStr, ...] = Field(
         description="Ordered role ids participating in the run",
     )
@@ -121,10 +129,16 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     through verbatim (the caller is expected to normalise model ids to
     their canonical alias before constructing the signal).
 
-    The project and requester are part of the digest because a pending
-    forecast now carries the work item it gated: two callers whose brief
-    text happened to match would otherwise share one row, and approving it
-    would run the first caller's work item under the second's authority.
+    The digest identifies the submission, not only the text, because a
+    pending forecast carries the work item it gated and only one pending
+    row per digest may exist. Anything two submissions can differ by while
+    their text matches therefore has to be in here, or the second reuses
+    the first's row, the operator approves one estimate, and the
+    redispatcher runs one work item while the other caller's 202 turns out
+    to have been a lie. That is the project, the requester, and the
+    submission's own ``correlation_id``. An estimate asked for on its own
+    hashes with no correlation, so it gates nothing and no submission can
+    inherit its approval.
 
     Returns:
         Result of type ``str``.
@@ -133,6 +147,11 @@ def compute_brief_hash(signal: BriefSignal) -> str:
         "brief_text": signal.brief_text,
         "project": normalize_identifier(signal.project),
         "requested_by": normalize_identifier(signal.requested_by),
+        "correlation_id": (
+            normalize_identifier(signal.correlation_id)
+            if signal.correlation_id is not None
+            else None
+        ),
         "role_skeleton": [normalize_identifier(r) for r in signal.role_skeleton],
         "model_assignments": {
             normalize_identifier(k): v.strip()

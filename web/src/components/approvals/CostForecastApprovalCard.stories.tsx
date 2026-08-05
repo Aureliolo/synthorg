@@ -2,9 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 
 import { CostForecastApprovalCard } from './CostForecastApprovalCard'
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 
-const baseForecast: Forecast = {
+const baseForecast: ForecastView = {
   forecast_id: '00000000-0000-0000-0000-000000000001',
   brief_hash: 'a'.repeat(64),
   estimated_cost: 0.85,
@@ -16,7 +16,6 @@ const baseForecast: Forecast = {
   decided_by: null,
   ceiling_amount: null,
   halt_context: null,
-  gated_work_item: null,
   created_at: '2026-05-20T12:00:00Z',
   updated_at: '2026-05-20T12:00:00Z',
 }

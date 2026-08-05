@@ -39,6 +39,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.state import (
     PersistenceStateSlice,
@@ -412,7 +413,7 @@ async def _build_evolution_service_or_none(
                 app_state,
                 namespace="engine",
                 key="evolution_proposer_model",
-                unset_event=API_APP_STARTUP,
+                unset_event=EVOLUTION_PROPOSER_MODEL_UNSET,
                 subject="evolution proposer",
             ),
             outcome_sink=evolution_outcome_store_of(app_state),

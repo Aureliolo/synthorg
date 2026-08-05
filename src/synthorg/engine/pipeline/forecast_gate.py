@@ -73,13 +73,14 @@ def _signal_from_work_item(
 
     Returns:
         A :class:`BriefSignal` carrying the work item's raw intent, where it
-        lands and who asked for it, the resolved role skeleton + per-role
-        model assignments, and the currency.
+        lands, who asked for it and which submission it is, the resolved role
+        skeleton + per-role model assignments, and the currency.
     """
     return BriefSignal(
         brief_text=work_item.raw_intent,
         project=work_item.project,
         requested_by=work_item.requested_by,
+        correlation_id=work_item.correlation_id,
         role_skeleton=skeleton.roles,
         model_assignments=skeleton.model_assignments,
         currency=currency,
@@ -276,8 +277,13 @@ class ForecastGate:
         """Return the pending forecast for the brief, minting one if absent.
 
         Reuses an existing pending row (the partial-unique index permits
-        only one per brief). On a save race where a concurrent dispatch
-        wins that index, re-reads the winner rather than surfacing the
+        only one per digest). The digest identifies the submission, so a
+        hit is this work item's own row rather than another submission's
+        that happened to share the brief text. A hit that carries no work
+        item gates nothing, so this attaches one before returning it; that
+        is the only shape a row minted by an estimate-only request or an
+        earlier build can have. On a save race where a concurrent dispatch
+        wins the index, re-reads the winner rather than surfacing the
         constraint violation.
 
         Returns:
@@ -298,7 +304,7 @@ class ForecastGate:
         brief_hash = compute_brief_hash(signal)
         pending = await self._pending_forecast_for_brief(brief_hash)
         if pending is not None:
-            return pending
+            return await self._ensure_gates_work_item(pending, work_item)
         estimated = await self._forecaster.forecast(signal)
         # The work item rides along with the estimate it blocked, so approving
         # the forecast can run the work. Without it the caller's 202 is a lie:
@@ -313,8 +319,28 @@ class ForecastGate:
             raced = await self._pending_forecast_for_brief(brief_hash)
             if raced is None:
                 raise
-            return raced
+            return await self._ensure_gates_work_item(raced, work_item)
         return fresh
+
+    async def _ensure_gates_work_item(
+        self, pending: Forecast, work_item: WorkItem
+    ) -> Forecast:
+        """Attach *work_item* to *pending* when the row gates nothing yet.
+
+        A pending row without a work item cannot be redispatched on
+        approval, so returning one unchanged would hand the caller a 202
+        for work the approval can never run.
+
+        Returns:
+            The row, carrying the work item it gates.
+        """
+        if pending.gated_work_item is not None:
+            return pending
+        attached = pending.model_copy(
+            update={"gated_work_item": work_item.model_dump(mode="json")},
+        )
+        await self._forecast_repo.save(attached)
+        return attached
 
     def _raise_approval_required(self, forecast: Forecast) -> NoReturn:
         """Log and raise the approval-required signal for a pending forecast.

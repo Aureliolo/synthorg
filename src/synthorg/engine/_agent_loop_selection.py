@@ -29,7 +29,7 @@ from synthorg.observability.events.execution import (
 logger = get_logger(__name__)
 
 #: Reads the live budget utilisation, or ``None`` when it is unknowable.
-type BudgetUtilizationReader = Callable[[], Awaitable[float | None]]
+type BudgetUtilisationReader = Callable[[], Awaitable[float | None]]
 
 #: Builds a loop of the named type from the engine's own dependencies.
 type LoopBuilder = Callable[[str], ExecutionLoop]
@@ -45,7 +45,7 @@ async def resolve_loop(
     task_id: str,
     static_loop: ExecutionLoop,
     auto_loop_config: AutoLoopConfig | None,
-    budget_utilization: BudgetUtilizationReader | None,
+    budget_utilisation: BudgetUtilisationReader | None,
     build: LoopBuilder,
 ) -> ExecutionLoop:
     """Select the execution loop for a task.
@@ -58,7 +58,7 @@ async def resolve_loop(
             auto-selection is off.
         auto_loop_config: Auto-selection rules, or ``None`` when the
             operator pinned one loop.
-        budget_utilization: Live budget-utilisation read, awaited only when
+        budget_utilisation: Live budget-utilisation read, awaited only when
             the preliminary pick is the budget-sensitive candidate.
         build: Builds the selected loop from the engine's dependencies.
 
@@ -85,19 +85,19 @@ async def resolve_loop(
         default_loop_type=auto_loop_config.default_loop_type,
     )
 
-    utilization_pct: float | None = None
-    if preliminary == _BUDGET_SENSITIVE_LOOP and budget_utilization is not None:
-        utilization_pct = await budget_utilization()
-        if utilization_pct is None:
+    utilisation_pct: float | None = None
+    if preliminary == _BUDGET_SENSITIVE_LOOP and budget_utilisation is not None:
+        utilisation_pct = await budget_utilisation()
+        if utilisation_pct is None:
             logger.debug(
                 EXECUTION_LOOP_BUDGET_UNAVAILABLE,
-                note="budget utilization unknown; skipping budget-aware downgrade",
+                note="budget utilisation unknown; skipping budget-aware downgrade",
             )
 
     loop_type = select_loop_type(
         complexity=task.estimated_complexity,
         rules=auto_loop_config.rules,
-        budget_utilization_pct=utilization_pct,
+        budget_utilization_pct=utilisation_pct,
         budget_tight_threshold=auto_loop_config.budget_tight_threshold,
         hybrid_fallback=auto_loop_config.hybrid_fallback,
         default_loop_type=auto_loop_config.default_loop_type,
@@ -109,9 +109,9 @@ async def resolve_loop(
         task_id=task_id,
         complexity=task.estimated_complexity.value,
         selected_loop=loop_type,
-        budget_utilization_pct=utilization_pct,
+        budget_utilization_pct=utilisation_pct,
     )
     return build(loop_type)
 
 
-__all__ = ["BudgetUtilizationReader", "LoopBuilder", "resolve_loop"]
+__all__ = ["BudgetUtilisationReader", "LoopBuilder", "resolve_loop"]

@@ -11,6 +11,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.evaluation_report import (
     PERSISTENCE_EVALUATION_REPORT_DELETE_FAILED,
@@ -178,6 +179,33 @@ class SQLiteEvaluationReportRepository:
                 )
                 raise QueryError(msg) from exc
         return count
+
+    async def max_attempt(self, plan_id: NotBlankStr) -> int:
+        """Return the highest attempt recorded for *plan_id*, or 0 if none.
+
+        Returns:
+            The maximum ``attempt`` across the plan's rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            async with self._db.execute(
+                "SELECT MAX(attempt) AS m FROM initiative_evaluation_report"
+                " WHERE plan_id = ?",
+                (plan_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to read the evaluation attempt ceiling"
+            logger.warning(
+                PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        highest = row["m"] if row is not None else None
+        return int(highest) if highest is not None else 0
 
 
 def _to_row(record: EvaluationReportRecord) -> dict[str, object]:

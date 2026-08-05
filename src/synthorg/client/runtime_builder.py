@@ -464,7 +464,8 @@ async def reload_client_simulation_runtime(app_state: AppState) -> None:
     Re-reads the hot intake / review / verification keys (``intake_strategy``,
     ``intake_model``, ``intake_default_project``, ``review_pipeline_strategy``,
     ``verification_review_enabled`` / ``verification_grader`` /
-    ``verification_decomposer``) through the DB-backed ``ConfigResolver``
+    ``verification_decomposer`` / ``verification_grader_model`` /
+    ``verification_decomposer_model``) through the DB-backed ``ConfigResolver``
     (DB > env > default), rebuilds the intake engine + review pipeline (including
     the verification stage), and atomically swaps them onto the existing
     ``ClientSimulationState`` via ``dataclasses.replace``. Replacing only the

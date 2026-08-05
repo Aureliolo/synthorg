@@ -55,7 +55,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |
 | `check_every_gate_is_wired.py` | push | `scripts/check_*.py` vs every wiring source | full | no | `unwired_gate_allowlist.yaml` | add |
-| `check_explicit_model_binding.py` | push | `src/synthorg/` | full | no | none (no opt-out) | keep |
+| `check_explicit_model_binding.py` | push | `src/synthorg/` | full | no | none (no opt-out) | add |
 | `check_feature_index_freshness.py` | push | `src/synthorg/` + `data/*.json` | full | no | none | keep |
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_forbidden_literals.py` | push | `src/synthorg/` | full | no | none | keep |

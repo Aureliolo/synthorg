@@ -11,7 +11,7 @@ from pydantic import JsonValue
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.completion_enums import FinishReason
 from synthorg.observability.events.security import (
-    SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+    SECURITY_LLM_EVAL_SAME_FAMILY,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -203,7 +203,7 @@ async def test_evaluate_warns_but_runs_on_a_same_family_connection() -> None:
 
     mock_driver.complete.assert_awaited_once()
     assert result.verdict == SecurityVerdictType.ALLOW
-    assert any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK for e in logs)
+    assert any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY for e in logs)
 
 
 @pytest.mark.unit

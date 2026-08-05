@@ -10,12 +10,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatCurrency } from '@/utils/format'
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 
 export interface BudgetForecastDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  forecast: Forecast | null
+  forecast: ForecastView | null
   loading?: boolean
   mutating?: boolean
   onApprove: (ceilingAmount: number | null) => void
@@ -23,7 +23,7 @@ export interface BudgetForecastDialogProps {
 }
 
 interface ForecastBodyProps {
-  forecast: Forecast
+  forecast: ForecastView
   mutating: boolean
   onApprove: (ceilingAmount: number | null) => void
   onReject: () => void

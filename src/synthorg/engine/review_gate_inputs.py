@@ -35,6 +35,7 @@ configured security gate never depends on the flight recorder being on.
 
 import json
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
@@ -51,6 +52,12 @@ logger = get_logger(__name__)
 
 #: Async callable returning the effective company autonomy level.
 AutonomyProvider = Callable[[], Awaitable[AutonomyLevel]]
+
+#: Outcome of consulting the workspace, when there was nothing to consult.
+#: Reported rather than omitted, so the reviewer reads the reason instead of
+#: an absent key it would have to interpret.
+_ARTIFACTS_NONE_DECLARED: Final[str] = "none_declared"
+_ARTIFACTS_UNAVAILABLE: Final[str] = "not_verified"
 
 
 class DeliverableReviewInputBuilder:
@@ -130,25 +137,37 @@ class DeliverableReviewInputBuilder:
         Returns:
             The reviewable deliverable, as a JSON document.
         """
-        document: dict[str, object] = {"agent_closing_message": summary}
-        artifacts = await self._read_artifacts(task)
-        if artifacts is not None:
-            document["produced_artifacts"] = artifacts
-        return json.dumps(document)
+        return json.dumps(
+            {
+                "agent_closing_message": summary,
+                "produced_artifacts": await self._read_artifacts(task),
+            }
+        )
 
-    async def _read_artifacts(self, task: Task) -> object | None:
+    async def _read_artifacts(self, task: Task) -> object:
         """Read the task's declared artifacts from its project workspace.
 
+        Always returns something. Omitting the key on failure would make
+        "this task declared no deliverable" and "this task declared one and
+        nobody could look" the same absence, and a reviewer that cannot
+        tell those apart approves the second on the strength of the agent's
+        own closing prose, which is the reading this module exists to stop.
+
         Returns:
-            The artifacts section, or ``None`` when there is no reader, no
-            project, or nothing declared.
+            The reader's section when the workspace could be consulted, or a
+            mapping naming why it could not.
         """
-        if self._deliverable_reader is None or not task.artifacts_expected:
-            return None
+        if not task.artifacts_expected:
+            return {"status": _ARTIFACTS_NONE_DECLARED}
+        if self._deliverable_reader is None:
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "no_reader_wired"}
         project_id = str(task.project)
         if not project_id.strip():
-            return None
-        return await self._deliverable_reader(project_id, task.artifacts_expected)
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "no_project_workspace"}
+        section = await self._deliverable_reader(project_id, task.artifacts_expected)
+        if section is None:
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "reader_returned_none"}
+        return section
 
     async def _latest_deliverable(self, task_id: str) -> tuple[str, str] | None:
         """Return ``(execution_id, content)`` for the task's latest frame.

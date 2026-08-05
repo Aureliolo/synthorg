@@ -16,14 +16,14 @@ import type {
   AgentSpending,
   AnalyticsAggregation,
   BudgetConfig,
-  Forecast,
+  ForecastView,
   ParetoFrontier,
   PromptClassBreakdown,
 } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 
-function buildForecast(overrides: Partial<Forecast> = {}): Forecast {
+function buildForecast(overrides: Partial<ForecastView> = {}): ForecastView {
   return {
     forecast_id: '00000000-0000-0000-0000-000000000001',
     brief_hash: 'a'.repeat(64),
@@ -36,7 +36,6 @@ function buildForecast(overrides: Partial<Forecast> = {}): Forecast {
     decided_by: null,
     ceiling_amount: null,
     halt_context: null,
-    gated_work_item: null,
     created_at: '2026-05-20T12:00:00Z',
     updated_at: '2026-05-20T12:00:00Z',
     ...overrides,

@@ -128,10 +128,13 @@ old one: overwriting would erase the evidence the replan points at.
 
 `evaluate.py::_record` writes it **before** the status write, so a lost CAS
 race on the completion transition costs the transition rather than a judgement
-that cost real money and cannot be re-derived. A failed record write degrades
-the history, not the decision: refusing to complete a met objective because
-its audit row would not persist would trade a real delivery for a record of
-one.
+that cost real money and cannot be re-derived. A record write that fails
+**parks the plan**: it returns `False` and `_run` never reaches `_apply`. A
+verdict nobody can read afterwards is, to every later reader, no verdict, and
+no verdict parks rather than completes; completing on one would leave an
+initiative marked delivered with nothing to point at when asked why. The next
+recompute re-judges within the attempt cap, so the cost is a re-judgement
+rather than an unevidenced delivery.
 
 `GET /plans/{plan_id}/evaluation` returns the attempts newest-first, and the
 dashboard's `PlanEvaluationPanel` renders each criterion with the judge's

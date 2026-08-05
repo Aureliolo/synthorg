@@ -94,7 +94,11 @@ def _build_llm_vision(
         VisionVerifyConfigError: If no bound pair or connection selector is
             available to dispatch on.
     """
-    if connections is None or model is None:
+    # ``is_bound``, not ``is not None``: a ``ModelRef`` permits either half to
+    # be blank, and half a pair names no dispatch target. A provider-only ref
+    # would otherwise reach ``connections("")`` and a model-only one would
+    # dispatch against whichever connection the empty name resolved to.
+    if connections is None or model is None or not model.is_bound:
         msg = (
             "llm_vision verifier requires a bound security.vision_verify_model"
             " pair and a connection selector; pass both to"
@@ -105,6 +109,7 @@ def _build_llm_vision(
             reason="missing_bound_model_or_connections",
             has_connections=connections is not None,
             has_model=model is not None,
+            model_is_bound=model.is_bound if model is not None else False,
         )
         raise VisionVerifyConfigError(msg)
     return LLMVisionVerifier(

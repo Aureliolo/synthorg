@@ -1,6 +1,6 @@
 """LLM-curated curation strategy.
 
-Opt-in strategy that uses a dedicated analyzer agent to review candidate items
+Opt-in strategy that uses a dedicated analyser agent to review candidate items
 and select the most valuable subset, dispatching on the operator's
 ``hr.training_curation_model`` pair, re-read per curation call. Falls back to
 RelevanceScoreCuration when no pair is configured or when the provider call

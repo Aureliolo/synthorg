@@ -218,7 +218,10 @@ async def test_file_content_cannot_forge_the_closing_message() -> None:
 
 
 async def test_unreadable_artifacts_fall_back_to_the_closing_message() -> None:
-    """Weaker evidence beats refusing to review a completed task."""
+    """Weaker evidence beats refusing to review a completed task.
+
+    Weaker, and labelled as such: the reviewer is told the workspace was
+    not consulted, so it cannot read the closing prose as verification."""
     repo = _frame_repo(
         latest_execution_id="exec-9",
         frames=(_frame("Shipped it."),),
@@ -233,10 +236,36 @@ async def test_unreadable_artifacts_fall_back_to_the_closing_message() -> None:
 
     assert result is not None
     assert "Shipped it." in result.deliverable_content
+    document = json.loads(result.deliverable_content)
+    assert document["produced_artifacts"]["status"] == "not_verified"
+    assert document["produced_artifacts"]["reason"] == "reader_returned_none"
+
+
+async def test_no_reader_wired_says_so_rather_than_omitting_the_section() -> None:
+    """An absent reader is a verification gap, not an absent declaration."""
+    repo = _frame_repo(
+        latest_execution_id="exec-9",
+        frames=(_frame("Shipped it."),),
+    )
+    builder = DeliverableReviewInputBuilder(
+        frame_repository=repo,
+        autonomy_provider=_supervised,
+        deliverable_reader=None,
+    )
+
+    result = await builder.build(_task(artifacts=_EXPECTED))
+
+    assert result is not None
+    document = json.loads(result.deliverable_content)
+    assert document["produced_artifacts"]["status"] == "not_verified"
+    assert document["produced_artifacts"]["reason"] == "no_reader_wired"
 
 
 async def test_a_task_declaring_nothing_does_not_read_the_workspace() -> None:
-    """Nothing declared means no paths to read, so the reader is not called."""
+    """Nothing declared means no paths to read, so the reader is not called.
+
+    The document still says which case it was: a reviewer that cannot tell
+    "promised nothing" from "could not check" approves the second on prose."""
     called = False
 
     async def _read(
@@ -260,6 +289,8 @@ async def test_a_task_declaring_nothing_does_not_read_the_workspace() -> None:
 
     assert result is not None
     assert not called
+    document = json.loads(result.deliverable_content)
+    assert document["produced_artifacts"] == {"status": "none_declared"}
 
 
 async def test_build_returns_none_when_no_frame() -> None:

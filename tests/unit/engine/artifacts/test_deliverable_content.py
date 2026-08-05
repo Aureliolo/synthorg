@@ -6,9 +6,10 @@ a bound is announced rather than silently applied, and nothing a file
 contains can pass itself off as the report's own structure.
 """
 
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,8 +26,8 @@ from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
-_PER_FILE = 20000
-_TOTAL = 60000
+_PER_FILE: Final[int] = 20000
+_TOTAL: Final[int] = 60000
 
 
 def _expected(*paths: str) -> tuple[ExpectedArtifact, ...]:
@@ -210,8 +211,8 @@ class TestReadDeclaredArtifacts:
 
         assert entries[0]["status"] == "read"
 
-    def test_an_unreadable_file_says_so(self, tmp_path: Path) -> None:
-        """A read failure must not look like an empty file."""
+    def test_a_directory_at_a_declared_path_says_so(self, tmp_path: Path) -> None:
+        """A directory is neither a delivered file nor an absent one."""
         target = tmp_path / "locked.py"
         target.mkdir()
         (target / "child").write_text("x", encoding="utf-8")
@@ -219,6 +220,57 @@ class TestReadDeclaredArtifacts:
         entries = _entries(_read(_expected("locked.py"), tmp_path))
 
         assert entries[0]["status"] == "directory"
+
+    def test_an_unreadable_file_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A read failure must not look like an empty file.
+
+        Driven by making the open itself fail, because the directory case
+        above never reaches the read at all: it returns earlier, so it
+        proves nothing about what happens when a real file cannot be read.
+        """
+        target = tmp_path / "locked.py"
+        target.write_text("secret", encoding="utf-8")
+        original = Path.open
+
+        def _refuse(self: Path, *args: object, **kwargs: object) -> object:
+            if self.name == "locked.py":
+                msg = "permission denied"
+                raise OSError(msg)
+            return original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "open", _refuse)
+
+        entries = _entries(_read(_expected("locked.py"), tmp_path))
+
+        assert entries[0]["status"] == "unreadable"
+        assert "content" not in entries[0]
+
+    def test_a_limit_below_one_entry_still_fits_the_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """The bound covers the rendered section, not just file content.
+
+        A limit smaller than a single entry's structural overhead must not
+        return a multi-character section: budgeting content alone made the
+        announced ceiling a suggestion.
+        """
+        _write(tmp_path, "a.py", "x" * 100)
+        _write(tmp_path, "b.py", "y" * 100)
+
+        section = read_declared_artifacts(
+            _expected("a.py", "b.py"),
+            workspace=tmp_path,
+            max_bytes_per_file=_PER_FILE,
+            max_total_bytes=1,
+        )
+
+        assert section is not None
+        # Nothing but the wrapper: neither an entry nor even the omission
+        # marker fits, and emitting either would overrun the ceiling.
+        assert _entries(section) == []
+        assert json.dumps(section) == json.dumps({"declared": 2, "artifacts": []})
 
 
 class TestWorkspaceDeliverableReader:
@@ -231,10 +283,18 @@ class TestWorkspaceDeliverableReader:
         assert _entries(section)[0]["content"] == "def rotate(): ..."
 
     async def test_bounds_are_read_live_per_review(self, tmp_path: Path) -> None:
-        """An operator retune arms the next review, not the next boot."""
+        """An operator retune arms the next review, not the next boot.
+
+        The two bounds are read separately: pinning both to the per-file
+        value would leave the total unable to hold even one entry, and the
+        entry would be dropped for the wrong reason."""
         _write(tmp_path, "projects/proj-1/big.py", "x" * 5000)
+
+        async def _bound(_namespace: str, key: str) -> int:
+            return 50 if key.endswith("per_file") else _TOTAL
+
         resolver = mock_of[ConfigResolverProtocol](
-            get_int=AsyncMock(return_value=50),
+            get_int=AsyncMock(side_effect=_bound),
         )
         reader = workspace_deliverable_reader(tmp_path, config_resolver=resolver)
 

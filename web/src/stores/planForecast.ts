@@ -2,7 +2,7 @@ import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import { getForecast } from '@/api/endpoints/budget'
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -14,7 +14,7 @@ const log = createLogger('plan-forecast')
 let requestToken = 0
 
 export interface PlanForecastState {
-  forecast: Forecast | null
+  forecast: ForecastView | null
   loading: boolean
   error: string | null
   fetchForecast: (forecastId: string) => Promise<void>

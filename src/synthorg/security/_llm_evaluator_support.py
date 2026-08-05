@@ -19,7 +19,7 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_CROSS_FAMILY,
     SECURITY_LLM_EVAL_ERROR,
     SECURITY_LLM_EVAL_NO_PROVIDER,
-    SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+    SECURITY_LLM_EVAL_SAME_FAMILY,
 )
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.family import get_family
@@ -59,6 +59,9 @@ class _LlmEvaluatorSupportMixin:
     _configs: Mapping[str, ProviderConfig]
     _config: LlmFallbackConfig
     _config_resolver: ConfigResolverProtocol | None
+    #: Last connection name warned about as unregistered, so a static
+    #: misconfiguration is reported once rather than once per evaluation.
+    _unregistered_warned: str | None = None
 
     # ------------------------------------------------------------------
     # Provider / model selection
@@ -95,13 +98,23 @@ class _LlmEvaluatorSupportMixin:
             # unset pair reads as two separate failures.
             return None
         if ref.provider not in self._registry:
-            logger.warning(
-                SECURITY_LLM_EVAL_ERROR,
-                note="configured security-evaluation connection is not registered",
-                provider_name=ref.provider,
-                agent_provider=agent_provider_name,
-            )
+            # Once per distinct name. This runs on every uncertain tool call,
+            # and the condition changes only when the operator edits the
+            # setting or the registry: repeating it per evaluation buries the
+            # transient failures the same event also carries. The family
+            # collision below is deliberately not rate-limited, because there
+            # the operator's pair is being used and every judgement it decides
+            # is worth a line.
+            if self._unregistered_warned != ref.provider:
+                self._unregistered_warned = ref.provider
+                logger.warning(
+                    SECURITY_LLM_EVAL_ERROR,
+                    note="configured security-evaluation connection is not registered",
+                    provider_name=ref.provider,
+                    agent_provider=agent_provider_name,
+                )
             return None
+        self._unregistered_warned = None
         self._warn_on_family_collision(ref.provider, agent_provider_name)
         return ref, self._registry.get(ref.provider)
 
@@ -129,7 +142,7 @@ class _LlmEvaluatorSupportMixin:
             )
             return
         logger.warning(
-            SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+            SECURITY_LLM_EVAL_SAME_FAMILY,
             selected_provider=evaluator_provider_name,
             agent_provider=agent_provider_name,
             agent_family=agent_family,

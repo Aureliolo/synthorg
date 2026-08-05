@@ -127,7 +127,15 @@ def missing_expected_artifacts(
             continue
         probed.append(declared)
         resolved = (root / Path(declared)).resolve()
-        if not resolved.is_relative_to(root) or not resolved.exists():
+        # ``resolved == root`` is a declaration of the workspace itself
+        # (``.``, ``src/..``). It exists whenever the directory does, so
+        # counting it as produced would let any run declare the workspace
+        # and satisfy the check without writing a byte.
+        if (
+            resolved == root
+            or not resolved.is_relative_to(root)
+            or not resolved.exists()
+        ):
             missing.append(declared)
     return ArtifactPresence(probed=tuple(probed), missing=tuple(missing))
 

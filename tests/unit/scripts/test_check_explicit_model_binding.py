@@ -149,8 +149,24 @@ def test_model_field_field_default_is_flagged(tmp_path: Path) -> None:
     assert _run(tmp_path) == 1
 
 
+def test_model_field_positional_field_default_is_flagged(tmp_path: Path) -> None:
+    """``Field("x")`` is a default too, and the gate's docstring says so."""
+    _write(
+        tmp_path,
+        "cfg.py",
+        'class C:\n    chat_model: str = Field("some-model")\n',
+    )
+    assert _run(tmp_path) == 1
+
+
 def test_bare_model_attribute_named_model_is_flagged(tmp_path: Path) -> None:
     _write(tmp_path, "cfg.py", 'class C:\n    model: str = "some-model"\n')
+    assert _run(tmp_path) == 1
+
+
+def test_a_placeholder_model_id_is_flagged(tmp_path: Path) -> None:
+    """``example-model-001`` is the placeholder shape most likely to be typed."""
+    _write(tmp_path, "svc.py", 'DEFAULT = "example-model-001"\n')
     assert _run(tmp_path) == 1
 
 

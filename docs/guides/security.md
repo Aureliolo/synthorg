@@ -175,7 +175,7 @@ Action types follow a `category:action` format. Built-in types include:
 
 For actions that the rule engine cannot classify with high confidence, an LLM can provide cross-validation. Reaching for a *different provider family* than the judged agent is the point of the mechanism: a jailbreak that works on one family should not also carry its reviewer.
 
-That is now the operator's choice to make and the system's to report on, not something it arranges. Nothing auto-selects a cross-family model, because auto-selecting one means picking a connection nobody chose. The evaluator dispatches on `security.llm_evaluator_model`, an explicit `(provider, model)` pair, and when that pair shares the judged agent's vendor family the evaluation logs `security.llm_eval.same_family_fallback` at WARNING on every call. Leaving the pair unset leaves the fallback off.
+That is now the operator's choice to make and the system's to report on, not something it arranges. Nothing auto-selects a cross-family model, because auto-selecting one means picking a connection nobody chose. The evaluator dispatches on `security.llm_evaluator_model`, an explicit `(provider, model)` pair, and when that pair shares the judged agent's vendor family the evaluation logs `security.llm_eval.same_family` at WARNING on every call. Leaving the pair unset leaves the evaluation off.
 
 ```yaml
 security:

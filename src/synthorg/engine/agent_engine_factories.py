@@ -237,7 +237,7 @@ class AgentEngineFactoriesMixin:
             task_id=task_id,
             static_loop=self._loop,
             auto_loop_config=self._auto_loop_config,
-            budget_utilization=(
+            budget_utilisation=(
                 None if enforcer is None else enforcer.get_budget_utilization_pct
             ),
             build=self._build_loop,

@@ -18,9 +18,10 @@ from synthorg.budget.forecast_roles import (
     BriefRoleSkeleton,
     RoleSkeletonProvider,
 )
-from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
+from synthorg.budget.forecaster import BriefSignal, CostForecaster, compute_brief_hash
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.forecast_gate import ForecastGate, _signal_from_work_item
 from synthorg.engine.pipeline.models import (
     WorkItem,
@@ -38,7 +39,14 @@ def _config(*, forecast_required: bool = True) -> BudgetConfig:
     return BudgetConfig(forecast_required=forecast_required)
 
 
-def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
+def _work_item(
+    *,
+    forecast_id: UUID | None = None,
+    correlation_id: str = "submission-1",
+) -> WorkItem:
+    # The correlation id is fixed rather than auto-generated: it is part of
+    # the brief digest, so a per-call uuid4 would give every construction a
+    # different hash and no fixture could pre-compute one.
     return WorkItem(
         origin_adapter_id="test-adapter",
         source=WorkSource.INTAKE,
@@ -48,6 +56,7 @@ def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
         requested_by="operator-1",
         priority=Priority.MEDIUM,
         task_type=TaskType.DEVELOPMENT,
+        correlation_id=NotBlankStr(correlation_id),
         forecast_id=forecast_id,
     )
 
@@ -153,6 +162,13 @@ class _RacingForecastRepo(_FakeForecastRepo):
     @override
     async def save(self, entity: Forecast) -> None:
         self.saves.append(entity)
+        # The partial-unique index rejects a *second* pending row for the
+        # brief, not a write to the row already holding the slot. Updating
+        # the winner therefore succeeds, which is what lets the gate attach
+        # the arriving work item to the row it recovered.
+        if entity.forecast_id == self._winner.forecast_id:
+            self.rows[entity.forecast_id] = entity
+            return
         self._save_attempted = True
         msg = "duplicate pending forecast"
         raise ConstraintViolationError(
@@ -345,7 +361,11 @@ class TestForecastGate:
     async def test_pending_forecast_for_brief_reused_without_id(self) -> None:
         """A pending row for the brief is reused even when the work item
         carries no forecast_id, so the gate never mints a duplicate that
-        would trip the partial-unique index."""
+        would trip the partial-unique index.
+
+        Reused, but not left ungated: the row here holds no work item, and
+        approving one that holds none runs nothing, so the gate attaches
+        the arriving item before handing the row back."""
         repo = _FakeForecastRepo()
         existing = Forecast(
             forecast_id=uuid4(),
@@ -364,8 +384,70 @@ class TestForecastGate:
         with pytest.raises(CostForecastApprovalRequiredError) as info:
             await gate.run(_work_item(forecast_id=None))
         assert info.value.forecast_id == existing.forecast_id
-        assert repo.saves == []
+        assert len(repo.saves) == 1
+        attached = repo.saves[0]
+        assert attached.forecast_id == existing.forecast_id
+        assert attached.gated_work_item is not None
+        assert attached.gated_work_item["correlation_id"] == "submission-1"
         assert work_pipeline.calls == []
+
+    async def test_two_submissions_of_one_brief_get_their_own_forecast(self) -> None:
+        """Same brief text, two submissions: two rows, each gating its own.
+
+        A shared row would give both callers the same approval request, and
+        the redispatcher would then run whichever work item the row happened
+        to hold, dropping the other caller's accepted work."""
+        repo = _FakeForecastRepo()
+        gate, _, _ = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as first:
+            await gate.run(_work_item(correlation_id="submission-a"))
+        with pytest.raises(CostForecastApprovalRequiredError) as second:
+            await gate.run(_work_item(correlation_id="submission-b"))
+
+        assert first.value.forecast_id != second.value.forecast_id
+        assert first.value.brief_hash != second.value.brief_hash
+        held = [s.gated_work_item for s in repo.saves]
+        assert [h["correlation_id"] for h in held if h is not None] == [
+            "submission-a",
+            "submission-b",
+        ]
+
+    async def test_estimate_only_row_is_not_reused_by_a_submission(self) -> None:
+        """An estimate asked for on its own gates nothing and stays unreused.
+
+        ``POST /budget/forecast`` persists a row with no work item. If a
+        later submission of the same brief could reuse it, approving that
+        estimate would release work the approver never saw attached."""
+        repo = _FakeForecastRepo()
+        estimate_only = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=compute_brief_hash(
+                BriefSignal(
+                    brief_text="A focused brief about the marketing site rebuild.",
+                    project=NotBlankStr("marketing"),
+                    requested_by=NotBlankStr("operator-1"),
+                    role_skeleton=DEFAULT_ROLE_SKELETON.roles,
+                    model_assignments=DEFAULT_ROLE_SKELETON.model_assignments,
+                    currency=NotBlankStr("USD"),
+                )
+            ),
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[estimate_only.forecast_id] = estimate_only
+        gate, _, _ = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=None))
+
+        assert info.value.forecast_id != estimate_only.forecast_id
+        assert repo.saves[0].gated_work_item is not None
 
     async def test_save_race_reuses_winner_pending_forecast(self) -> None:
         """A concurrent insert that trips the pending-unique index on save
@@ -388,6 +470,9 @@ class TestForecastGate:
         with pytest.raises(CostForecastApprovalRequiredError) as info:
             await gate.run(_work_item(forecast_id=None))
         assert info.value.forecast_id == winner.forecast_id
+        # The recovered row still has to gate this submission, or the
+        # caller's 202 names an approval that would run nothing.
+        assert repo.rows[winner.forecast_id].gated_work_item is not None
         assert work_pipeline.calls == []
 
     async def test_approved_forecast_dispatches(self) -> None:

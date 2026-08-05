@@ -155,6 +155,19 @@ class EvaluationReportRepository(
         """Delete judgements older than *threshold*; return the row count."""
         ...
 
+    async def max_attempt(self, plan_id: NotBlankStr, /) -> int:
+        """Return the highest attempt recorded for *plan_id*, or 0 if none.
+
+        A bespoke read under ADR-0001 D7, because the caller needs the
+        maximum and ``query`` cannot supply it: it is paginated and ordered
+        by time, so the largest attempt is only in the first page when the
+        row order happens to agree. When it does not, the writer computes a
+        next attempt that already exists, the unique key rejects it, and the
+        retry recomputes the same value until the budget runs out and a paid
+        verdict is lost.
+        """
+        ...
+
 
 __all__ = [
     "EvaluationReportFilterSpec",

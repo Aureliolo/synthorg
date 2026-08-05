@@ -2,12 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 import { apiSuccess } from '@/mocks/handlers'
 import { PlanForecastPanel } from '@/pages/plans/PlanForecastPanel'
 import { server } from '@/test-setup'
 
-function forecast(overrides?: Partial<Forecast>): Forecast {
+function forecast(overrides?: Partial<ForecastView>): ForecastView {
   return {
     forecast_id: 'fc-1',
     brief_hash: 'a'.repeat(64),
@@ -20,14 +20,13 @@ function forecast(overrides?: Partial<Forecast>): Forecast {
     decided_by: null,
     ceiling_amount: null,
     halt_context: null,
-    gated_work_item: null,
     created_at: '2026-06-01T10:00:00Z',
     updated_at: '2026-06-01T10:00:00Z',
     ...overrides,
   }
 }
 
-function mockForecast(value: Forecast): void {
+function mockForecast(value: ForecastView): void {
   server.use(
     http.get('/api/v1/budget/forecasts/:forecastId', () =>
       HttpResponse.json(apiSuccess(value)),

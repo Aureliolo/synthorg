@@ -120,6 +120,12 @@ async def build_red_team_runtime_or_none(
     """
     from synthorg.core.agent import ModelConfig  # noqa: PLC0415
 
+    config = app_state.config.security.red_team
+    # Gate first, resolve second. The other order reports an unbound
+    # adversary on every boot and every runtime reload of a deployment
+    # that never turned the gate on, which is not a misconfiguration.
+    if not config.enabled:
+        return None
     bound = await resolve_bound_model(
         app_state,
         namespace="security",
@@ -129,7 +135,7 @@ async def build_red_team_runtime_or_none(
     if bound is None:
         return None
     return build_red_team_runtime(
-        config=app_state.config.security.red_team,
+        config=config,
         engine=engine,
         model=ModelConfig(provider=bound.provider, model_id=bound.model_id),
         seed=seed,

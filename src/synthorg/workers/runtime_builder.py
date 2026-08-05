@@ -47,6 +47,7 @@ from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.decomposition import DECOMPOSITION_MODEL_UNSET
 from synthorg.observability.events.workers import (
     WORKERS_ENGINE_BRIDGE_CONFIG_FALLBACK,
     WORKERS_RUNTIME_HOT_SWAP_FAILED,
@@ -300,7 +301,7 @@ async def build_runtime_services(
         app_state,
         namespace=_DECOMPOSITION_NS,
         key=_DECOMPOSITION_KEY,
-        unset_event=API_APP_STARTUP,
+        unset_event=DECOMPOSITION_MODEL_UNSET,
     )
     if decomposition is None or decomposition.provider not in registry:
         return await _degraded_no_coordinator(

@@ -44,9 +44,13 @@ SECURITY_LLM_EVAL_COMPLETE: Final[str] = "security.llm_eval.complete"
 SECURITY_LLM_EVAL_ERROR: Final[str] = "security.llm_eval.error"
 SECURITY_LLM_EVAL_TIMEOUT: Final[str] = "security.llm_eval.timeout"
 SECURITY_LLM_EVAL_CROSS_FAMILY: Final[str] = "security.llm_eval.cross_family"
-SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK: Final[str] = (
-    "security.llm_eval.same_family_fallback"
-)
+SECURITY_LLM_EVAL_SAME_FAMILY: Final[str] = "security.llm_eval.same_family"
+"""The evaluator's connection shares the judged agent's vendor family.
+
+Named for the condition, not for a fallback: nothing substitutes another
+provider any more. The operator's chosen pair is kept and the collision is
+reported, so the event says what happened rather than what an earlier
+implementation would have done about it."""
 SECURITY_LLM_EVAL_NO_PROVIDER: Final[str] = "security.llm_eval.no_provider"
 SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
     "security.llm_eval.skipped_full_autonomy"

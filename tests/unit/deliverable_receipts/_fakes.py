@@ -11,11 +11,15 @@ from datetime import datetime
 
 from pydantic import AwareDatetime
 
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.deliverable_receipts.models import DeliverableReceipt
+from synthorg.observability.events.persistence.evaluation_report import (
+    PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionRecord,
@@ -222,6 +226,12 @@ class InMemoryEvaluationReportRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[EvaluationReportRecord, ...]:
+        # Both shipped backends reject these before touching the database.
+        # A fake that accepted them would let a test pass on a call the
+        # product refuses, which is the one thing a double must never do.
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED
+        )
         matched = [r for r in self._records if self._matches(r, filter_spec)]
         matched.sort(key=lambda r: (r.evaluated_at, r.attempt), reverse=True)
         return tuple(matched[offset : offset + limit])
@@ -238,8 +248,17 @@ class InMemoryEvaluationReportRepository:
         return all(want is None or got == want for want, got in checks)
 
     async def purge_before(self, threshold: AwareDatetime) -> int:
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         cutoff: datetime = normalize_utc(threshold)
         keep = [r for r in self._records if normalize_utc(r.evaluated_at) >= cutoff]
         removed = len(self._records) - len(keep)
         self._records = keep
         return removed
+
+    async def max_attempt(self, plan_id: NotBlankStr) -> int:
+        return max(
+            (r.attempt for r in self._records if r.plan_id == plan_id),
+            default=0,
+        )

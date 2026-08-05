@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
 
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 import { usePlanForecastStore } from '@/stores/planForecast'
 
 export interface UsePlanForecastReturn {
-  forecast: Forecast | null
+  forecast: ForecastView | null
   loading: boolean
   error: string | null
 }

@@ -162,6 +162,23 @@ class TestMissingExpectedArtifacts:
 
         assert presence.missing == (f"../{outside.name}",)
 
+    @pytest.mark.parametrize("declared", [".", "src/..", "./"])
+    def test_declaring_the_workspace_itself_is_not_delivery(
+        self, tmp_path: Path, declared: str
+    ) -> None:
+        """The workspace directory exists whether or not anything was written.
+
+        Left probeable, a run could declare ``.``, produce nothing, and pass
+        the check on the existence of the directory it was handed.
+        """
+        workspace = tmp_path / "project"
+        workspace.mkdir()
+
+        presence = missing_expected_artifacts(_expected(declared), workspace=workspace)
+
+        assert presence.probed == (declared,)
+        assert presence.nothing_delivered
+
     def test_an_existing_absolute_path_cannot_stand_in_for_delivery(
         self, tmp_path: Path
     ) -> None:

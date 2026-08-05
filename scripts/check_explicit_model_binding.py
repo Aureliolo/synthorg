@@ -7,12 +7,18 @@ id therefore names no dispatch target, and neither does a placeholder one.
 
 Two rules, both AST-checked over ``src/synthorg/``:
 
-1. **No placeholder value ships.** The vendor-neutral ``example-*`` identifiers
-   exist to write documentation and tests with. They must never become a
-   *value* the product runs on: a field default, a dict entry, a returned
-   constant, a lambda body. Only documentation positions may name one -- a
-   docstring, or a ``description`` / ``examples`` / ``note`` / ``title`` /
-   ``help`` keyword whose whole job is to show the reader the shape.
+1. **No placeholder value ships.** The vendor-neutral placeholder vocabulary
+   -- ``example-`` or ``test-`` followed by ``provider``, ``model``,
+   ``embedding``, ``large``, ``medium`` or ``small``, with any suffix -- exists
+   to write documentation and tests with. Those tails are the whole list, not
+   an illustration: the bare prefixes are ordinary English elsewhere in the
+   tree, so a placeholder minted outside the list is invisible here and must
+   be added to ``_PLACEHOLDER_RE`` in the change that introduces it. A
+   placeholder must never become a *value* the product runs on: a field
+   default, a dict entry, a returned constant, a lambda body. Only
+   documentation positions may name one -- a docstring, or a ``description`` /
+   ``examples`` / ``note`` / ``title`` / ``help`` keyword whose whole job is
+   to show the reader the shape.
 
 2. **No bare model default.** A ``model`` / ``*_model`` / ``*_model_id``
    Pydantic field, or a ``SettingDefinition`` under
@@ -55,11 +61,18 @@ else:
 _SRC_REL: Final[str] = "src/synthorg"
 _DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 
-#: The vendor-neutral placeholder family. Matches ``example-provider``,
-#: ``example-large-001``, ``test-provider`` and their dated variants, anywhere
-#: in a string (a placeholder embedded in ``"example-provider/model"`` counts).
+#: The vendor-neutral placeholder vocabulary, matched anywhere in a string
+#: (a placeholder embedded in ``"example-provider/model"`` counts) and with
+#: any suffix (``example-large-001``). The tails are enumerated rather than
+#: taken as "anything after ``example-`` / ``test-``", because that prefix is
+#: also ordinary English: ``test-strategy``, ``build-test-validation`` and
+#: ``https://api.example-deploy.com`` all appear in the tree as real values,
+#: and a pattern that failed the build on those would be removed rather than
+#: obeyed. The list is therefore the contract: a placeholder outside it is
+#: invisible to this gate, so a new one goes here in the same change that
+#: introduces it.
 _PLACEHOLDER_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:example|test)-(?:provider|large|medium|small)\b"
+    r"\b(?:example|test)-(?:provider|model|embedding|large|medium|small)\b"
 )
 
 #: Keyword arguments whose whole purpose is to show a reader the shape of a

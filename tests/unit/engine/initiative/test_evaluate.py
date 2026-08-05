@@ -379,11 +379,17 @@ class TestRecordingAVerdict:
         assert [r.attempt for r in records] == [2, 1]
         assert [r.objective_met for r in records] == [True, False]
 
-    async def test_a_failed_record_write_does_not_block_delivery(
+    async def test_a_failed_record_write_parks_rather_than_completing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Refusing a met objective over its audit row trades the real thing
-        for a record of it."""
+        """A verdict nobody can read afterwards is, to a later reader, none.
+
+        This stage parks on an absent verdict, and a judgement that did not
+        persist is absent the moment the process ends. Completing on one
+        would mark an initiative delivered with nothing to point at when an
+        operator asks why. Parking costs a re-judgement on the next
+        recompute, which is recoverable; the unevidenced COMPLETED is not.
+        """
         service, backend = await _seed(plan=_plan(), project=_project())
         _stub_judgement(monkeypatch, _report(CriterionOutcome.MET))
 
@@ -395,7 +401,7 @@ class TestRecordingAVerdict:
 
         await service._run(_plan())
 
-        assert await _status(backend) is PlanStatus.COMPLETED
+        assert await _status(backend) is PlanStatus.EVALUATING
 
     async def test_the_verdict_lands_before_the_status_write(
         self, monkeypatch: pytest.MonkeyPatch

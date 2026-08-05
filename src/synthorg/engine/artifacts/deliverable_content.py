@@ -141,27 +141,43 @@ def read_declared_artifacts(
     Returns:
         A mapping naming every declaration and what was found at it, or
         ``None`` when the task declared nothing.
+
+        The whole section fits ``max_total_bytes``, wrapper and omission
+        marker included. Budgeting only the content would let a limit of a
+        few characters still return a multi-kilobyte document, which is the
+        opposite of what a bound on what reaches a prompt is for.
     """
     if not expected:
         return None
     root = workspace.resolve()
     entries: list[JsonValue] = []
-    budget = max_total_bytes
+    # The wrapper is charged before any entry, because it is rendered
+    # whatever else fits and a budget that ignored it could be spent
+    # entirely on entries and still overrun.
+    budget = max_total_bytes - len(
+        json.dumps({"declared": len(expected), "artifacts": []})
+    )
     for index, artifact in enumerate(expected):
-        if budget <= 0:
-            entries.append(
-                {
-                    "status": _STATUS_OMITTED,
-                    "count": len(expected) - index,
-                }
-            )
-            break
         entry = _read_one(
-            str(artifact.path), root=root, limit=min(max_bytes_per_file, budget)
+            str(artifact.path),
+            root=root,
+            limit=max(0, min(max_bytes_per_file, budget)),
         )
         # Charge the rendered entry, not just its content: the path label is
         # planner free text and reaches the same prompt budget.
-        budget -= len(json.dumps(entry))
+        cost = len(json.dumps(entry))
+        if cost > budget:
+            omission: dict[str, JsonValue] = {
+                "status": _STATUS_OMITTED,
+                "count": len(expected) - index,
+            }
+            # The marker is content too, so it only goes in if it fits. A
+            # section that overran while announcing that it overran would be
+            # the same defect wearing a label.
+            if len(json.dumps(omission)) <= budget:
+                entries.append(omission)
+            break
+        budget -= cost
         entries.append(entry)
     return {"declared": len(expected), "artifacts": entries}
 

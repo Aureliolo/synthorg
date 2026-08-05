@@ -28,6 +28,7 @@ from synthorg.security.visionverify.verifiers._image import (
     mean_rgb,
     resolve_screenshot,
 )
+from synthorg.settings.model_ref import ModelRef
 from tests._shared.model_binding import bound_model, one_connection
 
 pytestmark = pytest.mark.unit
@@ -155,6 +156,45 @@ class TestFactory:
                 workspace=tmp_path,
                 connections=one_connection(provider),
                 model=None,
+            )
+
+    @pytest.mark.parametrize(
+        "half",
+        [
+            ModelRef(provider="example-provider", model_id=""),
+            ModelRef(provider="", model_id="example-large-001"),
+        ],
+    )
+    def test_llm_vision_half_a_pair_raises(
+        self, tmp_path: Path, half: ModelRef
+    ) -> None:
+        """Half a pair names no dispatch target, so it is not a binding.
+
+        ``ModelRef`` permits either field to be blank, so ``is not None`` is
+        not the question: a provider-only ref reaches the selector with an
+        empty model id, and a model-only ref asks for a connection nobody
+        named."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.providers.protocol import CompletionProvider
+        from tests._shared.mock_of import mock_of
+
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(spec=CompletionProvider.complete),
+            get_model_capabilities=AsyncMock(
+                spec=CompletionProvider.get_model_capabilities,
+            ),
+        )
+        config = VisionVerifyConfig(
+            enabled=True,
+            verifier_kind=VisionVerifierKind.LLM_VISION,
+        )
+        with pytest.raises(VisionVerifyConfigError, match="vision_verify_model"):
+            build_vision_verifier(
+                config,
+                workspace=tmp_path,
+                connections=one_connection(provider),
+                model=half,
             )
 
     def test_llm_vision_dispatch(self, tmp_path: Path) -> None:

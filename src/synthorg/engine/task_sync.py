@@ -263,7 +263,12 @@ async def apply_post_execution_transitions(
     # The tool-call count above is a proxy; this is the question it stands in
     # for. An agent that read files, wrote nothing and stopped passes the
     # proxy, so ask the workspace whether the declared deliverables exist.
-    if task_expects_artifacts and not justified and empty_run_fails:
+    # Deliberately not exempted for a resumed run: the resume exemption exists
+    # because this segment's turn count says nothing about earlier segments,
+    # and the filesystem has no such blind spot. Whatever an earlier segment
+    # produced is still on disk, so a resumed run with none of its declared
+    # paths present delivered nothing, whichever segment was supposed to.
+    if task_expects_artifacts and not justified:
         presence = await _absent_artifacts(artifact_probe, ctx)
         if presence is not None and presence.nothing_delivered:
             return await _transition_to_failed(

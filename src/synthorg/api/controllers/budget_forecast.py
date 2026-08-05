@@ -11,6 +11,7 @@ Endpoints:
 * ``GET /budget/pareto`` -- current cost / quality frontier.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -18,11 +19,20 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import (
+    require_approval_roles,
+    require_read_access,
+    require_write_access,
+)
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.budget.forecast_models import Forecast
+from synthorg.budget.currency import CurrencyCode
+from synthorg.budget.forecast_models import (
+    Forecast,
+    ForecastDecision,
+    HaltContext,
+)
 from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.pareto import (
     ParetoFrontier,
@@ -86,6 +96,64 @@ class ForecastRejectRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
 
+class ForecastView(BaseModel):
+    """What a forecast looks like on the wire.
+
+    An allowlist rather than the persisted :class:`Forecast`, because that
+    row carries ``gated_work_item``: the whole serialised work item, brief
+    text included, kept so approval can re-dispatch it. Read access is open
+    to every human role, so serialising the row directly hands one reader
+    another's brief. Naming the exposed fields also means a field added to
+    the persistence model reaches the wire only when someone puts it here.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    forecast_id: UUID = Field(description="Stable UUID primary key")
+    brief_hash: NotBlankStr = Field(description="Digest of the canonical brief")
+    estimated_cost: float = Field(ge=0.0, description="Mid-point cost estimate")
+    lower_bound: float = Field(ge=0.0, description="Lower bound of the estimate")
+    upper_bound: float = Field(ge=0.0, description="Upper bound of the estimate")
+    currency: CurrencyCode = Field(description="ISO 4217 code on the estimate")
+    decision: ForecastDecision = Field(description="Operator decision state")
+    decided_at: datetime | None = Field(default=None, description="When decided")
+    decided_by: NotBlankStr | None = Field(default=None, description="Who decided")
+    ceiling_amount: float | None = Field(
+        default=None, ge=0.0, description="Approved per-run hard ceiling"
+    )
+    halt_context: HaltContext | None = Field(
+        default=None, description="Hard-ceiling halt context when parked"
+    )
+    created_at: datetime = Field(description="Row creation timestamp")
+    updated_at: datetime = Field(description="Last decision-state mutation")
+
+
+def _view(forecast: Forecast) -> ForecastView:
+    """Project a persisted forecast onto its wire representation.
+
+    Args:
+        forecast: The persisted row.
+
+    Returns:
+        The allowlisted view, without the gated work item.
+    """
+    return ForecastView(
+        forecast_id=forecast.forecast_id,
+        brief_hash=forecast.brief_hash,
+        estimated_cost=forecast.estimated_cost,
+        lower_bound=forecast.lower_bound,
+        upper_bound=forecast.upper_bound,
+        currency=forecast.currency,
+        decision=forecast.decision,
+        decided_at=forecast.decided_at,
+        decided_by=forecast.decided_by,
+        ceiling_amount=forecast.ceiling_amount,
+        halt_context=forecast.halt_context,
+        created_at=forecast.created_at,
+        updated_at=forecast.updated_at,
+    )
+
+
 class RaiseCeilingRequest(BaseModel):
     """POST /budget/forecasts/{id}/raise_ceiling payload."""
 
@@ -127,7 +195,14 @@ def _require_service(state: State) -> BudgetForecastService:
 
 
 class ForecastBudgetController(Controller):
-    """Endpoints exposing the pre-flight forecast + Pareto frontier."""
+    """Endpoints exposing the pre-flight forecast + Pareto frontier.
+
+    Asking for an estimate is a write; deciding one is an approval. The
+    three decision routes therefore take ``require_approval_roles`` rather
+    than ``require_write_access``: the write set admits a pair programmer
+    and excludes a board member, which is exactly inverted for a call that
+    releases gated work and authorises real spend.
+    """
 
     path = "/budget"
     guards = (require_read_access,)
@@ -145,24 +220,26 @@ class ForecastBudgetController(Controller):
         self,
         data: ForecastRequest,
         state: State,
-    ) -> ApiResponse[Forecast]:
+    ) -> ApiResponse[ForecastView]:
         """Generate a fresh pending forecast for a brief.
 
         Returns:
-            ``Forecast`` instance.
+            ``ForecastView`` instance.
 
         Raises:
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         service = _require_service(state)
         return ApiResponse(
-            data=await service.generate(
-                brief_text=data.brief_text,
-                project=data.project,
-                requested_by=NotBlankStr(resolve_decided_by()),
-                role_skeleton=data.role_skeleton,
-                model_assignments=data.model_assignments,
-                estimated_turns_per_role=data.estimated_turns_per_role,
+            data=_view(
+                await service.generate(
+                    brief_text=data.brief_text,
+                    project=data.project,
+                    requested_by=NotBlankStr(resolve_decided_by()),
+                    role_skeleton=data.role_skeleton,
+                    model_assignments=data.model_assignments,
+                    estimated_turns_per_role=data.estimated_turns_per_role,
+                )
             )
         )
 
@@ -171,19 +248,19 @@ class ForecastBudgetController(Controller):
         self,
         forecast_id: PathId,
         state: State,
-    ) -> ApiResponse[Forecast]:
+    ) -> ApiResponse[ForecastView]:
         """Retrieve a stored forecast by id.
 
         Returns:
-            ``Forecast`` instance.
+            ``ForecastView`` instance.
         """
         service = _require_service(state)
-        return ApiResponse(data=await service.get_or_404(UUID(forecast_id)))
+        return ApiResponse(data=_view(await service.get_or_404(UUID(forecast_id))))
 
     @post(
         "/forecasts/{forecast_id:str}/approve",
         guards=[
-            require_write_access,
+            require_approval_roles,
             per_op_rate_limit_from_policy("budget.forecast_decide", key="user"),
         ],
     )
@@ -192,11 +269,11 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: ForecastApproveRequest,
         state: State,
-    ) -> ApiResponse[Forecast]:
+    ) -> ApiResponse[ForecastView]:
         """Approve a pending forecast; releases the work pipeline.
 
         Returns:
-            ``Forecast`` instance.
+            ``ForecastView`` instance.
 
         Raises:
             ActorContextMissingError: When no authenticated actor is bound;
@@ -204,17 +281,19 @@ class ForecastBudgetController(Controller):
         """
         service = _require_service(state)
         return ApiResponse(
-            data=await service.approve(
-                UUID(forecast_id),
-                decided_by=NotBlankStr(resolve_decided_by()),
-                ceiling_amount=data.ceiling_amount,
+            data=_view(
+                await service.approve(
+                    UUID(forecast_id),
+                    decided_by=NotBlankStr(resolve_decided_by()),
+                    ceiling_amount=data.ceiling_amount,
+                )
             )
         )
 
     @post(
         "/forecasts/{forecast_id:str}/reject",
         guards=[
-            require_write_access,
+            require_approval_roles,
             per_op_rate_limit_from_policy("budget.forecast_decide", key="user"),
         ],
     )
@@ -223,11 +302,11 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: ForecastRejectRequest,
         state: State,
-    ) -> ApiResponse[Forecast]:
+    ) -> ApiResponse[ForecastView]:
         """Reject a pending forecast; terminates the work item.
 
         Returns:
-            ``Forecast`` instance.
+            ``ForecastView`` instance.
 
         Raises:
             ActorContextMissingError: When no authenticated actor is bound.
@@ -235,16 +314,18 @@ class ForecastBudgetController(Controller):
         del data  # the decider is the authenticated actor, not a body field
         service = _require_service(state)
         return ApiResponse(
-            data=await service.reject(
-                UUID(forecast_id),
-                decided_by=NotBlankStr(resolve_decided_by()),
+            data=_view(
+                await service.reject(
+                    UUID(forecast_id),
+                    decided_by=NotBlankStr(resolve_decided_by()),
+                )
             )
         )
 
     @post(
         "/forecasts/{forecast_id:str}/raise_ceiling",
         guards=[
-            require_write_access,
+            require_approval_roles,
             per_op_rate_limit_from_policy("budget.forecast_raise_ceiling", key="user"),
         ],
     )
@@ -253,11 +334,11 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         data: RaiseCeilingRequest,
         state: State,
-    ) -> ApiResponse[Forecast]:
+    ) -> ApiResponse[ForecastView]:
         """Raise a parked run's hard ceiling so the engine can resume.
 
         Returns:
-            ``Forecast`` instance.
+            ``ForecastView`` instance.
 
         Raises:
             ServiceUnavailableError: Raised on the corresponding failure path.
@@ -266,10 +347,12 @@ class ForecastBudgetController(Controller):
         """
         service = _require_service(state)
         return ApiResponse(
-            data=await service.raise_ceiling(
-                UUID(forecast_id),
-                new_ceiling=data.new_ceiling,
-                accumulated_cost=data.accumulated_cost,
+            data=_view(
+                await service.raise_ceiling(
+                    UUID(forecast_id),
+                    new_ceiling=data.new_ceiling,
+                    accumulated_cost=data.accumulated_cost,
+                )
             )
         )
 

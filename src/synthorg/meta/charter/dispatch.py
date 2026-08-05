@@ -86,13 +86,14 @@ def _charter_brief_signal(
     *,
     project: NotBlankStr,
     requested_by: NotBlankStr,
+    correlation_id: NotBlankStr,
 ) -> BriefSignal:
     """Build the brief signal for the charter's forecast.
 
     Mirrors the work-entry signal shape ForecastGate uses (single
-    ``"default"`` role placeholder, plus the project and requester that
-    scope the digest) so the forecast lines up if the same brief is later
-    re-checked through the gate.
+    ``"default"`` role placeholder, plus the project, requester and
+    correlation id that scope the digest) so the forecast lines up if the
+    same brief is later re-checked through the gate.
 
     Returns:
         ``BriefSignal`` instance.
@@ -101,6 +102,7 @@ def _charter_brief_signal(
         brief_text=brief,
         project=project,
         requested_by=requested_by,
+        correlation_id=correlation_id,
         role_skeleton=("default",),
         model_assignments={},
         currency=NotBlankStr(currency),
@@ -400,6 +402,7 @@ class CharterDispatcher:
                         currency,
                         project=project_id,
                         requested_by=charter.created_by,
+                        correlation_id=charter.conversation_id,
                     )
                 )
             ),

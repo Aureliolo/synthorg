@@ -32,3 +32,10 @@ DECOMPOSITION_SESSION_DUPLICATE_SUBMIT: Final[str] = (
 # the LLM.  Caller falls back to a default plan; the event preserves the
 # failure mode for triage.
 DECOMPOSITION_EMPTY_PLAN_TEXT: Final[str] = "decomposition.empty_plan_text"
+
+DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
+"""No explicit provider + model pair is bound for decomposition.
+
+The runtime then builds without a coordinator. Its own event so that
+outcome is attributable on its own terms rather than only through the
+degraded-mode line that follows it."""
