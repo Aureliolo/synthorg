@@ -530,6 +530,37 @@ class TestPostExecutionGuards:
 
         assert any("bound 2 times" in m for m in messages)
 
+    def test_a_rebinding_inside_module_control_flow_is_caught(self, repo: Path) -> None:
+        """A module-level ``if`` still runs at import, so its binding counts.
+
+        Reading only the top-level statements would let an emptied table
+        behind a condition replace the real one at runtime while the gate
+        reported the one it could see.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION + "\n\nif True:\n    _UNFINISHED_REASONS = {}\n",
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("bound 2 times" in m for m in messages)
+
+    def test_a_same_named_local_in_a_function_is_not_a_binding(
+        self, repo: Path
+    ) -> None:
+        """A function body is another scope; its local rebinds nothing."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION
+            + "\n\ndef _unrelated():\n    _UNFINISHED_REASONS = {}\n"
+            "    return _UNFINISHED_REASONS\n",
+        )
+
+        assert _check_post_execution_guards(repo) == []
+
     def test_a_missing_entry_point_is_caught(self, repo: Path) -> None:
         """Nothing applies the guards if the function they live in is gone."""
         _write(

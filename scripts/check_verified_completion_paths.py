@@ -44,7 +44,7 @@ import argparse
 import ast
 import re
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Final
 
@@ -381,15 +381,40 @@ def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
     return False
 
 
+def _module_scope_statements(body: list[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk *body* into module-scope blocks, stopping at nested scopes.
+
+    An ``if`` / ``try`` / ``with`` / loop at module level still executes
+    at import, so a rebinding inside one is as real as a top-level
+    statement. A ``def`` or ``class`` body is a different scope, and a
+    name bound there is a local or an attribute, not this module's.
+
+    Yields:
+        Every statement that executes in the module's own scope.
+    """
+    for node in body:
+        yield node
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        for name in ("body", "orelse", "finalbody"):
+            nested = getattr(node, name, None)
+            if isinstance(nested, list):
+                yield from _module_scope_statements(nested)
+        handlers = getattr(node, "handlers", None)
+        if isinstance(handlers, list):
+            for handler in handlers:
+                yield from _module_scope_statements(handler.body)
+
+
 def _table_bindings(tree: ast.Module, table: str) -> list[ast.expr | None]:
-    """Collect every module-level assignment to *table*, in source order.
+    """Collect every module-scope assignment to *table*, in source order.
 
     Returns:
         One entry per binding: the assigned value, or ``None`` for a bare
         annotation that binds nothing.
     """
     bindings: list[ast.expr | None] = []
-    for node in tree.body:
+    for node in _module_scope_statements(tree.body):
         if isinstance(node, ast.Assign):
             targets: list[ast.expr] = list(node.targets)
         elif isinstance(node, ast.AnnAssign):

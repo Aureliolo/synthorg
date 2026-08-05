@@ -1265,9 +1265,18 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     global _TEMPLATE_DB  # noqa: PLW0603
     if _TEMPLATE_DB is not None and await asyncio.to_thread(_TEMPLATE_DB.exists):
         return _TEMPLATE_DB
-    # ``getbasetemp().parent`` is the xdist run-wide base; ``getbasetemp()``
-    # itself is the worker-local ``popen-gw0`` etc. subdir.
-    shared_dir = tmp_path_factory.getbasetemp().parent / "yoyo_template_shared"
+    # Under xdist ``getbasetemp()`` is the worker-local ``popen-gwN`` subdir
+    # and its parent is the run-wide base. Without xdist there is no worker
+    # subdir, so the parent would be ``pytest-of-<user>``: a directory pytest
+    # reuses across runs, which would hand the next run a template migrated
+    # against the previous schema and run every SQLite test on it.
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    run_base = (
+        tmp_path_factory.getbasetemp()
+        if worker_id == "master"
+        else tmp_path_factory.getbasetemp().parent
+    )
+    shared_dir = run_base / "yoyo_template_shared"
     await asyncio.to_thread(shared_dir.mkdir, parents=True, exist_ok=True)
     db_path = shared_dir / "template.db"
     building_path = shared_dir / "template.db.building"
