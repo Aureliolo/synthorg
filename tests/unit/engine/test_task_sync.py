@@ -762,9 +762,9 @@ class TestApplyPostExecutionTransitions:
     ) -> None:
         """A resumed run's zero-tool-call segment must not fail the task.
 
-        Regression (C1): a PARKED-then-resumed run only carries the current
-        segment's turns, so its zero-tool-call count is not a valid proxy for
-        total output; earlier segments may already have produced artifacts.
+        A PARKED-then-resumed run only carries the current segment's turns,
+        so its zero-tool-call count is not a valid proxy for total output;
+        earlier segments may already have produced artifacts.
         Inside a ``resumed_run_scope`` an otherwise-empty completed work run
         proceeds to review instead of being wrongly failed.
         """

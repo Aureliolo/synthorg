@@ -1,8 +1,9 @@
-"""Provider family utilities for cross-family model selection.
+"""Provider family lookup.
 
-Maps provider names to families and supports querying providers
-by family exclusion -- used by the LLM security evaluator to
-select a model from a different provider family than the agent.
+Maps a provider name to its family. The security evaluator reads it to
+warn when the connection an operator chose for judging an agent shares
+that agent's family, since a jailbreak of one family may also cover its
+reviewer.
 """
 
 from collections.abc import Mapping
@@ -33,21 +34,3 @@ def get_family(
     if config is not None and config.family is not None:
         return config.family
     return provider_name
-
-
-def providers_excluding_family(
-    family: str,
-    configs: Mapping[str, ProviderConfig],
-) -> tuple[str, ...]:
-    """Return provider names whose family differs from *family*.
-
-    Args:
-        family: The family to exclude.
-        configs: Provider config dict (key = provider name).
-
-    Returns:
-        Sorted tuple of provider names from other families.
-    """
-    return tuple(
-        sorted(name for name in configs if get_family(name, configs) != family)
-    )

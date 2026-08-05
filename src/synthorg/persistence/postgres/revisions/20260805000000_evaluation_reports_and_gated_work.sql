@@ -1,13 +1,13 @@
--- Two records the loop needed and did not keep.
+-- Two records the loop needs to keep.
 --
--- 1. The evaluate stage's verdict becomes a record.
+-- 1. The evaluate stage's verdict.
 --
 -- The verdict is the one artefact that decides whether an initiative
--- delivered, and it existed only inside the stage that produced it. An
--- operator whose initiative did not complete could read unmet_count=2 in a
--- log line and nothing else, and a lost compare-and-set race threw away a
--- judgement that cost real money and cannot be re-derived from anything
--- persisted.
+-- delivered, so it needs a record independent of the stage that produces
+-- it: without one an operator whose initiative did not complete has
+-- unmet_count=2 in a log line and nothing else, and a lost compare-and-set
+-- race throws away a judgement that cost real money and cannot be
+-- re-derived from anything persisted.
 --
 -- Append-only, keyed unique on (plan_id, attempt): a re-evaluation is a new
 -- attempt with its own row rather than an edit of the old one. Overwriting
@@ -33,11 +33,10 @@ ON initiative_evaluation_report (project_id, evaluated_at DESC);
 
 -- 2. A forecast remembers the work it gated.
 --
--- Under budget.forecast_required (the default), submitting an objective
--- minted a pending forecast and raised inside a detached background task.
--- The caller already had its 202, so the automation door accepted work,
--- returned success, and dropped it; approving the forecast afterwards
--- re-dispatched nothing, because nothing had kept the work item.
+-- Under budget.forecast_required (the default), approving a forecast is the
+-- decision that should run the work it blocked. Without the work item on the
+-- row there is nothing left to re-dispatch, so the automation door accepts
+-- work, returns its 202, and drops it.
 --
 -- Storing it is what makes approval mean "run this". Nullable because a
 -- forecast can also be minted for a brief that was never gated, and every

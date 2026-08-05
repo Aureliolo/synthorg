@@ -69,7 +69,7 @@ function RepoRow({
     <label
       htmlFor={labelId}
       className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3',
+        'flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-card',
         'transition-colors hover:bg-card-hover',
       )}
     >
@@ -102,7 +102,7 @@ function UnscannedRepoRow({
     <label
       htmlFor={labelId}
       className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3',
+        'flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-card',
         'transition-colors hover:bg-card-hover',
       )}
     >
@@ -132,7 +132,7 @@ function WildcardScopeRow({ scopeKey, onRemove }: { scopeKey: string; onRemove: 
     <label
       htmlFor={labelId}
       className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-md border border-warning/40 bg-card p-3',
+        'flex cursor-pointer items-center gap-2 rounded-md border border-warning/40 bg-card p-card',
         'transition-colors hover:bg-card-hover',
       )}
     >

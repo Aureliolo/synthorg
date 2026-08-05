@@ -725,8 +725,8 @@ class PruningService:
             status=ApprovalStatus.APPROVED,
         )
         # Resolve every linked identity in a single batch read rather than
-        # one ``registry.get`` per approval (the N+1 the audit flagged):
-        # one lock acquisition for the whole approved queue.
+        # one ``registry.get`` per approval: that would be an N+1 read on the
+        # approved queue, where this takes one lock for the whole batch.
         approved_identities = await self._resolve_approval_identities(approved_items)
         for item in approved_items:
             if self._already_processed_durably(item):

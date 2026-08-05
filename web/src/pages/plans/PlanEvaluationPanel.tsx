@@ -26,6 +26,10 @@ const OUTCOME_TONE: Record<CriterionOutcome, StatusPillTone> = {
   unmet: 'danger',
 }
 
+function objectiveMetTone(objectiveMet: boolean): StatusPillTone {
+  return objectiveMet ? 'success' : 'danger'
+}
+
 function OutcomePill({ outcome }: { outcome: CriterionOutcome }) {
   return <StatusPill tone={OUTCOME_TONE[outcome]}>{OUTCOME_LABEL[outcome]}</StatusPill>
 }
@@ -49,7 +53,7 @@ function AttemptCard({ attempt }: { attempt: PlanEvaluationAttempt }) {
         <span className="text-xs text-muted-foreground">
           Judgement {attempt.attempt} · {formatDateTime(attempt.evaluated_at)}
         </span>
-        <StatusPill tone={attempt.objective_met ? 'success' : 'danger'}>
+        <StatusPill tone={objectiveMetTone(attempt.objective_met)}>
           {attempt.objective_met ? 'Objective met' : 'Objective not met'}
         </StatusPill>
       </div>
@@ -71,7 +75,7 @@ function AttemptCard({ attempt }: { attempt: PlanEvaluationAttempt }) {
 
 function DeliveryPill({ objectiveMet }: { objectiveMet: boolean }) {
   return (
-    <StatusPill tone={objectiveMet ? 'success' : 'danger'}>
+    <StatusPill tone={objectiveMetTone(objectiveMet)}>
       {objectiveMet ? 'Delivered' : 'Not delivered'}
     </StatusPill>
   )
@@ -96,9 +100,17 @@ function EvaluationBody({
     )
   }
   if (loading) return <Skeleton className="h-24 w-full" />
-  return (
-    <p className="text-xs text-muted-foreground">Delivery verdict unavailable: {error}</p>
-  )
+  // Guarded here rather than relying on the parent having filtered the
+  // no-error, no-attempts case: the message reads as truncated without it,
+  // and a second caller would have no way to know the precondition exists.
+  if (error !== null) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Delivery verdict unavailable: {error}
+      </p>
+    )
+  }
+  return <p className="text-xs text-muted-foreground">No judgement recorded yet.</p>
 }
 
 /**

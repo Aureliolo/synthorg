@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -76,6 +77,7 @@ class AgentEngineRecoveryMixin:
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
     _artifact_probe: ExpectedArtifactProbe | None
+    _approval_store: ApprovalStoreProtocol | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
 
@@ -390,6 +392,7 @@ class AgentEngineRecoveryMixin:
             agent_id=agent_id,
             task_id=task_id,
             task_engine=self._task_engine,
+            approval_store=self._approval_store,
             artifact_probe=self._artifact_probe,
         )
         logger.info(

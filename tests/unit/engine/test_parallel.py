@@ -581,7 +581,7 @@ class TestParallelExecutorFatalErrors:
     A non-recoverable error surfaces unwrapped so a downstream
     ``reraise_critical`` (which inspects the exception itself, not
     ``__cause__``) treats it as fatal, never as a mere wave failure
-    laundered into a ``ParallelExecutionError`` (regression C2).
+    laundered into a ``ParallelExecutionError``.
     """
 
     async def test_memory_error_propagates(self) -> None:
