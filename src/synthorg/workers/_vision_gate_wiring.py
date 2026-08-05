@@ -16,6 +16,7 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.vision_verify import VISION_MODEL_UNSET
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.visionverify.protocol import VisionVerifierGate
 from synthorg.settings.bound_model import resolve_bound_model
@@ -48,15 +49,18 @@ async def build_vision_gate_or_none(
     )
 
     registry = app_state.slice(ProvidersStateSlice).registry
+    # Its own event, not the generic startup one: siblings each got a
+    # dedicated ``*_MODEL_UNSET``, and an unarmed vision gate logged under
+    # API_APP_STARTUP is indistinguishable from every other boot line.
     model = await resolve_bound_model(
         app_state,
         namespace="security",
         key="vision_verify_model",
-        unset_event=API_APP_STARTUP,
+        unset_event=VISION_MODEL_UNSET,
     )
     if model is not None and (registry is None or model.provider not in registry):
         logger.warning(
-            API_APP_STARTUP,
+            VISION_MODEL_UNSET,
             service="runtime_services",
             note="configured vision-verify connection is not registered",
             provider_name=model.provider,

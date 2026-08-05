@@ -125,7 +125,7 @@ async def _seed(
         ),
         provider_selector=lambda _identity: provider,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
-        replan_trigger=replan_trigger,
+        replan_trigger=None if replan_trigger is None else lambda: replan_trigger,
         config_resolver=None,
         clock=clock,
     )

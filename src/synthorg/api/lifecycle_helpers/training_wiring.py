@@ -65,14 +65,16 @@ async def _wire(app_state: AppState, effective_config: RootConfig) -> None:
     """Build and install the training service."""
     from synthorg._core.features import require_service  # noqa: PLC0415
     from synthorg.hr.training.factory import build_training_service  # noqa: PLC0415
-    from synthorg.providers.model_binding import (  # noqa: PLC0415
-        resolve_bound_completion,
-    )
+    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     tracker = app_state.slice(HrStateSlice).performance_tracker
     memory_backend = app_state.slice(MemoryStateSlice).backend
     if tracker is None or memory_backend is None:
         return
+    # Training is an enhancement to hiring, so a registry-less boot still gets
+    # the service with deterministic curation rather than nothing at all.
+    provider_registry = app_state.slice(ProvidersStateSlice).registry
     service = build_training_service(
         config=effective_config.training,
         memory_backend=memory_backend,
@@ -85,15 +87,10 @@ async def _wire(app_state: AppState, effective_config: RootConfig) -> None:
         tool_tracker=tool_invocation_tracker_of(app_state),
         # The curator reads candidate training material and decides what a new
         # hire learns, so the connection it runs on is the operator's explicit
-        # choice; unset degrades the ``llm_curated`` strategy to deterministic
-        # scoring.
-        curation_binding=await resolve_bound_completion(
-            app_state,
-            namespace="hr",
-            key="training_curation_model",
-            unset_event=API_APP_STARTUP,
-            subject="training curation",
-        ),
+        # choice, re-read per curation call; unset degrades the ``llm_curated``
+        # strategy to deterministic scoring.
+        connections=None if provider_registry is None else provider_registry.get,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
     app_state.wire(HrStateSlice, training_service=service)
 

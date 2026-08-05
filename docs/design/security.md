@@ -802,7 +802,19 @@ enabled, the boot path in `workers/runtime_builder.py` constructs the
 full subsystem via `security/redteam/builder.py::build_red_team_runtime`,
 which returns a `RedTeamRuntime` NamedTuple (gate, submit tool, repo,
 runner). Operators flip the flag once the review-gate integration
-point is wired in their deployment. `grounding_checker_kind`
+point is wired in their deployment.
+
+**The flag is not sufficient on its own.** The adversary dispatches on
+`security.red_team_model`, an explicit `(provider, model)` pair with no
+default, so an operator who enables the subsystem without choosing one gets
+a gate that stays unarmed and logs `red_team.runtime.model_unset`. This is
+deliberate rather than an oversight: a provider is a registered connection
+with its own credentials and quota, so there is nothing to borrow, and an
+adversary silently running on a connection nobody chose for it would spend
+one feature's key on the work of another. The sibling security features are
+gated the same way: `security.llm_evaluator_model` for the LLM fallback
+evaluator, `security.vision_verify_model` for the vision verifier (whose
+unresolved pair logs `vision_verify.runtime.model_unset`). `grounding_checker_kind`
 (`"heuristic"` default, or `"knowledge_substrate"`) selects the
 grounding implementation; the substrate checker degrades to the
 heuristic when no provider or knowledge service is wired.

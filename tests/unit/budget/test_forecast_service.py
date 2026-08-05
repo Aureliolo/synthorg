@@ -189,6 +189,8 @@ async def test_generate_persists_and_returns_forecast() -> None:
     service = _service(repo)
     forecast = await service.generate(
         brief_text=NotBlankStr("Build a thing"),
+        project=NotBlankStr("proj-1"),
+        requested_by=NotBlankStr("operator-1"),
         role_skeleton=(NotBlankStr("role-1"),),
         model_assignments={},
         estimated_turns_per_role=None,

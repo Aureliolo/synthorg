@@ -85,14 +85,16 @@ class BriefSignal(BaseModel):
 
     The fields are exactly what the estimator needs and what
     :func:`compute_brief_hash` hashes into the canonical
-    ``brief_hash``: the brief text (verbatim), the ordered role
-    skeleton, the per-role model-tier assignment, and the currency
-    the estimate should be denominated in.
+    ``brief_hash``: the brief text (verbatim), who asked for it and where
+    it lands, the ordered role skeleton, the per-role model-tier
+    assignment, and the currency the estimate should be denominated in.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     brief_text: NotBlankStr = Field(description="The brief as written by the operator")
+    project: NotBlankStr = Field(description="Project the work lands in")
+    requested_by: NotBlankStr = Field(description="Who asked for the work")
     role_skeleton: tuple[NotBlankStr, ...] = Field(
         description="Ordered role ids participating in the run",
     )
@@ -115,15 +117,22 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     """Return the canonical SHA-256 hex digest for a brief signal.
 
     Canonicalisation rules: keys sorted, no whitespace separators,
-    role names lower-cased and stripped, model ids passed through
-    verbatim (the caller is expected to normalise model ids to their
-    canonical alias before constructing the signal).
+    role and project names lower-cased and stripped, model ids passed
+    through verbatim (the caller is expected to normalise model ids to
+    their canonical alias before constructing the signal).
+
+    The project and requester are part of the digest because a pending
+    forecast now carries the work item it gated: two callers whose brief
+    text happened to match would otherwise share one row, and approving it
+    would run the first caller's work item under the second's authority.
 
     Returns:
         Result of type ``str``.
     """
     payload = {
         "brief_text": signal.brief_text,
+        "project": normalize_identifier(signal.project),
+        "requested_by": normalize_identifier(signal.requested_by),
         "role_skeleton": [normalize_identifier(r) for r in signal.role_skeleton],
         "model_assignments": {
             normalize_identifier(k): v.strip()

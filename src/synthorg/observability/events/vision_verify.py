@@ -22,3 +22,10 @@ VISION_HEURISTIC_CHECK_COMPLETED: Final[str] = "vision_verify.heuristic.complete
 VISION_LLM_CALL_STARTED: Final[str] = "vision_verify.llm.started"
 VISION_LLM_CALL_COMPLETED: Final[str] = "vision_verify.llm.completed"
 VISION_LLM_UNSUPPORTED: Final[str] = "vision_verify.llm.unsupported"
+
+VISION_MODEL_UNSET: Final[str] = "vision_verify.runtime.model_unset"
+"""No explicit provider + model pair is bound for the vision verifier (unset,
+half a pair, an unregistered connection, or a read failure), so the gate stays
+unarmed rather than borrowing a connection nobody chose for it. Its own event
+rather than the generic startup one: an unarmed vision gate is otherwise
+indistinguishable from every other boot line in the stream."""

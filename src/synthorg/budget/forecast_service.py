@@ -89,6 +89,8 @@ class BudgetForecastService:
         self,
         *,
         brief_text: NotBlankStr,
+        project: NotBlankStr,
+        requested_by: NotBlankStr,
         role_skeleton: tuple[NotBlankStr, ...],
         model_assignments: dict[NotBlankStr, NotBlankStr],
         estimated_turns_per_role: float | None,
@@ -100,6 +102,8 @@ class BudgetForecastService:
         """
         signal = BriefSignal(
             brief_text=brief_text,
+            project=project,
+            requested_by=requested_by,
             role_skeleton=role_skeleton,
             model_assignments=model_assignments,
             currency=self._budget_config.currency,

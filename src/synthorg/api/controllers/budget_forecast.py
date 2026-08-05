@@ -28,6 +28,7 @@ from synthorg.budget.pareto import (
     ParetoFrontier,
 )
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -42,6 +43,7 @@ class ForecastRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     brief_text: NotBlankStr = Field(description="Brief body to estimate")
+    project: NotBlankStr = Field(description="Project the work would land in")
     role_skeleton: tuple[NotBlankStr, ...] = Field(
         min_length=1,
         description="Ordered role ids participating in the run (non-empty)",
@@ -58,11 +60,15 @@ class ForecastRequest(BaseModel):
 
 
 class ForecastApproveRequest(BaseModel):
-    """POST /budget/forecasts/{id}/approve payload."""
+    """POST /budget/forecasts/{id}/approve payload.
+
+    The decider is read from the authenticated actor, never the body: an
+    approval releases the gated work item and spends real money, so who
+    authorised it cannot be a string the caller chose.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    decided_by: NotBlankStr = Field(description="Operator identifier")
     ceiling_amount: float | None = Field(
         default=None,
         ge=0.0,
@@ -71,11 +77,13 @@ class ForecastApproveRequest(BaseModel):
 
 
 class ForecastRejectRequest(BaseModel):
-    """POST /budget/forecasts/{id}/reject payload."""
+    """POST /budget/forecasts/{id}/reject payload.
+
+    Empty for the same reason as its approve counterpart: the decider comes
+    from the authenticated actor.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    decided_by: NotBlankStr = Field(description="Operator identifier")
 
 
 class RaiseCeilingRequest(BaseModel):
@@ -150,6 +158,8 @@ class ForecastBudgetController(Controller):
         return ApiResponse(
             data=await service.generate(
                 brief_text=data.brief_text,
+                project=data.project,
+                requested_by=NotBlankStr(resolve_decided_by()),
                 role_skeleton=data.role_skeleton,
                 model_assignments=data.model_assignments,
                 estimated_turns_per_role=data.estimated_turns_per_role,
@@ -187,12 +197,16 @@ class ForecastBudgetController(Controller):
 
         Returns:
             ``Forecast`` instance.
+
+        Raises:
+            ActorContextMissingError: When no authenticated actor is bound;
+                an approval that spends money must be attributable.
         """
         service = _require_service(state)
         return ApiResponse(
             data=await service.approve(
                 UUID(forecast_id),
-                decided_by=data.decided_by,
+                decided_by=NotBlankStr(resolve_decided_by()),
                 ceiling_amount=data.ceiling_amount,
             )
         )
@@ -214,10 +228,17 @@ class ForecastBudgetController(Controller):
 
         Returns:
             ``Forecast`` instance.
+
+        Raises:
+            ActorContextMissingError: When no authenticated actor is bound.
         """
+        del data  # the decider is the authenticated actor, not a body field
         service = _require_service(state)
         return ApiResponse(
-            data=await service.reject(UUID(forecast_id), decided_by=data.decided_by)
+            data=await service.reject(
+                UUID(forecast_id),
+                decided_by=NotBlankStr(resolve_decided_by()),
+            )
         )
 
     @post(

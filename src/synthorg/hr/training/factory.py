@@ -17,7 +17,8 @@ from synthorg.hr.training.service import TrainingService
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import HR_TRAINING_CONFIG_INVALID
-from synthorg.providers.model_binding import BoundCompletion
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 logger = get_logger(__name__)
@@ -66,7 +67,8 @@ def build_training_service(
     registry: AgentRegistryService,
     approval_store: ApprovalStoreProtocol,
     tool_tracker: ToolInvocationTracker,
-    curation_binding: BoundCompletion | None = None,
+    connections: ConnectionSelector | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> TrainingService:
     """Build a fully wired ``TrainingService`` from configuration.
 
@@ -77,8 +79,11 @@ def build_training_service(
         registry: Agent registry.
         approval_store: Approval store for review gate.
         tool_tracker: Tool invocation tracker.
-        curation_binding: Connection + model the ``llm_curated`` strategy
-            dispatches on; ``None`` degrades it to relevance scoring.
+        connections: Resolves the connection the ``llm_curated`` strategy's
+            operator-assigned pair names; ``None`` degrades it to relevance
+            scoring.
+        config_resolver: Live source for that assignment, so a reassignment
+            arms the next curation rather than the next boot.
 
     Returns:
         Configured training service.
@@ -93,7 +98,9 @@ def build_training_service(
         memory_backend=memory_backend,
         tool_tracker=tool_tracker,
     )
-    curation = _build_curation(config, binding=curation_binding)
+    curation = _build_curation(
+        config, connections=connections, config_resolver=config_resolver
+    )
     guards = _build_guards(config, approval_store=approval_store)
 
     return TrainingService(
@@ -292,14 +299,15 @@ def _build_extractors(
 def _build_relevance_curation(
     config: TrainingConfig,
     *,
-    binding: BoundCompletion | None,
+    connections: ConnectionSelector | None,
+    config_resolver: ConfigResolverProtocol | None,
 ) -> CurationStrategy:
     """Build relevance curation.
 
     Returns:
         Result of type ``CurationStrategy``.
     """
-    del binding  # heuristic curation does not need an LLM
+    del connections, config_resolver  # heuristic curation does not need an LLM
     from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
         RelevanceScoreCuration,
     )
@@ -315,7 +323,8 @@ def _build_relevance_curation(
 def _build_llm_curation(
     config: TrainingConfig,
     *,
-    binding: BoundCompletion | None,
+    connections: ConnectionSelector | None,
+    config_resolver: ConfigResolverProtocol | None,
 ) -> CurationStrategy:
     """Build llm curation.
 
@@ -331,7 +340,11 @@ def _build_llm_curation(
         field_name="curation_strategy_config.top_k",
         default=50,
     )
-    return LLMCurated(binding=binding, top_k=top_k)
+    return LLMCurated(
+        connections=connections,
+        config_resolver=config_resolver,
+        top_k=top_k,
+    )
 
 
 _CURATION_REGISTRY: StrategyRegistry[CurationStrategy] = StrategyRegistry(
@@ -346,7 +359,8 @@ _CURATION_REGISTRY: StrategyRegistry[CurationStrategy] = StrategyRegistry(
 def _build_curation(
     config: TrainingConfig,
     *,
-    binding: BoundCompletion | None,
+    connections: ConnectionSelector | None,
+    config_resolver: ConfigResolverProtocol | None,
 ) -> CurationStrategy:
     """Build curation strategy from config.
 
@@ -356,7 +370,8 @@ def _build_curation(
     return _CURATION_REGISTRY.build(
         str(config.curation_strategy_type),
         config,
-        binding=binding,
+        connections=connections,
+        config_resolver=config_resolver,
     )
 
 

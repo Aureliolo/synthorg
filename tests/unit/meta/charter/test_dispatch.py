@@ -466,10 +466,26 @@ class TestApprove:
         # Charter provenance points at the persisted forecast row.
         assert result.charter.forecast_id == forecast.forecast_id
 
-    async def test_brief_hash_deterministic_for_same_brief(self) -> None:
-        # Two charters with the same brief must produce the same forecast
-        # brief_hash so a retried approval upserts the same row (the
-        # ForecastGate later checks brief_hash to decide coverage).
+    async def test_brief_hash_deterministic_for_the_same_charter(self) -> None:
+        # A retried approval must upsert the same row (the ForecastGate later
+        # checks brief_hash to decide coverage), so the digest is a pure
+        # function of the charter rather than of when it was approved.
+        dispatcher_a, repo_a, _, _ = _dispatcher(_charter())
+        dispatcher_b, repo_b, _, _ = _dispatcher(_charter())
+        await dispatcher_a.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+        await dispatcher_b.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+        hash_a = next(iter(repo_a.items.values())).brief_hash
+        hash_b = next(iter(repo_b.items.values())).brief_hash
+        assert hash_a == hash_b
+
+    async def test_brief_hash_differs_across_charters(self) -> None:
+        # Each charter opens its own project, and the pending forecast now
+        # carries the work item it gated: a shared digest would let approving
+        # one charter's forecast run the other charter's kickoff.
         dispatcher_a, repo_a, _, _ = _dispatcher(_charter())
         dispatcher_b, repo_b, _, _ = _dispatcher(
             _charter(id="charter-2", conversation_id="conv-2")
@@ -482,7 +498,7 @@ class TestApprove:
         )
         hash_a = next(iter(repo_a.items.values())).brief_hash
         hash_b = next(iter(repo_b.items.values())).brief_hash
-        assert hash_a == hash_b
+        assert hash_a != hash_b
 
     async def test_concurrent_approve_only_one_wins_cas(self) -> None:
         import asyncio

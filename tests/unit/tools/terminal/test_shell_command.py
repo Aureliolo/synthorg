@@ -2,11 +2,91 @@
 
 import pytest
 
+from synthorg.core.execution_identity import (
+    ExecutionIdentity,
+    execution_identity_scope,
+)
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionPurpose,
+    CodeExecutionRecord,
+    CodeExecutionRecordRepository,
+)
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.terminal.config import TerminalConfig
 from synthorg.tools.terminal.shell_command import ShellCommandTool
+from tests._shared import FakeClock, mock_of
 
 from .conftest import MockSandbox
+
+
+class _RecordingStore:
+    """Append-only double capturing what the tool writes.
+
+    Wraps a typed ``mock_of`` because typeguard checks the whole protocol
+    on the argument, not just the one method under test.
+    """
+
+    def __init__(self) -> None:
+        self.records: list[CodeExecutionRecord] = []
+        self.repository: CodeExecutionRecordRepository = mock_of[
+            CodeExecutionRecordRepository
+        ](append=self._append)
+
+    async def _append(self, record: CodeExecutionRecord, /) -> None:
+        self.records.append(record)
+
+
+class TestTestRunCaptureWiring:
+    """The classifier is well covered; what it is wired into was not.
+
+    A wrong command variable, a forgotten repository or a dropped clock
+    would silently disarm the build/test oracle while every classifier
+    test stayed green, because none of them touches the tool.
+    """
+
+    @pytest.mark.unit
+    async def test_a_suite_run_through_the_shell_leaves_a_receipt(self) -> None:
+        store = _RecordingStore()
+        tool = ShellCommandTool(
+            sandbox=MockSandbox(),
+            code_execution_records=store.repository,
+            clock=FakeClock(),
+        )
+        identity = ExecutionIdentity(
+            execution_id=NotBlankStr("exec-1"),
+            task_id=NotBlankStr("task-1"),
+            project_id=NotBlankStr("proj-1"),
+        )
+
+        with execution_identity_scope(identity):
+            await tool.execute(arguments={"command": "pytest -q"})
+
+        assert len(store.records) == 1
+        record = store.records[0]
+        assert record.purpose is CodeExecutionPurpose.TESTS
+        assert record.command == "pytest -q"
+        assert record.task_id == "task-1"
+        assert record.project_id == "proj-1"
+
+    @pytest.mark.unit
+    async def test_a_non_suite_command_leaves_none(self) -> None:
+        store = _RecordingStore()
+        tool = ShellCommandTool(
+            sandbox=MockSandbox(),
+            code_execution_records=store.repository,
+            clock=FakeClock(),
+        )
+        identity = ExecutionIdentity(
+            execution_id=NotBlankStr("exec-1"),
+            task_id=NotBlankStr("task-1"),
+            project_id=NotBlankStr("proj-1"),
+        )
+
+        with execution_identity_scope(identity):
+            await tool.execute(arguments={"command": "echo pytest"})
+
+        assert store.records == []
 
 
 class TestShellCommandExecution:

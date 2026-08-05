@@ -108,12 +108,11 @@ function ForecastBanners({
         mutating={forecastMutating}
         onApprove={(ceiling) => {
           void approveForecast(currentForecast.forecast_id, {
-            decided_by: 'operator',
             ceiling_amount: ceiling,
           })
         }}
         onReject={() => {
-          void rejectForecast(currentForecast.forecast_id, { decided_by: 'operator' })
+          void rejectForecast(currentForecast.forecast_id, {})
         }}
         onOpenDetail={onOpenDetail}
       />
@@ -292,7 +291,6 @@ function BudgetForecastDetailDialog({
       onApprove={(ceiling) => {
         if (currentForecast !== null) {
           void approveForecast(currentForecast.forecast_id, {
-            decided_by: 'operator',
             ceiling_amount: ceiling,
           })
           onOpenChange(false)
@@ -300,7 +298,7 @@ function BudgetForecastDetailDialog({
       }}
       onReject={() => {
         if (currentForecast !== null) {
-          void rejectForecast(currentForecast.forecast_id, { decided_by: 'operator' })
+          void rejectForecast(currentForecast.forecast_id, {})
           onOpenChange(false)
         }
       }}

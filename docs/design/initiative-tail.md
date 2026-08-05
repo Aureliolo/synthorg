@@ -67,9 +67,11 @@ Three shape decisions carry weight:
 | id derived from the plan id (`uuid5`) | idempotency with no "already started" flag to drift from reality: a re-fired stage finds the existing row and stops |
 
 It declares two expected artifacts, the integrated runnable deliverable and the
-end-to-end test run over it, which arms the zero-artifact guard: an integration
-that produced neither terminates `NO_OP -> FAILED` rather than reading as
-finished. It runs one stakes level above the plan's highest item, because
+end-to-end test run over it. Both are named in prose rather than as paths, so
+the declared-artifact check does not probe them (see
+[agent-execution.md](agent-execution.md#declared-artifact-check)); the
+zero-tool-call proxy still applies, and the assembly is judged by the same
+review chain as any other task. It runs one stakes level above the plan's highest item, because
 assembly is the first point the whole thing runs and the last point before
 delivery. Its acceptance criteria are the objective's own.
 
@@ -199,17 +201,44 @@ completion:
 | integrate stage (no work pipeline) | plan parks at `INTEGRATING`, WARNING per recompute |
 | evaluate stage (no provider) | plan parks at `EVALUATING`, WARNING per recompute |
 | replan trigger (no coordinator) | a stalled plan stays stalled and visible |
+| retro capture (no memory layer) | finished work does not feed a retrospective back |
 
 Parking is the honest outcome: an initiative whose pieces were never assembled
 has not delivered, and an initiative nobody scored has not been shown to meet
 its objective. The operator's remedy is one the product already has: replan
 (legal from both tail stages) or cancel.
 
-Wiring is best-effort and re-runnable. The rollup is wired as soon as
-persistence and the task engine exist, which is before setup has configured a
-provider, so a first boot legitimately produces a rollup with no tail; re-running
-the wiring after setup attaches whatever now resolves, without re-registering the
-observer, so the tail comes online with no restart.
+**Independently means one subsystem each**, four of them, all separate from the
+rollup. The rollup activates as soon as persistence and the task engine exist,
+which is before setup has configured a provider, so a first boot legitimately
+produces a rollup with no tail; each `initiative_*` spec waits on what that one
+collaborator actually needs and activates on a later reconciler pass, attaching
+onto the already-wired rollup without re-registering the observer, so each comes
+online with no restart.
+
+Declaring the four as one subsystem would make the *union* of their
+requirements a precondition for any of them, and the table above would be a
+lie: a boot with no coordinator would get no integrate stage either. Their
+liveness is read one probe per collaborator for the same reason: a shared probe
+let a tail whose retro capture never resolved (memory blocked because no
+embedder was chosen) read as converged, and the reconciler never revisits that.
+
+The retro capture additionally declares a teardown and `rebuild_on_change`,
+because it holds both memory backends for the life of the instance and those
+are replaceable while the process runs; without them it would keep writing into
+layers nothing else reads.
+
+The evaluate stage therefore reads the replan trigger **per verdict** rather
+than capturing one at construction. The two converge on their own schedules, so
+a coordinator arriving after the provider registry would otherwise leave the
+stage holding the `None` it was built with and park every unmet initiative for
+the life of the process.
+
+There is exactly one wiring path per collaborator. Re-running the rollup's own
+wiring attaches nothing: a post-setup rewire list is the drift
+[subsystem reconciliation](subsystem-reconciliation.md) exists to reject, and
+it is what left the tail declining on every deployment while the capability
+read as live.
 
 ## Settings
 

@@ -51,7 +51,6 @@ from synthorg.engine.initiative.completion import (
 )
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
-    EvaluationFactory,
     EvaluationPort,
     IntegrationPort,
     PlanStatusWriter,
@@ -158,7 +157,7 @@ class ProjectRollupService:
         *,
         replan_trigger: ReplanTriggerPort | None = None,
         integration: IntegrationPort | None = None,
-        evaluation: EvaluationFactory | None = None,
+        evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
     ) -> None:
         """Fill in tail collaborators that a later boot phase resolved.
@@ -169,39 +168,89 @@ class ProjectRollupService:
         setup must not re-register the observer, so it attaches here instead
         and the tail comes online without a restart.
 
+        Each collaborator has its own subsystem and arrives on its own
+        schedule, so a call fills only what it was handed. Only unset ones are
+        filled: an already-wired stage keeps its instance, so a re-run never
+        orphans one mid-flight.
+
         The retrospective capture is filled here for the same reason as the
         three stages: it needs the provider and agent registries too, so a
         rollup built before either existed has none, and leaving it to the
         constructor alone would strand the consuming tail permanently.
-
-        Only unset collaborators are filled: an already-wired stage keeps its
-        instance, so a re-run never orphans one mid-flight. The evaluate stage
-        arrives as a factory rather than an instance for that same reason: it
-        captures the replan trigger permanently, so it must be built against
-        whichever trigger this rollup ends up holding, not against one a
-        caller built speculatively and this method then discarded.
         """
         if self._replan_trigger is None:
             self._replan_trigger = replan_trigger
         if self._integration is None:
             self._integration = integration
-        if self._evaluation is None and evaluation is not None:
-            self._evaluation = evaluation(self._replan_trigger)
+        if self._evaluation is None:
+            self._evaluation = evaluation
         if self._ship_retro_capture is None:
             self._ship_retro_capture = ship_retro_capture
 
-    def has_full_tail(self) -> bool:
-        """Whether every tail collaborator is wired.
+    async def detach_retro_capture(self, *, timeout_sec: float) -> None:
+        """Drain and drop the retrospective capture, so a pass can rebuild it.
+
+        It captured both memory backends at construction, so once either is
+        replaced the capture writes into layers nothing else reads. Dropping it
+        is also what the reconciler reads as this subsystem being down, since
+        liveness comes from the rollup's own attachment record. Drained first:
+        an in-flight retrospective abandoned mid-write is the partial state the
+        shutdown drain exists to avoid, and a rebuild is no different.
+        """
+        if self._ship_retro_capture is None:
+            return
+        await self._ship_retro_capture.drain(timeout_sec=timeout_sec)
+        self._ship_retro_capture = None
+
+    def replan_trigger(self) -> ReplanTriggerPort | None:
+        """Return the attached replan trigger, or ``None``.
+
+        The EVALUATE stage reads it through this rather than capturing one at
+        construction: the two subsystems attach independently, so a stage built
+        before the coordinator existed would otherwise hold ``None`` for the
+        life of the process.
 
         Returns:
-            ``True`` when the replan trigger and both tail stages are present,
-            so a re-wire can skip rebuilding them.
+            The trigger the rollup currently holds.
         """
-        return (
-            self._replan_trigger is not None
-            and self._integration is not None
-            and self._evaluation is not None
-        )
+        return self._replan_trigger
+
+    def has_replan_trigger(self) -> bool:
+        """Whether the stalled-initiative replan trigger is attached.
+
+        Returns:
+            ``True`` once the trigger is present.
+        """
+        return self._replan_trigger is not None
+
+    def has_integration(self) -> bool:
+        """Whether the INTEGRATE stage is attached.
+
+        Returns:
+            ``True`` once the stage is present.
+        """
+        return self._integration is not None
+
+    def has_evaluation(self) -> bool:
+        """Whether the EVALUATE stage is attached.
+
+        Returns:
+            ``True`` once the stage is present.
+        """
+        return self._evaluation is not None
+
+    def has_retro_capture(self) -> bool:
+        """Whether the SHIP-time retrospective capture is attached.
+
+        Read as its own liveness rather than folded into the stages': it is
+        built from the memory backends, which converge on their own schedule,
+        so counting it under a stage's probe would let the reconciler call a
+        tail converged while the retrospective silently never fires.
+
+        Returns:
+            ``True`` once the capture collaborator is present.
+        """
+        return self._ship_retro_capture is not None
 
     async def drain_retro_capture(self, *, timeout_sec: float) -> None:
         """Drain the SHIP-retro capture tail at shutdown, if one is wired.

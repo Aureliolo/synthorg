@@ -11813,8 +11813,6 @@ export type components = {
         readonly ForecastApproveRequest: {
             /** @description Approved per-run hard ceiling (None to inherit setting) */
             readonly ceiling_amount?: number | null;
-            /** @description Operator identifier */
-            readonly decided_by: string;
         };
         /**
          * ForecastDecision
@@ -11834,10 +11832,7 @@ export type components = {
             readonly projected_spend: number;
         };
         /** ForecastRejectRequest */
-        readonly ForecastRejectRequest: {
-            /** @description Operator identifier */
-            readonly decided_by: string;
-        };
+        readonly ForecastRejectRequest: Record<string, never>;
         /** ForecastRequest */
         readonly ForecastRequest: {
             /** @description Brief body to estimate */
@@ -11848,6 +11843,8 @@ export type components = {
             readonly model_assignments?: {
                 readonly [key: string]: string;
             };
+            /** @description Project the work would land in */
+            readonly project: string;
             /** @description Ordered role ids participating in the run (non-empty) */
             readonly role_skeleton: readonly string[];
         };

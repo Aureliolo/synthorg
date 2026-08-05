@@ -12,10 +12,16 @@
 -- Append-only, keyed unique on (plan_id, attempt): a re-evaluation is a new
 -- attempt with its own row rather than an edit of the old one. Overwriting
 -- would erase the evidence that the objective was judged and found wanting,
--- which is exactly what the replan points at.
+-- which is exactly what the replan points at. Row count per plan is bounded
+-- by the stage's own attempt cap, so there is no age sweeper: deleting an
+-- attempt of a live plan would destroy the evidence its replan points at.
+--
+-- Deleting the plan does take its verdicts, though: a plan is hard-deletable
+-- and a verdict about a plan that no longer exists is unreadable by anything.
 CREATE TABLE initiative_evaluation_report (
     record_id TEXT NOT NULL PRIMARY KEY,
-    plan_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE,
     project_id TEXT NOT NULL,
     attempt INTEGER NOT NULL CHECK (attempt >= 1),
     verdict_summary TEXT NOT NULL
@@ -23,7 +29,7 @@ CREATE TABLE initiative_evaluation_report (
     verdicts TEXT NOT NULL,
     objective_met INTEGER NOT NULL CHECK (objective_met IN (0, 1)),
     evaluated_at TEXT NOT NULL
-        CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
+    CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
     CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
 );
 

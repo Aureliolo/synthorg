@@ -19,14 +19,25 @@ from pydantic import JsonValue, ValidationError
 
 from synthorg.budget.forecast_models import Forecast
 from synthorg.core.boundary import parse_typed
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.observability import get_logger
+from synthorg.notifications.models import (
+    Notification,
+    NotificationCategory,
+    NotificationSeverity,
+)
+from synthorg.notifications.protocol import NotificationDispatcherProtocol
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.budget import BUDGET_FORECAST_REDISPATCH_FAILED
 
 logger = get_logger(__name__)
+
+#: Source label on the operator notification, so a sink can route it.
+_SOURCE: NotBlankStr = NotBlankStr("budget.forecast_redispatch")
 
 
 class ForecastGateRedispatcher:
@@ -37,18 +48,23 @@ class ForecastGateRedispatcher:
             APPROVED row, so the operator's ceiling reaches the task.
         background_tasks: Set the spawned run is tracked in, so shutdown
             can drain it and the task is not garbage-collected mid-run.
+        notifications: Operator alert sink for a run that failed after the
+            approval already returned 200. ``None`` leaves the ERROR log as
+            the only record.
     """
 
-    __slots__ = ("_background_tasks", "_gate")
+    __slots__ = ("_background_tasks", "_gate", "_notifications")
 
     def __init__(
         self,
         *,
         gate: WorkPipeline,
         background_tasks: set[asyncio.Task[None]],
+        notifications: NotificationDispatcherProtocol | None = None,
     ) -> None:
         self._gate = gate
         self._background_tasks = background_tasks
+        self._notifications = notifications
 
     async def dispatch(self, forecast: Forecast) -> None:
         """Spawn the run for the work *forecast* gated.
@@ -67,7 +83,9 @@ class ForecastGateRedispatcher:
             )
             return
         work_item = self._rebuild(forecast, stored)
-        task = asyncio.create_task(self._run(work_item))
+        task = asyncio.create_task(self._run(forecast, work_item))
+        # Backstop only: _run reports its own failure with the work item's
+        # identifiers, so anything reaching here escaped that path.
         task.add_done_callback(
             log_task_exceptions(
                 logger,
@@ -108,14 +126,72 @@ class ForecastGateRedispatcher:
             raise ServiceUnavailableError(msg) from exc
         return work_item.model_copy(update={"forecast_id": forecast.forecast_id})
 
-    async def _run(self, work_item: WorkItem) -> None:
+    async def _run(self, forecast: Forecast, work_item: WorkItem) -> None:
         """Drive the gate and discard the terminal result.
 
         The caller correlates to the spawned root task through the work
         item's ``correlation_id``, which survived in the stored payload,
         so the pipeline result carries nothing the operator does not have.
+
+        A failure here happens after the approval already returned 200, so
+        nothing is left to raise into: the operator is holding an approved
+        forecast whose work never ran. It is reported with the work item's
+        own identifiers (a ``forecast_id`` alone points at no brief, project
+        or trace) and raised as an operator notification.
         """
-        await self._gate.run(work_item)
+        try:
+            await self._gate.run(work_item)
+        except Exception as exc:  # noqa: BLE001 -- reported to the operator
+            # lint-allow: swallow-ok -- the approval already returned 200, so
+            # there is no caller left to raise into; _report_failed_run is the
+            # surfacing path (ERROR log naming the work item, plus an operator
+            # notification), and re-raising here would only duplicate it
+            # through the task's done-callback backstop.
+            reraise_critical(exc)
+            await self._report_failed_run(forecast, work_item, exc)
+
+    async def _report_failed_run(
+        self,
+        forecast: Forecast,
+        work_item: WorkItem,
+        exc: Exception,
+    ) -> None:
+        """Log the failed run and alert the operator holding the approval."""
+        detail = safe_error_description(exc)
+        logger.error(
+            BUDGET_FORECAST_REDISPATCH_FAILED,
+            forecast_id=str(forecast.forecast_id),
+            reason="approved_work_run_failed",
+            correlation_id=str(work_item.correlation_id),
+            project=str(work_item.project),
+            requested_by=str(work_item.requested_by),
+            title=str(work_item.title),
+            error_type=type(exc).__name__,
+            error=detail,
+        )
+        if self._notifications is None:
+            return
+        await self._notifications.dispatch(
+            Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.ERROR,
+                title=NotBlankStr(f"Approved forecast did not run: {work_item.title}"),
+                body=(
+                    f"The work approved on cost forecast {forecast.forecast_id}"
+                    f" failed to run and has not been retried.\n"
+                    f"Project: {work_item.project}\n"
+                    f"Requested by: {work_item.requested_by}\n"
+                    f"Correlation id: {work_item.correlation_id}\n"
+                    f"Failure: {detail}"
+                ),
+                source=_SOURCE,
+                metadata={
+                    "forecast_id": str(forecast.forecast_id),
+                    "correlation_id": str(work_item.correlation_id),
+                    "project": str(work_item.project),
+                },
+            )
+        )
 
 
 __all__ = ["ForecastGateRedispatcher"]

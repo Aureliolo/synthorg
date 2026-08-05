@@ -99,8 +99,14 @@ class SubmitEvaluationTool(BaseTool):
     """Terminal tool: the session submits its verdict through it.
 
     A malformed or incomplete submission surfaces as a tool error so the lead
-    can correct it within the same session rather than the stage losing the
-    verdict entirely.
+    can correct it within the same style-policy pass rather than the stage
+    losing the verdict entirely.
+
+    Args:
+        capture: Holder the accepted report is written to.
+        criteria: The objective's success criteria the report must cover.
+        project_id: The plan's project, so the style policy resolves the
+            scope the operator configured for it.
     """
 
     def __init__(
@@ -108,6 +114,7 @@ class SubmitEvaluationTool(BaseTool):
         *,
         capture: _EvaluationCapture,
         criteria: tuple[NotBlankStr, ...],
+        project_id: NotBlankStr | None = None,
     ) -> None:
         tool_def = build_evaluation_tool()
         super().__init__(
@@ -118,6 +125,36 @@ class SubmitEvaluationTool(BaseTool):
         )
         self._capture = capture
         self._criteria = criteria
+        self._project_id = project_id
+
+    def _style_rejection(self, report: EvaluationReport) -> str | None:
+        """Return why the house style rejects this verdict's prose, if it does.
+
+        The verdict is agent-authored text that reaches an operator UI and the
+        successor plan's prompt, so it is an output boundary like any other.
+        Rejecting it back into the session is the right remedy here: the stage
+        cannot rewrite a judgement on the agent's behalf without changing what
+        the judgement says.
+
+        Returns:
+            The policy's summary when the submission violates a hard rule,
+            or ``None`` when it passes (or no policy is configured).
+        """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        ctx = OutputContext(
+            channel=OutputChannel.DELIVERABLE,
+            project_id=self._project_id,
+        )
+        for text in (report.summary, *(v.evidence for v in report.verdicts)):
+            verdict = evaluate_output_policy(str(text), ctx)
+            if verdict is not None and verdict.blocked:
+                return verdict.summary or "the house writing style rejects it"
+        return None
 
     @override
     async def execute(
@@ -169,6 +206,21 @@ class SubmitEvaluationTool(BaseTool):
                 ),
                 is_error=True,
             )
+        style_rejection = self._style_rejection(report)
+        if style_rejection is not None:
+            logger.debug(
+                INITIATIVE_EVALUATION_SKIPPED,
+                reason="submit_rejected_by_output_policy",
+                note=style_rejection,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Evaluation rejected: {style_rejection}. "
+                    "Rewrite the wording and call submit_evaluation again; "
+                    "your verdict on each criterion need not change."
+                ),
+                is_error=True,
+            )
         self._capture.report = report
         return ToolExecutionResult(
             content=(
@@ -210,6 +262,7 @@ class InitiativeEvaluator:
         brief: str,
         criteria: tuple[NotBlankStr, ...],
         read_tools: tuple[BaseTool, ...] = (),
+        project_id: NotBlankStr | None = None,
     ) -> EvaluationReport | None:
         """Run the session as *lead*, returning the verdict or ``None``.
 
@@ -220,6 +273,8 @@ class InitiativeEvaluator:
             criteria: The objective's success criteria the verdict must cover.
             read_tools: Read-only tools granted to the session (workspace read,
                 memory recall). Deliberately never a write tool.
+            project_id: The plan's project, so the output-style policy resolves
+                the scope the operator configured for it.
 
         Returns:
             The submitted :class:`EvaluationReport`, or ``None`` when the
@@ -227,7 +282,9 @@ class InitiativeEvaluator:
         """
         capture = _EvaluationCapture()
         tools: list[BaseTool] = [
-            SubmitEvaluationTool(capture=capture, criteria=criteria),
+            SubmitEvaluationTool(
+                capture=capture, criteria=criteria, project_id=project_id
+            ),
             *read_tools,
         ]
         invoker = ToolInvoker(

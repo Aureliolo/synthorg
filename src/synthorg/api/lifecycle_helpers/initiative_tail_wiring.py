@@ -23,6 +23,7 @@ from synthorg.engine.initiative.ports import (
     PlanReconcilePort,
     PlanStatusWriter,
     ReplanTriggerPort,
+    ReplanTriggerResolver,
 )
 from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.observability import get_logger, safe_error_description
@@ -157,7 +158,7 @@ def build_evaluation_stage(
     persistence: PersistenceBackend,
     *,
     plan_status_writer: PlanStatusWriter,
-    replan_trigger: ReplanTriggerPort | None,
+    replan_trigger: ReplanTriggerResolver | None,
     reconcile: PlanReconcilePort | None,
 ) -> EvaluationPort | None:
     """Build the EVALUATE stage, or ``None``.

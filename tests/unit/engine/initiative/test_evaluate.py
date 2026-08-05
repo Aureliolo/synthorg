@@ -8,6 +8,7 @@ write that can deliver an initiative.
 """
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -131,6 +132,7 @@ async def _seed(
     replan_trigger: _RecordingReplanTrigger | None = None,
     reconcile: _RecordingReconcile | None = None,
     config_resolver: ConfigResolver | None = None,
+    workspace_root: Path | None = None,
 ) -> tuple[EvaluationStageService, FakePersistenceBackend]:
     """Build the stage over a seeded backend.
 
@@ -152,9 +154,10 @@ async def _seed(
         agent_registry=mock_of[AgentRegistryService](get=AsyncMock(return_value=lead)),
         provider_selector=selector,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
-        replan_trigger=replan_trigger,
+        replan_trigger=None if replan_trigger is None else lambda: replan_trigger,
         reconcile=reconcile,
         config_resolver=config_resolver,
+        workspace_root=workspace_root,
         clock=clock,
     )
     return service, backend
@@ -327,6 +330,24 @@ class TestApplyingAVerdict:
 
         assert await _status(backend) is PlanStatus.EVALUATING
 
+    async def test_a_trigger_wired_after_the_stage_is_still_used(self) -> None:
+        """The trigger is read per verdict, not captured at construction.
+
+        The stage and the trigger are separate subsystems converging on their
+        own schedules, so a coordinator arriving after the provider registry
+        would otherwise leave the stage holding the ``None`` it was built with
+        and park every unmet initiative for the life of the process.
+        """
+        held: _RecordingReplanTrigger | None = None
+        service, _ = await _seed(plan=_plan(), project=_project())
+        service._replan_trigger = lambda: held
+
+        await service._apply(_plan(), _report(CriterionOutcome.UNMET))
+        held = _RecordingReplanTrigger()
+        await service._apply(_plan(), _report(CriterionOutcome.UNMET))
+
+        assert held.fired == [(sid(_PLAN_ID), StallReason.EVALUATION_UNMET)]
+
 
 class TestRecordingAVerdict:
     """The verdict outlives the status it decides."""
@@ -427,3 +448,65 @@ class TestScheduling:
         service.schedule(plan=plan)
 
         assert service.attempts_for(plan) == 0
+
+
+class TestJudgeWorkspaceScope:
+    """What the judge can read decides what it can honestly judge.
+
+    Every other test here stubs the judgement wholesale, so without these
+    the scoping could be reverted to the shared base root -- letting a
+    session read a sibling project's files -- and nothing would fail.
+    """
+
+    async def test_read_tools_are_scoped_to_the_plans_own_project(
+        self, tmp_path: Path
+    ) -> None:
+        plan = _plan()
+        workspace = tmp_path / "projects" / str(plan.project)
+        workspace.mkdir(parents=True)
+        service, _ = await _seed(plan=plan, project=_project(), workspace_root=tmp_path)
+
+        tools = service._read_tools(plan)
+
+        assert tools
+        assert all(
+            tool.workspace_root == workspace.resolve()  # type: ignore[attr-defined]
+            for tool in tools
+        )
+
+    async def test_a_sibling_projects_workspace_is_not_reachable(
+        self, tmp_path: Path
+    ) -> None:
+        """Two projects share a root; the judge sees only the one it judges."""
+        plan = _plan()
+        (tmp_path / "projects" / str(plan.project)).mkdir(parents=True)
+        sibling = tmp_path / "projects" / "other-project"
+        sibling.mkdir(parents=True)
+        (sibling / "secret.py").write_text("theirs", encoding="utf-8")
+        service, _ = await _seed(plan=plan, project=_project(), workspace_root=tmp_path)
+
+        tools = service._read_tools(plan)
+
+        for tool in tools:
+            with pytest.raises(ValueError, match="escapes workspace"):
+                tool.path_validator.validate("../other-project/secret.py")  # type: ignore[attr-defined]
+
+    async def test_an_unprovisioned_workspace_judges_without_reads(
+        self, tmp_path: Path
+    ) -> None:
+        """A missing directory must not abort the judgement.
+
+        The file tools refuse a missing root, so letting that propagate
+        would burn every attempt and park the plan over a project that was
+        simply never provisioned.
+        """
+        service, _ = await _seed(
+            plan=_plan(), project=_project(), workspace_root=tmp_path
+        )
+
+        assert service._read_tools(_plan()) == ()
+
+    async def test_no_workspace_root_grants_no_tools(self) -> None:
+        service, _ = await _seed(plan=_plan(), project=_project())
+
+        assert service._read_tools(_plan()) == ()

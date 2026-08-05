@@ -72,11 +72,14 @@ def _signal_from_work_item(
     every role that could participate instead of a single placeholder.
 
     Returns:
-        A :class:`BriefSignal` carrying the work item's raw intent, the
-        resolved role skeleton + per-role model assignments, and the currency.
+        A :class:`BriefSignal` carrying the work item's raw intent, where it
+        lands and who asked for it, the resolved role skeleton + per-role
+        model assignments, and the currency.
     """
     return BriefSignal(
         brief_text=work_item.raw_intent,
+        project=work_item.project,
+        requested_by=work_item.requested_by,
         role_skeleton=skeleton.roles,
         model_assignments=skeleton.model_assignments,
         currency=currency,

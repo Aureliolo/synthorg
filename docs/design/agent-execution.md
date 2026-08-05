@@ -319,10 +319,13 @@ async run(
     available), tagged with `project_id` for project-level cost aggregation.
     Cost recording failures are logged but do not affect the result.
 12. **Apply post-execution transitions:**
-    - Before any of the branches below, a task that declared
+    - On the `COMPLETED` and `NO_OP` branches, after the shutdown and park
+      branches and the zero-tool-call proxy, a task that declared
       `artifacts_expected` and produced none of them goes IN_PROGRESS ->
       FAILED (see [Declared-artifact check](#declared-artifact-check)); a
-      run that delivered nothing never reaches review.
+      run that delivered nothing never reaches review. A run interrupted by
+      shutdown, or parked for clarification, is not failed for missing
+      artifacts it was never given the chance to produce.
     - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW (review gate).
       The task parks at IN_REVIEW until resolved by one of two paths:
       (a) a human approves (-> COMPLETED) or rejects (-> IN_PROGRESS
@@ -438,13 +441,22 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 ### Declared-artifact check
 
 A task that declared `artifacts_expected` and produced **none** of the
-declared files terminates `NO_OP -> FAILED`, whatever its tool-call count.
+declared files goes `IN_PROGRESS -> FAILED`, whatever its tool-call count.
 `engine/artifacts/expected_artifact_check.py` resolves each
 `ExpectedArtifact.path` against the task's project workspace
 (`engine/workspace/paths.py::project_workspace_dir`) and returns what is
 missing; `apply_post_execution_transitions` consumes it through an injected
 `ExpectedArtifactProbe` seam, so a deployment without a workspace root simply
 falls back to the tool-call proxy rather than failing every task.
+
+Only a **path-shaped** declaration is probed. `ExpectedArtifact.path` carries
+whatever the planner wrote, which may be a file (`src/game.py`) or a
+deliverable named in prose ("the integrated, runnable deliverable"). Prose
+resolves to no file, so probing it would read as "produced nothing" and fail
+every task whose planner wrote a sentence, the integration task included.
+An absolute declaration is not probed either: containment is what makes the
+answer about the task's own output, and a path the run could not have written
+under its own workspace is not evidence of delivery.
 
 The threshold is deliberately "none of them present" rather than "all of
 them present". An agent that legitimately chose a different path for one

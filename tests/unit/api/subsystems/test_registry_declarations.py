@@ -75,20 +75,34 @@ def _spec(name: str) -> SubsystemSpec:
     raise AssertionError(msg)
 
 
-def test_the_initiative_tail_waits_for_what_its_stages_need() -> None:
-    """Each tail stage's own dependency is declared, so the tail waits for it.
+def test_each_tail_stage_waits_for_its_own_dependency() -> None:
+    """Each tail collaborator declares what IT needs, and nothing more.
 
-    The three stages need the provider registry (evaluate), the work pipeline
-    (integrate) and the coordinator (replan). None of them exist when
-    persistence and the task engine do, so a tail declared to need only those
-    two activates into a rollup whose every stage declined, reads as converged,
-    and is never revisited: the initiative parks in the tail on every boot.
+    They need different things: the work pipeline (integrate), the provider
+    registry (evaluate), the coordinator (replan), the memory layers (retro
+    capture). None exist when persistence and the task engine do, so a tail
+    declared to need only those two activates into a rollup whose every stage
+    declined, reads as converged, and is never revisited.
+
+    Declaring the union instead makes one absent collaborator hold back the
+    others, which is what left a coordinator-less boot with no integrate stage
+    either, against the degradation table in docs/design/initiative-tail.md.
     """
-    requires = set(_spec("initiative_tail").requires)
+    integrate = set(_spec("initiative_integrate").requires)
+    evaluate = set(_spec("initiative_evaluate").requires)
+    replan = set(_spec("initiative_replan").requires)
+    retro = set(_spec("initiative_retro_capture").requires)
 
-    assert CapabilityId.PROVIDER_REGISTRY in requires
-    assert CapabilityId.WORK_PIPELINE in requires
-    assert CapabilityId.COORDINATOR in requires
+    assert CapabilityId.WORK_PIPELINE in integrate
+    assert CapabilityId.PROVIDER_REGISTRY in evaluate
+    assert CapabilityId.COORDINATOR in replan
+    assert {CapabilityId.MEMORY_BACKEND, CapabilityId.ORG_MEMORY_BACKEND} <= retro
+
+    assert CapabilityId.COORDINATOR not in integrate | evaluate | retro
+    assert CapabilityId.WORK_PIPELINE not in evaluate | replan | retro
+    assert not {CapabilityId.MEMORY_BACKEND, CapabilityId.ORG_MEMORY_BACKEND} & (
+        integrate | evaluate | replan
+    )
 
 
 def test_the_rollup_does_not_wait_for_the_tail_it_carries() -> None:

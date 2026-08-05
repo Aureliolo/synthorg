@@ -139,6 +139,12 @@ step.
 **Safe defaults:** RoleTopPerformers (top 3), RelevanceScoreCuration, all guards enabled,
 human review required. Idempotent by plan ID.
 
+Selecting the `llm_curated` strategy is two decisions, not one: the curator dispatches
+on `hr.training_curation_model`, an explicit `(provider, model)` pair with no default,
+re-read per curation call. With the pair unset the strategy degrades to relevance
+scoring and logs why, rather than curating what a new hire learns on a connection
+nobody chose for it.
+
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
     - **D8.1: Source.** Templates + LLM customisation. Templates for common roles

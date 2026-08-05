@@ -7,6 +7,8 @@ total. A check that raised would decide the fate of every subsystem behind
 it, so none of them may.
 """
 
+from collections.abc import Callable
+
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.spec import Capability, CapabilityId
 from synthorg.approval.state import ApprovalStateSlice
@@ -15,6 +17,7 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.deliverable_receipts.state_slice import DeliverableReceiptStateSlice
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.engine.cockpit.state import CockpitStateSlice
+from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.pipeline.models import PipelineAttachments
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workspace.state import WorkspaceStateSlice
@@ -58,19 +61,22 @@ def _attachments(app_state: AppState) -> PipelineAttachments | None:
     return pipeline.attachments if pipeline is not None else None
 
 
-def _has_initiative_tail(app_state: AppState) -> bool:
-    """Report whether the rollup's tail stages are attached.
+def _tail_attached(
+    app_state: AppState,
+    probe: Callable[[ProjectRollupService], bool],
+) -> bool:
+    """Report whether one tail collaborator is attached to a wired rollup.
 
     Args:
         app_state: Application state carrying the engine slice.
+        probe: The rollup's own predicate for this collaborator.
 
     Returns:
-        ``True`` once the replan trigger and both tail stages are attached to
-        a wired rollup; ``False`` before the rollup exists, and while it is up
-        but tailless.
+        ``True`` once it is attached; ``False`` before the rollup exists, and
+        while it is up but this collaborator has not resolved.
     """
     rollup = app_state.slice(EngineStateSlice).project_rollup_service
-    return rollup is not None and rollup.has_full_tail()
+    return rollup is not None and probe(rollup)
 
 
 def _analytics_collector_configured() -> bool:
@@ -300,15 +306,32 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.PROJECT_ROLLUP_SERVICE,
         present=lambda s: s.slice(EngineStateSlice).project_rollup_service is not None,
     ),
-    # Read from the rollup's own attachment record rather than from the rollup
-    # existing, for the same reason as the four pipeline attachments below: the
-    # tail is attached onto an already-wired rollup and installs nothing else
-    # observable. The rollup comes up as soon as persistence and the task
-    # engine do, which is before a provider is configured, so its first wire
-    # legitimately leaves the tail unattached; reading the rollup's mere
-    # existence as a live tail would tell the reconciler this subsystem had
-    # converged and it would never revisit it.
-    Capability(id=CapabilityId.INITIATIVE_TAIL, present=_has_initiative_tail),
+    # Each read from the rollup's own attachment record rather than from the
+    # rollup existing, for the same reason as the four pipeline attachments
+    # below: a tail collaborator is attached onto an already-wired rollup and
+    # installs nothing else observable. The rollup comes up as soon as
+    # persistence and the task engine do, which is before a provider is
+    # configured, so its first wire legitimately leaves the tail unattached;
+    # reading the rollup's mere existence as a live tail would tell the
+    # reconciler these subsystems had converged and it would never revisit
+    # them. One probe per collaborator, because they resolve independently:
+    # a shared probe let a tail come up while the retro capture stayed unwired.
+    Capability(
+        id=CapabilityId.INITIATIVE_INTEGRATE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_integration),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_EVALUATE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_evaluation),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_REPLAN,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_replan_trigger),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_RETRO_CAPTURE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_retro_capture),
+    ),
     Capability(
         id=CapabilityId.KANBAN_BOARD,
         present=lambda s: s.slice(EngineStateSlice).kanban_board_service is not None,

@@ -448,6 +448,15 @@ whole `default_provider` accessor family stays removed) and
 `check_explicit_model_binding.py` (no placeholder value, no bare model
 default).
 
+There is exactly one carve-out, and it is narrow enough to state in full. The
+agent engine holds a completion client for the case where **no registry is
+wired at all** (`workers/runtime_builder.py`), and that client comes from
+`coordination.decomposition_model`, a pair the runtime already requires before
+it will build a coordinator. Every agent still dispatches on its own bound pair
+through the registry; this is what the engine falls back to when there is no
+registry to dispatch through, and taking it from a pair the operator has
+already had to choose is what keeps it from being a connection nobody chose.
+
 ### Multi-Provider Model Resolution
 
 An agent binds an **exclusive `(provider, model)` pair**: `ModelConfig` requires

@@ -2334,7 +2334,12 @@ ON code_execution_record (project_id, executed_at DESC);
 -- a lost CAS race cost nothing: the verdict is already on disk.
 CREATE TABLE initiative_evaluation_report (
     record_id TEXT NOT NULL PRIMARY KEY,
-    plan_id TEXT NOT NULL,
+    -- Cascade rather than an age sweeper: per-plan row count is bounded by
+    -- the stage's attempt cap, and purging an attempt of a live plan would
+    -- destroy the evidence its replan points at. A deleted plan's verdicts
+    -- are unreadable by anything, so those go with it.
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE,
     project_id TEXT NOT NULL,
     attempt INTEGER NOT NULL CHECK (attempt >= 1),
     verdict_summary TEXT NOT NULL
@@ -2349,7 +2354,7 @@ CREATE TABLE initiative_evaluation_report (
     -- offset. The CHECK is what keeps that true rather than leaving it to
     -- the single writer's convention.
     evaluated_at TEXT NOT NULL
-        CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
+    CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
     CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
 );
 

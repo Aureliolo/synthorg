@@ -54,6 +54,10 @@ _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
         "completing deliverable",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),
     ),
+    "src/synthorg/engine/initiative/evaluate_session.py": (
+        "initiative evaluation verdict",
+        frozenset({"enforce_output_policy", "evaluate_output_policy"}),
+    ),
     "src/synthorg/tools/file_system/write_file.py": (
         "agent code-file write",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),

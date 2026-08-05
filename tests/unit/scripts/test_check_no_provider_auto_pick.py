@@ -3,8 +3,8 @@
 Exercises the three detected patterns (``list_providers()[0]``, a
 ``names[0]`` index of a ``list_providers()``-bound name, and a
 ``resolve_for_model`` reference), the ``# lint-allow: provider-auto-pick``
-suppression marker, the baseline round-trip, and the fail-closed exit on a
-missing source tree.
+suppression marker, the absence of any baseline suppression, and the
+fail-closed exit on a missing source tree.
 
 Drives the script's ``main`` entry point against a sandbox tree, matching
 the ``--repo-root`` pattern used by the sibling gate tests.
@@ -234,14 +234,17 @@ def test_unrelated_zero_index_is_not_flagged(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 0
 
 
-def test_baseline_round_trip(tmp_path: Path) -> None:
+def test_no_baseline_suppression_exists(tmp_path: Path) -> None:
+    # A suppression file would let an unbound dispatch ship for as long as
+    # nobody drained the list, so the gate offers no way to record one.
     _write(tmp_path, "g.py", "def f(r):\n    return r.list_providers()[0]\n")
     (tmp_path / "scripts").mkdir()
     module = _load()
-    # Baselining the current violation makes the gate pass again.
-    assert module.main(["--repo-root", str(tmp_path), "--update-baseline"]) == 0
-    assert (tmp_path / "scripts" / "provider_auto_pick_baseline.txt").is_file()
-    assert module.main(["--repo-root", str(tmp_path)]) == 0
+    with pytest.raises(SystemExit) as excinfo:
+        module.main(["--repo-root", str(tmp_path), "--update-baseline"])
+    assert excinfo.value.code == 2
+    assert module.main(["--repo-root", str(tmp_path)]) == 1
+    assert not list((tmp_path / "scripts").iterdir())
 
 
 def test_missing_source_tree_fails_closed(tmp_path: Path) -> None:

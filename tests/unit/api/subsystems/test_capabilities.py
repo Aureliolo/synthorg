@@ -8,6 +8,7 @@ place and install nothing else observable.
 """
 
 from collections.abc import Callable
+from typing import Final
 
 import pytest
 
@@ -19,6 +20,7 @@ from synthorg.engine.initiative.ports import (
     IntegrationPort,
     PlanStatusWriter,
     ReplanTriggerPort,
+    RetroCapturePort,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.pipeline.narrator_port import RunNarrator
@@ -106,8 +108,16 @@ def test_each_attachment_capability_is_independent() -> None:
     assert not any(others)
 
 
-def _rollup_state(*, tail: bool) -> AppState:
-    """An app state carrying a rollup, with or without its tail attached.
+_TAIL_CAPABILITIES: Final[tuple[CapabilityId, ...]] = (
+    CapabilityId.INITIATIVE_INTEGRATE,
+    CapabilityId.INITIATIVE_EVALUATE,
+    CapabilityId.INITIATIVE_REPLAN,
+    CapabilityId.INITIATIVE_RETRO_CAPTURE,
+)
+
+
+def _rollup_state(**attached: object) -> AppState:
+    """An app state carrying a rollup with *attached* tail collaborators.
 
     Returns:
         The composed state, whose rollup is wired either way.
@@ -117,12 +127,8 @@ def _rollup_state(*, tail: bool) -> AppState:
         plan_status_writer=mock_of[PlanStatusWriter](),
         clock=FakeClock(),
     )
-    if tail:
-        rollup.attach_tail(
-            replan_trigger=mock_of[ReplanTriggerPort](),
-            integration=mock_of[IntegrationPort](),
-            evaluation=lambda _trigger: mock_of[EvaluationPort](),
-        )
+    if attached:
+        rollup.attach_tail(**attached)  # type: ignore[arg-type]
     return make_app_state(
         slices={EngineStateSlice: {"project_rollup_service": rollup}},
     )
@@ -133,25 +139,48 @@ def test_a_rollup_without_its_tail_does_not_read_as_a_live_tail() -> None:
 
     The rollup activates as soon as persistence and the task engine exist,
     which is before a provider is configured, so its first wire legitimately
-    produces a rollup whose three tail stages all declined. If the tail's
-    liveness is read from the rollup merely existing, the reconciler sees a
-    converged subsystem and never revisits it, and the tail can never come up.
+    produces a rollup whose tail collaborators all declined. If their liveness
+    is read from the rollup merely existing, the reconciler sees converged
+    subsystems and never revisits them, and the tail can never come up.
     """
-    assert _probe(CapabilityId.INITIATIVE_TAIL).present(_rollup_state(tail=False)) is (
-        False
-    )
+    state = _rollup_state()
+    assert not any(_probe(c).present(state) for c in _TAIL_CAPABILITIES)
 
 
-def test_attaching_the_tail_makes_its_capability_present() -> None:
-    """The probe flips only once ``attach_tail`` has actually run."""
-    assert (
-        _probe(CapabilityId.INITIATIVE_TAIL).present(_rollup_state(tail=True)) is True
-    )
+def test_each_tail_collaborator_is_probed_on_its_own() -> None:
+    """One attached collaborator must not make the other three read as live.
+
+    They resolve independently: the retro capture needs both memory backends
+    while the stages need registries and the coordinator, so a shared probe
+    would let a boot with memory blocked report a capture that never fires.
+    """
+    for attached, capability in (
+        (
+            {"integration": mock_of[IntegrationPort]()},
+            CapabilityId.INITIATIVE_INTEGRATE,
+        ),
+        (
+            {"evaluation": mock_of[EvaluationPort]()},
+            CapabilityId.INITIATIVE_EVALUATE,
+        ),
+        (
+            {"replan_trigger": mock_of[ReplanTriggerPort]()},
+            CapabilityId.INITIATIVE_REPLAN,
+        ),
+        (
+            {"ship_retro_capture": mock_of[RetroCapturePort]()},
+            CapabilityId.INITIATIVE_RETRO_CAPTURE,
+        ),
+    ):
+        state = _rollup_state(**attached)
+        present = {c for c in _TAIL_CAPABILITIES if _probe(c).present(state)}
+        assert present == {capability}
 
 
-def test_the_tail_capability_is_absent_before_the_rollup_exists() -> None:
+def test_the_tail_capabilities_are_absent_before_the_rollup_exists() -> None:
     """No rollup means no tail, not an exception mid-pass."""
-    assert _probe(CapabilityId.INITIATIVE_TAIL).present(_app_state()) is False
+    state = _app_state()
+    assert not any(_probe(c).present(state) for c in _TAIL_CAPABILITIES)
 
 
 def test_every_declared_capability_probe_is_total() -> None:

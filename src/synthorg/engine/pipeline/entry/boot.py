@@ -50,6 +50,7 @@ from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -343,6 +344,7 @@ def _attach_forecast_redispatcher(
         ForecastGateRedispatcher(
             gate=gate,
             background_tasks=app_state.objective_background_tasks,
+            notifications=app_state.slice(NotificationsStateSlice).dispatcher,
         ),
     )
 

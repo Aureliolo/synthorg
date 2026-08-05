@@ -23,7 +23,12 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
+from synthorg.engine.initiative.evaluate_session import (
+    SubmitEvaluationTool,
+    _EvaluationCapture,
+)
 from synthorg.engine.output_style.errors import OutputPolicyViolationError
 from synthorg.engine.output_style.models import (
     EnforcementMode,
@@ -367,3 +372,87 @@ class TestDeliverableGate:
             approved=True,
         )
         assert approved is True
+
+
+def _submit_args(summary: str, evidence: str) -> dict[str, object]:
+    """Build a well-formed ``submit_evaluation`` payload covering one criterion.
+
+    Returns:
+        The tool arguments, so only the prose under test varies.
+    """
+    return {
+        "summary": summary,
+        "verdicts": [
+            {
+                "criterion": "A phased rollout.",
+                "outcome": "met",
+                "evidence": evidence,
+            }
+        ],
+    }
+
+
+class TestEvaluationVerdictBoundary:
+    """The verdict reaches an operator UI and the successor plan's prompt."""
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_emdash_summary_is_rejected_back_into_the_session(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                f"Phase one shipped {_EM_DASH} the rest did not.",
+                "The suite passes.",
+            )
+        )
+
+        assert result.is_error is True
+        # Rejected rather than rewritten: rewriting a judgement on the agent's
+        # behalf would change what the judgement says.
+        assert capture.report is None
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_emdash_evidence_is_rejected_too(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                "Phase one shipped; the rest did not.",
+                f"The suite passes {_EM_DASH} every case.",
+            )
+        )
+
+        assert result.is_error is True
+        assert capture.report is None
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_clean_verdict_is_captured(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                "Phase one shipped; the rest did not.",
+                "The suite passes.",
+            )
+        )
+
+        assert result.is_error is False
+        assert capture.report is not None

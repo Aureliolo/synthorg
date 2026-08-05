@@ -193,6 +193,9 @@ All metadata fields are nullable except `extra`, which is always present (defaul
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
 
+!!! warning "The LLM conflict judge needs its own connection"
+    The `llm_judge` and `hybrid` conflict detectors dispatch on `communication.conflict_judge_model`, an explicit `(provider, model)` pair with no default. Leaving it unset leaves the judge off and says so rather than borrowing a connection nobody chose for it, so selecting an LLM detector is two decisions, not one. See [Providers](providers.md#multi-provider-model-resolution).
+
 ### Retention and Subscriber Bounds
 
 Both bus backends are bounded on two independent axes so a slow subscriber cannot nuke the channel or leak memory without bound:

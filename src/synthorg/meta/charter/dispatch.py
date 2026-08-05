@@ -80,18 +80,27 @@ _FORECAST_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000001
 PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000002")
 
 
-def _charter_brief_signal(brief: str, currency: str) -> BriefSignal:
+def _charter_brief_signal(
+    brief: str,
+    currency: str,
+    *,
+    project: NotBlankStr,
+    requested_by: NotBlankStr,
+) -> BriefSignal:
     """Build the brief signal for the charter's forecast.
 
     Mirrors the work-entry signal shape ForecastGate uses (single
-    ``"default"`` role placeholder) so the forecast lines up if the
-    same brief is later re-checked through the gate.
+    ``"default"`` role placeholder, plus the project and requester that
+    scope the digest) so the forecast lines up if the same brief is later
+    re-checked through the gate.
 
     Returns:
         ``BriefSignal`` instance.
     """
     return BriefSignal(
         brief_text=brief,
+        project=project,
+        requested_by=requested_by,
         role_skeleton=("default",),
         model_assignments={},
         currency=NotBlankStr(currency),
@@ -223,7 +232,9 @@ class CharterDispatcher:
         now = self._clock.now()
 
         project_id = await self._resolve_project(charter)
-        forecast = self._build_forecast(charter, currency, approved_by, now)
+        forecast = self._build_forecast(
+            charter, currency, approved_by, now, project_id=project_id
+        )
         await self._forecast_repo.save(forecast)
         work_item = self._build_work_item(charter, project_id, forecast, now)
 
@@ -371,6 +382,8 @@ class CharterDispatcher:
         currency: str,
         approved_by: NotBlankStr,
         now: datetime,
+        *,
+        project_id: NotBlankStr,
     ) -> Forecast:
         """Build the already-APPROVED forecast that is the budget record.
 
@@ -381,7 +394,14 @@ class CharterDispatcher:
         return Forecast(
             forecast_id=uuid.uuid5(_FORECAST_NAMESPACE, charter.id),
             brief_hash=NotBlankStr(
-                compute_brief_hash(_charter_brief_signal(charter.brief, currency))
+                compute_brief_hash(
+                    _charter_brief_signal(
+                        charter.brief,
+                        currency,
+                        project=project_id,
+                        requested_by=charter.created_by,
+                    )
+                )
             ),
             estimated_cost=amount,
             lower_bound=0.0,

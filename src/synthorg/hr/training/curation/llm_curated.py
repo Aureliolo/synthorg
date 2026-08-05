@@ -2,18 +2,19 @@
 
 Opt-in strategy that uses a dedicated analyzer agent to review candidate items
 and select the most valuable subset, dispatching on the operator's
-``hr.training_curation_model`` pair. Falls back to RelevanceScoreCuration when
-no pair is configured or when the provider call fails.
+``hr.training_curation_model`` pair, re-read per curation call. Falls back to
+RelevanceScoreCuration when no pair is configured or when the provider call
+fails.
 """
 
 from typing import ClassVar, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTrackerProtocol`` and ``BoundCompletion`` are part of
-# ``LLMCurated.__init__``'s public annotation, so they must resolve
-# at runtime when downstream tooling evaluates type hints (DI
-# containers, doc generators).
+# ``CostTrackerProtocol``, ``ConfigResolverProtocol`` and
+# ``ConnectionSelector`` are part of ``LLMCurated.__init__``'s public
+# annotation, so they must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -35,12 +36,15 @@ from synthorg.observability.events.training import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.errors import ProviderError
+from synthorg.providers.errors import DriverNotRegisteredError, ProviderError
 from synthorg.providers.model_binding import BoundCompletion
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
 )
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
@@ -65,9 +69,12 @@ class LLMCurated:
     and the fallback is logged explicitly.
 
     Args:
-        binding: Connection + model the analyzer dispatches on; ``None``
-            degrades to relevance scoring rather than curating on a
-            connection nobody chose.
+        connections: Resolves the connection the operator's pair names, so
+            the call lands on the chosen provider rather than on whichever
+            one the boot layer happened to hold.
+        config_resolver: Live source for the ``hr.training_curation_model``
+            assignment, re-read per curation call so a reassignment takes
+            effect on the next curation rather than the next boot.
         temperature: Sampling temperature.
         top_k: Maximum items to return.
         cost_tracker: Optional cost tracker for the curation call.
@@ -83,7 +90,8 @@ class LLMCurated:
     def __init__(
         self,
         *,
-        binding: BoundCompletion | None = None,
+        connections: ConnectionSelector | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
         temperature: float = _DEFAULT_TEMPERATURE,
         top_k: int = _DEFAULT_TOP_K,
         cost_tracker: CostTrackerProtocol | None = None,
@@ -91,11 +99,46 @@ class LLMCurated:
         if top_k <= 0:
             msg = f"top_k must be a positive integer, got {top_k}"
             raise ValueError(msg)
-        self._binding = binding
+        self._connections = connections
+        self._config_resolver = config_resolver
         self._temperature = temperature
         self._top_k = top_k
         self._cost_tracker = cost_tracker
         self._fallback = RelevanceScoreCuration(top_k=top_k)
+
+    async def _resolve_binding(self) -> BoundCompletion | None:
+        """Re-read the operator's curation pair and resolve its connection.
+
+        Returns:
+            The bound dispatch target, or ``None`` when no pair is assigned
+            or its connection is not registered.
+        """
+        if self._connections is None:
+            return None
+        # Namespace and key spelled out rather than read from class vars: the
+        # liveness gate reads the call site textually, and an indirection it
+        # cannot follow reads as a setting nothing consumes.
+        ref = await resolve_bound_model_live(
+            self._config_resolver,
+            namespace="hr",
+            key="training_curation_model",
+            unset_event=HR_TRAINING_CURATION_FALLBACK,
+        )
+        if ref is None:
+            return None
+        try:
+            provider = self._connections(ref.provider)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                HR_TRAINING_CURATION_FALLBACK,
+                strategy="llm_curated",
+                fallback="relevance",
+                reason="provider_not_registered",
+                provider=ref.provider,
+                error_type=type(exc).__name__,
+            )
+            return None
+        return BoundCompletion(provider=provider, model=NotBlankStr(ref.model_id))
 
     @property
     def name(self) -> str:
@@ -125,7 +168,7 @@ class LLMCurated:
         if not items:
             return ()
 
-        binding = self._binding
+        binding = await self._resolve_binding()
         if binding is None:
             logger.warning(
                 HR_TRAINING_CURATION_FALLBACK,

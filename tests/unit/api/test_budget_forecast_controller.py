@@ -190,7 +190,11 @@ async def test_create_forecast_503_when_unwired() -> None:
     with pytest.raises(ServiceUnavailableError):
         await ForecastBudgetController.create_forecast.fn(
             controller,
-            data=ForecastRequest(brief_text="brief", role_skeleton=("role-1",)),
+            data=ForecastRequest(
+                brief_text="brief",
+                project="proj-1",
+                role_skeleton=("role-1",),
+            ),
             state=state,
         )
 

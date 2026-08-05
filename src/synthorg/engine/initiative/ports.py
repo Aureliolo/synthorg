@@ -140,11 +140,13 @@ class EvaluationPort(Protocol):
         ...
 
 
-#: Builds the EVALUATE stage against whichever replan trigger the rollup is
-#: actually holding. The stage captures the trigger for the life of the
-#: process, so handing it one the rollup then discards would split the
-#: in-flight bookkeeping across two live instances and leave one undrained.
-EvaluationFactory = Callable[[ReplanTriggerPort | None], EvaluationPort | None]
+#: Reads whichever replan trigger the rollup is holding *now*. The EVALUATE
+#: stage resolves it per unmet verdict rather than capturing one at
+#: construction, because the two attach on their own schedules: a coordinator
+#: that arrives after the provider registry would otherwise leave a stage
+#: permanently holding the ``None`` it was built with, and every unmet
+#: initiative parked instead of replanned.
+ReplanTriggerResolver = Callable[[], ReplanTriggerPort | None]
 
 
 @runtime_checkable

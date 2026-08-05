@@ -482,8 +482,16 @@ async def _transition_to_failed(
 
     Returns:
         A copy of ``execution_result`` with the context updated to
-        ``FAILED``; the original is returned unchanged when the
-        transition raises.
+        ``FAILED``.
+
+    Raises:
+        ExecutionStateError: When the transition itself fails. Swallowing it
+            leaves the task sitting at ``IN_PROGRESS`` behind a warning
+            nobody reads, which is the invisibility this whole path exists
+            to close: the stall derivation reads ``IN_PROGRESS`` as still
+            moving, so the initiative never replans and never completes.
+            Raising hands the run to the caller's own error handling, which
+            is the only remaining place that can act on it.
     """
     try:
         ctx, synced = await transition_and_sync(
@@ -496,15 +504,20 @@ async def _transition_to_failed(
             critical=True,
         )
     except (ValueError, ExecutionStateError) as exc:
-        logger.warning(
+        logger.error(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,
             task_id=task_id,
             context="Post-execution FAILED transition failed",
+            reason=reason,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return execution_result
+        msg = (
+            f"Task {task_id} did not deliver ({reason}) and could not be"
+            f" transitioned to FAILED; it is left at its previous status"
+        )
+        raise ExecutionStateError(msg) from exc
     # Emit the no-artifacts fail event only after FAILED is persisted, so
     # the record never claims a failure that the transition did not land.
     logger.warning(

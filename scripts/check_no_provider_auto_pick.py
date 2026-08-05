@@ -20,17 +20,16 @@ and fails on a reintroduction of any of:
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: provider-auto-pick -- <reason>`` on the offending line (e.g.
-a non-dispatch tier hint at empty-company boot). Pre-existing out-of-scope
-offenders live in ``scripts/provider_auto_pick_baseline.txt``; the gate fails
-only on a NEW violation.
+a non-dispatch tier hint at empty-company boot). There is deliberately no
+baseline: a suppression file would let a dispatch borrow a connection it was
+never bound to for as long as nobody drained the list.
 
 Usage:
     uv run python scripts/check_no_provider_auto_pick.py
-    uv run python scripts/check_no_provider_auto_pick.py --update-baseline
 
 Exit codes:
-    0 -- no new violations.
-    1 -- a new provider auto-pick was found.
+    0 -- no violations.
+    1 -- a provider auto-pick was found.
     2 -- configuration error (bad ``--repo-root`` or an unreadable source file).
 """
 
@@ -52,7 +51,6 @@ else:
     from scripts._gate_source import GateSourceError, read_and_parse
 
 _SRC_REL: Final[str] = "src/synthorg"
-_BASELINE_REL: Final[str] = "scripts/provider_auto_pick_baseline.txt"
 _MARKER: Final[str] = "lint-allow: provider-auto-pick"
 # The marker suppresses only as a trailing COMMENT carrying a non-empty
 # reason (``# lint-allow: provider-auto-pick -- <reason>``); the same text
@@ -227,26 +225,10 @@ def _scan(root: Path) -> list[str]:
     return findings
 
 
-def _read_baseline(path: Path) -> set[str]:
-    """Return the baselined violation identifiers (``{}`` when absent)."""
-    if not path.is_file():
-        return set()
-    return {
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    }
-
-
 def main(argv: list[str] | None = None) -> int:
     """Scan for provider auto-picks and return the gate exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".", help="Repository root.")
-    parser.add_argument(
-        "--update-baseline",
-        action="store_true",
-        help="Rewrite the baseline to the current violation set.",
-    )
     args = parser.parse_args(argv)
 
     root = Path(args.repo_root).resolve()
@@ -255,33 +237,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        findings = set(_scan(root))
+        findings = sorted(set(_scan(root)))
     except GateSourceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    baseline_path = root / _BASELINE_REL
-    if args.update_baseline:
-        body = "\n".join(sorted(findings))
-        header = (
-            "# Pre-existing provider auto-picks, out of scope for the\n"
-            "# no-provider-auto-pick policy. The gate fails on a NEW entry.\n"
-        )
-        baseline_path.write_text(
-            header + body + ("\n" if body else ""), encoding="utf-8"
-        )
-        print(f"wrote {len(findings)} entries to {_BASELINE_REL}")
-        return 0
-
-    new = sorted(findings - _read_baseline(baseline_path))
-    if new:
+    if findings:
         print(
             "error: provider auto-pick(s) found (name the connection through "
             "the consumer's own MODEL_REF pair; there is no shared default "
             "and never the first registered):",
             file=sys.stderr,
         )
-        for ident in new:
+        for ident in findings:
             print(f"  {ident}", file=sys.stderr)
         return 1
     return 0

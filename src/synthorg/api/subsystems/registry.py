@@ -495,13 +495,49 @@ async def _activate_project_rollup(app_state: AppState) -> None:
     await wire_project_rollup_service(app_state)
 
 
-async def _activate_initiative_tail(app_state: AppState) -> None:
-    """Attach the integrate / evaluate / replan tail onto the wired rollup."""
+async def _activate_initiative_integrate(app_state: AppState) -> None:
+    """Attach the INTEGRATE stage onto the wired rollup."""
     from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
-        attach_initiative_tail,
+        attach_integration_stage,
     )
 
-    await attach_initiative_tail(app_state)
+    await attach_integration_stage(app_state)
+
+
+async def _activate_initiative_evaluate(app_state: AppState) -> None:
+    """Attach the EVALUATE stage onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_evaluation_stage,
+    )
+
+    await attach_evaluation_stage(app_state)
+
+
+async def _activate_initiative_replan(app_state: AppState) -> None:
+    """Attach the stalled-initiative replan trigger onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_replan_trigger,
+    )
+
+    await attach_replan_trigger(app_state)
+
+
+async def _activate_initiative_retro_capture(app_state: AppState) -> None:
+    """Attach the SHIP-time retrospective capture onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_ship_retro_capture,
+    )
+
+    await attach_ship_retro_capture(app_state)
+
+
+async def _deactivate_initiative_retro_capture(app_state: AppState) -> None:
+    """Detach the retrospective capture from the rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        detach_ship_retro_capture,
+    )
+
+    await detach_ship_retro_capture(app_state)
 
 
 async def _activate_kanban_board(app_state: AppState) -> None:
@@ -1060,25 +1096,71 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.PERSISTENCE, CapabilityId.TASK_ENGINE),
         activate=_activate_project_rollup,
     ),
+    # The four below are the initiative tail, declared one per collaborator and
+    # apart from the rollup they attach to. Apart from the rollup because the
+    # two converge at different times: the rollup needs only persistence and
+    # the task engine, which are up before setup configures a provider, while
+    # every tail stage needs a registry, the work pipeline or the coordinator.
+    # Folded into the rollup's spec, its early success stood for the tail's,
+    # and since the reconciler never revisits a subsystem it reads as
+    # converged, the tail could never come up on any boot. One each rather than
+    # one tail because they need different things: a single spec made the union
+    # of their requirements a precondition for any of them, so a boot without a
+    # coordinator got no integrate stage either, and each degrades on its own
+    # per docs/design/initiative-tail.md.
     SubsystemSpec(
-        # Declared apart from the rollup it attaches to, because the two
-        # converge at different times: the rollup needs only persistence and
-        # the task engine, which are up before setup configures a provider,
-        # while every tail stage needs one of the three below. Folded into the
-        # rollup's spec, its early success stood for the tail's, and since the
-        # reconciler never revisits a subsystem it reads as converged, the tail
-        # could never come up on any boot.
-        name="initiative_tail",
-        provides=CapabilityId.INITIATIVE_TAIL,
+        name="initiative_integrate",
+        provides=CapabilityId.INITIATIVE_INTEGRATE,
         requires=(
             CapabilityId.PROJECT_ROLLUP_SERVICE,
             CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.WORK_PIPELINE,
+        ),
+        activate=_activate_initiative_integrate,
+    ),
+    SubsystemSpec(
+        name="initiative_evaluate",
+        provides=CapabilityId.INITIATIVE_EVALUATE,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.SETTINGS_RESOLVER,
             CapabilityId.PROVIDER_REGISTRY,
             CapabilityId.AGENT_REGISTRY,
-            CapabilityId.WORK_PIPELINE,
+        ),
+        activate=_activate_initiative_evaluate,
+    ),
+    SubsystemSpec(
+        name="initiative_replan",
+        provides=CapabilityId.INITIATIVE_REPLAN,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
             CapabilityId.COORDINATOR,
         ),
-        activate=_activate_initiative_tail,
+        activate=_activate_initiative_replan,
+    ),
+    SubsystemSpec(
+        # Both memory backends are tearable, and the capture holds them for the
+        # life of the instance, so it goes down with them and is rebuilt on the
+        # next pass rather than writing into layers nothing else reads.
+        name="initiative_retro_capture",
+        provides=CapabilityId.INITIATIVE_RETRO_CAPTURE,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.PROVIDER_REGISTRY,
+            CapabilityId.AGENT_REGISTRY,
+            CapabilityId.MEMORY_BACKEND,
+            CapabilityId.ORG_MEMORY_BACKEND,
+        ),
+        activate=_activate_initiative_retro_capture,
+        deactivate=_deactivate_initiative_retro_capture,
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="kanban_board",
