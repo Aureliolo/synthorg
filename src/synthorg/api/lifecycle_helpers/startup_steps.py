@@ -394,13 +394,20 @@ def _wire_deliverable_input_builder(
     flight-recorder deliverable source is unavailable, so a configured gate
     stays inert this boot (see ``run_completion_gates``) rather than crashing.
     """
+    from synthorg.engine.artifacts.deliverable_content import (  # noqa: PLC0415
+        workspace_deliverable_reader,
+    )
     from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
         DeliverableReviewInputBuilder,
+    )
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
     )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
         persistence_of,
     )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if app_state.slice(PersistenceStateSlice).backend is None:
         logger.warning(
@@ -417,6 +424,13 @@ def _wire_deliverable_input_builder(
         DeliverableReviewInputBuilder(
             frame_repository=persistence_of(app_state).flight_recorder_frames,
             autonomy_provider=_company_autonomy_provider(app_state),
+            # The reviewer judges the files the task promised. Bound to the
+            # same root the agent's file tools write through, so it reads
+            # what the run actually produced.
+            deliverable_reader=workspace_deliverable_reader(
+                agent_workspace_root_of(app_state),
+                config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+            ),
         ),
     )
 

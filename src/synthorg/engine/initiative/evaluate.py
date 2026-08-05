@@ -54,6 +54,7 @@ from synthorg.engine.initiative.ports import (
 from synthorg.engine.initiative.project_writes import MAX_WRITE_ATTEMPTS
 from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.loop_protocol import ShutdownChecker
+from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
@@ -298,7 +299,7 @@ class EvaluationStageService:
                 material=await build_evaluation_material(self._persistence, plan)
             ),
             criteria=plan.objective_criteria,
-            read_tools=self._read_tools(),
+            read_tools=self._read_tools(plan),
         )
 
     async def _apply(self, plan: Plan, report: EvaluationReport) -> None:
@@ -402,8 +403,13 @@ class EvaluationStageService:
             return
         await self._reconcile.recompute(plan.id)
 
-    def _read_tools(self) -> tuple[BaseTool, ...]:
+    def _read_tools(self, plan: Plan) -> tuple[BaseTool, ...]:
         """Build the read-only tools the judgement runs with.
+
+        Scoped to the plan's own project workspace rather than the shared
+        base root, so listing a directory returns the deliverable instead of
+        a tree of sibling projects, and the paths in the material resolve as
+        written.
 
         Returns:
             Workspace read tools when a root is wired; an empty tuple
@@ -412,9 +418,10 @@ class EvaluationStageService:
         """
         if self._workspace_root is None:
             return ()
+        workspace = project_workspace_dir(self._workspace_root, str(plan.project))
         return (
-            ReadFileTool(workspace_root=self._workspace_root),
-            ListDirectoryTool(workspace_root=self._workspace_root),
+            ReadFileTool(workspace_root=workspace),
+            ListDirectoryTool(workspace_root=workspace),
         )
 
     async def _session_config(self) -> EvaluationSessionConfig:

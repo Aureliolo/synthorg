@@ -191,6 +191,47 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_artifact_max_chars_per_file",
+        type=SettingType.INTEGER,
+        default="20000",
+        description=(
+            "How much of each declared artifact the completion oracle's peer"
+            " reviewer and the red-team gate are shown. The reviewer judges the"
+            " files the task promised, not the agent's closing message about"
+            " them, and a prompt is a fixed budget: one large generated file"
+            " would otherwise crowd out every other deliverable. Content past"
+            " the bound is cut with a visible truncation marker, so the reviewer"
+            " knows it is judging an excerpt. Read live per review."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=500000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="review_artifact_max_chars_total",
+        type=SettingType.INTEGER,
+        default="60000",
+        description=(
+            "Total content across every declared artifact shown to a reviewer."
+            " Once reached, the remaining artifacts are named as omitted rather"
+            " than dropped silently, so a reviewer of a large deliverable knows"
+            " what it did not see. Read live per review."
+        ),
+        group="Review",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=2000000,
+    )
+)
+
 # ── Mid-task clarification ──────────────────────────────────────
 
 _r.register(
