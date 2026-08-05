@@ -18,6 +18,7 @@ from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -48,7 +49,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _UPSERT_SQL = f"""
     INSERT INTO cost_forecasts ({COST_FORECAST_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (forecast_id) DO UPDATE SET
         brief_hash = EXCLUDED.brief_hash,
         estimated_cost = EXCLUDED.estimated_cost,
@@ -63,6 +64,7 @@ _UPSERT_SQL = f"""
         halt_ceiling_amount = EXCLUDED.halt_ceiling_amount,
         halt_currency = EXCLUDED.halt_currency,
         halted_at = EXCLUDED.halted_at,
+        gated_work_item = EXCLUDED.gated_work_item,
         updated_at = EXCLUDED.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
 
@@ -122,7 +124,7 @@ class PostgresCostForecastRepository:
             QueryError: If the database query fails.
         """
         self._check_currency(entity)
-        params = forecast_save_params(entity)
+        params = forecast_save_params(entity, bind_json=Jsonb)
         try:
             # The connection context manager rolls back any uncommitted
             # transaction on exception exit, so a failed execute/commit

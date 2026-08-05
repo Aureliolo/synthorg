@@ -1,12 +1,14 @@
 """Tests for the plan controller (read / rework / request-changes)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
 from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.evaluation_report_protocol import EvaluationReportRecord
 from synthorg.persistence.state import persistence_of
 from tests._shared import LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
@@ -55,6 +57,31 @@ def _plan(
     )
 
 
+def _evaluation(
+    plan_id: str, *, attempt: int, outcome: CriterionOutcome
+) -> EvaluationReportRecord:
+    return EvaluationReportRecord(
+        record_id=as_uuid(f"eval-{attempt}"),
+        plan_id=NotBlankStr(plan_id),
+        project_id=NotBlankStr("beachhead"),
+        attempt=attempt,
+        summary=NotBlankStr("Read the workspace and played it."),
+        verdicts=(
+            CriterionVerdict(
+                criterion=NotBlankStr("a person can play a full game"),
+                outcome=outcome,
+                evidence=NotBlankStr(
+                    "the board never renders"
+                    if outcome is CriterionOutcome.UNMET
+                    else "played a full game"
+                ),
+            ),
+        ),
+        objective_met=outcome is CriterionOutcome.MET,
+        evaluated_at=_CREATED_AT + timedelta(hours=attempt),
+    )
+
+
 async def _seed(client: LoopAsyncClient, plan: Plan) -> None:
     backend = persistence_of(client.app.state.app_state)
     await backend.plans.save(plan)
@@ -86,6 +113,46 @@ class TestPlanController:
         list_resp = await async_test_client.get("/api/v1/plans")
         assert list_resp.status_code == 200
         assert len(list_resp.json()["data"]) == 1
+
+    async def test_get_evaluation_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/plans/nonexistent/evaluation")
+        assert resp.status_code == 404
+
+    async def test_get_evaluation_is_empty_before_any_judgement(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A plan parked without a verdict says so, rather than inventing one."""
+        await _seed(async_test_client, _plan(status=PlanStatus.EVALUATING))
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/evaluation")
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["attempts"] == []
+
+    async def test_get_evaluation_returns_verdicts_newest_first(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan(status=PlanStatus.EVALUATING))
+        plan_id = str(as_uuid("plan-001"))
+        backend = persistence_of(async_test_client.app.state.app_state)
+        await backend.evaluation_reports.append(
+            _evaluation(plan_id, attempt=1, outcome=CriterionOutcome.UNMET),
+        )
+        await backend.evaluation_reports.append(
+            _evaluation(plan_id, attempt=2, outcome=CriterionOutcome.MET),
+        )
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/evaluation")
+
+        assert resp.status_code == 200
+        attempts = resp.json()["data"]["attempts"]
+        assert [row["attempt"] for row in attempts] == [2, 1]
+        assert attempts[0]["objective_met"] is True
+        assert attempts[1]["verdicts"][0]["outcome"] == "unmet"
+        assert attempts[1]["verdicts"][0]["evidence"] == "the board never renders"
 
     async def test_list_filter_by_status(
         self, async_test_client: LoopAsyncClient

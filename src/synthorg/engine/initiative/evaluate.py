@@ -24,6 +24,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.evaluation_verdict import CriterionOutcome
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -33,10 +34,7 @@ from synthorg.engine.initiative.evaluate_brief import (
     build_evaluation_material,
     unmet_verdict_detail,
 )
-from synthorg.engine.initiative.evaluate_models import (
-    CriterionOutcome,
-    EvaluationReport,
-)
+from synthorg.engine.initiative.evaluate_models import EvaluationReport
 from synthorg.engine.initiative.evaluate_session import (
     EvaluationSessionConfig,
     InitiativeEvaluator,
@@ -60,8 +58,14 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_COMPLETED,
     INITIATIVE_EVALUATION_FAILED,
+    INITIATIVE_EVALUATION_RECORD_FAILED,
+    INITIATIVE_EVALUATION_RECORDED,
     INITIATIVE_EVALUATION_SCHEDULED,
     INITIATIVE_EVALUATION_SKIPPED,
+)
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportFilterSpec,
+    EvaluationReportRecord,
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.protocol import ProviderSelector
@@ -117,6 +121,7 @@ class EvaluationStageService:
 
     __slots__ = (
         "_attempts",
+        "_clock",
         "_config_resolver",
         "_cost_tracker",
         "_persistence",
@@ -155,6 +160,7 @@ class EvaluationStageService:
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
         self._config_resolver = config_resolver
+        self._clock = clock
         self._runner = StageRunner(
             owner="initiative.evaluate",
             clock=clock,
@@ -257,7 +263,54 @@ class EvaluationStageService:
         report = await self._judge(fresh, project)
         if report is None:
             return
+        await self._record(fresh, report)
         await self._apply(fresh, report)
+
+    async def _record(self, plan: Plan, report: EvaluationReport) -> None:
+        """Persist the verdict before anything can act on it.
+
+        Written first so a contended completion write no longer destroys a
+        judgement that cost real money: the row outlives the plan's status
+        and is the only account an operator gets of which criteria failed.
+
+        A failed write degrades the history, not the decision. Refusing to
+        complete a met objective because its audit row would not persist
+        would trade a real delivery for a record of one.
+        """
+        repo = self._persistence.evaluation_reports
+        plan_id = NotBlankStr(str(plan.id))
+        try:
+            previous = await repo.query(EvaluationReportFilterSpec(plan_id=plan_id))
+            attempt = previous[0].attempt + 1 if previous else 1
+            await repo.append(
+                EvaluationReportRecord(
+                    plan_id=plan_id,
+                    project_id=NotBlankStr(str(plan.project)),
+                    attempt=attempt,
+                    summary=report.summary,
+                    verdicts=report.verdicts,
+                    objective_met=report.objective_met,
+                    evaluated_at=self._clock.now(),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- verdict history; the delivery decision
+            # below must not hinge on whether its audit row landed
+            reraise_critical(exc)
+            logger.error(
+                INITIATIVE_EVALUATION_RECORD_FAILED,
+                plan_id=str(plan.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.info(
+            INITIATIVE_EVALUATION_RECORDED,
+            plan_id=str(plan.id),
+            attempt=attempt,
+            objective_met=report.objective_met,
+            criteria=len(report.verdicts),
+        )
 
     async def _judge(self, plan: Plan, project: Project) -> EvaluationReport | None:
         """Run the bounded session that produces the verdict.
@@ -338,9 +391,10 @@ class EvaluationStageService:
         """Write the one status only this stage may write, then reconcile.
 
         The write is CAS-guarded, so an operator touching the plan during the
-        judgement loses the race, and a lost race here throws away a verdict
-        that cost real money and cannot be re-derived from anything persisted.
-        It is therefore retried against a fresh read rather than abandoned.
+        judgement loses the race. The verdict itself is already persisted by
+        then, so a lost race costs the transition rather than the judgement;
+        it is still retried against a fresh read rather than abandoned,
+        because the plan genuinely met its objective.
         """
         for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
             fresh = await self._persistence.plans.get(NotBlankStr(str(plan.id)))

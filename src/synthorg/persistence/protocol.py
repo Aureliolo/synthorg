@@ -87,6 +87,9 @@ from synthorg.persistence.docs_protocol import DocsRepository
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,
 )
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportRepository,
+)
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,
     FineTuneRunRepository,
@@ -251,6 +254,7 @@ class PersistenceBackend(Protocol):
         deliverable_receipts: Repository for deliverable provenance receipts.
         knowledge_usage_records: Repository for per-run knowledge-usage capture.
         code_execution_records: Repository for per-run code-execution capture.
+        evaluation_reports: Repository for the evaluate stage's verdicts.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
@@ -523,6 +527,11 @@ class PersistenceBackend(Protocol):
     @property
     def code_execution_records(self) -> CodeExecutionRecordRepository:
         """Repository for per-run code-execution (test) capture persistence."""
+        ...
+
+    @property
+    def evaluation_reports(self) -> EvaluationReportRepository:
+        """Repository for the evaluate stage's per-initiative verdicts."""
         ...
 
     @property

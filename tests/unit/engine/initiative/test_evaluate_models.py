@@ -3,10 +3,10 @@
 import pytest
 from pydantic import JsonValue
 
+from synthorg.core.evaluation_verdict import CriterionOutcome
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import InitiativeEvaluationParseError
 from synthorg.engine.initiative.evaluate_models import (
-    CriterionOutcome,
     args_to_evaluation,
     build_evaluation_tool,
 )

@@ -245,6 +245,17 @@ class TestForecastGate:
         assert len(repo.saves) == 1
         assert repo.saves[0].decision is ForecastDecision.PENDING
 
+    async def test_the_refused_work_item_rides_with_the_forecast(self) -> None:
+        """Approval can only run the work if the row kept it."""
+        gate, repo, _ = _gate()
+        with pytest.raises(CostForecastApprovalRequiredError):
+            await gate.run(_work_item())
+
+        stored = repo.saves[0].gated_work_item
+        assert stored is not None
+        assert stored["title"] == "Build the marketing site"
+        assert stored["project"] == "marketing"
+
     async def test_role_skeleton_provider_widens_the_forecast(self) -> None:
         """A multi-role roster forecasts over real roles, not the placeholder.
 

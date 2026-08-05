@@ -15,18 +15,20 @@ import pytest
 
 from synthorg.api.services.plan_service import PlanService
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import StallReason
 from synthorg.engine.initiative.evaluate import EvaluationStageService
-from synthorg.engine.initiative.evaluate_models import (
-    CriterionOutcome,
-    CriterionVerdict,
-    EvaluationReport,
-)
+from synthorg.engine.initiative.evaluate_models import EvaluationReport
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportFilterSpec,
+    EvaluationReportRecord,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import (
@@ -174,6 +176,21 @@ async def _fire(service: EvaluationStageService, plan: Plan) -> None:
     await service.drain(timeout_sec=5.0)
 
 
+def _stub_judgement(monkeypatch: pytest.MonkeyPatch, report: EvaluationReport) -> None:
+    """Make the paid session return *report* without running one.
+
+    Patched on the class rather than the instance: the stage declares
+    ``__slots__``, so an instance attribute would not take.
+    """
+
+    async def _judged(
+        _self: EvaluationStageService, _plan: Plan, _project: Project
+    ) -> EvaluationReport:
+        return report
+
+    monkeypatch.setattr(EvaluationStageService, "_judge", _judged)
+
+
 class TestFailClosed:
     """Every branch that cannot produce a verdict parks the plan."""
 
@@ -309,6 +326,71 @@ class TestApplyingAVerdict:
         await service._apply(_plan(), _report(CriterionOutcome.UNMET))
 
         assert await _status(backend) is PlanStatus.EVALUATING
+
+
+class TestRecordingAVerdict:
+    """The verdict outlives the status it decides."""
+
+    async def test_a_verdict_is_persisted_with_its_evidence(self) -> None:
+        service, backend = await _seed(plan=_plan(), project=_project())
+
+        await service._record(_plan(), _report(CriterionOutcome.UNMET))
+
+        records = await backend.evaluation_reports.query(
+            EvaluationReportFilterSpec(plan_id=NotBlankStr(sid(_PLAN_ID))),
+        )
+        assert len(records) == 1
+        assert records[0].attempt == 1
+        assert records[0].objective_met is False
+        assert records[0].project_id == sid(_PROJECT)
+        assert records[0].verdicts[0].evidence == "ran the build and watched it"
+
+    async def test_a_second_judgement_is_a_new_attempt(self) -> None:
+        """Overwriting would erase the evidence the replan points at."""
+        service, backend = await _seed(plan=_plan(), project=_project())
+
+        await service._record(_plan(), _report(CriterionOutcome.UNMET))
+        await service._record(_plan(), _report(CriterionOutcome.MET))
+
+        records = await backend.evaluation_reports.query(
+            EvaluationReportFilterSpec(plan_id=NotBlankStr(sid(_PLAN_ID))),
+        )
+        assert [r.attempt for r in records] == [2, 1]
+        assert [r.objective_met for r in records] == [True, False]
+
+    async def test_a_failed_record_write_does_not_block_delivery(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Refusing a met objective over its audit row trades the real thing
+        for a record of it."""
+        service, backend = await _seed(plan=_plan(), project=_project())
+        _stub_judgement(monkeypatch, _report(CriterionOutcome.MET))
+
+        async def _refuse(_record: EvaluationReportRecord) -> None:
+            msg = "store down"
+            raise QueryError(msg)
+
+        monkeypatch.setattr(backend.evaluation_reports, "append", _refuse)
+
+        await service._run(_plan())
+
+        assert await _status(backend) is PlanStatus.COMPLETED
+
+    async def test_the_verdict_lands_before_the_status_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lost CAS race must cost the transition, never the judgement."""
+        plan = _plan()
+        service, backend = await _seed(plan=plan, project=_project())
+        _stub_judgement(monkeypatch, _report(CriterionOutcome.MET))
+
+        await service._run(plan)
+
+        records = await backend.evaluation_reports.query(
+            EvaluationReportFilterSpec(plan_id=NotBlankStr(sid(_PLAN_ID))),
+        )
+        assert len(records) == 1
+        assert await _status(backend) is PlanStatus.COMPLETED
 
 
 class TestScheduling:

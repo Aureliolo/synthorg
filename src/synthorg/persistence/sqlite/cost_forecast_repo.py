@@ -13,6 +13,7 @@ repository boundary so silent re-stamping cannot poison aggregates. Row
 :mod:`synthorg.persistence._shared.cost_forecast_marshalling`.
 """
 
+import json
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -53,7 +54,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _UPSERT_SQL = f"""
     INSERT INTO cost_forecasts ({COST_FORECAST_COLUMNS})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(forecast_id) DO UPDATE SET
         brief_hash = excluded.brief_hash,
         estimated_cost = excluded.estimated_cost,
@@ -68,6 +69,7 @@ _UPSERT_SQL = f"""
         halt_ceiling_amount = excluded.halt_ceiling_amount,
         halt_currency = excluded.halt_currency,
         halted_at = excluded.halted_at,
+        gated_work_item = excluded.gated_work_item,
         updated_at = excluded.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
 
@@ -152,7 +154,7 @@ class SQLiteCostForecastRepository:
             QueryError: On other database errors.
         """
         self._check_currency(entity)
-        params = forecast_save_params(entity)
+        params = forecast_save_params(entity, bind_json=json.dumps)
         async with self._write_context():
             try:
                 await self._db.execute(_UPSERT_SQL, params)

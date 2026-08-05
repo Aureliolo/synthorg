@@ -128,11 +128,7 @@ class TestCodeExecutionCapture:
         )
         with execution_identity_scope(_IDENTITY):
             await tool.execute(
-                arguments={
-                    "code": "pytest",
-                    "language": "bash",
-                    "purpose": "tests",
-                },
+                arguments={"code": "pytest", "language": "bash"},
             )
         rows = await records.query(CodeExecutionFilterSpec(execution_id="exec-1"))
         assert len(rows) == 1
@@ -155,7 +151,7 @@ class TestCodeExecutionCapture:
         records = InMemoryCodeExecutionRecordRepository()
         tool = CodeRunnerTool(sandbox=_sandbox(), code_execution_records=records)
         await tool.execute(
-            arguments={"code": "pytest", "language": "bash", "purpose": "tests"},
+            arguments={"code": "pytest", "language": "bash"},
         )
         rows = await records.query(CodeExecutionFilterSpec())
         assert rows == ()
@@ -168,7 +164,7 @@ class TestCodeExecutionCapture:
         )
         with execution_identity_scope(_IDENTITY):
             await tool.execute(
-                arguments={"code": "pytest", "language": "bash", "purpose": "tests"},
+                arguments={"code": "pytest", "language": "bash"},
             )
         rows = await records.query(CodeExecutionFilterSpec(execution_id="exec-1"))
         assert len(rows) == 1

@@ -36,6 +36,7 @@ function buildForecast(overrides: Partial<Forecast> = {}): Forecast {
     decided_by: null,
     ceiling_amount: null,
     halt_context: null,
+    gated_work_item: null,
     created_at: '2026-05-20T12:00:00Z',
     updated_at: '2026-05-20T12:00:00Z',
     ...overrides,

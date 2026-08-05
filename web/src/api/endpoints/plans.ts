@@ -3,6 +3,7 @@ import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   EditPlanRequest,
   Plan,
+  PlanEvaluationResponse,
   PlanFilters,
   ReplanRequest,
   RequestPlanChangesRequest,
@@ -20,6 +21,22 @@ export async function listPlans(filters?: PlanFilters): Promise<PaginatedResult<
 export async function getPlan(planId: string): Promise<Plan> {
   const response = await apiClient.get<ApiResponse<Plan>>(
     `/plans/${encodeURIComponent(planId)}`,
+  )
+  return unwrap(response)
+}
+
+/**
+ * Fetch the evaluate stage's judgement history for a plan.
+ *
+ * Empty `attempts` means nothing has judged the objective yet, which is also
+ * what an operator sees for a plan parked at EVALUATING because no verdict
+ * ever landed. The plan's own status tells the two apart.
+ */
+export async function getPlanEvaluation(
+  planId: string,
+): Promise<PlanEvaluationResponse> {
+  const response = await apiClient.get<ApiResponse<PlanEvaluationResponse>>(
+    `/plans/${encodeURIComponent(planId)}/evaluation`,
   )
   return unwrap(response)
 }

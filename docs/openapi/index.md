@@ -104,7 +104,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Meetings | `/meetings` | 3 routes under Meetings. |
 | Messages | `/messages` | 3 routes under Messages. |
 | Objectives | `/objectives` | Objectives endpoint. |
-| Plans | `/plans` | 6 routes under Plans. |
+| Plans | `/plans` | 7 routes under Plans. |
 | Project Brain | `/projects/{project_id}/brain` | 4 routes under Project Brain. |
 | Project Docs | `/projects/{project_id}/docs` | 4 routes under Project Docs. |
 | Project Knowledge | `/projects/{project_id}/knowledge` | 4 routes under Project Knowledge. |

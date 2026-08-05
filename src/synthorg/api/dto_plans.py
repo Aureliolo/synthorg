@@ -1,17 +1,20 @@
-"""Request DTOs for the plan-review API.
+"""DTOs for the plan-review API.
 
-The response body is the durable :class:`~synthorg.core.plan.Plan` domain
-model itself (wrapped in ``ApiResponse`` / ``PaginatedResponse``), mirroring
-how the projects controller returns ``Project`` directly. Only the mutation
-payloads need their own request models, and they live here.
+The response body is usually the durable :class:`~synthorg.core.plan.Plan`
+domain model itself (wrapped in ``ApiResponse`` / ``PaginatedResponse``),
+mirroring how the projects controller returns ``Project`` directly. The
+mutation payloads need their own request models, and so does the evaluation
+history, whose stored record carries storage keys the wire contract should
+not inherit.
 """
 
 from collections import Counter
 from typing import Final, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.evaluation_verdict import CriterionVerdict
 from synthorg.core.plan import (
     PlanOption,
     validate_decision_options,
@@ -243,4 +246,47 @@ class PlanCommentPayload(BaseModel):
     body: NotBlankStr = Field(max_length=8192, description="The comment text")
     reply_to_id: UUID | None = Field(
         default=None, description="The comment this one answers, when a reply"
+    )
+
+
+class PlanEvaluationAttempt(BaseModel):
+    """One recorded judgement of a plan's objective.
+
+    Attributes:
+        attempt: Which judgement of this plan this is, counting from 1.
+        summary: The judge's narrative of what it checked.
+        verdicts: One verdict per objective criterion.
+        objective_met: Whether every criterion was met.
+        evaluated_at: When the judgement landed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    attempt: int = Field(ge=1, description="Which judgement of this plan")
+    summary: NotBlankStr = Field(description="The judge's narrative")
+    verdicts: tuple[CriterionVerdict, ...] = Field(
+        description="One verdict per objective criterion"
+    )
+    objective_met: bool = Field(description="True iff every criterion was met")
+    evaluated_at: AwareDatetime = Field(description="When the judgement landed")
+
+
+class PlanEvaluationResponse(BaseModel):
+    """The evaluate stage's judgement history for one plan.
+
+    Empty ``attempts`` is the honest answer for a plan that has not been
+    judged, and is also what an operator sees for one parked at EVALUATING
+    because no verdict ever landed. The two are told apart by the plan's own
+    status, not by inventing a placeholder verdict here.
+
+    Attributes:
+        plan_id: The plan the judgements belong to.
+        attempts: Every recorded judgement, newest first.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    plan_id: NotBlankStr = Field(description="The judged plan")
+    attempts: tuple[PlanEvaluationAttempt, ...] = Field(
+        description="Recorded judgements, newest first"
     )

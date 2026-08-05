@@ -441,7 +441,7 @@ pipeline) each carry their own `MODEL_REF` setting and dispatch on the
 inherit: a provider is a registered *connection* carrying its own credentials,
 endpoint and quota, so the same model id reached through two of them is two
 different calls, billed and rate-limited separately, and a registry-level
-default would spend one feature's key on another's work. A service whose pair
+default would spend the key of one feature on the work of another. A service whose pair
 is unset stays off and says so, rather than borrowing a connection nobody chose
 for it. Enforced by `check_no_provider_auto_pick.py` (no auto-pick, and the
 whole `default_provider` accessor family stays removed) and

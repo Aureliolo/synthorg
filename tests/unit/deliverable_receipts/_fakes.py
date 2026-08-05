@@ -23,6 +23,10 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
 )
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportFilterSpec,
+    EvaluationReportRecord,
+)
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageFilterSpec,
     KnowledgeUsageRecord,
@@ -186,6 +190,56 @@ class InMemoryCodeExecutionRecordRepository:
     async def purge_before(self, threshold: AwareDatetime) -> int:
         cutoff: datetime = normalize_utc(threshold)
         keep = [r for r in self._records if normalize_utc(r.executed_at) >= cutoff]
+        removed = len(self._records) - len(keep)
+        self._records = keep
+        return removed
+
+
+class InMemoryEvaluationReportRepository:
+    """In-memory append-only ``EvaluationReportRepository``."""
+
+    def __init__(self) -> None:
+        self._records: list[EvaluationReportRecord] = []
+
+    async def append(self, record: EvaluationReportRecord) -> None:
+        clashes = any(
+            r.record_id == record.record_id
+            or (r.plan_id == record.plan_id and r.attempt == record.attempt)
+            for r in self._records
+        )
+        if clashes:
+            msg = (
+                f"Evaluation report for plan {record.plan_id!r} "
+                f"attempt {record.attempt} already exists"
+            )
+            raise DuplicateRecordError(msg)
+        self._records.append(record)
+
+    async def query(
+        self,
+        filter_spec: EvaluationReportFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[EvaluationReportRecord, ...]:
+        matched = [r for r in self._records if self._matches(r, filter_spec)]
+        matched.sort(key=lambda r: (r.evaluated_at, r.attempt), reverse=True)
+        return tuple(matched[offset : offset + limit])
+
+    @staticmethod
+    def _matches(
+        record: EvaluationReportRecord,
+        filter_spec: EvaluationReportFilterSpec,
+    ) -> bool:
+        checks: tuple[tuple[object | None, object], ...] = (
+            (filter_spec.plan_id, record.plan_id),
+            (filter_spec.project_id, record.project_id),
+        )
+        return all(want is None or got == want for want, got in checks)
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        cutoff: datetime = normalize_utc(threshold)
+        keep = [r for r in self._records if normalize_utc(r.evaluated_at) >= cutoff]
         removed = len(self._records) - len(keep)
         self._records = keep
         return removed

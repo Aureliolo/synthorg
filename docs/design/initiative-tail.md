@@ -99,7 +99,44 @@ thumbs-up. Two invariants make it load-bearing:
 
 The session's tools are read-only by design (workspace read and list). A session
 that could change what it is judging could turn its own failing verdict into a
-passing one.
+passing one. They are scoped to the plan's **own** project workspace
+(`engine/workspace/paths.py::project_workspace_dir`), not the shared
+agent-workspaces base root, so listing a directory returns the deliverable
+rather than a tree of sibling projects and the paths in the material resolve
+as written.
+
+### What the judge is given
+
+The material (`engine/initiative/evaluate_brief.py`) carries the objective and
+its criteria, the plan items and their declared artifacts, and the **recorded**
+test-run evidence for the project: the `CodeExecutionRecord` rows written from
+the commands that actually ran, newest first and bounded. "The test suite
+passes" is then judged against what ran rather than against a claim, and the
+brief no longer tells the session to run things it has no tool to run.
+
+### The verdict is a record
+
+The verdict decides whether an initiative delivered, so it is persisted before
+anything acts on it. `initiative_evaluation_report` is an append-only,
+dual-backend table keyed unique on `(plan_id, attempt)`, carrying the summary
+and every `CriterionVerdict` with its outcome and evidence
+(`persistence/evaluation_report_protocol.py`, composing `AppendOnlyRepository`).
+A re-evaluation is a new attempt with its own row rather than an edit of the
+old one: overwriting would erase the evidence the replan points at.
+
+`evaluate.py::_record` writes it **before** the status write, so a lost CAS
+race on the completion transition costs the transition rather than a judgement
+that cost real money and cannot be re-derived. A failed record write degrades
+the history, not the decision: refusing to complete a met objective because
+its audit row would not persist would trade a real delivery for a record of
+one.
+
+`GET /plans/{plan_id}/evaluation` returns the attempts newest-first, and the
+dashboard's `PlanEvaluationPanel` renders each criterion with the judge's
+evidence, so a parked initiative explains itself instead of leaving the
+operator with `unmet_count=2` in a log line and nothing else. Empty attempts
+is the honest answer for a plan nothing has judged; the plan's own status
+tells that apart from one parked at `EVALUATING` because no verdict landed.
 
 ### Fail closed
 

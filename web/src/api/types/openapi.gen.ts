@@ -3598,6 +3598,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/evaluation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetPlanEvaluation */
+        readonly get: operations["ApiV1PlansPlanIdEvaluationGetPlanEvaluation"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/replan": {
         readonly parameters: {
             readonly query?: never;
@@ -7370,6 +7387,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[PlanEvaluationResponse] */
+        readonly ApiResponse_PlanEvaluationResponse_: {
+            readonly data: components["schemas"]["PlanEvaluationResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[PlanItemComment] */
         readonly ApiResponse_PlanItemComment_: {
             readonly data: components["schemas"]["PlanItemComment"] | null;
@@ -10493,6 +10518,23 @@ export type components = {
          * @enum {string}
          */
         readonly CreativityLevel: "low" | "medium" | "high";
+        /**
+         * CriterionOutcome
+         * @description Whether one success criterion is met by the delivered whole.
+         *
+         *     ``MET``: the criterion holds, with evidence. ``PARTIAL``: partly holds, so
+         *     the objective is not delivered. ``UNMET``: does not hold.
+         * @enum {string}
+         */
+        readonly CriterionOutcome: "met" | "partial" | "unmet";
+        /** CriterionVerdict */
+        readonly CriterionVerdict: {
+            /** @description The objective criterion judged */
+            readonly criterion: string;
+            /** @description What was observed */
+            readonly evidence: string;
+            readonly outcome: components["schemas"]["CriterionOutcome"];
+        };
         /** DailySummary */
         readonly DailySummary: {
             /**
@@ -11749,6 +11791,12 @@ export type components = {
              * @description Stable UUID primary key
              */
             readonly forecast_id: string;
+            /** @description Serialised work item this forecast gated, so approving it re-dispatches the work rather than dropping it */
+            readonly gated_work_item: {
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
+            } | null;
             /** @description Hard-ceiling halt context; set when the run is parked on a ceiling crossing, cleared when the operator raises the ceiling */
             readonly halt_context: components["schemas"]["HaltContext"] | null;
             /** @description Lower bound of the cost estimate */
@@ -14631,6 +14679,29 @@ export type components = {
             readonly project: string;
             readonly task_id: string;
             readonly title: string;
+        };
+        /** PlanEvaluationAttempt */
+        readonly PlanEvaluationAttempt: {
+            /** @description Which judgement of this plan */
+            readonly attempt: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly evaluated_at: string;
+            /** @description True iff every criterion was met */
+            readonly objective_met: boolean;
+            /** @description The judge's narrative */
+            readonly summary: string;
+            /** @description One verdict per objective criterion */
+            readonly verdicts: readonly components["schemas"]["CriterionVerdict"][];
+        };
+        /** PlanEvaluationResponse */
+        readonly PlanEvaluationResponse: {
+            /** @description Recorded judgements, newest first */
+            readonly attempts: readonly components["schemas"]["PlanEvaluationAttempt"][];
+            /** @description The judged plan */
+            readonly plan_id: string;
         };
         /** PlanItem */
         readonly PlanItem: {
@@ -27509,6 +27580,36 @@ export interface operations {
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdEvaluationGetPlanEvaluation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanEvaluationResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

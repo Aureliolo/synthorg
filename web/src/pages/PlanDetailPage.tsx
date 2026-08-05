@@ -26,6 +26,7 @@ import { PlanApprovalActions } from './plans/PlanApprovalActions'
 import { PlanAttentionPanel } from './plans/PlanAttentionPanel'
 import { PlanCoveragePanel } from './plans/PlanCoveragePanel'
 import { PlanEditor } from './plans/PlanEditor'
+import { PlanEvaluationPanel } from './plans/PlanEvaluationPanel'
 import { PlanForecastPanel } from './plans/PlanForecastPanel'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
@@ -192,6 +193,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       />
       <PlanFailureBanner plan={plan} />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
+      <PlanEvaluationPanel planId={plan.id} />
       <PlanOpenQuestionsPanel plan={plan} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
       <PlanForecastPanel forecastId={plan.forecast_id} />

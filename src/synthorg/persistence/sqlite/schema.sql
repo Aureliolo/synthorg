@@ -1677,6 +1677,10 @@ CREATE TABLE cost_forecasts (
         OR halted_at LIKE '%+00:00'
         OR halted_at LIKE '%Z'
     ),
+    -- The work this forecast gated, so approving it means "run this"
+    -- rather than "note that it was allowed". NULL for a forecast minted
+    -- for a brief that was never gated.
+    gated_work_item TEXT,
     created_at TEXT NOT NULL CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),
@@ -2321,6 +2325,31 @@ CREATE INDEX idx_code_execution_task
 ON code_execution_record (task_id);
 CREATE INDEX idx_code_execution_project
 ON code_execution_record (project_id, executed_at DESC);
+
+-- ── Initiative evaluation reports (the delivery verdict) ─────
+-- The verdict is what decides whether an initiative delivered, so it is
+-- a record rather than a log line. Append-only: a re-evaluation is a new
+-- attempt with its own row, because overwriting would erase the evidence
+-- the replan points at. The unique (plan_id, attempt) key is what makes
+-- a lost CAS race cost nothing: the verdict is already on disk.
+CREATE TABLE initiative_evaluation_report (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL CHECK (attempt >= 1),
+    summary TEXT NOT NULL CHECK (LENGTH(TRIM(summary)) > 0),
+    verdicts TEXT NOT NULL,
+    -- Parity note: Postgres stores ``objective_met`` as BOOLEAN; SQLite
+    -- stores it as INTEGER 0/1, so the CHECK differs in encoding only.
+    objective_met INTEGER NOT NULL CHECK (objective_met IN (0, 1)),
+    evaluated_at TEXT NOT NULL,
+    CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
+);
+
+CREATE INDEX idx_evaluation_report_plan
+ON initiative_evaluation_report (plan_id, evaluated_at DESC);
+CREATE INDEX idx_evaluation_report_project
+ON initiative_evaluation_report (project_id, evaluated_at DESC);
 
 -- Measured per-model benchmark scores.
 -- One row per model, keyed by ``model_id``. Each row is a quality

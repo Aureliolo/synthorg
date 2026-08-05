@@ -222,6 +222,7 @@ so approval stays atomic).
 |--------|------|---------|
 | `GET` | `/plans` | List plans (cursor pagination; `status` / `project` / `objective_id` filters) |
 | `GET` | `/plans/{id}` | Fetch a plan |
+| `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
@@ -286,6 +287,10 @@ list, it renders review panels derived from the plan (no extra persisted state):
 - **Decomposition failure** (`PlanFailureBanner`): shown only for a `FAILED` plan,
   surfacing its `failure_reason` so the operator can see why the run failed and
   start a fresh one.
+- **Delivery verdict** (`PlanEvaluationPanel`): the evaluate stage's judgements
+  hydrated from `GET /plans/{id}/evaluation`, newest first, each objective
+  criterion with the judge's evidence, so a parked initiative explains which
+  criteria failed. Hidden when nothing has judged the plan.
 - **Needs your input** (`PlanOpenQuestionsPanel`): the planner's open questions and
   assumptions to answer or correct before approving.
 - **Cost forecast** (`PlanForecastPanel`): the plan's `forecast_id` hydrated to show

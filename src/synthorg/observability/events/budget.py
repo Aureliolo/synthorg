@@ -47,6 +47,8 @@ BUDGET_FORECAST_APPROVED: Final[str] = "budget.forecast.approved"
 BUDGET_FORECAST_REJECTED: Final[str] = "budget.forecast.rejected"
 BUDGET_FORECAST_SUPERSEDED: Final[str] = "budget.forecast.superseded"
 BUDGET_FORECAST_APPROVAL_REQUIRED: Final[str] = "budget.forecast.approval_required"
+BUDGET_FORECAST_REDISPATCHED: Final[str] = "budget.forecast.redispatched"
+BUDGET_FORECAST_REDISPATCH_FAILED: Final[str] = "budget.forecast.redispatch_failed"
 
 BUDGET_HARD_CEILING_CONFIGURED: Final[str] = "budget.hard_ceiling.configured"
 BUDGET_HARD_CEILING_EXCEEDED: Final[str] = "budget.hard_ceiling.exceeded"

@@ -296,7 +296,14 @@ class ForecastGate:
         pending = await self._pending_forecast_for_brief(brief_hash)
         if pending is not None:
             return pending
-        fresh = await self._forecaster.forecast(signal)
+        estimated = await self._forecaster.forecast(signal)
+        # The work item rides along with the estimate it blocked, so approving
+        # the forecast can run the work. Without it the caller's 202 is a lie:
+        # the door accepted the brief, then dropped it with nothing left to
+        # re-dispatch from.
+        fresh = estimated.model_copy(
+            update={"gated_work_item": work_item.model_dump(mode="json")},
+        )
         try:
             await self._forecast_repo.save(fresh)
         except ConstraintViolationError:

@@ -220,7 +220,20 @@ service on the next task, no restart.
 A deterministic gate (`engine/completion_oracle/evaluator.py`
 `BuildTestOracle`) that is a pure function of a task's grounding
 classification and its already-persisted `CodeExecutionRecord`s (the
-`purpose="tests"` rows the code-runner writes), so it needs no new persistence.
+`purpose="tests"` rows), so it needs no new persistence.
+
+Those rows are written from what the agent **ran**, not from what it
+declared. A shared classifier (`tools/_test_run_capture.py::is_test_run`)
+recognises a test command by its shape (`pytest`, `go test`, `cargo test`,
+`npm test`, `gradle ... test`, and the rest), and both `code_runner` and
+`shell_command` record through it. Letting the model's own `purpose`
+argument arm the gate meant an agent that ran its suite through
+`shell_command`, or through `code_runner` without setting the flag,
+produced a green suite and zero evidence: the oracle then correctly failed
+closed and blocked a build that genuinely passed. The gate's verdict is not
+supposed to depend on which tool the model happened to pick, and
+model-supplied input is the wrong thing to let decide whether a gate has
+evidence at all.
 `classify_grounding_requirement` marks a task REQUIRED when it declares (or
 produced) a CODE / TESTS artifact; a docs / plan / decision task is
 NOT_APPLICABLE and the oracle abstains. The verdict uses LATEST-run semantics
@@ -252,6 +265,30 @@ spoofed into filing under a different execution and cannot spoof who reviewed
 whom (the identities are seeded by the gate, not taken from the tool
 arguments). The untrusted deliverable / criteria are wrapped with
 `wrap_untrusted` at the prompt boundary (SEC-1).
+
+#### What "the deliverable" is
+
+The reviewed deliverable is the **content of the files the task produced at
+its declared paths**, with the agent's closing message alongside rather than
+instead. `engine/artifacts/deliverable_content.py` reads each
+`ExpectedArtifact.path` inside the task's project workspace and
+`engine/review_gate_inputs.py` assembles the two into one SEC-1 fenced block
+(`wrap_untrusted(TAG_TOOL_RESULT, ...)`), which every downstream consumer of
+the review input shares: the peer reviewer, the red-team gate, and the
+output-policy backstop.
+
+Reviewing only the closing prose meant an APPROVE said the agent wrote a
+convincing summary, not that the deliverable builds. This is the single most
+load-bearing gate in the chain (fail-closed, on by default,
+`min_stakes=low`), so it reads the thing it is approving.
+
+Size is bounded by two live settings, so an operator can tune what the
+reviewer sees without a restart: `engine.review_artifact_max_chars_per_file`
+(default 20000) and `engine.review_artifact_max_chars_total` (default 60000).
+Truncation, omission, an absent path, a directory, and an unreadable file
+each produce an explicit note in the assembled text rather than silently
+shrinking the deliverable, because a reviewer that cannot tell "empty" from
+"not shown" cannot judge either.
 
 The reviewer-is-distinct invariant is enforced at three layers: a
 `CompletionOracleReport` model validator, the gate's structural resolution,

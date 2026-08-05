@@ -23,7 +23,7 @@ from enum import StrEnum
 from typing import Final, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.budget.currency import CurrencyCode
 from synthorg.core.types import NotBlankStr
@@ -129,6 +129,10 @@ class Forecast(BaseModel):
         ceiling_amount: Per-run hard ceiling the operator approved
             (``None`` when the global ``budget.run_hard_ceiling``
             applies, or when no ceiling is requested).
+        gated_work_item: The serialised work item this forecast blocked.
+            Approval re-dispatches it, so the automation door runs the
+            work it accepted instead of silently dropping it. ``None``
+            for a forecast generated directly rather than by the gate.
         created_at: Row creation timestamp.
         updated_at: Last decision-state mutation timestamp.
     """
@@ -176,6 +180,13 @@ class Forecast(BaseModel):
         description=(
             "Hard-ceiling halt context; set when the run is parked on a"
             " ceiling crossing, cleared when the operator raises the ceiling"
+        ),
+    )
+    gated_work_item: dict[str, JsonValue] | None = Field(
+        default=None,
+        description=(
+            "Serialised work item this forecast gated, so approving it"
+            " re-dispatches the work rather than dropping it"
         ),
     )
     created_at: datetime = Field(description="Row creation timestamp")

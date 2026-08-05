@@ -1,5 +1,6 @@
 """Tests for the shared cost-forecast row <-> model marshalling helpers."""
 
+import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -55,10 +56,22 @@ def _approved_forecast_with_halt() -> Forecast:
     )
 
 
+def _gated_forecast() -> Forecast:
+    return _pending_forecast().model_copy(
+        update={
+            "gated_work_item": {
+                "origin_adapter_id": "objective-entry",
+                "title": "Ship the game",
+            },
+        },
+    )
+
+
 def _sqlite_row(entity: Forecast) -> dict[str, object]:
     """Build a SQLite-shaped row (TEXT timestamps / string forecast_id)."""
     columns = [c.strip() for c in COST_FORECAST_COLUMNS.split(",")]
-    return dict(zip(columns, forecast_save_params(entity), strict=True))
+    params = forecast_save_params(entity, bind_json=json.dumps)
+    return dict(zip(columns, params, strict=True))
 
 
 @pytest.mark.unit
@@ -91,6 +104,28 @@ class TestRowToForecast:
         assert result.forecast_id == forecast.forecast_id
         assert isinstance(result.forecast_id, UUID)
         assert result.created_at == _NOW
+
+    def test_gated_work_item_round_trips_through_sqlite_text(self) -> None:
+        forecast = _gated_forecast()
+        result = row_to_forecast(_sqlite_row(forecast))
+
+        assert result.gated_work_item == forecast.gated_work_item
+
+    def test_gated_work_item_round_trips_through_postgres_jsonb(self) -> None:
+        """Postgres hands back a decoded mapping, not a JSON string."""
+        forecast = _gated_forecast()
+        row = _sqlite_row(forecast)
+        row["gated_work_item"] = forecast.gated_work_item
+
+        assert row_to_forecast(row).gated_work_item == forecast.gated_work_item
+
+    def test_a_non_object_gated_work_item_is_rejected(self) -> None:
+        """A wrong shape must not reach the re-dispatch parser as data."""
+        row = _sqlite_row(_pending_forecast())
+        row["gated_work_item"] = "[1, 2, 3]"
+
+        with pytest.raises(QueryError):
+            row_to_forecast(row)
 
     def test_corrupt_row_raises_query_error(self) -> None:
         row = _sqlite_row(_pending_forecast())

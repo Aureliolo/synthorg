@@ -13,9 +13,9 @@ and the artefacts, and is asked to check them.
 
 from typing import Final
 
+from synthorg.core.evaluation_verdict import CriterionVerdict
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
-from synthorg.engine.initiative.evaluate_models import CriterionVerdict
 from synthorg.engine.initiative.tail_stages import read_integration_state
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,

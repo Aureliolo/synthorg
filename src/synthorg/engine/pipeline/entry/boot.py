@@ -43,6 +43,7 @@ from synthorg.engine.pipeline.entry.factory import (
     build_work_entry_adapter,
 )
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
+from synthorg.engine.pipeline.forecast_redispatch import ForecastGateRedispatcher
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.state import EngineStateSlice, work_pipeline_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
@@ -306,20 +307,43 @@ async def wire_real_objective_entry(
             note="no work pipeline / persistence; real objective entry offline",
         )
         return
+    gate = _forecast_gate_for(app_state)
     adapter = build_objective_entry_adapter(
         work_pipeline=work_pipeline_of(app_state),
         project_repo=persistence_of(app_state).projects,
-        forecast_gate=_forecast_gate_for(app_state),
+        forecast_gate=gate,
     )
     if hot_swap:
         app_state.swap_objective_entry_adapter(adapter)
     else:
         app_state.set_objective_entry_adapter_if_absent(adapter)
+    _attach_forecast_redispatcher(app_state, gate)
     logger.info(
         OBJECTIVE_ENTRY_WIRED,
         service="objective_entry_adapter",
         mode="enabled",
         note="objective entry adapter wired",
+    )
+
+
+def _attach_forecast_redispatcher(
+    app_state: AppState, gate: ForecastGate | None
+) -> None:
+    """Give the forecast service the means to run what it approves.
+
+    Wired here rather than at construction because the gate needs the work
+    pipeline, which is built after the budget slice. Without it an approval
+    is a state change nobody acts on, which is the dead-end the gate was
+    added to prevent expressed one step later.
+    """
+    forecast_service = app_state.slice(BudgetStateSlice).forecast_service
+    if gate is None or forecast_service is None:
+        return
+    forecast_service.attach_dispatcher(
+        ForecastGateRedispatcher(
+            gate=gate,
+            background_tasks=app_state.objective_background_tasks,
+        ),
     )
 
 

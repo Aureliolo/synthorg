@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Literal
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
+from synthorg.engine._agent_loop_selection import resolve_loop
 from synthorg.engine._agent_tool_registry import (
     registry_with_chat_tools,
     registry_with_delegate_tool,
@@ -21,14 +22,8 @@ from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.loop_selector import (
     build_execution_loop,
-    select_loop_type,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.execution import (
-    EXECUTION_LOOP_AUTO_SELECTED,
-    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
-    EXECUTION_LOOP_STATIC_SELECTED,
-)
 from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
@@ -235,54 +230,25 @@ class AgentEngineFactoriesMixin:
             from task complexity and (when relevant) live budget
             utilisation.
         """
-        if self._auto_loop_config is None:
-            logger.debug(
-                EXECUTION_LOOP_STATIC_SELECTED,
-                agent_id=agent_id,
-                task_id=task_id,
-                loop_type=self._loop.get_loop_type(),
-            )
-            return self._loop
-
-        cfg = self._auto_loop_config
-        preliminary = select_loop_type(
-            complexity=task.estimated_complexity,
-            rules=cfg.rules,
-            budget_utilization_pct=None,
-            budget_tight_threshold=cfg.budget_tight_threshold,
-            hybrid_fallback=None,
-            default_loop_type=cfg.default_loop_type,
-        )
-
-        budget_utilization_pct: float | None = None
-        if preliminary == "hybrid" and self._budget_enforcer is not None:
-            budget_utilization_pct = (
-                await self._budget_enforcer.get_budget_utilization_pct()
-            )
-            if budget_utilization_pct is None:
-                logger.debug(
-                    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
-                    note="budget utilization unknown; skipping budget-aware downgrade",
-                )
-
-        loop_type = select_loop_type(
-            complexity=task.estimated_complexity,
-            rules=cfg.rules,
-            budget_utilization_pct=budget_utilization_pct,
-            budget_tight_threshold=cfg.budget_tight_threshold,
-            hybrid_fallback=cfg.hybrid_fallback,
-            default_loop_type=cfg.default_loop_type,
-        )
-
-        logger.info(
-            EXECUTION_LOOP_AUTO_SELECTED,
+        enforcer = self._budget_enforcer
+        return await resolve_loop(
+            task,
             agent_id=agent_id,
             task_id=task_id,
-            complexity=task.estimated_complexity.value,
-            selected_loop=loop_type,
-            budget_utilization_pct=budget_utilization_pct,
+            static_loop=self._loop,
+            auto_loop_config=self._auto_loop_config,
+            budget_utilization=(
+                None if enforcer is None else enforcer.get_budget_utilization_pct
+            ),
+            build=self._build_loop,
         )
 
+    def _build_loop(self, loop_type: str) -> ExecutionLoop:
+        """Build a loop of ``loop_type`` from the engine's dependencies.
+
+        Returns:
+            The constructed :class:`ExecutionLoop`.
+        """
         return build_execution_loop(
             loop_type,
             approval_gate=self._approval_gate,

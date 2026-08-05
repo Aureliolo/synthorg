@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import type {
   editPlan,
   getPlan,
+  getPlanEvaluation,
   listPlans,
   replanPlan,
   requestPlanChanges,
@@ -67,6 +68,16 @@ export const plansHandlers = [
   http.get('/api/v1/plans/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getPlan>(buildPlan({ id: String(params['id']) })),
+    ),
+  ),
+  // Unjudged by default: most plans on screen have never reached EVALUATING,
+  // and a canned verdict would render the panel in every unrelated test.
+  http.get('/api/v1/plans/:id/evaluation', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getPlanEvaluation>({
+        plan_id: String(params['id']),
+        attempts: [],
+      }),
     ),
   ),
   http.patch('/api/v1/plans/:id', async ({ params, request }) => {

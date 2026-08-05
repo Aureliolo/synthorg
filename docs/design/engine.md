@@ -37,7 +37,7 @@ stateDiagram-v2
     IN_PROGRESS --> IN_REVIEW : agent done
     IN_PROGRESS --> AWAITING_INPUT : asks a human
     IN_PROGRESS --> AUTH_REQUIRED : requires authorization
-    IN_PROGRESS --> FAILED : runtime crash
+    IN_PROGRESS --> FAILED : crash, stopped mid-run, or nothing delivered
     IN_PROGRESS --> CANCELLED : cancelled
     IN_PROGRESS --> INTERRUPTED : shutdown signal
     IN_PROGRESS --> SUSPENDED : checkpoint shutdown
@@ -614,7 +614,8 @@ at `ASSIGNED`).
 | Happy (review-gated) | `IN_PROGRESS` -> `IN_REVIEW` (review gate) |
 | Shutdown | `IN_PROGRESS` -> `INTERRUPTED` |
 | Error | `IN_PROGRESS` -> `FAILED` (after recovery) |
-| MAX_TURNS / BUDGET | `IN_PROGRESS` only |
+| MAX_TURNS / BUDGET / STAGNATION | `IN_PROGRESS` -> `FAILED` (reason recorded) |
+| Declared artifacts all absent | `IN_PROGRESS` -> `FAILED` (paths recorded) |
 
 **Semantics:**
 

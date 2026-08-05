@@ -134,6 +134,40 @@ class TestCostForecastRepository:
         repo = _repo(backend)
         assert await repo.get(uuid4()) is None
 
+    async def test_gated_work_item_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Approval can only run the work the row actually kept."""
+        repo = _repo(backend)
+        work_item = {
+            "origin_adapter_id": "objective-entry",
+            "source": "objective",
+            "title": "Ship the game",
+            "raw_intent": "A playable Tetris with a browser front end",
+            "project": "tetris",
+            "requested_by": "operator",
+            "acceptance_criteria": ["a person can play a full game"],
+        }
+        forecast = _make_forecast().model_copy(
+            update={"gated_work_item": work_item},
+        )
+        await repo.save(forecast)
+
+        fetched = await repo.get(forecast.forecast_id)
+        assert fetched is not None
+        assert fetched.gated_work_item == work_item
+
+    async def test_gated_work_item_defaults_to_absent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        forecast = _make_forecast()
+        await repo.save(forecast)
+
+        fetched = await repo.get(forecast.forecast_id)
+        assert fetched is not None
+        assert fetched.gated_work_item is None
+
     async def test_halt_context_round_trip(self, backend: PersistenceBackend) -> None:
         """Halt context survives a save / get cycle and clears to None."""
         repo = _repo(backend)

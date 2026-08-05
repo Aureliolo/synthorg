@@ -17,7 +17,11 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine._task_sync_transitions import (
+    transition_and_sync,
+    transition_to_awaiting_input,
+    transition_to_interrupted,
+)
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
@@ -36,7 +40,6 @@ if TYPE_CHECKING:
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
-    EXECUTION_ENGINE_TASK_TRANSITION,
 )
 
 logger = get_logger(__name__)
@@ -57,11 +60,6 @@ _EMPTY_RUN_REASON: Final[str] = (
     "of recording a silent no-op success"
 )
 
-# A run that stopped without finishing is not a run that finished. Left
-# untransitioned these sat at IN_PROGRESS forever: the stall derivation reads
-# IN_PROGRESS as "still moving", so the initiative could never be replanned
-# and never be completed. FAILED is both honest and retryable, and it is the
-# status the stall derivation recognises once retries are spent.
 # Reason surfaced when a work task declared artifacts and produced none of
 # them. ``{paths}`` names the declared paths, so the operator reads what was
 # promised rather than that something unnamed went wrong.
@@ -70,6 +68,11 @@ _MISSING_ARTIFACTS_REASON: Final[str] = (
     "instead of sending an empty deliverable to review"
 )
 
+# A run that stopped without finishing is not a run that finished. Left
+# untransitioned these sat at IN_PROGRESS forever: the stall derivation reads
+# IN_PROGRESS as "still moving", so the initiative could never be replanned
+# and never be completed. FAILED is both honest and retryable, and it is the
+# status the stall derivation recognises once retries are spent.
 _UNFINISHED_REASONS: Final[Mapping[TerminationReason, str]] = MappingProxyType(
     {
         TerminationReason.MAX_TURNS: (
@@ -112,7 +115,7 @@ async def transition_task_if_needed(
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.ASSIGNED
     ):
-        ctx, _ = await _transition_and_sync(
+        ctx, _ = await transition_and_sync(
             ctx,
             target_status=TaskStatus.IN_PROGRESS,
             reason="Engine starting execution",
@@ -180,7 +183,7 @@ async def apply_post_execution_transitions(
     reason = execution_result.termination_reason
 
     if reason == TerminationReason.SHUTDOWN:
-        return await _transition_to_interrupted(
+        return await transition_to_interrupted(
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
@@ -191,7 +194,7 @@ async def apply_post_execution_transitions(
         # Both a clarification question and an execution-time decision fork
         # wait on the operator, so the task parks in AWAITING_INPUT until the
         # human answers / picks an option; the resume path moves it back.
-        return await _transition_to_awaiting_input(
+        return await transition_to_awaiting_input(
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
@@ -361,46 +364,6 @@ async def _maybe_auto_review(
         )
 
 
-async def _transition_and_sync(
-    ctx: AgentContext,
-    *,
-    target_status: TaskStatus,
-    reason: str,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-    critical: bool = False,
-) -> tuple[AgentContext, bool]:
-    """Apply a local task transition, log it, and sync to TaskEngine.
-
-    The local transition (via ``with_task_transition``) is applied
-    unconditionally; the remote sync is best-effort.
-
-    Returns:
-        The updated :class:`AgentContext` after the local transition, and
-        whether the central engine now reflects the transition (see
-        :func:`sync_to_task_engine`).
-    """
-    prev_status = ctx.task_execution.status  # type: ignore[union-attr]
-    ctx = ctx.with_task_transition(target_status, reason=reason)
-    logger.info(
-        EXECUTION_ENGINE_TASK_TRANSITION,
-        agent_id=agent_id,
-        task_id=task_id,
-        from_status=prev_status.value,
-        to_status=target_status.value,
-    )
-    synced = await sync_to_task_engine(
-        task_engine,
-        target_status=target_status,
-        task_id=task_id,
-        agent_id=agent_id,
-        reason=reason,
-        critical=critical,
-    )
-    return ctx, synced
-
-
 async def _transition_to_review(
     execution_result: ExecutionResult,
     ctx: AgentContext,
@@ -426,7 +389,7 @@ async def _transition_to_review(
     synced = False
     for target, step_reason in _COMPLETION_STEPS:
         try:
-            ctx, synced = await _transition_and_sync(
+            ctx, synced = await transition_and_sync(
                 ctx,
                 target_status=target,
                 reason=step_reason,
@@ -512,7 +475,7 @@ async def _transition_to_failed(
         transition raises.
     """
     try:
-        ctx, synced = await _transition_and_sync(
+        ctx, synced = await transition_and_sync(
             ctx,
             target_status=TaskStatus.FAILED,
             reason=reason,
@@ -553,84 +516,3 @@ async def _transition_to_failed(
             outcome=RunOutcome.FAILED,
         )
     return execution_result.model_copy(update={"context": ctx})
-
-
-async def _transition_to_interrupted(
-    execution_result: ExecutionResult,
-    ctx: AgentContext,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-) -> ExecutionResult:
-    """Transition task to INTERRUPTED on graceful shutdown.
-
-    Returns:
-        A copy of ``execution_result`` with the context updated to
-        the ``INTERRUPTED`` status; the original ``execution_result``
-        is returned unchanged when the transition raises.
-    """
-    try:
-        ctx, _ = await _transition_and_sync(
-            ctx,
-            target_status=TaskStatus.INTERRUPTED,
-            reason="Graceful shutdown requested",
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-        )
-        return execution_result.model_copy(update={"context": ctx})
-    except (ValueError, ExecutionStateError) as exc:
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
-            agent_id=agent_id,
-            task_id=task_id,
-            context="Post-execution INTERRUPTED transition failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return execution_result
-
-
-async def _transition_to_awaiting_input(
-    execution_result: ExecutionResult,
-    ctx: AgentContext,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-) -> ExecutionResult:
-    """Transition task to AWAITING_INPUT on a clarification / decision park.
-
-    Only the IN_PROGRESS entry status is moved; any other status is
-    left untouched (the park may have happened before the ASSIGNED ->
-    IN_PROGRESS transition landed, in which case there is nothing to
-    pause). The resume path moves AWAITING_INPUT back to IN_PROGRESS
-    before re-entering the loop.
-
-    Returns:
-        A copy of ``execution_result`` with the context updated to
-        ``AWAITING_INPUT``; the original is returned unchanged when the
-        task is not IN_PROGRESS or when the transition raises.
-    """
-    task_exec = ctx.task_execution
-    if task_exec is None or task_exec.status != TaskStatus.IN_PROGRESS:
-        return execution_result
-    try:
-        ctx, _ = await _transition_and_sync(
-            ctx,
-            target_status=TaskStatus.AWAITING_INPUT,
-            reason="Agent paused for human input",
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-        )
-        return execution_result.model_copy(update={"context": ctx})
-    except (ValueError, ExecutionStateError) as exc:
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
-            agent_id=agent_id,
-            task_id=task_id,
-            context="Post-execution AWAITING_INPUT transition failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return execution_result

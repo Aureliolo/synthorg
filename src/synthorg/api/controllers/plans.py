@@ -21,6 +21,8 @@ from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_plans import (
     EditPlanRequest,
+    PlanEvaluationAttempt,
+    PlanEvaluationResponse,
     PlanItemPayload,
     ReplanRequest,
     RequestPlanChangesRequest,
@@ -42,9 +44,15 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.persistence.evaluation_report_protocol import EvaluationReportFilterSpec
 from synthorg.persistence.state import persistence_of
 
 _DEFAULT_LIMIT: Final[int] = 50
+
+#: Judgement history a single read returns. The evaluate stage caps its own
+#: attempts well below this, so the page holds every verdict a plan can have
+#: while still refusing to stream an unbounded history into the dashboard.
+_MAX_EVALUATION_ATTEMPTS: Final[int] = 20
 
 
 def _service(state: State) -> PlanService:
@@ -191,6 +199,54 @@ class PlanController(Controller):
             operation="read",
         )
         return Response(content=ApiResponse[Plan](data=plan), status_code=200)
+
+    @get("/{plan_id:str}/evaluation", guards=[require_read_access])
+    async def get_plan_evaluation(
+        self,
+        state: State,
+        plan_id: PathId,
+    ) -> Response[ApiResponse[PlanEvaluationResponse]]:
+        """Get the evaluate stage's judgement history for a plan.
+
+        The verdict is what decides whether an initiative delivered, so a
+        parked plan can explain itself: which criteria failed, with the
+        judge's evidence, per attempt.
+
+        Args:
+            state: Application state.
+            plan_id: Plan identifier.
+
+        Returns:
+            The recorded judgements, newest first, or 404 if no such plan.
+        """
+        require_resource_or_404(
+            await _service(state).get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+        )
+        records = await persistence_of(state.app_state).evaluation_reports.query(
+            EvaluationReportFilterSpec(plan_id=plan_id),
+            limit=_MAX_EVALUATION_ATTEMPTS,
+        )
+        payload = PlanEvaluationResponse(
+            plan_id=plan_id,
+            attempts=tuple(
+                PlanEvaluationAttempt(
+                    attempt=record.attempt,
+                    summary=record.summary,
+                    verdicts=record.verdicts,
+                    objective_met=record.objective_met,
+                    evaluated_at=record.evaluated_at,
+                )
+                for record in records
+            ),
+        )
+        return Response(
+            content=ApiResponse[PlanEvaluationResponse](data=payload),
+            status_code=200,
+        )
 
     @patch(
         "/{plan_id:str}",

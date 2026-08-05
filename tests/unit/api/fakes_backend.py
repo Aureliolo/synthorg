@@ -88,6 +88,7 @@ from tests.unit.api.fakes_workflow import (
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryDeliverableReceiptRepository,
+    InMemoryEvaluationReportRepository,
     InMemoryKnowledgeUsageRecordRepository,
 )
 from tests.unit.knowledge._fakes import (
@@ -770,6 +771,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._deliverable_receipts = InMemoryDeliverableReceiptRepository()
         self._knowledge_usage_records = InMemoryKnowledgeUsageRecordRepository()
         self._code_execution_records = InMemoryCodeExecutionRecordRepository()
+        self._evaluation_reports = InMemoryEvaluationReportRepository()
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
@@ -1015,6 +1017,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def code_execution_records(self) -> InMemoryCodeExecutionRecordRepository:
         return self._code_execution_records
+
+    @override
+    @property
+    def evaluation_reports(self) -> InMemoryEvaluationReportRepository:
+        return self._evaluation_reports
 
     @override
     @property

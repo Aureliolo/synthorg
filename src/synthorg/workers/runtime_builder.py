@@ -87,7 +87,6 @@ from synthorg.workers._coordinator_assembly import (
 from synthorg.workers._engine_assembly import (
     _build_external_api_runtime,
     _build_tool_registry,
-    _build_vision_gate_or_none,
     _construct_agent_engine,
 )
 from synthorg.workers._mcp_bridge_wiring import build_mcp_bridge_tools
@@ -97,6 +96,7 @@ from synthorg.workers._runtime_aux_wiring import (
     _construct_coordination_collector,
 )
 from synthorg.workers._runtime_services import RuntimeServices
+from synthorg.workers._vision_gate_wiring import build_vision_gate_or_none
 from synthorg.workers._web_search_provider_wiring import (
     build_web_search_provider_or_none,
 )
@@ -181,7 +181,7 @@ async def _no_active_provider_services(
         coordinator=None,
         work_pipeline=None,
         completion_oracle_enabled=oracle_enabled,
-        vision_gate=await _build_vision_gate_or_none(
+        vision_gate=await build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
         ),
@@ -241,7 +241,7 @@ async def _degraded_no_coordinator(
         coordinator=None,
         work_pipeline=None,
         completion_oracle_enabled=oracle_enabled,
-        vision_gate=await _build_vision_gate_or_none(
+        vision_gate=await build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
         ),
@@ -459,7 +459,7 @@ async def build_runtime_services(
         seed=completion_oracle_seed,
         config=completion_oracle_config,
     )
-    vision_gate = await _build_vision_gate_or_none(
+    vision_gate = await build_vision_gate_or_none(
         app_state=app_state,
         workspace_root=workspace_root,
     )

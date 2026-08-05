@@ -222,11 +222,7 @@ def _scripted_run() -> tuple[CompletionResponse, ...]:
                 ToolCall(
                     id="call-tests",
                     name="code_runner",
-                    arguments={
-                        "code": "pytest -q",
-                        "language": "bash",
-                        "purpose": "tests",
-                    },
+                    arguments={"code": "pytest -q", "language": "bash"},
                 ),
                 ToolCall(
                     id="call-doc",
