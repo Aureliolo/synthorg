@@ -14,11 +14,13 @@ cost and the ceiling that was crossed. The stamp is best-effort: a
 missing repo or a missing forecast id degrades silently.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.approval.models import EscalationInfo
 from synthorg.budget.errors import (
@@ -30,6 +32,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.context import AgentContext
@@ -104,6 +107,16 @@ class _ForecastRepoSurface:
         entity_id: UUID,
         *,
         new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        return False
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
         updated_at: datetime,
     ) -> bool:
         return False

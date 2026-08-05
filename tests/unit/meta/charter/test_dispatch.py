@@ -1,10 +1,12 @@
 """Unit tests for the charter approval-to-spine dispatcher."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast, override
 from uuid import uuid5
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
@@ -182,6 +184,26 @@ class _FakeForecastRepo:
             update={
                 "ceiling_amount": new_ceiling,
                 "halt_context": None,
+                "updated_at": updated_at,
+            },
+        )
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: object,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        existing = self.items.get(str(entity_id))
+        if existing is None or existing.gated_work_item is not None:
+            return False
+        self.items[str(entity_id)] = existing.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
                 "updated_at": updated_at,
             },
         )

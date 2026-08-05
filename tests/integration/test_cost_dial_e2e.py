@@ -27,6 +27,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
@@ -123,6 +124,26 @@ class _InMemoryForecastRepo:
             update={
                 "ceiling_amount": new_ceiling,
                 "halt_context": None,
+                "updated_at": updated_at,
+            }
+        )
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        row = self.rows.get(entity_id)
+        if row is None or row.gated_work_item is not None:
+            return False
+        self.rows[entity_id] = row.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
                 "updated_at": updated_at,
             }
         )
