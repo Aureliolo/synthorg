@@ -384,9 +384,16 @@ def _reaches(entry: str, target: str, functions: Mapping[str, ast.AST]) -> bool:
 def _table_reasons(tree: ast.Module, table: str) -> set[str] | None:
     """Read the ``TerminationReason`` members keyed in the *table* assignment.
 
+    Only the mapping's keys count. A reason appearing on the value side is
+    the failure message, not an entry, so a table keyed by something else
+    that merely mentions the reasons terminalises none of them. The literal
+    is found inside whatever wraps it (``MappingProxyType`` today), and an
+    assignment carrying no mapping at all reads as no keys, which fails
+    closed.
+
     Returns:
-        The member names in the table's own value, or ``None`` when no
-        module-level assignment to *table* exists.
+        The member names used as keys of the table's mapping, or ``None``
+        when no module-level assignment to *table* exists.
     """
     for node in tree.body:
         if isinstance(node, ast.Assign):
@@ -401,12 +408,18 @@ def _table_reasons(tree: ast.Module, table: str) -> set[str] | None:
             continue
         if node.value is None:
             return set()
+        mapping = next(
+            (sub for sub in ast.walk(node.value) if isinstance(sub, ast.Dict)),
+            None,
+        )
+        if mapping is None:
+            return set()
         return {
-            sub.attr
-            for sub in ast.walk(node.value)
-            if isinstance(sub, ast.Attribute)
-            and isinstance(sub.value, ast.Name)
-            and sub.value.id == "TerminationReason"
+            key.attr
+            for key in mapping.keys
+            if isinstance(key, ast.Attribute)
+            and isinstance(key.value, ast.Name)
+            and key.value.id == "TerminationReason"
         }
     return None
 

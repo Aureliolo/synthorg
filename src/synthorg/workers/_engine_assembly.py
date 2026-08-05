@@ -28,9 +28,9 @@ from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
-from synthorg.engine.state import task_engine_of
+from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.engine.workspace.state import agent_workspace_root_of
-from synthorg.hr.state import agent_registry_of
+from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
@@ -376,23 +376,7 @@ async def _build_evolution_service_or_none(
     Returns:
         The wired evolution service, or ``None`` when disabled / unavailable.
     """
-    config = app_state.config.evolution
-    if not config.enabled:
-        return None
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-
-    persistence = app_state.slice(PersistenceStateSlice).backend
-    if (
-        persistence is None
-        or not getattr(persistence, "is_connected", False)
-        or not hasattr(persistence, "identity_versions")
-    ):
-        return None
-    registry = app_state.slice(HrStateSlice).agent_registry
-    tracker = app_state.slice(HrStateSlice).performance_tracker
-    if registry is None or tracker is None:
+    if not app_state.config.evolution.enabled:
         return None
     from synthorg.engine.evolution.factory import (  # noqa: PLC0415
         build_evolution_service,
@@ -400,22 +384,33 @@ async def _build_evolution_service_or_none(
     from synthorg.meta.state import evolution_outcome_store_of  # noqa: PLC0415
     from synthorg.versioning import VersioningService  # noqa: PLC0415
 
+    hr = app_state.slice(HrStateSlice)
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if (
+        persistence is None
+        or not getattr(persistence, "is_connected", False)
+        or not hasattr(persistence, "identity_versions")
+        or hr.agent_registry is None
+        or hr.performance_tracker is None
+    ):
+        return None
+    # Evolution rewrites agent identities, so what analyses them is the
+    # operator's explicit choice, never a borrowed connection.
+    proposer = await resolve_bound_completion(
+        app_state,
+        namespace="engine",
+        key="evolution_proposer_model",
+        unset_event=EVOLUTION_PROPOSER_MODEL_UNSET,
+        subject="evolution proposer",
+    )
     try:
         service = build_evolution_service(
-            config,
-            registry=registry,
+            app_state.config.evolution,
+            registry=hr.agent_registry,
             versioning=VersioningService(persistence.identity_versions),
-            tracker=tracker,
+            tracker=hr.performance_tracker,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
-            # Evolution rewrites agent identities, so what analyses them is
-            # the operator's explicit choice, never a borrowed connection.
-            proposer_binding=await resolve_bound_completion(
-                app_state,
-                namespace="engine",
-                key="evolution_proposer_model",
-                unset_event=EVOLUTION_PROPOSER_MODEL_UNSET,
-                subject="evolution proposer",
-            ),
+            proposer_binding=proposer,
             outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

@@ -342,7 +342,9 @@ class TestForecastGate:
 
         Minting a fresh pending row for the same brief_hash would trip the
         partial-unique index; the gate must re-raise approval-required
-        against the existing row instead.
+        against the existing row instead. That row is updated in place to
+        hold the work item it now gates, which is a write on the same id
+        rather than a second row.
         """
         repo = _FakeForecastRepo()
         existing = Forecast(
@@ -363,7 +365,8 @@ class TestForecastGate:
             await gate.run(_work_item(forecast_id=existing.forecast_id))
         assert info.value.forecast_id == existing.forecast_id
         # No fresh row minted, no dispatch.
-        assert repo.saves == []
+        assert [save.forecast_id for save in repo.saves] == [existing.forecast_id]
+        assert repo.rows[existing.forecast_id].gated_work_item is not None
         assert work_pipeline.calls == []
 
     async def test_pending_forecast_for_brief_reused_without_id(self) -> None:
@@ -527,6 +530,37 @@ class TestForecastGate:
         dispatched = work_pipeline.calls[0]
         assert dispatched.hard_ceiling == 1.8
         assert dispatched.forecast_id == approved.forecast_id
+
+    async def test_a_linked_pending_estimate_gains_the_work_it_gates(self) -> None:
+        """Naming a standalone estimate makes it gate the arriving work.
+
+        The row was minted with no work item, so approving it as it stands
+        would dispatch nothing: the brief the caller was told is awaiting
+        approval would be dropped at the approval instead of at the door.
+        """
+        repo = _FakeForecastRepo()
+        estimate_only = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_ONLY_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[estimate_only.forecast_id] = estimate_only
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=estimate_only.forecast_id))
+
+        assert info.value.forecast_id == estimate_only.forecast_id
+        held = repo.rows[estimate_only.forecast_id].gated_work_item
+        assert held is not None
+        assert held["correlation_id"] == "submission-1"
+        assert work_pipeline.calls == []
 
     async def test_approved_estimate_linked_by_id_still_covers_the_brief(
         self,

@@ -47,10 +47,10 @@ SECURITY_LLM_EVAL_CROSS_FAMILY: Final[str] = "security.llm_eval.cross_family"
 SECURITY_LLM_EVAL_SAME_FAMILY: Final[str] = "security.llm_eval.same_family"
 """The evaluator's connection shares the judged agent's vendor family.
 
-Named for the condition, not for a fallback: nothing substitutes another
-provider any more. The operator's chosen pair is kept and the collision is
-reported, so the event says what happened rather than what an earlier
-implementation would have done about it."""
+A judge from the same family shares its blind spots, so the collision is
+worth reporting; it is not worth overriding the operator's chosen pair,
+which stays in place. The event names the condition, and what to do about
+it is the operator's call."""
 SECURITY_LLM_EVAL_NO_PROVIDER: Final[str] = "security.llm_eval.no_provider"
 SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
     "security.llm_eval.skipped_full_autonomy"

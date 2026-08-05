@@ -16,6 +16,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # annotation, so they must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -109,11 +110,24 @@ class LLMCurated:
     async def _resolve_binding(self) -> BoundCompletion | None:
         """Re-read the operator's curation pair and resolve its connection.
 
+        Each way this returns ``None`` says why, here or in the live
+        resolver, so the caller never has to guess at a cause: one
+        unresolved binding produces one accurate warning rather than a
+        second one naming a condition that did not hold.
+
         Returns:
             The bound dispatch target, or ``None`` when no pair is assigned
             or its connection is not registered.
         """
-        if self._connections is None:
+        if self._connections is None or self._config_resolver is None:
+            logger.warning(
+                HR_TRAINING_CURATION_FALLBACK,
+                strategy="llm_curated",
+                fallback="relevance",
+                reason="curation_dispatch_unwired",
+                has_connections=self._connections is not None,
+                has_resolver=self._config_resolver is not None,
+            )
             return None
         # Namespace and key spelled out rather than read from class vars: the
         # liveness gate reads the call site textually, and an indirection it
@@ -154,8 +168,10 @@ class LLMCurated:
     ) -> tuple[TrainingItem, ...]:
         """Curate items using LLM analysis.
 
-        Falls back to relevance scoring when no provider is
-        available, on provider errors, or on parse errors.
+        Falls back to relevance scoring when no provider is available and on
+        any failure of the completion itself, mapped or not: the ranking is
+        an improvement over a scorer that already works, so nothing it can
+        hit is worth failing a hire over.
 
         Args:
             items: Candidate items.
@@ -164,18 +180,20 @@ class LLMCurated:
 
         Returns:
             Curated items with updated relevance scores.
+
+        Raises:
+            MemoryError: Propagated: the process is out of memory, and
+                ranking a smaller list is not the answer to that.
+            RecursionError: Propagated, for the same reason.
         """
         if not items:
             return ()
 
         binding = await self._resolve_binding()
         if binding is None:
-            logger.warning(
-                HR_TRAINING_CURATION_FALLBACK,
-                strategy="llm_curated",
-                fallback="relevance",
-                reason="no_bound_model",
-            )
+            # No second warning: the resolution path already logged which
+            # condition held, and repeating it under a fixed reason would
+            # name a cause that may not be the one that fired.
             return await self._fallback.curate(
                 items,
                 new_agent_role=new_agent_role,
@@ -215,26 +233,24 @@ class LLMCurated:
                         max_tokens=_MAX_TOKENS,
                     ),
                 )
-        except ProviderError as exc:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- curation degrades, never fails
+            # A driver maps what it knows to ProviderError, but curation is a
+            # ranking nicety over a working relevance scorer: a transport
+            # error it did not map must degrade the ranking, not fail a hire.
+            # ValueError / TypeError land here too, as a malformed completion
+            # is the same "no usable ranking" outcome.
+            reraise_critical(exc)
             logger.warning(
                 HR_TRAINING_CURATION_FALLBACK,
                 strategy="llm_curated",
                 fallback="relevance",
-                reason="provider_error",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return await self._fallback.curate(
-                items,
-                new_agent_role=new_agent_role,
-                content_type=content_type,
-            )
-        except (ValueError, TypeError) as exc:
-            logger.warning(
-                HR_TRAINING_CURATION_FALLBACK,
-                strategy="llm_curated",
-                fallback="relevance",
-                reason="parse_error",
+                reason=(
+                    "provider_error"
+                    if isinstance(exc, ProviderError)
+                    else "completion_failed"
+                ),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

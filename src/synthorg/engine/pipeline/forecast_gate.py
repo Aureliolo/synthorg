@@ -228,7 +228,14 @@ class ForecastGate:
             if existing.decision is ForecastDecision.REJECTED:
                 self._raise_rejected(existing)
             if existing.decision is ForecastDecision.PENDING:
-                self._raise_approval_required(existing)
+                # The row the caller named gates this submission from here
+                # on. An estimate generated on its own holds no work item,
+                # so approving it would dispatch nothing and the caller's
+                # accepted brief would be lost at the approval instead of
+                # at the door.
+                self._raise_approval_required(
+                    await self._ensure_gates_work_item(existing, work_item)
+                )
 
         # No matching forecast via the caller's id: reuse a pending row for
         # this brief if one exists, else mint one.

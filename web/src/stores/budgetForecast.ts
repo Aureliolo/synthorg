@@ -104,7 +104,7 @@ export const useBudgetForecastStore = create<BudgetForecastState>((set) => ({
     mutateForecast(
       set,
       () => apiApproveForecast(forecastId, data),
-      'ForecastView approved',
+      'Forecast approved',
       'Failed to approve forecast',
       'Approve forecast failed',
     ),
@@ -112,7 +112,7 @@ export const useBudgetForecastStore = create<BudgetForecastState>((set) => ({
     mutateForecast(
       set,
       () => apiRejectForecast(forecastId, data),
-      'ForecastView rejected',
+      'Forecast rejected',
       'Failed to reject forecast',
       'Reject forecast failed',
     ),

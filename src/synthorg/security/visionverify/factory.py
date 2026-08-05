@@ -95,9 +95,10 @@ def _build_llm_vision(
             available to dispatch on.
     """
     # ``is_bound``, not ``is not None``: a ``ModelRef`` permits either half to
-    # be blank, and half a pair names no dispatch target. A provider-only ref
-    # would otherwise reach ``connections("")`` and a model-only one would
-    # dispatch against whichever connection the empty name resolved to.
+    # be blank, and half a pair names no dispatch target. A model-only ref
+    # carries no provider, so it would reach ``connections("")`` and dispatch
+    # against whichever connection an empty name resolved to; a provider-only
+    # one would dispatch with no model id.
     if connections is None or model is None or not model.is_bound:
         msg = (
             "llm_vision verifier requires a bound security.vision_verify_model"

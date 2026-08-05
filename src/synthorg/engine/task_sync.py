@@ -10,6 +10,7 @@ pushed to review as a silent no-op success.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
@@ -100,6 +101,25 @@ _UNFINISHED_REASONS: Final[Mapping[TerminationReason, str]] = MappingProxyType(
 _NO_OP_JUSTIFICATION_KEY: Final[str] = "no_op_justification"
 
 
+@dataclass(frozen=True, slots=True)
+class _Move:
+    """The run a post-execution transition moves, and where it reports.
+
+    Every transition needs the same six: the finished run and its context,
+    who ran it, what it ran, the engine the move syncs to and the queue the
+    resulting item lands in. They are named once here because passing them
+    apart turned each call into six lines of plumbing around one word of
+    intent.
+    """
+
+    execution_result: ExecutionResult
+    ctx: AgentContext
+    agent_id: str
+    task_id: str
+    task_engine: TaskEngine | None
+    approval_store: ApprovalStoreProtocol | None
+
+
 async def transition_task_if_needed(
     ctx: AgentContext,
     agent_id: str,
@@ -151,7 +171,9 @@ async def apply_post_execution_transitions(
     with zero tool calls (the silent-no-op proxy for zero artifacts), or
     one whose declared artifacts are all absent from the workspace --
     is driven to FAILED instead of review, unless a no-op justification
-    was recorded or the run resumed prior work (see ``empty_run_fails``).
+    was recorded. A resumed run is exempt from the turn-count proxy alone
+    (see ``empty_run_fails``); the workspace still answers for it, because
+    what an earlier segment produced is on disk either way.
     A run that stopped without finishing (turn cap, budget, stagnation)
     is driven to FAILED too, so it becomes retryable and, once retries
     are spent, visible to the stall derivation the replan trigger reads.
@@ -202,53 +224,34 @@ async def apply_post_execution_transitions(
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
+    move = _Move(
+        execution_result=execution_result,
+        ctx=ctx,
+        agent_id=agent_id,
+        task_id=task_id,
+        task_engine=task_engine,
+        approval_store=approval_store,
+    )
+
     unfinished = _UNFINISHED_REASONS.get(reason)
     if unfinished is not None:
-        return await _transition_to_failed(
-            execution_result,
-            ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-            approval_store=approval_store,
-            reason=unfinished,
-        )
+        return await _transition_to_failed(move, reason=unfinished)
 
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
         return execution_result
 
-    undelivered = await _failed_for_no_delivery(
-        execution_result,
-        ctx,
-        agent_id=agent_id,
-        task_id=task_id,
-        task_engine=task_engine,
-        approval_store=approval_store,
-        artifact_probe=artifact_probe,
-    )
+    undelivered = await _failed_for_no_delivery(move, artifact_probe=artifact_probe)
     if undelivered is not None:
         return undelivered
 
     return await _transition_to_review(
-        execution_result,
-        ctx,
-        agent_id=agent_id,
-        task_id=task_id,
-        task_engine=task_engine,
-        approval_store=approval_store,
-        review_gate=review_gate,
-        review_pipeline=review_pipeline,
+        move, review_gate=review_gate, review_pipeline=review_pipeline
     )
 
 
 async def _failed_for_no_delivery(
-    execution_result: ExecutionResult,
-    ctx: AgentContext,
+    move: _Move,
     *,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-    approval_store: ApprovalStoreProtocol | None,
     artifact_probe: ExpectedArtifactProbe | None,
 ) -> ExecutionResult | None:
     """Fail a run that finished having delivered nothing, or return ``None``.
@@ -264,12 +267,13 @@ async def _failed_for_no_delivery(
         The transitioned-to-FAILED result, or ``None`` when the run may
         proceed to review.
     """
-    reason = execution_result.termination_reason
-    if execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY):
+    run = move.execution_result
+    reason = run.termination_reason
+    if run.metadata.get(_NO_OP_JUSTIFICATION_KEY):
         # Recording why nothing was produced is the one sanctioned way to
         # finish a run empty-handed, and it answers every question below.
         return None
-    task_execution = ctx.task_execution
+    task_execution = move.ctx.task_execution
     task_expects_artifacts = task_execution is not None and bool(
         task_execution.task.artifacts_expected
     )
@@ -281,17 +285,6 @@ async def _failed_for_no_delivery(
     # still completes to review rather than FAILED.
     empty_run_fails = not is_resumed_run()
 
-    async def _fail(failure_reason: str) -> ExecutionResult:
-        return await _transition_to_failed(
-            execution_result,
-            ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
-            approval_store=approval_store,
-            reason=failure_reason,
-        )
-
     # A silent no-op success is a failure: a WORK task (one that declared
     # expected artifacts) that produced none (proxied by zero tool calls) is
     # failed unless an explicit no-op justification was recorded. Enforced in
@@ -299,9 +292,9 @@ async def _failed_for_no_delivery(
     # transition also guards a COMPLETED that slipped through from another loop.
     if empty_run_fails and (
         reason == TerminationReason.NO_OP
-        or (task_expects_artifacts and execution_result.total_tool_calls == 0)
+        or (task_expects_artifacts and run.total_tool_calls == 0)
     ):
-        return await _fail(_EMPTY_RUN_REASON)
+        return await _transition_to_failed(move, reason=_EMPTY_RUN_REASON)
 
     # The tool-call count above is a proxy; this is the question it stands in
     # for. An agent that read files, wrote nothing and stopped passes the
@@ -313,10 +306,11 @@ async def _failed_for_no_delivery(
     # paths present delivered nothing, whichever segment was supposed to.
     if not task_expects_artifacts:
         return None
-    presence = await _absent_artifacts(artifact_probe, ctx)
+    presence = await _absent_artifacts(artifact_probe, move.ctx)
     if presence is not None and presence.nothing_delivered:
-        return await _fail(
-            _MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing))
+        return await _transition_to_failed(
+            move,
+            reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing)),
         )
     return None
 
@@ -407,13 +401,8 @@ async def _maybe_auto_review(
 
 
 async def _transition_to_review(
-    execution_result: ExecutionResult,
-    ctx: AgentContext,
+    move: _Move,
     *,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-    approval_store: ApprovalStoreProtocol | None,
     review_gate: ReviewGateService | None,
     review_pipeline: ReviewPipeline | None,
 ) -> ExecutionResult:
@@ -428,6 +417,7 @@ async def _transition_to_review(
         The original ``execution_result`` when the context is unchanged, or
         a copy carrying the furthest-reached context.
     """
+    ctx = move.ctx
     synced = False
     for target, step_reason in _COMPLETION_STEPS:
         try:
@@ -435,15 +425,15 @@ async def _transition_to_review(
                 ctx,
                 target_status=target,
                 reason=step_reason,
-                agent_id=agent_id,
-                task_id=task_id,
-                task_engine=task_engine,
+                agent_id=move.agent_id,
+                task_id=move.task_id,
+                task_engine=move.task_engine,
             )
         except (ValueError, ExecutionStateError) as exc:
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
+                agent_id=move.agent_id,
+                task_id=move.task_id,
                 context="Post-execution transition failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -466,31 +456,25 @@ async def _transition_to_review(
         # opens the queue. The fail-loud path already routes a genuinely empty
         # work run to FAILED before reaching here.
         await create_review_approval(
-            approval_store,
-            agent_id=agent_id,
-            task_id=task_id,
+            move.approval_store,
+            agent_id=move.agent_id,
+            task_id=move.task_id,
             task=ctx.task_execution.task,
             outcome=RunOutcome.SUCCEEDED,
         )
         await _maybe_auto_review(
-            review_gate, review_pipeline, agent_id=agent_id, task_id=task_id
+            review_gate,
+            review_pipeline,
+            agent_id=move.agent_id,
+            task_id=move.task_id,
         )
 
-    if ctx is execution_result.context:
-        return execution_result
-    return execution_result.model_copy(update={"context": ctx})
+    if ctx is move.execution_result.context:
+        return move.execution_result
+    return move.execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(
-    execution_result: ExecutionResult,
-    ctx: AgentContext,
-    *,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-    approval_store: ApprovalStoreProtocol | None,
-    reason: str,
-) -> ExecutionResult:
+async def _transition_to_failed(move: _Move, *, reason: str) -> ExecutionResult:
     """Transition a run that did not deliver IN_PROGRESS -> FAILED, then flag it.
 
     A work task that produced no artifacts, or a run that stopped without
@@ -502,18 +486,12 @@ async def _transition_to_failed(
     being invisible.
 
     Args:
-        execution_result: The finished run.
-        ctx: Its context, carrying the task execution to transition.
-        agent_id: The agent that ran it.
-        task_id: The task it ran.
-        task_engine: Central engine to sync the transition to.
-        approval_store: Queue the failure item lands in.
+        move: The run being transitioned, and where the failure reports.
         reason: Why the run failed, recorded on the transition and surfaced
             to the operator.
 
     Returns:
-        A copy of ``execution_result`` with the context updated to
-        ``FAILED``.
+        A copy of the run with the context updated to ``FAILED``.
 
     Raises:
         ExecutionStateError: When the transition itself fails. Swallowing it
@@ -526,26 +504,26 @@ async def _transition_to_failed(
     """
     try:
         ctx, synced = await transition_and_sync(
-            ctx,
+            move.ctx,
             target_status=TaskStatus.FAILED,
             reason=reason,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=task_engine,
+            agent_id=move.agent_id,
+            task_id=move.task_id,
+            task_engine=move.task_engine,
             critical=True,
         )
     except (ValueError, ExecutionStateError) as exc:
         logger.error(
             EXECUTION_ENGINE_ERROR,
-            agent_id=agent_id,
-            task_id=task_id,
+            agent_id=move.agent_id,
+            task_id=move.task_id,
             context="Post-execution FAILED transition failed",
             reason=reason,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         msg = (
-            f"Task {task_id} did not deliver ({reason}) and could not be"
+            f"Task {move.task_id} did not deliver ({reason}) and could not be"
             f" transitioned to FAILED; it is left at its previous status"
         )
         raise ExecutionStateError(msg) from exc
@@ -553,8 +531,8 @@ async def _transition_to_failed(
     # the record never claims a failure that the transition did not land.
     logger.warning(
         EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
-        agent_id=agent_id,
-        task_id=task_id,
+        agent_id=move.agent_id,
+        task_id=move.task_id,
         context="Run did not deliver; task failed",
         reason=reason,
     )
@@ -564,10 +542,10 @@ async def _transition_to_failed(
     # later decision transition the wrong state.
     if synced and ctx.task_execution is not None:
         await create_review_approval(
-            approval_store,
-            agent_id=agent_id,
-            task_id=task_id,
+            move.approval_store,
+            agent_id=move.agent_id,
+            task_id=move.task_id,
             task=ctx.task_execution.task,
             outcome=RunOutcome.FAILED,
         )
-    return execution_result.model_copy(update={"context": ctx})
+    return move.execution_result.model_copy(update={"context": ctx})

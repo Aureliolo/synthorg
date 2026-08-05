@@ -483,6 +483,36 @@ class TestPostExecutionGuards:
 
         assert len(messages) == 3
 
+    def test_reasons_only_on_the_value_side_terminalise_nothing(
+        self, repo: Path
+    ) -> None:
+        """A reason in the message is not an entry keyed by that reason.
+
+        The table maps each reason to the text a task carries when it ends
+        there. Reading the whole assignment would accept a table keyed by
+        something else that merely names the reasons in its messages, which
+        leaves every one of those runs at IN_PROGRESS.
+        """
+        emptied = _CLEAN_POST_EXECUTION[
+            : _CLEAN_POST_EXECUTION.index("_UNFINISHED_REASONS")
+        ]
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            emptied + "_UNFINISHED_REASONS = {\n"
+            '    "turn cap": TerminationReason.MAX_TURNS,\n'
+            '    "budget": TerminationReason.BUDGET_EXHAUSTED,\n'
+            '    "stagnation": TerminationReason.STAGNATION,\n'
+            "}\n\n\n"
+            "async def apply_post_execution_transitions(result, *, "
+            "artifact_probe=None):\n"
+            "    return _absent_artifacts(artifact_probe, result.context)\n",
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert len(messages) == 3
+
     def test_a_missing_entry_point_is_caught(self, repo: Path) -> None:
         """Nothing applies the guards if the function they live in is gone."""
         _write(
