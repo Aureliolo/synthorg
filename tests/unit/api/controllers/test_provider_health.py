@@ -2,8 +2,8 @@
 
 import asyncio
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Final
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -55,6 +55,9 @@ _ACOMPLETION = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 #: is the alternative the assertion has to be able to tell it apart from.
 _RECHECK_BUDGET_SECONDS: Final[float] = 0.1
 _TIMEOUT_TOLERANCE_SECONDS: Final[float] = 5.0
+_RECHECK_BUDGET_SETTING: Final[str] = (
+    "/api/v1/settings/api/health_recheck_timeout_seconds"
+)
 
 
 def _provider(name: str) -> ProviderConfig:
@@ -81,14 +84,32 @@ def _provider(name: str) -> ProviderConfig:
     )
 
 
-async def _set_recheck_budget(client: LoopAsyncClient, *, seconds: float) -> None:
-    """Shrink the recheck ceiling so a hung provider is bounded promptly."""
+@asynccontextmanager
+async def _recheck_budget(
+    client: LoopAsyncClient, *, seconds: float
+) -> AsyncIterator[None]:
+    """Shrink the recheck ceiling for the body, then put it back.
+
+    The settings row outlives the client that wrote it: the persistence
+    fake is session-scoped, so a budget left at a fraction of a second is
+    inherited by every later test in the worker. A provider that answers
+    in the time a normal probe takes then times out, is dropped from the
+    sweep, and the test that reads the sweep fails for a reason that has
+    nothing to do with what it is testing.
+    """
     resp = await client.put(
-        "/api/v1/settings/api/health_recheck_timeout_seconds",
+        _RECHECK_BUDGET_SETTING,
         json={"value": str(seconds)},
         headers=_HEADERS,
     )
     assert resp.status_code == 200
+    try:
+        yield
+    finally:
+        # DELETE restores the registered default rather than a value copied
+        # into the test, which would be a second place to update.
+        restored = await client.delete(_RECHECK_BUDGET_SETTING, headers=_HEADERS)
+        assert restored.status_code in {200, 204}
 
 
 def _completion_response() -> MagicMock:
@@ -300,14 +321,14 @@ class TestProviderHealthRecheck:
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
         ) as client:
-            await _set_recheck_budget(client, seconds=_RECHECK_BUDGET_SECONDS)
-            with patch(_ACOMPLETION, new=_never_answers):
-                start = time.monotonic()
-                resp = await client.post(
-                    "/api/v1/providers/test-provider/health/recheck",
-                    headers=_HEADERS,
-                )
-                elapsed = time.monotonic() - start
+            async with _recheck_budget(client, seconds=_RECHECK_BUDGET_SECONDS):
+                with patch(_ACOMPLETION, new=_never_answers):
+                    start = time.monotonic()
+                    resp = await client.post(
+                        "/api/v1/providers/test-provider/health/recheck",
+                        headers=_HEADERS,
+                    )
+                    elapsed = time.monotonic() - start
 
             assert started.is_set()
             # Measured against the configured budget, not merely against the
