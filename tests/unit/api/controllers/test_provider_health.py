@@ -65,14 +65,19 @@ def _provider(name: str) -> ProviderConfig:
     error on the credential before reaching the driver, and a test asserting
     on the verdict would be measuring the fixture rather than the endpoint.
 
+    The model id carries the provider's name because a fake ``acompletion``
+    sees no ``api_base`` and so has the model reference as its only handle on
+    who is calling. Sharing one id across providers left call order as the
+    only way to single one out, which is not a property any test should rest
+    on.
+
     Returns:
         A single-model provider config keyed under *name* by the caller.
     """
-    _ = name
     return ProviderConfig(
         auth_type=AuthType.NONE,
         driver="litellm",
-        models=(ProviderModelConfig(id="test-small-001", alias="small"),),
+        models=(ProviderModelConfig(id=f"{name}-small-001", alias="small"),),
     )
 
 
@@ -373,13 +378,14 @@ class TestProviderHealthRecheck:
     ) -> None:
         # The containment the sweep promises: a bare TaskGroup member would
         # cancel its siblings, discarding verdicts already paid for.
-        calls: list[str] = []
 
         async def _one_provider_explodes(*_args: object, **kwargs: object) -> object:
-            # ``api_base`` is absent here, so the provider is identified by
-            # the model reference litellm was handed.
-            calls.append(str(kwargs.get("model")))
-            if len(calls) == 1:
+            # Pinned to a provider, not to whichever call happens to be
+            # first, and raising on every attempt: keyed off call order the
+            # outcome turned on whether a retry rescued that first attempt,
+            # so the assertion was reading the retry ladder rather than the
+            # sweep's containment.
+            if "provider-one" in str(kwargs.get("model")):
                 msg = "this provider's plumbing broke"
                 raise RuntimeError(msg)
             return _completion_response()
@@ -396,9 +402,13 @@ class TestProviderHealthRecheck:
                 )
 
             assert resp.status_code == 201
-            # Both still reported: the one that raised keeps whatever health
-            # was on file rather than taking the sweep down with it.
-            assert set(resp.json()["data"]) == {"provider-one", "provider-two"}
+            # Both still reported: a probe that fails is a verdict, not an
+            # error, so the provider that raised carries a fresh unhealthy
+            # reading rather than taking the sweep down with it.
+            data = resp.json()["data"]
+            assert set(data) == {"provider-one", "provider-two"}
+            assert data["provider-two"]["health_status"] == "up"
+            assert data["provider-one"]["health_status"] != "up"
 
 
 @pytest.mark.unit
