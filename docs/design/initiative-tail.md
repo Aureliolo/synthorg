@@ -72,7 +72,7 @@ assembled, where the runnable deliverable is, what had to be fixed) and
 are workspace-relative paths rather than prose because the declared-artifact
 check can only probe a path (see
 [agent-execution.md](agent-execution.md#declared-artifact-check)), and a stage
-whose declarations are unprobeable arms nothing: a chat-only integration would
+whose declarations no probe can reach arms nothing: a chat-only integration would
 reach review with the check silently abstaining. The stage cannot know where a
 given objective's deliverable lives, so it does not guess at that path; it names
 two files of its own that the brief instructs the agent to write, and checks
@@ -140,7 +140,7 @@ verdict nobody can read afterwards is, to every later reader, no verdict, and
 no verdict parks rather than completes; completing on one would leave an
 initiative marked delivered with nothing to point at when asked why. The next
 recompute re-judges within the attempt cap, so the cost is a re-judgement
-rather than an unevidenced delivery.
+rather than a delivery with no evidence behind it.
 
 `GET /plans/{plan_id}/evaluation` returns the attempts newest-first, and the
 dashboard's `PlanEvaluationPanel` renders each criterion with the judge's
