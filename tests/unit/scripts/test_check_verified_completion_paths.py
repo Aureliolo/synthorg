@@ -28,6 +28,8 @@ class _ScriptModule(Protocol):
     def _check_plan_completion_writers(root: Path) -> list[str]: ...
     @staticmethod
     def _check_artifact_invariant(root: Path) -> list[str]: ...
+    @staticmethod
+    def _check_post_execution_guards(root: Path) -> list[str]: ...
 
 
 def _load_script() -> _ScriptModule:
@@ -52,6 +54,7 @@ _check_state_machines = _MODULE._check_state_machines
 _check_derivation_never_completes = _MODULE._check_derivation_never_completes
 _check_plan_completion_writers = _MODULE._check_plan_completion_writers
 _check_artifact_invariant = _MODULE._check_artifact_invariant
+_check_post_execution_guards = _MODULE._check_post_execution_guards
 
 _CLEAN_PLAN_TRANSITIONS = """
 VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
@@ -85,6 +88,19 @@ def derive_plan_status(items, *, current):
 _CLEAN_VALIDATOR = """
 def _validate(self):
     validate_expected_artifacts(kind=self.kind, artifacts=self.expected_artifacts)
+"""
+
+_CLEAN_POST_EXECUTION = """
+_UNFINISHED_REASONS = {
+    TerminationReason.MAX_TURNS: "turn cap",
+    TerminationReason.BUDGET_EXHAUSTED: "budget",
+    TerminationReason.STAGNATION: "stagnation",
+}
+
+
+async def apply_post_execution_transitions(result, *, artifact_probe=None):
+    absent = _absent_artifacts(artifact_probe, result.context)
+    return absent
 """
 
 
@@ -124,6 +140,7 @@ def repo(tmp_path: Path) -> Path:
         _CLEAN_VALIDATOR,
     )
     _write(tmp_path, "src/synthorg/engine/initiative/evaluate.py", "")
+    _write(tmp_path, "src/synthorg/engine/task_sync.py", _CLEAN_POST_EXECUTION)
     return tmp_path
 
 
@@ -322,3 +339,62 @@ class TestArtifactInvariant:
         messages = _check_artifact_invariant(repo)
 
         assert any(rel in m for m in messages)
+
+
+class TestPostExecutionGuards:
+    """A run that did not deliver never reads as one that did."""
+
+    def test_a_clean_repo_passes(self, repo: Path) -> None:
+        assert _check_post_execution_guards(repo) == []
+
+    def test_a_dropped_artifact_probe_is_caught(self, repo: Path) -> None:
+        """Without the probe the zero-tool-call proxy is the only signal."""
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(
+                "absent = _absent_artifacts(artifact_probe, result.context)",
+                "absent = ()",
+            ),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_absent_artifacts" in m for m in messages)
+
+    def test_a_dropped_reason_table_is_caught(self, repo: Path) -> None:
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            "async def apply_post_execution_transitions(result, *, "
+            "artifact_probe=None):\n"
+            "    return _absent_artifacts(artifact_probe, result.context)\n",
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any("_UNFINISHED_REASONS" in m for m in messages)
+
+    @pytest.mark.parametrize("reason", ["MAX_TURNS", "BUDGET_EXHAUSTED", "STAGNATION"])
+    def test_a_reason_dropped_from_the_table_is_caught(
+        self, repo: Path, reason: str
+    ) -> None:
+        """Each unfinished reason needs its own terminal status.
+
+        Dropping one leaves exactly that run sitting at IN_PROGRESS, which
+        the stall derivation reads as still moving.
+        """
+        _write(
+            repo,
+            "src/synthorg/engine/task_sync.py",
+            _CLEAN_POST_EXECUTION.replace(f"TerminationReason.{reason}", "_removed"),
+        )
+
+        messages = _check_post_execution_guards(repo)
+
+        assert any(reason in m for m in messages)
+
+    def test_an_unreadable_module_is_reported_not_ignored(self, repo: Path) -> None:
+        _write(repo, "src/synthorg/engine/task_sync.py", "def broken(:\n")
+
+        assert _check_post_execution_guards(repo) != []

@@ -10,6 +10,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -91,6 +92,7 @@ class AgentEnginePostExecMixin:
     _approval_store: ApprovalStoreProtocol | None
     _review_gate: ReviewGateService | None
     _review_pipeline: ReviewPipeline | None
+    _artifact_probe: ExpectedArtifactProbe | None
     _apply_recovery: ApplyRecovery
     _recovery_strategy: RecoveryStrategy | None
     _checkpoint_repo: CheckpointRepository | None
@@ -150,6 +152,7 @@ class AgentEnginePostExecMixin:
             approval_store=self._approval_store,
             review_gate=self._review_gate,
             review_pipeline=self._review_pipeline,
+            artifact_probe=self._artifact_probe,
         )
         recovery_result: RecoveryResult | None = None
         failed_result: ExecutionResult | None = None

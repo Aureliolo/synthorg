@@ -95,12 +95,13 @@ class TestAgentEnginePostExecutionTransitions:
         # completed_at is only set on COMPLETED transition
         assert task_execution.completed_at is None
 
-    async def test_max_turns_stays_in_progress(
+    async def test_max_turns_terminalises_to_failed(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """A run out of turns did not finish, so it does not stay running."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -129,14 +130,15 @@ class TestAgentEnginePostExecutionTransitions:
 
         task_execution = result.execution_result.context.task_execution
         assert task_execution is not None
-        assert task_execution.status == TaskStatus.IN_PROGRESS
+        assert task_execution.status == TaskStatus.FAILED
 
-    async def test_budget_exhausted_stays_in_progress(
+    async def test_budget_exhausted_terminalises_to_failed(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """Out of budget is out of budget, not still working."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -164,7 +166,7 @@ class TestAgentEnginePostExecutionTransitions:
 
         task_execution = result.execution_result.context.task_execution
         assert task_execution is not None
-        assert task_execution.status == TaskStatus.IN_PROGRESS
+        assert task_execution.status == TaskStatus.FAILED
 
     async def test_error_transitions_to_failed(
         self,

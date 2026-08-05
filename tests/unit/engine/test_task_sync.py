@@ -1,6 +1,7 @@
 """Unit tests for task_sync module -- AgentEngine → TaskEngine sync functions."""
 
 import asyncio
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
@@ -80,6 +82,34 @@ def _make_mock_task_engine(  # type: ignore[explicit-any]  # mock_of returns Any
         else AsyncMock(return_value=return_value or _make_sync_success())
     )
     return mock_of[TaskEngine](submit=submit)
+
+
+def _make_execution_result_with_tool_calls(
+    ctx: AgentContext,
+    reason: TerminationReason = TerminationReason.COMPLETED,
+) -> ExecutionResult:
+    """Build a run that made tool calls but may have produced nothing.
+
+    This is the shape the zero-tool-call proxy waves through: the agent
+    read files, so the count is non-zero, but no deliverable need exist.
+
+    Returns:
+        A completed run carrying one turn with two tool calls.
+    """
+    return ExecutionResult(
+        context=ctx,
+        termination_reason=reason,
+        turns=(
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost=0.001,
+                finish_reason=FinishReason.STOP,
+                tool_calls_made=(NotBlankStr("read_file"), NotBlankStr("read_file")),
+            ),
+        ),
+    )
 
 
 def _make_execution_result(
@@ -446,20 +476,21 @@ class TestApplyPostExecutionTransitions:
 
     @pytest.mark.parametrize(
         "reason",
-        [
-            TerminationReason.MAX_TURNS,
-            TerminationReason.BUDGET_EXHAUSTED,
-            TerminationReason.CANCELLED,
-        ],
-        ids=["MAX_TURNS", "BUDGET_EXHAUSTED", "CANCELLED"],
+        [TerminationReason.CANCELLED],
+        ids=["CANCELLED"],
     )
-    async def test_non_completion_reasons_return_unchanged(
+    async def test_already_terminal_reasons_return_unchanged(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         reason: TerminationReason,
     ) -> None:
-        """Non-completion termination reasons leave task state unchanged."""
+        """An already-terminal reason needs no transition of its own.
+
+        The reasons that stop *without* finishing (turn cap, budget,
+        stagnation) do get terminalised; see
+        ``test_unfinished_run_terminalises_to_failed``.
+        """
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -728,6 +759,208 @@ class TestApplyPostExecutionTransitions:
                 task_id=str(work_task.id),
                 task_engine=mock_te,
             )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    @pytest.mark.parametrize(
+        ("reason", "expected_fragment"),
+        [
+            (TerminationReason.MAX_TURNS, "turn cap"),
+            (TerminationReason.BUDGET_EXHAUSTED, "cost budget"),
+            (TerminationReason.STAGNATION, "stopped making progress"),
+        ],
+    )
+    async def test_unfinished_run_terminalises_to_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        reason: TerminationReason,
+        expected_fragment: str,
+    ) -> None:
+        """A run that stopped without finishing must not sit at IN_PROGRESS.
+
+        The stall derivation reads IN_PROGRESS as "still moving", so a task
+        left there is permanently un-stalled, un-replanned and
+        un-completable. FAILED is honest, retryable, and the status the
+        derivation recognises once retries are spent.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality, task=sample_task_with_criteria
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=reason)
+        mock_te = _make_mock_task_engine()
+        approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=mock_te,
+            approval_store=approval_store,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+        # The termination reason is recorded, so an operator reads why the
+        # run stopped rather than an undifferentiated failure.
+        submitted = mock_te.submit.call_args_list[0].args[0]
+        assert expected_fragment in submitted.reason
+        approval_store.add.assert_awaited_once()
+
+    async def test_parked_run_still_holds_its_status(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """PARKED waits on a human; terminalising it would discard the wait."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality, task=sample_task_with_criteria
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.PARKED)
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(sample_task_with_criteria.id),
+            task_engine=_make_mock_task_engine(),
+        )
+
+        assert out is result
+
+    async def test_declared_artifacts_all_absent_fails_despite_tool_calls(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """The tool-call proxy passes; the workspace says nothing was written.
+
+        An agent that reads two files, writes nothing and stops has made
+        tool calls, so the proxy classifies it as productive. Asking the
+        workspace is what catches it.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+        mock_te = _make_mock_task_engine()
+        approval_store = mock_of[ApprovalStoreProtocol](add=AsyncMock())
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=mock_te,
+            approval_store=approval_store,
+            artifact_probe=lambda _project, expected: tuple(
+                str(a.path) for a in expected
+            ),
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.FAILED
+        submitted = mock_te.submit.call_args_list[0].args[0]
+        assert "src/x.py" in submitted.reason
+
+    async def test_partial_delivery_still_reaches_review(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """One file elsewhere is a judgement call, not an empty run.
+
+        The threshold is deliberately "none of them present": an agent that
+        legitimately chose a different path for one file should reach the
+        completion oracle, which can judge the substitution.
+        """
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                    ExpectedArtifact(type=ArtifactType.TESTS, path="tests/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=_make_mock_task_engine(),
+            artifact_probe=lambda _project, _expected: ("tests/x.py",),
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    async def test_delivered_artifacts_reach_review(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=_make_mock_task_engine(),
+            artifact_probe=lambda _project, _expected: (),
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    async def test_unanswerable_probe_does_not_fail_the_task(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A probe that cannot answer is not evidence of an empty run."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                )
+            }
+        )
+        ctx = AgentContext.from_identity(sample_agent_with_personality, task=work_task)
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result_with_tool_calls(ctx)
+
+        def _raises(
+            _project: str, _expected: Sequence[ExpectedArtifact]
+        ) -> tuple[str, ...]:
+            msg = "workspace volume unavailable"
+            raise OSError(msg)
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=str(work_task.id),
+            task_engine=_make_mock_task_engine(),
+            artifact_probe=_raises,
+        )
 
         assert out.context.task_execution is not None
         assert out.context.task_execution.status == TaskStatus.IN_REVIEW

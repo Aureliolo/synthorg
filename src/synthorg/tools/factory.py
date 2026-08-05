@@ -258,15 +258,27 @@ def _build_terminal_tools(
     *,
     sandbox: SandboxBackend | None = None,
     config: TerminalConfig | None = None,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in terminal tools.
+
+    The receipt store is threaded in because a test suite run here is the
+    same evidence as one run through ``code_runner``; without it, which
+    tool the agent happened to pick would decide whether the build/test
+    oracle has anything to judge.
 
     Returns:
         Tuple of ``BaseTool``.
     """
     from synthorg.tools.terminal.shell_command import ShellCommandTool  # noqa: PLC0415
 
-    return (ShellCommandTool(sandbox=sandbox, config=config),)
+    return (
+        ShellCommandTool(
+            sandbox=sandbox,
+            config=config,
+            code_execution_records=code_execution_records,
+        ),
+    )
 
 
 def _build_design_tools(
@@ -687,6 +699,7 @@ def build_default_tools(  # noqa: PLR0913
         _build_terminal_tools(
             sandbox=terminal_sandbox,
             config=terminal_config,
+            code_execution_records=code_execution_records,
         ),
     )
 

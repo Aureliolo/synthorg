@@ -69,6 +69,22 @@ _ARTIFACT_VALIDATORS: Final[tuple[str, ...]] = (
 )
 _ARTIFACT_VALIDATOR_CALL: Final[str] = "validate_expected_artifacts"
 
+#: The post-execution transition, and the two things it must still do with a
+#: run that did not deliver. Declaring an artifact (above) only matters if
+#: something checks the declaration; leaving an unfinished run untransitioned
+#: only matters because the stall derivation reads IN_PROGRESS as progress.
+_POST_EXECUTION_TRANSITIONS: Final[str] = "src/synthorg/engine/task_sync.py"
+_ARTIFACT_PROBE_CALL: Final[str] = "_absent_artifacts"
+_UNFINISHED_REASON_TABLE: Final[str] = "_UNFINISHED_REASONS"
+#: Every termination reason that stops a run without finishing it. Each must
+#: reach a terminal status of its own; left out, a task sits at IN_PROGRESS
+#: forever and its initiative can never be replanned or completed.
+_UNFINISHED_REASONS_REQUIRED: Final[tuple[str, ...]] = (
+    "MAX_TURNS",
+    "BUDGET_EXHAUSTED",
+    "STAGNATION",
+)
+
 #: The forbidden edges, as ``(source, forbidden target)`` per machine.
 _FORBIDDEN_EDGES: Final[tuple[tuple[str, str, str], ...]] = (
     (_PLAN_TRANSITIONS, "EXECUTING", "COMPLETED"),
@@ -297,6 +313,55 @@ def _check_artifact_invariant(root: Path) -> list[str]:
     return messages
 
 
+def _check_post_execution_guards(root: Path) -> list[str]:
+    """Check the post-execution transition still guards both failure shapes.
+
+    Two guards, both silently disarmable by deleting one call:
+
+    - the artifact probe, without which the only empty-run signal is the
+      zero-tool-call proxy, which an agent that read a file and wrote
+      nothing walks straight past;
+    - the unfinished-reason table, without which a run that hit its turn
+      cap, exhausted its budget or stagnated stays at IN_PROGRESS, where
+      the stall derivation reads it as still moving.
+
+    Returns:
+        One message per missing guard.
+    """
+    rel = _POST_EXECUTION_TRANSITIONS
+    parsed = _read(root, rel)
+    if parsed is None:
+        return [f"{rel}: unreadable; the post-execution guards are unchecked"]
+    source, tree = parsed
+    messages: list[str] = []
+    calls = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    if _ARTIFACT_PROBE_CALL not in calls:
+        messages.append(
+            f"{rel}: no longer calls {_ARTIFACT_PROBE_CALL}. Without it the "
+            "only empty-run signal is the zero-tool-call proxy, so a run that "
+            "read files and wrote nothing reaches review as delivered."
+        )
+    if _UNFINISHED_REASON_TABLE not in source:
+        messages.append(
+            f"{rel}: {_UNFINISHED_REASON_TABLE} is gone. A run that stopped "
+            "without finishing would stay IN_PROGRESS, which the stall "
+            "derivation reads as still moving, so its initiative could never "
+            "be replanned or completed."
+        )
+        return messages
+    messages.extend(
+        f"{rel}: {_UNFINISHED_REASON_TABLE} no longer terminalises {reason}. "
+        "That run would sit at IN_PROGRESS forever."
+        for reason in _UNFINISHED_REASONS_REQUIRED
+        if f"TerminationReason.{reason}" not in source
+    )
+    return messages
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -323,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
         *_check_derivation_never_completes(root),
         *_check_plan_completion_writers(root),
         *_check_artifact_invariant(root),
+        *_check_post_execution_guards(root),
     ]
     if messages:
         for message in messages:

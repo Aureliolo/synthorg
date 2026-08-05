@@ -9,6 +9,8 @@ and no recorded no-op justification is driven to ``FAILED`` rather than
 pushed to review as a silent no-op success.
 """
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -16,6 +18,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -52,6 +55,33 @@ _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
 _EMPTY_RUN_REASON: Final[str] = (
     "Run produced no artifacts and no tool calls; failing the task instead "
     "of recording a silent no-op success"
+)
+
+# A run that stopped without finishing is not a run that finished. Left
+# untransitioned these sat at IN_PROGRESS forever: the stall derivation reads
+# IN_PROGRESS as "still moving", so the initiative could never be replanned
+# and never be completed. FAILED is both honest and retryable, and it is the
+# status the stall derivation recognises once retries are spent.
+# Reason surfaced when a work task declared artifacts and produced none of
+# them. ``{paths}`` names the declared paths, so the operator reads what was
+# promised rather than that something unnamed went wrong.
+_MISSING_ARTIFACTS_REASON: Final[str] = (
+    "Run produced none of its declared artifacts ({paths}); failing the task "
+    "instead of sending an empty deliverable to review"
+)
+
+_UNFINISHED_REASONS: Final[Mapping[TerminationReason, str]] = MappingProxyType(
+    {
+        TerminationReason.MAX_TURNS: (
+            "Run hit its turn cap without finishing the task"
+        ),
+        TerminationReason.BUDGET_EXHAUSTED: (
+            "Run exhausted its cost budget without finishing the task"
+        ),
+        TerminationReason.STAGNATION: (
+            "Run stopped making progress without finishing the task"
+        ),
+    }
 )
 
 # Extension point for a legitimately empty run (e.g. a task that concluded no
@@ -103,6 +133,7 @@ async def apply_post_execution_transitions(
     approval_store: ApprovalStoreProtocol | None = None,
     review_gate: ReviewGateService | None = None,
     review_pipeline: ReviewPipeline | None = None,
+    artifact_probe: ExpectedArtifactProbe | None = None,
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
@@ -110,9 +141,13 @@ async def apply_post_execution_transitions(
     in ``_COMPLETION_STEPS`` (currently: -> IN_REVIEW, awaiting review).
     SHUTDOWN triggers current status -> INTERRUPTED.
     A ``NO_OP`` run -- or a ``COMPLETED`` run that a work task finished
-    with zero tool calls (the silent-no-op proxy for zero artifacts) --
+    with zero tool calls (the silent-no-op proxy for zero artifacts), or
+    one whose declared artifacts are all absent from the workspace --
     is driven to FAILED instead of review, unless a no-op justification
     was recorded or the run resumed prior work (see ``empty_run_fails``).
+    A run that stopped without finishing (turn cap, budget, stagnation)
+    is driven to FAILED too, so it becomes retryable and, once retries
+    are spent, visible to the stall derivation the replan trigger reads.
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.
     ``MemoryError`` and ``RecursionError`` propagate unconditionally.
@@ -120,6 +155,18 @@ async def apply_post_execution_transitions(
     When an ``approval_store`` is provided and the task reaches
     IN_REVIEW, an ``ApprovalItem`` is created so the human knows
     there is a task to review.
+
+    Args:
+        execution_result: The finished run.
+        agent_id: The agent that ran it.
+        task_id: The task it ran.
+        task_engine: Central engine to sync each transition to.
+        approval_store: Queue the review / failure item lands in.
+        review_gate: Auto-review gate, when the operator enabled it.
+        review_pipeline: Staged review pipeline, paired with the gate.
+        artifact_probe: Asks the project workspace whether the declared
+            artifacts exist. ``None`` leaves the zero-tool-call proxy as
+            the only empty-run signal.
 
     Returns:
         The original ``execution_result`` unchanged if no transitions
@@ -148,8 +195,21 @@ async def apply_post_execution_transitions(
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
+    unfinished = _UNFINISHED_REASONS.get(reason)
+    if unfinished is not None:
+        return await _transition_to_failed(
+            execution_result,
+            ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            approval_store=approval_store,
+            reason=unfinished,
+        )
+
     justified = bool(execution_result.metadata.get(_NO_OP_JUSTIFICATION_KEY))
-    task_expects_artifacts = bool(ctx.task_execution.task.artifacts_expected)
+    expected = ctx.task_execution.task.artifacts_expected
+    task_expects_artifacts = bool(expected)
     # A resumed/replayed run only carries the current segment's turns, so its
     # zero-tool-call count is not a valid proxy for total task output: earlier
     # segments (before an approval park) may already have produced artifacts.
@@ -171,6 +231,7 @@ async def apply_post_execution_transitions(
             task_id=task_id,
             task_engine=task_engine,
             approval_store=approval_store,
+            reason=_EMPTY_RUN_REASON,
         )
 
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
@@ -189,7 +250,24 @@ async def apply_post_execution_transitions(
             task_id=task_id,
             task_engine=task_engine,
             approval_store=approval_store,
+            reason=_EMPTY_RUN_REASON,
         )
+
+    # The tool-call count above is a proxy; this is the question it stands in
+    # for. An agent that read files, wrote nothing and stopped passes the
+    # proxy, so ask the workspace whether the declared deliverables exist.
+    if task_expects_artifacts and not justified and empty_run_fails:
+        absent = _absent_artifacts(artifact_probe, ctx)
+        if absent is not None and len(absent) == len(expected):
+            return await _transition_to_failed(
+                execution_result,
+                ctx,
+                agent_id=agent_id,
+                task_id=task_id,
+                task_engine=task_engine,
+                approval_store=approval_store,
+                reason=_MISSING_ARTIFACTS_REASON.format(paths=", ".join(absent)),
+            )
 
     return await _transition_to_review(
         execution_result,
@@ -201,6 +279,43 @@ async def apply_post_execution_transitions(
         review_gate=review_gate,
         review_pipeline=review_pipeline,
     )
+
+
+def _absent_artifacts(
+    artifact_probe: ExpectedArtifactProbe | None,
+    ctx: AgentContext,
+) -> tuple[str, ...] | None:
+    """Ask the workspace which declared artifacts are missing.
+
+    Args:
+        artifact_probe: The wired probe, or ``None`` when the engine was
+            built without a workspace root to resolve against.
+        ctx: The finished run's context, carrying the task and its project.
+
+    Returns:
+        The absent declared paths, or ``None`` when the question could not
+        be asked -- no probe, no project, or a probe that raised. An
+        unanswerable question must never read as a delivered task, so the
+        caller treats ``None`` as "no verdict" and lets review proceed.
+    """
+    if artifact_probe is None or ctx.task_execution is None:
+        return None
+    task = ctx.task_execution.task
+    project_id = str(task.project)
+    if not project_id.strip():
+        return None
+    try:
+        return artifact_probe(project_id, task.artifacts_expected)
+    except OSError as exc:
+        reraise_critical(exc)
+        logger.warning(
+            EXECUTION_ENGINE_ERROR,
+            task_id=str(task.id),
+            context="Expected-artifact probe failed; skipping the check",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 async def _maybe_auto_review(
@@ -369,15 +484,27 @@ async def _transition_to_failed(
     task_id: str,
     task_engine: TaskEngine | None,
     approval_store: ApprovalStoreProtocol | None,
+    reason: str,
 ) -> ExecutionResult:
-    """Transition an empty/no-op run IN_PROGRESS -> FAILED, then flag it.
+    """Transition a run that did not deliver IN_PROGRESS -> FAILED, then flag it.
 
-    A work task that produced no artifacts must surface a visible failure
-    with the reason, never a silent no-op success pushed to review. A
-    FAILED-outcome review approval is created (risk escalated one level
-    above the task's stakes, so never LOW) so the failure lands in the
-    operator's approval queue as an unmistakable failure rather than being
-    invisible.
+    A work task that produced no artifacts, or a run that stopped without
+    finishing, must surface a visible failure with the reason, never a
+    silent no-op success pushed to review and never a task left sitting at
+    IN_PROGRESS. A FAILED-outcome review approval is created (risk escalated
+    one level above the task's stakes, so never LOW) so the failure lands in
+    the operator's approval queue as an unmistakable failure rather than
+    being invisible.
+
+    Args:
+        execution_result: The finished run.
+        ctx: Its context, carrying the task execution to transition.
+        agent_id: The agent that ran it.
+        task_id: The task it ran.
+        task_engine: Central engine to sync the transition to.
+        approval_store: Queue the failure item lands in.
+        reason: Why the run failed, recorded on the transition and surfaced
+            to the operator.
 
     Returns:
         A copy of ``execution_result`` with the context updated to
@@ -388,7 +515,7 @@ async def _transition_to_failed(
         ctx, synced = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.FAILED,
-            reason=_EMPTY_RUN_REASON,
+            reason=reason,
             agent_id=agent_id,
             task_id=task_id,
             task_engine=task_engine,
@@ -410,8 +537,8 @@ async def _transition_to_failed(
         EXECUTION_ENGINE_NO_ARTIFACTS_FAILED,
         agent_id=agent_id,
         task_id=task_id,
-        context="Empty run: no artifacts produced; task failed",
-        reason=_EMPTY_RUN_REASON,
+        context="Run did not deliver; task failed",
+        reason=reason,
     )
     # Only queue the failure approval once the central engine reflects FAILED:
     # a swallowed/rejected sync leaves the engine's task IN_PROGRESS, and a

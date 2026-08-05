@@ -21,6 +21,7 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
@@ -28,6 +29,7 @@ from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
@@ -542,6 +544,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         ),
         review_gate=app_state.slice(ApprovalStateSlice).review_gate,
         review_pipeline=await _build_auto_review_pipeline_or_none(app_state),
+        # The engine holds no workspace root, so the layout knowledge stays
+        # here and it receives the question it can ask: did this project
+        # produce what its task declared. Bound to the same root the agent's
+        # file tools write through, so the check reads what the run wrote.
+        artifact_probe=workspace_artifact_probe(agent_workspace_root_of(app_state)),
         clarification_enabled=await config_resolver_of(app_state).get_bool(
             "engine", "clarification_enabled"
         ),

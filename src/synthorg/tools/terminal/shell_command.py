@@ -6,11 +6,12 @@ truncated at ``max_output_bytes``.
 """
 
 from pathlib import Path
-from typing import ClassVar, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.boundary import parse_typed
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
@@ -19,6 +20,10 @@ from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_SUCCESS,
     TERMINAL_COMMAND_TIMEOUT,
 )
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
+from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -26,6 +31,12 @@ from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
 
 logger = get_logger(__name__)
+
+#: Maximum characters of the command kept on a test record.
+_COMMAND_REPR_LIMIT: Final[int] = 500
+
+#: Maximum characters of captured stdout/stderr kept on a test record.
+_OUTPUT_TAIL_LIMIT: Final[int] = 2000
 
 
 class ShellCommandArgs(BaseModel):
@@ -75,6 +86,9 @@ class ShellCommandTool(BaseTerminalTool):
         *,
         sandbox: SandboxBackend | None = None,
         config: TerminalConfig | None = None,
+        code_execution_records: CodeExecutionRecordRepository | None = None,
+        clock: Clock | None = None,
+        output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
     ) -> None:
         """Initialize the shell command tool.
 
@@ -82,6 +96,19 @@ class ShellCommandTool(BaseTerminalTool):
             sandbox: Sandboxed execution backend.
             config: Terminal-tool configuration with allowlist /
                 blocklist and timeouts.
+            code_execution_records: Optional repository the deliverable
+                receipt reads. A suite run here is the same evidence as one
+                run through ``code_runner``, so which tool the agent
+                happened to pick stops deciding whether the build/test
+                oracle has anything to judge.
+            clock: Clock seam for the receipt's ``executed_at``.
+            output_tail_limit: Maximum characters of captured stdout/stderr
+                kept on a test record.
+
+        Raises:
+            ValueError: When ``output_tail_limit`` is not positive; a
+                non-positive cap would defeat the tail slice and persist
+                unbounded output.
         """
         super().__init__(
             name="shell_command",
@@ -93,6 +120,15 @@ class ShellCommandTool(BaseTerminalTool):
             sandbox=sandbox,
             config=config,
         )
+        self._code_execution_records = code_execution_records
+        self._clock: Clock = clock or SystemClock()
+        if output_tail_limit <= 0:
+            msg = (
+                "output_tail_limit must be a positive integer, "
+                f"got {output_tail_limit!r}"
+            )
+            raise ValueError(msg)
+        self._output_tail_limit = output_tail_limit
 
     @staticmethod
     def _validate_working_dir(
@@ -258,6 +294,18 @@ class ShellCommandTool(BaseTerminalTool):
                 content=f"Sandbox error: {safe_error_description(exc)}",
                 is_error=True,
             )
+
+        # Recorded before the timeout branch returns: a suite that timed out
+        # is evidence the build is not verified, and dropping it would read
+        # as no attempt rather than a failed one.
+        await record_if_test_run(
+            result,
+            command=command,
+            records=self._code_execution_records,
+            clock=self._clock,
+            command_repr_limit=_COMMAND_REPR_LIMIT,
+            output_tail_limit=self._output_tail_limit,
+        )
 
         if result.timed_out:
             logger.warning(

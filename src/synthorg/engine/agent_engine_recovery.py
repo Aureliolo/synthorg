@@ -6,6 +6,7 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
@@ -74,6 +75,7 @@ class AgentEngineRecoveryMixin:
     _shutdown_checker: ShutdownChecker | None
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
+    _artifact_probe: ExpectedArtifactProbe | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
 
@@ -388,6 +390,7 @@ class AgentEngineRecoveryMixin:
             agent_id=agent_id,
             task_id=task_id,
             task_engine=self._task_engine,
+            artifact_probe=self._artifact_probe,
         )
         logger.info(
             EXECUTION_RESUME_COMPLETE,
