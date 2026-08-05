@@ -54,6 +54,10 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     # to a loop-selection key reaches a task only via a rebuild.
     ("engine", "default_loop_type"),
     ("engine", "enable_agent_middleware"),
+    # Each of these three names the connection one runtime collaborator
+    # dispatches on, resolved into it while the runtime is assembled, so a
+    # reassignment reaches a run only through a rebuild.
+    ("engine", "evolution_proposer_model"),
     ("engine", "loop_auto_select_enabled"),
     ("engine", "loop_complexity_overrides"),
     ("engine", "matcher_min_cloud_tier"),
@@ -72,6 +76,8 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("memory", "procedural_skill_md_directory"),
     ("memory", "procedural_temperature"),
     ("providers", "gateway_base_url"),
+    ("security", "red_team_model"),
+    ("security", "vision_verify_model"),
     ("tools", "browser_image_pin"),
     ("tools", "credentialed_mcp_base_url"),
     ("tools", "desktop_driver"),

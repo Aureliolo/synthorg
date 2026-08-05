@@ -98,8 +98,6 @@ class LLMToolBlueprintGenerator:
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.TOOLSMITH_AUTHOR
-    _MODEL_NAMESPACE: ClassVar[str] = "meta"
-    _MODEL_KEY: ClassVar[str] = "toolsmith_model"
 
     @property
     def metadata(self) -> ModelPinMetadata:
@@ -196,15 +194,18 @@ class LLMToolBlueprintGenerator:
             CompletionConfig,
         )
 
+        # Namespace and key spelled out rather than read from the class vars:
+        # the liveness gate reads the call site textually, and an indirection
+        # it cannot follow reads as a setting nothing consumes.
         model = require_configured_model(
             await resolve_bound_model_live(
                 self._config_resolver,
-                namespace=self._MODEL_NAMESPACE,
-                key=self._MODEL_KEY,
+                namespace="meta",
+                key="toolsmith_model",
                 unset_event=TOOLSMITH_AUTHOR_FAILED,
             ),
-            namespace=self._MODEL_NAMESPACE,
-            key=self._MODEL_KEY,
+            namespace="meta",
+            key="toolsmith_model",
             feature_label="Toolsmith authoring",
         )
         user_prompt = self._build_user_prompt(gap, existing_capabilities)
