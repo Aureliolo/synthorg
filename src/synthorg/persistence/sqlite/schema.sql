@@ -2632,7 +2632,16 @@ CREATE TABLE plans (
     project TEXT NOT NULL CHECK (LENGTH(TRIM(project)) > 0),
     objective_id TEXT NOT NULL CHECK (LENGTH(TRIM(objective_id)) > 0),
     objective_title TEXT NOT NULL CHECK (LENGTH(TRIM(objective_title)) > 0),
-    parent_task_id TEXT NOT NULL CHECK (LENGTH(TRIM(parent_task_id)) > 0),
+    -- RESTRICT, not CASCADE: a plan is a reviewed decision record, and
+    -- deleting the objective task should not silently destroy it (nor its
+    -- evaluation reports, which cascade off plans). Deleting a task that
+    -- still owns a plan is refused so the operator resolves the plan first,
+    -- via DELETE /plans/{id}. Without the reference at all, a deleted task
+    -- left the plan pointing at nothing, and the orphan still ran to
+    -- completion and reached the review queue.
+    parent_task_id TEXT NOT NULL
+    REFERENCES tasks (id) ON DELETE RESTRICT
+    CHECK (LENGTH(TRIM(parent_task_id)) > 0),
     items TEXT NOT NULL
     CHECK (
         JSON_VALID(items) AND JSON_TYPE(items) = 'array'
@@ -2666,6 +2675,7 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
+CREATE INDEX idx_plans_parent_task ON plans (parent_task_id);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

@@ -28,6 +28,23 @@ _CASCADE_REASON: Final[str] = "project deleted"
 _SUPERSEDE_ATTEMPTS: Final[int] = 3
 
 
+def _retire_target(plan: Plan) -> tuple[PlanStatus, NotBlankStr | None]:
+    """Choose the terminal status a teardown may legally write for *plan*.
+
+    SUPERSEDED demands a non-empty item DAG, so a plan still being drafted
+    (the state a fresh proposal sits in) cannot be superseded at all: the
+    write violates the items CHECK and surfaces as a 500 on an otherwise
+    valid project delete. An itemless plan is failed instead, which is the
+    status that permits an empty list and which carries the reason.
+
+    Returns:
+        The ``(status, failure_reason)`` pair to write.
+    """
+    if plan.items:
+        return PlanStatus.SUPERSEDED, None
+    return PlanStatus.FAILED, NotBlankStr(_CASCADE_REASON)
+
+
 async def _supersede_plan(
     plan_service: PlanService,
     repository: PlanRepository,
@@ -35,7 +52,7 @@ async def _supersede_plan(
     *,
     requested_by: str,
 ) -> None:
-    """Supersede *plan*, re-reading if the rollup writes it first.
+    """Retire *plan*, re-reading if the rollup writes it first.
 
     The initiative rollup advances the same plan row whenever a task under it
     changes status, so deleting a project while its last task completes can
@@ -44,12 +61,16 @@ async def _supersede_plan(
     """
     current = plan
     for _ in range(_SUPERSEDE_ATTEMPTS):
+        # Re-derived per attempt: the winner of a lost race may have filled
+        # the items, which changes which terminal is legal.
+        status, failure_reason = _retire_target(current)
         try:
             await plan_service.sync_status(
                 current,
-                PlanStatus.SUPERSEDED,
+                status,
                 requested_by=requested_by,
                 reason=_CASCADE_REASON,
+                failure_reason=failure_reason,
             )
         except VersionConflictError:
             refreshed = await repository.get(NotBlankStr(str(current.id)))

@@ -27,6 +27,7 @@ def _plan(
     status: PlanStatus = PlanStatus.PENDING_REVIEW,
     project: str = "beachhead",
     objective_id: str = "obj-001",
+    failure_reason: str | None = None,
 ) -> Plan:
     return Plan(
         id=as_uuid(plan_id),
@@ -34,6 +35,7 @@ def _plan(
         objective_id=NotBlankStr(objective_id),
         objective_title=NotBlankStr("Ship the Tetris game"),
         parent_task_id=NotBlankStr("task-root"),
+        failure_reason=NotBlankStr(failure_reason) if failure_reason else None,
         items=(
             PlanItem(
                 id=NotBlankStr(_I1),
@@ -541,5 +543,81 @@ class TestPlanController:
             "/api/v1/plans/ghost/request-changes",
             json={"note": "please revise"},
             headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
+class TestDeletePlan:
+    """The route that gives a stuck plan a way out.
+
+    Without it a plan whose parent task was deleted sat in the review
+    queue forever: it could not be approved (no parent), could not be
+    superseded (the items check forbids it while empty), and had no
+    delete route at all.
+    """
+
+    async def test_deletes_a_plan_under_review(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan(plan_id="doomed"))
+        plan_id = str(as_uuid("doomed"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+        follow_up = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert follow_up.status_code == 404
+
+    async def test_deletes_a_failed_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The status a stranded plan lands in has to be removable."""
+        await _seed(
+            async_test_client,
+            _plan(
+                plan_id="burned",
+                status=PlanStatus.FAILED,
+                failure_reason="dispatch failed",
+            ),
+        )
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{as_uuid('burned')}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PlanStatus.APPROVED,
+            PlanStatus.EXECUTING,
+            PlanStatus.INTEGRATING,
+            PlanStatus.EVALUATING,
+        ],
+        ids=lambda value: str(value.value),
+    )
+    async def test_refuses_a_dispatched_plan(
+        self, async_test_client: LoopAsyncClient, status: PlanStatus
+    ) -> None:
+        """Removing it would orphan every task already building under it."""
+        await _seed(async_test_client, _plan(plan_id="building", status=status))
+        plan_id = str(as_uuid("building"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 409
+        # Still there: the refusal is not a partial delete.
+        survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert survivor.status_code == 200
+
+    async def test_missing_plan_404(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.delete(
+            "/api/v1/plans/ghost", headers=make_auth_headers("ceo")
         )
         assert resp.status_code == 404

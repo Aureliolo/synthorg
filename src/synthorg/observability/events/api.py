@@ -44,6 +44,7 @@ API_WS_UNKNOWN_ACTION: Final[str] = "api.ws.unknown_action"
 API_RESOURCE_NOT_FOUND: Final[str] = "api.resource.not_found"
 API_TASK_UPDATED: Final[str] = "api.task.updated"
 API_TASK_DELETED: Final[str] = "api.task.deleted"
+API_TASK_DELETE_REFUSED: Final[str] = "api.task.delete_refused"
 API_TASK_CANCELLED: Final[str] = "api.task.cancelled"
 API_APPROVAL_CREATED: Final[str] = "api.approval.created"
 # api.approval.approved / api.approval.rejected moved to events.security
@@ -278,6 +279,8 @@ API_PLAN_SUCCESSOR_OPENED: Final[str] = "api.plan.successor_opened"
 API_PLAN_REPLANNED: Final[str] = "api.plan.replanned"
 API_PLAN_TRANSITION_REJECTED: Final[str] = "api.plan.transition_rejected"
 API_PLAN_COMMENT_ADDED: Final[str] = "api.plan.comment_added"
+API_PLAN_DELETED: Final[str] = "api.plan.deleted"
+API_PLAN_DELETE_REFUSED: Final[str] = "api.plan.delete_refused"
 
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"

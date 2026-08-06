@@ -25,7 +25,11 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
+from synthorg.core.domain_errors import (
+    PlanParentTaskMissingError,
+    ResourceNotFoundError,
+    VersionConflictError,
+)
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
@@ -46,9 +50,11 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_FAIL_SHELL_MISSING,
     PIPELINE_PLAN_FAIL_WRITE_FAILED,
     PIPELINE_PLAN_MARKED_FAILED,
+    PIPELINE_PLAN_PARENT_MISSING,
     PIPELINE_PLAN_SHELL_OPENED,
 )
 from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -117,17 +123,19 @@ class PlanReviewApprovalGate:
     into a dispatch tree, so an operator's edits are what actually build.
     """
 
-    __slots__ = ("_approval_store", "_clock", "_plans")
+    __slots__ = ("_approval_store", "_clock", "_plans", "_tasks")
 
     def __init__(
         self,
         *,
         approval_store: ApprovalStoreProtocol,
         plans: PlanRepository,
+        tasks: TaskRepository,
         clock: Clock,
     ) -> None:
         self._approval_store = approval_store
         self._plans = plans
+        self._tasks = tasks
         self._clock = clock
 
     def _provenance(
@@ -158,6 +166,33 @@ class PlanReviewApprovalGate:
                 NotBlankStr(c.description) for c in task.acceptance_criteria
             ),
         )
+
+    async def _require_parent(self, task: Task, plan_id: UUID) -> None:
+        """Refuse to park a plan whose objective task is gone.
+
+        Decomposition runs for minutes, and a delete landing in that window
+        used to be invisible: the run completed against the deleted row, the
+        plan reached PENDING_REVIEW, and the operator was asked to approve
+        nine items under a task that 404s. The foreign key now refuses the
+        delete, but a task deleted before that constraint existed, or one
+        removed by a path that bypasses the API, still has to be caught
+        before the approval is parked rather than after.
+
+        Raises:
+            PlanParentTaskMissingError: When the task no longer exists.
+        """
+        if await self._tasks.get(NotBlankStr(str(task.id))) is not None:
+            return
+        logger.warning(
+            PIPELINE_PLAN_PARENT_MISSING,
+            plan_id=str(plan_id),
+            task_id=str(task.id),
+        )
+        msg = (
+            f"objective task {task.id} was deleted while its plan was being "
+            "decomposed, so the plan has nothing to build under"
+        )
+        raise PlanParentTaskMissingError(msg)
 
     async def open_plan(self, *, work_item: WorkItem, task: Task) -> UUID:
         """Persist a PLANNING plan shell before decomposition runs.
@@ -197,7 +232,13 @@ class PlanReviewApprovalGate:
 
         Returns:
             A :class:`PlanReviewHandoff` naming the parked approval item.
+
+        Raises:
+            PlanParentTaskMissingError: When the objective task was deleted
+                while decomposition ran. The caller compensates by failing
+                the plan, so an orphan never reaches the review queue.
         """
+        await self._require_parent(task, plan_id)
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
         now = self._clock.now()
@@ -375,6 +416,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
         plans=backend.plans,
+        tasks=backend.tasks,
         clock=app_state.clock,
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)

@@ -17,10 +17,21 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
+from tests.unit.persistence.conftest import make_task
 
 pytestmark = pytest.mark.integration
 
 _CREATED_AT = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+#: The objective task every plan here decomposes. ``plans.parent_task_id`` is
+#: a foreign key, so the parent has to exist before any plan referencing it.
+_PARENT_TASK_ID = "task-root"
+
+
+@pytest.fixture(autouse=True)
+async def _parent_task(backend: PersistenceBackend) -> None:
+    """Persist the objective task the plans in this module point at."""
+    await backend.tasks.save(make_task(task_id=_PARENT_TASK_ID, title="Ship the game"))
 
 
 def _plan(
@@ -35,7 +46,7 @@ def _plan(
         project=NotBlankStr(project),
         objective_id=NotBlankStr(objective_id),
         objective_title=NotBlankStr("Ship the game"),
-        parent_task_id=NotBlankStr("task-root"),
+        parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),
         items=(
             PlanItem(
                 id=NotBlankStr(sid("item-1")),
@@ -209,6 +220,59 @@ class TestPlanRepository:
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.delete(NotBlankStr("ghost")) is False
+
+    async def test_a_plan_cannot_name_a_task_that_does_not_exist(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The parent reference is enforced, not merely non-blank.
+
+        Without this a deleted (or never-created) task left the plan
+        pointing at nothing, and the orphan still ran to completion and
+        reached the operator's review queue.
+        """
+        orphan = _plan(plan_id="p-orphan").model_copy(
+            update={"parent_task_id": NotBlankStr(sid("task-never-created"))}
+        )
+
+        with pytest.raises(QueryError):
+            await backend.plans.save(orphan)
+
+    async def test_deleting_a_task_a_plan_owns_is_refused(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """RESTRICT: the plan is a decision record, not task-delete debris."""
+        await backend.plans.save(_plan(plan_id="p-holds"))
+
+        with pytest.raises(QueryError):
+            await backend.tasks.delete(sid(_PARENT_TASK_ID))
+
+    async def test_the_task_deletes_once_its_plan_is_gone(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The refusal is a gate, not a trap: resolving the plan clears it."""
+        await backend.plans.save(_plan(plan_id="p-transient"))
+
+        await backend.plans.delete(NotBlankStr(sid("p-transient")))
+
+        assert await backend.tasks.delete(sid(_PARENT_TASK_ID)) is True
+
+    async def test_query_filter_by_parent_task(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The task-delete guard reads plans by their parent, so it is indexed."""
+        await backend.plans.save(_plan(plan_id="p-parented"))
+
+        rows = await backend.plans.query(
+            PlanFilterSpec(parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)))
+        )
+        assert {str(row.id) for row in rows} == {sid("p-parented")}
+
+        assert (
+            await backend.plans.query(
+                PlanFilterSpec(parent_task_id=NotBlankStr(sid("other-task")))
+            )
+            == ()
+        )
 
     async def test_create_inserts_new_row(self, backend: PersistenceBackend) -> None:
         await backend.plans.create(_plan(plan_id="p-create"))

@@ -347,6 +347,9 @@ class PostgresPlanRepository:
         if filter_spec.objective_id is not None:
             conditions.append("objective_id = %s")
             params.append(filter_spec.objective_id)
+        if filter_spec.parent_task_id is not None:
+            conditions.append("parent_task_id = %s")
+            params.append(filter_spec.parent_task_id)
         return conditions, params
 
     async def query(

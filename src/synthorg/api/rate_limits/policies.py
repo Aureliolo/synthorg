@@ -245,6 +245,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # it is rarer and far more expensive than an in-place edit.
     "plans.replan": (10, 60),
     "plans.request_changes": (20, 60),
+    # Removing a plan is a rare, irreversible cleanup, matched to the
+    # project delete it usually accompanies.
+    "plans.delete": (5, 60),
     "plans.comment": (60, 60),
     # projects
     "projects.create": (10, 60),

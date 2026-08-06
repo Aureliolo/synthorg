@@ -13,6 +13,9 @@ from litestar.status_codes import (
 )
 
 from synthorg.api.controllers._requester import extract_requester
+from synthorg.api.controllers._task_delete_guard import (
+    refuse_if_a_plan_owns_the_task,
+)
 from synthorg.api.dto import (
     ApiResponse,
     CancelTaskRequest,
@@ -37,7 +40,9 @@ from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
+from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
+)
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskNotFoundError
@@ -421,7 +426,7 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
     ) -> None:
-        """Delete a task.
+        """Delete a task, unless a plan still names it as its objective.
 
         Args:
             state: Application state.
@@ -429,8 +434,10 @@ class TaskController(Controller):
 
         Raises:
             NotFoundError: If the task is not found.
+            PlanParentTaskInUseError: If a plan still references this task.
         """
         app_state: AppState = state.app_state
+        await refuse_if_a_plan_owns_the_task(app_state, task_id)
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,

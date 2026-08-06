@@ -34,6 +34,10 @@ class PlanFilterSpec(BaseModel):
         default=None,
         description="Filter by the charter/objective the plan serves",
     )
+    parent_task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by the objective task the plan decomposes",
+    )
 
 
 @runtime_checkable

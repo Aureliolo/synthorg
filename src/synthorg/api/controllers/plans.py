@@ -10,9 +10,10 @@ reworking its items, and sending it back for revision.
 
 from typing import Annotated, Final
 
-from litestar import Controller, Request, Response, get, patch, post
+from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PLANS, publish_ws_event
 from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
@@ -39,14 +40,28 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.domain_errors import ValidationError
+from synthorg.core.domain_errors import PlanNotDeletableError, ValidationError
 from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_enums import REPLANNABLE_STATUSES, TAIL_STATUSES, PlanStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_PLAN_DELETE_REFUSED,
+    API_PLAN_DELETED,
+    API_RESOURCE_NOT_FOUND,
+)
 from synthorg.persistence.state import persistence_of
 
+logger = get_logger(__name__)
+
 _DEFAULT_LIMIT: Final[int] = 50
+
+#: Statuses whose items are already building, so the plan is the record those
+#: running tasks were approved against. Exactly the set a re-plan accepts:
+#: revising dispatched work retires the revision rather than removing it.
+_DISPATCHED_STATUSES: Final[frozenset[PlanStatus]] = (
+    REPLANNABLE_STATUSES | TAIL_STATUSES
+)
 
 
 def _service(state: State) -> PlanService:
@@ -406,6 +421,89 @@ class PlanController(Controller):
             },
         )
         return Response(content=ApiResponse[Plan](data=drafted), status_code=200)
+
+    @delete(
+        "/{plan_id:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("plans.delete", key="user"),
+        ],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_plan(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        plan_id: PathId,
+    ) -> None:
+        """Remove a plan that is not building.
+
+        Without this route a plan whose parent task is gone, or whose
+        project is being cleaned up, had no way out at all: it stayed in
+        the review queue asking for a decision on work with no owner, and
+        the task holding it could not be deleted either.
+
+        Args:
+            request: The incoming request.
+            state: Application state.
+            plan_id: Plan identifier.
+
+        Raises:
+            NotFoundError: No plan with ``plan_id`` exists.
+            PlanNotDeletableError: The plan's items are already building.
+        """
+        service = _service(state)
+        existing = require_resource_or_404(
+            await service.get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="delete",
+        )
+        _require_deletable(existing)
+        await persistence_of(state.app_state).plans.delete(NotBlankStr(plan_id))
+        logger.info(
+            API_PLAN_DELETED,
+            plan_id=plan_id,
+            status=existing.status.value,
+            requested_by=extract_requester(state),
+        )
+        # The review inbox and any open detail view drop it on the same
+        # event every other plan mutation publishes.
+        publish_ws_event(
+            request,
+            WsEventType.PLAN_UPDATED,
+            CHANNEL_PLANS,
+            {
+                "plan_id": plan_id,
+                "version": existing.version,
+                "status": existing.status.value,
+            },
+        )
+
+
+def _require_deletable(plan: Plan) -> None:
+    """Refuse to delete a plan whose items are already building.
+
+    Removing it would orphan every task dispatched under it and destroy
+    the record those tasks were approved against. Revising dispatched work
+    is a re-plan, which retires the revision and opens a successor.
+
+    Raises:
+        PlanNotDeletableError: When the plan is mid-dispatch.
+    """
+    if plan.status not in _DISPATCHED_STATUSES:
+        return
+    logger.info(
+        API_PLAN_DELETE_REFUSED,
+        plan_id=str(plan.id),
+        status=plan.status.value,
+    )
+    msg = (
+        f"plan {plan.id} is {plan.status.value} and its items are building; "
+        "replan it instead of deleting it"
+    )
+    raise PlanNotDeletableError(msg)
 
 
 def _parse_status(status: NotBlankStr | None) -> PlanStatus | None:
