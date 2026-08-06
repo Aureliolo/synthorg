@@ -4,6 +4,7 @@ Defines the named channels for real-time event feeds and
 creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
+from collections.abc import Callable
 from typing import Final
 
 from litestar import Request
@@ -15,10 +16,16 @@ from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan import Plan
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
 
 logger = get_logger(__name__)
+
+#: Publishes ``plan.updated`` for one plan. Narrow on purpose: a plan writer
+#: that outlives its request needs to announce a change, not the whole channels
+#: surface, and holding the plugin itself would let it publish anything.
+type PlanNotifier = Callable[[Plan], None]
 
 CHANNEL_TASKS: Final[str] = "tasks"
 CHANNEL_AGENTS: Final[str] = "agents"
@@ -192,6 +199,44 @@ def publish_ws_event_with_plugin(
             channel=channel,
             note="Failed to publish WS event",
         )
+
+
+def make_plan_notifier(
+    channels_plugin: ChannelsPlugin, *, clock: Clock
+) -> PlanNotifier:
+    """Build the publisher a plan writer outside a request uses.
+
+    The plan-review gate fills and parks a plan from a background spine, long
+    after the request that started it returned, so it cannot resolve the plugin
+    from a request the way a controller does. Without this a page open during
+    decomposition kept rendering the pre-decomposition snapshot beside a fresh
+    approval prompt, because only the operator-edit and replan paths published.
+
+    Args:
+        channels_plugin: The plugin resolved once, at construction.
+        clock: The application clock seam, so the event timestamp honours a
+            ``FakeClock`` under test.
+
+    Returns:
+        A callable publishing ``plan.updated`` for one plan. The payload
+        matches the controller's, so the dashboard's existing handler refetches
+        with no change.
+    """
+
+    def _notify(plan: Plan) -> None:
+        publish_ws_event_with_plugin(
+            channels_plugin,
+            WsEventType.PLAN_UPDATED,
+            CHANNEL_PLANS,
+            {
+                "plan_id": str(plan.id),
+                "version": plan.version,
+                "status": plan.status.value,
+            },
+            clock=clock,
+        )
+
+    return _notify
 
 
 def publish_ws_event(

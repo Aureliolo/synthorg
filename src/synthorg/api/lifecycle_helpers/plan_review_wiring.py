@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Final
 from uuid import UUID
 
+from synthorg.api.channels import PlanNotifier
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -123,7 +124,7 @@ class PlanReviewApprovalGate:
     into a dispatch tree, so an operator's edits are what actually build.
     """
 
-    __slots__ = ("_approval_store", "_clock", "_plans", "_tasks")
+    __slots__ = ("_approval_store", "_clock", "_notifier", "_plans", "_tasks")
 
     def __init__(
         self,
@@ -132,11 +133,27 @@ class PlanReviewApprovalGate:
         plans: PlanRepository,
         tasks: TaskRepository,
         clock: Clock,
+        notifier: PlanNotifier | None = None,
     ) -> None:
         self._approval_store = approval_store
         self._plans = plans
         self._tasks = tasks
         self._clock = clock
+        self._notifier = notifier
+
+    def _announce(self, plan: Plan) -> None:
+        """Tell open viewers the plan moved, if a publisher is wired.
+
+        Every write here happens on a background spine, after the request that
+        started it returned, so nothing else announces them: a page open during
+        decomposition rendered the pre-decomposition snapshot next to a fresh
+        approval prompt until it was reloaded by hand.
+
+        Args:
+            plan: The plan as it now stands.
+        """
+        if self._notifier is not None:
+            self._notifier(plan)
 
     def _provenance(
         self,
@@ -298,6 +315,7 @@ class PlanReviewApprovalGate:
                 plan_id=durable_plan.id, reason="approval-store write failed"
             )
             raise
+        self._announce(durable_plan)
         return PlanReviewHandoff(
             approval_id=NotBlankStr(str(approval_id)),
             plan_id=NotBlankStr(str(durable_plan.id)),
@@ -342,6 +360,10 @@ class PlanReviewApprovalGate:
             except PersistenceVersionConflictError as exc:
                 # Translate to the domain twin CASRetryHandler retries on.
                 raise VersionConflictError(str(exc)) from exc
+            # After the write, never before: a viewer told the plan failed and
+            # then refetching a plan that is still PENDING_REVIEW would read as
+            # the announcement being wrong rather than early.
+            self._announce(failed)
 
         try:
             await CASRetryHandler(
@@ -413,11 +435,14 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
             note="skipped: plan_approval_required but persistence not wired",
         )
         return
+    from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
+
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
         plans=backend.plans,
         tasks=backend.tasks,
         clock=app_state.clock,
+        notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)
     logger.info(API_APP_STARTUP, service="plan_review_gate", note="wired")

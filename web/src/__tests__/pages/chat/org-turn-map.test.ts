@@ -120,7 +120,12 @@ describe('mapTurnResult', () => {
       status: 'proposed',
       clarifying_question: null,
       conversation_closed: false,
-      plan_draft: { task_id: 't1', project: 'Growth', title: 'Launch' },
+      plan_draft: {
+        task_id: 't1',
+        project: 'Growth',
+        title: 'Launch',
+        reused_project: false,
+      },
       responder_role: null,
       responder_name: null,
       routed_topic: null,

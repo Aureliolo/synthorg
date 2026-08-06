@@ -79,6 +79,7 @@ async def _gate(
     plans: FakePlanRepository | None = None,
     approval_store: ApprovalStore | None = None,
     parent: Task | None = None,
+    announced: list[Plan] | None = None,
 ) -> tuple[PlanReviewApprovalGate, FakePlanRepository, FakeTaskRepository]:
     """Build a gate whose parent task exists, which is the ordinary case.
 
@@ -99,6 +100,7 @@ async def _gate(
         plans=plan_repo,
         tasks=tasks,
         clock=FakeClock(),
+        notifier=None if announced is None else announced.append,
     )
     return gate, plan_repo, tasks
 
@@ -187,6 +189,66 @@ class TestPlanReviewApprovalGate:
         parked = await store.list_items()
         assert len(parked) == 1
         assert parked[0].metadata[PLAN_ID_METADATA_KEY] == str(durable.id)
+
+    async def test_parking_a_plan_tells_open_viewers(self) -> None:
+        # Every write here happens on a background spine, after the request
+        # that started it returned, so nothing else announces them: a page open
+        # during decomposition rendered the pre-decomposition snapshot next to
+        # a fresh approval prompt until it was reloaded by hand.
+        announced: list[Plan] = []
+        task = _result_task("root")
+        gate, _, _ = await _gate(parent=task, announced=announced)
+        work_item = _work_item()
+
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+        await gate.request_plan_approval(
+            plan_id=plan_id, work_item=work_item, task=task, plan=_decomposition()
+        )
+
+        assert [(plan.id, plan.status) for plan in announced] == [
+            (plan_id, PlanStatus.PENDING_REVIEW)
+        ]
+
+    async def test_failing_a_plan_tells_open_viewers(self) -> None:
+        announced: list[Plan] = []
+        task = _result_task("root")
+        gate, _, _ = await _gate(parent=task, announced=announced)
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        await gate.fail_plan(plan_id=plan_id, reason="decompose boom")
+
+        assert [(plan.id, plan.status) for plan in announced] == [
+            (plan_id, PlanStatus.FAILED)
+        ]
+
+    async def test_an_idempotent_failure_is_announced_once(self) -> None:
+        # The second call writes nothing, so announcing again would tell a
+        # viewer something changed when nothing did.
+        announced: list[Plan] = []
+        task = _result_task("root")
+        gate, _, _ = await _gate(parent=task, announced=announced)
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        await gate.fail_plan(plan_id=plan_id, reason="decompose boom")
+        await gate.fail_plan(plan_id=plan_id, reason="decompose boom again")
+
+        assert len(announced) == 1
+
+    async def test_a_missing_publisher_does_not_break_the_write(self) -> None:
+        # The announcement is best-effort by construction: a deployment whose
+        # plugin never wired must still park plans.
+        task = _result_task("root")
+        gate, plans, _ = await _gate(parent=task)
+        work_item = _work_item()
+
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+        await gate.request_plan_approval(
+            plan_id=plan_id, work_item=work_item, task=task, plan=_decomposition()
+        )
+
+        durable = await plans.get(NotBlankStr(str(plan_id)))
+        assert durable is not None
+        assert durable.status is PlanStatus.PENDING_REVIEW
 
     async def test_fail_plan_marks_failed_with_reason(self) -> None:
         task = _result_task("root")

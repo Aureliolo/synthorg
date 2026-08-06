@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makePlanItem } from '@/__tests__/helpers/factories'
 import {
+  answeredQuestions,
   computeCriticalPath,
   computeWaves,
   criticalPathFor,
@@ -274,6 +275,59 @@ describe('derivePlanCoverage', () => {
     const coverage = derivePlanCoverage([], [makePlanItem('a')])
     expect(coverage.total).toBe(0)
     expect(coverage.uncovered).toEqual([])
+  })
+})
+
+describe('answeredQuestions', () => {
+  it('settles a question whose distinctive words the criteria all carry', () => {
+    const items = [
+      makePlanItem('a', {
+        title: 'Storage layer',
+        acceptance_criteria: ['The persistence backend is SQLite'],
+      }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)).toEqual([
+      { question: 'Which persistence backend?', settledBy: 'Storage layer' },
+    ])
+  })
+
+  it('leaves a question the plan does not address open', () => {
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Grid renders'] }),
+    ]
+    expect(answeredQuestions(['Is offline play in scope?'], items)).toEqual([
+      { question: 'Is offline play in scope?', settledBy: null },
+    ])
+  })
+
+  it('does not settle a question on filler words alone', () => {
+    // Matching on "which"/"the"/"is" would settle every question against any
+    // criterion at all, which is a worse failure than asking twice.
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Which is the one'] }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)[0]).toEqual({
+      question: 'Which persistence backend?',
+      settledBy: null,
+    })
+  })
+
+  it('ignores case and punctuation', () => {
+    const items = [
+      makePlanItem('a', {
+        title: 'Storage',
+        acceptance_criteria: ['persistence: BACKEND chosen'],
+      }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)[0]?.settledBy).toBe(
+      'Storage',
+    )
+  })
+
+  it('leaves everything open when the plan has no items yet', () => {
+    expect(answeredQuestions(['Which backend?'], [])).toEqual([
+      { question: 'Which backend?', settledBy: null },
+    ])
   })
 })
 

@@ -33,7 +33,9 @@ function proposeTurn(closed: boolean) {
       status: closed ? 'proposed' : 'needs_clarification',
       clarifying_question: closed ? null : 'Which platform?',
       conversation_closed: closed,
-      plan_draft: closed ? { task_id: 't1', project: 'P', title: 'Plan' } : null,
+      plan_draft: closed
+        ? { task_id: 't1', project: 'P', title: 'Plan', reused_project: false }
+        : null,
       responder_role: null,
       responder_name: null,
       routed_topic: null,
@@ -170,5 +172,43 @@ describe('useOrgConversationStore', () => {
     expect(state.messages).toHaveLength(0)
     expect(state.conversationId).toBeUndefined()
     expect(state.activeIntent).toBeUndefined()
+  })
+
+  it('an impatient second send never dispatches a second turn', async () => {
+    // The turn that prompted this took 14.5 seconds. A re-send while the first
+    // is still running would fork a second initiative over one objective, so
+    // the guard is the store's, not the button's: a disabled control is a hint,
+    // and the dispatch has to refuse regardless.
+    deferStreamTo('propose')
+    let dispatches = 0
+    server.use(
+      http.post(TURN, () => {
+        dispatches += 1
+        return HttpResponse.json(proposeTurn(false))
+      }),
+    )
+
+    const first = send('build a landing page')
+    await send('build a landing page')
+    await first
+
+    expect(dispatches).toBe(1)
+    expect(
+      useOrgConversationStore.getState().messages.filter((m) => m.kind === 'human'),
+    ).toHaveLength(1)
+  })
+
+  it('keeps the key a turn was sent with, so a retry cannot double-dispatch', async () => {
+    // The retry path replays the key off the human turn: minting a fresh one
+    // would re-run an ACT turn's tools against a request the server already
+    // accepted.
+    deferStreamTo('propose')
+    server.use(http.post(TURN, () => HttpResponse.json(proposeTurn(false))))
+    await send('build a landing page')
+
+    const human = useOrgConversationStore
+      .getState()
+      .messages.find((m) => m.kind === 'human')
+    expect(human).toMatchObject({ idempotencyKey: 'k1' })
   })
 })

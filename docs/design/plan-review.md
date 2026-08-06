@@ -287,7 +287,16 @@ can diff how a revision addressed the panel's concerns. Edits and decisions publ
 `plan.comment_added`, all on the `plans` WebSocket channel. The event is a refresh
 signal (its payload stays the minimal locator); a subscriber reloads the item's
 thread, so an inline agent reply (broadcast the same way when it lands) surfaces
-without a new channel or payload shape. The comment endpoints live on
+without a new channel or payload shape.
+
+`PlanReviewApprovalGate` publishes the same `plan.updated` when it fills and
+parks a plan, and when it marks one FAILED. Those writes happen on a background
+spine, after the request that started them returned, so the gate is handed a
+narrow publisher (`PlanNotifier`, built from the channels plugin at
+construction) rather than resolving one from a request it does not have.
+Without it a page open during decomposition kept rendering the
+pre-decomposition snapshot beside a fresh approval prompt until it was reloaded
+by hand. The comment endpoints live on
 `PlanCommentController` (`api/controllers/plan_comments.py`); a human comment's
 author is taken from the authenticated user, never the request body, and an agent
 reply is attributed to the responding role.

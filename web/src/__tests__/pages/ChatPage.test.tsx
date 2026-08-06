@@ -82,6 +82,7 @@ describe('ChatPage unified surface', () => {
                 task_id: 'task-1',
                 project: 'Growth',
                 title: 'Launch plan',
+                reused_project: false,
               },
               responder_role: null,
               responder_name: null,

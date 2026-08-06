@@ -1,4 +1,5 @@
 import type { AxiosResponse } from 'axios'
+import { http, HttpResponse } from 'msw'
 import { vi } from 'vitest'
 
 // Mock dev auth bypass OFF so the 401 interceptor actually fires.
@@ -16,6 +17,18 @@ import {
 import { cookieJar } from '@/cookie-shim'
 import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
+import { server } from '@/test-setup'
+
+/**
+ * Session probes the interceptor issued. Counted from the request event rather
+ * than a handler override, so a test that replaces the ``/auth/me`` handler
+ * still counts the call it made.
+ */
+let getMeCalls = 0
+
+server.events.on('request:start', ({ request }) => {
+  if (new URL(request.url).pathname === '/api/v1/auth/me') getMeCalls += 1
+})
 
 /**
  * Build an AxiosResponse fixture. ``data`` is widened to ``unknown`` so
@@ -430,5 +443,121 @@ describe('apiClient 401 response interceptor', () => {
       expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
       expect(useAuthStore.getState().user).toBeNull()
     })
+  })
+})
+
+describe('a 401 is confirmed before the session is torn down', () => {
+  async function unauthorized(url: string) {
+    const { AxiosError } = await import('axios')
+    return new AxiosError('Unauthorized', 'ERR_BAD_RESPONSE', { url, headers: {} } as never, undefined, {
+      status: 401,
+      data: {},
+      headers: {},
+      statusText: 'Unauthorized',
+      config: {} as AxiosResponse['config'],
+    } as AxiosResponse)
+  }
+
+  async function signedIn() {
+    const { useAuthStore, _resetUnauthorizedRedirectGuardForTests } = await import('@/stores/auth')
+    // The store latches after one teardown so a burst of 401s bounces to
+    // login once; each test here needs the latch open again.
+    _resetUnauthorizedRedirectGuardForTests()
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      user: {
+        id: '1',
+        username: 'admin',
+        role: 'ceo',
+        must_change_password: false,
+        org_roles: [],
+        scoped_departments: [],
+      },
+      loading: false,
+    })
+    return useAuthStore
+  }
+
+  it('keeps a session the backend still recognises', async () => {
+    // One transient 401 used to end a session that was still valid: the very
+    // next call returned 200 on the same cookie.
+    const useAuthStore = await signedIn()
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    // The probe resolves on a later tick, so a passing assertion here has to
+    // outlive it rather than beat it.
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(0)
+    })
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+  })
+
+  it('tears down when the backend confirms the session is gone', async () => {
+    const useAuthStore = await signedIn()
+    server.use(
+      http.get('/api/v1/auth/me', () => new HttpResponse(null, { status: 401 })),
+    )
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+  })
+
+  it('does not probe when the probe itself is what returned 401', async () => {
+    // Otherwise the answer to "is the session gone" is another request that
+    // asks the same question.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/auth/me')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('does not probe a rejected login', async () => {
+    // An unauthenticated caller has no session to confirm, so the round trip
+    // would only ask it to prove something it never had.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/auth/login')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('shares one probe across a burst of 401s', async () => {
+    // A page mounting fires many requests at once; one expiry must not cost
+    // one confirmation each.
+    await signedIn()
+    const before = getMeCalls
+    const rejected = apiClient.interceptors.response.handlers?.[0]?.rejected
+
+    await Promise.allSettled(
+      ['/tasks', '/agents', '/plans'].map(async (url) => {
+        await rejected?.(await unauthorized(url))
+      }),
+    )
+
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(before)
+    })
+    expect(getMeCalls - before).toBe(1)
   })
 })

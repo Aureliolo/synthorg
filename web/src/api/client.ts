@@ -253,18 +253,69 @@ function _isRetryable429(error: ApiAxiosError): boolean {
   )
 }
 
+/**
+ * Endpoint that answers "is this session still good?". A 200 here means the
+ * cookie is live; a 401 means it genuinely is not.
+ */
+const SESSION_PROBE_URL = '/auth/me'
+
+/**
+ * Paths where a 401 is a rejected credential rather than an expired session.
+ * Probing them would ask an unauthenticated caller to prove it has a session,
+ * which it never had, so the answer is known without the round trip.
+ */
+const UNAUTHENTICATED_PATHS = ['/auth/login', '/auth/setup', '/auth/dev-login']
+
+/** The in-flight session probe, shared so a burst of 401s costs one request. */
+let sessionProbe: Promise<boolean> | null = null
+
+/** Ask the backend whether the session is still valid. Never throws. */
+async function sessionStillValid(): Promise<boolean> {
+  sessionProbe ??= apiClient
+    .get(SESSION_PROBE_URL)
+    .then(() => true)
+    .catch(() => false)
+    .finally(() => {
+      sessionProbe = null
+    })
+  return sessionProbe
+}
+
+/** Whether a 401 on this request can be answered without asking the backend. */
+function _knownWithoutProbing(url: string | undefined): boolean {
+  if (url === undefined) return true
+  return url === SESSION_PROBE_URL || UNAUTHENTICATED_PATHS.includes(url)
+}
+
+/**
+ * Decide whether a 401 means the session is over.
+ *
+ * A single 401 is not proof: one transient one used to end a session that was
+ * still valid, and the very next call returned 200 on the same cookie. The
+ * session is torn down only once the backend confirms it is gone, which keeps
+ * the dev-bypass re-login path (a genuine expiry still notifies) intact.
+ */
+async function _handleUnauthorized(url: string | undefined): Promise<void> {
+  if (!_knownWithoutProbing(url) && (await sessionStillValid())) {
+    log.warn('auth.transient_401', { url })
+    return
+  }
+  // The server clears the session cookie via Set-Cookie: Max-Age=0. We only
+  // need to sync the Zustand auth state. Routed through the leaf
+  // `unauthorized-handler` module so the client has no static dependency on
+  // the auth store: the auth store decides what a 401 means (redirect to
+  // login, or a password-free re-login under the dev bypass).
+  notifyUnauthorized()
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: ApiAxiosError) => {
     if (error.response?.status === 401) {
-      // The server clears the session cookie via Set-Cookie: Max-Age=0.
-      // We only need to sync the Zustand auth state. Routed through the
-      // leaf `unauthorized-handler` module so the client has no static
-      // dependency on the auth store. The auth store decides what a 401
-      // means (redirect to login, or a password-free re-login under the
-      // dev bypass); swallowing it here would leave an expired dev
-      // session permanently broken.
-      notifyUnauthorized()
+      // Deliberately not awaited: the failing request reports its own 401 to
+      // its caller now, and only the session-teardown decision waits on the
+      // confirmation.
+      void _handleUnauthorized(error.config?.url)
     }
     // Transparent retry for 429 responses when the backend surfaces a
     // Retry-After. Bounded so a hostile or mis-tuned server can't hang
