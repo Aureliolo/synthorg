@@ -45,6 +45,12 @@ def _write(root: Path, relpath: str, body: str) -> None:
     path = root / "src" / "synthorg" / relpath
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body, encoding="utf-8")
+    # Both trees the gate walks exist in any real checkout, and the gate
+    # fails closed on either being absent, so a sandbox that stands in for
+    # one must carry both.
+    (root / "src" / "synthorg" / "settings" / "definitions").mkdir(
+        parents=True, exist_ok=True
+    )
 
 
 def _run(root: Path) -> int:
@@ -149,6 +155,20 @@ def test_model_field_field_default_is_flagged(tmp_path: Path) -> None:
     assert _run(tmp_path) == 1
 
 
+def test_model_field_default_factory_is_flagged(tmp_path: Path) -> None:
+    """A callable default is still a default, and reaches the same field.
+
+    Reading only ``default=`` would let the same baked id ship through a
+    lambda, past a gate with no per-line opt-out and no baseline.
+    """
+    _write(
+        tmp_path,
+        "cfg.py",
+        'class C:\n    chat_model: str = Field(default_factory=lambda: "some-model")\n',
+    )
+    assert _run(tmp_path) == 1
+
+
 def test_model_field_positional_field_default_is_flagged(tmp_path: Path) -> None:
     """``Field("x")`` is a default too, and the gate's docstring says so."""
     _write(
@@ -220,6 +240,20 @@ def test_setting_definition_with_a_blank_default_passes(tmp_path: Path) -> None:
 
 def test_missing_source_tree_fails_closed(tmp_path: Path) -> None:
     """A misconfigured root must not read as a clean scan."""
+    assert _run(tmp_path) == 2
+
+
+def test_missing_definitions_tree_fails_closed(tmp_path: Path) -> None:
+    """The settings-definitions arm gets the same guard as the source arm.
+
+    Without it a moved or renamed definitions tree makes that arm scan zero
+    files while the gate still exits 0, which is the one failure mode a gate
+    with no opt-out and no baseline has.
+    """
+    source = tmp_path / "src" / "synthorg"
+    source.mkdir(parents=True)
+    (source / "clean.py").write_text("VALUE = 1\n", encoding="utf-8")
+
     assert _run(tmp_path) == 2
 
 

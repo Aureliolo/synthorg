@@ -33,7 +33,11 @@ from synthorg.engine.initiative.evaluate_models import (
     args_to_evaluation,
     build_evaluation_tool,
 )
-from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
+from synthorg.engine.loop_protocol import (
+    BudgetChecker,
+    ExecutionResult,
+    ShutdownChecker,
+)
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_TOOL_RESULT,
@@ -93,6 +97,42 @@ class _EvaluationCapture:
 
     def __init__(self) -> None:
         self.report: EvaluationReport | None = None
+
+    def settled(
+        self, *, lead_id: str, result: ExecutionResult
+    ) -> EvaluationReport | None:
+        """Log how the session ended and hand back its verdict, if any.
+
+        The holder answers this because it is the only thing that knows
+        whether a verdict arrived: the loop's termination reason says the
+        session stopped, never whether it judged anything, and a session
+        that ran its full turn budget without submitting looks identical
+        from the outside to one that finished early having judged.
+
+        Args:
+            lead_id: The accountable lead, for the event stream.
+            result: How the bounded session terminated.
+
+        Returns:
+            The submitted report, or ``None`` when none was submitted.
+        """
+        if self.report is None:
+            logger.warning(
+                INITIATIVE_EVALUATION_FAILED,
+                lead_id=lead_id,
+                reason="no_report",
+                termination=result.termination_reason.value,
+                termination_detail=result.error_message,
+            )
+            return None
+        logger.info(
+            INITIATIVE_EVALUATION_COMPLETED,
+            lead_id=lead_id,
+            objective_met=self.report.objective_met,
+            criteria=len(self.report.verdicts),
+            termination=result.termination_reason.value,
+        )
+        return self.report
 
 
 def _refuse(
@@ -325,24 +365,7 @@ class InitiativeEvaluator:
                     temperature=self._config.temperature
                 ),
             )
-        report = capture.report
-        if report is None:
-            logger.warning(
-                INITIATIVE_EVALUATION_FAILED,
-                lead_id=str(lead.id),
-                reason="no_report",
-                termination=result.termination_reason.value,
-                termination_detail=result.error_message,
-            )
-            return None
-        logger.info(
-            INITIATIVE_EVALUATION_COMPLETED,
-            lead_id=str(lead.id),
-            objective_met=report.objective_met,
-            criteria=len(report.verdicts),
-            termination=result.termination_reason.value,
-        )
-        return report
+        return capture.settled(lead_id=str(lead.id), result=result)
 
     def _build_context(self, lead: AgentIdentity, brief: str) -> AgentContext:
         """Build the lead-persona session context.

@@ -1,5 +1,8 @@
 """Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -20,6 +23,41 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("providers", "retry_max_attempts"),
     }
 )
+
+
+@contextmanager
+def _swap_failure_logged(
+    service: str, context: Mapping[str, object] | None = None
+) -> Iterator[None]:
+    """Log a failed hot-swap with context, then let it reach the dispatcher.
+
+    Both rebuilds here promise the same thing: on failure the service
+    already in ``AppState`` stays, and the dispatcher hears about it. The
+    swallow-and-continue variant would leave an operator's setting silently
+    unapplied, so the error is re-raised after it has been made readable.
+
+    Args:
+        service: Which service could not be swapped, for the log line.
+        context: Extra fields resolved as the body runs (the strategy a
+            router rebuild had got as far as reading), read at failure time
+            rather than passed up front so a fault before that read still
+            logs what was known.
+
+    Yields:
+        Nothing; the caller's body runs inside the guard.
+    """
+    try:
+        yield
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.error(
+            SETTINGS_SERVICE_SWAP_FAILED,
+            service=service,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            **(dict(context) if context is not None else {}),
+        )
+        raise
 
 
 class ProviderSettingsSubscriber:
@@ -115,16 +153,16 @@ class ProviderSettingsSubscriber:
         via ``SETTINGS_SERVICE_SWAP_FAILED`` before re-raising to the
         dispatcher.
         """
-        attempted_strategy: str | None = None
-        try:
+        attempted: dict[str, object] = {"attempted_strategy": None}
+        with _swap_failure_logged("model_router", attempted):
             result = await self._settings_service.get(
                 "providers",
                 "routing_strategy",
             )
-            attempted_strategy = result.value
+            attempted["attempted_strategy"] = result.value
             config = self._app_state.config
             new_routing = config.routing.model_copy(
-                update={"strategy": attempted_strategy},
+                update={"strategy": result.value},
             )
             new_router = ModelRouter(
                 new_routing,
@@ -135,16 +173,6 @@ class ProviderSettingsSubscriber:
             )
 
             self._app_state.wire(ProvidersStateSlice, model_router=new_router)
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.error(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="model_router",
-                attempted_strategy=attempted_strategy,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
 
     def _cassette_holds(
         self, registry: ProviderRegistry | None, key: str, *, note: str
@@ -199,7 +227,7 @@ class ProviderSettingsSubscriber:
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
-        try:
+        with _swap_failure_logged("provider_registry"):
             current = self._app_state.slice(ProvidersStateSlice).registry
             if self._cassette_holds(
                 current,
@@ -233,15 +261,6 @@ class ProviderSettingsSubscriber:
                 key=key,
                 note="provider registry rebuilt, swapped, and runtime reloaded",
             )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.error(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="provider_registry",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
 
     async def _apply_registry_swap(
         self,
