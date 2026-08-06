@@ -36,6 +36,7 @@ from synthorg.engine.errors import (
     EnvironmentProvisionError,
 )
 from synthorg.engine.workspace.environment.image_builder import (
+    BuildFailure,
     BuildOutcome,
     ImageBuilder,
 )
@@ -100,20 +101,26 @@ class _TransientBuildError(EnvironmentDockerBuildError):
         self.outcome = outcome
 
 
+#: Failures worth another attempt on their own: the build never got far
+#: enough for its log to say anything, and both causes are commonly a blip.
+_TRANSIENT_FAILURES: Final[frozenset[BuildFailure]] = frozenset(
+    {BuildFailure.TIMED_OUT, BuildFailure.DAEMON_UNAVAILABLE}
+)
+
+
 def _is_transient_build_failure(outcome: BuildOutcome) -> bool:
     """Classify a failed build as transient (retryable) or deterministic.
 
-    A timeout is always transient; otherwise the combined build log is
-    scanned for registry / network / daemon markers. A plain non-zero
-    exit with no transient marker is a deterministic Dockerfile failure
-    and is not retried.
+    A timeout or an unreachable daemon is always transient; otherwise the
+    combined build log is scanned for registry / network / daemon
+    markers. A build the daemon ran and rejected with no transient marker
+    is a deterministic Dockerfile failure and is not retried.
 
     Returns:
-        ``True`` when the build outcome looks transient (timeout or a
-        known registry/network/daemon marker in the log) and should
-        be retried; ``False`` for deterministic Dockerfile failures.
+        ``True`` when the build outcome looks transient and should be
+        retried; ``False`` for deterministic Dockerfile failures.
     """
-    if outcome.timed_out:
+    if outcome.failure in _TRANSIENT_FAILURES:
         return True
     haystack = outcome.log.lower()
     return any(marker in haystack for marker in _TRANSIENT_BUILD_MARKERS)
@@ -360,7 +367,7 @@ class DevcontainerEnvironmentStrategy:
                 ENVIRONMENT_IMAGE_BUILD_FAILED,
                 project_id=str(project_id),
                 tag=str(tag),
-                exit_code=exc.outcome.exit_code,
+                failure=exc.outcome.failure,
                 reason="transient_exhausted",
             )
             msg = f"devcontainer image build failed for {tag!r}"
@@ -370,7 +377,7 @@ class DevcontainerEnvironmentStrategy:
                 ENVIRONMENT_IMAGE_BUILD_FAILED,
                 project_id=str(project_id),
                 tag=str(tag),
-                exit_code=outcome.exit_code,
+                failure=outcome.failure,
             )
             msg = f"devcontainer image build failed for {tag!r}"
             raise EnvironmentDockerBuildError(msg)

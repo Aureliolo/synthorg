@@ -44,6 +44,7 @@ from synthorg.api.integrations_wiring import (
     auto_wire_integrations,
     wire_rate_limit_coordinator_factory,
 )
+from synthorg.api.lifecycle_helpers.binary_preflight import run_binary_preflight
 from synthorg.api.lifecycle_helpers.boot_resolvers import (
     build_default_approval_timeout_scheduler,
     resolve_budget_int,
@@ -316,8 +317,18 @@ def build_construction_services(
 
     Raises:
         RuntimeError: When the pagination cursor secret is ephemeral.
+        RequiredBinaryMissingError: When the image omits a binary the
+            backend shells out to on a critical path.
     """
     persistence = boot.persistence
+
+    # Before anything is wired: an image missing a binary the backend spawns
+    # would otherwise boot cleanly and fail at the moment the feature is used,
+    # which for git is every single dispatch. With no backend resolved yet,
+    # only the backend-independent binaries are demanded.
+    run_binary_preflight(
+        backend_name="" if persistence is None else str(persistence.backend_name)
+    )
 
     # ── Construction-time auto-wire: services that don't need connected
     # persistence ──

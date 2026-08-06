@@ -14,6 +14,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendError, GitBackendSeedError
 from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
+    describe_git_failure,
+    git_failure_detail,
     run_git_subprocess,
 )
 from synthorg.engine.workspace.git_backend.protocol import ResolvedSource
@@ -65,13 +67,17 @@ async def git(
         log_event=event,
     )
     if rc != 0:
+        # A cause means git never ran, so naming the return code would send
+        # the operator looking for a git error that does not exist.
+        cause = describe_git_failure(rc)
         logger.warning(
             event,
             project_id=project_id,
             git_args=_redact_args(args[:2]),
             return_code=rc,
+            cause=cause,
         )
-        msg = f"git {args[0] if args else ''} failed (rc={rc})"
+        msg = f"git {args[0] if args else ''} failed: {git_failure_detail(rc)}"
         raise fail_exc(msg)
     return stdout.strip()
 
@@ -135,16 +141,18 @@ async def assert_standalone_repo(
         # standalone, so the safe move is to abort provisioning rather
         # than let the unguarded `git config user.{name,email}` writes
         # proceed.
+        cause = describe_git_failure(rc)
         logger.warning(
             GIT_BACKEND_PROVISION_FAILED,
             project_id=project_id,
             reason="git_common_dir_probe_failed",
             repo_root=str(repo_root),
             return_code=rc,
+            cause=cause,
         )
         msg = (
             f"failed to resolve git-common-dir for {repo_root!s} "
-            f"(rc={rc}); refusing identity configuration"
+            f"({git_failure_detail(rc)}); refusing identity configuration"
         )
         raise fail_exc(msg)
     common_path = Path(common_dir.strip())

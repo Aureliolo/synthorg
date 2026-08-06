@@ -6,8 +6,8 @@ Defines the valid state transitions for a durable plan::
     PLANNING -> DRAFT | PENDING_REVIEW | SUPERSEDED | FAILED
     DRAFT -> PENDING_REVIEW | SUPERSEDED | FAILED
     PENDING_REVIEW -> DRAFT | APPROVED | REJECTED | SUPERSEDED | FAILED
-    APPROVED -> EXECUTING | SUPERSEDED
-    EXECUTING -> INTEGRATING | SUPERSEDED
+    APPROVED -> EXECUTING | SUPERSEDED | FAILED
+    EXECUTING -> INTEGRATING | SUPERSEDED | FAILED
     INTEGRATING -> EVALUATING | EXECUTING | SUPERSEDED
     EVALUATING -> COMPLETED | EXECUTING | SUPERSEDED
 
@@ -28,9 +28,17 @@ routed back as rework) without a re-plan.
 
 SUPERSEDED is reachable from every live status: a re-plan can retire a plan at
 any stage, including from either tail stage, which is how a failed integration
-or an unmet success criterion is resolved. FAILED covers a run that never
-reached a review decision (decomposition failed, or parking the approval
-failed), so it is reachable only from the pre-decision statuses.
+or an unmet success criterion is resolved.
+
+FAILED covers a run that could not be delivered at all: decomposition failed,
+parking the approval failed, or an approved plan could not be dispatched. The
+last is why APPROVED and EXECUTING reach it. Dispatch moves the plan to
+EXECUTING before it builds the task tree, so that the rollup never observes a
+project still PLANNING with tasks already running; a dispatch that then fails
+leaves a plan EXECUTING with a failed parent and no children, which is a state
+with no exit and nobody watching. The edge is what gets it out. Neither tail
+stage reaches FAILED: by then the work exists, so a failure there is a replan
+(SUPERSEDED) rather than a run that never happened.
 """
 
 from typing import Final
@@ -69,8 +77,12 @@ VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
             PlanStatus.FAILED,
         }
     ),
-    PlanStatus.APPROVED: frozenset({PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}),
-    PlanStatus.EXECUTING: frozenset({PlanStatus.INTEGRATING, PlanStatus.SUPERSEDED}),
+    PlanStatus.APPROVED: frozenset(
+        {PlanStatus.EXECUTING, PlanStatus.SUPERSEDED, PlanStatus.FAILED}
+    ),
+    PlanStatus.EXECUTING: frozenset(
+        {PlanStatus.INTEGRATING, PlanStatus.SUPERSEDED, PlanStatus.FAILED}
+    ),
     PlanStatus.INTEGRATING: frozenset(
         {PlanStatus.EVALUATING, PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}
     ),

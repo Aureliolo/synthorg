@@ -121,8 +121,13 @@ async def _dispatch_approved_plan(
     """Rebuild the durable plan into a subtask tree and dispatch it.
 
     The approval is already recorded APPROVED and the plan already synced, so
-    any failure here marks the parent task ``FAILED`` (surfacing the stuck plan
-    on the board and keeping it re-runnable) rather than silently returning.
+    any failure here marks the parent task ``FAILED`` and drives the plan out
+    of its dispatch status rather than silently returning. Both writes matter:
+    ``_link_initiative`` moves the plan to EXECUTING before the task tree is
+    built (so a rollup mid-dispatch never sees a PLANNING project with tasks
+    running), and a dispatch that then fails would otherwise leave the plan
+    EXECUTING forever with a failed parent and no children, which nothing
+    watches and nothing can move.
 
     Raises:
         MemoryError: Re-raised uncaught so a genuine OOM is never masked.
@@ -131,19 +136,34 @@ async def _dispatch_approved_plan(
     coordinator = app_state.slice(RuntimeStateSlice).coordinator
     if coordinator is None or task_id is None:
         await _fail_dispatch(
-            app_state, approval_id, task_id, decided_by, "coordinator/task missing"
+            app_state,
+            approval_id,
+            task_id=task_id,
+            plan_id=plan_id,
+            decided_by=decided_by,
+            why="coordinator/task missing",
         )
         return
     task = await task_engine_of(app_state).get_task(task_id)
     if task is None:
         await _fail_dispatch(
-            app_state, approval_id, task_id, decided_by, "parent task no longer exists"
+            app_state,
+            approval_id,
+            task_id=task_id,
+            plan_id=plan_id,
+            decided_by=decided_by,
+            why="parent task no longer exists",
         )
         return
     plan = await persistence_of(app_state).plans.get(plan_id) if plan_id else None
     if plan is None:
         await _fail_dispatch(
-            app_state, approval_id, task_id, decided_by, "durable plan not found"
+            app_state,
+            approval_id,
+            task_id=task_id,
+            plan_id=plan_id,
+            decided_by=decided_by,
+            why="durable plan not found",
         )
         return
     try:
@@ -161,9 +181,10 @@ async def _dispatch_approved_plan(
             await _fail_dispatch(
                 app_state,
                 approval_id,
-                task_id,
-                decided_by,
-                "project could not be linked to its plan",
+                task_id=task_id,
+                plan_id=plan_id,
+                decided_by=decided_by,
+                why="project could not be linked to its plan",
             )
             return
         # Dispatch from the durable plan so an operator's edits are exactly
@@ -184,7 +205,7 @@ async def _dispatch_approved_plan(
             APPROVAL_GATE_PLAN_DISPATCH_FAILED,
             exc,
             approval_id=approval_id,
-            note="approved plan could not be resumed; marking task failed",
+            note="approved plan could not be resumed; failing task and plan",
         )
         await _mark_task(
             app_state,
@@ -192,6 +213,12 @@ async def _dispatch_approved_plan(
             decided_by,
             target=TaskStatus.FAILED,
             reason="approved plan could not be resumed",
+        )
+        await _fail_plan(
+            app_state,
+            plan_id,
+            decided_by,
+            f"dispatch failed: {safe_error_description(exc)}",
         )
 
 
@@ -224,16 +251,19 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
 async def _fail_dispatch(
     app_state: AppState,
     approval_id: str,
+    *,
     task_id: str | None,
+    plan_id: str | None,
     decided_by: str,
     why: str,
 ) -> None:
-    """Log an approved-plan dispatch precondition failure and fail the task.
+    """Log an approved-plan dispatch precondition failure; fail task and plan.
 
     The approval is already persisted APPROVED, so a swallowed failure would
     leave the parent silently stuck in its pre-approval status with no
     board-visible signal. Move it to FAILED so the stuck plan surfaces and
-    stays re-runnable (FAILED -> ASSIGNED is valid).
+    stays re-runnable (FAILED -> ASSIGNED is valid), and fail the plan too so
+    it does not sit in a dispatch status nothing will ever advance.
     """
     logger.error(
         APPROVAL_GATE_PLAN_DISPATCH_FAILED,
@@ -247,6 +277,29 @@ async def _fail_dispatch(
         decided_by,
         target=TaskStatus.FAILED,
         reason=f"approved plan could not be resumed: {why}",
+    )
+    await _fail_plan(app_state, plan_id, decided_by, f"dispatch failed: {why}")
+
+
+async def _fail_plan(
+    app_state: AppState,
+    plan_id: str | None,
+    decided_by: str,
+    why: str,
+) -> None:
+    """Drive a plan that cannot dispatch out of its dispatch status.
+
+    Without this the plan rests in APPROVED or EXECUTING with a failed parent
+    and no child tasks: a state that can be entered, has no exit, and that
+    nothing watches. FAILED is terminal, carries the reason on the plan for
+    Plan Review to show, and is reachable from both dispatch statuses.
+    """
+    await _sync_plan_status(
+        app_state,
+        plan_id,
+        PlanStatus.FAILED,
+        requested_by=decided_by,
+        failure_reason=NotBlankStr(why),
     )
 
 
@@ -306,6 +359,9 @@ async def _sync_plan_status(
     app_state: AppState,
     plan_id: str | None,
     status: PlanStatus,
+    *,
+    requested_by: str | None = None,
+    failure_reason: NotBlankStr | None = None,
 ) -> None:
     """Reflect an approval decision onto the durable plan's status.
 
@@ -357,7 +413,12 @@ async def _sync_plan_status(
         return plan, plan.version
 
     async def write(plan: Plan, _version: int) -> None:
-        await service.sync_status(plan, status)
+        await service.sync_status(
+            plan,
+            status,
+            requested_by=requested_by,
+            failure_reason=failure_reason,
+        )
 
     try:
         await CASRetryHandler(

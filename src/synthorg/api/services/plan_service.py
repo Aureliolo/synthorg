@@ -306,6 +306,7 @@ class PlanService:
         *,
         requested_by: str | None = None,
         reason: str | None = None,
+        failure_reason: NotBlankStr | None = None,
     ) -> Plan:
         """Reflect an approval decision onto the plan (status -> approved/rejected).
 
@@ -321,20 +322,33 @@ class PlanService:
                 a task transition retains.
             reason: Why the transition happened (e.g. a project teardown),
                 recorded on the audit log alongside ``requested_by``.
+            failure_reason: Why the plan failed, persisted ON the plan so Plan
+                Review shows it. Required by the model (and the column check)
+                exactly when *status* is FAILED, and rejected otherwise, so it
+                is passed only alongside that status.
 
         Returns:
             The persisted, decided plan.
 
         Raises:
             ConflictError: The transition is not legal for the plan lifecycle.
+            ValidationError: FAILED was requested with no ``failure_reason``.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
         self._require_legal_transition(existing, status)
+        failing = status is PlanStatus.FAILED
+        if failing and failure_reason is None:
+            msg = "a plan may only be failed with a reason Plan Review can show"
+            raise ValidationError(msg)
+        # ``model_copy`` does not re-run validators, so the reason is written
+        # only alongside FAILED here rather than relying on the model's
+        # present-iff-FAILED check to catch a mismatch.
         decided = existing.model_copy(
             update={
                 "status": status,
+                **({"failure_reason": failure_reason} if failing else {}),
                 "version": existing.version + 1,
                 "updated_at": self._clock.now(),
             }

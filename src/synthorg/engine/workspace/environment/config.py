@@ -80,8 +80,8 @@ class EnvironmentDeps:
     Attributes:
         image_builder: Builds the sealed image for ``DEVCONTAINER`` (the
             ``build`` / Dockerfile path).  When ``None`` the factory
-            wires the default ``SubprocessImageBuilder`` (spawns
-            ``docker build`` on the host daemon).  Tests inject a fake.
+            wires the default ``AiodockerImageBuilder`` (builds on the
+            host daemon over the mounted socket).  Tests inject a fake.
         clock: Clock seam for provisioning timestamps.
     """
 

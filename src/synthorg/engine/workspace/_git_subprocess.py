@@ -17,11 +17,53 @@ import subprocess
 # lazy annotations ``inspect.get_annotations`` resolves these in module globals,
 # so a TYPE_CHECKING-only import would raise ``NameError`` at introspection time.
 from pathlib import Path
+from typing import Final
 
 from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+# Three unrelated causes, three codes. A single shared sentinel made "git is
+# not installed in this image" indistinguishable from "git rejected the
+# command", so the operator-facing error named a return code and nothing else.
+# Kept below every POSIX exit status (git's own top out at 128 + signal) so a
+# real git code can never collide with one.
+GIT_RC_BINARY_NOT_FOUND: Final[int] = -201
+GIT_RC_SPAWN_FAILED: Final[int] = -202
+GIT_RC_TIMED_OUT: Final[int] = -203
+
+_FAILURE_DESCRIPTIONS: Final[dict[int, str]] = {
+    GIT_RC_BINARY_NOT_FOUND: "the 'git' binary is not on PATH",
+    GIT_RC_SPAWN_FAILED: "the git subprocess could not be spawned",
+    GIT_RC_TIMED_OUT: "the git command timed out",
+}
+
+
+def describe_git_failure(return_code: int) -> str | None:
+    """Return why git never ran, or ``None`` when it ran and exited itself.
+
+    Args:
+        return_code: The code :func:`run_git_subprocess` handed back.
+
+    Returns:
+        An operator-facing cause for a code git never produced, or
+        ``None`` for a genuine git exit status (including success).
+    """
+    return _FAILURE_DESCRIPTIONS.get(return_code)
+
+
+def git_failure_detail(return_code: int) -> str:
+    """Render *return_code* for an error message a human will read.
+
+    Args:
+        return_code: The code :func:`run_git_subprocess` handed back.
+
+    Returns:
+        The cause when git never ran, else the bare return code, which is
+        all there is to say about a command git itself rejected.
+    """
+    return describe_git_failure(return_code) or f"rc={return_code}"
 
 
 def _sanitised_env() -> dict[str, str]:
@@ -90,8 +132,10 @@ async def run_git_subprocess(
         log_event: Structured-log event constant used on timeout.
 
     Returns:
-        Tuple ``(return_code, stdout_text, stderr_text)``. On spawn
-        failure or timeout, returns ``(-1, "", <message>)``.
+        Tuple ``(return_code, stdout_text, stderr_text)``. When git never
+        ran the code is one of :data:`GIT_RC_BINARY_NOT_FOUND`,
+        :data:`GIT_RC_SPAWN_FAILED` or :data:`GIT_RC_TIMED_OUT`, and
+        :func:`describe_git_failure` renders the cause.
 
     Raises:
         asyncio.CancelledError: Propagated (the native path kills the
@@ -100,7 +144,7 @@ async def run_git_subprocess(
     """
     # ``create_subprocess_exec`` can raise ``OSError`` before the process
     # ever starts (missing ``git`` binary, bad ``cwd``, resource limits,
-    # ...). Returning the normal contract as ``(-1, "", <message>)``
+    # ...). Returning the normal contract as ``(<code>, "", <message>)``
     # keeps every caller simple -- they already handle the non-zero rc
     # branch and do not have to special-case a thrown exception.
     try:
@@ -117,14 +161,7 @@ async def run_git_subprocess(
             repo_root, args, cmd_timeout=cmd_timeout, log_event=log_event
         )
     except OSError as exc:
-        msg = f"failed to spawn git subprocess: {exc.__class__.__name__}"
-        logger.warning(
-            log_event,
-            error_type=exc.__class__.__name__,
-            error=msg,
-            args=_redact_args(args),
-        )
-        return (-1, "", msg)
+        return _spawn_failure(exc, args, log_event=log_event)
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(),
@@ -140,7 +177,7 @@ async def run_git_subprocess(
             error=msg,
             args=_redact_args(args),
         )
-        return (-1, "", msg)
+        return (GIT_RC_TIMED_OUT, "", msg)
     except asyncio.CancelledError:
         proc.kill()
         await proc.wait()
@@ -152,12 +189,39 @@ async def run_git_subprocess(
         )
         raise
 
-    rc = proc.returncode if proc.returncode is not None else -1
+    rc = proc.returncode if proc.returncode is not None else GIT_RC_SPAWN_FAILED
     return (
         rc,
         stdout_bytes.decode("utf-8", errors="replace").strip(),
         stderr_bytes.decode("utf-8", errors="replace").strip(),
     )
+
+
+def _spawn_failure(
+    exc: OSError,
+    args: tuple[str, ...],
+    *,
+    log_event: str,
+) -> tuple[int, str, str]:
+    """Classify an ``OSError`` raised before git ever started.
+
+    ``FileNotFoundError`` is the one an operator can act on directly (the
+    image does not ship git), so it earns its own code and a message that
+    names the cause rather than a number.
+
+    Returns:
+        The ``(return_code, "", message)`` triple for the failure.
+    """
+    missing = isinstance(exc, FileNotFoundError)
+    rc = GIT_RC_BINARY_NOT_FOUND if missing else GIT_RC_SPAWN_FAILED
+    msg = f"failed to run git: {_FAILURE_DESCRIPTIONS[rc]}"
+    logger.warning(
+        log_event,
+        error_type=exc.__class__.__name__,
+        error=msg,
+        args=_redact_args(args),
+    )
+    return (rc, "", msg)
 
 
 async def _run_git_in_thread(
@@ -171,12 +235,12 @@ async def _run_git_in_thread(
 
     Used only when the running event loop cannot spawn subprocesses (the
     Windows ``SelectorEventLoop``). Honours the same
-    ``(return_code, stdout, stderr)`` / ``(-1, "", <message>)`` contract as
-    the native path.
+    ``(return_code, stdout, stderr)`` contract as the native path,
+    including its failure codes.
 
     Returns:
-        Tuple ``(return_code, stdout_text, stderr_text)``, or
-        ``(-1, "", <message>)`` on spawn failure or timeout.
+        Tuple ``(return_code, stdout_text, stderr_text)``, carrying one of
+        the module's failure codes when git never ran.
     """
 
     def _run() -> tuple[int, str, str]:
@@ -208,13 +272,6 @@ async def _run_git_in_thread(
             error=msg,
             args=_redact_args(args),
         )
-        return (-1, "", msg)
+        return (GIT_RC_TIMED_OUT, "", msg)
     except OSError as exc:
-        msg = f"failed to spawn git subprocess: {exc.__class__.__name__}"
-        logger.warning(
-            log_event,
-            error_type=exc.__class__.__name__,
-            error=msg,
-            args=_redact_args(args),
-        )
-        return (-1, "", msg)
+        return _spawn_failure(exc, args, log_event=log_event)

@@ -21,6 +21,13 @@ contents:
     # all: the handler factory raises at dispatch and the whole BackupService
     # is dropped.
     - postgresql-client
+    # Workspace provisioning, the git backends, the docs engine, the project
+    # brain and the agent git tools all shell out to git, and workspace
+    # provisioning sits on the critical path of every dispatch. Without it an
+    # approved plan cannot dispatch a single task on a stock deployment.
+    # api/lifecycle_helpers/binary_preflight.py refuses to boot without it,
+    # so this list and that manifest cannot drift apart silently.
+    - git
 
 accounts:
   groups:

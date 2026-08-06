@@ -41,7 +41,11 @@ from synthorg.engine.errors import (
     GitBackendRateLimitError,
     GitBackendRemoteMissingError,
 )
-from synthorg.engine.workspace._git_subprocess import _redact_args, run_git_subprocess
+from synthorg.engine.workspace._git_subprocess import (
+    _redact_args,
+    git_failure_detail,
+    run_git_subprocess,
+)
 from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
     git,
@@ -552,7 +556,7 @@ class ExternalRemoteGitBackend:
         if self._forge_provisioning_enabled and not await self._remote_repo_exists(pid):
             msg = f"forge repo for project {pid!r} does not exist"
             raise GitBackendRemoteMissingError(msg)
-        msg = f"git push failed for project {pid!r} (rc={rc})"
+        msg = f"git push failed for project {pid!r} ({git_failure_detail(rc)})"
         raise GitBackendPushError(msg)
 
     async def fetch(
@@ -621,7 +625,7 @@ class ExternalRemoteGitBackend:
         if _is_rate_limit(lowered):
             msg = f"forge rate-limited fetching project {pid!r}"
             raise GitBackendRateLimitError(msg)
-        msg = f"git fetch failed for project {pid!r} (rc={rc})"
+        msg = f"git fetch failed for project {pid!r} ({git_failure_detail(rc)})"
         raise GitBackendFetchError(msg)
 
     async def _remote_repo_exists(self, pid: str) -> bool:
