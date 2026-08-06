@@ -324,14 +324,21 @@ def _wire_role_router(
     return role_router
 
 
-def _wire_turn_intent_classifier(
+async def wire_turn_intent_classifier(
     app_state: AppState,
-    config: ChiefOfStaffConfig,
     *,
-    provider_registry: ProviderRegistry,
+    provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Build + wire the unified turn-intent classifier when a model is set.
+
+    Its own subsystem rather than a step inside the proposer's wiring: the
+    reconciler leaves an already-active subsystem alone, so a classifier
+    wired from inside the proposer's activation could never appear after
+    the proposer itself was up, which is exactly when an operator names the
+    model. Declared separately, a blank model leaves this subsystem
+    inactive and the write that fills it brings the classifier up.
 
     ``build_intent_classifier`` builds the classifier unconditionally of
     ``turn_router_enabled`` so the live per-request gate (applied in the
@@ -346,8 +353,10 @@ def _wire_turn_intent_classifier(
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
+    if provider_registry is None:
+        return
     classifier = build_intent_classifier(
-        config=config,
+        config=si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
@@ -361,14 +370,35 @@ def _wire_turn_intent_classifier(
         )
 
 
-def _wire_multi_voice_router(
+async def unwire_turn_intent_classifier(app_state: AppState) -> None:
+    """Take the classifier down so the next pass rebuilds it.
+
+    Paired with the wirer on any change to ``turn_intent_model``, which is
+    what makes clearing the model live: without a teardown the previous
+    classifier keeps classifying on its build-time pair, so the feature
+    could be switched on without a restart but never off.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, turn_intent_classifier=None)
+    logger.info(
+        API_APP_STARTUP,
+        service="turn_intent_classifier",
+        note="turn intent classifier unwired",
+    )
+
+
+async def wire_multi_voice_router(
     app_state: AppState,
-    config: ChiefOfStaffConfig,
     *,
-    provider_registry: ProviderRegistry,
+    provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Build + wire the multi-voice chime-in router when a model is set.
+
+    Its own subsystem for the same reason as the turn-intent classifier:
+    an already-active proposer would never re-run the wiring.
 
     ``build_multi_voice_router`` builds the router unconditionally of
     ``multi_voice_enabled`` so the live per-turn gate can flip without a
@@ -381,8 +411,10 @@ def _wire_multi_voice_router(
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
+    if provider_registry is None:
+        return
     router = build_multi_voice_router(
-        config=config,
+        config=si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
@@ -394,6 +426,18 @@ def _wire_multi_voice_router(
             service="multi_voice_router",
             note="multi-voice router wired",
         )
+
+
+async def unwire_multi_voice_router(app_state: AppState) -> None:
+    """Take the multi-voice router down so the next pass rebuilds it."""
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, multi_voice_router=None)
+    logger.info(
+        API_APP_STARTUP,
+        service="multi_voice_router",
+        note="multi-voice router unwired",
+    )
 
 
 async def wire_chief_of_staff_proposer(
@@ -415,24 +459,6 @@ async def wire_chief_of_staff_proposer(
             503 base a genuine wiring fault raises.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-
-    # The turn-intent classifier and multi-voice router are optional and each
-    # guards its own state field idempotently, so wire them on every pass -- even
-    # once the proposer exists -- so a classifier / multi-voice model configured
-    # after the proposer was first built still wires without a restart.
-    if provider_registry is not None:
-        _wire_turn_intent_classifier(
-            app_state,
-            si_config.chief_of_staff,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
-        _wire_multi_voice_router(
-            app_state,
-            si_config.chief_of_staff,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
 
     if app_state.slice(MetaStateSlice).chief_of_staff_proposer is not None:
         return
@@ -473,6 +499,30 @@ async def wire_chief_of_staff_proposer(
             service="chief_of_staff_proposer",
             note="proposer wired",
         )
+
+
+async def unwire_chief_of_staff_proposer(app_state: AppState) -> None:
+    """Take the proposer and its role router down so a pass can rebuild them.
+
+    Both bake their model choice in at construction, so replacing the
+    instance is what makes ``propose_model`` and ``routing_model`` live in
+    both directions: naming a model brings the proposer up, and changing or
+    clearing one replaces it rather than leaving the previous instance
+    answering on its build-time pair.
+
+    The conversational repositories and the resume service stay wired on
+    purpose. They are ungated: a decided intake approval from a previous
+    boot still needs its repository to route the decision, even once the
+    propose feature is switched off.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, chief_of_staff_proposer=None, role_router=None)
+    logger.info(
+        API_APP_STARTUP,
+        service="chief_of_staff_proposer",
+        note="proposer unwired",
+    )
 
 
 async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
@@ -520,10 +570,35 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     )
 
 
+async def unwire_conversational_plan_dispatcher(app_state: AppState) -> None:
+    """Detach the plan dispatcher from the proposer.
+
+    Runs before the proposer itself goes down, so the outgoing instance
+    cannot draft one more plan through collaborators the pass is replacing.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
+    if proposer is None:
+        return
+    proposer.attach_plan_dispatcher(None)
+    logger.info(
+        API_APP_STARTUP,
+        service="chief_of_staff_proposer",
+        note="plan dispatcher detached",
+    )
+
+
 __all__ = [
+    "unwire_chief_of_staff_proposer",
     "unwire_conversational_actor",
+    "unwire_conversational_plan_dispatcher",
+    "unwire_multi_voice_router",
+    "unwire_turn_intent_classifier",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
     "wire_conversational_plan_dispatcher",
     "wire_group_chat_service",
+    "wire_multi_voice_router",
+    "wire_turn_intent_classifier",
 ]

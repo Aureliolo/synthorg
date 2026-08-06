@@ -104,7 +104,7 @@ class StubWorkPipeline:
     def attach_narrator(self, narrator: RunNarrator | None) -> None:
         self.narrator = narrator
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
         self.refinement_router = router
 
     def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:

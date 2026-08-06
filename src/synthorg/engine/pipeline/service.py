@@ -219,14 +219,18 @@ class DefaultWorkPipeline:
         """
         self._narrator = narrator
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
-        """Attach the under-specified-team-work refinement router.
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
+        """Attach (or clear) the under-specified-team-work refinement router.
 
         Late-bind seam: the router wraps the Chief-of-Staff proposer,
         which wires only after persistence and a provider are available,
         so it is attached to the already-built pipeline by the startup
         hook. Absent, team-bound work with no definition of done falls
         through to the coordinator, where the clarification gate blocks it.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        router down when the proposer it wraps is replaced: the router binds
+        that proposer at construction, so a stale one would keep refining
+        through the instance the operator's model change replaced.
         """
         self._refinement_router = router
 

@@ -431,3 +431,18 @@ async def _wire_chief_of_staff_chat(
     if chat_backend is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_chat=chat_backend)
         logger.info(API_APP_STARTUP, service="chief_of_staff_chat", note="wired")
+
+
+async def _unwire_chief_of_staff_chat(app_state: AppState) -> None:
+    """Take the chat backend down so a pass can rebuild it.
+
+    The backend bakes its model in at construction, so replacing the
+    instance is what makes ``chat_model`` live in both directions: naming a
+    model brings the surface up, and changing or clearing one replaces it
+    rather than leaving the previous instance answering on its build-time
+    pair.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, chief_of_staff_chat=None)
+    logger.info(API_APP_STARTUP, service="chief_of_staff_chat", note="unwired")

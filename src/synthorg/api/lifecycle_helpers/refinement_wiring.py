@@ -62,3 +62,19 @@ async def wire_refinement_router(app_state: AppState) -> None:
         )
         return
     logger.info(API_APP_STARTUP, service="work_refinement_router", note="wired")
+
+
+async def unwire_refinement_router(app_state: AppState) -> None:
+    """Detach the refinement router from the work pipeline.
+
+    The router binds the proposer instance at construction, so it has to go
+    down with one: left attached it would keep refining through a proposer
+    the operator's model change has already replaced.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    if pipeline is None:
+        return
+    pipeline.attach_refinement_router(None)
+    logger.info(API_APP_STARTUP, service="work_refinement_router", note="unwired")

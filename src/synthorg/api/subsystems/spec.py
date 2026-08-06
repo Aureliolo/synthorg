@@ -55,6 +55,8 @@ class CapabilityId(StrEnum):
     CONVERSATIONAL_ACTOR = "conversational_actor"
     CHIEF_OF_STAFF_CHAT = "chief_of_staff_chat"
     CHIEF_OF_STAFF_PROPOSER = "chief_of_staff_proposer"
+    TURN_INTENT_CLASSIFIER = "turn_intent_classifier"
+    MULTI_VOICE_ROUTER = "multi_voice_router"
     GROUP_CHAT = "group_chat"
     SIGNALS_SERVICE = "signals_service"
     CUSTOM_RULES = "custom_rules"

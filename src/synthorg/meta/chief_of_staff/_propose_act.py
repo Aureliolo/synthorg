@@ -112,13 +112,17 @@ class ProposeActMixin:
     _config: ChiefOfStaffConfig
     _plan_dispatcher: ConversationalPlanDispatcher | None
 
-    def attach_plan_dispatcher(self, dispatcher: ConversationalPlanDispatcher) -> None:
-        """Attach the conversational plan dispatcher (late-bind seam).
+    def attach_plan_dispatcher(
+        self, dispatcher: ConversationalPlanDispatcher | None
+    ) -> None:
+        """Attach (or clear) the conversational plan dispatcher (late-bind seam).
 
         The dispatcher drives an accepted work brief into the plan-review
         spine (provision project, intake the objective, background the
         decompose+park). Wired by the startup hook once the work pipeline
-        and background-dispatch port are available.
+        and background-dispatch port are available. Passing ``None`` detaches
+        it, so a proposer on its way out cannot draft one last plan through
+        collaborators the pass is in the middle of replacing.
         """
         self._plan_dispatcher = dispatcher
 

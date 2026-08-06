@@ -544,14 +544,44 @@ that function. It matches the function by name rather than tracing calls, so a
 read inside a helper that wiring function calls is not excluded and stays
 live.
 
+#### A blank-default setting is judged on cold-start evidence
+
+A setting that ships with no value at all (`default=""`, `default=None`, or no
+`default=`) is in a position the seams above do not describe. For it the write
+that matters is the *first* one: the one that turns the feature on. Two shapes
+that satisfy the general rule prove nothing about that write, so the gate does
+not credit them here.
+
+- **A read that supplies a fallback.** It lives inside the component the
+  setting decides whether to build, and falls back to the pair that component
+  was built with. It lets an operator move a running instance to a different
+  model; it cannot bring one into being, because it does not run until one
+  exists.
+- **A namespace-wide bulk read.** It names the namespace, not the key: it
+  sweeps up every entry including the ones nothing consumes, and in this tree
+  it feeds a boot config snapshot rather than a live consumer.
+
+Between them those two masked `chief_of_staff.turn_intent_model`, which was
+written, persisted, shown in the dashboard, and applied to nothing until a
+restart, while the gate passed it on a live read inside the classifier the
+setting itself decided whether to build. What still counts for a blank-default
+setting is a declaration (subscriber pair, `enabled_by`, rebuild-backed
+`settings=`, dashboard reference) or a read with nowhere to fall back to: the
+`resolve_bound_model_live` + `require_configured_model` shape, where unset
+fails loud with a 503 naming the setting, so the first write arms the very next
+call. The violation is reported as kind `gated-by-itself`, and its message
+names the seams that would fix it rather than only the verdict.
+
 There is no per-line opt-out. A marker on this rule would read "this setting is
 writable and reaches nothing, and that is fine", which is the category the rule
 exists to abolish. The three sanctioned exits are: make it live, mark it
 `compose_set` and pass it from the launchers (which the sibling gate then
 checks), or delete it. Pre-existing violations are frozen in
 `scripts/setting_live_or_compose_set_baseline.txt`, one
-`<namespace>.<key>:<kind>` per line, where `kind` distinguishes `unreachable`
-from `construction-only`; a listed setting whose kind changes is a new
+`<namespace>.<key>:<kind>` per line, where `kind` is `unreachable` (nothing
+names it), `construction-only` (the only reads run while the runtime is
+assembled), or `gated-by-itself` (blank by default, and its only reads sit
+inside the component it gates); a listed setting whose kind changes is a new
 violation, not a covered one.
 
 ### Security toggle write guardrail

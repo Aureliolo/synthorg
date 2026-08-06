@@ -34,6 +34,25 @@ It fails when the only evidence sits on the construction path (inside any
 module ``build_runtime_services`` reaches, or inside a subsystem activation
 whose spec does not declare the key), or when there is no evidence at all.
 
+A setting that is **blank by default** is judged more narrowly, because for it
+the write that matters is the first one: the one that turns the feature on.
+Two shapes that satisfy the rule above prove nothing about that write, so they
+do not count here.
+
+- A read that supplies a fallback value. It lives inside the component the
+  setting decides whether to build, and falls back to the pair that component
+  was built with, so it can retarget a running instance but never conjure one.
+- A namespace-wide bulk read. It names the namespace, not the key: it sweeps
+  up every entry including the ones nothing consumes, and in this tree it feeds
+  a boot config snapshot rather than a live consumer.
+
+Between them those two masked a per-feature model that was written, persisted,
+shown in the dashboard, and applied to nothing until a restart. What still
+counts for a blank-default setting is a declaration (subscriber pair, spec
+``enabled_by``, rebuild-backed ``settings=``, dashboard reference) or a read
+with nowhere to fall back to, which is the sanctioned live-per-call binding
+shape: unset fails loud, so the first write arms the very next call.
+
 There is deliberately no per-line opt-out. A marker here would read "this
 setting is writable and reaches nothing, and that is fine", which is the
 category the rule abolishes. The three sanctioned exits are: make it live, mark
@@ -75,6 +94,7 @@ if __package__ in {None, ""}:  # standalone invocation
     )
     from _setting_reachability_evidence import (  # type: ignore[import-not-found]
         CONSTRUCTION,
+        GATED,
         LIVE,
         collect_evidence,
     )
@@ -86,6 +106,7 @@ else:
     )
     from scripts._setting_reachability_evidence import (
         CONSTRUCTION,
+        GATED,
         LIVE,
         collect_evidence,
     )
@@ -94,16 +115,20 @@ _BASELINE_REL: Final[str] = "scripts/setting_live_or_compose_set_baseline.txt"
 
 # Spelled as a literal type rather than an enum because these strings are the
 # baseline file's on-disk format, which must stay stable and diffable.
-type Kind = Literal["unreachable", "construction-only"]
+type Kind = Literal["unreachable", "construction-only", "gated-by-itself"]
 
 _KIND_UNREACHABLE: Final[Kind] = "unreachable"
 _KIND_CONSTRUCTION: Final[Kind] = "construction-only"
-_KINDS: Final[frozenset[str]] = frozenset({_KIND_UNREACHABLE, _KIND_CONSTRUCTION})
+_KIND_GATED: Final[Kind] = "gated-by-itself"
+_KINDS: Final[frozenset[str]] = frozenset(
+    {_KIND_UNREACHABLE, _KIND_CONSTRUCTION, _KIND_GATED}
+)
 _BASELINE_HEADER: Final[str] = """\
 # Frozen baseline of writable settings that reach nothing while the system
 # runs. Each line is `<namespace>.<key>:<kind>`, sorted, where kind is
-# `unreachable` (no seam names the setting) or `construction-only` (the only
-# reads run while the runtime is assembled).
+# `unreachable` (no seam names the setting), `construction-only` (the only
+# reads run while the runtime is assembled), or `gated-by-itself` (blank by
+# default, and its only reads live inside the component it gates).
 #
 # scripts/check_setting_live_or_compose_set.py suppresses exactly these
 # entries. A new violation, or a listed setting whose kind changes, fails the
@@ -122,6 +147,24 @@ _REASONS: Final[dict[str, str]] = {
         "writable, but the only reads run while the runtime is assembled, so a"
         " write applies no earlier than the next rebuild"
     ),
+    _KIND_GATED: (
+        "blank by default, and its only reads live inside the component it"
+        " gates the construction of, so the first write (the one that turns the"
+        " feature on) reaches nothing. It needs an unwired-to-wired seam: a"
+        " subscriber watched pair, a SubsystemSpec enabled_by, a settings="
+        " declaration alongside rebuild_on_change=True, or a dashboard read"
+    ),
+}
+
+
+# The scan's verdict maps one-to-one onto a baseline kind. A new reach
+# classification therefore raises here rather than collapsing into an existing
+# row, where it would suppress itself against the frozen baseline; the gate's
+# own guard turns that into exit 2, "the verdict cannot be trusted".
+_KIND_BY_STATUS: Final[dict[str | None, Kind]] = {
+    None: _KIND_UNREACHABLE,
+    CONSTRUCTION: _KIND_CONSTRUCTION,
+    GATED: _KIND_GATED,
 }
 
 
@@ -174,19 +217,21 @@ def _scan_with_notes(repo_root: Path) -> tuple[list[Violation], tuple[str, ...]]
     evidence = collect_evidence(
         repo_root, frozenset(record.pair for record in writable)
     )
+    statuses = {
+        record.setting_key: evidence.status(
+            record.pair, blank_default=record.blank_default
+        )
+        for record in writable
+    }
     violations = [
         Violation(
             setting_key=record.setting_key,
-            kind=(
-                _KIND_CONSTRUCTION
-                if evidence.status(record.pair) == CONSTRUCTION
-                else _KIND_UNREACHABLE
-            ),
+            kind=_KIND_BY_STATUS[statuses[record.setting_key]],
             source_file=record.source_file,
             source_line=record.source_line,
         )
         for record in writable
-        if evidence.status(record.pair) != LIVE
+        if statuses[record.setting_key] != LIVE
     ]
     return sorted(violations, key=Violation.baseline_key), evidence.dropped_helpers
 

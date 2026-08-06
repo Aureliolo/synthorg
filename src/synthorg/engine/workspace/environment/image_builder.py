@@ -11,10 +11,10 @@ context is tarred in-process rather than by a subprocess.
 import asyncio
 import io
 import tarfile
-from collections.abc import Mapping
+from collections.abc import AsyncIterable, Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 import aiodocker
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -288,7 +288,7 @@ class AiodockerImageBuilder:
         return self._classify(tag, log)
 
     @staticmethod
-    async def _consume(stream: Any) -> list[str]:
+    async def _consume(stream: AsyncIterable[object]) -> list[str]:
         """Drain the daemon's build stream into its log lines.
 
         The daemon reports a failed build as an ``error`` entry in the

@@ -91,11 +91,14 @@ _BRIDGE_ARITY: Final[int] = 2
 _PAIR_ARITY: Final[int] = 2
 _READ_WINDOW: Final[int] = 3
 _SPEC_CALL: Final[str] = "SubsystemSpec"
+# What the tree calls the value to use when a setting is unset. A read naming
+# one cannot bring a feature up from blank; it can only retarget a live one.
+_FALLBACK_KWARGS: Final[frozenset[str]] = frozenset({"fallback", "default"})
 _SPEC_REBUILD_KWARG: Final[str] = "rebuild_on_change"
 _SPEC_SETTING_KWARGS: Final[frozenset[str]] = frozenset({"settings", "enabled_by"})
 _ACTIVATION_KWARGS: Final[frozenset[str]] = frozenset({"activate", "deactivate"})
 
-type Reach = Literal["live", "construction"]
+type Reach = Literal["live", "construction", "gated"]
 
 # Public: the gate classifies each violation by comparing against these. Two
 # independent spellings of the same value would let a change here silently
@@ -103,6 +106,7 @@ type Reach = Literal["live", "construction"]
 # ``Final`` so the gate's dual-import shim can bind them in both branches.
 LIVE: Reach = "live"
 CONSTRUCTION: Reach = "construction"
+GATED: Reach = "gated"
 
 
 @dataclass(frozen=True)
@@ -111,20 +115,45 @@ class Evidence:
 
     live: frozenset[tuple[str, str]]
     construction: frozenset[tuple[str, str]]
+    cold_start: frozenset[tuple[str, str]] = frozenset()
+    """Pairs reached by something that works from a blank value: a declaration
+    (a subscriber's watched tuple, a subsystem's ``enabled_by`` or
+    rebuild-backed ``settings=``, a dashboard reference) or a read with no
+    build-time fallback. The distinction only matters for a blank-default
+    setting, where the write that matters is the first one."""
+
     dropped_helpers: tuple[str, ...] = ()
     """Forwarding-helper names ambiguity removed from the shared index. A
     setting whose only evidence ran through one is reported unreachable, so the
     report names them: otherwise the developer sees the verdict without the one
     fact that explains it."""
 
-    def status(self, pair: tuple[str, str]) -> Reach | None:
+    def status(
+        self, pair: tuple[str, str], *, blank_default: bool = False
+    ) -> Reach | None:
         """Return how *pair* is reached, or ``None`` when nothing reaches it.
 
         One live read settles it however many construction-path reads sit
         beside it, so the precedence lives here rather than in each caller.
+
+        A blank-default setting is judged on its cold-start evidence, and
+        reads ``GATED`` when every read it has falls back to a build-time
+        value. Such a read is real, but it can only retarget a binding that
+        already exists: it lives inside the component the setting's first
+        write was supposed to bring into being, so the write that turns the
+        feature on reaches nothing. Crediting it is what let a model setting
+        be written, persisted, shown in the dashboard, and applied to nothing.
+
+        Args:
+            pair: The ``(namespace, key)`` to classify.
+            blank_default: Whether the setting ships with no value.
+
+        Returns:
+            ``LIVE``, ``CONSTRUCTION``, ``GATED``, or ``None``.
         """
+        cold = pair in self.cold_start
         if pair in self.live:
-            return LIVE
+            return LIVE if cold or not blank_default else GATED
         return CONSTRUCTION if pair in self.construction else None
 
 
@@ -161,10 +190,16 @@ def collect_evidence(repo_root: Path, pairs: frozenset[tuple[str, str]]) -> Evid
     for path, rel in _source_modules(repo_root):
         _scan_module(path, rel, scan)
     scan.resolve_deferred()
-    scan.live.update(_web_referenced(repo_root, pairs))
+    dashboard = _web_referenced(repo_root, pairs)
+    scan.live.update(dashboard)
+    # The dashboard starts cold: it holds no setting-gated component to be
+    # missing, re-fetches through GET /settings, and renders whatever comes
+    # back, so a value it names applies on the next render.
+    scan.cold_start.update(dashboard)
     return Evidence(
         live=frozenset(scan.live),
         construction=frozenset(scan.construction),
+        cold_start=frozenset(scan.cold_start),
         dropped_helpers=scan.collector.dropped_names(),
     )
 
@@ -185,6 +220,7 @@ class _Scan:
     collector: HelperCollector
     live: set[tuple[str, str]] = field(default_factory=set)
     construction: set[tuple[str, str]] = field(default_factory=set)
+    cold_start: set[tuple[str, str]] = field(default_factory=set)
     deferred: list[_DeferredCall] = field(default_factory=list)
 
     def sink(self, *, is_construction: bool) -> set[tuple[str, str]]:
@@ -292,7 +328,12 @@ def _scan_module(path: Path, rel: str, scan: _Scan) -> None:
             bool(activations) and any(func.name in activations for func in scope)
         )
         sink = scan.sink(is_construction=is_construction)
-        sink.update(_node_evidence(node, names, scan.pairs))
+        found = _node_evidence(node, names, scan.pairs)
+        sink.update(found.cold_start)
+        sink.update(found.warm_only)
+        # A declaration says what it reaches wherever it is written, so sitting
+        # in an assembly module does not weaken it.
+        scan.cold_start.update(found.cold_start)
         if not isinstance(node, ast.Call):
             continue
         if scope:
@@ -366,12 +407,26 @@ def _record_call(
     )
 
 
+@dataclass(frozen=True)
+class _NodeEvidence:
+    """What one node proves about the settings it names.
+
+    ``cold_start`` is evidence that survives the setting being blank: a
+    declaration, or a read with nowhere to fall back to. ``warm_only`` is a
+    read that supplies a build-time fallback, which proves an operator can
+    retarget a live component but not that a first write brings one up.
+    """
+
+    cold_start: set[tuple[str, str]] = field(default_factory=set)
+    warm_only: set[tuple[str, str]] = field(default_factory=set)
+
+
 def _node_evidence(
     node: ast.AST,
     names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
-) -> set[tuple[str, str]]:
-    """Return the setting pairs one node names.
+) -> _NodeEvidence:
+    """Return the setting pairs one node names, split by what it proves.
 
     Args:
         node: The node to inspect.
@@ -379,19 +434,54 @@ def _node_evidence(
         pairs: The registered pairs to match against.
 
     Returns:
-        Every registered pair the node addresses.
+        The evidence, split cold-start against warm-only.
     """
-    found: set[tuple[str, str]] = set()
+    found = _NodeEvidence()
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         namespace, _, key = node.value.partition(".")
         if (namespace, key) in pairs:
-            found.add((namespace, key))
+            found.cold_start.add((namespace, key))
         return found
+    # A bare two-element pair is the watched-tuple shape a subscriber declares.
+    # The sliding window over a call's arguments is a read, and a read is
+    # warm-only exactly when it names what to use instead of a value.
+    warm = _falls_back(node)
+    sink = found.warm_only if warm else found.cold_start
     for first, second in itertools.pairwise(_pairable_sequence(node)):
-        found.update(names.resolve_jointly(first, second) & pairs)
+        sink.update(names.resolve_jointly(first, second) & pairs)
     if isinstance(node, ast.Call):
-        found.update(_call_evidence(node, names, pairs))
+        keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+        if _is_spec_call(node):
+            found.cold_start.update(_declared_settings(keywords, names, pairs))
+        else:
+            sink.update(_call_evidence(node, names, pairs))
+            # A bulk read names the namespace, not the key: it sweeps up every
+            # entry, including the ones nothing consumes, and in this tree it
+            # feeds a boot config snapshot. It is liveness for a setting whose
+            # consumer is already running, and no evidence at all about the
+            # write that is supposed to bring one into being.
+            found.warm_only.update(_namespace_read(node, names, pairs))
     return found
+
+
+def _falls_back(node: ast.AST) -> bool:
+    """Whether a call names a build-time value to use when the setting is unset.
+
+    A fallback is the signature of a read that lives inside the very component
+    the setting decides whether to build: it can retarget the running instance
+    but cannot conjure one, so it says nothing about the first write. A read
+    with no fallback either has a value or fails, which is what a feature
+    turned on from cold needs.
+
+    Args:
+        node: The node to inspect.
+
+    Returns:
+        ``True`` for a call carrying a fallback keyword.
+    """
+    return isinstance(node, ast.Call) and any(
+        kw.arg in _FALLBACK_KWARGS for kw in node.keywords
+    )
 
 
 def _pairable_sequence(node: ast.AST) -> list[ast.expr]:
@@ -431,11 +521,12 @@ def _call_evidence(
     names: ModuleBindings,
     pairs: frozenset[tuple[str, str]],
 ) -> set[tuple[str, str]]:
-    """Return the setting pairs one call addresses through its keywords.
+    """Return the setting pairs one call reads through its keywords.
 
     Covers the keyword-only resolver helpers, the ``MirrorField``
-    declarations, the bridge-config field bundles, the namespace-wide reads,
-    and a subsystem's declared settings.
+    declarations, the bridge-config field bundles, and the namespace-wide
+    reads. A subsystem's declared settings are handled by the caller, which
+    records them as a seam rather than a read.
 
     Args:
         call: The call to inspect.
@@ -454,15 +545,32 @@ def _call_evidence(
             pairs,
         )
     )
-    if _is_spec_call(call):
-        found.update(_declared_settings(keywords, names, pairs))
     attribute = call.func.attr if isinstance(call.func, ast.Attribute) else None
     if attribute == _BRIDGE_BUILDER and len(call.args) == _BRIDGE_ARITY:
         found.update(_bridge_fields(call, names, pairs))
-    if attribute in NAMESPACE_READS and call.args:
-        bulk = names.resolve(call.args[0])
-        found.update(pair for pair in pairs if pair[0] in bulk)
     return found
+
+
+def _namespace_read(
+    call: ast.Call,
+    names: ModuleBindings,
+    pairs: frozenset[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return the pairs a namespace-wide read sweeps up.
+
+    Args:
+        call: The call to inspect.
+        names: What this module's names resolve to.
+        pairs: The registered pairs to match against.
+
+    Returns:
+        Every registered pair in a namespace the call reads whole.
+    """
+    attribute = call.func.attr if isinstance(call.func, ast.Attribute) else None
+    if attribute not in NAMESPACE_READS or not call.args:
+        return set()
+    bulk = names.resolve(call.args[0])
+    return {pair for pair in pairs if pair[0] in bulk}
 
 
 def _is_spec_call(call: ast.Call) -> bool:

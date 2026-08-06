@@ -8,8 +8,8 @@ tar, and the mapping from what the daemon did to a :class:`BuildFailure`.
 import asyncio
 import tarfile
 from collections.abc import AsyncIterator
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import aiodocker
@@ -37,18 +37,23 @@ def _context(root: Path) -> tuple[Path, Path]:
     return context, dockerfile
 
 
+# One streamed build chunk. Nested because ``errorDetail`` carries a mapping,
+# which is the shape the classifier has to see through.
+type _Chunk = dict[str, object]
+
+
 class _FakeImages:
     """Stands in for ``aiodocker.Docker().images`` over one build."""
 
-    def __init__(self, chunks: list[dict[str, Any]] | BaseException) -> None:
+    def __init__(self, chunks: list[_Chunk] | BaseException) -> None:
         self._chunks = chunks
-        self.kwargs: dict[str, Any] = {}
+        self.kwargs: dict[str, object] = {}
 
-    def build(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+    def build(self, **kwargs: object) -> AsyncIterator[_Chunk]:
         self.kwargs = kwargs
         chunks = self._chunks
 
-        async def _stream() -> AsyncIterator[dict[str, Any]]:
+        async def _stream() -> AsyncIterator[_Chunk]:
             if isinstance(chunks, BaseException):
                 raise chunks
             for chunk in chunks:
@@ -60,7 +65,7 @@ class _FakeImages:
 class _FakeDocker:
     """Minimal ``aiodocker.Docker`` double: version probe plus images."""
 
-    def __init__(self, chunks: list[dict[str, Any]] | BaseException) -> None:
+    def __init__(self, chunks: list[_Chunk] | BaseException) -> None:
         self.images = _FakeImages(chunks)
         self.closed = False
 
@@ -71,7 +76,7 @@ class _FakeDocker:
         self.closed = True
 
 
-def _patch_client(client: object) -> Any:
+def _patch_client(client: object) -> AbstractContextManager[object]:
     return patch.object(aiodocker, "Docker", return_value=client)
 
 
@@ -163,7 +168,7 @@ class TestBuild:
     ) -> None:
         context, dockerfile = _context(tmp_path)
 
-        async def _hang() -> AsyncIterator[dict[str, Any]]:
+        async def _hang() -> AsyncIterator[_Chunk]:
             await asyncio.Event().wait()
             yield {}  # pragma: no cover -- unreachable, the wait never returns
 
@@ -184,7 +189,7 @@ class TestBuild:
         """A cancelled provision must not leave the build connection open."""
         context, dockerfile = _context(tmp_path)
 
-        async def _hang() -> AsyncIterator[dict[str, Any]]:
+        async def _hang() -> AsyncIterator[_Chunk]:
             await asyncio.Event().wait()
             yield {}  # pragma: no cover -- unreachable, the wait never returns
 

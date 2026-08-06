@@ -179,7 +179,7 @@ class ForecastGate:
         """Forward the narrator to the wrapped pipeline (decorator passthrough)."""
         self._work_pipeline.attach_narrator(narrator)
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
         """Forward the refinement router to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_refinement_router(router)
 

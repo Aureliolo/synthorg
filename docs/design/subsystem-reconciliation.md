@@ -137,9 +137,33 @@ construction rather than letting it fail silently at runtime.
 
 Declaring `settings=` without `rebuild_on_change` is the weaker and commoner
 case: it does not replace a running instance, but it does put the key in the
-settings subscriber's watched set, so a subsystem waiting on a value (the
-Chief-of-Staff features, each blank until an operator names a model) comes up
+settings subscriber's watched set, so a subsystem waiting on a value comes up
 on the write rather than on the next restart.
+
+### A per-feature model needs both halves
+
+Every Chief-of-Staff feature model is blank by default and baked into its
+component at construction, so its declaration has to buy two distinct things.
+A blank-to-named write brings an inactive subsystem up, which `settings=`
+alone delivers. A named-to-renamed or named-to-blank write has to *replace* a
+component already serving on its build-time pair, which only
+`rebuild_on_change` plus a `deactivate` delivers. Declaring the key without
+the flag gives an operator a feature that can be switched on without a restart
+but never off, and never moved to a different model.
+
+The classifier and the multi-voice router are their own subsystems for the
+same reason rather than steps inside the proposer's activation: the reconciler
+leaves an already-active subsystem alone, so a classifier wired from within the
+proposer's activation could never appear after the proposer was up, which is
+exactly when an operator names the model.
+
+Making the proposer replaceable makes its consumers replaceable too, which the
+graph invariant enforces rather than hopes for. `refinement_router` wraps the
+proposer instance and lives on the work pipeline, so a replaced proposer would
+leave it refining through the instance that went away;
+`conversational_plan_dispatcher` attaches to the proposer itself. Both declare
+a `deactivate` and `rebuild_on_change=True`, so they go down with their
+provider and come back bound to the replacement.
 
 A setting the resolver cannot serve is not a change. Its snapshot records "no
 reading" rather than a value, and the comparison skips those positions; the

@@ -15,7 +15,7 @@ import ast
 import io
 import sys
 import tokenize
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TypeIs
@@ -68,6 +68,7 @@ class SettingRecord:
     namespace: str
     key: str
     compose_set: bool
+    blank_default: bool
     source_file: str
     source_line: int
 
@@ -151,6 +152,7 @@ def _scan_file(path: Path, rel: str) -> Iterator[SettingRecord]:
                 namespace=namespace,
                 key=key,
                 compose_set=_compose_set(kwargs, rel, node.lineno),
+                blank_default=_blank_default(kwargs, aliases),
                 source_file=rel,
                 source_line=node.lineno,
             )
@@ -265,6 +267,34 @@ def _compose_set(kwargs: dict[str, ast.expr], rel: str, lineno: int) -> bool:
     if isinstance(flag, ast.Constant) and isinstance(flag.value, bool):
         return flag.value
     raise SettingScanError(_unresolved(rel, lineno, "compose_set"))
+
+
+def _blank_default(kwargs: dict[str, ast.expr], aliases: Mapping[str, str]) -> bool:
+    """Whether the setting ships with no value at all.
+
+    A blank default is what makes the chicken-and-egg possible: the component
+    the setting configures is not built until an operator names a value, so
+    the only live read of the setting lives inside an object that does not yet
+    exist. The gate needs to know which settings are in that position.
+
+    Args:
+        kwargs: The registration's keyword arguments.
+        aliases: Module-level name bindings, so a default spelled as a
+            constant resolves to the string it denotes.
+
+    Returns:
+        ``True`` for an absent, ``None`` or empty-string default. A computed
+        default (``str(CONST)``, ``json.dumps(...)``) is a value, so it is not
+        blank whether or not the scan can evaluate it.
+    """
+    node = kwargs.get("default")
+    if node is None:
+        return True
+    if isinstance(node, ast.Constant):
+        return node.value is None or node.value == ""
+    if isinstance(node, ast.Name):
+        return aliases.get(node.id, "sentinel-non-blank") == ""
+    return False
 
 
 def _resolve_keys(

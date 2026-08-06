@@ -119,6 +119,7 @@ def registration(
     namespace_member: str = "ENGINE",
     namespace_expr: str | None = None,
     compose_set: bool = False,
+    default_expr: str = '"false"',
 ) -> str:
     """Render one ``_r.register(SettingDefinition(...))`` block.
 
@@ -129,6 +130,9 @@ def registration(
         namespace_expr: Verbatim expression for the ``namespace=`` value,
             for exercising alias and enum-attribute resolution.
         compose_set: Whether to add ``compose_set=True``.
+        default_expr: Verbatim expression for ``default=``. A blank one
+            (``'""'`` or ``"None"``) is what puts the setting in the
+            chicken-and-egg position the gate judges differently.
 
     Returns:
         The rendered registration block.
@@ -140,7 +144,7 @@ def registration(
         f"        namespace={namespace},",
         f'        key="{key}",',
         "        type=SettingType.BOOLEAN,",
-        '        default="false",',
+        f"        default={default_expr},",
         '        description="...",',
         '        group="General",',
     ]
