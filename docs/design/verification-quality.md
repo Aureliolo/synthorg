@@ -234,6 +234,15 @@ closed and blocked a build that genuinely passed. The gate's verdict is not
 supposed to depend on which tool the model happened to pick, and
 model-supplied input is the wrong thing to let decide whether a gate has
 evidence at all.
+
+The command is untrusted too, so recognition reads the invoked program and
+its verb rather than searching the line for a word. A compound command is
+refused outright (`pytest || true` exits 0 whatever the suite did), and a
+package manager's `test` counts only as its own subcommand or the script
+`run` names: `test` is a real npm package, so `npm install test` succeeds
+and would otherwise mint passing evidence for a command that ran no tests.
+Build tools (`mvn`, `gradle`, `make`) keep positional target matching,
+because their arguments are phase names rather than verbs.
 `classify_grounding_requirement` marks a task REQUIRED when it declares (or
 produced) a CODE / TESTS artifact; a docs / plan / decision task is
 NOT_APPLICABLE and the oracle abstains. The verdict uses LATEST-run semantics
