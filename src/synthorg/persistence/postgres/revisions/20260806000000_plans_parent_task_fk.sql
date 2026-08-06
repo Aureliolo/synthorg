@@ -18,7 +18,8 @@
 -- unreachable; there is nothing to preserve in them.
 DELETE FROM plans
 WHERE NOT EXISTS (
-    SELECT 1 FROM tasks WHERE tasks.id = plans.parent_task_id
+    SELECT 1 FROM tasks
+    WHERE tasks.id = plans.parent_task_id
 );
 
 ALTER TABLE plans

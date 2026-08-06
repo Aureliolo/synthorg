@@ -273,10 +273,10 @@ class TestPlanReviewApprovalGate:
     async def test_refuses_to_park_a_plan_whose_parent_is_gone(self) -> None:
         """A task deleted mid-decomposition must not reach the review queue.
 
-        Decomposition runs for minutes. A delete landing in that window
-        used to be invisible: the run completed, the plan reached
-        PENDING_REVIEW, and the operator was asked to approve nine items
-        under a task that 404s.
+        Decomposition runs for minutes, and a delete landing in that window is
+        invisible to the run itself: it completes, the plan reaches
+        PENDING_REVIEW, and an operator is asked to approve nine items under a
+        task that 404s. The orphan can then be neither approved nor removed.
         """
         task = _result_task("root")
         gate, plans, tasks = await _gate(parent=task)

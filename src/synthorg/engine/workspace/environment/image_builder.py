@@ -208,6 +208,10 @@ class AiodockerImageBuilder:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised; the
             # daemon can refuse in a dozen aiodocker/aiohttp/OS shapes, and
             # every one of them means the same thing to the caller.
+            # lint-allow: swallow-ok -- not swallowed: an unreachable daemon is
+            # returned as a typed DAEMON_UNAVAILABLE outcome the provisioning
+            # path handles by degrading, and raising would turn a handled
+            # degradation into a 500 out of a greenlit run.
             reraise_critical(exc)
             logger.warning(
                 ENVIRONMENT_IMAGE_BUILD_FAILED,
@@ -275,6 +279,9 @@ class AiodockerImageBuilder:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised; a
             # build that dies mid-stream is reported to the caller as a
             # failed build rather than escaping as a 500 from provisioning.
+            # lint-allow: swallow-ok -- not swallowed: the failure is returned
+            # as a typed BUILD_FAILED outcome carrying the redacted log, which
+            # is what the caller decides on.
             reraise_critical(exc)
             detail = safe_error_description(exc)
             logger.warning(

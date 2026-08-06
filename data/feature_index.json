@@ -73,7 +73,8 @@
         "org_mutation_service",
         "workflow_rollback_service",
         "idempotency_service",
-        "analytics_read_service"
+        "analytics_read_service",
+        "plan_notifier"
       ]
     },
     {
@@ -1514,6 +1515,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-04T10:00:08.491296Z",
+  "generated_at": "2026-08-06T23:15:31.090699Z",
   "schema_version": 1
 }

@@ -187,13 +187,13 @@ class PlanReviewApprovalGate:
     async def _require_parent(self, task: Task, plan_id: UUID) -> None:
         """Refuse to park a plan whose objective task is gone.
 
-        Decomposition runs for minutes, and a delete landing in that window
-        used to be invisible: the run completed against the deleted row, the
-        plan reached PENDING_REVIEW, and the operator was asked to approve
-        nine items under a task that 404s. The foreign key now refuses the
-        delete, but a task deleted before that constraint existed, or one
-        removed by a path that bypasses the API, still has to be caught
-        before the approval is parked rather than after.
+        Decomposition runs for minutes, and a delete landing in that window is
+        invisible to the run itself: it completes against a deleted row and
+        asks an operator to approve items under a task that 404s. The foreign
+        key refuses the delete, so this catches what the constraint cannot: a
+        row that predates it, or one removed by a path that bypasses the API.
+        Checked before the approval is parked, because an orphan in the review
+        queue can be neither approved nor removed.
 
         Raises:
             PlanParentTaskMissingError: When the task no longer exists.
