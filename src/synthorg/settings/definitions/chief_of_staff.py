@@ -179,6 +179,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="work_request_dedupe_window_seconds",
+        type=SettingType.FLOAT,
+        default="300.0",
+        description=(
+            "How long a work request keeps deduplicating an identical re-send."
+            " Inside the window, a brief whose wording matches one still being"
+            " planned joins that request instead of opening a second"
+            " initiative over the same objective, and the reply says so. A"
+            " request already approved is never joined. 0 switches deduping"
+            " off, so every send opens its own initiative. Read live per"
+            " request."
+        ),
+        group="Conversational",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="alerts_enabled",
         type=SettingType.BOOLEAN,
         default="false",

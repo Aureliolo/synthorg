@@ -76,6 +76,10 @@ COS_ROUTING_RESPONSE_INVALID: Final[str] = "chief_of_staff.routing.response_inva
 COS_INTENT_CLASSIFIED: Final[str] = "chief_of_staff.intent.classified"
 COS_INTENT_FALLBACK: Final[str] = "chief_of_staff.intent.fallback"
 COS_INTENT_RESPONSE_INVALID: Final[str] = "chief_of_staff.intent.response_invalid"
+#: The routing decision itself, emitted on every path (override, fixed kind,
+#: classified, degraded, and the no-classifier default) so a turn's intent is
+#: readable from the logs rather than only from the HTTP response body.
+COS_TURN_INTENT_ROUTED: Final[str] = "chief_of_staff.turn.intent_routed"
 COS_TURN_DISPATCHED: Final[str] = "chief_of_staff.turn.dispatched"
 
 # -- Multi-voice chime-ins ---------------------------------------------

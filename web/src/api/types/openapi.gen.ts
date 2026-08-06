@@ -14668,6 +14668,8 @@ export type components = {
         /** PlanDraftSummary */
         readonly PlanDraftSummary: {
             readonly project: string;
+            /** @default false */
+            readonly reused_project: boolean;
             readonly task_id: string;
             readonly title: string;
         };
@@ -17694,18 +17696,29 @@ export type components = {
          *     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
          *     that is not there, which is the drift reading liveness from ``provides``
          *     exists to prevent.
+         *
+         *     ``UNREACHABLE`` is ``WAITING`` with no exit. Level-triggering rests on "a
+         *     dependency absent at boot is not a verdict: the next pass picks it up",
+         *     which holds for a dependency that is merely late and not for one an
+         *     operator switched off or that declined on its own condition. Reporting
+         *     that as ``WAITING`` promises a pass that will never come.
+         *
+         *     ``REBUILDING`` is the window inside a pass where a subsystem has been torn
+         *     down and not yet brought back. It reads as neither up nor waiting-on-
+         *     anything, and a concurrent read answering ``WAITING`` with an empty
+         *     ``waiting_on`` is the contract's own shape used to say nothing.
          * @enum {string}
          */
-        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "blocked" | "disabled" | "failed";
+        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "unreachable" | "rebuilding" | "blocked" | "disabled" | "failed";
         /** SubsystemReport */
         readonly SubsystemReport: {
-            /** @description Failure description, when failed */
+            /** @description Why it is not up, when failed, blocked or unreachable */
             readonly detail: string | null;
             /** @description Subsystem identifier */
             readonly name: string;
             readonly phase: components["schemas"]["SubsystemPhase"];
             /**
-             * @description Unmet dependencies, when waiting or degraded
+             * @description Unmet dependencies, when waiting, unreachable or degraded
              * @default []
              */
             readonly waiting_on: readonly string[];
@@ -17722,8 +17735,12 @@ export type components = {
             readonly disabled: number;
             /** @description Count whose activation raised */
             readonly failed: number;
+            /** @description Count mid-rebuild in this pass */
+            readonly rebuilding: number;
             /** @description Declared subsystems in activation order */
             readonly subsystems: readonly components["schemas"]["SubsystemReport"][];
+            /** @description Count waiting with no exit */
+            readonly unreachable: number;
             /** @description Count waiting on a dependency */
             readonly waiting: number;
         };

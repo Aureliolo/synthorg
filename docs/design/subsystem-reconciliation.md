@@ -201,8 +201,11 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 | Phase | Meaning |
 | --- | --- |
 | `active` | Its capability reads as available. |
+| `degraded` | Up, with a requirement it named gone. Only a subsystem with no teardown can rest here; one with a teardown is taken down instead. |
 | `waiting` | A declared dependency is not here yet; `waiting_on` names every one. |
-| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). It logs the reason. |
+| `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so no pass will supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
+| `rebuilding` | Torn down and coming back inside the pass currently running. |
+| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` names the declared settings that are blank, which is the shape behind nearly every decline here. |
 | `disabled` | An operator turned it off via `enabled_by`. |
 | `failed` | Activation raised; `detail` carries the redacted description. |
 
@@ -211,6 +214,25 @@ because reporting that case as `waiting` would name no dependency and leave an
 operator with nowhere to look. It is also the phase the retry snapshot is for:
 a `blocked` subsystem is re-attempted when something it declares moves, and
 otherwise on the next sweep.
+
+`unreachable` exists because level-triggering rests on "a dependency absent at
+boot is not a verdict: the next pass picks it up", and that holds for a
+dependency that is merely late, not for one an operator switched off or that
+declined on its own condition. Reporting those as `waiting` promises a pass
+that will never come, which is what left a kanban board waiting forever on a
+setting-disabled sprint service.
+
+`rebuilding` covers the window between a teardown and the re-activation that
+follows it in the same pass. Without it a concurrent read lands mid-rebuild and
+answers `waiting` with an empty `waiting_on`, which is the contract's own shape
+for "these capabilities are missing" used to name none of them.
+
+A `blocked` subsystem's `detail` is derived, never hand-written: the reconciler
+resolves the spec's own `settings=` keys and reports the blank ones. It says
+"likely" rather than "certainly" because the declining condition lives inside
+the activation, but a blank required setting is the reason behind nearly every
+decline in this tree, and naming it is the difference between an operator with
+a field to fill in and one reading source.
 
 ## Why not the alternatives
 

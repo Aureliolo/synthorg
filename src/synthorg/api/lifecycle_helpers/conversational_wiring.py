@@ -426,6 +426,7 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     )
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
     from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
     proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
@@ -445,6 +446,7 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
         work_pipeline=work_pipeline,
         clock=app_state.clock,
         dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
     proposer.attach_plan_dispatcher(dispatcher)
     logger.info(

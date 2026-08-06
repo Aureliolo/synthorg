@@ -19,6 +19,10 @@ from synthorg.meta.chief_of_staff.intent_router import (
 )
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.state import MetaStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import COS_TURN_INTENT_ROUTED
+
+logger = get_logger(__name__)
 
 
 def _classification_history(
@@ -93,6 +97,23 @@ async def resolve_turn_intent(
         The resolved :class:`IntentOutcome`. Falls back to EXPLAIN when no
         classifier is wired.
     """
+    return _logged(
+        await _resolve(app_state, body, override, conversation_id, named_targets)
+    )
+
+
+async def _resolve(
+    app_state: AppState,
+    body: str,
+    override: TurnIntent | None,
+    conversation_id: NotBlankStr | None,
+    named_targets: tuple[NotBlankStr, ...],
+) -> IntentOutcome:
+    """Pick the intent by the first path that decides it.
+
+    Returns:
+        The resolved :class:`IntentOutcome`.
+    """
     if override is not None:
         return IntentOutcome(
             intent=override,
@@ -108,6 +129,33 @@ async def resolve_turn_intent(
             intent=TurnIntent.EXPLAIN, reason=IntentRoutingReason.NO_INTENT_CLASSIFIER
         )
     return await classifier.classify(_classification_history(body, app_state))
+
+
+def _logged(outcome: IntentOutcome) -> IntentOutcome:
+    """Record the routing decision, whichever path produced it.
+
+    Whether a message starts work or is answered as a question is the single
+    most consequential routing decision the product makes, and it was invisible
+    from the logs: the only way to see the intent was to read it out of the
+    HTTP response. Logged on EVERY path, including the no-classifier default,
+    because "nothing was logged" could not be told apart from "the classifier
+    never ran".
+
+    Args:
+        outcome: The resolved outcome to record and hand back.
+
+    Returns:
+        *outcome*, unchanged.
+    """
+    logger.info(
+        COS_TURN_INTENT_ROUTED,
+        intent=outcome.intent.value,
+        reason=outcome.reason.value,
+        confidence=outcome.confidence,
+        model=outcome.model,
+        named_targets=len(outcome.named_targets),
+    )
+    return outcome
 
 
 __all__ = ["resolve_turn_intent"]

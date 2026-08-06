@@ -171,6 +171,24 @@ class IntentClassification(BaseModel):
     named_targets: tuple[NotBlankStr, ...] = ()
 
 
+@dataclass(frozen=True)
+class _Classified:
+    """One classification and the model that produced it.
+
+    The model rides with the verdict rather than being read back off the
+    classifier, because the pair is resolved live per call: a field on the
+    instance would name the pair the classifier was built with, which is
+    exactly the thing an operator changing the model is trying to move.
+
+    Attributes:
+        classification: The parsed structured output.
+        model: The model id the call dispatched on.
+    """
+
+    classification: IntentClassification
+    model: NotBlankStr
+
+
 class IntentOutcome(BaseModel):
     """The resolved intent for a turn, plus why it landed.
 
@@ -182,6 +200,11 @@ class IntentOutcome(BaseModel):
             ``None`` for an override / fixed-kind / no-classifier outcome.
         named_targets: Roles/names surfaced by the classifier for a group
             convene; empty otherwise.
+        model: The model id the classification actually dispatched on, which
+            is the live pair rather than the one bound at build time; ``None``
+            when no classification ran. Carried so the decision log names the
+            model that produced the verdict: diagnosing a misrouted turn means
+            knowing which model answered, and a build-time pair can be stale.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -190,6 +213,7 @@ class IntentOutcome(BaseModel):
     reason: IntentRoutingReason
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     named_targets: tuple[NotBlankStr, ...] = ()
+    model: NotBlankStr | None = None
 
 
 @runtime_checkable
@@ -311,11 +335,11 @@ class LlmIntentClassifier:
             The resolved outcome: the classifier's pick when it clears its
             floor, else ``EXPLAIN`` with the degrade reason.
         """
-        classification = await self._classify(history)
-        if isinstance(classification, IntentRoutingReason):
-            return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classification)
+        classified = await self._classify(history)
+        if isinstance(classified, IntentRoutingReason):
+            return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classified)
         floors = await self._resolve_live_floors()
-        return self._apply_floors(classification, floors)
+        return self._apply_floors(classified, floors)
 
     async def _resolve_live_floors(self) -> _IntentFloors:
         """Resolve the live ACT + CHARTER + CONFIGURE confidence floors.
@@ -391,7 +415,7 @@ class LlmIntentClassifier:
 
     def _apply_floors(
         self,
-        classification: IntentClassification,
+        classified: _Classified,
         floors: _IntentFloors,
     ) -> IntentOutcome:
         """Degrade a raw classification that does not clear its gate.
@@ -400,6 +424,7 @@ class LlmIntentClassifier:
             The classified outcome, or an ``EXPLAIN`` outcome carrying the
             reason the stricter intent was not reached.
         """
+        classification = classified.classification
         intent = classification.intent
         confidence = classification.confidence
         degrade: IntentRoutingReason | None = None
@@ -427,6 +452,7 @@ class LlmIntentClassifier:
                 intent=TurnIntent.EXPLAIN,
                 reason=degrade,
                 confidence=confidence,
+                model=classified.model,
             )
         logger.info(
             COS_INTENT_CLASSIFIED,
@@ -438,11 +464,12 @@ class LlmIntentClassifier:
             reason=IntentRoutingReason.CLASSIFIED,
             confidence=confidence,
             named_targets=classification.named_targets,
+            model=classified.model,
         )
 
     async def _classify(
         self, history: tuple[ConversationTurn, ...]
-    ) -> IntentClassification | IntentRoutingReason:
+    ) -> _Classified | IntentRoutingReason:
         """Run one classification call and parse its structured output.
 
         Classification is best-effort, so a classifier hiccup degrades to
@@ -451,8 +478,9 @@ class LlmIntentClassifier:
         surface why.
 
         Returns:
-            The parsed classification, or the fallback reason on a call
-            failure (``CLASSIFY_CALL_FAILED``) or invalid response
+            The parsed classification paired with the model it dispatched on,
+            or the fallback reason on a call failure
+            (``CLASSIFY_CALL_FAILED``) or invalid response
             (``RESPONSE_INVALID``).
         """
         user = TURN_INTENT_USER.format(
@@ -508,7 +536,10 @@ class LlmIntentClassifier:
         if parsed is None:
             return IntentRoutingReason.RESPONSE_INVALID
         try:
-            return IntentClassification.model_validate(parsed)
+            return _Classified(
+                classification=IntentClassification.model_validate(parsed),
+                model=NotBlankStr(model),
+            )
         except ValidationError as exc:
             logger.warning(
                 COS_INTENT_RESPONSE_INVALID,

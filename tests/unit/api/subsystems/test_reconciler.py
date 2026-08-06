@@ -1142,6 +1142,282 @@ class TestDeclinedRetry:
 
 
 @pytest.mark.unit
+class TestWhyItIsNotUp:
+    """A phase an operator cannot act on is the same dead end as no answer.
+
+    Each of these was a place the status surface knew the answer and said
+    something weaker: a decline with no reason, a wait with no exit, and a
+    teardown window reported as waiting on nothing at all.
+    """
+
+    async def test_a_declined_subsystem_names_the_setting_it_wanted(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+
+        async def _decline(_state: AppState) -> None:
+            """Read the settings and install nothing, as the memory wiring does."""
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return {"memory.embedder_model": "", "memory.backend": "sqlvector"}[
+                f"{namespace}.{key}"
+            ]
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+            settings=("memory.backend", "memory.embedder_model"),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        report = await reconciler.reconcile(state, trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+
+        assert status.phase is SubsystemPhase.BLOCKED
+        # The blank one and only the blank one: naming every declared setting
+        # would put the operator back to reading them all to find the empty
+        # one, which is the search the detail exists to remove.
+        assert status.detail == "unset: memory.embedder_model"
+
+    async def test_a_decline_with_nothing_declared_says_nothing(self) -> None:
+        # An honest absence. The condition lives inside the activation, so a
+        # spec declaring no settings has nothing to point at, and inventing a
+        # plausible reason would be worse than none.
+        world = _World(CapabilityId.PERSISTENCE)
+
+        async def _decline(_state: AppState) -> None:
+            """Install nothing, over a condition the declaration cannot see."""
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+
+        assert status.phase is SubsystemPhase.BLOCKED
+        assert status.detail is None
+
+    async def test_a_reason_clears_when_the_subsystem_comes_up(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        values = {"memory.embedder_model": ""}
+
+        async def _activate(_state: AppState) -> None:
+            if values["memory.embedder_model"]:
+                world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_activate,
+            settings=("memory.embedder_model",),
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        values["memory.embedder_model"] = "example-provider/example-small-001"
+        report = await reconciler.reconcile(state, trigger="settings_write")
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+
+        # A reason surviving the fix is a stale field an operator acts on, so
+        # it is dropped with the decline it explained rather than overwritten
+        # on the next decline that happens to produce one.
+        assert status.phase is SubsystemPhase.ACTIVE
+        assert status.detail is None
+
+    async def test_waiting_on_a_disabled_owner_is_unreachable(self) -> None:
+        world = _World()
+        owner = SubsystemSpec(
+            name="knowledge",
+            provides=CapabilityId.KNOWLEDGE_ENGINE,
+            activate=_installs(world, "knowledge", CapabilityId.KNOWLEDGE_ENGINE),
+            enabled_by="knowledge.enabled",
+        )
+        consumer = SubsystemSpec(
+            name="brain",
+            provides=CapabilityId.PROJECT_BRAIN,
+            requires=(CapabilityId.KNOWLEDGE_ENGINE,),
+            activate=_installs(world, "brain", CapabilityId.PROJECT_BRAIN),
+        )
+        reconciler = SubsystemReconciler((owner, consumer), _all_capabilities(world))
+        config = RootConfig(company_name="test")
+        state = AppState(
+            config=config.model_copy(
+                update={
+                    "knowledge": config.knowledge.model_copy(update={"enabled": False})
+                }
+            )
+        )
+
+        report = await reconciler.reconcile(state, trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "brain")
+
+        # Level-triggering rests on "absent at boot is not a verdict: the next
+        # pass picks it up". Over an owner an operator switched off there is no
+        # such pass, so WAITING would be a promise the reconciler cannot keep.
+        assert status.phase is SubsystemPhase.UNREACHABLE
+        assert status.waiting_on == (CapabilityId.KNOWLEDGE_ENGINE,)
+        assert status.detail is not None
+        assert "knowledge" in status.detail
+
+    async def test_waiting_on_a_blocked_owner_is_unreachable(self) -> None:
+        world = _World()
+
+        async def _decline(_state: AppState) -> None:
+            """Install nothing, so the owner rests BLOCKED."""
+
+        owner = SubsystemSpec(
+            name="knowledge",
+            provides=CapabilityId.KNOWLEDGE_ENGINE,
+            activate=_decline,
+        )
+        consumer = SubsystemSpec(
+            name="brain",
+            provides=CapabilityId.PROJECT_BRAIN,
+            requires=(CapabilityId.KNOWLEDGE_ENGINE,),
+            activate=_installs(world, "brain", CapabilityId.PROJECT_BRAIN),
+        )
+        reconciler = SubsystemReconciler((owner, consumer), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "brain")
+
+        assert status.phase is SubsystemPhase.UNREACHABLE
+        assert status.detail is not None
+        assert "knowledge" in status.detail
+
+    async def test_waiting_on_a_late_owner_stays_waiting(self) -> None:
+        # The case UNREACHABLE must not swallow: an owner that has not run yet
+        # is exactly the one the next pass brings up, and reporting it as
+        # unreachable would send an operator hunting a setting to change.
+        world = _World()
+        consumer = SubsystemSpec(
+            name="brain",
+            provides=CapabilityId.PROJECT_BRAIN,
+            requires=(CapabilityId.KNOWLEDGE_ENGINE,),
+            activate=_installs(world, "brain", CapabilityId.PROJECT_BRAIN),
+        )
+        reconciler = SubsystemReconciler((consumer,), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "brain")
+
+        assert status.phase is SubsystemPhase.WAITING
+        assert status.waiting_on == (CapabilityId.KNOWLEDGE_ENGINE,)
+        assert status.detail is None
+
+    async def test_a_mid_rebuild_read_reports_rebuilding(self) -> None:
+        world = _World(CapabilityId.PERSISTENCE)
+        values = {"memory.backend": "inmemory"}
+        seen: list[SubsystemPhase] = []
+        state = _app_state()
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        async def _activate(_state: AppState) -> None:
+            world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        async def _deactivate(_state: AppState) -> None:
+            # Reading from inside the teardown is the window a concurrent
+            # GET /subsystems lands in. Before REBUILDING existed it answered
+            # WAITING with an empty waiting_on: the contract's own shape for
+            # "these are missing" used to name none of them.
+            world.present.discard(CapabilityId.MEMORY_BACKEND)
+            seen.extend(
+                status.phase
+                for status in reconciler.statuses(state)
+                if status.name == "memory"
+            )
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_activate,
+            deactivate=_deactivate,
+            settings=("memory.backend",),
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        values["memory.backend"] = "sqlvector"
+        report = await reconciler.reconcile(state, trigger="settings_write")
+
+        assert seen == [SubsystemPhase.REBUILDING]
+        # And the mark is scoped to the pass: the subsystem is up again by the
+        # time the pass returns, so a later read must not still see it.
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+        assert status.phase is SubsystemPhase.ACTIVE
+        assert reconciler.statuses(state)[0].phase is SubsystemPhase.ACTIVE
+
+    async def test_a_failed_rebuild_does_not_leave_the_mark_behind(self) -> None:
+        # REBUILDING promises "coming back inside this pass". An activation
+        # that raises breaks that promise, and a mark surviving the pass would
+        # report a permanently failed subsystem as mid-rebuild forever.
+        world = _World(CapabilityId.PERSISTENCE)
+        values = {"memory.backend": "inmemory"}
+        attempts: list[int] = []
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        async def _activate(_state: AppState) -> None:
+            attempts.append(1)
+            if len(attempts) > 1:
+                msg = "rebuild failed"
+                raise SubsystemGraphInvalidError(msg)
+            world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_activate,
+            deactivate=_removes(world, "memory", CapabilityId.MEMORY_BACKEND),
+            settings=("memory.backend",),
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        values["memory.backend"] = "sqlvector"
+        report = await reconciler.reconcile(state, trigger="settings_write")
+
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+        assert status.phase is SubsystemPhase.FAILED
+        assert reconciler.statuses(state)[0].phase is SubsystemPhase.FAILED
+
+
+@pytest.mark.unit
 class TestReconcileEntryPoint:
     """What the one call boot and every trigger share does with a fault."""
 

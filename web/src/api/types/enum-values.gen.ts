@@ -1083,6 +1083,8 @@ export const SUBSYSTEM_PHASE_VALUES = [
     'active',
     'degraded',
     'waiting',
+    'unreachable',
+    'rebuilding',
     'blocked',
     'disabled',
     'failed',

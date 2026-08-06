@@ -119,11 +119,24 @@ class SubsystemPhase(StrEnum):
     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
     that is not there, which is the drift reading liveness from ``provides``
     exists to prevent.
+
+    ``UNREACHABLE`` is ``WAITING`` with no exit. Level-triggering rests on "a
+    dependency absent at boot is not a verdict: the next pass picks it up",
+    which holds for a dependency that is merely late and not for one an
+    operator switched off or that declined on its own condition. Reporting
+    that as ``WAITING`` promises a pass that will never come.
+
+    ``REBUILDING`` is the window inside a pass where a subsystem has been torn
+    down and not yet brought back. It reads as neither up nor waiting-on-
+    anything, and a concurrent read answering ``WAITING`` with an empty
+    ``waiting_on`` is the contract's own shape used to say nothing.
     """
 
     ACTIVE = "active"
     DEGRADED = "degraded"
     WAITING = "waiting"
+    UNREACHABLE = "unreachable"
+    REBUILDING = "rebuilding"
     BLOCKED = "blocked"
     DISABLED = "disabled"
     FAILED = "failed"

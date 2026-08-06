@@ -3,28 +3,40 @@
 A watched engine-classifier / external-API / coordination key change triggers a
 single ``reload_runtime_services`` rebuild (the values are already re-read from
 the live resolver on rebuild). Tests assert the rebuild fires for each watched
-namespace, no-ops on an unexpected pair, and re-raises a rebuild failure.
+namespace, no-ops on an unexpected pair, re-raises a rebuild failure, and that
+a burst of writes costs one rebuild rather than one each.
 """
 
+import asyncio
 from unittest.mock import create_autospec
 
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.runtime_reload_subscriber import (
     RuntimeReloadSettingsSubscriber,
 )
 from synthorg.workers import runtime_builder
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _make_subscriber() -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
-    app_state = make_app_state(config=RootConfig(company_name="test"))
+def _make_subscriber(
+    window_seconds: float = 0.0,
+) -> tuple[RuntimeReloadSettingsSubscriber, AppState]:
+    async def _get_float(namespace: str, key: str) -> float:
+        assert (namespace, key) == ("engine", "runtime_reload_coalesce_window_seconds")
+        return window_seconds
+
+    app_state = make_app_state(
+        config=RootConfig(company_name="test"),
+        config_resolver=mock_of[ConfigResolver](get_float=_get_float),
+    )
     sub = RuntimeReloadSettingsSubscriber(
         app_state=app_state,
         settings_service=create_autospec(SettingsService, instance=True),
@@ -155,3 +167,163 @@ class TestReload:
         sub, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="rebuild boom"):
             await sub.on_settings_changed("external_api", "enabled")
+
+
+class _GatedReload:
+    """Reload stand-in that blocks until released, recording every call."""
+
+    def __init__(self) -> None:
+        self.triggers: list[str] = []
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self.fail: Exception | None = None
+
+    async def __call__(self, _app_state: AppState, *, trigger: str) -> None:
+        self.triggers.append(trigger)
+        self.entered.set()
+        await self.release.wait()
+        if self.fail is not None:
+            raise self.fail
+
+
+class TestCoalescing:
+    """A burst of writes costs one rebuild, without weakening what a write means.
+
+    Saving a settings form writes one key per field. Rebuilding the engine,
+    coordinator and pipeline once per field took the org out of service for the
+    length of the burst, to converge on the state the last write asked for.
+    """
+
+    async def test_a_burst_costs_one_rebuild(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = create_autospec(runtime_builder.reload_runtime_services)
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
+        sub, _ = _make_subscriber()
+
+        await asyncio.gather(
+            sub.on_settings_changed("engine", "scoping_enabled"),
+            sub.on_settings_changed("engine", "clarification_enabled"),
+            sub.on_settings_changed("memory", "backend"),
+            sub.on_settings_changed("tools", "web_search_enabled"),
+        )
+
+        assert spy.await_count == 1
+        # And the one rebuild says what it carried, so a reload line stays
+        # attributable to the writes behind it rather than to whichever of
+        # them happened to open the batch.
+        trigger = spy.await_args.kwargs["trigger"]
+        assert trigger.startswith("setting:")
+        assert trigger.endswith("+2")
+
+    async def test_every_writer_waits_for_the_rebuild_that_carried_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The property a write depends on: it returns only once the runtime
+        # reflects it. Sharing a rebuild must not turn any writer's return
+        # into a promise the rebuild has not kept yet.
+        gated = _GatedReload()
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", gated)
+        sub, _ = _make_subscriber()
+
+        writers = [
+            asyncio.create_task(sub.on_settings_changed("engine", "scoping_enabled")),
+            asyncio.create_task(sub.on_settings_changed("memory", "backend")),
+        ]
+        await gated.entered.wait()
+        assert not any(task.done() for task in writers)
+
+        gated.release.set()
+        await asyncio.gather(*writers)
+
+    async def test_a_failure_reaches_every_writer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        gated = _GatedReload()
+        gated.fail = RuntimeError("rebuild boom")
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", gated)
+        sub, _ = _make_subscriber()
+
+        writers = [
+            asyncio.create_task(sub.on_settings_changed("engine", "scoping_enabled")),
+            asyncio.create_task(sub.on_settings_changed("memory", "backend")),
+        ]
+        await gated.entered.wait()
+        gated.release.set()
+        outcomes = await asyncio.gather(*writers, return_exceptions=True)
+
+        # A writer whose rebuild failed must not be told it succeeded because
+        # another writer opened the batch.
+        assert [type(outcome) for outcome in outcomes] == [RuntimeError, RuntimeError]
+
+    async def test_a_write_during_a_rebuild_gets_its_own(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The boundary the batching must not cross: a rebuild already under
+        # way read the settings before this write landed, so joining it would
+        # return "applied" over a runtime that never saw the value.
+        gated = _GatedReload()
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", gated)
+        sub, _ = _make_subscriber()
+
+        first = asyncio.create_task(
+            sub.on_settings_changed("engine", "scoping_enabled")
+        )
+        await gated.entered.wait()
+        second = asyncio.create_task(sub.on_settings_changed("memory", "backend"))
+        gated.release.set()
+        await asyncio.gather(first, second)
+
+        assert gated.triggers == [
+            "setting:engine.scoping_enabled",
+            "setting:memory.backend",
+        ]
+
+    async def test_a_cancelled_writer_does_not_cancel_the_rebuild(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The shared rebuild is not any one writer's to abandon: cancelling
+        # the coroutine that opened it would otherwise leave every other
+        # writer's value unapplied, and the runtime half-swapped.
+        gated = _GatedReload()
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", gated)
+        sub, _ = _make_subscriber()
+
+        leaving = asyncio.create_task(
+            sub.on_settings_changed("engine", "scoping_enabled")
+        )
+        staying = asyncio.create_task(sub.on_settings_changed("memory", "backend"))
+        await gated.entered.wait()
+        leaving.cancel()
+        gated.release.set()
+
+        await staying
+        assert leaving.cancelled()
+        assert gated.triggers == ["setting:engine.scoping_enabled,memory.backend"]
+
+    async def test_the_window_is_read_live_per_batch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Held rather than re-read, an operator widening the window after a
+        # burst of rebuilds would have to restart for the change they made
+        # precisely to stop needing one.
+        windows: list[float] = [0.0, 0.0]
+        spy = create_autospec(runtime_builder.reload_runtime_services)
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
+
+        async def _get_float(_namespace: str, _key: str) -> float:
+            return windows.pop(0)
+
+        app_state = make_app_state(
+            config=RootConfig(company_name="test"),
+            config_resolver=mock_of[ConfigResolver](get_float=_get_float),
+        )
+        sub = RuntimeReloadSettingsSubscriber(
+            app_state=app_state,
+            settings_service=create_autospec(SettingsService, instance=True),
+        )
+
+        await sub.on_settings_changed("engine", "scoping_enabled")
+        await sub.on_settings_changed("memory", "backend")
+
+        assert windows == []

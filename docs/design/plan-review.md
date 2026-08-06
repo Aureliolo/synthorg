@@ -228,8 +228,7 @@ A work request in the unified chat (a `/meta/chat/turn` classified `propose`) is
 first-class producer of plans. A conversational brief becomes ONE durable
 objective, not a list of
 candidate work items to approve individually. `ConversationalPlanDispatcher`
-(`meta/chief_of_staff/plan_intake.py`) provisions or reuses a project (a `uuid5`
-keyed on the conversation, so a follow-up turn lands on the same project), builds a
+(`meta/chief_of_staff/plan_intake.py`) provisions or reuses a project, builds a
 single `WorkItem` with `plan_required=True`, and runs `intake_only` synchronously so
 the operator gets an immediate `PlanDraftSummary` (task id, project, title). Execution
 is backgrounded: `continue_from_intake` decomposes the objective and, because
@@ -238,6 +237,24 @@ parks a `PLAN_REVIEW` approval carrying the drafted plan. The propose turn there
 never parks per-item work approvals; it hands back a pointer into Plan Review, and
 the dashboard's Request-work result links there. Steering directives a turn also
 raises stay on their own confirmation path (compensated if the plan draft fails).
+
+### One request, however many times it is sent
+
+The project id is a `uuid5` derived from the normalised objective (lower-cased,
+with runs of whitespace collapsed), not from the conversation, because every turn opens a new
+conversation: keying on it made a re-send a different request by construction,
+and an operator who waited fifteen seconds with no feedback and sent again got a
+second project, a second plan and a second decomposition run over one objective.
+
+A re-send inside `chief_of_staff.work_request_dedupe_window_seconds` that finds
+its earlier request still in `PLANNING` joins it, and the reply says so: folding
+two sends into one silently is worse than forking them, because the operator is
+left believing they filed two. Past `PLANNING` the plan has been reviewed and
+dispatched, so a new brief is never folded into it: that would file work against
+a decision made about different words. The derivation is what makes this hold
+across workers and restarts without a lock, since two racing sends derive the
+same id and one create loses. Setting the window to 0 turns the reuse off, so
+every send opens its own initiative.
 
 ## API
 

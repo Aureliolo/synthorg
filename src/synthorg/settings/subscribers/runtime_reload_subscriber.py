@@ -7,21 +7,46 @@ model-matcher knobs, the external-API runtime gate, and the coordination
 middleware toggle. The rebuild hot-swaps the agent engine, coordinator, work
 pipeline, and entry adapters with no process restart.
 
-A single subscriber coalesces these keys because they all converge on the same
-``reload_runtime_services`` call (serialised by its module lock); one reload per
-change is correct and cheap relative to a restart.
+A single subscriber owns these keys because they all converge on the same
+``reload_runtime_services`` call, and writes arrive in bursts: an operator
+saving a settings form, or first-run setup writing a form's worth of model
+refs, produces one notification per field. Serving each with its own rebuild
+tore down and rebuilt the engine, coordinator and pipeline once per key while
+the org was trying to answer. Writes are therefore batched over a quiet window
+and served by one rebuild, without weakening what a write promises: it still
+returns only after a rebuild that started AFTER it, and still sees that
+rebuild's failure.
 """
+
+import asyncio
+import threading
+from dataclasses import dataclass, field
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
+    SETTINGS_RUNTIME_RELOAD_COALESCED,
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
+
+# Used when the window's own setting cannot be read, which is the boot window
+# before the resolver is wired. Matches the registered default rather than
+# standing in for it: a burst during boot is exactly the case (first-run setup
+# writes one) and falling back to no window would leave it uncoalesced.
+_DEFAULT_COALESCE_WINDOW_SECONDS: Final[float] = 0.75
+
+# How many keys a batch names in its rebuild trigger before it stops listing
+# them. The trigger is a log label, and a burst carries every key an operator
+# touched; naming two and counting the rest keeps it readable without
+# pretending the batch was smaller than it was.
+_TRIGGER_NAMED_KEYS: Final[int] = 2
 
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
@@ -127,6 +152,43 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 )
 
 
+@dataclass(slots=True)
+class _Batch:
+    """Writes waiting on one shared rebuild.
+
+    Attributes:
+        done: Resolved with the rebuild's outcome. Every writer that joined
+            awaits this same future, so all of them see one rebuild's success
+            or its failure.
+        pairs: The ``(namespace, key)`` writes this rebuild will carry, kept
+            for the trigger label an operator reads in the logs.
+        runner: Strong reference to the task driving the batch. A task with no
+            live reference can be collected mid-flight, which would drop the
+            rebuild and leave every joiner waiting on a future nothing will
+            ever resolve.
+    """
+
+    done: asyncio.Future[None]
+    pairs: set[tuple[str, str]] = field(default_factory=set)
+    runner: asyncio.Task[None] | None = None
+
+
+def _trigger(pairs: set[tuple[str, str]]) -> str:
+    """Render a rebuild trigger naming the writes that caused it.
+
+    Args:
+        pairs: The writes the batch carried.
+
+    Returns:
+        A label naming up to :data:`_TRIGGER_NAMED_KEYS` of them, plus a count
+        of the rest.
+    """
+    keys = sorted(f"{namespace}.{key}" for namespace, key in pairs)
+    named = ",".join(keys[:_TRIGGER_NAMED_KEYS])
+    rest = len(keys) - _TRIGGER_NAMED_KEYS
+    return f"setting:{named}" if rest <= 0 else f"setting:{named}+{rest}"
+
+
 class RuntimeReloadSettingsSubscriber:
     """Rebuild runtime services on a watched engine/external_api/coordination edit.
 
@@ -142,6 +204,13 @@ class RuntimeReloadSettingsSubscriber:
     ) -> None:
         self._app_state = app_state
         self._settings_service = settings_service
+        # The batch still open for joiners, or None when the next write starts
+        # a fresh one. Guarded by a threading lock rather than an asyncio one
+        # because every operation on it is synchronous, and because this
+        # subscriber is held on an AppState that can outlive a single loop: a
+        # per-loop lock would silently stop serialising across two.
+        self._pending: _Batch | None = None
+        self._guard = threading.Lock()
 
     @property
     def watched_keys(self) -> frozenset[tuple[str, str]]:
@@ -154,7 +223,18 @@ class RuntimeReloadSettingsSubscriber:
         return "runtime-reload"
 
     async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Trigger a runtime-services rebuild so the new value goes live."""
+        """Trigger a runtime-services rebuild so the new value goes live.
+
+        Returns once a rebuild that began after this write has finished, and
+        raises whatever that rebuild raised. The rebuild may be shared with
+        other writes that landed inside the same window; sharing one is not
+        the same as skipping one, so nothing this call promises is weakened.
+
+        Raises:
+            Exception: Whatever the rebuild raised, re-raised to every writer
+                the batch served so a failure reaches the operator who caused
+                it rather than only the one who happened to open the batch.
+        """
         if (namespace, key) not in _WATCHED:
             logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -164,22 +244,127 @@ class RuntimeReloadSettingsSubscriber:
                 note="ignored unexpected pair",
             )
             return
+        batch = self._join(namespace, key)
+        # Shielded: a cancelled writer must not cancel the shared rebuild out
+        # from under every other writer waiting on it, and the runtime would
+        # be left half-swapped for all of them.
+        await asyncio.shield(batch.done)
+
+    def _join(self, namespace: str, key: str) -> _Batch:
+        """Add this write to the batch that will carry it.
+
+        Args:
+            namespace: The written setting's namespace.
+            key: The written setting's key.
+
+        Returns:
+            The batch whose rebuild starts after this write.
+        """
+        with self._guard:
+            batch = self._pending
+            if batch is None:
+                batch = _Batch(done=asyncio.get_running_loop().create_future())
+                self._pending = batch
+                batch.runner = asyncio.create_task(self._run(batch))
+            batch.pairs.add((namespace, key))
+            return batch
+
+    async def _run(self, batch: _Batch) -> None:
+        """Wait out the window, then rebuild once for everything that joined.
+
+        Args:
+            batch: The batch this rebuild serves.
+
+        Raises:
+            CancelledError: When the batch is cancelled mid-rebuild, after
+                handing every joiner the same cancellation.
+        """
+        await asyncio.sleep(await self._window_seconds())
+        with self._guard:
+            # Closed before the rebuild runs, not after: a write arriving from
+            # here on needs a rebuild that starts after IT, so it opens the
+            # next batch rather than joining one already under way.
+            if self._pending is batch:
+                self._pending = None
+            pairs = set(batch.pairs)
+        try:
+            await self._reload(pairs)
+        except asyncio.CancelledError:
+            # Shutdown, not a rebuild failure. Cancelling the future hands
+            # every joiner that verdict rather than leaving them waiting on a
+            # task that has gone.
+            batch.done.cancel()
+            raise
+        except Exception as exc:  # noqa: BLE001 -- delivered to every joiner
+            # Settled BEFORE anything re-raises: a joiner waiting on a future
+            # that a propagating error left unset waits forever. ``_reload``
+            # has already logged this, so the delivery below is where it
+            # reaches an operator, not a swallow.
+            self._settle(batch, exc)
+            reraise_critical(exc)
+            return
+        self._settle(batch, None)
+
+    @staticmethod
+    def _settle(batch: _Batch, exc: Exception | None) -> None:
+        """Hand the rebuild's outcome to everything waiting on it.
+
+        Args:
+            batch: The batch to resolve.
+            exc: The rebuild's failure, or ``None`` when it succeeded.
+        """
+        if batch.done.done():
+            return
+        if exc is None:
+            batch.done.set_result(None)
+        else:
+            batch.done.set_exception(exc)
+
+    async def _reload(self, pairs: set[tuple[str, str]]) -> None:
+        """Rebuild the runtime services for one batch of writes.
+
+        Args:
+            pairs: The writes this rebuild carries.
+
+        Raises:
+            Exception: Whatever the rebuild raised, after logging it.
+        """
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
-        try:
-            await reload_runtime_services(
-                self._app_state, trigger=f"setting:{namespace}.{key}"
+        if len(pairs) > 1:
+            logger.info(
+                SETTINGS_RUNTIME_RELOAD_COALESCED,
+                subscriber=self.subscriber_name,
+                writes=len(pairs),
             )
+        try:
+            await reload_runtime_services(self._app_state, trigger=_trigger(pairs))
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="runtime_services",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=_trigger(pairs),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
+
+    async def _window_seconds(self) -> float:
+        """Resolve how long to wait for further writes before rebuilding.
+
+        Read per batch rather than held, so an operator widening the window
+        after a burst of rebuilds sees the next burst honour it.
+
+        Returns:
+            The configured window, or the shipped default when the resolver is
+            not wired yet.
+        """
+        resolver = self._app_state.slice(SettingsStateSlice).config_resolver
+        if resolver is None:
+            return _DEFAULT_COALESCE_WINDOW_SECONDS
+        return await resolver.get_float(
+            "engine", "runtime_reload_coalesce_window_seconds"
+        )

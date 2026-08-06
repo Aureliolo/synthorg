@@ -293,6 +293,60 @@ class TestReadOnlyToolBoundary:
         assert strategy._planning_tools(_task(), make_e2e_identity()) == ()
 
 
+class TestPlanningBriefMatchesTheGrant:
+    """The brief describes the toolkit the session holds, not a generic one.
+
+    Left to guess, the planner reached for a progressive-disclosure trio it was
+    never granted and burned two rounds on tool-not-found before producing
+    nothing.
+    """
+
+    def _brief(self, tools: tuple[BaseTool, ...]) -> str:
+        strategy = AgentSessionDecompositionStrategy(
+            provider_selector=lambda _identity: ScriptedProvider([]),
+            fallback=_SentinelFallback(),
+            tool_provider=_ListToolProvider(tools),
+        )
+        _invoker, granted = strategy._build_invoker(
+            _task(),
+            make_e2e_identity(),
+            _PlanCapture(),
+            DecompositionContext(max_subtasks=5),
+        )
+        return strategy._planning_brief(
+            _task(), DecompositionContext(max_subtasks=5), granted
+        )
+
+    def test_it_names_every_granted_tool(self) -> None:
+        brief = self._brief((_FixedTool(name="recall", category=ToolCategory.MEMORY),))
+
+        assert "recall" in brief
+        # The terminal tool is the one the session cannot finish without, so a
+        # brief that told it to call submit_decomposition_plan while omitting
+        # it from the toolkit would contradict itself.
+        assert "submit_decomposition_plan" in brief
+
+    def test_it_does_not_advertise_a_discovery_step(self) -> None:
+        brief = self._brief((_FixedTool(name="recall", category=ToolCategory.MEMORY),))
+
+        assert "no discovery step" in brief
+        for absent in ("list_tools", "load_tool", "load_tool_resource"):
+            assert absent not in brief
+
+    def test_a_dropped_write_tool_is_not_offered(self) -> None:
+        # The read-only boundary drops it from the registry, so offering it in
+        # the brief would advertise a tool every call fails on.
+        brief = self._brief(
+            (
+                _FixedTool(name="recall", category=ToolCategory.MEMORY),
+                _FixedTool(name="commit", category=ToolCategory.VERSION_CONTROL),
+            )
+        )
+
+        assert "recall" in brief
+        assert "commit" not in brief
+
+
 class TestAgentSessionGuards:
     async def test_over_max_subtasks_raises_rather_than_falling_back(self) -> None:
         # The session submits 2 subtasks but the context caps at 1. The

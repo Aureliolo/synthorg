@@ -59,6 +59,7 @@ logger = get_logger(__name__)
 def _summarise_decision(
     work: ProposedWork | None,
     steering: tuple[ProposedSteering, ...],
+    plan_draft: PlanDraftSummary | None = None,
 ) -> str:
     """Multi-line assistant summary of the drafted plan and parked steering.
 
@@ -67,7 +68,16 @@ def _summarise_decision(
     """
     lines: list[str] = []
     if work is not None:
-        lines.append(f"- Drafting a plan for: {work.title} (review it in Plan Review)")
+        # A joined request says so. Answering a re-send as though it opened a
+        # second initiative is what made the operator send it a third time.
+        joined = plan_draft is not None and plan_draft.reused_project
+        lines.append(
+            f"- Already working on: {work.title} (this matched a request still"
+            " being planned, so it joined that one rather than starting a"
+            " second; review it in Plan Review)"
+            if joined
+            else f"- Drafting a plan for: {work.title} (review it in Plan Review)"
+        )
     lines += [f"- steer ({s.kind.value}): {s.text}" for s in steering]
     return "I've started on the following:\n" + "\n".join(lines)
 
@@ -192,7 +202,7 @@ class ProposeActMixin:
                 conversation_id=str(conversation.id),
                 sequence=sequence,
                 content=NotBlankStr(
-                    _summarise_decision(decision.work, decision.steering)
+                    _summarise_decision(decision.work, decision.steering, plan_draft)
                 ),
                 routing=routing,
                 now=now,

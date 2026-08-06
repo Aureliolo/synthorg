@@ -124,6 +124,33 @@ class AgentSessionDecompositionConfig(BaseModel):
     )
 
 
+def _toolkit_lines(granted_tools: tuple[str, ...]) -> tuple[str, ...]:
+    """Render the brief's account of what this session can actually call.
+
+    Derived from the built registry rather than written out, so the brief
+    cannot advertise a toolkit the session does not hold. Told to guess, the
+    planner reached for a progressive-disclosure trio (``list_tools``,
+    ``load_tool``, ``load_tool_resource``) it was never granted and burned two
+    rounds on tool-not-found before producing nothing.
+
+    Args:
+        granted_tools: Names of every tool in the session's registry.
+
+    Returns:
+        The brief lines naming the toolkit.
+    """
+    if not granted_tools:
+        return ("You have no tools: plan from the objective alone.",)
+    return (
+        "You can call exactly these tools, directly, with no discovery step:",
+        f"  {', '.join(granted_tools)}.",
+        "There is no tool catalogue to list or load from; anything not named",
+        "above does not exist in this session. Research with what you have,",
+        "and where the plan turns on an external fact you cannot check, record",
+        "it as an assumption rather than guessing silently.",
+    )
+
+
 def _roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
     """Render the roster constraint for the planning brief.
 
@@ -418,13 +445,13 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             The loop's execution result (termination reason + error detail
             for observability).
         """
-        invoker, granted_tools = self._build_invoker(task, owner, capture, context)
-        ctx = await self._build_context(task, context, owner)
+        invoker, granted = self._build_invoker(task, owner, capture, context)
+        ctx = await self._build_context(task, context, owner, granted)
         logger.info(
             DECOMPOSITION_SESSION_STARTED,
             task_id=str(task.id),
             owner_id=str(owner.id),
-            granted_tools=granted_tools,
+            granted_tools=len(granted),
             max_turns=self._config.max_turns,
         )
         loop = ReactLoop(approval_gate=None)
@@ -453,12 +480,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         owner: AgentIdentity,
         capture: _PlanCapture,
         context: DecompositionContext,
-    ) -> tuple[ToolInvoker, int]:
+    ) -> tuple[ToolInvoker, tuple[str, ...]]:
         """Assemble the session's tool invoker over the submit + read tools.
 
         Returns:
-            A ``(invoker, granted_tool_count)`` pair; the count includes the
-            terminal submit tool plus every read-only planning tool kept.
+            An ``(invoker, granted_tool_names)`` pair naming the terminal submit
+            tool plus every read-only planning tool kept. The names travel back
+            so the brief can list what the session actually holds instead of
+            describing a toolkit it was never given.
         """
         submit_tool = SubmitDecompositionPlanTool(
             parent_task_id=NotBlankStr(str(task.id)),
@@ -466,7 +495,8 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             available_roles=context.available_roles,
         )
         planning_tools = self._planning_tools(task, owner)
-        registry = ToolRegistry([submit_tool, *planning_tools])
+        tools: list[BaseTool] = [submit_tool, *planning_tools]
+        registry = ToolRegistry(tools)
         invoker = ToolInvoker(
             registry,
             permission_checker=None,
@@ -477,7 +507,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             task_id=str(task.id),
             cost_tracker=self._cost_tracker,
         )
-        return invoker, len(planning_tools) + 1
+        return invoker, tuple(tool.name for tool in tools)
 
     def _planning_tools(
         self,
@@ -516,6 +546,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         task: Task,
         context: DecompositionContext,
         owner: AgentIdentity,
+        granted_tools: tuple[str, ...],
     ) -> AgentContext:
         """Build the owner-persona planning context for the session.
 
@@ -540,7 +571,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         return ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=self._planning_brief(task, context),
+                content=self._planning_brief(task, context, granted_tools),
             ),
         )
 
@@ -570,7 +601,12 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         )
         return await self._planning_memory.prepare_messages(request)
 
-    def _planning_brief(self, task: Task, context: DecompositionContext) -> str:
+    def _planning_brief(
+        self,
+        task: Task,
+        context: DecompositionContext,
+        granted_tools: tuple[str, ...],
+    ) -> str:
         """Compose the planning instruction with the fenced objective.
 
         The objective text originates from operator/charter input and is
@@ -588,12 +624,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             [
                 "You are the accountable owner planning this objective. Produce",
                 "a plan a team would execute, not a flat checklist.",
-                "First research what you need using any tools you have: recall",
-                "prior work and search the project brain. When the plan turns on",
-                "an external fact (a current best practice, a library or API",
-                "choice, an industry convention), use web_search to ground it",
-                "rather than guessing; prefer a grounded, sourced choice over an",
-                "assumed one.",
+                *_toolkit_lines(granted_tools),
                 "Then build the plan:",
                 "- Model real structure: add a dependency ONLY when one item",
                 "  genuinely cannot start until another finishes; independent",
