@@ -50,7 +50,9 @@ def _provenance() -> Provenance:
     )
 
 
-def _measurement(loop_type: str) -> LoopRepetitionSummary:
+def _measurement(
+    loop_type: str, *, provider_retries: float | None = 0.0
+) -> LoopRepetitionSummary:
     """A reduced measurement for one loop."""
     return LoopRepetitionSummary(
         aggregate=LoopAggregate(
@@ -60,7 +62,7 @@ def _measurement(loop_type: str) -> LoopRepetitionSummary:
             duration_seconds=10.0,
             total_turns=5.0,
             repeated_tool_calls=0.0,
-            provider_retries=0.0,
+            provider_retries=provider_retries,
             pass_rate=1.0,
         ),
         correctness_spread=Spread(minimum=100.0, median=100.0, maximum=100.0),
@@ -80,7 +82,9 @@ def _score(loop_type: str, *, composite: float = 90.0) -> LoopCellScore:
     )
 
 
-def _measured_row(loop_type: str = "react") -> LoopBriefRow:
+def _measured_row(
+    loop_type: str = "react", *, provider_retries: float | None = 0.0
+) -> LoopBriefRow:
     """A row carrying a real measurement and its spend."""
     return LoopBriefRow(
         loop_type=NotBlankStr(loop_type),
@@ -88,7 +92,7 @@ def _measured_row(loop_type: str = "react") -> LoopBriefRow:
         tier=NotBlankStr("large"),
         model_id=NotBlankStr("example-large-001"),
         score=_score(loop_type),
-        measurement=_measurement(loop_type),
+        measurement=_measurement(loop_type, provider_retries=provider_retries),
         spend=(
             ProviderSpend(
                 provider=NotBlankStr("example-provider"),
@@ -224,6 +228,25 @@ def test_an_unmeasured_loop_is_reported_with_its_reason() -> None:
     assert "Not measured" in rendered
     assert "openhands" in rendered
     assert "sandbox image is not built" in rendered
+
+
+def test_an_unobservable_retry_count_is_marked_and_explained() -> None:
+    """The marker is meaningless without the note that defines it."""
+    scoreboard = _scoreboard(_measured_row("openhands", provider_retries=None))
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "0+" in rendered
+    assert "`+` on Rework" in rendered
+
+
+def test_the_legend_is_omitted_when_every_loop_reported_its_retries() -> None:
+    """A note explaining a marker no row carries is noise in every report."""
+    scoreboard = _scoreboard(_measured_row("react"), _measured_row("openhands"))
+
+    rendered = render_scoreboard_md(scoreboard)
+
+    assert "`+` on Rework" not in rendered
 
 
 def test_the_report_shows_spend_per_provider_and_model() -> None:

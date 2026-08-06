@@ -12,7 +12,7 @@ The implementation lives under `src/synthorg/api/controllers/steering.py` and `s
 ## Concepts
 
 - **Directive**: a project-scoped instruction (`hint` or `redirect`). Stored as a plan-revision brain entry; there is no separate steering table.
-- **Hint vs redirect**: a hint is advisory (the agent considers it but keeps its approach) and waits for the next turn boundary; a redirect is mandatory and, when the turn is streaming, interrupts the in-flight LLM call so the agent re-issues the turn with the directive already adopted. A buffered call has no interrupt point, so it finishes and the redirect lands at the next boundary.
+- **Hint vs redirect**: a hint is advisory and never interrupts the call in flight, so it lands at the next turn boundary and the agent decides for itself what to do with it (including changing approach); a redirect is mandatory and, when the turn is streaming, interrupts the in-flight LLM call so the agent re-issues the turn with the directive already adopted. A buffered call has no interrupt point, so it finishes and the redirect lands at the next boundary.
 - **Supersession**: how obsolete tasks are handled, with three modes: `none` (cancel nothing), `explicit` (cancel the operator-supplied task ids synchronously), and `propose` (an optional LLM proposer refines the obsolete set for operator confirmation).
 - **Inbox vs service**: the read path (inbox) is built from persistence alone and is available early; the write path (service) wires after the project brain, because recording needs the memory backend.
 - **Safe boundary**: agents poll the inbox at each turn boundary; adoption is checkpointed per agent, so a resumed agent never re-adopts a directive, yet every concurrent agent on the project adopts it independently.
