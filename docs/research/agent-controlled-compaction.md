@@ -51,8 +51,10 @@ def _do_compaction(ctx, config, estimator):
     # split -> summarize -> return compressed context
 ```
 
-Trigger checked at turn boundaries in both loops via shared `invoke_compaction()` in
-`src/synthorg/engine/loop_helpers.py` (lines 654-689). Errors are caught, logged as
+Trigger checked at turn boundaries by ReactLoop, the one loop that manages its context
+in-process, via `invoke_compaction()` in
+`src/synthorg/engine/loop_control_helpers.py`. OpenHands compacts inside its own
+harness, so it never reaches this helper. Errors are caught, logged as
 `CONTEXT_BUDGET_COMPACTION_FAILED`, and never propagated. `MemoryError`/`RecursionError`
 are re-raised.
 

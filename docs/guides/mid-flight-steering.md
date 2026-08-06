@@ -5,14 +5,14 @@ description: Inject hints and redirects into a running project, supersede obsole
 
 # Mid-Flight Steering
 
-Mid-flight steering lets an operator inject a directive into a long-running multi-agent project without stopping it. In-flight and newly-spawned agents adopt the directive at their next safe turn boundary; a redirect additionally forces a re-plan of affected work. Obsolete tasks are cleanly superseded (cancelled) through the single-writer task engine, and the full directive history is recorded in the [project brain](project-brain.md) as a plan-revision entry tagged `steering`.
+Mid-flight steering lets an operator inject a directive into a long-running multi-agent project without stopping it. In-flight and newly-spawned agents adopt the directive at their next safe turn boundary; a redirect additionally aborts an in-flight streaming call so that turn is re-issued with the constraint already adopted. Obsolete tasks are cleanly superseded (cancelled) through the single-writer task engine, and the full directive history is recorded in the [project brain](project-brain.md) as a plan-revision entry tagged `steering`.
 
 The implementation lives under `src/synthorg/api/controllers/steering.py` and `src/synthorg/engine/intervention/`. See the [mid-flight steering design spec](../design/mid-flight-steering.md) for the full architecture.
 
 ## Concepts
 
 - **Directive**: a project-scoped instruction (`hint` or `redirect`). Stored as a plan-revision brain entry; there is no separate steering table.
-- **Hint vs redirect**: a hint is advisory (the agent considers it but keeps its approach) and waits for the next turn boundary; a redirect is mandatory and interrupts the in-flight LLM call so the agent re-issues the turn with the directive already adopted.
+- **Hint vs redirect**: a hint is advisory (the agent considers it but keeps its approach) and waits for the next turn boundary; a redirect is mandatory and, when the turn is streaming, interrupts the in-flight LLM call so the agent re-issues the turn with the directive already adopted. A buffered call has no interrupt point, so it finishes and the redirect lands at the next boundary.
 - **Supersession**: how obsolete tasks are handled, with three modes: `none` (cancel nothing), `explicit` (cancel the operator-supplied task ids synchronously), and `propose` (an optional LLM proposer refines the obsolete set for operator confirmation).
 - **Inbox vs service**: the read path (inbox) is built from persistence alone and is available early; the write path (service) wires after the project brain, because recording needs the memory backend.
 - **Safe boundary**: agents poll the inbox at each turn boundary; adoption is checkpointed per agent, so a resumed agent never re-adopts a directive, yet every concurrent agent on the project adopts it independently.

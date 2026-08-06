@@ -172,6 +172,23 @@ class TestTopologySelector:
             selector.select(task, plan)
 
     @pytest.mark.unit
+    def test_an_explicit_topology_does_not_excuse_an_unresolved_structure(
+        self,
+    ) -> None:
+        """The override picks which topology, not whether the plan may route.
+
+        A caller-supplied topology returned ahead of the guard would let a
+        plan that never went through ``DecompositionService`` route anyway,
+        which is the one path the guard exists to close.
+        """
+        selector = TopologySelector()
+        task = _make_task(coordination_topology=CoordinationTopology.DECENTRALIZED)
+        plan = _make_plan(TaskStructure.AUTO)
+
+        with pytest.raises(DecompositionError, match="unresolved task_structure"):
+            selector.select(task, plan)
+
+    @pytest.mark.unit
     def test_config_property(self) -> None:
         """Config property returns the active configuration."""
         config = AutoTopologyConfig()

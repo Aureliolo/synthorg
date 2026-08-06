@@ -49,7 +49,7 @@ assessment and source file references.
 | **Conditional branching** | Loop termination checks, stagnation intervention verdicts | `src/synthorg/engine/react_loop.py`, `src/synthorg/engine/loop_control_helpers.py` | Partial | Branching is embedded in loop logic, not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
 | **Parallel composition** | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | `src/synthorg/engine/parallel.py`, `src/synthorg/engine/coordination/models.py` | Strong | Parallel waves in coordination are first-class. `ParallelExecutor` handles concurrent subtask dispatch with `fail_fast` semantics. |
 | **Graph mutation** | Stagnation correction injection, mid-flight steering adoption | `src/synthorg/engine/stagnation/`, `src/synthorg/engine/intervention/loop_hook.py` | Partial | Both inject a new message into a running execution. These are graph mutations but are not described in those terms. |
-| **Termination conditions** | `TerminationReason` enum (7 values: COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION, ERROR) | `src/synthorg/engine/loop_protocol.py` | Strong | Richer than typical ACG termination models. 7 named reasons provide precise signal for recovery and routing decisions. |
+| **Termination conditions** | `TerminationReason` enum (9 values: COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION, CANCELLED, ERROR, NO_OP) | `src/synthorg/engine/loop_protocol.py` | Strong | Richer than typical ACG termination models. 9 named reasons provide precise signal for recovery and routing decisions. |
 
 ### Resource and Cost Concepts
 
@@ -116,8 +116,8 @@ outperforms generating arbitrary workflows from scratch.
 **SynthOrg validation**: Strongly confirmed. The Company YAML and 33 built-in roles in
 `src/synthorg/core/role_catalog.py` are a super-graph of organisational patterns. Template
 packs in `api/controllers/template_packs.py` apply curated patterns. The meeting protocols
-(3 variants) and loop types (3 variants) are a bounded selection space rather than
-open-ended generation.
+(3 variants) and loop types (React and OpenHands) are a bounded selection space rather
+than open-ended generation.
 
 **Implication**: Adding more template packs and expanding the super-graph is a higher-value
 investment than adding more free-form configuration options.

@@ -96,8 +96,17 @@ is counted because the driver reports it; a retry OpenHands performs happens
 inside its own SDK client, in the container, on a path with no `RetryHandler` in
 it, and reaches no `TurnRecord`. Its tokens and latency *are* counted (they come
 off the SDK's own accumulated metrics), so an identical hiccup reads as extra
-work for that leg and as rework for the others. Read a zero here as "not
-observable for this loop", never as "this loop did not retry".
+work for that leg and as rework for the others.
+
+So the absence is carried as an absence rather than flattened: `RunMetrics.provider_retries`
+is `None` when no turn measured a retry count, `LoopAggregate` keeps it `None` unless every
+repetition measured one, and `score_cell` drops the retry component from the rework
+comparison **for every loop in the cell** the moment one of them cannot report it. Scoring
+an unobservable count as zero would hand the unwatched leg the cell's best rework ratio on
+the strength of nothing having watched it, which is the promotion decision being made
+backwards; dropping the submetric cell-wide rather than per leg is what keeps the remaining
+comparison like for like. The scoreboard marks such a figure with a trailing `+`, and
+resilience is a 5-point dimension, so the lost signal costs far less than a fabricated one.
 
 Cost is read from the gateway's `CostRecord` ledger, not re-derived from token
 counts and a price list. Each run gets a fresh tracker, installed on the

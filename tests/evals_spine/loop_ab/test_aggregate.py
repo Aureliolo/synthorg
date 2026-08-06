@@ -27,7 +27,7 @@ def _metrics(
     input_tokens: int = 800,
     output_tokens: int = 200,
     repeated_tool_calls: int = 0,
-    provider_retries: int = 0,
+    provider_retries: int | None = 0,
 ) -> RunMetrics:
     """Build one run's metrics."""
     return RunMetrics(
@@ -108,6 +108,33 @@ def test_rework_counts_every_kind_of_redone_work() -> None:
     )
 
     assert summary.aggregate.rework_events == pytest.approx(4.0)
+
+
+def test_unobservable_retries_survive_reduction_as_unobservable() -> None:
+    """A loop that measures no retries must not reduce to having had none."""
+    summary = summarise_repetitions(
+        loop_type="openhands",
+        outcomes=(
+            _outcome(metrics=_metrics(provider_retries=None, repeated_tool_calls=2)),
+            _outcome(metrics=_metrics(provider_retries=None, repeated_tool_calls=4)),
+        ),
+    )
+
+    assert summary.aggregate.provider_retries is None
+    assert summary.aggregate.repeated_tool_calls == pytest.approx(3.0)
+
+
+def test_a_partly_measured_retry_count_reduces_to_unobservable() -> None:
+    """One unmeasured repetition makes the loop's retry median unreportable."""
+    summary = summarise_repetitions(
+        loop_type="react",
+        outcomes=(
+            _outcome(metrics=_metrics(provider_retries=2)),
+            _outcome(metrics=_metrics(provider_retries=None)),
+        ),
+    )
+
+    assert summary.aggregate.provider_retries is None
 
 
 def test_the_correctness_spread_is_reported_not_discarded() -> None:

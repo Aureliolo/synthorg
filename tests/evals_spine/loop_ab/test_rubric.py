@@ -39,7 +39,8 @@ def _aggregate(
     total_tokens: float = 1000.0,
     duration_seconds: float = 10.0,
     total_turns: float = 5.0,
-    rework_events: float = 0.0,
+    repeated_tool_calls: float = 0.0,
+    provider_retries: float | None = 0.0,
     pass_rate: float = 1.0,
 ) -> LoopAggregate:
     """Build one loop's aggregate for a single (brief, tier) cell."""
@@ -49,7 +50,8 @@ def _aggregate(
         total_tokens=total_tokens,
         duration_seconds=duration_seconds,
         total_turns=total_turns,
-        rework_events=rework_events,
+        repeated_tool_calls=repeated_tool_calls,
+        provider_retries=provider_retries,
         pass_rate=pass_rate,
     )
 
@@ -102,7 +104,7 @@ def test_a_strictly_better_loop_scores_strictly_higher() -> None:
                     total_tokens=1_000.0,
                     duration_seconds=10.0,
                     total_turns=4.0,
-                    rework_events=0.0,
+                    repeated_tool_calls=0.0,
                 ),
                 _aggregate(
                     "openhands",
@@ -110,7 +112,7 @@ def test_a_strictly_better_loop_scores_strictly_higher() -> None:
                     total_tokens=4_000.0,
                     duration_seconds=40.0,
                     total_turns=12.0,
-                    rework_events=6.0,
+                    repeated_tool_calls=6.0,
                 ),
             )
         )
@@ -203,8 +205,8 @@ def test_rework_lowers_resilience_relative_to_a_clean_run() -> None:
     scores = _by_loop(
         score_cell(
             (
-                _aggregate("react", rework_events=0.0),
-                _aggregate("openhands", rework_events=10.0),
+                _aggregate("react", repeated_tool_calls=0.0),
+                _aggregate("openhands", repeated_tool_calls=10.0),
             )
         )
     )
@@ -218,10 +220,62 @@ def test_rework_lowers_resilience_relative_to_a_clean_run() -> None:
 def test_zero_rework_everywhere_does_not_zero_the_dimension() -> None:
     """Zero rework is the expected good case, not a degenerate one."""
     scores = _by_loop(
-        score_cell((_aggregate("react", rework_events=0.0), _aggregate("openhands")))
+        score_cell(
+            (_aggregate("react", repeated_tool_calls=0.0), _aggregate("openhands"))
+        )
     )
 
     assert scores["react"].dimensions.resilience == pytest.approx(1.0)
+
+
+def test_unobservable_retries_do_not_buy_the_best_rework_score() -> None:
+    """A loop nothing watched must not out-score one that reported honestly."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=4.0, provider_retries=4.0),
+                _aggregate("openhands", repeated_tool_calls=4.0, provider_retries=None),
+            )
+        )
+    )
+
+    assert scores["openhands"].dimensions.resilience == pytest.approx(
+        scores["react"].dimensions.resilience
+    )
+
+
+def test_dropping_the_retry_submetric_keeps_the_rest_of_the_comparison() -> None:
+    """Retries go, repeated tool calls stay: the cell still discriminates."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=0.0, provider_retries=9.0),
+                _aggregate("openhands", repeated_tool_calls=8.0, provider_retries=None),
+            )
+        )
+    )
+
+    assert (
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
+    )
+
+
+def test_retries_still_count_when_every_loop_reports_them() -> None:
+    """Dropping the submetric is the exception, not the resting behaviour."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=0.0, provider_retries=0.0),
+                _aggregate("openhands", repeated_tool_calls=0.0, provider_retries=9.0),
+            )
+        )
+    )
+
+    assert (
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
+    )
 
 
 def test_a_flaky_loop_scores_below_a_reliable_one() -> None:

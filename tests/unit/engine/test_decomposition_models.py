@@ -290,7 +290,7 @@ class TestDecompositionResult:
         """A completed decomposition always names its structure.
 
         The service resolves an undeclared one through the classifier, so a
-        result carrying None never came through it.
+        result still carrying AUTO never came through it.
         """
         plan = DecompositionPlan(
             parent_task_id=str(sample_task_with_criteria.id),

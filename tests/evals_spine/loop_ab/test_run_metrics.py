@@ -44,7 +44,9 @@ def _turn(
     output_tokens: int = 5,
     tools: tuple[str, ...] = (),
     fingerprints: tuple[str, ...] = (),
-    retry_count: int = 0,
+    # Mirrors ``TurnRecord``: absent means the driver measured no retry count
+    # for this turn, which is not the same as measuring zero.
+    retry_count: int | None = None,
     cache_hit: bool = False,
 ) -> TurnRecord:
     """Build one turn record with the fields the rubric consumes."""
@@ -130,6 +132,28 @@ def test_provider_retries_and_cache_hits_are_counted() -> None:
     assert metrics.cache_hits == 2
 
 
+def test_a_loop_that_measures_no_retries_reports_them_as_unobservable() -> None:
+    """A retry taken inside a harness reaches no ``TurnRecord``.
+
+    Summing that to zero would report the best possible rework result on the
+    strength of having watched nothing, so the absence stays an absence.
+    """
+    result = _result(turns=(_turn(1), _turn(2)))
+
+    metrics = run_metrics(result, duration_seconds=1.0)
+
+    assert metrics.provider_retries is None
+
+
+def test_one_measured_turn_makes_the_run_s_retry_count_observable() -> None:
+    """A driver that reports on any turn reports for the run."""
+    result = _result(turns=(_turn(1, retry_count=2), _turn(2)))
+
+    metrics = run_metrics(result, duration_seconds=1.0)
+
+    assert metrics.provider_retries == 2
+
+
 def test_repeated_tool_calls_count_only_the_excess() -> None:
     """Thrash is re-issuing the *same* call, so only duplicates beyond the first count.
 
@@ -168,6 +192,8 @@ def test_a_run_with_no_turns_projects_to_zeroes() -> None:
         total_tool_calls=0,
         tool_call_names=(),
         repeated_tool_calls=0,
-        provider_retries=0,
+        # No turn ran, so nothing measured a retry count; that is unobservable
+        # rather than a measured zero.
+        provider_retries=None,
         cache_hits=0,
     )

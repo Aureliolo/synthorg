@@ -141,6 +141,9 @@ class LlmDecompositionStrategy:
         Raises:
             DecompositionDepthError: If current depth meets or
                 exceeds max depth.
+            DecompositionSubtaskLimitError: If a planned plan exceeds
+                ``max_subtasks``; raised on the first attempt that does,
+                so the produced count and the ceiling reach the caller.
             DecompositionError: If all retries are exhausted or
                 the plan violates constraints.
         """
@@ -242,6 +245,12 @@ class LlmDecompositionStrategy:
 
             try:
                 self._validate_plan(plan, context)
+            except DecompositionSubtaskLimitError:
+                # Carries the produced count and the ceiling as attributes, so
+                # a caller can offer to raise the limit to the number actually
+                # planned. Retrying past it would replace that with a bare
+                # retries-exhausted error and lose both numbers.
+                raise
             except DecompositionError as exc:
                 last_error = safe_error_description(exc)
                 logger.warning(

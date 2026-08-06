@@ -47,7 +47,11 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.recall_request import MemoryRecallRequest
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_COMPLETED,
     DECOMPOSITION_SESSION_DUPLICATE_SUBMIT,
@@ -322,7 +326,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 task_id=str(task.id),
                 owner_id=str(owner.id),
                 termination=result.termination_reason.value,
-                termination_detail=result.error_message,
+                termination_detail=(
+                    scrub_secret_tokens(result.error_message)
+                    if result.error_message is not None
+                    else None
+                ),
             )
             return await self._fallback.decompose(task, context)
 

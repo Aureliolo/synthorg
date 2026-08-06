@@ -24,7 +24,11 @@ from synthorg.engine.decomposition.models import (
     DecompositionPlan,
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+)
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
@@ -194,6 +198,23 @@ class TestLlmDecompositionStrategy:
             )
 
     @pytest.mark.unit
+    def test_an_explicit_null_task_structure_is_refused(self) -> None:
+        """Sending the key as ``null`` is a declaration, not an omission.
+
+        The schema constrains the field to the enum, so ``null`` is a value
+        outside it exactly like any other unmappable one. Reading it as
+        absence would let a planner reach the classifier fallback by naming
+        a value the schema rejects.
+        """
+        args = _valid_plan_args(task_structure=None)
+        args["task_structure"] = None
+
+        with pytest.raises(DecompositionError, match="Unknown task_structure"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:
         """Content-only response is parsed as JSON fallback."""
         args = _valid_plan_args(subtask_count=1)
@@ -226,10 +247,16 @@ class TestLlmDecompositionStrategy:
         assert provider.call_count == 0
 
     @pytest.mark.unit
-    async def test_max_subtasks_exceeded_raises(self) -> None:
-        """Plan with too many subtasks exhausts retries."""
+    async def test_max_subtasks_exceeded_reaches_the_caller_with_both_numbers(
+        self,
+    ) -> None:
+        """An over-limit plan is refused with the count and the ceiling intact.
+
+        Retrying past it would replace the typed error with a bare
+        retries-exhausted one, and the caller could no longer offer to raise
+        the ceiling to the number the planner actually produced.
+        """
         args = _valid_plan_args(subtask_count=5)
-        # Provide enough responses for 1 + max_retries attempts
         responses = [_make_tool_call_response(args) for _ in range(3)]
         provider = MockCompletionProvider(responses)
         config = LlmDecompositionConfig(max_retries=2)
@@ -241,10 +268,12 @@ class TestLlmDecompositionStrategy:
         task = _make_task()
         ctx = _make_context(max_subtasks=3)
 
-        with pytest.raises(DecompositionError, match="retries exhausted"):
+        with pytest.raises(DecompositionSubtaskLimitError) as excinfo:
             await strategy.decompose(task, ctx)
 
-        assert provider.call_count == 3
+        assert excinfo.value.produced == 5
+        assert excinfo.value.limit == 3
+        assert provider.call_count == 1
 
     @pytest.mark.unit
     async def test_malformed_json_retry_success(self) -> None:

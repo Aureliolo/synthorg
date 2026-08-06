@@ -10,6 +10,9 @@ envelope, the plan's own fields) stays in ``llm_parse``.
 ``enum_or_default`` lives here because both halves resolve enums the same
 lenient way: an unrecognised value is a logged default, never a raised error,
 so one bad token in an otherwise good plan does not cost a whole re-prompt.
+The sibling per-field readers ``required_field`` and ``string_array`` are
+strict for the opposite reason: a missing required field or a non-array where
+an array belongs is the model failing to answer, not answering awkwardly.
 """
 
 from enum import Enum
@@ -90,6 +93,31 @@ def string_array(raw: dict[str, JsonValue], field: str) -> tuple[str, ...]:
     return tuple(str(v) for v in values)
 
 
+def required_field(raw: dict[str, JsonValue], field: str) -> JsonValue:
+    """Read a subtask field the schema requires, raising when it is absent.
+
+    Args:
+        raw: The raw subtask dict from tool call arguments.
+        field: The required field name to read.
+
+    Returns:
+        The field's raw value.
+
+    Raises:
+        DecompositionError: When the field is absent. The available keys are
+            named because the usual cause is the model spelling one of them
+            differently, which the bare field name alone does not reveal.
+    """
+    if field not in raw:
+        msg = (
+            f"Subtask missing required field '{field}'. "
+            f"Available keys: {sorted(raw.keys())}"
+        )
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
+        raise DecompositionError(msg)
+    return raw[field]
+
+
 def parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
     """Convert a raw subtask dict into a ``SubtaskDefinition``.
 
@@ -104,18 +132,9 @@ def parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             or ``required_skills`` is present but not a list, or
             ``acceptance_criteria`` resolves empty.
     """
-    for field in ("id", "title", "description"):
-        if field not in raw:
-            msg = (
-                f"Subtask missing required field '{field}'. "
-                f"Available keys: {sorted(raw.keys())}"
-            )
-            logger.warning(
-                DECOMPOSITION_LLM_PARSE_ERROR,
-                error=msg,
-            )
-            raise DecompositionError(msg)
-
+    subtask_id = required_field(raw, "id")
+    title = required_field(raw, "title")
+    description = required_field(raw, "description")
     complexity = enum_or_default(
         raw.get("estimated_complexity", "medium"),
         _COMPLEXITY_MAP,
@@ -134,42 +153,28 @@ def parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
         PlanItemKind.WORK,
         field="kind",
     )
-    deps = raw.get("dependencies") or []
-    if not isinstance(deps, list):
-        msg = "Subtask field 'dependencies' must be an array"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
-        raise DecompositionError(msg)
-    skills = raw.get("required_skills") or []
-    if not isinstance(skills, list):
-        msg = "Subtask field 'required_skills' must be an array"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
-        raise DecompositionError(msg)
+    deps = string_array(raw, "dependencies")
+    skills = string_array(raw, "required_skills")
     artifacts = string_array(raw, "expected_artifacts")
     acceptance = string_array(raw, "acceptance_criteria")
     if not acceptance:
         msg = (
-            f"Subtask {raw['id']!r} has no acceptance_criteria; every plan item "
+            f"Subtask {subtask_id!r} has no acceptance_criteria; every plan item "
             "must state a verifiable definition of done"
         )
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
     return SubtaskDefinition.model_validate(
         {
-            "id": raw["id"],
-            "title": raw["title"],
-            "description": raw["description"],
-            "dependencies": tuple(deps),
+            "id": subtask_id,
+            "title": title,
+            "description": description,
+            "dependencies": deps,
             "estimated_complexity": complexity,
             "stakes": stakes,
             "kind": kind,
             "options": raw.get("options") or (),
-            "required_skills": tuple(skills),
+            "required_skills": skills,
             "required_role": raw.get("required_role"),
             "expected_artifacts": artifacts,
             "acceptance_criteria": acceptance,
@@ -225,4 +230,10 @@ def remap_subtask_ids(
     )
 
 
-__all__ = ["enum_or_default", "parse_subtask", "remap_subtask_ids", "string_array"]
+__all__ = [
+    "enum_or_default",
+    "parse_subtask",
+    "remap_subtask_ids",
+    "required_field",
+    "string_array",
+]

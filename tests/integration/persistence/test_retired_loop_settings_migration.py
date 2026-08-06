@@ -205,9 +205,10 @@ async def seed_and_migrate(
 ) -> AsyncIterator[SeedAndMigrate]:
     """Yield a per-backend seed-then-migrate helper, cleaning up after.
 
-    The helper is an async context manager rather than a plain callable so the
-    backend it opens is closed (and, on Postgres, its database dropped) even
-    when the assertion inside the test fails.
+    The helper is a plain async callable returning a backend; the fixture
+    tracks every backend it opens and tears them down in its own ``finally``,
+    so one is closed (and, on Postgres, its database dropped) even when the
+    assertion inside the test fails.
     """
     backends: list[PersistenceBackend] = []
     databases: list[str] = []

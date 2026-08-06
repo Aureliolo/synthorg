@@ -45,8 +45,8 @@ _MARKDOWN_FENCE_RE = re.compile(
 )
 
 
-def _declared_structure(raw_value: object) -> TaskStructure:
-    """Resolve a declared task structure, or ``AUTO`` when none was declared.
+def _declared_structure(args: dict[str, JsonValue]) -> TaskStructure:
+    """Resolve the declared task structure, or ``AUTO`` when none was declared.
 
     Unlike the other enum fields, an unrecognised value raises rather than
     degrading to a default. The tool schema constrains this field to the
@@ -55,8 +55,13 @@ def _declared_structure(raw_value: object) -> TaskStructure:
     that would bind the coordination topology. Guessing one would be the
     silent substitution ``AUTO`` exists to make impossible.
 
+    Only an absent key means "undeclared". An explicit ``null`` is a value
+    the schema does not admit, so it is rejected like any other unknown one
+    rather than read as the omission it is not.
+
     Args:
-        raw_value: The raw ``task_structure`` value, or ``None`` when absent.
+        args: The submit-plan arguments the ``task_structure`` key is read
+            from, so presence is distinguishable from an explicit ``null``.
 
     Returns:
         The mapped member, or ``AUTO`` when the planner omitted the field.
@@ -64,9 +69,12 @@ def _declared_structure(raw_value: object) -> TaskStructure:
     Raises:
         DecompositionError: When the field is present but names no member.
     """
-    if raw_value is None:
+    if "task_structure" not in args:
         return TaskStructure.AUTO
-    resolved = _TASK_STRUCTURE_MAP.get(str(raw_value).lower())
+    raw_value = args["task_structure"]
+    resolved = (
+        None if raw_value is None else _TASK_STRUCTURE_MAP.get(str(raw_value).lower())
+    )
     if resolved is None:
         msg = (
             f"Unknown task_structure: {raw_value!r}; expected one of "
@@ -110,7 +118,7 @@ def _args_to_plan(
     parsed = tuple(parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
     subtasks = remap_subtask_ids(parsed)
 
-    structure = _declared_structure(args.get("task_structure"))
+    structure = _declared_structure(args)
     topology = enum_or_default(
         args.get("coordination_topology", "auto"),
         _TOPOLOGY_MAP,

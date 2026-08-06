@@ -5,6 +5,7 @@ from typing import override
 from uuid import UUID
 
 import pytest
+import structlog.testing
 from pydantic import JsonValue, ValidationError
 
 from synthorg.core.task import Task
@@ -329,6 +330,32 @@ class TestAgentSessionGuards:
 
         assert fallback.called
         assert plan is fallback.plan
+
+    async def test_a_failed_session_does_not_log_the_raw_failure_text(self) -> None:
+        """The termination detail is provider text, so it can carry a secret.
+
+        The loop composes it from whatever the provider raised, which for an
+        auth failure routinely embeds the credential that failed.
+        """
+        provider = ScriptedProvider(
+            error=RuntimeError("upstream refused: bearer sk-live-abcdef123456")
+        )
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        with structlog.testing.capture_logs() as events:
+            plan = await strategy.decompose(_task(), context)
+
+        assert plan is fallback.plan
+        details = [
+            event["termination_detail"]
+            for event in events
+            if "termination_detail" in event
+        ]
+        assert details, "the no-plan path did not log a termination detail"
+        assert all("sk-live-abcdef123456" not in str(d) for d in details)
+        assert any("bearer ***" in str(d) for d in details)
 
     async def test_a_within_limit_plan_is_returned_unchanged(self) -> None:
         provider = ScriptedProvider(

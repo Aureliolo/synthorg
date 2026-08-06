@@ -66,8 +66,23 @@ class LoopAggregate(BaseModel):
     total_tokens: float = Field(ge=0.0)
     duration_seconds: float = Field(ge=0.0)
     total_turns: float = Field(ge=0.0)
-    rework_events: float = Field(ge=0.0)
+    repeated_tool_calls: float = Field(ge=0.0)
+    provider_retries: float | None = Field(default=None, ge=0.0)
     pass_rate: float = Field(ge=0.0, le=1.0)
+
+    # ``@property`` rather than ``@computed_field`` for the reason
+    # ``RunMetrics.total_tokens`` documents: this model round-trips through the
+    # scoreboard JSON and a serialised derived value would trip
+    # ``extra="forbid"`` on reparse.
+    @property
+    def rework_events(self) -> float:
+        """Rework as measured, for reporting.
+
+        Scoring does not use this: :func:`score_cell` decides per cell whether
+        the retry component is comparable at all. Reading it as a score would
+        put the unmeasurable loop back at zero rework.
+        """
+        return self.repeated_tool_calls + (self.provider_retries or 0.0)
 
 
 class DimensionScores(BaseModel):
@@ -127,15 +142,44 @@ def _efficiency(observed: float, best: float) -> float:
     return min(best / observed, 1.0)
 
 
-def _resilience(aggregate: LoopAggregate, *, best_rework: float) -> float:
+def _comparable_rework(aggregates: tuple[LoopAggregate, ...]) -> tuple[float, ...]:
+    """Rework per loop, on a basis every loop in the cell can be measured on.
+
+    Provider retries are only observable for a loop whose driver reports them;
+    a loop retrying inside its own harness reports ``None``. Scoring that as
+    zero would award it the cell's best rework ratio precisely because nothing
+    watched it, so when any loop here cannot report retries the submetric is
+    dropped for every loop and the ranking rests on repeated tool calls alone.
+    Dropping it cell-wide rather than per loop is what keeps the comparison
+    like for like.
+
+    Returns:
+        One rework figure per aggregate, in the order supplied.
+    """
+    retries_comparable = all(a.provider_retries is not None for a in aggregates)
+    return tuple(
+        a.repeated_tool_calls + (a.provider_retries or 0.0)
+        if retries_comparable
+        else a.repeated_tool_calls
+        for a in aggregates
+    )
+
+
+def _resilience(
+    aggregate: LoopAggregate, *, rework: float, best_rework: float
+) -> float:
     """Blend pass rate with how much work the loop had to redo.
+
+    Args:
+        aggregate: The loop's reduced measurements.
+        rework: This loop's rework on the cell's comparable basis, from
+            :func:`_comparable_rework`.
+        best_rework: The lowest such figure in the cell.
 
     Returns:
         The resilience score in ``[0, 1]``.
     """
-    rework_ratio = (best_rework + REWORK_SMOOTHING) / (
-        aggregate.rework_events + REWORK_SMOOTHING
-    )
+    rework_ratio = (best_rework + REWORK_SMOOTHING) / (rework + REWORK_SMOOTHING)
     return (
         RESILIENCE_WEIGHT_PASS_RATE * aggregate.pass_rate
         + RESILIENCE_WEIGHT_REWORK * min(rework_ratio, 1.0)
@@ -192,16 +236,19 @@ def score_cell(aggregates: tuple[LoopAggregate, ...]) -> tuple[LoopCellScore, ..
     best_tokens = min(a.total_tokens for a in aggregates)
     best_duration = min(a.duration_seconds for a in aggregates)
     best_turns = min(a.total_turns for a in aggregates)
-    best_rework = min(a.rework_events for a in aggregates)
+    rework = _comparable_rework(aggregates)
+    best_rework = min(rework)
 
     scored: list[LoopCellScore] = []
-    for aggregate in aggregates:
+    for aggregate, loop_rework in zip(aggregates, rework, strict=True):
         dimensions = DimensionScores(
             correctness=aggregate.correctness / EXEC_TOTAL,
             tokens=_efficiency(aggregate.total_tokens, best_tokens),
             latency=_efficiency(aggregate.duration_seconds, best_duration),
             turns=_efficiency(aggregate.total_turns, best_turns),
-            resilience=_resilience(aggregate, best_rework=best_rework),
+            resilience=_resilience(
+                aggregate, rework=loop_rework, best_rework=best_rework
+            ),
         )
         below_gate = aggregate.correctness < CORRECTNESS_GATE_FLOOR
         reason = (

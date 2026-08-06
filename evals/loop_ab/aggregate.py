@@ -33,14 +33,17 @@ class RepetitionOutcome(BaseModel):
 
     @property
     def rework_events(self) -> float:
-        """Total units of work this run had to redo.
+        """Total units of work this run had to redo, as measured.
 
         Provider retries and repeated tool calls are both a unit of work done
-        more than once, so they count alike. The rubric weights resilience
-        lightly, so the blend matters far less than the signal being present
-        and comparable across loops.
+        more than once, so they count alike. An unobservable retry count
+        contributes nothing here, which is why the rubric scores from the two
+        components rather than from this sum: it cannot tell an unwatched loop
+        from a clean one.
         """
-        return float(self.metrics.provider_retries + self.metrics.repeated_tool_calls)
+        return float(
+            (self.metrics.provider_retries or 0) + self.metrics.repeated_tool_calls
+        )
 
 
 class Spread(BaseModel):
@@ -128,7 +131,19 @@ def summarise_repetitions(
             total_turns=statistics.median(
                 float(o.metrics.total_turns) for o in outcomes
             ),
-            rework_events=statistics.median(o.rework_events for o in outcomes),
+            repeated_tool_calls=statistics.median(
+                float(o.metrics.repeated_tool_calls) for o in outcomes
+            ),
+            # Unobservable for the loop unless every repetition measured it:
+            # a median mixing measured runs with unmeasured ones would report
+            # a retry count for a loop that only sometimes had one taken.
+            provider_retries=(
+                statistics.median(
+                    float(o.metrics.provider_retries or 0) for o in outcomes
+                )
+                if all(o.metrics.provider_retries is not None for o in outcomes)
+                else None
+            ),
             pass_rate=passed / len(outcomes),
         ),
         correctness_spread=_spread(correctness),

@@ -2,7 +2,7 @@
 
 Provides ``AutoLoopConfig`` and ``AutoLoopRule`` Pydantic models for
 configuring selection rules, a pure ``select_loop_type`` function that
-maps task complexity to a loop type string, and a ``build_execution_loop``
+maps task complexity to a ``LoopType`` member, and a ``build_execution_loop``
 factory that instantiates the concrete loop.
 
 Every complexity defaults to ReAct, the only loop that needs no

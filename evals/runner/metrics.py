@@ -17,7 +17,14 @@ from synthorg.engine.loop_protocol import ExecutionResult
 
 
 class RunMetrics(BaseModel):
-    """Per-run figures the rubric consumes, read off the loop's own records."""
+    """Per-run figures the rubric consumes, read off the loop's own records.
+
+    ``provider_retries`` is ``None`` when no turn measured a retry count, which
+    is the steady state for a loop that retries inside its own harness. That is
+    "not observable here", a different fact from "did not retry", and the two
+    must stay distinguishable: collapsing them would hand the unmeasurable loop
+    a perfect rework score for a comparison it never entered.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -28,7 +35,7 @@ class RunMetrics(BaseModel):
     total_tool_calls: int = Field(ge=0)
     tool_call_names: tuple[str, ...] = Field(default=())
     repeated_tool_calls: int = Field(ge=0)
-    provider_retries: int = Field(ge=0)
+    provider_retries: int | None = Field(default=None, ge=0)
     cache_hits: int = Field(ge=0)
 
     # ``@property`` rather than ``@computed_field``: this model round-trips
@@ -69,9 +76,15 @@ def run_metrics(result: ExecutionResult, *, duration_seconds: float) -> RunMetri
         total_tool_calls=len(tool_call_names),
         tool_call_names=tool_call_names,
         repeated_tool_calls=len(fingerprints) - len(set(fingerprints)),
-        # ``retry_count`` / ``cache_hit`` are ``None`` when the provider did not
-        # measure them, which counts the same as "did not happen" for the rubric.
-        provider_retries=sum(turn.retry_count or 0 for turn in turns),
+        # A run where no turn carried a retry count did not measure retries at
+        # all; summing it to zero would report the strongest possible rework
+        # result on the strength of having no evidence. ``cache_hit`` is not
+        # treated the same way: it feeds no ranked dimension.
+        provider_retries=(
+            sum(turn.retry_count or 0 for turn in turns)
+            if any(turn.retry_count is not None for turn in turns)
+            else None
+        ),
         cache_hits=sum(1 for turn in turns if turn.cache_hit),
     )
 

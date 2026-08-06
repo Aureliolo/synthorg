@@ -112,7 +112,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
     A selectable second loop that runs the best-in-class open OpenHands coder
     as the inner loop, so it can be A/B'd end to end against the native
-    loops and the winner promoted. It satisfies the same `ExecutionLoop`
+    loop and the winner promoted. It satisfies the same `ExecutionLoop`
     protocol (`get_loop_type() -> "openhands"`) and honours the same
     budget / shutdown / cancellation checkers and the NO_OP rule at turn
     boundaries. It reaches models only through the [LLM gateway](llm-gateway.md)
@@ -215,9 +215,15 @@ async run(
    alone when no enforcer is configured.
 9. **Resolve execution loop**: if `auto_loop_config` is set, calls
    `select_loop_type()` with the task's `estimated_complexity`. When no auto
-   config is set, uses the statically configured loop. The auto-selected loop
-   receives the engine's `compaction_callback` and (for openhands) its config
-   and runtime deps, along with the approval gate and stagnation detector.
+   config is set, uses the statically configured loop. Each builder takes only
+   the dependencies its loop can act on: React receives the in-process controls
+   (`approval_gate`, `stagnation_detector`, `compaction_callback`,
+   `steering_inbox`, `step_classifier`), while OpenHands receives
+   `openhands_loop_config` and `openhands_loop_deps` and honours the boundary
+   checks passed to `execute()` (budget, shutdown, cancellation, `NO_OP`). The
+   in-process controls are not passed through to it, because the harness runs
+   its own loop in-sandbox where they have nothing to observe: the same split
+   the [stagnation section](#loop-integration) describes.
 10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. The
    provider client is dispatched **per agent**, not fixed to the engine

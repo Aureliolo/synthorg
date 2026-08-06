@@ -195,8 +195,8 @@ class ExecutionLoop(Protocol):
             turn_observer: Optional per-run progress callback; used to
                 project live execution progress onto the AG-UI stream. Fired
                 with ``(index, labels)`` per the ``TurnObserver`` contract
-                (the labels are tool names or step descriptions depending on
-                the loop; see its type doc for the two conventions).
+                (the labels are tool names; see its type doc for the two
+                calling conventions).
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.
