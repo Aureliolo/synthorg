@@ -227,13 +227,9 @@ async def overlay_feature_settings(
         toolsmith["enabled"] = enabled
         if allowlist:
             toolsmith["allowed_capabilities"] = allowlist
-    analysis = si.get("analysis_model", "").strip()
-    if analysis:
-        overrides["analysis_model"] = analysis
-    code_model = si.get("code_modification_model", "").strip()
-    if code_model:
-        _nested(overrides, "code_modification")["llm_model"] = code_model
-
+    # ``analysis_model`` and ``code_modification_model`` are deliberately not
+    # overlaid: each is a ``(provider, model)`` pair its consumer re-reads at
+    # dispatch time, so there is no baked field to seed from a settings blob.
     cos_overrides = _nested(overrides, "chief_of_staff")
     for setting_key, field in _COS_BOOL_FIELDS.items():
         if setting_key in cos:

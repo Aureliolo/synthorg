@@ -114,7 +114,15 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("engine", "completion_oracle_enabled"),
         ("engine", "completion_oracle_shadow_mode"),
         ("engine", "completion_oracle_min_stakes"),
-        ("engine", "completion_oracle_reviewer_model_tier"),
+        ("engine", "completion_oracle_reviewer_model"),
+        # Each names the connection one runtime collaborator dispatches on,
+        # and each is resolved into that collaborator while
+        # ``build_runtime_services`` assembles it. Reassigning the model is
+        # exactly the edit an operator expects to take effect on the next
+        # run, so the rebuild is what makes the choice reach anything.
+        ("engine", "evolution_proposer_model"),
+        ("security", "red_team_model"),
+        ("security", "vision_verify_model"),
     }
 )
 

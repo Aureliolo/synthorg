@@ -1,11 +1,11 @@
-"""Gate: no alphabetical / first-registered provider auto-pick.
+"""Gate: no auto-picked and no shared-default provider.
 
-Every LLM dispatch must resolve an explicit ``(provider, model)`` pair. A
-provider is chosen either from a bound ``{provider, model_id}`` reference or
-from the explicit ``providers.default_provider`` (via
-``ProviderRegistry.default_provider`` / ``default_provider_resolved_name``);
-it is NEVER auto-picked as "whichever provider sorts first". This gate
-AST-scans ``src/synthorg/`` and fails on a reintroduction of any of:
+Every LLM dispatch resolves the connection named by its own bound
+``{provider, model_id}`` reference. A provider is a registered *connection*
+with its own credentials, endpoint and quota, so there is no "system default"
+to borrow and no "whichever provider sorts first" to fall back to: a feature
+either has its own pair or it is off. This gate AST-scans ``src/synthorg/``
+and fails on a reintroduction of any of:
 
 1. ``<registry>.list_providers()[0]`` -- indexing the sorted provider list.
 2. ``<name>[0]`` where ``<name>`` was assigned from a ``.list_providers()``
@@ -13,20 +13,23 @@ AST-scans ``src/synthorg/`` and fails on a reintroduction of any of:
    ``names[0]`` idiom).
 3. Any reference to the removed ``resolve_for_model`` method (the bare-model
    auto-resolver that picked the alphabetically-first serving provider).
+4. Any reference to the removed shared default: the ``default_provider`` /
+   ``default_provider_name`` / ``default_provider_resolved_name`` /
+   ``bind_default_provider`` registry surface, or a ``providers`` settings
+   read of ``default_provider``.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: provider-auto-pick -- <reason>`` on the offending line (e.g.
-a non-dispatch tier hint at empty-company boot). Pre-existing out-of-scope
-offenders live in ``scripts/provider_auto_pick_baseline.txt``; the gate fails
-only on a NEW violation.
+a non-dispatch tier hint at empty-company boot). There is deliberately no
+baseline: a suppression file would let a dispatch borrow a connection it was
+never bound to for as long as nobody drained the list.
 
 Usage:
     uv run python scripts/check_no_provider_auto_pick.py
-    uv run python scripts/check_no_provider_auto_pick.py --update-baseline
 
 Exit codes:
-    0 -- no new violations.
-    1 -- a new provider auto-pick was found.
+    0 -- no violations.
+    1 -- a provider auto-pick was found.
     2 -- configuration error (bad ``--repo-root`` or an unreadable source file).
 """
 
@@ -48,7 +51,6 @@ else:
     from scripts._gate_source import GateSourceError, read_and_parse
 
 _SRC_REL: Final[str] = "src/synthorg"
-_BASELINE_REL: Final[str] = "scripts/provider_auto_pick_baseline.txt"
 _MARKER: Final[str] = "lint-allow: provider-auto-pick"
 # The marker suppresses only as a trailing COMMENT carrying a non-empty
 # reason (``# lint-allow: provider-auto-pick -- <reason>``); the same text
@@ -58,6 +60,17 @@ _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
 )
 _LIST_PROVIDERS: Final[str] = "list_providers"
 _REMOVED_RESOLVER: Final[str] = "resolve_for_model"
+#: The removed shared-default surface. Each name resolved a provider for a
+#: caller that had not named one, which is exactly the ambiguity a
+#: ``(provider, model)`` pair exists to remove.
+_REMOVED_DEFAULT_SURFACE: Final[frozenset[str]] = frozenset(
+    {
+        "default_provider",
+        "default_provider_name",
+        "default_provider_resolved_name",
+        "bind_default_provider",
+    }
+)
 
 
 def _is_list_providers_call(node: ast.expr) -> bool:
@@ -134,9 +147,39 @@ def _provider_list_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[st
     return bound
 
 
+def _docstring_constants(tree: ast.Module) -> set[int]:
+    """Identify every docstring constant in *tree*.
+
+    The settings-key rule matches the bare literal ``"default_provider"``
+    wherever it appears, deliberately: a key read is a key read whatever call
+    shape carries it, and narrowing to one ``get_*`` signature would miss the
+    others. A docstring is the one position where that literal is prose about
+    the removed surface rather than a read of it, so it is excluded by
+    identity rather than by guessing from the surrounding syntax.
+
+    Returns:
+        The ``id()`` of each string constant serving as a module, class or
+        function docstring.
+    """
+    docstrings: set[int] = set()
+    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, holders):
+            continue
+        first = node.body[0] if node.body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            docstrings.add(id(first.value))
+    return docstrings
+
+
 def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     """Return every provider-auto-pick finding in one module."""
     findings: list[str] = []
+    docstrings = _docstring_constants(tree)
 
     def _allowed(lineno: int) -> bool:
         return 1 <= lineno <= len(lines) and bool(_ALLOW_RE.search(lines[lineno - 1]))
@@ -156,6 +199,22 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
             and not _allowed(node.lineno)
         ):
             findings.append(f"{relpath}:{node.lineno}:{_REMOVED_RESOLVER}")
+        # 4: the removed shared-default surface, as an attribute access
+        # (``registry.default_provider()``) or as a settings key literal
+        # (``get_str("providers", "default_provider")``).
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in _REMOVED_DEFAULT_SURFACE
+            and not _allowed(node.lineno)
+        ):
+            findings.append(f"{relpath}:{node.lineno}:{node.attr}")
+        if (
+            isinstance(node, ast.Constant)
+            and node.value == "default_provider"
+            and id(node) not in docstrings
+            and not _allowed(node.lineno)
+        ):
+            findings.append(f"{relpath}:{node.lineno}:setting:default_provider")
 
     # 2: name[0] where name came from a list_providers() result in the same func.
     for node in ast.walk(tree):
@@ -197,26 +256,10 @@ def _scan(root: Path) -> list[str]:
     return findings
 
 
-def _read_baseline(path: Path) -> set[str]:
-    """Return the baselined violation identifiers (``{}`` when absent)."""
-    if not path.is_file():
-        return set()
-    return {
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    }
-
-
 def main(argv: list[str] | None = None) -> int:
     """Scan for provider auto-picks and return the gate exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", default=".", help="Repository root.")
-    parser.add_argument(
-        "--update-baseline",
-        action="store_true",
-        help="Rewrite the baseline to the current violation set.",
-    )
     args = parser.parse_args(argv)
 
     root = Path(args.repo_root).resolve()
@@ -225,33 +268,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        findings = set(_scan(root))
+        findings = sorted(set(_scan(root)))
     except GateSourceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    baseline_path = root / _BASELINE_REL
-    if args.update_baseline:
-        body = "\n".join(sorted(findings))
-        header = (
-            "# Pre-existing provider auto-picks, out of scope for the\n"
-            "# no-provider-auto-pick policy. The gate fails on a NEW entry.\n"
-        )
-        baseline_path.write_text(
-            header + body + ("\n" if body else ""), encoding="utf-8"
-        )
-        print(f"wrote {len(findings)} entries to {_BASELINE_REL}")
-        return 0
-
-    new = sorted(findings - _read_baseline(baseline_path))
-    if new:
+    if findings:
         print(
-            "error: provider auto-pick(s) found (resolve an explicit provider "
-            "via a bound ref or providers.default_provider, never the first "
-            "registered):",
+            "error: provider auto-pick(s) found (name the connection through "
+            "the consumer's own MODEL_REF pair; there is no shared default "
+            "and never the first registered):",
             file=sys.stderr,
         )
-        for ident in new:
+        for ident in findings:
             print(f"  {ident}", file=sys.stderr)
         return 1
     return 0

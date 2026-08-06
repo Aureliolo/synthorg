@@ -1,5 +1,8 @@
 """Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -18,9 +21,43 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("providers", "routing_strategy"),
         ("providers", "retry_max_attempts"),
-        ("providers", "default_provider"),
     }
 )
+
+
+@contextmanager
+def _swap_failure_logged(
+    service: str, context: Mapping[str, object] | None = None
+) -> Iterator[None]:
+    """Log a failed hot-swap with context, then let it reach the dispatcher.
+
+    Both rebuilds here promise the same thing: on failure the service
+    already in ``AppState`` stays, and the dispatcher hears about it. The
+    swallow-and-continue variant would leave an operator's setting silently
+    unapplied, so the error is re-raised after it has been made readable.
+
+    Args:
+        service: Which service could not be swapped, for the log line.
+        context: Extra fields resolved as the body runs (the strategy a
+            router rebuild had got as far as reading), read at failure time
+            rather than passed up front so a fault before that read still
+            logs what was known.
+
+    Yields:
+        Nothing; the caller's body runs inside the guard.
+    """
+    try:
+        yield
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.error(
+            SETTINGS_SERVICE_SWAP_FAILED,
+            service=service,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            **(dict(context) if context is not None else {}),
+        )
+        raise
 
 
 class ProviderSettingsSubscriber:
@@ -84,9 +121,9 @@ class ProviderSettingsSubscriber:
         """Handle a provider setting change.
 
         ``routing_strategy`` triggers a :class:`ModelRouter` rebuild;
-        ``retry_max_attempts`` and ``default_provider`` each trigger a
-        :class:`ProviderRegistry` rebuild so the new retry cap / bound default
-        goes live. Other keys are advisory and logged at INFO level.
+        ``retry_max_attempts`` triggers a :class:`ProviderRegistry` rebuild so
+        the new retry cap goes live. Other keys are advisory and logged at
+        INFO level.
 
         Args:
             namespace: Changed setting namespace.
@@ -94,10 +131,7 @@ class ProviderSettingsSubscriber:
         """
         if namespace == "providers" and key == "routing_strategy":
             await self._rebuild_router()
-        elif namespace == "providers" and key in (
-            "retry_max_attempts",
-            "default_provider",
-        ):
+        elif namespace == "providers" and key == "retry_max_attempts":
             await self._rebuild_registry(key)
         else:
             logger.info(
@@ -119,16 +153,16 @@ class ProviderSettingsSubscriber:
         via ``SETTINGS_SERVICE_SWAP_FAILED`` before re-raising to the
         dispatcher.
         """
-        attempted_strategy: str | None = None
-        try:
+        attempted: dict[str, object] = {"attempted_strategy": None}
+        with _swap_failure_logged("model_router", attempted):
             result = await self._settings_service.get(
                 "providers",
                 "routing_strategy",
             )
-            attempted_strategy = result.value
+            attempted["attempted_strategy"] = result.value
             config = self._app_state.config
             new_routing = config.routing.model_copy(
-                update={"strategy": attempted_strategy},
+                update={"strategy": result.value},
             )
             new_router = ModelRouter(
                 new_routing,
@@ -139,25 +173,46 @@ class ProviderSettingsSubscriber:
             )
 
             self._app_state.wire(ProvidersStateSlice, model_router=new_router)
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.error(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="model_router",
-                attempted_strategy=attempted_strategy,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+
+    def _cassette_holds(
+        self, registry: ProviderRegistry | None, key: str, *, note: str
+    ) -> bool:
+        """Whether *registry* is cassette-bound, so a swap must stand down.
+
+        Asked twice per rebuild, before and after the resolving awaits: a
+        concurrent setup-complete reinit can install a cassette-bound
+        registry mid-flight, and swapping over it would route recorded-LLM
+        traffic to the live provider.
+
+        Args:
+            registry: The registry read from state, or ``None`` when none is
+                wired yet.
+            key: The setting key that triggered the rebuild, for telemetry.
+            note: Which of the two checks declined, so the log says whether
+                the cassette was already there or arrived mid-rebuild.
+
+        Returns:
+            ``True`` when a cassette session is active on *registry*.
+        """
+        if registry is None or registry.cassette_session is None:
+            return False
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace="providers",
+            key=key,
+            note=note,
+        )
+        return True
 
     async def _rebuild_registry(self, key: str) -> None:
         """Rebuild the ProviderRegistry from live settings and swap it in.
 
-        Triggered by a ``retry_max_attempts`` or ``default_provider`` change;
-        *key* names which and is echoed in the telemetry. Resolves the live
-        retry cap, the bound default provider, and the current provider set
-        (the DB-persisted blob, falling back to the boot template), rebuilds
-        the registry with the catalogue re-bound, and hot-swaps it. Skipped
+        Triggered by a ``retry_max_attempts`` change; *key* names it and is
+        echoed in the telemetry. Resolves the live retry cap and the current
+        provider set (the DB-persisted blob, falling back to the boot
+        template), rebuilds the registry with the catalogue re-bound, and
+        hot-swaps it. Skipped
         while a cassette session is active, since the recorded-LLM seam is
         baked in at process start and the change then applies on the next
         restart. On failure the existing registry stays in place; the error is
@@ -167,47 +222,34 @@ class ProviderSettingsSubscriber:
             provider_credential_catalog_of,
         )
         from synthorg.providers.management._persistence import (  # noqa: PLC0415
-            resolve_default_provider_name,
             resolve_retry_max_attempts,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
         from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
-        try:
+        with _swap_failure_logged("provider_registry"):
             current = self._app_state.slice(ProvidersStateSlice).registry
-            if current is not None and current.cassette_session is not None:
-                logger.info(
-                    SETTINGS_SUBSCRIBER_NOTIFIED,
-                    subscriber=self.subscriber_name,
-                    namespace="providers",
-                    key=key,
-                    note="cassette active -- change applies on next restart",
-                )
+            if self._cassette_holds(
+                current,
+                key,
+                note="cassette active -- change applies on next restart",
+            ):
                 return
             resolver = config_resolver_of(self._app_state)
             retry_max_attempts = await resolve_retry_max_attempts(resolver)
-            default_provider = await resolve_default_provider_name(resolver)
             provider_configs = dict(await resolver.get_provider_configs())
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
                 connection_catalog=provider_credential_catalog_of(self._app_state),
                 retry_max_attempts=retry_max_attempts,
             )
-            new_registry.bind_default_provider(default_provider)
-            # Re-read after the awaits: a concurrent setup-complete reinit may
-            # have installed a cassette-bound registry while we were resolving
-            # configs. Swapping over it would silently route recorded-LLM
-            # traffic to the live provider, so bail and let the cap apply on
-            # the next restart instead.
+            # Re-read after the awaits; see ``_cassette_holds`` for why.
             live = self._app_state.slice(ProvidersStateSlice).registry
-            if live is not None and live.cassette_session is not None:
-                logger.info(
-                    SETTINGS_SUBSCRIBER_NOTIFIED,
-                    subscriber=self.subscriber_name,
-                    namespace="providers",
-                    key=key,
-                    note="cassette became active during rebuild -- skipped swap",
-                )
+            if self._cassette_holds(
+                live,
+                key,
+                note="cassette became active during rebuild -- skipped swap",
+            ):
                 return
             await self._apply_registry_swap(
                 new_registry, live, trigger=f"setting:providers.{key}"
@@ -219,15 +261,6 @@ class ProviderSettingsSubscriber:
                 key=key,
                 note="provider registry rebuilt, swapped, and runtime reloaded",
             )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.error(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="provider_registry",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
 
     async def _apply_registry_swap(
         self,

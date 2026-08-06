@@ -10,6 +10,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -20,6 +21,7 @@ from synthorg.engine.cost_recording import (
     record_execution_costs,
     resolve_tracker_currency,
 )
+from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionLoop,
@@ -91,6 +93,7 @@ class AgentEnginePostExecMixin:
     _approval_store: ApprovalStoreProtocol | None
     _review_gate: ReviewGateService | None
     _review_pipeline: ReviewPipeline | None
+    _artifact_probe: ExpectedArtifactProbe | None
     _apply_recovery: ApplyRecovery
     _recovery_strategy: RecoveryStrategy | None
     _checkpoint_repo: CheckpointRepository | None
@@ -133,6 +136,13 @@ class AgentEnginePostExecMixin:
             transitions, optional recovery, checkpoint cleanup, and
             best-effort classification / distillation / coordination
             metrics hooks have all run.
+
+        Raises:
+            ExecutionStateError: When a post-execution transition cannot
+                land. The run's checkpoints are released first, so a task
+                whose state could not be moved does not also leak the rows
+                it was holding; the error then reaches the caller, which is
+                the only place left that can act on an unmoved task.
         """
         await record_execution_costs(
             execution_result,
@@ -142,15 +152,20 @@ class AgentEnginePostExecMixin:
             tracker=self._cost_tracker,
             project_id=project_id,
         )
-        execution_result = await apply_post_execution_transitions(
-            execution_result,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=self._task_engine,
-            approval_store=self._approval_store,
-            review_gate=self._review_gate,
-            review_pipeline=self._review_pipeline,
-        )
+        try:
+            execution_result = await apply_post_execution_transitions(
+                execution_result,
+                agent_id=agent_id,
+                task_id=task_id,
+                task_engine=self._task_engine,
+                approval_store=self._approval_store,
+                review_gate=self._review_gate,
+                review_pipeline=self._review_pipeline,
+                artifact_probe=self._artifact_probe,
+            )
+        except ExecutionStateError:
+            await self._release_run_checkpoints(execution_result)
+            raise
         recovery_result: RecoveryResult | None = None
         failed_result: ExecutionResult | None = None
         if execution_result.termination_reason == TerminationReason.ERROR:
@@ -169,14 +184,7 @@ class AgentEnginePostExecMixin:
                 project_id=project_id,
             )
         if execution_result.termination_reason != TerminationReason.ERROR:
-            exec_id = execution_result.context.execution_id
-            if self._recovery_strategy is not None:
-                await self._recovery_strategy.finalize(exec_id)
-            await cleanup_checkpoint_artifacts(
-                self._checkpoint_repo,
-                self._heartbeat_repo,
-                exec_id,
-            )
+            await self._release_run_checkpoints(execution_result)
         if self._error_taxonomy_config is not None:
             try:
                 await classify_execution_errors(
@@ -221,6 +229,22 @@ class AgentEnginePostExecMixin:
             task_id,
         )
         return execution_result
+
+    async def _release_run_checkpoints(self, execution_result: ExecutionResult) -> None:
+        """Finalise recovery and drop the run's checkpoint / heartbeat rows.
+
+        Asked on the ordinary non-ERROR path, and again when a transition
+        fails: a failure that escapes the pipeline has no later owner, so
+        without this the rows the run was holding outlive every retry.
+        """
+        exec_id = execution_result.context.execution_id
+        if self._recovery_strategy is not None:
+            await self._recovery_strategy.finalize(exec_id)
+        await cleanup_checkpoint_artifacts(
+            self._checkpoint_repo,
+            self._heartbeat_repo,
+            exec_id,
+        )
 
     async def _handle_error_recovery(
         self,

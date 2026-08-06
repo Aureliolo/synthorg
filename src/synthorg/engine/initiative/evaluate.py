@@ -22,8 +22,9 @@ from typing import Final
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.evaluation_verdict import CriterionOutcome
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -33,14 +34,16 @@ from synthorg.engine.initiative.evaluate_brief import (
     build_evaluation_material,
     unmet_verdict_detail,
 )
-from synthorg.engine.initiative.evaluate_models import (
-    CriterionOutcome,
-    EvaluationReport,
-)
+from synthorg.engine.initiative.evaluate_models import EvaluationReport
 from synthorg.engine.initiative.evaluate_session import (
     EvaluationSessionConfig,
     InitiativeEvaluator,
     build_evaluation_brief,
+)
+from synthorg.engine.initiative.evaluate_settings import (
+    DEFAULT_TIMEOUT_SECONDS,
+    session_config,
+    timeout_seconds,
 )
 from synthorg.engine.initiative.lead import (
     resolve_initiative_lead,
@@ -49,21 +52,27 @@ from synthorg.engine.initiative.lead import (
 from synthorg.engine.initiative.ports import (
     PlanReconcilePort,
     PlanStatusWriter,
-    ReplanTriggerPort,
+    ReplanTriggerResolver,
 )
 from synthorg.engine.initiative.project_writes import MAX_WRITE_ATTEMPTS
 from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.loop_protocol import ShutdownChecker
+from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_COMPLETED,
     INITIATIVE_EVALUATION_FAILED,
+    INITIATIVE_EVALUATION_RECORD_FAILED,
+    INITIATIVE_EVALUATION_RECORDED,
     INITIATIVE_EVALUATION_SCHEDULED,
     INITIATIVE_EVALUATION_SKIPPED,
 )
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportRecord,
+)
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.protocol import CompletionProvider, ProviderSelector
+from synthorg.providers.protocol import ProviderSelector
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.base import BaseTool
 from synthorg.tools.file_system.list_directory import ListDirectoryTool
@@ -78,11 +87,6 @@ ACTOR: Final[str] = "initiative-evaluate"
 #: Reason recorded on the completion transition.
 _COMPLETION_REASON: Final[str] = "evaluation: every success criterion met"
 
-#: Fallbacks for when no resolver is wired or a read fails.
-_DEFAULT_MAX_TURNS: Final[int] = 10
-_DEFAULT_COST_CEILING: Final[float] = 1.0
-_DEFAULT_TIMEOUT_SECONDS: Final[float] = 300.0
-
 #: Judgements one plan may start in a process. Each is a paid LLM session and
 #: the rollup schedules one on every recompute that reads EVALUATING, so a plan
 #: whose verdict never lands must stop spending rather than re-judge forever.
@@ -96,14 +100,15 @@ class EvaluationStageService:
         persistence: Backend supplying the plan and project repositories.
         agent_registry: Resolves the accountable lead.
         provider_selector: Resolves the completion client for the lead's bound
-            provider, so the judgement runs on the lead's provider.
-        default_provider: Fallback completion client (the explicit system
-            default) used when the lead's provider is unresolvable; ``None``
-            parks the plan rather than dispatching to an arbitrary provider.
+            provider, so the judgement runs on the connection the lead names.
+            An unregistered one parks the plan rather than dispatching the
+            judgement to a connection nobody chose.
         plan_status_writer: The audited plan-status write path, used for the
             one transition only this stage may make.
-        replan_trigger: Fired when the objective is not met, so the gap becomes
-            new work. ``None`` leaves an unmet initiative parked for a human.
+        replan_trigger: Reads the trigger fired when the objective is not met,
+            so the gap becomes new work. Resolved per verdict rather than
+            captured, because the trigger attaches on its own schedule. ``None``
+            (or a read yielding ``None``) leaves an unmet initiative parked.
         reconcile: Re-derives the initiative graph after the completion write,
             so the project and objective task follow the plan. ``None`` leaves
             them lagging the plan's COMPLETED write.
@@ -117,9 +122,9 @@ class EvaluationStageService:
 
     __slots__ = (
         "_attempts",
+        "_clock",
         "_config_resolver",
         "_cost_tracker",
-        "_default_provider",
         "_persistence",
         "_plan_writer",
         "_provider_selector",
@@ -137,9 +142,8 @@ class EvaluationStageService:
         persistence: PersistenceBackend,
         agent_registry: AgentRegistryService,
         provider_selector: ProviderSelector,
-        default_provider: CompletionProvider | None,
         plan_status_writer: PlanStatusWriter,
-        replan_trigger: ReplanTriggerPort | None = None,
+        replan_trigger: ReplanTriggerResolver | None = None,
         reconcile: PlanReconcilePort | None = None,
         workspace_root: Path | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
@@ -150,7 +154,6 @@ class EvaluationStageService:
         self._persistence = persistence
         self._registry = agent_registry
         self._provider_selector = provider_selector
-        self._default_provider = default_provider
         self._plan_writer = plan_status_writer
         self._replan_trigger = replan_trigger
         self._reconcile = reconcile
@@ -158,6 +161,7 @@ class EvaluationStageService:
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
         self._config_resolver = config_resolver
+        self._clock = clock
         self._runner = StageRunner(
             owner="initiative.evaluate",
             clock=clock,
@@ -201,7 +205,7 @@ class EvaluationStageService:
             key=plan_id,
             work=self._run(plan),
             deadline=self._timeout_seconds,
-            fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
+            fallback_seconds=DEFAULT_TIMEOUT_SECONDS,
             fields={"plan_id": plan_id},
         )
         if started:
@@ -260,7 +264,90 @@ class EvaluationStageService:
         report = await self._judge(fresh, project)
         if report is None:
             return
+        if not await self._record(fresh, report):
+            # A verdict nobody can read afterwards is, to every later reader,
+            # no verdict: the plan would complete with nothing to point at
+            # when asked why. No verdict parks the plan, so an unrecordable
+            # one parks it too. The next recompute re-judges, up to the
+            # attempt cap, so the cost is a re-judgement rather than a
+            # delivery permanently marked done on absent evidence.
+            return
         await self._apply(fresh, report)
+
+    async def _record(self, plan: Plan, report: EvaluationReport) -> bool:
+        """Persist the verdict before anything can act on it.
+
+        Written first so a contended completion write no longer destroys a
+        judgement that cost real money: the row outlives the plan's status
+        and is the only account an operator gets of which criteria failed.
+
+        Returns:
+            Whether the judgement was stored. ``False`` leaves the plan at
+            EVALUATING: this stage's whole posture is that an absent verdict
+            parks rather than completes, and a verdict that did not persist
+            is absent from the moment the process ends.
+
+        The attempt number is derived by reading the current maximum and
+        adding one, which is a read-modify-write across a network call. The
+        unique key on ``(plan_id, attempt)`` turns a lost race into a
+        ``DuplicateRecordError`` rather than an overwrite, and the retry
+        re-reads and tries again: a second worker's judgement is a second
+        judgement, not a duplicate of the first, so dropping it would lose
+        exactly what this table exists to keep.
+
+        The maximum comes from a dedicated read rather than from ``query``,
+        which is paginated and ordered by time: the largest attempt is only
+        in the first page while the two orders agree, and where they do not
+        the writer proposes an attempt that already exists, every retry
+        proposes it again, and the budget runs out on a verdict that could
+        have been stored.
+        """
+        repo = self._persistence.evaluation_reports
+        plan_id = NotBlankStr(str(plan.id))
+        attempt = 0
+        for _ in range(MAX_WRITE_ATTEMPTS):
+            try:
+                attempt = await repo.max_attempt(plan_id) + 1
+                await repo.append(
+                    EvaluationReportRecord(
+                        plan_id=plan_id,
+                        project_id=NotBlankStr(str(plan.project)),
+                        attempt=attempt,
+                        summary=report.summary,
+                        verdicts=report.verdicts,
+                        objective_met=report.objective_met,
+                        evaluated_at=self._clock.now(),
+                    )
+                )
+            except DuplicateRecordError:
+                continue
+            except QueryError as exc:
+                # lint-allow: swallow-ok -- surfaced as a False return, which
+                # parks the plan; narrowed to the store's own failure so a
+                # genuine bug in this method raises instead of being absorbed.
+                logger.error(
+                    INITIATIVE_EVALUATION_RECORD_FAILED,
+                    plan_id=str(plan.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return False
+            break
+        else:
+            logger.error(
+                INITIATIVE_EVALUATION_RECORD_FAILED,
+                plan_id=str(plan.id),
+                reason="attempt_number_contended",
+            )
+            return False
+        logger.info(
+            INITIATIVE_EVALUATION_RECORDED,
+            plan_id=str(plan.id),
+            attempt=attempt,
+            objective_met=report.objective_met,
+            criteria=len(report.verdicts),
+        )
+        return True
 
     async def _judge(self, plan: Plan, project: Project) -> EvaluationReport | None:
         """Run the bounded session that produces the verdict.
@@ -280,7 +367,6 @@ class EvaluationStageService:
         provider = resolve_lead_provider(
             self._provider_selector,
             lead,
-            default_provider=self._default_provider,
             skipped_event=INITIATIVE_EVALUATION_SKIPPED,
         )
         if provider is None:
@@ -303,7 +389,8 @@ class EvaluationStageService:
                 material=await build_evaluation_material(self._persistence, plan)
             ),
             criteria=plan.objective_criteria,
-            read_tools=self._read_tools(),
+            read_tools=self._read_tools(plan),
+            project_id=plan.project,
         )
 
     async def _apply(self, plan: Plan, report: EvaluationReport) -> None:
@@ -321,7 +408,8 @@ class EvaluationStageService:
             objective_met=False,
             unmet_count=len(unmet),
         )
-        if self._replan_trigger is None:
+        trigger = None if self._replan_trigger is None else self._replan_trigger()
+        if trigger is None:
             logger.warning(
                 INITIATIVE_EVALUATION_SKIPPED,
                 plan_id=str(plan.id),
@@ -332,7 +420,7 @@ class EvaluationStageService:
         # The judged evidence is the best account of what went wrong that this
         # initiative will ever produce. Handing the trigger only the enum would
         # leave the successor's planner with generic boilerplate instead.
-        self._replan_trigger.schedule(
+        trigger.schedule(
             plan=plan,
             reason=StallReason.EVALUATION_UNMET,
             detail=unmet_verdict_detail(unmet),
@@ -342,9 +430,10 @@ class EvaluationStageService:
         """Write the one status only this stage may write, then reconcile.
 
         The write is CAS-guarded, so an operator touching the plan during the
-        judgement loses the race, and a lost race here throws away a verdict
-        that cost real money and cannot be re-derived from anything persisted.
-        It is therefore retried against a fresh read rather than abandoned.
+        judgement loses the race. The verdict itself is already persisted by
+        then, so a lost race costs the transition rather than the judgement;
+        it is still retried against a fresh read rather than abandoned,
+        because the plan genuinely met its objective.
         """
         for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
             fresh = await self._persistence.plans.get(NotBlankStr(str(plan.id)))
@@ -407,19 +496,40 @@ class EvaluationStageService:
             return
         await self._reconcile.recompute(plan.id)
 
-    def _read_tools(self) -> tuple[BaseTool, ...]:
+    def _read_tools(self, plan: Plan) -> tuple[BaseTool, ...]:
         """Build the read-only tools the judgement runs with.
 
+        Scoped to the plan's own project workspace rather than the shared
+        base root, so listing a directory returns the deliverable instead of
+        a tree of sibling projects, and the paths in the material resolve as
+        written.
+
         Returns:
-            Workspace read tools when a root is wired; an empty tuple
-            otherwise. Never a write tool: a session that could change what it
-            is judging could turn its own failing verdict into a pass.
+            Workspace read tools when a root is wired and the project's
+            workspace exists; an empty tuple otherwise. Never a write tool:
+            a session that could change what it is judging could turn its
+            own failing verdict into a pass.
+
+            An absent workspace yields no tools rather than raising. The
+            file tools refuse a missing root, and letting that propagate
+            would abort the judgement, burn every attempt and park the plan
+            over a project that was simply never provisioned.
         """
         if self._workspace_root is None:
             return ()
+        workspace = project_workspace_dir(self._workspace_root, str(plan.project))
+        if not workspace.is_dir():
+            logger.warning(
+                INITIATIVE_EVALUATION_SKIPPED,
+                plan_id=str(plan.id),
+                project_id=str(plan.project),
+                reason="workspace_absent",
+                note="judging without workspace reads",
+            )
+            return ()
         return (
-            ReadFileTool(workspace_root=self._workspace_root),
-            ListDirectoryTool(workspace_root=self._workspace_root),
+            ReadFileTool(workspace_root=workspace),
+            ListDirectoryTool(workspace_root=workspace),
         )
 
     async def _session_config(self) -> EvaluationSessionConfig:
@@ -430,14 +540,7 @@ class EvaluationStageService:
             and cost ceiling, so an operator's change applies to the next
             evaluation without a restart.
         """
-        return EvaluationSessionConfig(
-            max_turns=await self._resolve_int(
-                "evaluation_session_max_turns", _DEFAULT_MAX_TURNS
-            ),
-            cost_ceiling=await self._resolve_float(
-                "evaluation_session_cost_ceiling", _DEFAULT_COST_CEILING
-            ),
-        )
+        return await session_config(self._config_resolver)
 
     async def _timeout_seconds(self) -> float:
         """Resolve the per-evaluation wall-clock ceiling.
@@ -445,51 +548,4 @@ class EvaluationStageService:
         Returns:
             The configured ceiling, or the default when unresolvable.
         """
-        resolved = await self._resolve_float(
-            "evaluation_session_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS
-        )
-        return resolved if resolved > 0 else _DEFAULT_TIMEOUT_SECONDS
-
-    async def _resolve_int(self, key: str, default: int) -> int:
-        """Resolve a live ``engine.<key>`` int, falling back to *default*.
-
-        Returns:
-            The configured value, or *default* when no resolver is wired or the
-            read fails.
-        """
-        if self._config_resolver is None:
-            return default
-        try:
-            return await self._config_resolver.get_int("engine", key)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read
-            reraise_critical(exc)
-            self._log_settings_degraded(key, exc)
-            return default
-
-    async def _resolve_float(self, key: str, default: float) -> float:
-        """Resolve a live ``engine.<key>`` float, falling back to *default*.
-
-        Returns:
-            The configured value, or *default* when no resolver is wired or the
-            read fails.
-        """
-        if self._config_resolver is None:
-            return default
-        try:
-            return await self._config_resolver.get_float("engine", key)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort settings read
-            reraise_critical(exc)
-            self._log_settings_degraded(key, exc)
-            return default
-
-    def _log_settings_degraded(self, key: str, exc: Exception) -> None:
-        """Warn that a best-effort ``engine.<key>`` read fell back to a default."""
-        logger.warning(
-            INITIATIVE_EVALUATION_SKIPPED,
-            key=key,
-            reason="settings_read_degraded",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        return await timeout_seconds(self._config_resolver)

@@ -11,7 +11,7 @@ from typing import Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import NotBlankStr
 from synthorg.security.config._enums import (
     ArgumentTruncationStrategy,
     LlmFallbackErrorPolicy,
@@ -34,15 +34,12 @@ class LlmFallbackConfig(BaseModel):
     """Configuration for LLM-based security evaluation fallback.
 
     When enabled, actions that the rule engine cannot classify
-    (no rule matched, low confidence) are routed to an LLM from
-    a different provider family for cross-validation.
+    (no rule matched, low confidence) are routed to the operator's
+    ``security.llm_evaluator_model`` pair for cross-validation, which
+    should name a connection from a different vendor family.
 
     Attributes:
         enabled: Whether LLM fallback is active.
-        model: Explicit model ID for security evaluation.  When
-            ``None``, the evaluator picks the first model from
-            the selected provider (cross-family preferred,
-            same-family fallback).
         timeout_seconds: Maximum time for the LLM call.
         max_input_tokens: Token budget cap for security eval prompts.
         max_output_tokens: Response token budget for the LLM verdict.
@@ -56,7 +53,6 @@ class LlmFallbackConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
-    model: NotBlankStr | None = None
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
     max_output_tokens: int = Field(default=256, gt=0, le=4096)
@@ -166,9 +162,6 @@ class SafetyClassifierConfig(BaseModel):
 
     Attributes:
         enabled: Whether the safety classifier is active.
-        model: Explicit model ID for classification.  When ``None``,
-            the classifier picks the first model from the selected
-            provider (cross-family preferred, same-family fallback).
         timeout_seconds: Maximum time for the LLM classification call.
         max_input_tokens: Token budget cap for classification prompts.
         max_output_tokens: Response token budget for the classifier verdict.
@@ -192,7 +185,6 @@ class SafetyClassifierConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
-    model: NotBlankStr | None = None
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
     max_output_tokens: int = Field(default=256, gt=0, le=4096)
@@ -277,8 +269,9 @@ class VisionVerifyConfig(BaseModel):
             short-circuits as if the gate were absent.
         verifier_kind: Strategy discriminator. ``noop`` is inert,
             ``heuristic`` runs deterministic colour / rule checks,
-            ``llm_vision`` calls a multimodal model.
-        model_tier: Provider tier resolved for the ``llm_vision`` verifier.
+            ``llm_vision`` calls the operator's
+            ``security.vision_verify_model`` pair, which must name a
+            multimodal model.
         timeout_seconds: Per-evaluation cap on the verifier call.
         colour_tolerance: Default normalised RGB distance tolerance the
             heuristic applies when an expectation omits its own.
@@ -288,7 +281,6 @@ class VisionVerifyConfig(BaseModel):
 
     enabled: bool = False
     verifier_kind: VisionVerifierKind = VisionVerifierKind.NOOP
-    model_tier: ModelTier = "medium"
     timeout_seconds: float = Field(
         default=VISION_TIMEOUT_DEFAULT_SECONDS,
         gt=0.0,

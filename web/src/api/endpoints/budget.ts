@@ -9,7 +9,7 @@ import type {
 } from '../types/budget'
 import type {
   AnalyticsAggregation,
-  Forecast,
+  ForecastView,
   ForecastApproveRequest,
   ForecastRejectRequest,
   ForecastRequest,
@@ -152,13 +152,13 @@ export async function getPromptClassBreakdown(
   return unwrap(response)
 }
 
-export async function createForecast(data: ForecastRequest): Promise<Forecast> {
-  const response = await apiClient.post<ApiResponse<Forecast>>('/budget/forecast', data)
+export async function createForecast(data: ForecastRequest): Promise<ForecastView> {
+  const response = await apiClient.post<ApiResponse<ForecastView>>('/budget/forecast', data)
   return unwrap(response)
 }
 
-export async function getForecast(forecastId: string): Promise<Forecast> {
-  const response = await apiClient.get<ApiResponse<Forecast>>(
+export async function getForecast(forecastId: string): Promise<ForecastView> {
+  const response = await apiClient.get<ApiResponse<ForecastView>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}`,
   )
   return unwrap(response)
@@ -167,8 +167,8 @@ export async function getForecast(forecastId: string): Promise<Forecast> {
 export async function approveForecast(
   forecastId: string,
   data: ForecastApproveRequest,
-): Promise<Forecast> {
-  const response = await apiClient.post<ApiResponse<Forecast>>(
+): Promise<ForecastView> {
+  const response = await apiClient.post<ApiResponse<ForecastView>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/approve`,
     data,
   )
@@ -178,8 +178,8 @@ export async function approveForecast(
 export async function rejectForecast(
   forecastId: string,
   data: ForecastRejectRequest,
-): Promise<Forecast> {
-  const response = await apiClient.post<ApiResponse<Forecast>>(
+): Promise<ForecastView> {
+  const response = await apiClient.post<ApiResponse<ForecastView>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/reject`,
     data,
   )
@@ -189,8 +189,8 @@ export async function rejectForecast(
 export async function raiseCeiling(
   forecastId: string,
   data: RaiseCeilingRequest,
-): Promise<Forecast> {
-  const response = await apiClient.post<ApiResponse<Forecast>>(
+): Promise<ForecastView> {
+  const response = await apiClient.post<ApiResponse<ForecastView>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/raise_ceiling`,
     data,
   )

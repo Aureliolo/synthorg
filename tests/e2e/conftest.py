@@ -14,6 +14,7 @@ import pytest
 
 from tests._shared.scripted_provider import (
     ScriptedProvider,
+    e2e_tool_workspace,
     make_e2e_identity,
     make_e2e_task,
     make_text_response,
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ScriptedProvider",
+    "e2e_tool_workspace",
     "make_e2e_identity",
     "make_e2e_task",
     "make_text_response",

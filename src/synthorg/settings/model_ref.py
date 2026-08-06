@@ -64,7 +64,12 @@ def parse_model_ref(value: str) -> ModelRef:
             provider = data.get("provider")
             model_id = data.get("model_id")
             return ModelRef(
-                provider=provider if isinstance(provider, str) else "",
+                # Trimmed, unlike ``model_id``: a provider name is a registry
+                # key and nothing else, so ``"  openai  "`` and ``"openai"``
+                # name one connection. Left raw, every consumer would have to
+                # remember to strip before its own lookup, and the one that
+                # forgot would report the operator's provider unregistered.
+                provider=provider.strip() if isinstance(provider, str) else "",
                 model_id=model_id if isinstance(model_id, str) else "",
             )
         return ModelRef(model_id=value)

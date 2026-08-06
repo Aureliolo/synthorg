@@ -23,6 +23,7 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
+from tests._shared.model_binding import bound_ref, one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -60,16 +61,16 @@ def _synth_returning(content: str) -> NarrativeSynthesiser:
         complete=AsyncMock(return_value=_response(content))
     )
     return NarrativeSynthesiser(
-        provider=provider,
-        config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+        connections=one_connection(provider),
+        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
     )
 
 
 def _synth_raising(exc: type[BaseException] | BaseException) -> NarrativeSynthesiser:
     provider = mock_of[CompletionProvider](complete=AsyncMock(side_effect=exc))
     return NarrativeSynthesiser(
-        provider=provider,
-        config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+        connections=one_connection(provider),
+        config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
     )
 
 
@@ -117,8 +118,8 @@ class TestWriteProse:
             complete=AsyncMock(return_value=_response(json.dumps({"summary": "ok"})))
         )
         synth = NarrativeSynthesiser(
-            provider=provider,
-            config=ChiefOfStaffConfig(narrative_model="example-small-001"),
+            connections=one_connection(provider),
+            config=ChiefOfStaffConfig(narrative_model=bound_ref("example-small-001")),
         )
         await synth.write_prose(_run())
         messages = provider.complete.await_args.args[0]
@@ -137,7 +138,9 @@ class TestWriteProse:
         # degrades to the fallback without ever calling the provider and logs a
         # distinct reason so ops don't read it as an outage.
         provider = mock_of[CompletionProvider](complete=AsyncMock())
-        synth = NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+        synth = NarrativeSynthesiser(
+            connections=one_connection(provider), config=ChiefOfStaffConfig()
+        )
         with structlog.testing.capture_logs() as events:
             prose = await synth.write_prose(_run())
         assert prose.summary == FALLBACK_SUMMARY

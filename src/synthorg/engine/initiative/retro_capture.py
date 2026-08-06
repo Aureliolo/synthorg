@@ -81,10 +81,9 @@ class ShipRetroCaptureService:
             recall read/write through.
         org_backend: Organisational memory the reusable learnings write to.
         provider_selector: Resolves the completion client for the lead's bound
-            provider, so the distillation runs on the lead's provider.
-        default_provider: Fallback completion client (the explicit system
-            default) used when the lead's provider is unresolvable; ``None``
-            skips capture rather than dispatching to an arbitrary provider.
+            provider, so the distillation runs on the connection the lead
+            names. An unregistered one skips capture rather than dispatching
+            to a connection nobody chose.
         cost_tracker: Optional cost tracker the session records against.
         shutdown_checker: Optional graceful-shutdown signal for the session.
         config_resolver: Live settings source, re-read per capture so an
@@ -96,7 +95,6 @@ class ShipRetroCaptureService:
         "_clock",
         "_config_resolver",
         "_cost_tracker",
-        "_default_provider",
         "_inflight",
         "_memory_backend",
         "_org_backend",
@@ -106,14 +104,13 @@ class ShipRetroCaptureService:
         "_tasks",
     )
 
-    def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
+    def __init__(
         self,
         *,
         agent_registry: AgentRegistryService,
         memory_backend: MemoryBackend,
         org_backend: OrgMemoryBackend,
         provider_selector: ProviderSelector,
-        default_provider: CompletionProvider | None,
         cost_tracker: CostTrackerProtocol | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         config_resolver: ConfigResolver | None = None,
@@ -123,7 +120,6 @@ class ShipRetroCaptureService:
         self._memory_backend = memory_backend
         self._org_backend = org_backend
         self._provider_selector = provider_selector
-        self._default_provider = default_provider
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
         self._config_resolver = config_resolver
@@ -420,12 +416,11 @@ class ShipRetroCaptureService:
         """Resolve the completion client the session runs on.
 
         Returns:
-            The lead's bound provider, the explicit system default when that is
-            unregistered, or ``None`` when neither resolves.
+            The lead's bound provider, or ``None`` when its connection is not
+            registered and capture is skipped.
         """
         return resolve_lead_provider(
             self._provider_selector,
             lead,
-            default_provider=self._default_provider,
             skipped_event=RETRO_CAPTURE_SKIPPED,
         )

@@ -1,19 +1,17 @@
 """Factory functions for verification decomposers and graders.
 
 Builds a ``CriteriaDecomposer`` or ``RubricGrader`` instance from a
-``VerificationConfig``.  The LLM variants require a
-``CompletionProvider`` plus a ``tier_resolver`` callable that maps
-``ModelTier`` to a concrete model identifier.  The factory is the only
-place these dependencies cross from the provider layer into the quality
-subsystem, keeping the quality modules decoupled from provider presets
-and model-matching logic.
+``VerificationConfig``.  The LLM variants require the operator's own
+``(provider, model)`` pair and a selector that resolves the connection it
+names, because a provider is a registered connection carrying its own
+credentials, endpoint and quota.  The factory is the only place these
+dependencies cross from the provider layer into the quality subsystem,
+keeping the quality modules decoupled from provider presets and
+model-matching logic.
 """
 
-from collections.abc import Callable
-
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.core.types import ModelTier, NotBlankStr
-from synthorg.core.validation import require_non_blank
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.decomposer_protocol import (
     CriteriaDecomposer,
 )
@@ -38,62 +36,27 @@ from synthorg.observability.events.verification import (
     VERIFICATION_FACTORY_UNKNOWN_DECOMPOSER,
     VERIFICATION_FACTORY_UNKNOWN_GRADER,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.model_ref import ModelRef
 
 logger = get_logger(__name__)
-
-TierResolver = Callable[["ModelTier"], "NotBlankStr"]
-
-
-def _require_non_blank_model_id(
-    value: str,
-    *,
-    component: str,
-    tier: ModelTier,
-) -> NotBlankStr:
-    """Validate that a resolved model id is non-blank.
-
-    The ``TierResolver`` protocol promises a ``NotBlankStr`` but it is a
-    runtime callable; untrusted callers may still return a blank
-    string. Fail here with a clear message instead of letting Pydantic
-    raise from inside ``LLMCriteriaDecomposer`` / ``LLMRubricGrader``.
-
-    Returns:
-        ``value`` typed as :class:`NotBlankStr` when it is non-blank.
-
-    Raises:
-        ValueError: When ``value`` is blank or whitespace-only.
-    """
-    try:
-        return require_non_blank(value, name=f"{component} tier_resolver({tier!r})")
-    except ValueError as exc:
-        logger.error(
-            VERIFICATION_FACTORY_MISSING_PROVIDER,
-            component=component,
-            tier=str(tier),
-            reason="blank_model_id",
-        )
-        msg = (
-            f"{component} tier_resolver returned a blank model id for "
-            f"tier {tier!r}; expected a non-blank string"
-        )
-        raise ValueError(msg) from exc
 
 
 def build_decomposer(
     config: VerificationConfig,
     *,
-    provider: CompletionProvider | None = None,
-    tier_resolver: TierResolver | None = None,
+    connections: ConnectionSelector | None = None,
+    model: ModelRef | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
 ) -> CriteriaDecomposer:
     """Build a criteria decomposer from config.
 
     Args:
         config: Verification configuration.
-        provider: Required for ``DecomposerVariant.LLM``; ignored otherwise.
-        tier_resolver: Maps ``config.decomposer_model_tier`` to a concrete
-            model identifier.  Required for ``DecomposerVariant.LLM``.
+        connections: Resolves the connection *model* names; required for
+            ``DecomposerVariant.LLM``, ignored otherwise.
+        model: The operator's decomposer ``(provider, model)`` pair;
+            required for ``DecomposerVariant.LLM``, ignored otherwise.
         cost_tracker: Records the verification LLM's token spend; forwarded
             to the LLM decomposer so its probes are not a cost blind spot.
 
@@ -102,32 +65,27 @@ def build_decomposer(
 
     Raises:
         ValueError: If the variant is unknown, or if the LLM variant is
-            requested without ``provider`` and ``tier_resolver``.
+            requested without a bound pair to dispatch on.
     """
     if config.decomposer == DecomposerVariant.IDENTITY:
         return IdentityCriteriaDecomposer()
     if config.decomposer == DecomposerVariant.LLM:
-        if provider is None or tier_resolver is None:
+        if connections is None or model is None:
             logger.error(
                 VERIFICATION_FACTORY_MISSING_PROVIDER,
                 variant=config.decomposer.value,
                 component="decomposer",
-                has_provider=provider is not None,
-                has_tier_resolver=tier_resolver is not None,
+                has_connections=connections is not None,
+                has_model=model is not None,
             )
             msg = (
-                "LLM decomposer requires a CompletionProvider and a "
-                "tier_resolver; pass both to build_decomposer()"
+                "LLM decomposer requires a bound (provider, model) pair and a "
+                "connection selector; pass both to build_decomposer()"
             )
             raise ValueError(msg)
-        model_id = _require_non_blank_model_id(
-            tier_resolver(config.decomposer_model_tier),
-            component="decomposer",
-            tier=config.decomposer_model_tier,
-        )
         return LLMCriteriaDecomposer(
-            provider=provider,
-            model_id=model_id,
+            provider=connections(model.provider),
+            model_id=NotBlankStr(model.model_id),
             max_probes_per_criterion=config.max_probes_per_criterion,
             cost_tracker=cost_tracker,
         )
@@ -147,8 +105,8 @@ def build_decomposer(
 def build_grader(
     config: VerificationConfig,
     *,
-    provider: CompletionProvider | None = None,
-    tier_resolver: TierResolver | None = None,
+    connections: ConnectionSelector | None = None,
+    model: ModelRef | None = None,
     heuristic_grader_config: HeuristicGraderConfig | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
 ) -> RubricGrader:
@@ -156,9 +114,10 @@ def build_grader(
 
     Args:
         config: Verification configuration.
-        provider: Required for ``GraderVariant.LLM``; ignored otherwise.
-        tier_resolver: Maps ``config.grader_model_tier`` to a concrete
-            model identifier.  Required for ``GraderVariant.LLM``.
+        connections: Resolves the connection *model* names; required for
+            ``GraderVariant.LLM``, ignored otherwise.
+        model: The operator's grader ``(provider, model)`` pair; required
+            for ``GraderVariant.LLM``, ignored otherwise.
         heuristic_grader_config: Optional :class:`HeuristicGraderConfig`
             with operator-tunable thresholds resolved from
             ``EngineBridgeConfig``. ``None`` falls back to grader
@@ -171,32 +130,27 @@ def build_grader(
 
     Raises:
         ValueError: If the variant is unknown, or if the LLM variant is
-            requested without ``provider`` and ``tier_resolver``.
+            requested without a bound pair to dispatch on.
     """
     if config.grader == GraderVariant.HEURISTIC:
         return HeuristicRubricGrader(config=heuristic_grader_config)
     if config.grader == GraderVariant.LLM:
-        if provider is None or tier_resolver is None:
+        if connections is None or model is None:
             logger.error(
                 VERIFICATION_FACTORY_MISSING_PROVIDER,
                 variant=config.grader.value,
                 component="grader",
-                has_provider=provider is not None,
-                has_tier_resolver=tier_resolver is not None,
+                has_connections=connections is not None,
+                has_model=model is not None,
             )
             msg = (
-                "LLM grader requires a CompletionProvider and a "
-                "tier_resolver; pass both to build_grader()"
+                "LLM grader requires a bound (provider, model) pair and a "
+                "connection selector; pass both to build_grader()"
             )
             raise ValueError(msg)
-        model_id = _require_non_blank_model_id(
-            tier_resolver(config.grader_model_tier),
-            component="grader",
-            tier=config.grader_model_tier,
-        )
         return LLMRubricGrader(
-            provider=provider,
-            model_id=model_id,
+            provider=connections(model.provider),
+            model_id=NotBlankStr(model.model_id),
             min_confidence_override=config.min_confidence_override,
             cost_tracker=cost_tracker,
         )

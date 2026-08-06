@@ -1337,13 +1337,18 @@ class TestSyncToTaskEngine:
             TaskStatus.FAILED,
         ]
 
-    async def test_max_turns_syncs_only_in_progress(
+    async def test_max_turns_syncs_a_terminal_failure(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """MAX_TURNS path: only IN_PROGRESS is synced (no final transition)."""
+        """MAX_TURNS is terminal: IN_PROGRESS then FAILED, both synced.
+
+        A run that hit its turn cap did not finish, and a task left at
+        IN_PROGRESS reads to the stall derivation as still moving, so its
+        initiative could never be replanned or completed.
+        """
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -1386,11 +1391,8 @@ class TestSyncToTaskEngine:
             task=sample_task_with_criteria,
         )
 
-        assert mock_te.submit.await_count == 1
-        assert (
-            mock_te.submit.call_args_list[0].args[0].target_status
-            == TaskStatus.IN_PROGRESS
-        )
+        synced = [c.args[0].target_status for c in mock_te.submit.call_args_list]
+        assert synced == [TaskStatus.IN_PROGRESS, TaskStatus.FAILED]
 
     async def test_sync_failure_isolated_from_subsequent_transitions(
         self,

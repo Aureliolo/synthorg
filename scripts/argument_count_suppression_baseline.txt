@@ -50,7 +50,7 @@ src/synthorg/deliverable_receipts/builder.py::ReceiptBuilder.__init__::9
 src/synthorg/engine/_agent_engine_callables.py::HandleFatalError.__call__::11
 src/synthorg/engine/_review_completion_gates.py::run_completion_gates::16
 src/synthorg/engine/_review_gate_record.py::ReviewGateRecordMixin._append_decision::9
-src/synthorg/engine/agent_engine.py::AgentEngine.__init__::68
+src/synthorg/engine/agent_engine.py::AgentEngine.__init__::69
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._build_error_execution::9
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._handle_fatal_error::11
 src/synthorg/engine/agent_engine_post_exec.py::AgentEnginePostExecMixin._run_loop_with_timeout::12
@@ -67,8 +67,7 @@ src/synthorg/engine/coordination/service.py::MultiAgentCoordinator.__init__::11
 src/synthorg/engine/evolution/factory.py::build_evolution_service::9
 src/synthorg/engine/evolution/service.py::EvolutionService.__init__::9
 src/synthorg/engine/hybrid_loop.py::HybridLoop.execute::9
-src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::12
-src/synthorg/engine/initiative/retro_capture.py::ShipRetroCaptureService.__init__::9
+src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::11
 src/synthorg/engine/intake/strategies/agent_intake.py::AgentIntake.__init__::9
 src/synthorg/engine/loop_protocol.py::ExecutionLoop.execute::9
 src/synthorg/engine/loop_selector.py::build_execution_loop::11
@@ -109,7 +108,7 @@ src/synthorg/meta/chief_of_staff/group_chat.py::GroupChatService.__init__::13
 src/synthorg/meta/chief_of_staff/group_chat.py::GroupChatService._dispatch_contribution::10
 src/synthorg/meta/chief_of_staff/intent_router.py::LlmIntentClassifier.__init__::11
 src/synthorg/meta/chief_of_staff/narrative/factory.py::build_chief_of_staff_narrator::10
-src/synthorg/meta/chief_of_staff/propose.py::ChiefOfStaffProposer.__init__::12
+src/synthorg/meta/chief_of_staff/propose.py::ChiefOfStaffProposer.__init__::11
 src/synthorg/meta/chief_of_staff/routing.py::LlmConcernRouter.__init__::11
 src/synthorg/meta/rollout/ab_test.py::ABTestRollout.__init__::12
 src/synthorg/meta/service.py::SelfImprovementService.__init__::15
@@ -201,4 +200,4 @@ tests/unit/settings/test_url_port_entries.py::test_url_port_entry_env_override::
 tests/unit/templates/test_model_matcher.py::_make_model::14
 tests/unit/templates/test_model_matcher_tiering.py::_model::9
 tests/unit/tools/external_api/test_external_api_tool.py::_build_tool::9
-tests/unit/workers/test_runtime_builder.py::_provider_app_state::11
+tests/unit/workers/test_runtime_builder.py::_provider_app_state::9

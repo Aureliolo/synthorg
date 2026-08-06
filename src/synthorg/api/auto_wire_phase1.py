@@ -269,35 +269,6 @@ def resolve_retry_max_attempts() -> int | None:
     return resolved if isinstance(resolved, int) else None
 
 
-def resolve_default_provider_name() -> str | None:
-    """Resolve the boot-time explicit default system provider name.
-
-    Reads ``providers.default_provider`` through the sanctioned pre-init
-    bootstrap resolver (env > registered default). The DB-stored value is
-    applied later, when the settings layer is connected, by the provider
-    hot-reload / subscriber paths that rebuild the registry. There is no
-    alphabetical fallback anywhere: a blank value leaves the registry with
-    no default (system calls stay unwired).
-
-    Returns:
-        The non-blank default provider name, or ``None`` when unset.
-    """
-    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-        resolve_init_value,
-    )
-    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-
-    # ``parse`` must accept the registered default ("") without rejecting it,
-    # so it returns the raw string unchanged; the blank-to-None filtering
-    # happens here after resolution.
-    resolved = resolve_init_value(
-        SettingNamespace.PROVIDERS,
-        "default_provider",
-        parse=lambda raw: raw,
-    ).value
-    return resolved.strip() or None if isinstance(resolved, str) else None
-
-
 def _wire_provider_registry(
     effective_config: RootConfig,
 ) -> ProviderRegistry:
@@ -320,7 +291,6 @@ def _wire_provider_registry(
             note="Failed to build provider registry from config",
         )
         raise
-    registry.bind_default_provider(resolve_default_provider_name())
     logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
     return registry
 

@@ -11,6 +11,7 @@ from synthorg.meta.charter.strategy import LLMCharterInterviewer
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
 from tests._shared import as_uuid, sid
+from tests._shared.model_binding import bound_ref, one_connection
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -47,7 +48,7 @@ def _history() -> tuple[ConversationTurn, ...]:
 
 
 def _interviewer(provider: ScriptedProvider) -> LLMCharterInterviewer:
-    return LLMCharterInterviewer(provider=provider)
+    return LLMCharterInterviewer(connections=one_connection(provider))
 
 
 class TestLLMCharterInterviewer:
@@ -56,7 +57,7 @@ class TestLLMCharterInterviewer:
         decision = await _interviewer(provider).run_turn(
             _history(),
             project_id=None,
-            config=CharterConfig(interview_model="example-large-001"),
+            config=CharterConfig(interview_model=bound_ref()),
         )
         assert decision.needs_more is True
         assert decision.next_question == "What is the budget?"
@@ -67,7 +68,7 @@ class TestLLMCharterInterviewer:
         decision = await _interviewer(provider).run_turn(
             _history(),
             project_id=None,
-            config=CharterConfig(interview_model="example-large-001"),
+            config=CharterConfig(interview_model=bound_ref()),
         )
         assert decision.needs_more is False
         assert decision.draft is not None
@@ -80,7 +81,7 @@ class TestLLMCharterInterviewer:
             await _interviewer(provider).run_turn(
                 _history(),
                 project_id=None,
-                config=CharterConfig(interview_model="example-large-001"),
+                config=CharterConfig(interview_model=bound_ref()),
             )
 
     async def test_schema_violation_raises(self) -> None:
@@ -91,12 +92,14 @@ class TestLLMCharterInterviewer:
             await _interviewer(provider).run_turn(
                 _history(),
                 project_id=None,
-                config=CharterConfig(interview_model="example-large-001"),
+                config=CharterConfig(interview_model=bound_ref()),
             )
 
     async def test_uses_configured_model(self) -> None:
         provider = ScriptedProvider(response=make_text_response(_QUESTION_JSON))
-        config = CharterConfig(interview_model=NotBlankStr("example-medium-001"))
+        config = CharterConfig(
+            interview_model=NotBlankStr(bound_ref("example-medium-001"))
+        )
         await _interviewer(provider).run_turn(
             _history(), project_id=None, config=config
         )

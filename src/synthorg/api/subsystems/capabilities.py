@@ -7,6 +7,8 @@ total. A check that raised would decide the fate of every subsystem behind
 it, so none of them may.
 """
 
+from collections.abc import Callable
+
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.spec import Capability, CapabilityId
 from synthorg.approval.state import ApprovalStateSlice
@@ -15,6 +17,7 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.deliverable_receipts.state_slice import DeliverableReceiptStateSlice
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.engine.cockpit.state import CockpitStateSlice
+from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.pipeline.models import PipelineAttachments
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workspace.state import WorkspaceStateSlice
@@ -33,6 +36,7 @@ from synthorg.providers.tool_call_feedback.state import ToolCallFeedbackStateSli
 from synthorg.research.state import ResearchStateSlice
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.workers.state import RuntimeStateSlice
 
 # Stands in before the pipeline exists, so the four attachment probes stay
 # total without each repeating the same None check.
@@ -55,6 +59,24 @@ def _attachments(app_state: AppState) -> PipelineAttachments | None:
     """
     pipeline = app_state.slice(EngineStateSlice).work_pipeline
     return pipeline.attachments if pipeline is not None else None
+
+
+def _tail_attached(
+    app_state: AppState,
+    probe: Callable[[ProjectRollupService], bool],
+) -> bool:
+    """Report whether one tail collaborator is attached to a wired rollup.
+
+    Args:
+        app_state: Application state carrying the engine slice.
+        probe: The rollup's own predicate for this collaborator.
+
+    Returns:
+        ``True`` once it is attached; ``False`` before the rollup exists, and
+        while it is up but this collaborator has not resolved.
+    """
+    rollup = app_state.slice(EngineStateSlice).project_rollup_service
+    return rollup is not None and probe(rollup)
 
 
 def _analytics_collector_configured() -> bool:
@@ -103,24 +125,6 @@ def _has_plan_dispatcher(app_state: AppState) -> bool:
     return proposer is not None and proposer.has_plan_dispatcher
 
 
-def _has_default_provider(app_state: AppState) -> bool:
-    """Report whether an explicit provider binding is resolvable.
-
-    Distinct from the registry merely existing: a registry holding several
-    providers with no default chosen resolves nothing, and the features that
-    dispatch without a per-feature model stay correctly unwired rather than
-    picking one alphabetically.
-
-    Args:
-        app_state: Application state carrying the provider slice.
-
-    Returns:
-        ``True`` when a default provider resolves.
-    """
-    registry = app_state.slice(ProvidersStateSlice).registry
-    return registry is not None and registry.default_provider() is not None
-
-
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PERSISTENCE,
@@ -134,7 +138,6 @@ CAPABILITIES: tuple[Capability, ...] = (
         id=CapabilityId.PROVIDER_REGISTRY,
         present=lambda s: s.slice(ProvidersStateSlice).registry is not None,
     ),
-    Capability(id=CapabilityId.DEFAULT_PROVIDER, present=_has_default_provider),
     Capability(
         id=CapabilityId.COST_TRACKER,
         present=lambda s: s.slice(BudgetStateSlice).cost_tracker is not None,
@@ -166,6 +169,10 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.TASK_ENGINE,
         present=lambda s: s.slice(EngineStateSlice).task_engine is not None,
+    ),
+    Capability(
+        id=CapabilityId.COORDINATOR,
+        present=lambda s: s.slice(RuntimeStateSlice).coordinator is not None,
     ),
     Capability(
         id=CapabilityId.WORKSPACE_SERVICE,
@@ -298,6 +305,32 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id=CapabilityId.PROJECT_ROLLUP_SERVICE,
         present=lambda s: s.slice(EngineStateSlice).project_rollup_service is not None,
+    ),
+    # Each read from the rollup's own attachment record rather than from the
+    # rollup existing, for the same reason as the four pipeline attachments
+    # below: a tail collaborator is attached onto an already-wired rollup and
+    # installs nothing else observable. The rollup comes up as soon as
+    # persistence and the task engine do, which is before a provider is
+    # configured, so its first wire legitimately leaves the tail unattached;
+    # reading the rollup's mere existence as a live tail would tell the
+    # reconciler these subsystems had converged and it would never revisit
+    # them. One probe per collaborator, because they resolve independently:
+    # a shared probe let a tail come up while the retro capture stayed unwired.
+    Capability(
+        id=CapabilityId.INITIATIVE_INTEGRATE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_integration),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_EVALUATE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_evaluation),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_REPLAN,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_replan_trigger),
+    ),
+    Capability(
+        id=CapabilityId.INITIATIVE_RETRO_CAPTURE,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_retro_capture),
     ),
     Capability(
         id=CapabilityId.KANBAN_BOARD,

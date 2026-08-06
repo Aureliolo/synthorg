@@ -93,13 +93,13 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
     require_configured_model,
     resolve_model_with_fallback,
 )
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -126,7 +126,6 @@ class ChiefOfStaffProposer(ProposeActMixin):
     for holistic Plan Review) and/or parking steering directives.
 
     Args:
-        provider: LLM completion provider.
         config: Chief of Staff configuration.
         conversation_repo: Conversation header store.
         turn_repo: Append-only conversation turn store.
@@ -136,9 +135,10 @@ class ChiefOfStaffProposer(ProposeActMixin):
         role_router: Optional concern router. When present, each
             turn is classified to a role agent; ``None`` keeps the v1
             generic Chief of Staff behaviour.
-        provider_registry: Optional provider registry used to resolve a
-            routed responder's own provider; falls back to ``provider``
-            when absent. Required only when ``role_router`` is wired.
+        connections: Resolves each responder's own connection. Every
+            responder names one (a routed agent its binding, the generic
+            Chief of Staff the operator's ``propose_model`` pair), because a
+            model id without a connection names no dispatch target.
         config_resolver: Optional resolver for the live ``routing_enabled``
             per-turn gate and the per-call ``propose_model`` read. When
             ``None`` routing falls back to the baked flag and the baked model.
@@ -154,7 +154,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired protocols
         self,
         *,
-        provider: CompletionProvider,
+        connections: ConnectionSelector,
         config: ChiefOfStaffConfig,
         conversation_repo: ConversationRepository,
         turn_repo: ConversationTurnRepository,
@@ -162,12 +162,10 @@ class ChiefOfStaffProposer(ProposeActMixin):
         clock: Clock | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         role_router: RoleRouter | None = None,
-        provider_registry: ProviderRegistry | None = None,
         config_resolver: ConfigResolver | None = None,
         estimator: PromptTokenEstimator | None = None,
         master_enabled: bool = True,
     ) -> None:
-        self._provider = provider
         self._config = config
         self._conversation_repo = conversation_repo
         self._turn_repo = turn_repo
@@ -175,7 +173,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
         self._clock: Clock = clock or SystemClock()
         self._cost_tracker = cost_tracker
         self._role_router = role_router
-        self._provider_registry = provider_registry
+        self._connections = connections
         self._config_resolver = config_resolver
         self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         self._master_enabled = master_enabled
@@ -213,13 +211,13 @@ class ChiefOfStaffProposer(ProposeActMixin):
             cap_fallback=self._config.routing_enabled,
         )
 
-    async def _resolve_propose_model(self) -> NotBlankStr:
-        """Resolve the clarify-and-propose model live, baked fallback.
+    async def _resolve_propose_model(self) -> ModelRef:
+        """Resolve the clarify-and-propose pair live, baked fallback.
 
         Returns:
-            The model identifier for this turn's structured call.
+            The ``(provider, model)`` pair for this turn's structured call.
         """
-        model = require_configured_model(
+        return require_configured_model(
             await resolve_model_with_fallback(
                 resolver=self._config_resolver,
                 namespace=SettingNamespace.CHIEF_OF_STAFF,
@@ -230,7 +228,6 @@ class ChiefOfStaffProposer(ProposeActMixin):
             key="propose_model",
             feature_label="Chief of Staff propose",
         )
-        return NotBlankStr(model)
 
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
@@ -493,11 +490,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
             temperature=self._config.propose_temperature,
             max_tokens=self._config.propose_max_tokens,
         )
-        provider = resolve_responder_provider(
-            responder,
-            default=self._provider,
-            registry=self._provider_registry,
-        )
+        provider = resolve_responder_provider(responder, connections=self._connections)
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,

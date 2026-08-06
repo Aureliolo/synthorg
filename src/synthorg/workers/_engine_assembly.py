@@ -21,14 +21,16 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
-from synthorg.engine.state import task_engine_of
-from synthorg.hr.state import agent_registry_of
+from synthorg.engine.state import EngineStateSlice, task_engine_of
+from synthorg.engine.workspace.state import agent_workspace_root_of
+from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
@@ -37,12 +39,14 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.state import (
     PersistenceStateSlice,
     code_execution_records_of,
     project_repository_of,
 )
+from synthorg.providers.model_binding import resolve_bound_completion
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -89,7 +93,6 @@ if TYPE_CHECKING:
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
-    from synthorg.security.visionverify.protocol import VisionVerifierGate
     from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.forge._runtime import ForgeToolsRuntime
@@ -358,9 +361,8 @@ async def _build_auto_review_pipeline_or_none(
     return build_review_pipeline()
 
 
-def _build_evolution_service_or_none(
+async def _build_evolution_service_or_none(
     app_state: AppState,
-    provider: CompletionProvider,
 ) -> EvolutionService | None:
     """Build the agent self-evolution service when enabled at boot.
 
@@ -374,23 +376,7 @@ def _build_evolution_service_or_none(
     Returns:
         The wired evolution service, or ``None`` when disabled / unavailable.
     """
-    config = app_state.config.evolution
-    if not config.enabled:
-        return None
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-
-    persistence = app_state.slice(PersistenceStateSlice).backend
-    if (
-        persistence is None
-        or not getattr(persistence, "is_connected", False)
-        or not hasattr(persistence, "identity_versions")
-    ):
-        return None
-    registry = app_state.slice(HrStateSlice).agent_registry
-    tracker = app_state.slice(HrStateSlice).performance_tracker
-    if registry is None or tracker is None:
+    if not app_state.config.evolution.enabled:
         return None
     from synthorg.engine.evolution.factory import (  # noqa: PLC0415
         build_evolution_service,
@@ -398,14 +384,33 @@ def _build_evolution_service_or_none(
     from synthorg.meta.state import evolution_outcome_store_of  # noqa: PLC0415
     from synthorg.versioning import VersioningService  # noqa: PLC0415
 
+    hr = app_state.slice(HrStateSlice)
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if (
+        persistence is None
+        or not getattr(persistence, "is_connected", False)
+        or not hasattr(persistence, "identity_versions")
+        or hr.agent_registry is None
+        or hr.performance_tracker is None
+    ):
+        return None
+    # Evolution rewrites agent identities, so what analyses them is the
+    # operator's explicit choice, never a borrowed connection.
+    proposer = await resolve_bound_completion(
+        app_state,
+        namespace="engine",
+        key="evolution_proposer_model",
+        unset_event=EVOLUTION_PROPOSER_MODEL_UNSET,
+        subject="evolution proposer",
+    )
     try:
         service = build_evolution_service(
-            config,
-            registry=registry,
+            app_state.config.evolution,
+            registry=hr.agent_registry,
             versioning=VersioningService(persistence.identity_versions),
-            tracker=tracker,
+            tracker=hr.performance_tracker,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
-            provider=provider,
+            proposer_binding=proposer,
             outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -513,7 +518,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         coordination_metrics_collector=coordination_metrics_collector,
         error_taxonomy_config=error_taxonomy_config,
         classification_sinks=classification_sinks,
-        evolution_service=_build_evolution_service_or_none(app_state, provider),
+        evolution_service=await _build_evolution_service_or_none(app_state),
         policy_engine=app_state.slice(SecurityStateSlice).policy_engine,
         provider=provider,
         provider_registry=registry,
@@ -532,6 +537,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         ),
         review_gate=app_state.slice(ApprovalStateSlice).review_gate,
         review_pipeline=await _build_auto_review_pipeline_or_none(app_state),
+        # The engine holds no workspace root, so the layout knowledge stays
+        # here and it receives the question it can ask: did this project
+        # produce what its task declared. Bound to the same root the agent's
+        # file tools write through, so the check reads what the run wrote.
+        artifact_probe=workspace_artifact_probe(agent_workspace_root_of(app_state)),
         clarification_enabled=await config_resolver_of(app_state).get_bool(
             "engine", "clarification_enabled"
         ),
@@ -614,53 +624,3 @@ def _build_recovery_strategy(app_state: AppState) -> RecoveryStrategy:
         heartbeat_repo=backend.heartbeats,
         checkpoint_config=app_state.config.recovery.checkpoint,
     )
-
-
-def _build_vision_gate_or_none(
-    *,
-    app_state: AppState,
-    workspace_root: Path,
-    provider: CompletionProvider | None,
-) -> VisionVerifierGate | None:
-    """Construct the vision verifier gate when the subsystem is enabled.
-
-    Pulls :class:`VisionVerifyConfig` from
-    ``app_state.config.security.vision_verify``. The ``heuristic`` /
-    ``noop`` verifiers need only the workspace; the ``llm_vision``
-    verifier additionally needs the active provider, pinned to the
-    vendor-agnostic ``example-medium-001`` model id (operators override
-    via the post-init swap path). A misconfigured ``llm_vision`` with no
-    provider (empty company) degrades the gate to ``None`` with a
-    warning rather than crashing boot.
-
-    Returns:
-        The ``VisionVerifierGate`` when the subsystem is enabled and
-        buildable, otherwise ``None``.
-    """
-    from synthorg.security.visionverify.builder import (  # noqa: PLC0415
-        build_vision_verifier_gate,
-    )
-
-    tier_resolver = (
-        (lambda _tier: "example-medium-001") if provider is not None else None
-    )
-    try:
-        return build_vision_verifier_gate(
-            app_state.config.security.vision_verify,
-            workspace=workspace_root,
-            provider=provider,
-            tier_resolver=tier_resolver,
-            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
-            clock=app_state.clock,
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- degrade-to-None wiring
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="runtime_services",
-            note="vision verifier gate disabled: build failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None

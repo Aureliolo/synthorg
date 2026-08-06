@@ -34,8 +34,6 @@ class CoordinationSectionConfig(BaseModel):
         enable_workspace_isolation: Create isolated workspaces for
             multi-agent execution.
         base_branch: Git branch to use for workspace isolation.
-        decomposition_model: LLM model identifier for the
-            coordinator's task decomposition strategy.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -66,12 +64,6 @@ class CoordinationSectionConfig(BaseModel):
             field="base_branch",
             namespace=SettingNamespace.COORDINATION,
             key="base_branch",
-            only_if_env_set=True,
-        ),
-        MirrorField(
-            field="decomposition_model",
-            namespace=SettingNamespace.COORDINATION,
-            key="decomposition_model",
             only_if_env_set=True,
         ),
         MirrorField(
@@ -140,20 +132,6 @@ class CoordinationSectionConfig(BaseModel):
     base_branch: NotBlankStr = Field(
         default="main",
         description="Git branch for workspace isolation",
-    )
-    decomposition_model: NotBlankStr = Field(
-        # lint-allow: hardcoded-model-default -- internal coordinator default
-        default=NotBlankStr("example-medium-001"),
-        description=(
-            "LLM model identifier used by the coordinator's task "
-            "decomposition strategy. Resolved against the first "
-            "registered provider at boot. Must be non-blank: a "
-            "provider-present boot builds the coordinator eagerly and the "
-            "decomposition strategy rejects an empty model. Overridable via "
-            "the SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
-            "variable (precedence: DB > env > this code default), "
-            "applied on the next coordinator rebuild."
-        ),
     )
     max_stall_count: int = Field(
         default=3,

@@ -1,9 +1,10 @@
 """Tests for evolution factory assembly."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.config import (
     EvolutionConfig,
     ProposerConfig,
@@ -13,14 +14,17 @@ from synthorg.engine.evolution.factory import build_evolution_service
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.model_binding import BoundCompletion
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.versioning.service import VersioningService
-from tests._shared import as_uuid
+from tests._shared import as_uuid, mock_of
+from tests._shared.model_binding import TEST_MODEL_ID
 
 
 def _build_service(
     config: EvolutionConfig | None = None,
     *,
-    provider: MagicMock | None = None,
+    binding: BoundCompletion | None = None,
 ) -> EvolutionService:
     """Build a service from config with mock dependencies."""
     if config is None:
@@ -31,7 +35,7 @@ def _build_service(
         registry=AgentRegistryService(),
         versioning=VersioningService(repo),
         tracker=PerformanceTracker(),
-        provider=provider,
+        proposer_binding=binding,
     )
 
 
@@ -58,22 +62,39 @@ class TestBuildEvolutionService:
         assert isinstance(service, EvolutionService)
 
     @pytest.mark.unit
-    def test_composite_proposer_without_provider(self) -> None:
-        """Without a provider, falls back to self_report."""
+    def test_composite_proposer_without_binding_proposes_nothing(self) -> None:
+        """No operator-chosen pair means no proposals, not a borrowed one.
+
+        Constructing the service proves nothing on its own: the interesting
+        question is what the proposer does, and without a binding the answer
+        must be nothing rather than a dispatch on a connection nobody chose.
+        """
         config = EvolutionConfig(
             proposer=ProposerConfig(type="composite"),
         )
         service = _build_service(config)
         assert isinstance(service, EvolutionService)
+        assert type(service._proposer).__name__ == "_NoOpProposer"
 
     @pytest.mark.unit
-    def test_separate_analyzer_with_provider(self) -> None:
+    def test_separate_analyzer_binding_reaches_the_proposer(self) -> None:
+        """The chosen pair is what the proposer dispatches on, both halves."""
         config = EvolutionConfig(
             proposer=ProposerConfig(type="separate_analyzer"),
         )
-        provider = MagicMock()
-        service = _build_service(config, provider=provider)
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(spec=CompletionProvider.complete),
+        )
+        binding = BoundCompletion(
+            provider=provider,
+            model=NotBlankStr(TEST_MODEL_ID),
+        )
+        service = _build_service(config, binding=binding)
         assert isinstance(service, EvolutionService)
+        proposer = service._proposer
+        assert type(proposer).__name__ == "SeparateAnalyzerProposer"
+        assert proposer._provider is provider  # type: ignore[attr-defined]
+        assert proposer._model == TEST_MODEL_ID  # type: ignore[attr-defined]
 
 
 class TestBuildShadowGuard:

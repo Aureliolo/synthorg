@@ -28,6 +28,14 @@ CONFLICT_HYBRID_AUTO_RESOLVED: Final[str] = "conflict.hybrid.auto_resolved"
 # LLM judge (JudgeEvaluator implementation)
 CONFLICT_JUDGE_EVALUATED: Final[str] = "conflict.judge.evaluated"
 CONFLICT_JUDGE_OUTPUT_INVALID: Final[str] = "conflict.judge.output_invalid"
+CONFLICT_JUDGE_MODEL_UNSET: Final[str] = "conflict.judge.model_unset"
+"""No operator has bound a (provider, model) pair for the conflict judge.
+
+Separate from ``CONFLICT_JUDGE_OUTPUT_INVALID`` because an unconfigured
+feature and a model that answered unparseably are different operator
+actions, and an alert keyed on judge output validity should not fire for
+a judge nobody switched on.
+"""
 
 # Human escalation
 CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"

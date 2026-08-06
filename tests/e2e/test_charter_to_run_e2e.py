@@ -17,12 +17,13 @@ End-to-end through the REAL components, no mocks on the seam under test:
 Zero real LLM spend: every provider is scripted/deterministic.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid5
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
@@ -80,6 +81,7 @@ from tests._shared import (
 from tests._shared.conversation_fakes import (
     FakeConversationRepo as _FakeConversationRepo,
 )
+from tests._shared.model_binding import bound_ref, one_connection
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -345,6 +347,26 @@ class _FakeForecastRepo:
         self.items[str(entity_id)] = cur.model_copy(update={"decision": to_state})
         return True
 
+    async def claim_if_unclaimed(
+        self,
+        entity_id: object,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        cur = self.items.get(str(entity_id))
+        if cur is None or cur.gated_work_item is not None:
+            return False
+        self.items[str(entity_id)] = cur.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
+        )
+        return True
+
     async def raise_ceiling_if_halted(
         self,
         entity_id: object,
@@ -487,15 +509,17 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     forecast_repo = _FakeForecastRepo()
     service = CharterInterviewService(
         strategy=LLMCharterInterviewer(
-            provider=ScriptedProvider(
-                responses=[
-                    make_text_response(_Q1),
-                    make_text_response(_Q2),
-                    make_text_response(_DRAFT),
-                ]
+            connections=one_connection(
+                ScriptedProvider(
+                    responses=[
+                        make_text_response(_Q1),
+                        make_text_response(_Q2),
+                        make_text_response(_DRAFT),
+                    ]
+                )
             ),
         ),
-        config=CharterConfig(interview_model=NotBlankStr("test-model-001")),
+        config=CharterConfig(interview_model=NotBlankStr(bound_ref("test-model-001"))),
         conversation_repo=conversation_repo,
         turn_repo=_FakeTurnRepo(),
         charter_repo=charter_repo,

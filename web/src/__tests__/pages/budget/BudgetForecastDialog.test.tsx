@@ -2,9 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { BudgetForecastDialog } from '@/pages/budget/BudgetForecastDialog'
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 
-const baseForecast: Forecast = {
+const baseForecast: ForecastView = {
   forecast_id: '00000000-0000-0000-0000-000000000001',
   brief_hash: 'a'.repeat(64),
   estimated_cost: 0.85,

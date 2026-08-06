@@ -3,11 +3,16 @@
 
 The output-style policy only enforces if each agent-output boundary calls the
 deterministic guard before the output escapes. This gate parses each known
-boundary module and asserts it still CALLS its required guard entry point (an
-AST call check, not a substring match, so a stray comment or dead import cannot
-satisfy the lock). A refactor that silently drops a guard at a boundary fails CI
-rather than shipping an unenforced path. Complements the anti-ghost manifest,
-which locks that the service is bound at boot.
+boundary module and asserts it still CALLS one of the guard entry points that
+satisfy it (an AST call check, not a substring match, so a stray comment or
+dead import cannot satisfy the lock). A refactor that silently drops a guard at
+a boundary fails CI rather than shipping an unenforced path. Complements the
+anti-ghost manifest, which locks that the service is bound at boot.
+
+A boundary's guard set is ANY-OF. ``enforce_output_policy`` and
+``evaluate_output_policy`` are two doors onto one policy, not two obligations,
+so requiring both would fail every boundary in the tree; see the note on
+``_BOUNDARIES``.
 
 Exit codes:
 
@@ -25,10 +30,15 @@ from typing import Final
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-# Each agent-output boundary, its label, and the guard call it must keep. The
-# message-send facades route through the shared ``guard_message_output`` helper,
-# which itself calls ``enforce_output_policy``; every other boundary calls a
-# guard entry point directly. Paths are relative to the repo root.
+# Each agent-output boundary, its label, and the guard entry points that
+# satisfy it. The set is ANY-OF, not all-of: a boundary is guarded by calling
+# one of them, because they are alternative doors onto the same policy rather
+# than separate obligations. ``enforce_output_policy`` rejects or rewrites in
+# place and suits a call site that can abort; ``evaluate_output_policy`` hands
+# back a verdict and suits one that has to turn a rejection into its own
+# result type. Every boundary below currently calls exactly one. The message
+# facades route through the shared ``guard_message_output`` helper, which
+# itself calls ``enforce_output_policy``. Paths are relative to the repo root.
 _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
     "src/synthorg/communication/_output_guard.py": (
         "shared message guard",
@@ -52,6 +62,10 @@ _BOUNDARIES: Final[dict[str, tuple[str, frozenset[str]]]] = {
     ),
     "src/synthorg/engine/_review_oracle_gates.py": (
         "completing deliverable",
+        frozenset({"enforce_output_policy", "evaluate_output_policy"}),
+    ),
+    "src/synthorg/engine/initiative/evaluate_session.py": (
+        "initiative evaluation verdict",
         frozenset({"enforce_output_policy", "evaluate_output_policy"}),
     ),
     "src/synthorg/tools/file_system/write_file.py": (
@@ -110,7 +124,7 @@ def main() -> int:
     """
     unguarded: list[str] = []
     read_errors: list[str] = []
-    for relative, (label, required) in _BOUNDARIES.items():
+    for relative, (label, accepted) in _BOUNDARIES.items():
         path = _REPO_ROOT / relative
         try:
             source = path.read_text(encoding="utf-8")
@@ -118,8 +132,10 @@ def main() -> int:
         except (OSError, UnicodeDecodeError, SyntaxError) as exc:
             read_errors.append(f"{relative}: {exc}")
             continue
-        if not (required & _called_names(tree)):
-            wanted = " / ".join(sorted(required))
+        # Any-of: the entries are alternative doors onto the same policy, so
+        # one call guards the boundary. See the note on ``_BOUNDARIES``.
+        if not (accepted & _called_names(tree)):
+            wanted = " or ".join(sorted(accepted))
             unguarded.append(f"{relative} ({label}); expected a call to {wanted}")
 
     if read_errors:

@@ -28,6 +28,8 @@ from synthorg.security.visionverify.verifiers._image import (
     mean_rgb,
     resolve_screenshot,
 )
+from synthorg.settings.model_ref import ModelRef
+from tests._shared.model_binding import bound_model, one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -124,12 +126,12 @@ class TestFactory:
         verifier = build_vision_verifier(config, workspace=tmp_path)
         assert isinstance(verifier, HeuristicVisionVerifier)
 
-    def test_llm_vision_missing_provider_raises(self, tmp_path: Path) -> None:
+    def test_llm_vision_missing_connections_raises(self, tmp_path: Path) -> None:
         config = VisionVerifyConfig(
             enabled=True,
             verifier_kind=VisionVerifierKind.LLM_VISION,
         )
-        with pytest.raises(VisionVerifyConfigError, match="CompletionProvider"):
+        with pytest.raises(VisionVerifyConfigError, match="connection selector"):
             build_vision_verifier(config, workspace=tmp_path)
 
     def test_llm_vision_tier_resolves_none_raises(self, tmp_path: Path) -> None:
@@ -148,12 +150,51 @@ class TestFactory:
             enabled=True,
             verifier_kind=VisionVerifierKind.LLM_VISION,
         )
-        with pytest.raises(VisionVerifyConfigError, match=r"no\s+model"):
+        with pytest.raises(VisionVerifyConfigError, match="vision_verify_model"):
             build_vision_verifier(
                 config,
                 workspace=tmp_path,
-                provider=provider,
-                tier_resolver=lambda _tier: None,
+                connections=one_connection(provider),
+                model=None,
+            )
+
+    @pytest.mark.parametrize(
+        "half",
+        [
+            ModelRef(provider="example-provider", model_id=""),
+            ModelRef(provider="", model_id="example-large-001"),
+        ],
+    )
+    def test_llm_vision_half_a_pair_raises(
+        self, tmp_path: Path, half: ModelRef
+    ) -> None:
+        """Half a pair names no dispatch target, so it is not a binding.
+
+        ``ModelRef`` permits either field to be blank, so ``is not None`` is
+        not the question: a provider-only ref reaches the selector with an
+        empty model id, and a model-only ref asks for a connection nobody
+        named."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.providers.protocol import CompletionProvider
+        from tests._shared.mock_of import mock_of
+
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(spec=CompletionProvider.complete),
+            get_model_capabilities=AsyncMock(
+                spec=CompletionProvider.get_model_capabilities,
+            ),
+        )
+        config = VisionVerifyConfig(
+            enabled=True,
+            verifier_kind=VisionVerifierKind.LLM_VISION,
+        )
+        with pytest.raises(VisionVerifyConfigError, match="vision_verify_model"):
+            build_vision_verifier(
+                config,
+                workspace=tmp_path,
+                connections=one_connection(provider),
+                model=half,
             )
 
     def test_llm_vision_dispatch(self, tmp_path: Path) -> None:
@@ -175,8 +216,8 @@ class TestFactory:
         verifier = build_vision_verifier(
             config,
             workspace=tmp_path,
-            provider=provider,
-            tier_resolver=lambda _tier: "example-medium-001",
+            connections=one_connection(provider),
+            model=bound_model(),
         )
         assert isinstance(verifier, LLMVisionVerifier)
 

@@ -21,6 +21,9 @@ from synthorg.security.safety_classifier import (
     SafetyClassifierResult,
 )
 from tests._shared import mock_of
+from tests._shared.model_binding import bound_ref, model_ref_resolver
+
+_CLASSIFIER_MODEL = "example-small-001"
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -57,22 +60,14 @@ def _make_classifier(
     config: SafetyClassifierConfig | None = None,
     completion: CompletionResponse | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
-    bound_default: str | None = "provider-a",
+    bound_pair: str | None = "provider-a",
 ) -> SafetyClassifier:
-    """Build a classifier with mock providers.
+    """Build a classifier over mock connections.
 
-    ``bound_default`` models the operator's explicit ``providers.default_provider``
-    choice; pass ``None`` to model the ambiguous "2+ providers, none chosen"
-    state where the real registry resolves no default.
+    ``bound_pair`` names the connection the operator's
+    ``security.safety_classifier_model`` assignment points at; pass ``None``
+    to model an unset assignment, where the classifier stays unarmed.
     """
-    config_a = MagicMock()
-    config_a.family = "family-a"
-    config_a.models = (MagicMock(id="model-a-1", alias="small"),)
-    config_b = MagicMock()
-    config_b.family = "family-b"
-    config_b.models = (MagicMock(id="model-b-1", alias="small"),)
-    provider_configs = {"provider-a": config_a, "provider-b": config_b}
-
     if driver_map is None:
         mock_driver = AsyncMock()
         mock_driver.complete = AsyncMock(
@@ -81,29 +76,20 @@ def _make_classifier(
         driver_map = {"provider-a": mock_driver, "provider-b": mock_driver}
 
     names = tuple(sorted(driver_map.keys()))
-    # Faithfully mirror ProviderRegistry.default_provider_resolved_name(): an
-    # explicit bound name resolves only when registered -- an invalid one is
-    # None even with a sole provider (never silently substituted). Otherwise a
-    # SOLE provider resolves; 2+ with no valid bound default is ambiguous None.
-    if bound_default is not None:
-        resolved: str | None = bound_default if bound_default in driver_map else None
-    elif len(names) == 1:
-        resolved = names[0]
-    else:
-        resolved = None
     registry = mock_of[ProviderRegistry](
         get=MagicMock(side_effect=lambda name: driver_map[name]),
         list_providers=MagicMock(return_value=names),
-        default_provider=MagicMock(
-            return_value=driver_map[resolved] if resolved else None,
-        ),
-        default_provider_resolved_name=MagicMock(return_value=resolved),
+        __contains__=MagicMock(side_effect=lambda name: name in driver_map),
     )
 
     return SafetyClassifier(
         provider_registry=registry,
-        provider_configs=provider_configs,
         config=config or SafetyClassifierConfig(enabled=True),
+        config_resolver=model_ref_resolver(
+            default=bound_ref(_CLASSIFIER_MODEL, provider=bound_pair)
+            if bound_pair is not None
+            else "",
+        ),
     )
 
 
@@ -233,17 +219,17 @@ class TestErrorHandling:
         assert result.classification == SafetyClassification.SUSPICIOUS
         assert "fail-safe" in result.reason.lower() or "failed" in result.reason.lower()
 
-    async def test_ambiguous_default_returns_suspicious_without_dispatch(
+    async def test_unset_pair_returns_suspicious_without_dispatch(
         self,
     ) -> None:
         mock_driver = AsyncMock()
         mock_driver.complete = AsyncMock(return_value=_make_completion())
-        # 2+ providers, no bound default: the real registry resolves no default,
-        # so the classifier must fail safe (SUSPICIOUS) rather than dispatch on
-        # a first-registered pick.
+        # Connections are registered but the operator has chosen no
+        # classification pair, so the classifier must fail safe (SUSPICIOUS)
+        # rather than dispatch on whichever connection is to hand.
         classifier = _make_classifier(
             driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-            bound_default=None,
+            bound_pair=None,
         )
 
         result = await classifier.classify(
@@ -279,20 +265,10 @@ class TestErrorHandling:
 
         assert result.classification == SafetyClassification.SUSPICIOUS
 
-    async def test_no_providers_returns_suspicious(self) -> None:
-        registry = MagicMock(spec=ProviderRegistry)
-        registry.list_providers = MagicMock(return_value=())
-        # No resolvable default provider -> classification cannot run.
-        registry.default_provider_resolved_name = MagicMock(return_value=None)
-
-        config_a = MagicMock()
-        config_a.family = "family-a"
-        config_a.models = ()
-        classifier = SafetyClassifier(
-            provider_registry=registry,
-            provider_configs={"provider-a": config_a},
-            config=SafetyClassifierConfig(enabled=True),
-        )
+    async def test_unregistered_connection_returns_suspicious(self) -> None:
+        # The pair names a connection nothing is registered under, which is a
+        # misconfiguration: classification cannot run and must not substitute.
+        classifier = _make_classifier(bound_pair="ghost-provider")
 
         result = await classifier.classify(
             "Some action",
@@ -302,7 +278,7 @@ class TestErrorHandling:
         )
 
         assert result.classification == SafetyClassification.SUSPICIOUS
-        assert "no provider" in result.reason.lower()
+        assert "no model configured" in result.reason.lower()
 
     async def test_invalid_classification_returns_suspicious(self) -> None:
         classifier = _make_classifier(

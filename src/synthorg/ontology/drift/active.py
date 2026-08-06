@@ -41,8 +41,8 @@ class ActiveValidatorStrategy(PassiveMonitorStrategy):
             threshold=threshold,
         )
 
-    @override
     @property
+    @override
     def strategy_name(self) -> str:
         """Return ``"active"``."""
         return "active"

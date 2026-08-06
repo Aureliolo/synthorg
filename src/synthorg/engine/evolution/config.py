@@ -59,9 +59,11 @@ class TriggerConfig(BaseModel):
 class ProposerConfig(BaseModel):
     """Configuration for evolution proposers.
 
+    The analysis model is not here: it is the operator's
+    ``engine.evolution_proposer_model`` pair, resolved at wiring time.
+
     Attributes:
         type: Proposer strategy to use.
-        model: LLM model identifier for analysis.
         temperature: Sampling temperature.
         max_tokens: Token budget for proposer response.
     """
@@ -69,11 +71,6 @@ class ProposerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     type: Literal["separate_analyzer", "self_report", "composite"] = "composite"
-    model: NotBlankStr = Field(
-        # lint-allow: hardcoded-model-default -- internal proposer default
-        default="example-small-001",
-        description="Model for proposer LLM calls",
-    )
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2000, ge=100)
 

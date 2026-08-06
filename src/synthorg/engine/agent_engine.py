@@ -42,6 +42,7 @@ from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
@@ -216,6 +217,7 @@ class AgentEngine(
         approval_store: ApprovalStoreProtocol | None = None,
         review_gate: ReviewGateService | None = None,
         review_pipeline: ReviewPipeline | None = None,
+        artifact_probe: ExpectedArtifactProbe | None = None,
         clarification_enabled: bool = True,
         scoping_enabled: bool = True,
         parked_context_repo: ParkedContextRepository | None = None,
@@ -291,6 +293,7 @@ class AgentEngine(
         self._approval_store = approval_store
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
+        self._artifact_probe = artifact_probe
         self._clarification_enabled = clarification_enabled
         self._scoping_enabled = scoping_enabled
         self._external_api_runtime = external_api_runtime

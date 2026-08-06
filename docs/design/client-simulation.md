@@ -247,7 +247,16 @@ config-driven intake engine + review pipeline (including the
 verification stage) onto the existing `ClientSimulationState` (via
 `dataclasses.replace`), preserving the live client pool and the
 request / simulation / feedback stores so in-flight work is never
-discarded. `intake_default_project` is the project the intake
+discarded.
+
+Each of `simulations.intake_model`, `simulations.verification_grader_model`
+and `simulations.verification_decomposer_model` is an explicit
+`(provider, model)` pair with no default. Selecting the `agent` intake
+strategy, or enabling the verification stage, is therefore two decisions
+rather than one: with the pair unset the step is off and says so instead of
+dispatching on a connection nobody chose for it.
+
+`intake_default_project` is the project the intake
 strategy files tasks into and the real work-entry adapter stamps on
 the work item (see [Client-intake work-entry path](#client-intake-work-entry-path-benchmark-door-off-by-default)). The
 default `direct` strategy makes no LLM calls, so the runtime comes

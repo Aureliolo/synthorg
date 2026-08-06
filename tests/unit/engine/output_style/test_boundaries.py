@@ -23,7 +23,12 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
+from synthorg.engine.initiative.evaluate_session import (
+    SubmitEvaluationTool,
+    _EvaluationCapture,
+)
 from synthorg.engine.output_style.errors import OutputPolicyViolationError
 from synthorg.engine.output_style.models import (
     EnforcementMode,
@@ -78,11 +83,19 @@ def _task() -> Task:
     )
 
 
-def _deliverable(content: str) -> RedTeamReviewInput:
+def _deliverable(content: str, *, summary: str | None = None) -> RedTeamReviewInput:
+    """Build a review input, with the two policy inputs separable.
+
+    ``summary`` defaults to ``content`` for the tests that do not care, but
+    it is a distinct parameter so a test can put prohibited text in one
+    field and clean text in the other. Feeding both from one string would
+    let a regression that evaluated the wrong field keep passing.
+    """
     return RedTeamReviewInput(
         task_id="task-1",
         execution_id="exec-1",
         deliverable_content=content,
+        agent_summary=content if summary is None else summary,
         acceptance_criteria=("A phased rollout.",),
         assigned_agent_id="agent-1",
         autonomy=AutonomyLevel.SEMI,
@@ -355,6 +368,50 @@ class TestDeliverableGate:
         assert target is TaskStatus.COMPLETED
 
     @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    def test_produced_source_does_not_block_this_backstop(self) -> None:
+        """This gate reads the agent's prose, not the files it composed.
+
+        The composed body carries produced source, and a hard rule matching
+        a character inside a generated file is not something the agent can
+        rewrite from here; the ``write_file`` / ``edit_file`` guards cover
+        that boundary at the point of writing. Asserted explicitly because
+        the two policy inputs used to share one string, so nothing said
+        which of them the gate actually reads.
+        """
+        target, _reason, _event, approved = apply_output_policy_gate(
+            deliverable=_deliverable(
+                f"The rollout plan {_EM_DASH} phase one ships first.",
+                summary="The rollout plan: phase one ships first.",
+            ),
+            task=_task(),
+            target=TaskStatus.COMPLETED,
+            transition_reason="ok",
+            event="evt",
+            approved=True,
+        )
+        assert approved is True
+        assert target is TaskStatus.COMPLETED
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    def test_prohibited_summary_is_caught_behind_clean_content(self) -> None:
+        """The other direction: the closing message is the agent's own prose."""
+        target, _reason, _event, approved = apply_output_policy_gate(
+            deliverable=_deliverable(
+                "The rollout plan: phase one ships first.",
+                summary=f"Shipped it {_EM_DASH} all criteria met.",
+            ),
+            task=_task(),
+            target=TaskStatus.COMPLETED,
+            transition_reason="ok",
+            event="evt",
+            approved=True,
+        )
+        assert approved is False
+        assert target is TaskStatus.IN_PROGRESS
+
+    @pytest.mark.unit
     def test_gate_passes_through_when_unwired(self) -> None:
         set_output_policy_service(None)
         _target, _reason, _event, approved = apply_output_policy_gate(
@@ -366,3 +423,87 @@ class TestDeliverableGate:
             approved=True,
         )
         assert approved is True
+
+
+def _submit_args(summary: str, evidence: str) -> dict[str, object]:
+    """Build a well-formed ``submit_evaluation`` payload covering one criterion.
+
+    Returns:
+        The tool arguments, so only the prose under test varies.
+    """
+    return {
+        "summary": summary,
+        "verdicts": [
+            {
+                "criterion": "A phased rollout.",
+                "outcome": "met",
+                "evidence": evidence,
+            }
+        ],
+    }
+
+
+class TestEvaluationVerdictBoundary:
+    """The verdict reaches an operator UI and the successor plan's prompt."""
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_emdash_summary_is_rejected_back_into_the_session(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                f"Phase one shipped {_EM_DASH} the rest did not.",
+                "The suite passes.",
+            )
+        )
+
+        assert result.is_error is True
+        # Rejected rather than rewritten: rewriting a judgement on the agent's
+        # behalf would change what the judgement says.
+        assert capture.report is None
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_emdash_evidence_is_rejected_too(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                "Phase one shipped; the rest did not.",
+                f"The suite passes {_EM_DASH} every case.",
+            )
+        )
+
+        assert result.is_error is True
+        assert capture.report is None
+
+    @pytest.mark.unit
+    @pytest.mark.usefixtures("_wired_service")
+    async def test_clean_verdict_is_captured(self) -> None:
+        capture = _EvaluationCapture()
+        tool = SubmitEvaluationTool(
+            capture=capture,
+            criteria=(NotBlankStr("A phased rollout."),),
+            project_id=NotBlankStr("proj-x"),
+        )
+
+        result = await tool.execute(
+            arguments=_submit_args(
+                "Phase one shipped; the rest did not.",
+                "The suite passes.",
+            )
+        )
+
+        assert result.is_error is False
+        assert capture.report is not None

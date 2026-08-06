@@ -139,8 +139,11 @@ standard streams (no in-container HTTP server):
 6. **Completion**: build `ExecutionResult(COMPLETED)`, then apply the
    **exact native NO_OP predicate**: a task with `artifacts_expected` that
    produced no tool calls and is not a resumed run terminates `NO_OP`
-   (routed to `FAILED` downstream), never a silent success. Every terminal
-   transition logs `EXECUTION_LOOP_TERMINATED`.
+   (routed to `FAILED` downstream), never a silent success. A run that made
+   tool calls but produced none of its declared files is caught downstream
+   instead, by the post-execution
+   [declared-artifact check](agent-execution.md#declared-artifact-check).
+   Every terminal transition logs `EXECUTION_LOOP_TERMINATED`.
 
 ## Resume
 

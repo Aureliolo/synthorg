@@ -17,18 +17,18 @@ import shutil
 import stat
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.project_enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import GitBackendConfigError
+from synthorg.engine.errors import GitBackendConfigError, WorkspaceSetupError
 from synthorg.engine.workspace.git_backend import (
     GitBackend,
     GitBackendConfig,
 )
+from synthorg.engine.workspace.paths import PROJECTS_SUBDIR, project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     PROJECT_WORKSPACE_PROVISIONED,
@@ -43,7 +43,6 @@ from synthorg.persistence.project_workspace_protocol import (
 
 logger = get_logger(__name__)
 
-_PROJECTS_SUBDIR: Final[str] = "projects"
 _DEFAULT_BRANCH: NotBlankStr = NotBlankStr("main")
 
 
@@ -122,24 +121,21 @@ class ProjectWorkspaceService:
     def _workspace_path(self, project_id: str) -> Path:
         # Defense-in-depth: ``project_id`` is system-generated and reaches
         # this seam only via persisted Project rows, but rejecting path
-        # separators here closes the door if a future caller ever passes
-        # an attacker-controlled value (no traversal out of the projects
+        # separators closes the door if a future caller ever passes an
+        # attacker-controlled value (no traversal out of the projects
         # subdir, no absolute-path takeover of the base root).
-        if "/" in project_id or "\\" in project_id or ".." in project_id:
-            # Log before raising so blocked traversal attempts surface
+        try:
+            return project_workspace_dir(self._base_root, project_id)
+        except WorkspaceSetupError as exc:
+            # Log before re-raising so blocked traversal attempts surface
             # in production audit logs, not just on the caller's stack.
             logger.warning(
                 WORKSPACE_PATH_TRAVERSAL_REJECTED,
                 project_id=project_id,
                 base_root=str(self._base_root),
-                projects_subdir=_PROJECTS_SUBDIR,
+                projects_subdir=PROJECTS_SUBDIR,
             )
-            msg = (
-                f"refusing path-separator-bearing project_id "
-                f"{project_id!r}: workspace path traversal blocked"
-            )
-            raise GitBackendConfigError(msg)
-        return self._base_root / _PROJECTS_SUBDIR / project_id
+            raise GitBackendConfigError(str(exc)) from exc
 
     async def _clear_prior_git_dir(
         self,

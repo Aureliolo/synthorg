@@ -1677,6 +1677,10 @@ CREATE TABLE cost_forecasts (
         OR halted_at LIKE '%+00:00'
         OR halted_at LIKE '%Z'
     ),
+    -- The work this forecast gated, so approving it means "run this"
+    -- rather than "note that it was allowed". NULL for a forecast minted
+    -- for a brief that was never gated.
+    gated_work_item TEXT,
     created_at TEXT NOT NULL CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),
@@ -2321,6 +2325,43 @@ CREATE INDEX idx_code_execution_task
 ON code_execution_record (task_id);
 CREATE INDEX idx_code_execution_project
 ON code_execution_record (project_id, executed_at DESC);
+
+-- ── Initiative evaluation reports (the delivery verdict) ─────
+-- The verdict is what decides whether an initiative delivered, so it is
+-- a record rather than a log line. Append-only: a re-evaluation is a new
+-- attempt with its own row, because overwriting would erase the evidence
+-- the replan points at. The unique (plan_id, attempt) key is what makes
+-- a lost CAS race cost nothing: the verdict is already on disk.
+CREATE TABLE initiative_evaluation_report (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    -- Cascade rather than an age sweeper: per-plan row count is bounded by
+    -- the stage's attempt cap, and purging an attempt of a live plan would
+    -- destroy the evidence its replan points at. A deleted plan's verdicts
+    -- are unreadable by anything, so those go with it.
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL CHECK (attempt >= 1),
+    verdict_summary TEXT NOT NULL
+    CHECK (LENGTH(TRIM(verdict_summary)) > 0),
+    verdicts TEXT NOT NULL,
+    -- Parity note: SQLite has no boolean type, so this CHECK is what gives
+    -- the column the domain Postgres gets natively from BOOLEAN. The
+    -- Postgres sibling therefore carries no CHECK, by design.
+    objective_met INTEGER NOT NULL CHECK (objective_met IN (0, 1)),
+    -- The ordering this table is read by is ``evaluated_at DESC`` on TEXT,
+    -- which is only correct while every value carries the same fixed
+    -- offset. The CHECK is what keeps that true rather than leaving it to
+    -- the single writer's convention.
+    evaluated_at TEXT NOT NULL
+    CHECK (evaluated_at LIKE '%+00:00' OR evaluated_at LIKE '%Z'),
+    CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
+);
+
+CREATE INDEX idx_evaluation_report_plan
+ON initiative_evaluation_report (plan_id, evaluated_at DESC);
+CREATE INDEX idx_evaluation_report_project
+ON initiative_evaluation_report (project_id, evaluated_at DESC);
 
 -- Measured per-model benchmark scores.
 -- One row per model, keyed by ``model_id``. Each row is a quality

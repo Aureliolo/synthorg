@@ -61,7 +61,7 @@ from synthorg.observability.events.meta import (
     META_CYCLE_TRIGGERED,
     META_PROPOSAL_GUARD_REJECTED,
 )
-from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
     resolve_bool_with_fallback,
@@ -87,8 +87,8 @@ class SelfImprovementService(
     Args:
         config: Self-improvement configuration.
         memory_backend: Memory backend for outcome learning.
-        provider: Completion provider for LLM-based strategies.
-            When code_modification_enabled is True but provider is
+        connections: Resolves the connection a strategy's own model names.
+            When code_modification_enabled is True but connections is
             None, the code modification strategy is silently skipped.
         config_provider: Zero-arg callable returning the current
             ``RootConfig`` snapshot.  Required for
@@ -138,7 +138,7 @@ class SelfImprovementService(
         *,
         config: SelfImprovementConfig,
         memory_backend: MemoryBackend | None = None,
-        provider: BaseCompletionProvider | None = None,
+        connections: ConnectionSelector | None = None,
         config_provider: ConfigProvider | None = None,
         settings_writer: SettingsWritePort | None = None,
         prompt_context: PromptApplierContext | None = None,
@@ -176,7 +176,7 @@ class SelfImprovementService(
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(
-            config, provider=provider, config_resolver=config_resolver
+            config, connections=connections, config_resolver=config_resolver
         )
         self._guards = build_guards(
             config, approval_store=approval_store, config_resolver=config_resolver

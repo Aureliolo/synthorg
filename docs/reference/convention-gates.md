@@ -55,6 +55,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |
 | `check_every_gate_is_wired.py` | push | `scripts/check_*.py` vs every wiring source | full | no | `unwired_gate_allowlist.yaml` | add |
+| `check_explicit_model_binding.py` | push | `src/synthorg/` | full | no | none (no opt-out) | add |
 | `check_feature_index_freshness.py` | push | `src/synthorg/` + `data/*.json` | full | no | none | keep |
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_forbidden_literals.py` | push | `src/synthorg/` | full | no | none | keep |
@@ -85,7 +86,6 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_explicit_any_inline_disable.py` | commit+push | `src/` + `tests/` | staged | yes | none | keep |
 | `check_no_ghost_wiring.py` | push | `src/synthorg/` + manifest | full | no | manifest | keep |
 | `check_no_growth_in_god_modules.py` | commit+push | god-module allowlist | full | no | allowlist (empty) | keep |
-| `check_no_hardcoded_model_default.py` | push | `settings/definitions/` + `src/synthorg/` | full | no | `hardcoded_model_default_baseline.txt` | keep |
 | `check_no_implicit_state_attribute.py` | push | `api/state.py` | full | no | none | keep |
 | `check_no_loop_bound_init.py` | commit+push | `src/synthorg/` | full | no | `loop_bound_init_baseline.txt` | harden |
 | `check_no_magic_numbers.py` | push | `src/synthorg/` | full | no | `no_magic_numbers_baseline.txt` | keep |

@@ -186,9 +186,13 @@ async def _build_charter_interview(
             note="charter interview stores/provider unavailable (pre-setup?)",
         )
         return None
+    # The interviewer re-reads ``charter.interview_model`` on every turn, so it
+    # takes the whole registry rather than one client: reassigning the pair
+    # arms the next turn instead of the next boot, and the pre-check above
+    # only decides whether the feature comes up at all.
     strategy = build_charter_interview_strategy(
         charter_config,
-        provider=provider,
+        connections=provider_registry.get,
         cost_tracker=cost_tracker,
     )
     interview_service = CharterInterviewService(

@@ -59,7 +59,11 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     whose run produced none terminates here and the task goes `FAILED`, rather
     than reaching review as though it had delivered. Every plan-dispatched
     WORK item declares an artifact, so the guard is always armed for one (see
-    [Initiative Tail](initiative-tail.md)).
+    [Initiative Tail](initiative-tail.md)). The zero-tool-call predicate the
+    loops apply is the cheap signal, not the whole guard: an agent that read
+    two files, wrote nothing, and stopped made tool calls and is not `NO_OP`,
+    so the post-execution pipeline also probes the declared paths on disk (see
+    [Declared-artifact check](#declared-artifact-check)).
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
@@ -315,6 +319,13 @@ async run(
     available), tagged with `project_id` for project-level cost aggregation.
     Cost recording failures are logged but do not affect the result.
 12. **Apply post-execution transitions:**
+    - On the `COMPLETED` and `NO_OP` branches, after the shutdown and park
+      branches and the zero-tool-call proxy, a task that declared
+      `artifacts_expected` and produced none of them goes IN_PROGRESS ->
+      FAILED (see [Declared-artifact check](#declared-artifact-check)); a
+      run that delivered nothing never reaches review. A run interrupted by
+      shutdown, or parked for clarification, is not failed for missing
+      artifacts it was never given the chance to produce.
     - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW (review gate).
       The task parks at IN_REVIEW until resolved by one of two paths:
       (a) a human approves (-> COMPLETED) or rejects (-> IN_PROGRESS
@@ -373,10 +384,19 @@ async run(
       cancelled or superseded it out of band), so the pipeline performs no
       re-transition and records no phantom state change. See
       [Mid-Flight Steering](mid-flight-steering.md).
-    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`,
-      `STAGNATION`, `PARKED`) leave the task in its current state.
+    - `MAX_TURNS`, `BUDGET_EXHAUSTED` and `STAGNATION` terminations:
+      IN_PROGRESS -> FAILED, with the termination reason recorded.
       `STAGNATION` indicates the agent was stuck in a repetitive loop.
-      `PARKED` indicates the agent paused while waiting for a human
+      A run that stopped without finishing is not still moving, and
+      leaving it at IN_PROGRESS made it invisible to the stall derivation
+      (which counts an item stalled only when its task sits in a dead
+      status), so an initiative whose agent exhausted its turns could
+      never be replanned or completed. FAILED is also retryable under
+      `max_retries`; once retries are spent the item reads as stalled and
+      the replan trigger fires. See
+      [Initiative Tail](initiative-tail.md).
+    - `PARKED` leaves the task in its current state. It indicates the
+      agent paused while waiting for a human
       approval decision from `ApprovalGate`; the task remains at its
       current status (typically `IN_PROGRESS` or `AUTH_REQUIRED` in the
       task-state diagram; see [Task Lifecycle](engine.md#task-lifecycle))
@@ -417,6 +437,35 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
     - `agent_id`, `task_id`: identifiers
     - Computed fields: `termination_reason`, `total_turns`, `total_cost`,
       `is_success`, `completion_summary`
+
+### Declared-artifact check
+
+A task that declared `artifacts_expected` and produced **none** of the
+declared files goes `IN_PROGRESS -> FAILED`, whatever its tool-call count.
+`engine/artifacts/expected_artifact_check.py` resolves each
+`ExpectedArtifact.path` against the task's project workspace
+(`engine/workspace/paths.py::project_workspace_dir`) and returns what is
+missing; `apply_post_execution_transitions` consumes it through an injected
+`ExpectedArtifactProbe` seam, so a deployment without a workspace root simply
+falls back to the tool-call proxy rather than failing every task.
+
+Only a **path-shaped** declaration is probed. `ExpectedArtifact.path` carries
+whatever the planner wrote, which may be a file (`src/game.py`) or a
+deliverable named in prose ("the integrated, runnable deliverable"). Prose
+resolves to no file, so probing it would read as "produced nothing" and fail
+every task whose planner wrote a sentence, the integration task included.
+An absolute declaration is not probed either: containment is what makes the
+answer about the task's own output, and a path the run could not have written
+under its own workspace is not evidence of delivery.
+
+The threshold is deliberately "none of them present" rather than "all of
+them present". An agent that legitimately chose a different path for one
+file should reach review and let the completion oracle judge it; an agent
+that delivered nothing at all is the case the invariant is about, and the
+recorded reason names the paths that are absent.
+
+`check_verified_completion_paths.py` asserts the post-execution transition
+still calls the probe, so the guard cannot be quietly unwired later.
 
 ## Prompt Profiles
 
@@ -576,8 +625,9 @@ sorted per-turn for order-independent comparison.
 - **HybridLoop**: same per-step semantics as PlanExecuteLoop; stagnation
   checked within the mini-ReAct sub-loop, corrections counter and
   window are step-scoped
-- `STAGNATION` termination leaves the task in its current state (like
-  `MAX_TURNS`; the task is not failed, it's returned to the caller)
+- `STAGNATION` terminates the task `FAILED` (like `MAX_TURNS` and
+  `BUDGET_EXHAUSTED`): a run that stopped mid-way has not delivered, and
+  parking it at `IN_PROGRESS` hid it from the stall derivation
 
 ## Context Budget Management
 

@@ -9,28 +9,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.execution_identity import current_execution_identity
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_FAILED,
     CODE_RUNNER_EXECUTE_START,
     CODE_RUNNER_EXECUTE_SUCCESS,
 )
-from synthorg.observability.events.deliverable_receipts import (
-    TEST_RUN_RECORD_FAILED,
-    TEST_RUN_RECORDED,
-)
 from synthorg.persistence.code_execution_protocol import (
-    CodeExecutionPurpose,
-    CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools._test_run_capture import record_if_test_run
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
@@ -50,14 +42,6 @@ class CodeRunnerArgs(BaseModel):
         le=600,
         description="Optional timeout in seconds (minimum 1)",
     )
-    purpose: Literal["general", "tests"] = Field(
-        default="general",
-        description=(
-            "Set to 'tests' when this run executes the project's test "
-            "suite, so its structured result is captured for the "
-            "deliverable's provenance receipt"
-        ),
-    )
 
 
 _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
@@ -65,6 +49,14 @@ _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "javascript": ("node", "-e"),
     "bash": ("bash", "-c"),
 }
+
+#: The one language whose snippet IS a command line. A bash snippet running
+#: ``pytest -q`` really did invoke the suite, so it is classified exactly as
+#: the same line would be through ``shell_command``. A python or JavaScript
+#: snippet is source text: classifying it would let a program that merely
+#: contains the word "pytest" in a comment or a string mint evidence that a
+#: suite passed, which is the forgery the classifier exists to prevent.
+_SHELL_LANGUAGE: Final[str] = "bash"
 
 #: Maximum characters of captured stdout/stderr kept on a test record.
 _OUTPUT_TAIL_LIMIT: Final[int] = 2000
@@ -94,8 +86,8 @@ class CodeRunnerTool(BaseTool):
         Args:
             sandbox: Sandboxed execution backend that enforces
                 isolation and resource control.
-            code_execution_records: Optional repository for capturing
-                ``purpose='tests'`` runs into the deliverable receipt's
+            code_execution_records: Optional repository for capturing a
+                recognised test run into the deliverable receipt's
                 provenance bundle. When ``None`` (or outside a bound
                 execution scope) no record is written.
             clock: Clock seam for the capture record's ``executed_at``;
@@ -153,7 +145,6 @@ class CodeRunnerTool(BaseTool):
         code = args.code
         language = args.language
         timeout = args.timeout
-        purpose = args.purpose
 
         command, flag = _LANGUAGE_COMMANDS[language]
 
@@ -183,13 +174,14 @@ class CodeRunnerTool(BaseTool):
                 metadata={"language": language},
             )
 
-        if purpose == "tests":
-            await self._record_test_run(
+        if language == _SHELL_LANGUAGE:
+            await record_if_test_run(
                 result,
-                language=language,
-                command=command,
-                flag=flag,
-                code=code,
+                command=code,
+                records=self._code_execution_records,
+                clock=self._clock,
+                command_repr_limit=_COMMAND_REPR_LIMIT,
+                output_tail_limit=self._output_tail_limit,
             )
 
         if result.success:
@@ -222,65 +214,4 @@ class CodeRunnerTool(BaseTool):
                 "timed_out": result.timed_out,
                 "language": language,
             },
-        )
-
-    async def _record_test_run(
-        self,
-        result: SandboxResult,
-        *,
-        language: str,
-        command: str,
-        flag: str,
-        code: str,
-    ) -> None:
-        """Capture a ``purpose='tests'`` run for the deliverable receipt.
-
-        No-ops when no repository is wired or when called outside a
-        bound execution scope. Best-effort: a capture failure logs and
-        returns rather than failing the tool call.
-        """
-        if self._code_execution_records is None:
-            return
-        identity = current_execution_identity()
-        if identity is None or identity.project_id is None:
-            return
-        command_repr = f"{command} {flag} {code}"[:_COMMAND_REPR_LIMIT]
-        stdout_tail = (
-            result.stdout[-self._output_tail_limit :] if result.stdout else None
-        )
-        stderr_tail = (
-            result.stderr[-self._output_tail_limit :] if result.stderr else None
-        )
-        try:
-            await self._code_execution_records.append(
-                CodeExecutionRecord(
-                    task_id=identity.task_id,
-                    execution_id=identity.execution_id,
-                    project_id=identity.project_id,
-                    purpose=CodeExecutionPurpose.TESTS,
-                    command=command_repr,
-                    returncode=result.returncode,
-                    passed=result.success,
-                    timed_out=result.timed_out,
-                    stdout_tail=stdout_tail,
-                    stderr_tail=stderr_tail,
-                    executed_at=self._clock.now(),
-                )
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                TEST_RUN_RECORD_FAILED,
-                execution_id=identity.execution_id,
-                language=language,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        logger.debug(
-            TEST_RUN_RECORDED,
-            execution_id=identity.execution_id,
-            task_id=identity.task_id,
-            returncode=result.returncode,
-            passed=result.success,
         )

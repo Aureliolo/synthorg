@@ -32,7 +32,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.model_binding import BoundCompletion
 from synthorg.versioning.service import VersioningService
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ def build_evolution_service(  # noqa: PLR0913
     versioning: VersioningService[AgentIdentity],
     tracker: PerformanceTracker,
     memory_backend: MemoryBackend | None = None,
-    provider: CompletionProvider | None = None,
+    proposer_binding: BoundCompletion | None = None,
     shadow_runner: ShadowAgentRunner | None = None,
     shadow_task_sampler: TaskSampler | None = None,
     outcome_sink: EvolutionOutcomeSink | None = None,
@@ -61,7 +61,9 @@ def build_evolution_service(  # noqa: PLR0913
         versioning: Versioning service for AgentIdentity.
         tracker: Performance tracker.
         memory_backend: Memory backend (optional).
-        provider: LLM completion provider (for proposers).
+        proposer_binding: Connection + model the LLM proposers dispatch on;
+            ``None`` wires the no-op proposer, so evolution proposes nothing
+            rather than analysing on a connection nobody chose.
         shadow_runner: Required when ``config.guards.shadow_evaluation`` is
             set; executes a single probe task against an identity and
             proposal.  In production this wraps ``AgentEngine.run``.
@@ -89,7 +91,7 @@ def build_evolution_service(  # noqa: PLR0913
     )
 
     trigger = _build_trigger(config, tracker=tracker)
-    proposer = _build_proposer(config, provider=provider)
+    proposer = _build_proposer(config, binding=proposer_binding)
     guard = _build_guard(
         config,
         identity_store=identity_store,
@@ -210,15 +212,15 @@ def _build_trigger(
 def _build_self_report(
     config: EvolutionConfig,
     *,
-    provider: CompletionProvider,
+    binding: BoundCompletion,
 ) -> AdaptationProposer:
     from synthorg.engine.evolution.proposers.self_report import (  # noqa: PLC0415
         SelfReportProposer,
     )
 
     return SelfReportProposer(
-        provider,
-        model=config.proposer.model,
+        binding.provider,
+        model=binding.model,
         temperature=config.proposer.temperature,
     )
 
@@ -226,15 +228,15 @@ def _build_self_report(
 def _build_separate_analyzer(
     config: EvolutionConfig,
     *,
-    provider: CompletionProvider,
+    binding: BoundCompletion,
 ) -> AdaptationProposer:
     from synthorg.engine.evolution.proposers.separate_analyzer import (  # noqa: PLC0415
         SeparateAnalyzerProposer,
     )
 
     return SeparateAnalyzerProposer(
-        provider,
-        model=config.proposer.model,
+        binding.provider,
+        model=binding.model,
         temperature=config.proposer.temperature,
         max_tokens=config.proposer.max_tokens,
     )
@@ -243,15 +245,15 @@ def _build_separate_analyzer(
 def _build_composite_proposer(
     config: EvolutionConfig,
     *,
-    provider: CompletionProvider,
+    binding: BoundCompletion,
 ) -> AdaptationProposer:
     from synthorg.engine.evolution.proposers.composite import (  # noqa: PLC0415
         CompositeProposer,
     )
 
     return CompositeProposer(
-        failure_proposer=_build_separate_analyzer(config, provider=provider),
-        success_proposer=_build_self_report(config, provider=provider),
+        failure_proposer=_build_separate_analyzer(config, binding=binding),
+        success_proposer=_build_self_report(config, binding=binding),
     )
 
 
@@ -268,17 +270,17 @@ _PROPOSER_REGISTRY: StrategyRegistry[AdaptationProposer] = StrategyRegistry(
 def _build_proposer(
     config: EvolutionConfig,
     *,
-    provider: CompletionProvider | None,
+    binding: BoundCompletion | None,
 ) -> AdaptationProposer:
-    """Build proposer from config; falls back to no-op when no provider.
+    """Build proposer from config; falls back to no-op with no binding.
 
     Returns:
         An :class:`AdaptationProposer` for the configured proposer
-        type; a no-op proposer when ``provider`` is ``None``.
+        type; a no-op proposer when ``binding`` is ``None``.
     """
-    if provider is None:
+    if binding is None:
         return _NoOpProposer()
-    return _PROPOSER_REGISTRY.build(config.proposer.type, config, provider=provider)
+    return _PROPOSER_REGISTRY.build(config.proposer.type, config, binding=binding)
 
 
 def _build_guard(

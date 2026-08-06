@@ -37,16 +37,11 @@ from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan
-from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanItemKind, PlanStatus
+from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
 from synthorg.core.plan_transitions import transition_path
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination.parent_rollup import (
-    advance_parent_to_rollup_status,
-)
-from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.initiative.completion import (
     ItemProgress,
     StallReason,
@@ -56,7 +51,6 @@ from synthorg.engine.initiative.completion import (
 )
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
-    EvaluationFactory,
     EvaluationPort,
     IntegrationPort,
     PlanStatusWriter,
@@ -67,6 +61,7 @@ from synthorg.engine.initiative.project_writes import (
     MAX_WRITE_ATTEMPTS,
     advance_project_status,
 )
+from synthorg.engine.initiative.rollup_parent_task import advance_objective_task
 from synthorg.engine.initiative.tail_stages import (
     IntegrationOutcome,
     read_integration_state,
@@ -95,39 +90,6 @@ _ACTOR: Final[str] = "initiative-rollup"
 _DISPATCHABLE_OUTCOMES: Final[frozenset[IntegrationOutcome]] = frozenset(
     {IntegrationOutcome.ABSENT, IntegrationOutcome.PENDING}
 )
-
-#: Statuses that read as "the objective is over" on the board. The objective
-#: outlives every individual item, so the parent walk may only land one of
-#: these once the plan itself has delivered.
-_OBJECTIVE_FINISHED_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
-    {
-        TaskStatus.COMPLETED,
-        TaskStatus.FAILED,
-        TaskStatus.CANCELLED,
-        TaskStatus.REJECTED,
-    }
-)
-
-
-def _parent_status_of(item: ItemProgress) -> TaskStatus:
-    """Project one plan item onto the task status the parent rolls up.
-
-    A ``DECISION`` item dispatches no task, so it contributes the status its
-    resolution implies: ``COMPLETED`` once an option is recorded, and
-    ``IN_PROGRESS`` while the choice is still open (it is real work the
-    operator owes, so it must hold the parent open). A ``WORK`` item with no
-    dispatched task yet is likewise still pending.
-
-    Returns:
-        The ``TaskStatus`` this item contributes to the parent rollup.
-    """
-    if item.kind is PlanItemKind.DECISION:
-        return (
-            TaskStatus.COMPLETED
-            if item.chosen_option_id is not None
-            else TaskStatus.IN_PROGRESS
-        )
-    return item.task_status if item.task_status is not None else TaskStatus.IN_PROGRESS
 
 
 class ProjectRollupService:
@@ -195,7 +157,8 @@ class ProjectRollupService:
         *,
         replan_trigger: ReplanTriggerPort | None = None,
         integration: IntegrationPort | None = None,
-        evaluation: EvaluationFactory | None = None,
+        evaluation: EvaluationPort | None = None,
+        ship_retro_capture: RetroCapturePort | None = None,
     ) -> None:
         """Fill in tail collaborators that a later boot phase resolved.
 
@@ -205,32 +168,100 @@ class ProjectRollupService:
         setup must not re-register the observer, so it attaches here instead
         and the tail comes online without a restart.
 
-        Only unset collaborators are filled: an already-wired stage keeps its
-        instance, so a re-run never orphans one mid-flight. The evaluate stage
-        arrives as a factory rather than an instance for that same reason: it
-        captures the replan trigger permanently, so it must be built against
-        whichever trigger this rollup ends up holding, not against one a
-        caller built speculatively and this method then discarded.
+        Each collaborator has its own subsystem and arrives on its own
+        schedule, so a call fills only what it was handed. Only unset ones are
+        filled: an already-wired stage keeps its instance, so a re-run never
+        orphans one mid-flight.
+
+        The retrospective capture is filled here for the same reason as the
+        three stages: it needs the provider and agent registries too, so a
+        rollup built before either existed has none, and leaving it to the
+        constructor alone would strand the consuming tail permanently.
         """
         if self._replan_trigger is None:
             self._replan_trigger = replan_trigger
         if self._integration is None:
             self._integration = integration
-        if self._evaluation is None and evaluation is not None:
-            self._evaluation = evaluation(self._replan_trigger)
+        if self._evaluation is None:
+            self._evaluation = evaluation
+        if self._ship_retro_capture is None:
+            self._ship_retro_capture = ship_retro_capture
 
-    def has_full_tail(self) -> bool:
-        """Whether every tail collaborator is wired.
+    async def detach_retro_capture(self, *, timeout_sec: float) -> None:
+        """Drain and drop the retrospective capture, so a pass can rebuild it.
+
+        It captured both memory backends at construction, so once either is
+        replaced the capture writes into layers nothing else reads. Dropping it
+        is also what the reconciler reads as this subsystem being down, since
+        liveness comes from the rollup's own attachment record. Drained before
+        it is released: an in-flight retrospective abandoned mid-write is the
+        partial state the shutdown drain exists to avoid, and a rebuild is no
+        different.
+
+        The slot is cleared BEFORE the drain, not after. The drain awaits, and
+        the rollup shares an event loop with the task-state callback, so a
+        recompute arriving during that await would otherwise still find this
+        capture and schedule onto it: a retrospective started on an instance
+        already being dropped, never drained again, writing into the very
+        backends the rebuild exists to replace. Clearing first also makes the
+        liveness probe report the subsystem down from the moment teardown
+        begins rather than when it finishes.
+        """
+        capture = self._ship_retro_capture
+        if capture is None:
+            return
+        self._ship_retro_capture = None
+        await capture.drain(timeout_sec=timeout_sec)
+
+    def replan_trigger(self) -> ReplanTriggerPort | None:
+        """Return the attached replan trigger, or ``None``.
+
+        The EVALUATE stage reads it through this rather than capturing one at
+        construction: the two subsystems attach independently, so a stage built
+        before the coordinator existed would otherwise hold ``None`` for the
+        life of the process.
 
         Returns:
-            ``True`` when the replan trigger and both tail stages are present,
-            so a re-wire can skip rebuilding them.
+            The trigger the rollup currently holds.
         """
-        return (
-            self._replan_trigger is not None
-            and self._integration is not None
-            and self._evaluation is not None
-        )
+        return self._replan_trigger
+
+    def has_replan_trigger(self) -> bool:
+        """Whether the stalled-initiative replan trigger is attached.
+
+        Returns:
+            ``True`` once the trigger is present.
+        """
+        return self._replan_trigger is not None
+
+    def has_integration(self) -> bool:
+        """Whether the INTEGRATE stage is attached.
+
+        Returns:
+            ``True`` once the stage is present.
+        """
+        return self._integration is not None
+
+    def has_evaluation(self) -> bool:
+        """Whether the EVALUATE stage is attached.
+
+        Returns:
+            ``True`` once the stage is present.
+        """
+        return self._evaluation is not None
+
+    def has_retro_capture(self) -> bool:
+        """Whether the SHIP-time retrospective capture is attached.
+
+        Read as its own liveness rather than folded into the stages': it is
+        built from the memory backends, which converge on their own schedule,
+        so counting it under a stage's probe would let the reconciler call a
+        tail converged while the retrospective silently never fires.
+
+        Returns:
+            ``True`` once the capture collaborator is present.
+        """
+        return self._ship_retro_capture is not None
 
     async def drain_retro_capture(self, *, timeout_sec: float) -> None:
         """Drain the SHIP-retro capture tail at shutdown, if one is wired.
@@ -348,7 +379,7 @@ class ProjectRollupService:
             )
             project = advance.project
             before = advance.before if advance.before is not None else current
-            await self._advance_parent_task(plan, items)
+            await advance_objective_task(self._task_engine, plan, items)
             self._maybe_trigger_replan(plan, items)
             self._maybe_capture_retro(plan, project, before=before)
             moved = plan.status is not started_as or (
@@ -469,78 +500,6 @@ class ProjectRollupService:
             )
             return
         self._evaluation.schedule(plan=plan)
-
-    async def _advance_parent_task(
-        self,
-        plan: Plan,
-        items: tuple[ItemProgress, ...],
-    ) -> None:
-        """Walk the objective task to the status its plan items imply.
-
-        Coordination advances the parent once, when ``coordinate()`` returns,
-        at which point its children are typically still ``IN_REVIEW``: it can
-        therefore never land the parent's terminal status without reading an
-        unverified run outcome. Re-deriving it here, on the same recompute
-        that already reads persisted child status, lets the parent finish
-        honestly once the review gate has ruled on every child.
-
-        The objective task is the initiative on the board, so it is held open
-        for exactly as long as the plan is: every item passing its own gate
-        does not deliver the objective, the tail does, and one item failing
-        does not end the objective while its siblings are still building. The
-        walk therefore stops short of any finished-looking status until the
-        plan itself is COMPLETED, while the rollup counts it records stay the
-        children's real ones.
-
-        A superseded plan is skipped entirely. Its successor owns the
-        objective, and the replan that superseded it cancels the retired
-        items, so deriving from them here would walk the objective task to a
-        truly terminal CANCELLED that the successor could never reopen.
-
-        Best-effort and idempotent, like the rest of the recompute: an
-        unreachable target or a rejected hop is logged and repaired by the
-        next event.
-        """
-        if self._task_engine is None or not items:
-            return
-        if plan.status is PlanStatus.SUPERSEDED:
-            logger.debug(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="superseded_plan_no_longer_owns_objective",
-            )
-            return
-        live = await self._task_engine.get_task(plan.parent_task_id)
-        if live is None:
-            logger.debug(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="parent_task_missing",
-            )
-            return
-        rollup = StatusRollup.compute(
-            NotBlankStr(plan.parent_task_id),
-            tuple(_parent_status_of(item) for item in items),
-        )
-        derived = rollup.derived_parent_status
-        held = (
-            derived in _OBJECTIVE_FINISHED_STATUSES
-            and plan.status is not PlanStatus.COMPLETED
-        )
-        outcome = await advance_parent_to_rollup_status(
-            self._task_engine,
-            task_id=plan.parent_task_id,
-            current_status=live.status,
-            rollup=rollup,
-            target=TaskStatus.IN_PROGRESS if held else derived,
-        )
-        if not outcome.success:
-            logger.debug(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="parent_walk_refused",
-                note=outcome.error,
-            )
 
     def _maybe_trigger_replan(
         self,

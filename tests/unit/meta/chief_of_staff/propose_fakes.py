@@ -24,13 +24,14 @@ from synthorg.meta.chief_of_staff.models import (
 from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.meta.chief_of_staff.routing import RoleRouter
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock, as_uuid
 from tests._shared.conversation_fakes import (
     FakeConversationRepo,
     FakeTurnRepo,
 )
+from tests._shared.model_binding import TEST_PROVIDER, bound_ref, one_connection
 from tests._shared.scripted_provider import ScriptedProvider
 
 START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
@@ -87,7 +88,7 @@ def build_proposer(
     provider: ScriptedProvider,
     config: ChiefOfStaffConfig | None = None,
     role_router: RoleRouter | None = None,
-    provider_registry: ProviderRegistry | None = None,
+    connections: ConnectionSelector | None = None,
     config_resolver: ConfigResolver | None = None,
     plan_dispatcher: ConversationalPlanDispatcher | None = None,
 ) -> tuple[
@@ -112,20 +113,22 @@ def build_proposer(
     # Routing is gated per turn on ``routing_enabled``; a test that injects a
     # router wants it to fire, so default that flag on when a router is given.
     proposer = ChiefOfStaffProposer(
-        provider=provider,
         config=config
         or ChiefOfStaffConfig(
             propose_enabled=True,
-            propose_model="example-small-001",
+            propose_model=bound_ref("example-small-001"),
             routing_enabled=role_router is not None,
-            routing_model="example-small-001",
+            routing_model=bound_ref("example-small-001"),
         ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,
         approval_store=approval_store,
         clock=FakeClock(start=START),
         role_router=role_router,
-        provider_registry=provider_registry,
+        # Every responder names its own connection, so the proposer takes a
+        # selector rather than one client; the default here serves the
+        # scripted double under the name the bound refs above point at.
+        connections=connections or one_connection(provider, name=TEST_PROVIDER),
         config_resolver=config_resolver,
     )
     if plan_dispatcher is not None:

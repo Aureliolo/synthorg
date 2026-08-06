@@ -42,9 +42,10 @@ class TestSelfImprovementConfig:
         assert isinstance(cfg.rules, RuleConfig)
         assert isinstance(cfg.prompt_tuning, PromptTuningConfig)
 
-    def test_analysis_model_default(self) -> None:
+    def test_analysis_sampling_defaults(self) -> None:
+        # There is deliberately no baked analysis model: the pair lives in
+        # ``self_improvement.analysis_model`` and is read per call.
         cfg = SelfImprovementConfig()
-        assert cfg.analysis_model == "example-small-001"
         assert cfg.analysis_temperature == 0.3
         assert cfg.analysis_max_tokens == 4000
 

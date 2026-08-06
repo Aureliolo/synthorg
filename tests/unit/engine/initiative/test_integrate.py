@@ -11,10 +11,15 @@ from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.artifacts.expected_artifact_check import is_probeable_path
 from synthorg.engine.initiative.integrate import (
     ACTOR,
     IntegrationStageService,
     escalated_stakes,
+)
+from synthorg.engine.initiative.integrate_brief import (
+    INTEGRATION_REPORT_PATH,
+    INTEGRATION_TEST_OUTPUT_PATH,
 )
 from synthorg.engine.initiative.tail_stages import (
     MAX_INTEGRATION_ATTEMPTS,
@@ -201,7 +206,12 @@ class TestMinting:
         assert task.parent_task_id == plan.parent_task_id
 
     async def test_the_task_declares_the_artifacts_that_arm_the_guard(self) -> None:
-        """A chat-only integration must terminate NO_OP, not look finished."""
+        """A chat-only integration must terminate NO_OP, not look finished.
+
+        The declarations are workspace-relative paths, because the check can
+        only probe a path: prose declarations leave it abstaining, which is
+        indistinguishable from a run that delivered.
+        """
         plan = _plan()
         service, backend, _ = await _seed(plan)
 
@@ -209,8 +219,12 @@ class TestMinting:
 
         task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
-        assert len(task.artifacts_expected) == 2
-        assert any("test" in a.path.lower() for a in task.artifacts_expected)
+        declared = [a.path for a in task.artifacts_expected]
+        assert declared == [
+            INTEGRATION_REPORT_PATH,
+            INTEGRATION_TEST_OUTPUT_PATH,
+        ]
+        assert all(is_probeable_path(path) for path in declared)
 
     async def test_the_task_carries_the_objective_criteria(self) -> None:
         plan = _plan()

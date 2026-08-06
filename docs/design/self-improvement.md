@@ -319,6 +319,17 @@ Example override (enable the master switch + tighten the cadence):
 
 Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/signals`) reads the config via `self_improvement_config_of(app_state)`, which caches the parsed `SelfImprovementConfig` on `MetaStateSlice` so the JSON is parsed once rather than per request. The `MetaSelfImprovementSettingsSubscriber` invalidates that cache (wires the field back to `None`) on an operator edit, so setting changes are still picked up without a server restart.
 
+### Each LLM step names its own connection
+
+The master switch above turns the loop on; it does not decide what any step
+dispatches to. Signal analysis reads `self_improvement.analysis_model` and the
+code-modification applier reads `self_improvement.code_modification_model`, each
+an explicit `(provider, model)` pair with no default, because a provider is a
+registered *connection* carrying its own credentials, endpoint and quota. A step
+whose pair is unset is off and says so rather than borrowing one nobody chose for
+it, so enabling the loop without choosing them yields a loop that collects
+signals and proposes nothing.
+
 ### Interactive endpoint: one unified turn
 
 There is **one conversational surface**: the operator types anything and the

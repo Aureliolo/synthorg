@@ -211,7 +211,7 @@ auto-review trigger. Its natural home is the autonomous flow: with
 `engine.auto_review_on_completion` on by default a verified task self-completes
 and the oracle gates that completion; a human opening a review is gated by the
 same two gates. All the oracle settings (`completion_oracle_enabled`,
-`_shadow_mode`, `_min_stakes`, `_reviewer_model_tier`) are hot-reloadable: an
+`_shadow_mode`, `_min_stakes`, `_reviewer_model`) are hot-reloadable: an
 edit rebuilds the runtime and re-attaches the gates to the persistent review
 service on the next task, no restart.
 
@@ -220,7 +220,29 @@ service on the next task, no restart.
 A deterministic gate (`engine/completion_oracle/evaluator.py`
 `BuildTestOracle`) that is a pure function of a task's grounding
 classification and its already-persisted `CodeExecutionRecord`s (the
-`purpose="tests"` rows the code-runner writes), so it needs no new persistence.
+`purpose="tests"` rows), so it needs no new persistence.
+
+Those rows are written from what the agent **ran**, not from what it
+declared. A shared classifier (`tools/_test_run_capture.py::is_test_run`)
+recognises a test command by its shape (`pytest`, `go test`, `cargo test`,
+`npm test`, `gradle ... test`, and the rest), and both `code_runner` and
+`shell_command` record through it. Letting the model's own `purpose`
+argument arm the gate meant an agent that ran its suite through
+`shell_command`, or through `code_runner` without setting the flag,
+produced a green suite and zero evidence: the oracle then correctly failed
+closed and blocked a build that genuinely passed. The gate's verdict is not
+supposed to depend on which tool the model happened to pick, and
+model-supplied input is the wrong thing to let decide whether a gate has
+evidence at all.
+
+The command is untrusted too, so recognition reads the invoked program and
+its verb rather than searching the line for a word. A compound command is
+refused outright (`pytest || true` exits 0 whatever the suite did), and a
+package manager's `test` counts only as its own subcommand or the script
+`run` names: `test` is a real npm package, so `npm install test` succeeds
+and would otherwise mint passing evidence for a command that ran no tests.
+Build tools (`mvn`, `gradle`, `make`) keep positional target matching,
+because their arguments are phase names rather than verbs.
 `classify_grounding_requirement` marks a task REQUIRED when it declares (or
 produced) a CODE / TESTS artifact; a docs / plan / decision task is
 NOT_APPLICABLE and the oracle abstains. The verdict uses LATEST-run semantics
@@ -253,6 +275,30 @@ whom (the identities are seeded by the gate, not taken from the tool
 arguments). The untrusted deliverable / criteria are wrapped with
 `wrap_untrusted` at the prompt boundary (SEC-1).
 
+#### What "the deliverable" is
+
+The reviewed deliverable is the **content of the files the task produced at
+its declared paths**, with the agent's closing message alongside rather than
+instead. `engine/artifacts/deliverable_content.py` reads each
+`ExpectedArtifact.path` inside the task's project workspace and
+`engine/review_gate_inputs.py` assembles the two into one SEC-1 fenced block
+(`wrap_untrusted(TAG_TOOL_RESULT, ...)`), which every downstream consumer of
+the review input shares: the peer reviewer, the red-team gate, and the
+output-policy backstop.
+
+Reviewing only the closing prose meant an APPROVE said the agent wrote a
+convincing summary, not that the deliverable builds. This is the single most
+load-bearing gate in the chain (fail-closed, on by default,
+`min_stakes=low`), so it reads the thing it is approving.
+
+Size is bounded by two live settings, so an operator can tune what the
+reviewer sees without a restart: `engine.review_artifact_max_chars_per_file`
+(default 20000) and `engine.review_artifact_max_chars_total` (default 60000).
+Truncation, omission, an absent path, a directory, and an unreadable file
+each produce an explicit note in the assembled text rather than silently
+shrinking the deliverable, because a reviewer that cannot tell "empty" from
+"not shown" cannot judge either.
+
 The reviewer-is-distinct invariant is enforced at three layers: a
 `CompletionOracleReport` model validator, the gate's structural resolution,
 and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
@@ -273,9 +319,17 @@ APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
 (default `low`, so every task is reviewed) gates the expensive agent-session
 review; the deterministic build/test gate runs regardless of it.
 `completion_oracle_shadow_mode` runs the reviewer and surfaces the verdict
-without enforcing it, for an observation period before enforcement. The reviewer
-tier is pinned via `completion_oracle_reviewer_model_tier` (default `medium`),
-never inheriting the executor's tier.
+without enforcing it, for an observation period before enforcement.
+
+The reviewer names its own dispatch target: `completion_oracle_reviewer_model`
+is a `MODEL_REF` carrying an explicit `(provider, model)` pair, so it never
+inherits the executor's model and never falls back to a shared system provider.
+A provider here is a registered *connection*, with its own credentials and
+endpoint, so a bare model id would name no dispatch target at all: the same id
+on two connections is two different calls, billed and rate-limited separately.
+Unset (or half a pair) leaves the peer review **unarmed and says so** via
+`completion_oracle.runtime.reviewer_model_unset`; the deterministic build/test
+gate still runs, so a code task with no passing test evidence is still blocked.
 
 ## Order of Operations
 

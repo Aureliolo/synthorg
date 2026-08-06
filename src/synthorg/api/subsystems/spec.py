@@ -30,13 +30,13 @@ class CapabilityId(StrEnum):
     SETTINGS_RESOLVER = "settings_resolver"
     SETTINGS_SERVICE = "settings_service"
     PROVIDER_REGISTRY = "provider_registry"
-    DEFAULT_PROVIDER = "default_provider"
     COST_TRACKER = "cost_tracker"
     APPROVAL_STORE = "approval_store"
     MESSAGE_BUS = "message_bus"
     AGENT_REGISTRY = "agent_registry"
     WORK_PIPELINE = "work_pipeline"
     TASK_ENGINE = "task_engine"
+    COORDINATOR = "coordinator"
     WORKSPACE_SERVICE = "workspace_service"
     SETTINGS_READ_SERVICE = "settings_read_service"
 
@@ -72,6 +72,14 @@ class CapabilityId(StrEnum):
     ROLE_VERSION_SERVICE = "role_version_service"
     BUDGET_VERSIONS_SERVICE = "budget_versions_service"
     PROJECT_ROLLUP_SERVICE = "project_rollup_service"
+    # One per tail collaborator, not one for the tail: they need different
+    # things and converge at different times, so a single capability made the
+    # union of their requirements a precondition for any of them and a boot
+    # without a coordinator got no integrate stage either.
+    INITIATIVE_INTEGRATE = "initiative_integrate"
+    INITIATIVE_EVALUATE = "initiative_evaluate"
+    INITIATIVE_REPLAN = "initiative_replan"
+    INITIATIVE_RETRO_CAPTURE = "initiative_retro_capture"
     KANBAN_BOARD = "kanban_board"
     STEERING_SERVICE = "steering_service"
     FINE_TUNE_ORCHESTRATOR = "fine_tune_orchestrator"

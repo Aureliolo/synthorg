@@ -25,8 +25,8 @@ from synthorg.engine.agent_persona import render_agent_persona_body
 from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
 from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
-from synthorg.providers.protocol import CompletionProvider
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.protocol import CompletionProvider, ConnectionSelector
+from synthorg.settings.model_ref import ModelRef
 
 # Identity preamble for the generic responder. Reproduces the v1 opening
 # line of CONVERSATIONAL_PROPOSE_SYSTEM verbatim so the routing-off path
@@ -43,9 +43,10 @@ class Responder(BaseModel):
             line for the generic responder, or a role agent's persona
             body when routed.
         model: Model identifier to call for the decision turn.
-        provider_name: Provider that serves :attr:`model`; ``None`` for
-            the generic responder, which uses the proposer's default
-            provider.
+        provider_name: The connection serving :attr:`model`. Always set:
+            a routed responder takes its agent's binding and the generic
+            one takes the operator's ``propose_model`` pair, because a
+            model id without a connection names no dispatch target.
         agent_id: Responding role agent id; ``None`` for the generic
             Chief of Staff persona (no attribution).
         role: Responding agent's role; ``None`` when generic.
@@ -129,16 +130,21 @@ class RoutingOutcome(BaseModel):
         return self
 
 
-def generic_responder(*, model: NotBlankStr) -> Responder:
+def generic_responder(*, model: ModelRef) -> Responder:
     """Build the generic Chief of Staff responder.
 
     Args:
-        model: Model id to call (the proposer's ``propose_model``).
+        model: The operator-chosen ``(provider, model)`` pair for
+            ``chief_of_staff.propose_model``.
 
     Returns:
-        A responder with no role attribution and no provider override.
+        A responder with no role attribution, naming its own connection.
     """
-    return Responder(persona=GENERIC_RESPONDER_PERSONA, model=model)
+    return Responder(
+        persona=GENERIC_RESPONDER_PERSONA,
+        model=NotBlankStr(model.model_id),
+        provider_name=NotBlankStr(model.provider),
+    )
 
 
 def responder_for_identity(identity: AgentIdentity) -> Responder:
@@ -166,7 +172,7 @@ def responder_for_identity(identity: AgentIdentity) -> Responder:
 
 
 def select_responder(
-    routing: RoutingDecision | None, *, propose_model: NotBlankStr
+    routing: RoutingDecision | None, *, propose_model: ModelRef
 ) -> Responder:
     """Pick the responder for a turn: routed agent, or generic fallback.
 
@@ -239,22 +245,23 @@ def build_attributed_assistant_turn(
 def resolve_responder_provider(
     responder: Responder,
     *,
-    default: CompletionProvider,
-    registry: ProviderRegistry | None,
+    connections: ConnectionSelector,
 ) -> CompletionProvider:
-    """Select the provider that serves *responder*'s model.
+    """Select the connection that serves *responder*'s model.
 
-    A routed responder names its agent's own provider; resolve it
-    through *registry* so the role agent answers on its configured
-    provider. The generic responder (and any routed responder when no
-    registry is wired) uses *default*.
+    Every responder names its own provider: a routed one takes its agent's
+    binding, the generic one takes the operator's ``propose_model`` pair.
+    There is no shared default to fall back to, because a provider is a
+    registered connection with its own credentials and endpoint, so
+    substituting one would bill and route somewhere nobody chose.
 
     Returns:
         The completion provider for the decision call.
+
+    Raises:
+        DriverNotRegisteredError: When the named connection is not registered.
     """
-    if responder.provider_name is not None and registry is not None:
-        return registry.get(responder.provider_name)
-    return default
+    return connections(responder.provider_name or "")
 
 
 __all__ = [

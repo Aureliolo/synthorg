@@ -258,15 +258,31 @@ def _build_terminal_tools(
     *,
     sandbox: SandboxBackend | None = None,
     config: TerminalConfig | None = None,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
+    output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in terminal tools.
+
+    The receipt store is threaded in because a test suite run here is the
+    same evidence as one run through ``code_runner``; without it, which
+    tool the agent happened to pick would decide whether the build/test
+    oracle has anything to judge. The output bound rides along for the same
+    reason: both tools write the same record, so a limit applied to one
+    producer and not the other means the retune half-lands.
 
     Returns:
         Tuple of ``BaseTool``.
     """
     from synthorg.tools.terminal.shell_command import ShellCommandTool  # noqa: PLC0415
 
-    return (ShellCommandTool(sandbox=sandbox, config=config),)
+    return (
+        ShellCommandTool(
+            sandbox=sandbox,
+            config=config,
+            code_execution_records=code_execution_records,
+            output_tail_limit=output_tail_limit,
+        ),
+    )
 
 
 def _build_design_tools(
@@ -568,8 +584,9 @@ def build_default_tools(  # noqa: PLR0913
             returns; resolve via ``tools.git_log_max_count`` and pass so
             the clamp tracks the operator-tuned setting.
         code_runner_output_tail_limit: Maximum characters of captured
-            stdout/stderr the ``code_runner`` tool keeps on a test
-            record; resolve via ``tools.code_runner_output_tail_limit``.
+            stdout/stderr kept on a test record, by ``code_runner`` and
+            ``shell_command`` alike since both write one; resolve via
+            ``tools.code_runner_output_tail_limit``.
         git_clone_policy: Network policy for git clone SSRF
             prevention.  ``None`` uses the default (block all
             private IPs, empty hostname allowlist).
@@ -630,10 +647,11 @@ def build_default_tools(  # noqa: PLR0913
             entirely.
         architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
             Ignored unless ``architect_autonomy_level`` is ``SEMI``.
-        code_execution_records: Append-only repository the
-            ``code_runner`` tool writes a ``CodeExecutionRecord`` to on
-            each ``purpose=tests`` run.  ``None`` disables test-run
-            capture (the receipt's ``tests`` block stays empty).
+        code_execution_records: Append-only repository the ``code_runner``
+            and ``shell_command`` tools write a ``CodeExecutionRecord`` to
+            whenever the executed command invokes a recognised test runner.
+            ``None`` disables test-run capture (the receipt's ``tests``
+            block stays empty).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -687,6 +705,8 @@ def build_default_tools(  # noqa: PLR0913
         _build_terminal_tools(
             sandbox=terminal_sandbox,
             config=terminal_config,
+            code_execution_records=code_execution_records,
+            output_tail_limit=code_runner_output_tail_limit,
         ),
     )
 
@@ -853,10 +873,11 @@ def build_default_tools_from_config(  # noqa: PLR0913
         desktop_settings: Operator-resolved ``DesktopSettings``.  When
             ``None`` the DesktopTool uses model defaults (the
             deterministic ``xvfb`` driver).
-        code_execution_records: Append-only repository the
-            ``code_runner`` tool writes a ``CodeExecutionRecord`` to on
-            each ``purpose=tests`` run.  ``None`` disables test-run
-            capture (the receipt's ``tests`` block stays empty).
+        code_execution_records: Append-only repository the ``code_runner``
+            and ``shell_command`` tools write a ``CodeExecutionRecord`` to
+            whenever the executed command invokes a recognised test runner.
+            ``None`` disables test-run capture (the receipt's ``tests``
+            block stays empty).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.

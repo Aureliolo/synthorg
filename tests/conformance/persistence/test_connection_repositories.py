@@ -262,10 +262,10 @@ class TestConnectionRepository:
     async def test_save_round_trips_partial_zero_rate_limiter(
         self, backend: PersistenceBackend
     ) -> None:
-        # Edge case the audit flagged: ``rpm > 0`` + ``concurrent == 0`` is a
-        # legitimate config but the deserialization predicate
-        # ``if rate_limit_rpm or rate_limit_concurrent`` would still yield
-        # truthy. Confirm the round-trip preserves the partial-zero shape.
+        # ``rpm > 0`` with ``concurrent == 0`` is a legitimate partial-zero
+        # config, but the deserialization predicate
+        # ``if rate_limit_rpm or rate_limit_concurrent`` reads truthy either
+        # way. Confirm the round-trip preserves the partial-zero shape.
         rate_limiter = RateLimiterConfig(
             max_requests_per_minute=60,
             max_concurrent=0,

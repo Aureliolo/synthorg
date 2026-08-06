@@ -84,6 +84,9 @@ from synthorg.persistence.sqlite.deliverable_receipt_repo import (
     SQLiteDeliverableReceiptRepository,
 )
 from synthorg.persistence.sqlite.docs_repo import SQLiteDocsRepository
+from synthorg.persistence.sqlite.evaluation_report_repo import (
+    SQLiteEvaluationReportRepository,
+)
 from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
@@ -297,6 +300,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
+        self._evaluation_reports = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -472,6 +476,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._code_execution_records = SQLiteCodeExecutionRecordRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._evaluation_reports = SQLiteEvaluationReportRepository(
             self._db,
             write_context=self.write_context,
         )

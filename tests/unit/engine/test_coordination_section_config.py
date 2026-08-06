@@ -34,31 +34,6 @@ class TestCoordinationSectionConfigDefaults:
         cfg = CoordinationSectionConfig()
         assert cfg.base_branch == "main"
 
-    def test_default_decomposition_model(self) -> None:
-        cfg = CoordinationSectionConfig()
-        assert cfg.decomposition_model == "example-medium-001"
-
-    def test_custom_decomposition_model(self) -> None:
-        cfg = CoordinationSectionConfig(decomposition_model="example-large-001")
-        assert cfg.decomposition_model == "example-large-001"
-
-    def test_decomposition_model_must_not_be_blank(self) -> None:
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            CoordinationSectionConfig(decomposition_model="  ")
-
-    def test_decomposition_model_env_mirror(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(
-            "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL",
-            "env-model-001",
-        )
-        cfg = CoordinationSectionConfig()
-        assert cfg.decomposition_model == "env-model-001"
-
     def test_default_auto_topology_rules(self) -> None:
         cfg = CoordinationSectionConfig()
         assert isinstance(cfg.auto_topology_rules, AutoTopologyConfig)
@@ -138,8 +113,13 @@ class TestCoordinationSectionConfigValidation:
         with pytest.raises(ValidationError):
             CoordinationSectionConfig(base_branch="  ")
 
-    def test_extra_fields_forbidden(self) -> None:
+    # ``decomposition_model`` is listed beside the nonsense key on purpose: a
+    # decomposition model is a provider + model pair the operator assigns
+    # through settings, so a bare model id in a company YAML is as much a
+    # stranger to this config as a field that never existed.
+    @pytest.mark.parametrize("field", ["unknown_field", "decomposition_model"])
+    def test_extra_fields_forbidden(self, field: str) -> None:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="extra"):
-            CoordinationSectionConfig(unknown_field="oops")  # type: ignore[call-arg]
+            CoordinationSectionConfig(**{field: "oops"})  # type: ignore[arg-type]

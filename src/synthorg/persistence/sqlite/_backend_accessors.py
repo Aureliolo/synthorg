@@ -76,6 +76,9 @@ from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
 from synthorg.persistence.docs_protocol import DocsRepository
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportRepository,
+)
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,
     FineTuneRunRepository,
@@ -197,6 +200,7 @@ class _BackendRepositoryAccessors:
     _deliverable_receipts: DeliverableReceiptRepository | None
     _knowledge_usage_records: KnowledgeUsageRecordRepository | None
     _code_execution_records: CodeExecutionRecordRepository | None
+    _evaluation_reports: EvaluationReportRepository | None
     _heartbeats: HeartbeatRepository | None
     _agent_states: AgentStateRepository | None
     _settings: SettingsRepository | None
@@ -412,6 +416,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._code_execution_records,
             "code_execution_records",
+        )
+
+    @property
+    def evaluation_reports(self) -> EvaluationReportRepository:
+        """Repository for the evaluate stage's per-initiative verdicts."""
+        return self._require_connected(
+            self._evaluation_reports,
+            "evaluation_reports",
         )
 
     @property

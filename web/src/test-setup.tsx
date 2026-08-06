@@ -10,6 +10,7 @@ import { useOrgQuestionsStore } from '@/stores/org-questions'
 import { resetMessageIds } from '@/pages/chat/message-id'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { usePlanCommentsStore } from '@/stores/planComments'
+import { usePlanEvaluationStore } from '@/stores/planEvaluation'
 import { usePlanForecastStore } from '@/stores/planForecast'
 import { usePlansStore } from '@/stores/plans'
 import { useThemeStore } from '@/stores/theme'
@@ -337,6 +338,9 @@ afterEach(() => {
   // Plan-forecast store holds a per-view forecast + request token; clear it so
   // a prior test's forecast does not bleed into the next in the same worker.
   usePlanForecastStore.getState().clear()
+  // Plan-evaluation store holds a per-view verdict history + request token;
+  // clear it so a prior test's verdicts do not bleed into the next.
+  usePlanEvaluationStore.getState().clear()
   // Plan-comments store holds the current plan's thread + request token; reset
   // it so a prior test's comments do not bleed into the next in the same worker.
   usePlanCommentsStore.getState().reset()

@@ -80,7 +80,9 @@ Each row is evidence-backed and failure-aware: it shows the resolved task title,
 
 Durable-plan review inbox with its own red nav badge (pending plan-review count): when the plan-approval gate is enabled, the decomposed plan for an objective lands here for a human decision before any team builds. The list surfaces plans awaiting review first, then the rest by recency, with client-side status filtering across the whole set. The detail page (`/plans/:planId`) shows the plan's items and lets an operator rework them (title, description, owner, complexity, stakes), send the plan back for changes with a note, or **approve/reject the whole plan inline** (the toolbar resolves the plan's parked approval and drives the canonical `/approvals` path, so approval stays atomic). Per-item discussion is conversational: a comment on an item is answered inline by the responsible role (the item's owner, else the Chief of Staff), rendered as an attributed agent reply. A disconnected-updates banner shows when the live channel drops. See [Plan Review](plan-review.md).
 
-**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
+The detail page also carries the **delivery verdict**: once the evaluate stage has judged the initiative, the panel shows each objective criterion with the judge's outcome and evidence, newest judgement first, so a plan parked at `EVALUATING` explains which criteria failed instead of showing a status and nothing else. It is hidden until a judgement exists.
+
+**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, `GET /plans/{id}/evaluation`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
 **WS channels**: `plans`
 
 ### Secondary Navigation

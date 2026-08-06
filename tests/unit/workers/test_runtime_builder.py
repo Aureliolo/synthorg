@@ -100,12 +100,10 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     bridge_config: EngineBridgeConfig | None = None,
     bridge_config_error: Exception | None = None,
     decomposition_error: Exception | None = None,
-    blank_decomposition_model: bool = False,
-    blank_decomposition_value: str = "",
+    decomposition_value: str | None = None,
     cost_tracker: CostTracker | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
     simulation_runtime: bool = False,
-    default_provider_name: str | None = _DEFAULT_PROVIDER,
 ) -> AppState:
     """Build a mocked AppState for the provider-present path.
 
@@ -116,25 +114,26 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     ``decomposition_error`` makes ``get_str`` raise on the
     ``decomposition_model`` key, to exercise the
     ``_build_runtime_coordinator`` redacted-log + re-raise branch.
+    ``decomposition_value`` overrides what the resolver returns for that key,
+    so a caller can seed a blank assignment, a ref naming an unregistered
+    connection, or a ref naming a specific registered one.
     ``cost_tracker`` (and the paired ``coordination_metrics_store``)
     drive the coordination-metrics collector wiring: absent, the
     collector is not constructed (mirrors the empty/degraded path).
     """
-    # The boot active provider is the explicit default: bind it so a
-    # single- or multi-provider registry resolves one (no alphabetical pick).
-    registry.bind_default_provider(default_provider_name)
     if bridge_config_error is None:
         bridge_mock = AsyncMock(return_value=bridge_config or EngineBridgeConfig())
     else:
         bridge_mock = AsyncMock(side_effect=bridge_config_error)
-    if blank_decomposition_model:
+    if decomposition_value is not None:
+        seeded = decomposition_value
 
-        async def _get_str_blank(namespace: str, key: str) -> str:
+        async def _get_str_seeded(namespace: str, key: str) -> str:
             if key == "decomposition_model":
-                return blank_decomposition_value
+                return seeded
             return await _get_str(namespace, key)
 
-        get_str_mock = AsyncMock(side_effect=_get_str_blank)
+        get_str_mock = AsyncMock(side_effect=_get_str_seeded)
     elif decomposition_error is None:
         get_str_mock = AsyncMock(side_effect=_get_str)
     else:
@@ -270,8 +269,7 @@ class TestProviderPresentSwitch:
         app_state = _provider_app_state(
             registry,
             tmp_path,
-            blank_decomposition_model=True,
-            blank_decomposition_value=model_value,
+            decomposition_value=model_value,
         )
 
         with capture_logs() as logs:
@@ -316,8 +314,7 @@ class TestProviderPresentSwitch:
         app_state = _provider_app_state(
             registry,
             tmp_path,
-            blank_decomposition_model=True,
-            blank_decomposition_value=ghost_ref,
+            decomposition_value=ghost_ref,
         )
 
         result = await build_runtime_services(app_state, workspace_root=tmp_path)
@@ -348,17 +345,26 @@ class TestProviderPresentSwitch:
         app_state = _provider_app_state(
             registry,
             tmp_path,
-            blank_decomposition_model=True,
+            decomposition_value="",
         )
 
-        # Force the pre-check to pass so the eager build reaches the blank model
-        # and raises, exercising the backstop rather than the pre-check.
-        async def _pretend_configured(_app_state: AppState) -> bool:
-            return True
+        # Force the pre-check to see a bound pair so the eager build reaches
+        # the blank model and raises, exercising the backstop rather than the
+        # pre-check. The coordinator assembly re-reads the resolver directly,
+        # which still answers blank.
+        async def _pretend_bound(
+            _app_state: AppState,
+            *,
+            namespace: str,
+            key: str,
+            unset_event: str,
+        ) -> ModelRef:
+            del namespace, key, unset_event
+            return ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-medium-001")
 
         monkeypatch.setattr(
-            "synthorg.workers.runtime_builder.decomposition_model_is_configured",
-            _pretend_configured,
+            "synthorg.workers.runtime_builder.resolve_bound_model",
+            _pretend_bound,
         )
 
         with capture_logs() as logs:
@@ -393,9 +399,7 @@ class TestProviderPresentSwitch:
                 )
             }
         )
-        app_state = _provider_app_state(
-            registry, tmp_path, blank_decomposition_model=True
-        )
+        app_state = _provider_app_state(registry, tmp_path, decomposition_value="")
 
         degraded = await build_runtime_services(app_state, workspace_root=tmp_path)
         assert degraded.coordinator is None
@@ -532,36 +536,39 @@ class TestProviderPresentSwitch:
         )
         assert isinstance(result.coordinator, MultiAgentCoordinator)
 
-    async def test_multiple_providers_without_default_is_no_provider_mode(
+    async def test_several_connections_dispatch_on_the_named_one(
         self,
         tmp_path: Path,
     ) -> None:
+        """The boot connection is the one the coordination pair names.
+
+        Two connections are registered and the pair names the one that sorts
+        *last*, so an alphabetical or first-registered pick would resolve the
+        wrong client. Connections are not interchangeable -- each carries its
+        own credentials, endpoint and quota -- so the runtime must take the
+        one the operator chose and nothing else.
+        """
         registry = ProviderRegistry.from_config(
             {
                 "test-provider": ProviderConfig(
                     driver="scripted", connection_name="conn-scripted"
                 ),
                 "test-provider-2": ProviderConfig(
-                    driver="scripted", connection_name="conn-scripted"
+                    driver="scripted", connection_name="conn-scripted-2"
                 ),
             }
         )
-        # Two providers and NO explicit default: the default system provider is
-        # ambiguous, so the boot refuses to auto-pick and returns no-provider
-        # mode rather than routing to whichever provider sorts first.
-        app_state = _provider_app_state(registry, tmp_path, default_provider_name=None)
-        with capture_logs() as logs:
-            result = await build_runtime_services(app_state, workspace_root=tmp_path)
+        chosen = serialize_model_ref(
+            ModelRef(provider="test-provider-2", model_id="example-medium-001")
+        )
+        app_state = _provider_app_state(registry, tmp_path, decomposition_value=chosen)
 
-        assert isinstance(result.worker_execution_service, NoProviderExecutionService)
-        assert result.coordinator is None
-        ambiguous = [
-            entry
-            for entry in logs
-            if entry.get("event") == API_APP_STARTUP
-            and entry.get("mode") == "no_default_provider"
-        ]
-        assert len(ambiguous) == 1
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        assert isinstance(result.worker_execution_service, AgentEngineExecutionService)
+        assert result.coordinator is not None
+        engine = result.worker_execution_service._engine
+        assert engine._provider is registry.get("test-provider-2")
 
     async def test_builds_nonexistent_deep_workspace_path(
         self,

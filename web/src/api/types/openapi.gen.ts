@@ -3598,6 +3598,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/evaluation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetPlanEvaluation */
+        readonly get: operations["ApiV1PlansPlanIdEvaluationGetPlanEvaluation"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/replan": {
         readonly parameters: {
             readonly query?: never;
@@ -7138,17 +7155,17 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[Forecast] */
-        readonly ApiResponse_Forecast_: {
-            readonly data: components["schemas"]["Forecast"] | null;
+        /** ApiResponse[ForecastResponse] */
+        readonly ApiResponse_ForecastResponse_: {
+            readonly data: components["schemas"]["ForecastResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[ForecastResponse] */
-        readonly ApiResponse_ForecastResponse_: {
-            readonly data: components["schemas"]["ForecastResponse"] | null;
+        /** ApiResponse[ForecastView] */
+        readonly ApiResponse_ForecastView_: {
+            readonly data: components["schemas"]["ForecastView"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7365,6 +7382,14 @@ export type components = {
         /** ApiResponse[Plan] */
         readonly ApiResponse_Plan_: {
             readonly data: components["schemas"]["Plan"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PlanEvaluationResponse] */
+        readonly ApiResponse_PlanEvaluationResponse_: {
+            readonly data: components["schemas"]["PlanEvaluationResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -10493,6 +10518,23 @@ export type components = {
          * @enum {string}
          */
         readonly CreativityLevel: "low" | "medium" | "high";
+        /**
+         * CriterionOutcome
+         * @description Whether one success criterion is met by the delivered whole.
+         *
+         *     ``MET``: the criterion holds, with evidence. ``PARTIAL``: partly holds, so
+         *     the objective is not delivered. ``UNMET``: does not hold.
+         * @enum {string}
+         */
+        readonly CriterionOutcome: "met" | "partial" | "unmet";
+        /** CriterionVerdict */
+        readonly CriterionVerdict: {
+            /** @description The objective criterion judged */
+            readonly criterion: string;
+            /** @description What was observed */
+            readonly evidence: string;
+            readonly outcome: components["schemas"]["CriterionOutcome"];
+        };
         /** DailySummary */
         readonly DailySummary: {
             /**
@@ -11721,57 +11763,14 @@ export type components = {
             /** @description 1-based turn index within the run */
             readonly turn_index: number;
         };
-        /** Forecast */
-        readonly Forecast: {
-            /** @description SHA-256 hex digest of canonical brief JSON */
-            readonly brief_hash: string;
-            /** @description Per-run hard ceiling the operator approved */
-            readonly ceiling_amount: number | null;
-            /**
-             * Format: date-time
-             * @description Row creation timestamp
-             */
-            readonly created_at: string;
-            /** @description ISO 4217 currency code stamped on the estimate */
-            readonly currency: string;
-            /**
-             * Format: date-time
-             * @description When the operator decided (None while pending)
-             */
-            readonly decided_at: string | null;
-            /** @description Identifier of the deciding operator */
-            readonly decided_by: string | null;
-            readonly decision: components["schemas"]["ForecastDecision"];
-            /** @description Mid-point cost estimate in `currency` */
-            readonly estimated_cost: number;
-            /**
-             * Format: uuid
-             * @description Stable UUID primary key
-             */
-            readonly forecast_id: string;
-            /** @description Hard-ceiling halt context; set when the run is parked on a ceiling crossing, cleared when the operator raises the ceiling */
-            readonly halt_context: components["schemas"]["HaltContext"] | null;
-            /** @description Lower bound of the cost estimate */
-            readonly lower_bound: number;
-            /**
-             * Format: date-time
-             * @description Last decision-state mutation timestamp
-             */
-            readonly updated_at: string;
-            /** @description Upper bound of the cost estimate */
-            readonly upper_bound: number;
-        };
         /** ForecastApproveRequest */
         readonly ForecastApproveRequest: {
             /** @description Approved per-run hard ceiling (None to inherit setting) */
             readonly ceiling_amount?: number | null;
-            /** @description Operator identifier */
-            readonly decided_by: string;
         };
         /**
          * ForecastDecision
          * @description Operator decision state for a pre-flight cost forecast.
-         * @default pending
          * @enum {string}
          */
         readonly ForecastDecision: "pending" | "approved" | "rejected" | "superseded";
@@ -11786,10 +11785,7 @@ export type components = {
             readonly projected_spend: number;
         };
         /** ForecastRejectRequest */
-        readonly ForecastRejectRequest: {
-            /** @description Operator identifier */
-            readonly decided_by: string;
-        };
+        readonly ForecastRejectRequest: Record<string, never>;
         /** ForecastRequest */
         readonly ForecastRequest: {
             /** @description Brief body to estimate */
@@ -11800,6 +11796,8 @@ export type components = {
             readonly model_assignments?: {
                 readonly [key: string]: string;
             };
+            /** @description Project the work would land in */
+            readonly project: string;
             /** @description Ordered role ids participating in the run (non-empty) */
             readonly role_skeleton: readonly string[];
         };
@@ -11822,6 +11820,46 @@ export type components = {
             readonly horizon_days: number;
             /** @description Projected total spend over the horizon */
             readonly projected_total: number;
+        };
+        /** ForecastView */
+        readonly ForecastView: {
+            /** @description Digest of the canonical brief */
+            readonly brief_hash: string;
+            /** @description Approved per-run hard ceiling */
+            readonly ceiling_amount: number | null;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp
+             */
+            readonly created_at: string;
+            /** @description ISO 4217 code on the estimate */
+            readonly currency: string;
+            /**
+             * Format: date-time
+             * @description When decided
+             */
+            readonly decided_at: string | null;
+            /** @description Who decided */
+            readonly decided_by: string | null;
+            readonly decision: components["schemas"]["ForecastDecision"];
+            /** @description Mid-point cost estimate */
+            readonly estimated_cost: number;
+            /**
+             * Format: uuid
+             * @description Stable UUID primary key
+             */
+            readonly forecast_id: string;
+            /** @description Hard-ceiling halt context when parked */
+            readonly halt_context: components["schemas"]["HaltContext"] | null;
+            /** @description Lower bound of the estimate */
+            readonly lower_bound: number;
+            /**
+             * Format: date-time
+             * @description Last decision-state mutation
+             */
+            readonly updated_at: string;
+            /** @description Upper bound of the estimate */
+            readonly upper_bound: number;
         };
         /** ForgeAccessibleRepo */
         readonly ForgeAccessibleRepo: {
@@ -14631,6 +14669,29 @@ export type components = {
             readonly project: string;
             readonly task_id: string;
             readonly title: string;
+        };
+        /** PlanEvaluationAttempt */
+        readonly PlanEvaluationAttempt: {
+            /** @description Which judgement of this plan */
+            readonly attempt: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly evaluated_at: string;
+            /** @description True iff every criterion was met */
+            readonly objective_met: boolean;
+            /** @description The judge's narrative */
+            readonly summary: string;
+            /** @description One verdict per objective criterion */
+            readonly verdicts: readonly components["schemas"]["CriterionVerdict"][];
+        };
+        /** PlanEvaluationResponse */
+        readonly PlanEvaluationResponse: {
+            /** @description Recorded judgements, newest first */
+            readonly attempts: readonly components["schemas"]["PlanEvaluationAttempt"][];
+            /** @description The judged plan */
+            readonly plan_id: string;
         };
         /** PlanItem */
         readonly PlanItem: {
@@ -22420,7 +22481,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ForecastView_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22450,7 +22511,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ForecastView_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22484,7 +22545,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ForecastView_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22519,7 +22580,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ForecastView_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -22554,7 +22615,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ForecastView_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -27509,6 +27570,36 @@ export interface operations {
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdEvaluationGetPlanEvaluation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanEvaluationResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

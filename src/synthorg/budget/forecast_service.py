@@ -16,14 +16,21 @@ from uuid import UUID
 from synthorg.budget._cost_window import ClockFn, utc_now
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
+from synthorg.budget.forecast_dispatch_port import ApprovedForecastDispatcher
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, CostForecaster
-from synthorg.core.domain_errors import ConflictError, ResourceNotFoundError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    ResourceNotFoundError,
+    ServiceUnavailableError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVED,
     BUDGET_FORECAST_GENERATED,
+    BUDGET_FORECAST_REDISPATCH_FAILED,
+    BUDGET_FORECAST_REDISPATCHED,
     BUDGET_FORECAST_REJECTED,
     BUDGET_HARD_CEILING_RAISE_REJECTED,
     BUDGET_HARD_CEILING_RAISED,
@@ -54,6 +61,7 @@ class BudgetForecastService:
         forecaster: CostForecaster,
         budget_config: BudgetConfig,
         clock: ClockFn | None = None,
+        dispatcher: ApprovedForecastDispatcher | None = None,
     ) -> None:
         """Wire the forecast repository, forecaster, and budget config.
 
@@ -63,27 +71,54 @@ class BudgetForecastService:
             budget_config: Active budget config (supplies the currency).
             clock: UTC-now seam for decision timestamps; defaults to the
                 shared :func:`utc_now`.
+            dispatcher: Runs the work an approved forecast gated. Wired
+                after boot via :meth:`attach_dispatcher`, because the work
+                pipeline is built later than this service.
         """
         self._repo = repo
         self._forecaster = forecaster
         self._budget_config = budget_config
         self._clock: ClockFn = clock if clock is not None else utc_now
+        self._dispatcher = dispatcher
+
+    def attach_dispatcher(self, dispatcher: ApprovedForecastDispatcher) -> None:
+        """Attach the port that runs an approved forecast's gated work."""
+        self._dispatcher = dispatcher
+
+    def detach_dispatcher(self) -> None:
+        """Drop the attached dispatcher.
+
+        A hot swap that removes the work pipeline or its persistence leaves
+        this service holding a dispatcher bound to the gate that is going
+        away, so an approval would run against a torn-down pipeline. Going
+        back to "no dispatcher" makes the approval refuse loudly instead.
+        """
+        self._dispatcher = None
 
     async def generate(
         self,
         *,
         brief_text: NotBlankStr,
+        project: NotBlankStr,
+        requested_by: NotBlankStr,
         role_skeleton: tuple[NotBlankStr, ...],
         model_assignments: dict[NotBlankStr, NotBlankStr],
         estimated_turns_per_role: float | None,
     ) -> Forecast:
         """Generate a fresh pending forecast for a brief and persist it.
 
+        The row gates nothing: it carries no work item, and its digest
+        carries no ``correlation_id``, so no submission arriving at the
+        gate can reuse it and inherit an approval granted for an estimate
+        nobody attached work to.
+
         Returns:
             The stored :class:`Forecast`.
         """
         signal = BriefSignal(
             brief_text=brief_text,
+            project=project,
+            requested_by=requested_by,
             role_skeleton=role_skeleton,
             model_assignments=model_assignments,
             currency=self._budget_config.currency,
@@ -120,14 +155,26 @@ class BudgetForecastService:
         decided_by: NotBlankStr,
         ceiling_amount: float | None,
     ) -> Forecast:
-        """Approve a pending forecast and return the updated row.
+        """Approve a pending forecast, then run the work it gated.
+
+        Approval without dispatch is what made the automation door a
+        silent dead-end: the gate accepted a brief, refused it pending a
+        decision, and the decision changed nothing. Running the work is
+        the decision taking effect.
 
         Returns:
             The approved :class:`Forecast`.
 
         Raises:
             ResourceNotFoundError: When no pending forecast has that id.
+            DomainError: When the gated work exists but cannot be
+                dispatched, so the operator learns it did not start.
         """
+        # Checked before the state change, not after: the decision commits
+        # atomically and there is no transition back out of APPROVED, so an
+        # unwired dispatcher discovered afterwards would leave the row
+        # approved, the work un-run, and a retry rejected as not-pending.
+        await self._require_dispatchable(forecast_id)
         transitioned = await self._repo.transition_if(
             forecast_id,
             ForecastDecision.PENDING,
@@ -144,7 +191,64 @@ class BudgetForecastService:
             decided_by=decided_by,
             ceiling_amount=ceiling_amount,
         )
+        await self._dispatch_gated_work(forecast)
         return forecast
+
+    async def _require_dispatchable(self, forecast_id: UUID) -> None:
+        """Refuse an approval whose work could not be run once committed.
+
+        Raises:
+            ServiceUnavailableError: When the forecast holds gated work and
+                no dispatcher is wired. The dispatcher attaches late in
+                boot, so this window is real rather than theoretical.
+        """
+        forecast = await self._repo.get(forecast_id)
+        if forecast is None or forecast.gated_work_item is None:
+            return
+        if self._dispatcher is not None:
+            return
+        msg = (
+            f"Cost forecast {forecast_id} holds gated work but no dispatcher"
+            f" is wired; approving now would drop the approved work"
+        )
+        logger.warning(
+            BUDGET_FORECAST_REDISPATCH_FAILED,
+            forecast_id=str(forecast_id),
+            reason="dispatcher_unwired",
+            error_type=ServiceUnavailableError.__name__,
+        )
+        raise ServiceUnavailableError(msg)
+
+    async def _dispatch_gated_work(self, forecast: Forecast) -> None:
+        """Run the work *forecast* gated, if it gated any.
+
+        Raises:
+            ServiceUnavailableError: When the forecast carries work but no
+                dispatcher is wired to run it. Silence here is the exact
+                failure the gate exists to prevent, one step later.
+        """
+        if forecast.gated_work_item is None:
+            # Generated directly through the forecast API rather than by the
+            # gate: there is no held work item, so approval is only a budget
+            # decision and there is nothing to run.
+            return
+        if self._dispatcher is None:
+            msg = (
+                f"Cost forecast {forecast.forecast_id} holds gated work but no"
+                f" dispatcher is wired; the approved work would be dropped"
+            )
+            logger.warning(
+                BUDGET_FORECAST_REDISPATCH_FAILED,
+                forecast_id=str(forecast.forecast_id),
+                reason="dispatcher_unwired",
+                error_type=ServiceUnavailableError.__name__,
+            )
+            raise ServiceUnavailableError(msg)
+        await self._dispatcher.dispatch(forecast)
+        logger.info(
+            BUDGET_FORECAST_REDISPATCHED,
+            forecast_id=str(forecast.forecast_id),
+        )
 
     async def reject(
         self,

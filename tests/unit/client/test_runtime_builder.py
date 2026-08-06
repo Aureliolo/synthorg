@@ -287,6 +287,8 @@ class TestReloadClientSimulationRuntime:
                 "review_pipeline_strategy": "internal_only",
                 "verification_grader": "heuristic",
                 "verification_decomposer": "identity",
+                "verification_grader_model": "",
+                "verification_decomposer_model": "",
             }
         )
         app_state = make_app_state(
@@ -315,6 +317,8 @@ class TestReloadClientSimulationRuntime:
                 "review_pipeline_strategy": "internal_only",
                 "verification_grader": "heuristic",
                 "verification_decomposer": "identity",
+                "verification_grader_model": "",
+                "verification_decomposer_model": "",
             },
             verification_enabled=False,
         )
@@ -376,6 +380,8 @@ class TestReloadClientSimulationRuntime:
                 "review_pipeline_strategy": "internal_only",
                 "verification_grader": "heuristic",
                 "verification_decomposer": "identity",
+                "verification_grader_model": "",
+                "verification_decomposer_model": "",
             }
         )
         app_state = make_app_state(
@@ -417,6 +423,8 @@ class TestReloadClientSimulationRuntime:
                 "review_pipeline_strategy": "internal_only",
                 "verification_grader": "heuristic",
                 "verification_decomposer": "identity",
+                "verification_grader_model": "",
+                "verification_decomposer_model": "",
             }
         )
         app_state = make_app_state(

@@ -12,18 +12,21 @@ Enforces the same-currency invariant on :meth:`save` against the live
 :mod:`synthorg.persistence._shared.cost_forecast_marshalling`.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
+from pydantic import JsonValue
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.cost_forecast import (
     PERSISTENCE_COST_FORECAST_FAILED,
@@ -34,6 +37,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence._shared.cost_forecast_marshalling import (
     COST_FORECAST_COLUMNS,
+    FORECAST_CLAIM_SQL_PCT,
     FORECAST_CLEAR_HALT_SQL_PCT,
     build_cost_forecast_where,
     forecast_save_params,
@@ -48,7 +52,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _UPSERT_SQL = f"""
     INSERT INTO cost_forecasts ({COST_FORECAST_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (forecast_id) DO UPDATE SET
         brief_hash = EXCLUDED.brief_hash,
         estimated_cost = EXCLUDED.estimated_cost,
@@ -63,6 +67,7 @@ _UPSERT_SQL = f"""
         halt_ceiling_amount = EXCLUDED.halt_ceiling_amount,
         halt_currency = EXCLUDED.halt_currency,
         halted_at = EXCLUDED.halted_at,
+        gated_work_item = EXCLUDED.gated_work_item,
         updated_at = EXCLUDED.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
 
@@ -122,7 +127,7 @@ class PostgresCostForecastRepository:
             QueryError: If the database query fails.
         """
         self._check_currency(entity)
-        params = forecast_save_params(entity)
+        params = forecast_save_params(entity, bind_json=Jsonb)
         try:
             # The connection context manager rolls back any uncommitted
             # transaction on exception exit, so a failed execute/commit
@@ -380,6 +385,53 @@ class PostgresCostForecastRepository:
             logger.warning(
                 PERSISTENCE_COST_FORECAST_FAILED,
                 operation="transition_if",
+                forecast_id=str(entity_id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return rowcount > 0
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Attach the work item and re-key the digest, if the row is free.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): updates
+        only while ``gated_work_item IS NULL``, so of two submissions
+        naming one standalone estimate exactly one claims it and the
+        other is told it lost rather than spending the same approved
+        ceiling a second time.
+
+        Returns:
+            ``True`` when the free row became this submission's;
+            ``False`` when another submission holds it or the row is
+            missing.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params = (
+            Jsonb(dict(gated_work_item)),
+            str(brief_hash),
+            format_iso_utc(updated_at),
+            str(entity_id),
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(FORECAST_CLAIM_SQL_PCT, params)
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to claim forecast {entity_id!r}"
+            logger.warning(
+                PERSISTENCE_COST_FORECAST_FAILED,
+                operation="claim_if_unclaimed",
                 forecast_id=str(entity_id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

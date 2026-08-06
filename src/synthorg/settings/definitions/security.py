@@ -201,3 +201,88 @@ _r.register(
         max_value=600.0,
     )
 )
+
+# ── Adversarial red-team gate ───────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="red_team_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the adversarial red-team agent and its grounding"
+            " checker run on. A model reference (`{provider, model_id}`)"
+            " because a provider is a registered connection with its own"
+            " credentials and endpoint, so a bare model id names no dispatch"
+            " target. Named explicitly rather than borrowing another feature's"
+            " connection: the adversary attacks the deliverable, so an operator"
+            " chooses what it costs and where it runs. Unset leaves the gate"
+            " unarmed and says so."
+        ),
+        group="Red Team",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── LLM-backed security evaluation ──────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="llm_evaluator_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the LLM security evaluator judges unclassifiable"
+            " actions on. A model reference (`{provider, model_id}`) because a"
+            " provider is a registered connection with its own credentials and"
+            " endpoint, so a bare model id names no dispatch target. Choose a"
+            " connection from a different vendor family than the agents it"
+            " judges, so a jailbreak of one family does not also cover its own"
+            " reviewer; the evaluator warns when the families match. Unset"
+            " leaves LLM fallback unarmed and the rule engine decides alone."
+        ),
+        group="LLM Fallback",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="safety_classifier_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the two-stage safety classifier runs on. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so a"
+            " bare model id names no dispatch target. The classifier reads"
+            " attacker-controllable input, so the connection it runs on is an"
+            " operator's explicit choice. Unset leaves the classifier unarmed"
+            " and escalation falls back to human review."
+        ),
+        group="Safety Classifier",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="vision_verify_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model the `llm_vision` deliverable verifier inspects"
+            " screenshots on. A model reference (`{provider, model_id}`) because"
+            " a provider is a registered connection with its own credentials and"
+            " endpoint, so a bare model id names no dispatch target. Must name a"
+            " multimodal model. Unset leaves the vision gate unbuilt rather than"
+            " guessing which registered model can see."
+        ),
+        group="Vision Verify",
+        level=SettingLevel.ADVANCED,
+    )
+)

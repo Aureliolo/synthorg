@@ -81,7 +81,6 @@ class TestProposerConfig:
     def test_defaults(self) -> None:
         cfg = ProposerConfig()
         assert cfg.type == "composite"
-        assert cfg.model == "example-small-001"
         assert cfg.temperature == 0.3
 
     @pytest.mark.unit

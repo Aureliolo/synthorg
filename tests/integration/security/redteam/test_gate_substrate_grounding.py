@@ -145,6 +145,7 @@ def _review_input(
         task_id=_TASK,
         execution_id=_EXEC,
         deliverable_content=_DELIVERABLE,
+        agent_summary="Implemented the feature described in the brief.",
         acceptance_criteria=_CRITERIA,
         assigned_agent_id="agent-analyst-3",
         autonomy=autonomy,

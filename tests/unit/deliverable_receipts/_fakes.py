@@ -11,22 +11,32 @@ from datetime import datetime
 
 from pydantic import AwareDatetime
 
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.deliverable_receipts.models import DeliverableReceipt
+from synthorg.observability.events.persistence.evaluation_report import (
+    PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionRecord,
+    CodeExecutionRecordRepository,
 )
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
+)
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportFilterSpec,
+    EvaluationReportRecord,
 )
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageFilterSpec,
     KnowledgeUsageRecord,
 )
+from tests._shared import mock_of
 
 
 class InMemoryDeliverableReceiptRepository:
@@ -189,3 +199,91 @@ class InMemoryCodeExecutionRecordRepository:
         removed = len(self._records) - len(keep)
         self._records = keep
         return removed
+
+
+class RecordingCodeExecutionStore:
+    """Append-only double capturing, in order, what a tool wrote.
+
+    Shared by the two producers of a ``CodeExecutionRecord``
+    (``code_runner`` and ``shell_command``) so their suites cannot drift
+    apart on what the double does as the protocol grows. Distinct from
+    :class:`InMemoryCodeExecutionRecordRepository`, which answers queries
+    newest-first; these tests assert on write order and write count.
+
+    Wraps a typed ``mock_of`` because typeguard checks the whole protocol
+    on the argument, not just the one method under test.
+    """
+
+    def __init__(self) -> None:
+        self.records: list[CodeExecutionRecord] = []
+        self.repository: CodeExecutionRecordRepository = mock_of[
+            CodeExecutionRecordRepository
+        ](append=self._append)
+
+    async def _append(self, record: CodeExecutionRecord, /) -> None:
+        self.records.append(record)
+
+
+class InMemoryEvaluationReportRepository:
+    """In-memory append-only ``EvaluationReportRepository``."""
+
+    def __init__(self) -> None:
+        self._records: list[EvaluationReportRecord] = []
+
+    async def append(self, record: EvaluationReportRecord) -> None:
+        clashes = any(
+            r.record_id == record.record_id
+            or (r.plan_id == record.plan_id and r.attempt == record.attempt)
+            for r in self._records
+        )
+        if clashes:
+            msg = (
+                f"Evaluation report for plan {record.plan_id!r} "
+                f"attempt {record.attempt} already exists"
+            )
+            raise DuplicateRecordError(msg)
+        self._records.append(record)
+
+    async def query(
+        self,
+        filter_spec: EvaluationReportFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[EvaluationReportRecord, ...]:
+        # Both shipped backends reject these before touching the database.
+        # A fake that accepted them would let a test pass on a call the
+        # product refuses, which is the one thing a double must never do.
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_EVALUATION_REPORT_QUERY_FAILED
+        )
+        matched = [r for r in self._records if self._matches(r, filter_spec)]
+        matched.sort(key=lambda r: (r.evaluated_at, r.attempt), reverse=True)
+        return tuple(matched[offset : offset + limit])
+
+    @staticmethod
+    def _matches(
+        record: EvaluationReportRecord,
+        filter_spec: EvaluationReportFilterSpec,
+    ) -> bool:
+        checks: tuple[tuple[object | None, object], ...] = (
+            (filter_spec.plan_id, record.plan_id),
+            (filter_spec.project_id, record.project_id),
+        )
+        return all(want is None or got == want for want, got in checks)
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
+        cutoff: datetime = normalize_utc(threshold)
+        keep = [r for r in self._records if normalize_utc(r.evaluated_at) >= cutoff]
+        removed = len(self._records) - len(keep)
+        self._records = keep
+        return removed
+
+    async def max_attempt(self, plan_id: NotBlankStr) -> int:
+        return max(
+            (r.attempt for r in self._records if r.plan_id == plan_id),
+            default=0,
+        )

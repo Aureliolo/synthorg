@@ -40,7 +40,7 @@ describe('budgetForecast store', () => {
   it('approveForecast updates state and toasts on success', async () => {
     const result = await useBudgetForecastStore.getState().approveForecast(
       '00000000-0000-0000-0000-000000000001',
-      { decided_by: 'operator', ceiling_amount: 1.8 },
+      { ceiling_amount: 1.8 },
     )
     expect(result).not.toBeNull()
     expect(result?.decision).toBe('approved')
@@ -59,7 +59,7 @@ describe('budgetForecast store', () => {
     const before = useToastStore.getState().toasts.length
     const result = await useBudgetForecastStore.getState().approveForecast(
       '00000000-0000-0000-0000-000000000001',
-      { decided_by: 'operator', ceiling_amount: null },
+      { ceiling_amount: null },
     )
     expect(result).toBeNull()
     expect(useBudgetForecastStore.getState().mutating).toBe(false)
@@ -70,7 +70,7 @@ describe('budgetForecast store', () => {
   it('rejectForecast updates state on success', async () => {
     const result = await useBudgetForecastStore.getState().rejectForecast(
       '00000000-0000-0000-0000-000000000001',
-      { decided_by: 'operator' },
+      {},
     )
     expect(result?.decision).toBe('rejected')
   })

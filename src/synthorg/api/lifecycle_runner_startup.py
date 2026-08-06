@@ -44,6 +44,7 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _resolve_event_stream_janitor_settings,
     _ticket_cleanup_loop,
 )
+from synthorg.api.lifecycle_helpers.training_wiring import try_wire_training_service
 from synthorg.api.lifecycle_runner_support import (
     _drain_resume_intents,
     _LifecycleTasks,
@@ -56,7 +57,6 @@ from synthorg.api.lifecycle_runner_support import (
 from synthorg.api.lifecycle_shared import _cleanup_on_failure
 from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
-from synthorg.approval.state import ApprovalStateSlice
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
@@ -87,7 +87,6 @@ from synthorg.providers.state import has_active_provider
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
-from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
@@ -599,50 +598,7 @@ async def _run_startup(  # noqa: PLR0913
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
 
-    # On-startup auto-wire: TrainingService.
-    # Needs agent_registry, tool_invocation_tracker, and performance_tracker
-    # (all wired at construction time). It shares the durable memory backend
-    # wired above rather than owning a private one.
-    if (
-        app_state.slice(HrStateSlice).training_service is None
-        and effective_config is not None
-        and effective_config.training.enabled
-        and app_state.slice(HrStateSlice).agent_registry is not None
-        and app_state.slice(ToolsStateSlice).invocation_tracker is not None
-    ):
-        try:
-            from synthorg.hr.training.factory import (  # noqa: PLC0415
-                build_training_service,
-            )
-
-            _perf = app_state.slice(HrStateSlice).performance_tracker
-            _mem = app_state.slice(MemoryStateSlice).backend
-            if _perf is not None and _mem is not None:
-                from synthorg._core.features import (  # noqa: PLC0415
-                    require_service,
-                )
-
-                _ts = build_training_service(
-                    config=effective_config.training,
-                    memory_backend=_mem,
-                    tracker=_perf,
-                    registry=agent_registry_of(app_state),
-                    approval_store=require_service(
-                        app_state.slice(ApprovalStateSlice).store,
-                        "Approval Store",
-                    ),
-                    tool_tracker=tool_invocation_tracker_of(app_state),
-                )
-                app_state.wire(HrStateSlice, training_service=_ts)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="training_service_auto_wire",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+    await try_wire_training_service(app_state, effective_config)
 
     await _maybe_bootstrap_agents(app_state)
     await _maybe_promote_first_owner(app_state)

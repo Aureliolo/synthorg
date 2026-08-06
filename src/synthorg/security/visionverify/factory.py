@@ -7,14 +7,13 @@ trust-strategy factory). A selected ``llm_vision`` kind missing its
 provider / tier resolver fails fast with :class:`VisionVerifyConfigError`.
 """
 
-from collections.abc import Callable
 from pathlib import Path
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.vision_verify import VISION_VERIFY_CONFIG_ERROR
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.security.visionverify.config import (
     VisionVerifierKind,
     VisionVerifyConfig,
@@ -26,18 +25,17 @@ from synthorg.security.visionverify.verifiers import (
     LLMVisionVerifier,
     NoOpVisionVerifier,
 )
+from synthorg.settings.model_ref import ModelRef
 
 logger = get_logger(__name__)
-
-type TierResolver = Callable[[ModelTier], str | None]
 
 
 def build_vision_verifier(
     config: VisionVerifyConfig,
     *,
     workspace: Path,
-    provider: CompletionProvider | None = None,
-    tier_resolver: TierResolver | None = None,
+    connections: ConnectionSelector | None = None,
+    model: ModelRef | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
 ) -> VisionVerifier | None:
     """Build the configured verifier, or ``None`` when disabled.
@@ -45,8 +43,9 @@ def build_vision_verifier(
     Args:
         config: The vision verify configuration.
         workspace: Workspace root holding screenshots (heuristic + llm).
-        provider: Multimodal provider, required for ``llm_vision``.
-        tier_resolver: Maps the configured model tier to a model id,
+        connections: Resolves the connection *model* names, required for
+            ``llm_vision``.
+        model: The operator's ``security.vision_verify_model`` pair,
             required for ``llm_vision``.
         cost_tracker: Optional cost tracker for the ``llm_vision`` call.
 
@@ -55,8 +54,8 @@ def build_vision_verifier(
         is ``False``.
 
     Raises:
-        VisionVerifyConfigError: When ``llm_vision`` is selected without
-            a provider / tier resolver, or the tier resolves to no model.
+        VisionVerifyConfigError: When ``llm_vision`` is selected without a
+            bound pair to dispatch on.
     """
     if not config.enabled:
         return None
@@ -67,55 +66,56 @@ def build_vision_verifier(
             return HeuristicVisionVerifier(workspace=workspace)
         case VisionVerifierKind.LLM_VISION:
             return _build_llm_vision(
-                config,
                 workspace=workspace,
-                provider=provider,
-                tier_resolver=tier_resolver,
+                connections=connections,
+                model=model,
                 cost_tracker=cost_tracker,
             )
 
 
 def _build_llm_vision(
-    config: VisionVerifyConfig,
     *,
     workspace: Path,
-    provider: CompletionProvider | None,
-    tier_resolver: TierResolver | None,
+    connections: ConnectionSelector | None,
+    model: ModelRef | None,
     cost_tracker: CostTrackerProtocol | None,
 ) -> VisionVerifier:
     """Construct the ``llm_vision`` verifier, failing fast on missing deps.
+
+    A vision verdict decides whether a GUI deliverable passes, so the model
+    that renders it is the operator's explicit choice. There is no tier
+    lookup to guess from: a tier names no connection, and a connection
+    carries its own credentials, endpoint and quota.
 
     Returns:
         A configured ``LLMVisionVerifier``.
 
     Raises:
-        VisionVerifyConfigError: If the provider or tier resolver is
-            missing, or the tier resolves to no model id.
+        VisionVerifyConfigError: If no bound pair or connection selector is
+            available to dispatch on.
     """
-    if provider is None or tier_resolver is None:
+    # ``is_bound``, not ``is not None``: a ``ModelRef`` permits either half to
+    # be blank, and half a pair names no dispatch target. A model-only ref
+    # carries no provider, so it would reach ``connections("")`` and dispatch
+    # against whichever connection an empty name resolved to; a provider-only
+    # one would dispatch with no model id.
+    if connections is None or model is None or not model.is_bound:
         msg = (
-            "llm_vision verifier requires a CompletionProvider and a "
-            "tier_resolver; pass both to build_vision_verifier()"
+            "llm_vision verifier requires a bound security.vision_verify_model"
+            " pair and a connection selector; pass both to"
+            " build_vision_verifier()"
         )
         logger.error(
             VISION_VERIFY_CONFIG_ERROR,
-            reason="missing_provider_or_tier_resolver",
-            has_provider=provider is not None,
-            has_tier_resolver=tier_resolver is not None,
+            reason="missing_bound_model_or_connections",
+            has_connections=connections is not None,
+            has_model=model is not None,
+            model_is_bound=model.is_bound if model is not None else False,
         )
         raise VisionVerifyConfigError(msg)
-    model_id = tier_resolver(config.model_tier)
-    if not model_id or not model_id.strip():
-        msg = f"llm_vision verifier tier {config.model_tier!r} resolved to no model id"
-        logger.error(
-            VISION_VERIFY_CONFIG_ERROR,
-            reason="tier_resolved_no_model",
-            tier=config.model_tier,
-        )
-        raise VisionVerifyConfigError(msg, context={"tier": config.model_tier})
     return LLMVisionVerifier(
-        provider=provider,
-        model_id=NotBlankStr(model_id),
+        provider=connections(model.provider),
+        model_id=NotBlankStr(model.model_id),
         workspace=workspace,
         cost_tracker=cost_tracker,
     )

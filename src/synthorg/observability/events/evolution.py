@@ -93,3 +93,10 @@ Emitted before the guard ``__init__`` raises ``ValueError`` so
 operators see the field, value, and constraint that failed without
 having to wait for the traceback.  Typical fields: ``field``,
 ``value``, ``constraint``."""
+
+EVOLUTION_PROPOSER_MODEL_UNSET: Final[str] = "evolution.proposer.model_unset"
+"""No explicit provider + model pair is bound for the evolution proposer.
+
+Its own event rather than the generic startup line, because a feature
+that came up unarmed is indistinguishable from every other boot message
+when both are logged under ``api.app.startup``."""

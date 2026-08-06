@@ -19,12 +19,11 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_CROSS_FAMILY,
     SECURITY_LLM_EVAL_ERROR,
     SECURITY_LLM_EVAL_NO_PROVIDER,
-    SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+    SECURITY_LLM_EVAL_SAME_FAMILY,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.family import get_family, providers_excluding_family
+from synthorg.providers.family import get_family
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.security._model_selection import select_security_eval_model
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,
@@ -36,6 +35,9 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -46,6 +48,9 @@ _MAX_ARGS_DISPLAY: Final[int] = 1500
 # KEYS_AND_VALUES strategy.
 _MAX_VALUE_LENGTH: Final[int] = 200
 
+_MODEL_NAMESPACE: Final[str] = "security"
+_MODEL_KEY: Final[str] = "llm_evaluator_model"
+
 
 class _LlmEvaluatorSupportMixin:
     """Selection, serialization, reason, and error-policy helpers."""
@@ -53,108 +58,98 @@ class _LlmEvaluatorSupportMixin:
     _registry: ProviderRegistry
     _configs: Mapping[str, ProviderConfig]
     _config: LlmFallbackConfig
+    _config_resolver: ConfigResolverProtocol | None
+    #: Last connection name warned about as unregistered, so a static
+    #: misconfiguration is reported once rather than once per evaluation.
+    _unregistered_warned: str | None = None
 
     # ------------------------------------------------------------------
     # Provider / model selection
     # ------------------------------------------------------------------
 
-    def _select_provider(
+    async def _resolve_binding(
         self,
         agent_provider_name: str | None,
-    ) -> tuple[str | None, BaseCompletionProvider | None]:
-        """Select a provider for security evaluation.
+    ) -> tuple[ModelRef, BaseCompletionProvider] | None:
+        """Resolve the operator's evaluation pair and its live client.
 
-        Prefers a provider from a different family than the agent's.
-        Falls back to same-family with a warning if needed.
+        The evaluator judges an agent's own output, so it should run on a
+        connection from a different vendor family: a jailbreak of one family
+        must not also cover its reviewer. That choice belongs to the operator,
+        who alone knows which of their connections is which vendor, so a
+        family collision is warned about rather than silently re-picked. There
+        is no cross-family scan and no first-available pick: substituting a
+        connection would bill and rate-limit a judgement against an account
+        nobody chose for it.
 
         Returns:
-            ``(provider_name, driver)`` or ``(None, None)`` if no
-            provider is available.
+            The bound ``(ModelRef, driver)`` pair, or ``None`` when the
+            assignment is unset or names an unregistered connection.
         """
-        available = self._registry.list_providers()
-        if not available:
-            logger.warning(
-                SECURITY_LLM_EVAL_NO_PROVIDER,
-                agent_provider=agent_provider_name,
-            )
-            return None, None
-
-        if agent_provider_name is not None:
-            result = self._try_cross_family(
-                agent_provider_name,
-                available,
-            )
-            if result is not None:
-                return result
-
-        # No cross-family alternative to the agent's provider: dispatch on the
-        # explicit default system provider rather than an arbitrary
-        # first-available pick. When the default is ambiguous/unset, security
-        # evaluation stays unwired and the pipeline's non-LLM path handles it.
-        name = self._registry.default_provider_resolved_name()
-        if name is None:
-            logger.warning(
-                SECURITY_LLM_EVAL_NO_PROVIDER,
-                agent_provider=agent_provider_name,
-            )
-            return None, None
-        provider = self._registry.get(name)
-        logger.debug(
-            SECURITY_LLM_EVAL_CROSS_FAMILY,
-            selected_provider=name,
-            agent_provider=agent_provider_name,
-            note="cross-family unavailable; using explicit default provider",
+        ref = await resolve_bound_model_live(
+            self._config_resolver,
+            namespace=_MODEL_NAMESPACE,
+            key=_MODEL_KEY,
+            unset_event=SECURITY_LLM_EVAL_NO_PROVIDER,
         )
-        return name, provider
+        if ref is None:
+            # No second log: resolve_bound_model_live already emitted this
+            # event under unset_event above, and two WARNING lines for one
+            # unset pair reads as two separate failures.
+            return None
+        if ref.provider not in self._registry:
+            # Once per distinct name. This runs on every uncertain tool call,
+            # and the condition changes only when the operator edits the
+            # setting or the registry: repeating it per evaluation buries the
+            # transient failures the same event also carries. The family
+            # collision below is deliberately not rate-limited, because there
+            # the operator's pair is being used and every judgement it decides
+            # is worth a line.
+            if self._unregistered_warned != ref.provider:
+                self._unregistered_warned = ref.provider
+                logger.warning(
+                    SECURITY_LLM_EVAL_ERROR,
+                    note="configured security-evaluation connection is not registered",
+                    provider_name=ref.provider,
+                    agent_provider=agent_provider_name,
+                )
+            return None
+        self._unregistered_warned = None
+        self._warn_on_family_collision(ref.provider, agent_provider_name)
+        return ref, self._registry.get(ref.provider)
 
-    def _try_cross_family(
+    def _warn_on_family_collision(
         self,
-        agent_provider_name: str,
-        available: tuple[str, ...],
-    ) -> tuple[str, BaseCompletionProvider] | None:
-        """Try to select a cross-family provider.
+        evaluator_provider_name: str,
+        agent_provider_name: str | None,
+    ) -> None:
+        """Warn when the evaluator and the judged agent share a vendor family.
 
-        Returns:
-            A ``(name, driver)`` pair for a provider in a different
-            family, or ``None`` to fall back to the first available
-            provider.
+        The cross-family boundary is the point of LLM fallback, so a
+        collision is an operator misconfiguration worth surfacing on every
+        evaluation rather than a condition to silently work around.
         """
+        if agent_provider_name is None:
+            return
         agent_family = get_family(agent_provider_name, self._configs)
-        cross_family = providers_excluding_family(
-            agent_family,
-            self._configs,
-        )
-        cross_family = tuple(p for p in cross_family if p in available)
-        if cross_family:
-            name = cross_family[0]
+        evaluator_family = get_family(evaluator_provider_name, self._configs)
+        if evaluator_family != agent_family:
             logger.debug(
                 SECURITY_LLM_EVAL_CROSS_FAMILY,
-                selected_provider=name,
+                selected_provider=evaluator_provider_name,
                 agent_provider=agent_provider_name,
                 agent_family=agent_family,
             )
-            return name, self._registry.get(name)
-
+            return
         logger.warning(
-            SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK,
+            SECURITY_LLM_EVAL_SAME_FAMILY,
+            selected_provider=evaluator_provider_name,
             agent_provider=agent_provider_name,
             agent_family=agent_family,
-            note="No cross-family provider available",
-        )
-        return None
-
-    def _select_model(self, provider_name: str) -> str:
-        """Select the model to use for security evaluation.
-
-        Returns:
-            The model alias or id to evaluate with; falls back to the
-            provider name when no model is configured.
-        """
-        return select_security_eval_model(
-            self._config.model,
-            self._configs,
-            provider_name,
-            event=SECURITY_LLM_EVAL_ERROR,
+            note=(
+                "security.llm_evaluator_model shares the judged agent's vendor"
+                " family; choose a connection from another family"
+            ),
         )
 
     # ------------------------------------------------------------------

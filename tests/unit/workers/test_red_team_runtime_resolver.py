@@ -21,13 +21,15 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.redteam.grounding.resolver import GroundingSubstrateContext
-from synthorg.workers._red_team_runtime import (
-    _GROUNDING_MODEL_ID,
-    _build_grounding_substrate_resolver,
-)
+from synthorg.settings.model_ref import ModelRef
+from synthorg.workers._red_team_runtime import _build_grounding_substrate_resolver
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
+
+#: The pair an operator bound for the adversary. Both halves, because a
+#: provider is a connection: the model id alone would name no dispatch target.
+_MODEL = ModelRef(provider="example-provider", model_id="example-medium-001")
 
 
 class _FakeAppState:
@@ -66,14 +68,14 @@ def test_resolver_returns_context_when_provider_registered() -> None:
 
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        provider_name="example-provider",
+        model=_MODEL,
     )
     context = resolve()
 
     assert isinstance(context, GroundingSubstrateContext)
     assert context.knowledge_service is knowledge
     assert context.provider is provider
-    assert context.model_id == _GROUNDING_MODEL_ID
+    assert context.model_id == _MODEL.model_id
 
 
 def test_resolver_picks_up_late_wired_knowledge_service() -> None:
@@ -83,7 +85,7 @@ def test_resolver_picks_up_late_wired_knowledge_service() -> None:
     app_state = _FakeAppState(registry=registry, service=None, cost_tracker=None)
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        provider_name="example-provider",
+        model=_MODEL,
     )
 
     assert resolve() is not None
@@ -96,15 +98,16 @@ def test_resolver_picks_up_late_wired_knowledge_service() -> None:
 
 
 def test_resolver_returns_none_when_configured_provider_absent() -> None:
-    # The configured default provider is gone (hot-swapped away): the grounding
-    # checker stays inert rather than falling back to a first-registered pick.
+    # The bound connection is gone (hot-swapped away): the grounding checker
+    # stays inert rather than dispatching through some other connection, which
+    # would bill and route somewhere the operator never chose.
     provider = _provider()
     registry = ProviderRegistry({"only-provider": provider})
     app_state = _FakeAppState(registry=registry, service=None, cost_tracker=None)
 
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        provider_name="missing-provider",
+        model=ModelRef(provider="missing-provider", model_id="example-medium-001"),
     )
 
     assert resolve() is None
@@ -119,7 +122,7 @@ def test_resolver_returns_none_when_registry_empty() -> None:
 
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        provider_name="example-provider",
+        model=_MODEL,
     )
 
     assert resolve() is None
@@ -130,7 +133,7 @@ def test_resolver_returns_none_when_registry_absent() -> None:
 
     resolve = _build_grounding_substrate_resolver(
         app_state,  # type: ignore[arg-type]
-        provider_name="example-provider",
+        model=_MODEL,
     )
 
     assert resolve() is None

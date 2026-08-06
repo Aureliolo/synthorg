@@ -2,10 +2,12 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
@@ -74,6 +76,8 @@ class AgentEngineRecoveryMixin:
     _shutdown_checker: ShutdownChecker | None
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
+    _artifact_probe: ExpectedArtifactProbe | None
+    _approval_store: ApprovalStoreProtocol | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
 
@@ -374,6 +378,12 @@ class AgentEngineRecoveryMixin:
             The :class:`ExecutionResult` with post-execution task-state
             transitions applied; checkpoint artefacts are cleaned up
             when the resumed run did not terminate with ``ERROR``.
+
+        Raises:
+            ExecutionStateError: When a post-execution transition cannot
+                land. The cleanup still runs first: a task whose state
+                could not be moved must not also leave its checkpoint and
+                heartbeat rows behind for a resume that will never come.
         """
         await record_execution_costs(
             result,
@@ -383,24 +393,28 @@ class AgentEngineRecoveryMixin:
             tracker=self._cost_tracker,
             project_id=project_id,
         )
-        result = await apply_post_execution_transitions(
-            result,
-            agent_id=agent_id,
-            task_id=task_id,
-            task_engine=self._task_engine,
-        )
-        logger.info(
-            EXECUTION_RESUME_COMPLETE,
-            agent_id=agent_id,
-            task_id=task_id,
-            termination_reason=result.termination_reason.value,
-        )
-        if result.termination_reason != TerminationReason.ERROR:
-            if self._recovery_strategy is not None:
-                await self._recovery_strategy.finalize(execution_id)
-            await cleanup_checkpoint_artifacts(
-                self._checkpoint_repo,
-                self._heartbeat_repo,
-                execution_id,
+        try:
+            result = await apply_post_execution_transitions(
+                result,
+                agent_id=agent_id,
+                task_id=task_id,
+                task_engine=self._task_engine,
+                approval_store=self._approval_store,
+                artifact_probe=self._artifact_probe,
             )
+            logger.info(
+                EXECUTION_RESUME_COMPLETE,
+                agent_id=agent_id,
+                task_id=task_id,
+                termination_reason=result.termination_reason.value,
+            )
+        finally:
+            if result.termination_reason != TerminationReason.ERROR:
+                if self._recovery_strategy is not None:
+                    await self._recovery_strategy.finalize(execution_id)
+                await cleanup_checkpoint_artifacts(
+                    self._checkpoint_repo,
+                    self._heartbeat_repo,
+                    execution_id,
+                )
         return result

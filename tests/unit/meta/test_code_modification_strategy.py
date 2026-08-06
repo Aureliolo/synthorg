@@ -26,6 +26,9 @@ from synthorg.meta.strategies.code_modification import (
 )
 from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from tests._shared import model_ref_resolver, one_connection
 
 pytestmark = pytest.mark.unit
 
@@ -109,6 +112,16 @@ def _mock_provider(response_content: str | None = None) -> AsyncMock:
     return provider
 
 
+def _conn(response_content: str | None = None) -> ConnectionSelector:
+    """Return a connection selector serving one mock provider."""
+    return one_connection(_mock_provider(response_content))
+
+
+def _resolver() -> ConfigResolverProtocol:
+    """Return a resolver serving a bound code-modification pair."""
+    return model_ref_resolver()
+
+
 class TestCodeModificationConfigValidation:
     """github_api_url scheme validation (token rides the Authorization header)."""
 
@@ -133,8 +146,9 @@ class TestCodeModificationStrategy:
     def test_altitude(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         assert s.altitude == ProposalAltitude.CODE_MODIFICATION
 
@@ -142,8 +156,9 @@ class TestCodeModificationStrategy:
         provider = _mock_provider(_valid_llm_response())
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -159,8 +174,9 @@ class TestCodeModificationStrategy:
     async def test_ignores_non_code_modification_rules(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(altitudes=(ProposalAltitude.CONFIG_TUNING,)),)
         proposals = await s.propose(
@@ -172,8 +188,9 @@ class TestCodeModificationStrategy:
     async def test_empty_llm_response_produces_no_proposal(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(None),
+            connections=_conn(None),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -185,8 +202,9 @@ class TestCodeModificationStrategy:
     async def test_invalid_json_produces_no_proposal(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider("not json at all"),
+            connections=_conn("not json at all"),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -198,8 +216,9 @@ class TestCodeModificationStrategy:
     async def test_non_list_json_produces_no_proposal(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider('{"not": "a list"}'),
+            connections=_conn('{"not": "a list"}'),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -222,8 +241,9 @@ class TestCodeModificationStrategy:
         )
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(response),
+            connections=_conn(response),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -256,8 +276,9 @@ class TestCodeModificationStrategy:
         )
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(response),
+            connections=_conn(response),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -273,8 +294,9 @@ class TestCodeModificationStrategy:
         )
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -289,8 +311,9 @@ class TestCodeModificationStrategy:
         provider = _mock_provider(_valid_llm_response())
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (
             _rule("quality_declining"),
@@ -306,8 +329,9 @@ class TestCodeModificationStrategy:
         provider = _mock_provider(_valid_llm_response())
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -351,8 +375,9 @@ class TestCodeModificationStrategy:
         )
         s = CodeModificationStrategy(
             config=cfg,
-            provider=_mock_provider(response),
+            connections=_conn(response),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -382,8 +407,9 @@ class TestCodeModificationStrategy:
         )
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(response),
+            connections=_conn(response),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -399,8 +425,9 @@ class TestCodeModificationStrategy:
         response = json.dumps([{"not_a": "valid change"}, 42])
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(response),
+            connections=_conn(response),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         proposals = await s.propose(
@@ -414,8 +441,9 @@ class TestCodeModificationStrategy:
         provider.complete = AsyncMock(side_effect=MemoryError)
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rules = (_rule(),)
         with pytest.raises(MemoryError):
@@ -441,8 +469,9 @@ class TestSec1CodeModificationFences:
     def test_user_prompt_wraps_rule_metadata(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rule = _rule(
             name="quality_declining",
@@ -460,8 +489,9 @@ class TestSec1CodeModificationFences:
     def test_user_prompt_escapes_breakout_in_rule_description(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rule = _rule(
             name="quality_declining",
@@ -480,8 +510,9 @@ class TestSec1CodeModificationFences:
     def test_user_prompt_escapes_breakout_in_signal_context(self) -> None:
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rule = _rule(
             name="evil_rule",
@@ -503,8 +534,9 @@ class TestSec1CodeModificationFences:
         """
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=_mock_provider(),
+            connections=_conn(),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         rule = _rule(name="quality_declining", ctx={"m": 1})
         prompt = s._build_user_prompt(rule, _snap())
@@ -525,8 +557,9 @@ class TestSec1CodeModificationFences:
         provider = _mock_provider(_valid_llm_response())
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         await s._call_llm("sample user prompt")
 
@@ -561,8 +594,9 @@ class TestCodeModificationResponseEdgeCases:
         provider = _mock_provider(response_content)
         s = CodeModificationStrategy(
             config=_DEFAULT_CONFIG,
-            provider=provider,
+            connections=one_connection(provider),
             scope_validator=_scope_validator(),
+            config_resolver=_resolver(),
         )
         proposals = await s.propose(
             snapshot=_snap(),

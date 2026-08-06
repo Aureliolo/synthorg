@@ -32,6 +32,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests._shared import as_uuid, mock_of, sid
+from tests._shared.model_binding import one_connection
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.api.fakes import FakePersistenceBackend
 from tests.unit.meta.chief_of_staff.propose_fakes import (
@@ -75,14 +76,20 @@ async def test_propose_model_read_live(settings: SettingsService) -> None:
     """``propose_model`` resolves live per turn with a baked fallback."""
     proposer, *_ = build_proposer(
         provider=ScriptedProvider(responses=[]),
-        config=ChiefOfStaffConfig(propose_enabled=True, propose_model="baked-prop-001"),
+        config=ChiefOfStaffConfig(
+            propose_enabled=True, propose_model=_bound("baked-prop-001")
+        ),
         config_resolver=_resolver(settings),
     )
 
-    assert await proposer._resolve_propose_model() == "baked-prop-001"
+    baked = await proposer._resolve_propose_model()
+    assert baked.model_id == "baked-prop-001"
+    assert baked.provider == "example-provider"
 
     await settings.set("chief_of_staff", "propose_model", _bound("live-prop-001"))
-    assert await proposer._resolve_propose_model() == "live-prop-001"
+    live = await proposer._resolve_propose_model()
+    assert live.model_id == "live-prop-001"
+    assert live.provider == "example-provider"
 
 
 async def test_routing_model_read_live(settings: SettingsService) -> None:
@@ -171,8 +178,8 @@ async def test_narrative_model_read_live(settings: SettingsService) -> None:
         complete=AsyncMock(return_value=_response('{"summary": "Shipped."}'))
     )
     synth = NarrativeSynthesiser(
-        provider=provider,
-        config=ChiefOfStaffConfig(narrative_model="baked-narr-001"),
+        connections=one_connection(provider, name="example-provider"),
+        config=ChiefOfStaffConfig(narrative_model=_bound("baked-narr-001")),
         config_resolver=_resolver(settings),
     )
 

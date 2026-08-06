@@ -44,6 +44,9 @@ from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportRepository,
+)
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrameRepository
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
@@ -113,6 +116,7 @@ from synthorg.persistence.workflow_execution_protocol import (
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryDeliverableReceiptRepository,
+    InMemoryEvaluationReportRepository,
     InMemoryKnowledgeUsageRecordRepository,
 )
 from tests.unit.research._fakes import InMemoryResearchRunRepository
@@ -1600,6 +1604,10 @@ class _FakeBackend:
         return InMemoryCodeExecutionRecordRepository()
 
     @property
+    def evaluation_reports(self) -> InMemoryEvaluationReportRepository:
+        return InMemoryEvaluationReportRepository()
+
+    @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
 
@@ -2050,6 +2058,12 @@ class TestProtocolCompliance:
     ) -> None:
         backend = _FakeBackend()
         assert isinstance(backend.code_execution_records, CodeExecutionRecordRepository)
+
+    def test_fake_evaluation_reports_repo_is_evaluation_report_repository(
+        self,
+    ) -> None:
+        backend = _FakeBackend()
+        assert isinstance(backend.evaluation_reports, EvaluationReportRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

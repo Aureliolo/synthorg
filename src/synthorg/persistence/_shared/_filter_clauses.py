@@ -29,6 +29,9 @@ from synthorg.persistence.conversation_invite_protocol import (
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
 )
+from synthorg.persistence.evaluation_report_protocol import (
+    EvaluationReportFilterSpec,
+)
 from synthorg.persistence.evolution_outcome_protocol import EvolutionOutcomeFilterSpec
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
@@ -113,6 +116,33 @@ def build_code_execution_filter_clauses(
     if filter_spec.purpose is not None:
         clauses.append(f"purpose = {placeholder}")
         params.append(filter_spec.purpose.value)
+    return _join(clauses, empty), params
+
+
+def build_evaluation_report_filter_clauses(
+    filter_spec: EvaluationReportFilterSpec,
+    *,
+    placeholder: str,
+    empty: str,
+) -> tuple[str, list[object]]:
+    """Build the WHERE body and params for an evaluation-report filter.
+
+    Args:
+        filter_spec: The evaluation-report filter to translate.
+        placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
+        empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
+
+    Returns:
+        The joined ``WHERE`` body and its positional parameters.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    if filter_spec.plan_id is not None:
+        clauses.append(f"plan_id = {placeholder}")
+        params.append(filter_spec.plan_id)
+    if filter_spec.project_id is not None:
+        clauses.append(f"project_id = {placeholder}")
+        params.append(filter_spec.project_id)
     return _join(clauses, empty), params
 
 

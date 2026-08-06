@@ -1,6 +1,6 @@
 import { CircleAlert, Wallet } from 'lucide-react'
 
-import type { Forecast, ForecastDecision } from '@/api/types/budget'
+import type { ForecastView, ForecastDecision } from '@/api/types/budget'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -26,7 +26,7 @@ function DecisionPill({ decision }: { decision: ForecastDecision }) {
   return <StatusPill tone={DECISION_TONE[decision]}>{DECISION_LABEL[decision]}</StatusPill>
 }
 
-function ForecastBody({ forecast }: { forecast: Forecast }) {
+function ForecastBody({ forecast }: { forecast: ForecastView }) {
   const { currency } = forecast
   return (
     <div className="space-y-3">

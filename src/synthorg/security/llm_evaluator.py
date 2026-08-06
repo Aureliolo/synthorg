@@ -70,6 +70,7 @@ from synthorg.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -145,14 +146,20 @@ _SYSTEM_PROMPT = (
 class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
     """Evaluates uncertain security contexts using an LLM.
 
-    Selects a model from a different provider family than the agent
-    being evaluated, sends a structured prompt, and parses the tool-
-    call response into a ``SecurityVerdict``.
+    Dispatches on the operator's own ``security.llm_evaluator_model`` pair,
+    sends a structured prompt, and parses the tool-call response into a
+    ``SecurityVerdict``. Choosing a connection from a different vendor family
+    than the agents it judges is the operator's call; sharing a family is
+    warned about, never silently re-picked.
 
     Args:
         provider_registry: Registry of provider drivers.
-        provider_configs: Provider config dict for family lookup.
+        provider_configs: Provider config dict for the family comparison.
         config: LLM fallback configuration.
+        cost_tracker: Optional cost tracker for the evaluation call.
+        clock: Time source for the duration measurement.
+        config_resolver: Live source for the evaluation pair, re-read per
+            evaluation so a reassignment applies without a restart.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.SECURITY_LLM_EVALUATOR
@@ -170,12 +177,14 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
         config: LlmFallbackConfig,
         cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._registry = provider_registry
         self._configs = provider_configs
         self._config = config
         self._cost_tracker = cost_tracker
         self._clock: Clock = clock or SystemClock()
+        self._config_resolver = config_resolver
 
     async def evaluate(
         self,
@@ -205,16 +214,15 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
             agent_provider=context.agent_provider_name,
         )
 
-        provider_name, driver = self._select_provider(
-            context.agent_provider_name,
-        )
-        if provider_name is None or driver is None:
+        binding = await self._resolve_binding(context.agent_provider_name)
+        if binding is None:
             return self._apply_error_policy(
                 rule_verdict,
-                "No provider available for LLM security evaluation",
+                "No model configured for LLM security evaluation",
             )
 
-        model = self._select_model(provider_name)
+        model_ref, driver = binding
+        model = model_ref.model_id
         response = await self._call_llm(
             driver,
             model,

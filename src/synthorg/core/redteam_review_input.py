@@ -25,6 +25,12 @@ class RedTeamReviewInput(BaseModel):
         task_id: The deliverable's owning task.
         execution_id: The execution that produced the deliverable.
         deliverable_content: The artifact text the red-team attacks.
+        agent_summary: The agent's own closing message, carried alongside
+            the artifacts rather than folded into them. The house-style
+            backstop judges prose the agent wrote, so it needs the prose
+            on its own: run against the whole deliverable it would reject
+            a task for a character inside a delivered source file, with a
+            rework reason naming bytes the agent cannot act on.
         acceptance_criteria: The brief's acceptance criteria, used by
             the agent prompt; a dedicated requirements-coverage checker
             (not yet built) would also consume it.
@@ -43,6 +49,7 @@ class RedTeamReviewInput(BaseModel):
     task_id: NotBlankStr
     execution_id: NotBlankStr
     deliverable_content: NotBlankStr
+    agent_summary: NotBlankStr
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(min_length=1)
     assigned_agent_id: NotBlankStr
     autonomy: AutonomyLevel

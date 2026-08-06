@@ -9,7 +9,7 @@ import {
   rejectForecast as apiRejectForecast,
 } from '@/api/endpoints/budget'
 import type {
-  Forecast,
+  ForecastView,
   ForecastApproveRequest,
   ForecastRejectRequest,
   ForecastRequest,
@@ -22,24 +22,24 @@ import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 const log = createLogger('budget-forecast-store')
 
 export interface BudgetForecastState {
-  current: Forecast | null
+  current: ForecastView | null
   loading: boolean
   mutating: boolean
   error: string | null
   fetchForecast: (forecastId: string) => Promise<void>
-  createForecast: (data: ForecastRequest) => Promise<Forecast | null>
+  createForecast: (data: ForecastRequest) => Promise<ForecastView | null>
   approveForecast: (
     forecastId: string,
     data: ForecastApproveRequest,
-  ) => Promise<Forecast | null>
+  ) => Promise<ForecastView | null>
   rejectForecast: (
     forecastId: string,
     data: ForecastRejectRequest,
-  ) => Promise<Forecast | null>
+  ) => Promise<ForecastView | null>
   raiseCeiling: (
     forecastId: string,
     data: RaiseCeilingRequest,
-  ) => Promise<Forecast | null>
+  ) => Promise<ForecastView | null>
   reset: () => void
 }
 
@@ -47,11 +47,11 @@ type BfSet = StoreApi<BudgetForecastState>['setState']
 
 async function mutateForecast(
   set: BfSet,
-  call: () => Promise<Forecast>,
+  call: () => Promise<ForecastView>,
   successTitle: string,
   fallbackTitle: string,
   logPrefix: string,
-): Promise<Forecast | null> {
+): Promise<ForecastView | null> {
   set({ mutating: true })
   try {
     const forecast = await call()

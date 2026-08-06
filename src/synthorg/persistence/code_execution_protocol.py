@@ -1,11 +1,12 @@
 # module-kind: declarative
 """Code-execution capture model and repository protocol.
 
-A ``CodeExecutionRecord`` is written by the code-runner tool when the
-agent marks an execution with a non-default :class:`CodeExecutionPurpose`
-(today, ``TESTS``). The deliverable-receipt builder queries the
-``TESTS``-purpose rows for a run to populate the receipt's test section,
-so claimed test results always reconcile against a persisted record.
+A ``CodeExecutionRecord`` is written when a sandbox execution invokes a
+recognised test runner, decided from the command by
+``tools/_test_run_capture.py`` rather than from anything the model
+declares. The deliverable-receipt builder queries the ``TESTS``-purpose
+rows for a run to populate the receipt's test section, so claimed test
+results always reconcile against a persisted record.
 
 The model lives here (alongside its protocol) so the code-runner tool
 imports it from persistence rather than from the feature package above

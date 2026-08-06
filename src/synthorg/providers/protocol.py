@@ -110,3 +110,15 @@ session on the provider its identity is bound to, never a shared default, so an
 overlapping model id never dispatches to the wrong gateway. The wiring layer
 supplies ``registry.get(identity.model.provider)``.
 """
+
+type ConnectionSelector = Callable[[str], CompletionProvider]
+"""Resolve the completion client for a named provider connection.
+
+The sibling of :data:`ProviderSelector` for a system feature, which binds a
+``(provider, model)`` pair through a setting rather than through an agent
+identity. A provider name is a *connection*: it carries its own credentials,
+endpoint and quota, so the same model id reached through two of them is two
+different calls. A feature therefore resolves the connection its own setting
+names at dispatch time, rather than holding whichever client it was
+constructed with. The wiring layer supplies ``registry.get``.
+"""

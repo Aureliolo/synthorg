@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
@@ -65,7 +66,7 @@ def _make_task_metric(
         run_outcome=run_outcome,
         duration_seconds=duration_seconds,
         cost=cost,
-        currency="USD",
+        currency=DEFAULT_CURRENCY,
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,
@@ -91,7 +92,7 @@ def _make_cost_record(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
-        currency="USD",
+        currency=DEFAULT_CURRENCY,
         timestamp=timestamp,
     )
 
@@ -264,7 +265,7 @@ class TestMergeActivityTimeline:
         timeline = merge_activity_timeline(
             lifecycle_events=(),
             task_metrics=(task,),
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
         )
         completed = [e for e in timeline if e.event_type == "task_completed"]
         assert len(completed) == 1
@@ -419,6 +420,52 @@ class TestCostIncurredEvents:
         assert "500+100 tokens" in evt.description
         assert "$0.0025" in evt.description
         assert evt.related_ids["agent_id"] == "agent-001"
+        assert evt.related_ids["task_id"] == "task-001"
+
+    def test_an_unowned_call_names_no_agent_and_no_task(self) -> None:
+        """Work the system does for itself owns no ids, so it claims none.
+
+        ``CostRecord`` leaves both owners unset for a call that belongs to no
+        agent and no task (an embedding probe, a system prompt), because a
+        fabricated id matches no row and ``task_id`` is a real foreign key.
+        Projecting that absence through ``str()`` mints exactly the invented id
+        the model refuses to store, and it is truthy, so every downstream
+        absent-owner fallback is defeated by it.
+        """
+        record = CostRecord(
+            agent_id=None,
+            task_id=None,
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=4,
+            output_tokens=0,
+            cost=0.0,
+            currency=DEFAULT_CURRENCY,
+            timestamp=_NOW,
+        )
+
+        evt = _cost_record_to_activity(record)
+
+        assert "agent_id" not in evt.related_ids
+        assert "task_id" not in evt.related_ids
+
+    def test_an_agentless_call_still_names_its_task(self) -> None:
+        """Each owner is judged on its own; one absence does not drop the other."""
+        record = CostRecord(
+            agent_id=None,
+            task_id="task-001",
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=4,
+            output_tokens=0,
+            cost=0.0,
+            currency=DEFAULT_CURRENCY,
+            timestamp=_NOW,
+        )
+
+        evt = _cost_record_to_activity(record)
+
+        assert "agent_id" not in evt.related_ids
         assert evt.related_ids["task_id"] == "task-001"
 
     def test_merge_with_cost_records(self) -> None:
@@ -830,7 +877,7 @@ class TestRedactCostEvents:
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             timestamp=_NOW,
         )
         event = _cost_record_to_activity(record, currency="EUR")

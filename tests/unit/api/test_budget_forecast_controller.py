@@ -5,11 +5,13 @@ handler logic (503 when unwired, the raise-ceiling guard, the happy
 path) is covered without standing up a full TestClient.
 """
 
+from collections.abc import Mapping
 from typing import cast
 from uuid import uuid4
 
 import pytest
 from litestar.datastructures import State
+from pydantic import JsonValue
 
 from synthorg.api.controllers.budget_forecast import (
     ForecastBudgetController,
@@ -23,6 +25,7 @@ from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ConflictError, ServiceUnavailableError
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
@@ -105,6 +108,26 @@ class _FakeForecastRepo:
         )
         self.rows[str(entity_id)] = cleared
         self.saved.append(cleared)
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: object,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: object,
+    ) -> bool:
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.gated_work_item is not None:
+            return False
+        self.rows[str(entity_id)] = existing.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
+        )
         return True
 
     def _filter(self, spec: CostForecastFilterSpec) -> list[Forecast]:
@@ -190,7 +213,11 @@ async def test_create_forecast_503_when_unwired() -> None:
     with pytest.raises(ServiceUnavailableError):
         await ForecastBudgetController.create_forecast.fn(
             controller,
-            data=ForecastRequest(brief_text="brief", role_skeleton=("role-1",)),
+            data=ForecastRequest(
+                brief_text="brief",
+                project="proj-1",
+                role_skeleton=("role-1",),
+            ),
             state=state,
         )
 

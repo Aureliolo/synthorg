@@ -5,12 +5,14 @@ import asyncio
 import pytest
 
 from synthorg.core.actor_context import (
+    ActorContextMissingError,
     ActorIdentity,
     ActorKind,
     actor_scope,
     bind_actor,
     clear_actor,
     current_actor,
+    resolve_decided_by,
     with_actor,
     with_actor_async,
 )
@@ -54,6 +56,34 @@ class TestBindingAndCurrent:
         bind_actor(_human())
         clear_actor()
         assert current_actor() is None
+
+
+class TestResolveDecidedBy:
+    """An audit row must name a decider, whichever path wrote it."""
+
+    def test_the_bound_actor_decides(self) -> None:
+        bind_actor(_human("alice"))
+        assert resolve_decided_by() == "alice"
+
+    def test_an_explicit_override_wins_and_is_trimmed(self) -> None:
+        bind_actor(_human("alice"))
+        assert resolve_decided_by("  approval-timeout  ") == "approval-timeout"
+
+    @pytest.mark.parametrize("explicit", ["", "   ", "\t\n"])
+    def test_a_blank_override_is_refused(self, explicit: str) -> None:
+        """The one path that could otherwise attribute a decision to nobody.
+
+        The no-argument path is non-blank because ``ActorIdentity`` validates
+        both fields; ``NotBlankStr`` at the call site is an annotation and
+        checks nothing at runtime, so the override is checked here.
+        """
+        bind_actor(_human("alice"))
+        with pytest.raises(ActorContextMissingError):
+            resolve_decided_by(explicit)
+
+    def test_no_actor_and_no_override_raises(self) -> None:
+        with pytest.raises(ActorContextMissingError):
+            resolve_decided_by()
 
 
 class TestActorScope:

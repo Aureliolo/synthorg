@@ -124,9 +124,8 @@ async def _seed(
             get=AsyncMock(return_value=_lead())
         ),
         provider_selector=lambda _identity: provider,
-        default_provider=None,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
-        replan_trigger=replan_trigger,
+        replan_trigger=None if replan_trigger is None else lambda: replan_trigger,
         config_resolver=None,
         clock=clock,
     )

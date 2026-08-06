@@ -158,13 +158,22 @@ def resolve_decided_by(explicit: str | None = None) -> str:
             system decision paths.
 
     Returns:
-        The decider identity string.
+        The decider identity string, never blank.
 
     Raises:
-        ActorContextMissingError: If no override and no bound actor.
+        ActorContextMissingError: If no bound actor, or if *explicit* is
+            blank. The no-argument path is non-blank because
+            :class:`ActorIdentity` validates both of its fields, so an
+            unvalidated override would be the one way an audit row could
+            name nobody. ``NotBlankStr`` at the call site is an annotation,
+            not a runtime check.
     """
     if explicit is not None:
-        return explicit
+        decided_by = explicit.strip()
+        if not decided_by:
+            msg = "decided_by override is blank; a decision must name a decider"
+            raise ActorContextMissingError(msg)
+        return decided_by
     actor = require_actor()
     return actor.label or actor.actor_id
 

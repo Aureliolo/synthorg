@@ -74,7 +74,10 @@ def apply_output_policy_gate(
         task_type=task.type.value,
         project_id=task.project,
     )
-    verdict = evaluate_output_policy(deliverable.deliverable_content, ctx)
+    # The agent's own prose, not the composed deliverable: the composed body
+    # carries the produced source files, and a hard rule matching a character
+    # inside one of them is not something the agent can rewrite.
+    verdict = evaluate_output_policy(deliverable.agent_summary, ctx)
     if verdict is None:
         return target, transition_reason, event, approved
     # This backstop returns a transition, not content, so it cannot persist an
@@ -83,7 +86,7 @@ def apply_output_policy_gate(
     # rather than shipping the original violating text.
     needs_rework = verdict.blocked or (
         verdict.rewritten_text is not None
-        and verdict.rewritten_text != deliverable.deliverable_content
+        and verdict.rewritten_text != deliverable.agent_summary
     )
     if not needs_rework:
         return target, transition_reason, event, approved

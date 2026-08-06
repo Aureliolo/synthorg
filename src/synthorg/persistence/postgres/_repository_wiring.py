@@ -73,6 +73,9 @@ from synthorg.persistence.postgres.deliverable_receipt_repo import (
     PostgresDeliverableReceiptRepository,
 )
 from synthorg.persistence.postgres.docs_repo import PostgresDocsRepository
+from synthorg.persistence.postgres.evaluation_report_repo import (
+    PostgresEvaluationReportRepository,
+)
 from synthorg.persistence.postgres.fine_tune_repo import (
     PostgresFineTuneCheckpointRepository,
     PostgresFineTuneRunRepository,
@@ -266,6 +269,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
+        self._evaluation_reports = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -363,6 +367,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._deliverable_receipts = PostgresDeliverableReceiptRepository(pool)
         self._knowledge_usage_records = PostgresKnowledgeUsageRecordRepository(pool)
         self._code_execution_records = PostgresCodeExecutionRecordRepository(pool)
+        self._evaluation_reports = PostgresEvaluationReportRepository(pool)
         self._heartbeats = PostgresHeartbeatRepository(pool)
         self._agent_states = PostgresAgentStateRepository(pool)
         self._settings = PostgresSettingsRepository(pool)

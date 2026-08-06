@@ -8,6 +8,7 @@ from synthorg.meta.charter.factory import build_charter_interview_strategy
 from synthorg.meta.charter.strategy import LLMCharterInterviewer
 from synthorg.meta.errors import UnknownCharterStrategyError
 from synthorg.observability.events.charter import CHARTER_STRATEGY_UNKNOWN
+from tests._shared.model_binding import one_connection
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -17,7 +18,7 @@ class TestBuildCharterInterviewStrategy:
     def test_llm_discriminator_builds_llm_interviewer(self) -> None:
         strategy = build_charter_interview_strategy(
             CharterConfig(interview_strategy="llm"),
-            provider=ScriptedProvider([]),
+            connections=one_connection(ScriptedProvider([])),
         )
         assert isinstance(strategy, LLMCharterInterviewer)
 
@@ -29,7 +30,9 @@ class TestBuildCharterInterviewStrategy:
             structlog.testing.capture_logs() as logs,
             pytest.raises(UnknownCharterStrategyError, match="bogus"),
         ):
-            build_charter_interview_strategy(config, provider=ScriptedProvider([]))
+            build_charter_interview_strategy(
+                config, connections=one_connection(ScriptedProvider([]))
+            )
         assert any(
             e["event"] == CHARTER_STRATEGY_UNKNOWN
             and e.get("interview_strategy") == "bogus"

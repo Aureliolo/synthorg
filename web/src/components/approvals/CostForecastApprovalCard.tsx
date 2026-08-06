@@ -3,10 +3,10 @@ import { Check, DollarSign, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/utils/format'
-import type { Forecast } from '@/api/types/budget'
+import type { ForecastView } from '@/api/types/budget'
 
 export interface CostForecastApprovalCardProps {
-  forecast: Forecast
+  forecast: ForecastView
   mutating?: boolean
   onApprove: (ceilingAmount: number | null) => void
   onReject: () => void
@@ -24,7 +24,7 @@ function ForecastHeader({
   forecast,
   onOpenDetail,
 }: {
-  forecast: Forecast
+  forecast: ForecastView
   onOpenDetail: ((forecastId: string) => void) | undefined
 }) {
   return (
@@ -61,7 +61,7 @@ function ForecastHeader({
   )
 }
 
-function DecisionBadge({ decision }: { decision: Forecast['decision'] }) {
+function DecisionBadge({ decision }: { decision: ForecastView['decision'] }) {
   return (
     <span
       className={cn(

@@ -21,6 +21,8 @@ from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_plans import (
     EditPlanRequest,
+    PlanEvaluationAttempt,
+    PlanEvaluationResponse,
     PlanItemPayload,
     ReplanRequest,
     RequestPlanChangesRequest,
@@ -51,11 +53,13 @@ def _service(state: State) -> PlanService:
     """Build the per-request :class:`PlanService` instance.
 
     Returns:
-        ``PlanService`` bound to this backend's plan repository and clock.
+        ``PlanService`` bound to this backend's plan and judgement stores.
     """
+    persistence = persistence_of(state.app_state)
     return PlanService(
-        repo=persistence_of(state.app_state).plans,
+        repo=persistence.plans,
         clock=state.app_state.clock,
+        evaluation_reports=persistence.evaluation_reports,
     )
 
 
@@ -191,6 +195,52 @@ class PlanController(Controller):
             operation="read",
         )
         return Response(content=ApiResponse[Plan](data=plan), status_code=200)
+
+    @get("/{plan_id:str}/evaluation", guards=[require_read_access])
+    async def get_plan_evaluation(
+        self,
+        state: State,
+        plan_id: PathId,
+    ) -> Response[ApiResponse[PlanEvaluationResponse]]:
+        """Get the evaluate stage's judgement history for a plan.
+
+        The verdict is what decides whether an initiative delivered, so a
+        parked plan can explain itself: which criteria failed, with the
+        judge's evidence, per attempt.
+
+        Args:
+            state: Application state.
+            plan_id: Plan identifier.
+
+        Returns:
+            The recorded judgements, newest first, or 404 if no such plan.
+        """
+        service = _service(state)
+        require_resource_or_404(
+            await service.get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+        )
+        records = await service.evaluation_history(plan_id)
+        payload = PlanEvaluationResponse(
+            plan_id=plan_id,
+            attempts=tuple(
+                PlanEvaluationAttempt(
+                    attempt=record.attempt,
+                    summary=record.summary,
+                    verdicts=record.verdicts,
+                    objective_met=record.objective_met,
+                    evaluated_at=record.evaluated_at,
+                )
+                for record in records
+            ),
+        )
+        return Response(
+            content=ApiResponse[PlanEvaluationResponse](data=payload),
+            status_code=200,
+        )
 
     @patch(
         "/{plan_id:str}",

@@ -13,17 +13,21 @@ repository boundary so silent re-stamping cannot poison aggregates. Row
 :mod:`synthorg.persistence._shared.cost_forecast_marshalling`.
 """
 
+import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from typing import LiteralString
 from uuid import UUID
 
 import aiosqlite
+from pydantic import JsonValue
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -38,6 +42,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence._shared.cost_forecast_marshalling import (
     COST_FORECAST_COLUMNS,
+    FORECAST_CLAIM_SQL_QMARK,
     FORECAST_CLEAR_HALT_SQL_QMARK,
     build_cost_forecast_where,
     forecast_save_params,
@@ -45,7 +50,7 @@ from synthorg.persistence._shared.cost_forecast_marshalling import (
     validate_cost_forecast_update_keys,
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
-from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._shared import WriteContext, conditional_write
 
 logger = get_logger(__name__)
 
@@ -53,7 +58,7 @@ _MAX_PAGE_LIMIT: int = 1_000
 
 _UPSERT_SQL = f"""
     INSERT INTO cost_forecasts ({COST_FORECAST_COLUMNS})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(forecast_id) DO UPDATE SET
         brief_hash = excluded.brief_hash,
         estimated_cost = excluded.estimated_cost,
@@ -68,6 +73,7 @@ _UPSERT_SQL = f"""
         halt_ceiling_amount = excluded.halt_ceiling_amount,
         halt_currency = excluded.halt_currency,
         halted_at = excluded.halted_at,
+        gated_work_item = excluded.gated_work_item,
         updated_at = excluded.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
 
@@ -152,7 +158,7 @@ class SQLiteCostForecastRepository:
             QueryError: On other database errors.
         """
         self._check_currency(entity)
-        params = forecast_save_params(entity)
+        params = forecast_save_params(entity, bind_json=json.dumps)
         async with self._write_context():
             try:
                 await self._db.execute(_UPSERT_SQL, params)
@@ -420,6 +426,43 @@ class SQLiteCostForecastRepository:
                 raise QueryError(msg) from exc
         return _db_rowcount > 0
 
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Attach the work item and re-key the digest, if the row is free.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): updates
+        only while ``gated_work_item IS NULL``, so of two submissions
+        naming one standalone estimate exactly one claims it and the
+        other is told it lost rather than spending the same approved
+        ceiling a second time.
+
+        Returns:
+            ``True`` when the free row became this submission's;
+            ``False`` when another submission holds it or the row is
+            missing.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        return await self._conditional_write(
+            FORECAST_CLAIM_SQL_QMARK,
+            (
+                json.dumps(dict(gated_work_item)),
+                str(brief_hash),
+                format_iso_utc(updated_at),
+                str(entity_id),
+            ),
+            entity_id=entity_id,
+            operation="claim_if_unclaimed",
+            failure="Failed to claim forecast",
+        )
+
     async def raise_ceiling_if_halted(
         self,
         entity_id: UUID,
@@ -441,30 +484,39 @@ class SQLiteCostForecastRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params = (float(new_ceiling), format_iso_utc(updated_at), str(entity_id))
-        async with self._write_context():
-            try:
-                async with self._db.execute(
-                    FORECAST_CLEAR_HALT_SQL_QMARK, params
-                ) as cursor:
-                    await self._db.commit()
-                    _db_rowcount = cursor.rowcount
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(
-                    self._db,
-                    operation="raise_ceiling_if_halted",
-                    forecast_id=str(entity_id),
-                )
-                msg = f"Failed to raise ceiling for forecast {entity_id!r}"
-                logger.warning(
-                    PERSISTENCE_COST_FORECAST_FAILED,
-                    operation="raise_ceiling_if_halted",
-                    forecast_id=str(entity_id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
-        return _db_rowcount > 0
+        return await self._conditional_write(
+            FORECAST_CLEAR_HALT_SQL_QMARK,
+            (float(new_ceiling), format_iso_utc(updated_at), str(entity_id)),
+            entity_id=entity_id,
+            operation="raise_ceiling_if_halted",
+            failure="Failed to raise ceiling for forecast",
+        )
+
+    async def _conditional_write(
+        self,
+        sql: LiteralString,
+        params: tuple[object, ...],
+        *,
+        entity_id: UUID,
+        operation: str,
+        failure: str,
+    ) -> bool:
+        """Run a guarded UPDATE and report whether it matched a row.
+
+        Returns:
+            ``True`` when the statement matched a row, ``False`` when the
+            guard excluded it or no such row exists.
+        """
+        return await conditional_write(
+            self._db,
+            self._write_context,
+            sql,
+            params,
+            operation=operation,
+            event=PERSISTENCE_COST_FORECAST_FAILED,
+            failure=f"{failure} {entity_id!r}",
+            logger=logger,
+        )
 
     async def delete(self, entity_id: UUID) -> bool:
         """Delete a forecast by id.

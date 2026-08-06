@@ -5,10 +5,14 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import structlog.testing
 from pydantic import JsonValue
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.completion_enums import FinishReason
+from synthorg.observability.events.security import (
+    SECURITY_LLM_EVAL_SAME_FAMILY,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     CompletionResponse,
@@ -31,6 +35,9 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 from tests._shared import mock_of
+from tests._shared.model_binding import bound_ref, model_ref_resolver
+
+_EVAL_MODEL = "example-small-001"
 
 # -- Helpers ---------------------------------------------------------------
 
@@ -102,13 +109,14 @@ def _make_evaluator(
     provider_configs: dict[str, MagicMock] | None = None,
     config: LlmFallbackConfig | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
-    bound_default: str | None = "provider-a",
+    bound_pair: str | None = "provider-b",
+    model_id: str = _EVAL_MODEL,
 ) -> LlmSecurityEvaluator:
-    """Build an evaluator with mock providers.
+    """Build an evaluator over mock connections.
 
-    ``bound_default`` models the operator's explicit ``providers.default_provider``
-    choice; pass ``None`` to model the ambiguous "2+ providers, none chosen"
-    state where the real registry resolves no default.
+    ``bound_pair`` names the connection the operator's
+    ``security.llm_evaluator_model`` assignment points at; pass ``None`` to
+    model an unset assignment, where LLM fallback stays unarmed.
     """
     if provider_configs is None:
         config_a = MagicMock()
@@ -130,38 +138,30 @@ def _make_evaluator(
         driver_map = {"provider-a": driver_a, "provider-b": driver_b}
 
     names = tuple(sorted(driver_map.keys()))
-    # Faithfully mirror ProviderRegistry.default_provider_resolved_name(): an
-    # explicit bound name resolves only when registered -- an invalid one is
-    # None even with a sole provider (never silently substituted). Otherwise a
-    # SOLE provider resolves; 2+ with no valid bound default is ambiguous None.
-    if bound_default is not None:
-        resolved: str | None = bound_default if bound_default in driver_map else None
-    elif len(names) == 1:
-        resolved = names[0]
-    else:
-        resolved = None
     registry = mock_of[ProviderRegistry](
         get=MagicMock(side_effect=lambda name: driver_map[name]),
         list_providers=MagicMock(return_value=names),
-        default_provider=MagicMock(
-            return_value=driver_map[resolved] if resolved else None,
-        ),
-        default_provider_resolved_name=MagicMock(return_value=resolved),
+        __contains__=MagicMock(side_effect=lambda name: name in driver_map),
     )
 
     return LlmSecurityEvaluator(
         provider_registry=registry,
         provider_configs=provider_configs,
         config=config or LlmFallbackConfig(enabled=True),
+        config_resolver=model_ref_resolver(
+            default=bound_ref(model_id, provider=bound_pair)
+            if bound_pair is not None
+            else "",
+        ),
     )
 
 
-# -- Cross-family provider selection ---------------------------------------
+# -- Explicit connection selection -----------------------------------------
 
 
 @pytest.mark.unit
-async def test_evaluate_selects_cross_family_provider() -> None:
-    """Should select a provider from a different family than the agent's."""
+async def test_evaluate_dispatches_on_the_configured_connection() -> None:
+    """The operator's pair decides where the judgement runs, nothing else."""
     driver_a = AsyncMock()
     driver_a.complete = AsyncMock(return_value=_make_completion_response())
     driver_b = AsyncMock()
@@ -169,6 +169,7 @@ async def test_evaluate_selects_cross_family_provider() -> None:
 
     evaluator = _make_evaluator(
         driver_map={"provider-a": driver_a, "provider-b": driver_b},
+        bound_pair="provider-b",
     )
     context = _make_context(agent_provider_name="provider-a")
     rule_verdict = _make_rule_verdict()
@@ -180,8 +181,8 @@ async def test_evaluate_selects_cross_family_provider() -> None:
 
 
 @pytest.mark.unit
-async def test_evaluate_falls_back_to_same_family_with_warning() -> None:
-    """When no cross-family provider exists, use same family."""
+async def test_evaluate_warns_but_runs_on_a_same_family_connection() -> None:
+    """A family collision is surfaced, never silently re-picked."""
     config_a = MagicMock()
     config_a.family = "family-a"
     config_a.models = (MagicMock(id="model-a-1", alias="small"),)
@@ -192,14 +193,17 @@ async def test_evaluate_falls_back_to_same_family_with_warning() -> None:
     evaluator = _make_evaluator(
         provider_configs={"provider-a": config_a},
         driver_map={"provider-a": mock_driver},
+        bound_pair="provider-a",
     )
     context = _make_context(agent_provider_name="provider-a")
     rule_verdict = _make_rule_verdict()
 
-    result = await evaluator.evaluate(context, rule_verdict)
+    with structlog.testing.capture_logs() as logs:
+        result = await evaluator.evaluate(context, rule_verdict)
 
     mock_driver.complete.assert_awaited_once()
     assert result.verdict == SecurityVerdictType.ALLOW
+    assert any(e["event"] == SECURITY_LLM_EVAL_SAME_FAMILY for e in logs)
 
 
 @pytest.mark.unit
@@ -500,22 +504,22 @@ async def test_evaluate_with_no_agent_provider_name() -> None:
 
 
 @pytest.mark.unit
-async def test_evaluate_ambiguous_default_does_not_dispatch() -> None:
-    """2+ providers with no bound default: no auto-pick, no LLM dispatch."""
+async def test_evaluate_unset_pair_does_not_dispatch() -> None:
+    """Connections registered but no pair chosen: no auto-pick, no dispatch."""
     driver_a = AsyncMock()
     driver_a.complete = AsyncMock(return_value=_make_completion_response())
     driver_b = AsyncMock()
     driver_b.complete = AsyncMock(return_value=_make_completion_response())
     evaluator = _make_evaluator(
         driver_map={"provider-a": driver_a, "provider-b": driver_b},
-        bound_default=None,
+        bound_pair=None,
     )
     context = _make_context(agent_provider_name=None)
     rule_verdict = _make_rule_verdict()
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    # No default resolvable -> the evaluator must NOT fall back to a
+    # No pair configured -> the evaluator must NOT fall back to a
     # first-registered pick; neither driver is dispatched.
     assert result.verdict != SecurityVerdictType.ALLOW
     driver_a.complete.assert_not_awaited()
@@ -526,13 +530,13 @@ async def test_evaluate_ambiguous_default_does_not_dispatch() -> None:
 
 
 @pytest.mark.unit
-async def test_select_model_uses_explicit_config_model() -> None:
-    """When config.model is set, it should be used regardless of provider."""
+async def test_configured_model_id_is_what_dispatches() -> None:
+    """The pair's model id is sent verbatim, never re-derived from config."""
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=_make_completion_response())
     evaluator = _make_evaluator(
         driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-        config=LlmFallbackConfig(enabled=True, model="explicit-model-001"),
+        model_id="explicit-model-001",
     )
     context = _make_context()
     rule_verdict = _make_rule_verdict()
@@ -544,28 +548,21 @@ async def test_select_model_uses_explicit_config_model() -> None:
 
 
 @pytest.mark.unit
-async def test_select_model_fallback_to_provider_name() -> None:
-    """When provider has no models configured, use provider name as hint."""
-    config_b = MagicMock()
-    config_b.family = "family-b"
-    config_b.models = ()
-
+async def test_unregistered_connection_does_not_dispatch() -> None:
+    """A pair naming an unregistered connection is a misconfiguration."""
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=_make_completion_response())
     evaluator = _make_evaluator(
-        provider_configs={
-            "provider-a": MagicMock(family="family-a", models=()),
-            "provider-b": config_b,
-        },
         driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+        bound_pair="ghost-provider",
     )
     context = _make_context(agent_provider_name="provider-a")
     rule_verdict = _make_rule_verdict()
 
-    await evaluator.evaluate(context, rule_verdict)
+    result = await evaluator.evaluate(context, rule_verdict)
 
-    call_args = mock_driver.complete.call_args
-    assert call_args[0][1] == "provider-b"
+    assert result.verdict != SecurityVerdictType.ALLOW
+    mock_driver.complete.assert_not_awaited()
 
 
 @pytest.mark.unit

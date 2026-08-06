@@ -11,11 +11,22 @@ how well it went: those would give the judgement its answer. It gets the claims
 and the artefacts, and is asked to check them.
 """
 
+from typing import Final
+
+from synthorg.core.evaluation_verdict import CriterionVerdict
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
-from synthorg.engine.initiative.evaluate_models import CriterionVerdict
 from synthorg.engine.initiative.tail_stages import read_integration_state
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionFilterSpec,
+    CodeExecutionRecord,
+)
 from synthorg.persistence.protocol import PersistenceBackend
+
+#: How many recorded test runs the material carries. The judgement needs the
+#: project's verdict, not its whole build history, and an unbounded list would
+#: crowd the criteria it is there to judge out of the prompt.
+_MAX_TEST_RUNS: Final[int] = 20
 
 
 def _delivered_lines(plan: Plan) -> list[str]:
@@ -34,6 +45,46 @@ def _delivered_lines(plan: Plan) -> list[str]:
     return lines
 
 
+def _test_run_lines(records: tuple[CodeExecutionRecord, ...]) -> list[str]:
+    """Render what the recorded test runs actually did.
+
+    The judgement's hardest criterion is usually "the suite passes", and
+    without this the only source for it is an agent's claim. The outcome
+    fields are computed by the recorder at execution time, so they say how
+    a run ended rather than what anyone reported.
+
+    The command itself is not rendered. It is model-supplied text with no
+    newline restriction, so a single command spelling further bullet rows
+    would present them under a header vouching for their provenance; and a
+    command line can carry a credential in an argument, which would then
+    leave the trust boundary inside the judge's prompt. The runner name is
+    computed here instead, from the same classifier that decided the row
+    was a test run at all.
+
+    Returns:
+        A header plus one line per recorded run, or nothing when none ran.
+        Nothing is itself a signal: a criterion resting on a suite nobody
+        ran is not one the judge can mark met.
+    """
+    if not records:
+        return []
+    lines = [
+        (
+            "Test runs recorded by the sandbox during this initiative. The"
+            " outcomes below were computed at execution time, not reported"
+            " by an agent:"
+        ),
+    ]
+    lines.extend(
+        f"- run {index}: "
+        f"{'passed' if record.passed else 'failed'}"
+        f"{' (timed out)' if record.timed_out else ''}"
+        f", exit {record.returncode}"
+        for index, record in enumerate(records, start=1)
+    )
+    return lines
+
+
 async def build_evaluation_material(
     persistence: PersistenceBackend,
     plan: Plan,
@@ -42,7 +93,8 @@ async def build_evaluation_material(
 
     Args:
         persistence: Backend supplying the task repository, read for the
-            integration job's evidence.
+            integration job's evidence, and the code-execution records that
+            say what actually ran.
         plan: The plan being evaluated.
 
     Returns:
@@ -66,6 +118,11 @@ async def build_evaluation_material(
                 f"- it was required to produce: {expected}",
             ]
         )
+    records = await persistence.code_execution_records.query(
+        CodeExecutionFilterSpec(project_id=plan.project),
+        limit=_MAX_TEST_RUNS,
+    )
+    sections.extend(_test_run_lines(records))
     return "\n".join(sections)
 
 

@@ -173,13 +173,14 @@ Action types follow a `category:action` format. Built-in types include:
 
 ## LLM Security Fallback
 
-For actions that the rule engine cannot classify with high confidence, an LLM from a *different provider family* can provide cross-validation:
+For actions that the rule engine cannot classify with high confidence, an LLM can provide cross-validation. Reaching for a *different provider family* than the judged agent is the point of the mechanism: a jailbreak that works on one family should not also carry its reviewer.
+
+That is now the operator's choice to make and the system's to report on, not something it arranges. Nothing auto-selects a cross-family model, because auto-selecting one means picking a connection nobody chose. The evaluator dispatches on `security.llm_evaluator_model`, an explicit `(provider, model)` pair, and when that pair shares the judged agent's vendor family the evaluation logs `security.llm_eval.same_family` at WARNING on every call. Leaving the pair unset leaves the evaluation off.
 
 ```yaml
 security:
   llm_fallback:
     enabled: true
-    model: "example-medium-001"
     timeout_seconds: 10.0
     max_input_tokens: 2000
     on_error: escalate
@@ -190,7 +191,6 @@ security:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Whether LLM fallback is active |
-| `model` | string | `null` | Model ID (auto-selects cross-family if null) |
 | `timeout_seconds` | float | `10.0` | Maximum time for the LLM call |
 | `max_input_tokens` | int | `2000` | Token budget cap for eval prompts |
 | `on_error` | string | `"escalate"` | Policy when LLM call fails: `use_rule_verdict`, `escalate`, `deny` |

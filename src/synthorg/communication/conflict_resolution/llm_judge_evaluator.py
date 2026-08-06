@@ -33,14 +33,21 @@ from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_JUDGE_EVALUATED,
+    CONFLICT_JUDGE_MODEL_UNSET,
     CONFLICT_JUDGE_OUTPUT_INVALID,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.providers.structured_text import complete_text, extract_json_object
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.kill_switch import require_configured_model
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
 _JUDGE_BOUNDARY: Final[str] = "conflict_resolution.judge"
+
+_MODEL_NAMESPACE: Final[str] = "communication"
+_MODEL_KEY: Final[str] = "conflict_judge_model"
 
 #: Verdict token the model emits when no position is clearly stronger. Kept
 #: distinct from the empty-string protocol sentinel because the wire schema
@@ -83,9 +90,22 @@ class JudgeVerdictOut(BaseModel):
 
 
 class LlmJudgeEvaluator:
-    """Pick a conflict winner with a deterministic structured LLM call."""
+    """Pick a conflict winner with a deterministic structured LLM call.
 
-    __slots__ = ("_cost_tracker", "_model", "_provider")
+    The judge is a system actor, not a company agent, so it names its own
+    connection through ``communication.conflict_judge_model`` rather than
+    borrowing one: a provider is a registered connection with its own
+    credentials, endpoint and quota, and an arbitration nobody chose the
+    connection for is an arbitration nobody can account for.
+
+    Args:
+        connections: Resolves the connection the configured pair names.
+        cost_tracker: Optional cost tracker for the judgement call.
+        config_resolver: Live source for the judge pair, re-read per
+            judgement so a reassignment applies without a restart.
+    """
+
+    __slots__ = ("_config_resolver", "_connections", "_cost_tracker")
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.CONFLICT_JUDGE
 
@@ -97,13 +117,13 @@ class LlmJudgeEvaluator:
     def __init__(
         self,
         *,
-        provider: CompletionProvider,
-        model: str,
+        connections: ConnectionSelector,
         cost_tracker: CostTrackerProtocol | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
-        self._provider = provider
-        self._model = model
+        self._connections = connections
         self._cost_tracker = cost_tracker
+        self._config_resolver = config_resolver
 
     async def evaluate(
         self,
@@ -123,11 +143,25 @@ class LlmJudgeEvaluator:
         Raises:
             ConflictStrategyError: If the model output cannot be parsed into a
                 valid verdict.
+            ServiceUnavailableError: No judge pair is configured, so the
+                resolver falls back to authority rather than arbitrating on a
+                connection nobody chose.
         """
+        model = require_configured_model(
+            await resolve_bound_model_live(
+                self._config_resolver,
+                namespace=_MODEL_NAMESPACE,
+                key=_MODEL_KEY,
+                unset_event=CONFLICT_JUDGE_MODEL_UNSET,
+            ),
+            namespace=_MODEL_NAMESPACE,
+            key=_MODEL_KEY,
+            feature_label="Conflict judge",
+        )
         user = _build_user_prompt(conflict)
         content, _cost = await complete_text(
-            self._provider,
-            self._model,
+            self._connections(model.provider),
+            model.model_id,
             system=_SYSTEM_PROMPT,
             user=user,
             purpose=self.metadata.prompt_class_id,

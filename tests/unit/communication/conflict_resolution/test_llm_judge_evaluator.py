@@ -30,6 +30,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from tests._shared.ids import as_uuid
+from tests._shared.model_binding import model_ref_resolver, one_connection
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 pytestmark = pytest.mark.unit
@@ -88,7 +89,9 @@ class _CtxCapturingProvider(ScriptedProvider):
 
 async def test_evaluate_parses_structured_response_to_judge_decision() -> None:
     provider = ScriptedProvider(response=make_text_response(_verdict_payload("alice")))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     decision = await evaluator.evaluate(_conflict(), _JUDGE)
 
@@ -100,7 +103,9 @@ async def test_evaluate_maps_ambiguous_token_to_sentinel() -> None:
     provider = ScriptedProvider(
         response=make_text_response(_verdict_payload("ambiguous", "genuine trade-off"))
     )
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     decision = await evaluator.evaluate(_conflict(), _JUDGE)
 
@@ -110,7 +115,9 @@ async def test_evaluate_maps_ambiguous_token_to_sentinel() -> None:
 
 async def test_evaluate_maps_hallucinated_winner_to_sentinel() -> None:
     provider = ScriptedProvider(response=make_text_response(_verdict_payload("carol")))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     decision = await evaluator.evaluate(_conflict(), _JUDGE)
 
@@ -119,7 +126,9 @@ async def test_evaluate_maps_hallucinated_winner_to_sentinel() -> None:
 
 async def test_evaluate_fences_positions_and_lists_directive() -> None:
     provider = ScriptedProvider(response=make_text_response(_verdict_payload("alice")))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     await evaluator.evaluate(_conflict(), _JUDGE)
 
@@ -136,7 +145,9 @@ async def test_evaluate_fences_positions_and_lists_directive() -> None:
 
 async def test_evaluate_raises_conflict_strategy_error_on_malformed_json() -> None:
     provider = ScriptedProvider(response=make_text_response("not json at all"))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     with pytest.raises(ConflictStrategyError):
         await evaluator.evaluate(_conflict(), _JUDGE)
@@ -146,7 +157,9 @@ async def test_evaluate_raises_conflict_strategy_error_on_schema_violation() -> 
     # Valid JSON, but a blank winning_agent_id violates NotBlankStr.
     payload = json.dumps({"winning_agent_id": "", "reasoning": "x"})
     provider = ScriptedProvider(response=make_text_response(payload))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     with pytest.raises(ConflictStrategyError):
         await evaluator.evaluate(_conflict(), _JUDGE)
@@ -154,7 +167,9 @@ async def test_evaluate_raises_conflict_strategy_error_on_schema_violation() -> 
 
 async def test_evaluate_propagates_provider_error() -> None:
     provider = ScriptedProvider(error=ProviderError("provider unavailable"))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     with pytest.raises(ProviderError):
         await evaluator.evaluate(_conflict(), _JUDGE)
@@ -162,7 +177,9 @@ async def test_evaluate_propagates_provider_error() -> None:
 
 async def test_metadata_property_returns_conflict_judge_pin() -> None:
     provider = ScriptedProvider(response=make_text_response(_verdict_payload("alice")))
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m")
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider), config_resolver=model_ref_resolver()
+    )
 
     assert evaluator.metadata.prompt_class_id is PromptPurposeId.CONFLICT_JUDGE
 
@@ -170,7 +187,11 @@ async def test_metadata_property_returns_conflict_judge_pin() -> None:
 async def test_evaluate_opens_purpose_scope() -> None:
     provider = _CtxCapturingProvider(_verdict_payload("alice"))
     tracker = CostTracker()
-    evaluator = LlmJudgeEvaluator(provider=provider, model="m", cost_tracker=tracker)
+    evaluator = LlmJudgeEvaluator(
+        connections=one_connection(provider),
+        cost_tracker=tracker,
+        config_resolver=model_ref_resolver(),
+    )
 
     await evaluator.evaluate(_conflict(), _JUDGE)
     await tracker.drain_pending_records()

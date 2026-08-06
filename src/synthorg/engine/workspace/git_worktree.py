@@ -10,7 +10,6 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
@@ -32,6 +31,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
+from synthorg.engine.workspace.paths import PROJECTS_SUBDIR
 from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
 from synthorg.observability import get_logger, safe_error_description
@@ -55,7 +55,6 @@ from synthorg.observability.events.workspace import (
 logger = get_logger(__name__)
 
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
-_PROJECTS_SUBDIR: Final[str] = "projects"
 
 
 def _validate_git_ref(
@@ -214,8 +213,8 @@ class PlannerWorktreeStrategy:
             msg = f"refusing path-separator-bearing project_id {project_id!r}"
             logger.warning(event, error=msg, project_id=project_id)
             raise error_cls(msg)
-        projects_root = (self._repo_root / _PROJECTS_SUBDIR).resolve()
-        candidate = self._repo_root / _PROJECTS_SUBDIR / project_id
+        projects_root = (self._repo_root / PROJECTS_SUBDIR).resolve()
+        candidate = self._repo_root / PROJECTS_SUBDIR / project_id
         if not candidate.resolve().is_relative_to(projects_root):
             msg = f"project_id {project_id!r} escapes the projects subtree"
             logger.warning(event, error=msg, project_id=project_id)

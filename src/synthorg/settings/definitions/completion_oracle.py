@@ -11,7 +11,6 @@ so no process restart is needed.
 """
 
 from synthorg.core.task_enums import Stakes
-from synthorg.core.types import MODEL_TIER_LADDER
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -74,17 +73,20 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="completion_oracle_reviewer_model_tier",
-        type=SettingType.ENUM,
-        default="medium",
+        key="completion_oracle_reviewer_model",
+        type=SettingType.MODEL_REF,
+        default="",
         description=(
-            "Model tier the independent reviewer agent runs at. Pinned explicitly"
-            " (default 'medium') so the reviewer never silently inherits a cheap"
-            " executor's tier; raise to 'large' for stricter review or lower to"
-            " 'small' to reduce review cost."
+            "Provider + model the independent reviewer agent runs on. A model"
+            " reference (`{provider, model_id}`) because a provider is a"
+            " registered connection with its own credentials and endpoint, so a"
+            " bare model id names no dispatch target: the same id on two"
+            " connections is two different calls. Named explicitly so the"
+            " reviewer never inherits the executor's model, and never a shared"
+            " system default. Unset means the peer review is unarmed and says"
+            " so; the deterministic build/test gate still runs."
         ),
         group="Completion Oracle",
         level=SettingLevel.ADVANCED,
-        enum_values=tuple(MODEL_TIER_LADDER),
     )
 )

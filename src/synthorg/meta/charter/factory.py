@@ -15,7 +15,7 @@ from synthorg.meta.charter.strategy import (
 from synthorg.meta.errors import UnknownCharterStrategyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import CHARTER_STRATEGY_UNKNOWN
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 
 logger = get_logger(__name__)
 
@@ -25,7 +25,7 @@ _LLM: str = "llm"
 def build_charter_interview_strategy(
     config: CharterConfig,
     *,
-    provider: CompletionProvider,
+    connections: ConnectionSelector,
     cost_tracker: CostTrackerProtocol | None = None,
 ) -> CharterInterviewStrategy:
     """Construct the interview strategy named by *config*.
@@ -33,7 +33,8 @@ def build_charter_interview_strategy(
     Args:
         config: Charter-interview configuration carrying the strategy
             discriminator.
-        provider: LLM completion provider for LLM-backed strategies.
+        connections: Resolves the connection the interview pair names, for
+            LLM-backed strategies.
         cost_tracker: Optional cost tracker for LLM accounting.
 
     Returns:
@@ -45,7 +46,7 @@ def build_charter_interview_strategy(
     """
     if config.interview_strategy == _LLM:
         return LLMCharterInterviewer(
-            provider=provider,
+            connections=connections,
             cost_tracker=cost_tracker,
         )
     logger.warning(

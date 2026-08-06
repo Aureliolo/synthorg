@@ -41,6 +41,12 @@ EXECUTION_ENGINE_SYNC_FAILED: Final[str] = "execution.engine.sync_failed"
 EXECUTION_ENGINE_NO_ARTIFACTS_FAILED: Final[str] = (
     "execution.engine.no_artifacts_failed"
 )
+# The declared-artifact question could not be answered. ERROR rather than
+# WARNING: the run reaches review without the check having run, so an
+# operator needs this to be alertable rather than buried.
+EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED: Final[str] = (
+    "execution.engine.artifact_probe_degraded"
+)
 
 # Direct chat-driven MCP actions (AgentEngine.run_chat_action): a short
 # tool-capable loop with no Task lifecycle. Parks via the shared

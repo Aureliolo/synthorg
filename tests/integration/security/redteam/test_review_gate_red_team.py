@@ -148,6 +148,7 @@ def _planted_review_input() -> RedTeamReviewInput:
         task_id="task-rt-1",
         execution_id="exec-rt-1",
         deliverable_content="Backend service complete. Login endpoint is live.",
+        agent_summary="Backend service complete. Login endpoint is live.",
         acceptance_criteria=(
             "Login endpoint exposed.",
             "Password reset endpoint exposed.",

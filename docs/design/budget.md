@@ -242,6 +242,31 @@ budget:
   forecast_static_prior_per_turn_local_small: 0.0
 ```
 
+### Approval runs the work it gated
+
+A refused brief rides with the estimate that refused it: when the gate mints a
+pending forecast it stores the serialised `WorkItem` on the row's
+`gated_work_item` column. Approval then re-dispatches it.
+`BudgetForecastService.approve` calls the `ApprovedForecastDispatcher` port
+(`budget/forecast_dispatch_port.py`), implemented by
+`engine/pipeline/forecast_redispatch.py::ForecastGateRedispatcher` and wired at
+boot in `engine/pipeline/entry/boot.py`. That adapter feeds the item back
+**through the gate**, which now reads the row as `approved`, so the release
+rules and the brief-drift check are applied once rather than duplicated; the run
+is spawned rather than awaited, because a work pipeline outlives the HTTP
+request that approved its budget.
+
+That is what makes approval a decision that takes effect. Without it the
+automation door accepted work, returned its `202`, raised
+`CostForecastApprovalRequiredError` inside a detached background task where only
+the log saw it, and dropped the objective: approving the forecast afterwards
+changed a row and nothing else.
+
+A forecast generated directly through `POST /budget/forecasts` gated no work, so
+its `gated_work_item` is `NULL` and approval is only a budget decision. A row
+that *does* hold work and finds no dispatcher wired raises rather than returning
+success, because silently dropping approved work is the failure being fixed.
+
 On approval the work-entry intake phase stamps the forecast's `forecast_id` and
 the operator-approved `ceiling_amount` onto the `Task` so the in-loop checker and
 the engine can act on them.
@@ -355,7 +380,7 @@ Every LLM provider call is tracked with comprehensive metadata (per-call cost an
 
 The framework tracks **cumulative risk** alongside monetary cost. While the
 `RiskClassifier` assigns per-action risk levels (LOW/MEDIUM/HIGH/CRITICAL),
-the risk budget tracks risk _accumulation_: an agent executing 50 MEDIUM-risk
+the risk budget tracks risk *accumulation*: an agent executing 50 MEDIUM-risk
 actions in a row should trigger escalation even though each individual action
 is approved.
 
@@ -418,7 +443,7 @@ per-agent/per-task/total aggregation queries.
 | `disabled` | No evaluation, always ALLOW |
 
 Shadow mode enables pre-deployment calibration: operators can observe what
-_would_ have been blocked without disrupting agent work, then tune risk
+*would* have been blocked without disrupting agent work, then tune risk
 weights and limits before switching to active enforcement.
 
 ## Automated Reporting

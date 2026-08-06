@@ -13,11 +13,12 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.types import NotBlankStr
@@ -52,10 +53,11 @@ class CostForecastRepository(
     """CRUD + state-transition + filtered query for cost forecasts.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). The one bespoke method, :meth:`raise_ceiling_if_halted`,
-    is sanctioned under ADR-0001 D7 (a domain invariant callers must not
-    bypass): resuming a halted run is a read-modify-write that must clear
-    the halt exactly once, which the generic ``save`` cannot express.
+    (ADR-0001). Two bespoke methods, :meth:`claim_if_unclaimed` and
+    :meth:`raise_ceiling_if_halted`, are sanctioned under ADR-0001 D7
+    (domain invariants callers must not bypass): claiming a standalone
+    estimate and resuming a halted run are each a read-modify-write that
+    must happen exactly once, which the generic ``save`` cannot express.
 
     Implementations enforce the same-currency invariant on
     :meth:`save`: the incoming :attr:`Forecast.currency` MUST equal
@@ -139,6 +141,34 @@ class CostForecastRepository(
 
         Raises:
             QueryError: On database errors or an invalid update key.
+        """
+        ...
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Attach the work item and re-key the digest, only if still free.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): an
+        estimate raised on its own belongs to the submission that reaches
+        it first, and what that submission may then do with it is spend
+        the operator's approved ceiling. Read-then-write would let two
+        concurrent submissions each see a free row and each believe it
+        won, so the condition lives in the statement and the loser is
+        told it lost rather than silently sharing one approval.
+
+        Returns:
+            ``True`` when the row was free and is now this submission's;
+            ``False`` when another submission already claimed it or the
+            row is missing.
+
+        Raises:
+            QueryError: On database errors.
         """
         ...
 

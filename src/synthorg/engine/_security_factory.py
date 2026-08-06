@@ -5,6 +5,7 @@ Extracted from ``agent_engine.py`` to keep that module within the
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -40,6 +41,7 @@ from synthorg.security.rules.path_traversal_detector import (
 )
 from synthorg.security.rules.policy_validator import PolicyValidator
 from synthorg.security.service import SecOpsService
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.base import BaseTool
 from synthorg.tools.external_api._runtime import ExternalApiRuntime
 from synthorg.tools.registry import ToolRegistry
@@ -51,16 +53,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class SecurityLlmInfra:
+    """Provider infrastructure the LLM-backed security features dispatch on.
+
+    Travels as one value because the three LLM-backed features are wired
+    together or not at all: without a registry there is nothing to dispatch
+    on, and without a resolver there is no operator-chosen connection to
+    dispatch to.
+
+    Attributes:
+        provider_registry: Registry of provider drivers.
+        config_resolver: Live source of each feature's own
+            ``(provider, model)`` assignment, re-read per evaluation.
+            Required, not optional: without it no assignment can be read, so
+            a feature built with a registry alone dispatches nowhere while
+            reporting itself enabled.
+        provider_configs: Provider configs keyed by name, for the vendor
+            family comparison the LLM evaluator warns on.
+        model_resolver: Model resolver for the multi-provider uncertainty
+            check, which deliberately fans out across providers.
+        cost_tracker: Cost tracker so security-evaluation calls emit
+            ``CostRecord``s through the provider chokepoint instead of
+            bypassing the cost-recording layer.
+    """
+
+    provider_registry: ProviderRegistry
+    config_resolver: ConfigResolverProtocol
+    provider_configs: Mapping[str, ProviderConfig] = field(default_factory=dict)
+    model_resolver: ModelResolver | None = None
+    cost_tracker: CostTrackerProtocol | None = None
+
+
 def make_security_interceptor(
     security_config: SecurityConfig | None,
     audit_log: AuditLog,
     *,
     approval_store: ApprovalStoreProtocol | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
-    provider_registry: ProviderRegistry | None = None,
-    provider_configs: Mapping[str, ProviderConfig] | None = None,
-    model_resolver: ModelResolver | None = None,
-    cost_tracker: CostTrackerProtocol | None = None,
+    llm_infra: SecurityLlmInfra | None = None,
 ) -> SecurityInterceptionStrategy | None:
     """Build the SecOps security interceptor if configured.
 
@@ -69,16 +100,9 @@ def make_security_interceptor(
         audit_log: Audit log for security events.
         approval_store: Optional approval store for escalation items.
         effective_autonomy: Optional autonomy level override.
-        provider_registry: Optional provider registry for LLM-based
-            features (safety classifier, uncertainty checker, LLM
-            fallback evaluator).
-        provider_configs: Provider config dict for family lookup.
-        model_resolver: Optional model resolver for multi-provider
-            uncertainty checks.
-        cost_tracker: Optional cost tracker.  Threaded into the
-            UncertaintyChecker so cross-provider uncertainty calls
-            emit ``CostRecord``s through the provider chokepoint
-            instead of silently bypassing the cost-recording layer.
+        llm_infra: Provider infrastructure for the LLM-backed features
+            (safety classifier, uncertainty checker, LLM fallback
+            evaluator); ``None`` leaves all three unwired.
 
     Returns:
         A ``SecOpsService`` interceptor, or ``None`` if security is
@@ -112,14 +136,14 @@ def make_security_interceptor(
     rule_engine = _build_rule_engine(cfg)
 
     # Build optional LLM-based services when provider infrastructure is
-    # available. Both halves are narrowed together inside the ``else`` so
-    # every constructor below sees non-``None`` provider infrastructure.
+    # available. The bundle narrows once, so every constructor below sees
+    # non-``None`` provider infrastructure.
     llm_evaluator = None
     safety_classifier = None
     denial_tracker = None
     uncertainty_checker = None
 
-    if provider_registry is None or provider_configs is None:
+    if llm_infra is None:
         # Warn when LLM-based features are configured but providers are
         # not available -- the features will be silently disabled.
         _warn_disabled_features(cfg)
@@ -130,9 +154,10 @@ def make_security_interceptor(
             )
 
             llm_evaluator = LlmSecurityEvaluator(
-                provider_registry=provider_registry,
-                provider_configs=provider_configs,
+                provider_registry=llm_infra.provider_registry,
+                provider_configs=llm_infra.provider_configs,
                 config=cfg.llm_fallback,
+                config_resolver=llm_infra.config_resolver,
             )
 
         if cfg.safety_classifier.enabled:
@@ -144,25 +169,26 @@ def make_security_interceptor(
             )
 
             safety_classifier = SafetyClassifier(
-                provider_registry=provider_registry,
-                provider_configs=provider_configs,
+                provider_registry=llm_infra.provider_registry,
                 config=cfg.safety_classifier,
+                cost_tracker=llm_infra.cost_tracker,
+                config_resolver=llm_infra.config_resolver,
             )
             denial_tracker = DenialTracker(
                 max_consecutive=cfg.safety_classifier.max_consecutive_denials,
                 max_total=cfg.safety_classifier.max_total_denials,
             )
 
-        if model_resolver is not None and cfg.uncertainty_check.enabled:
+        if llm_infra.model_resolver is not None and cfg.uncertainty_check.enabled:
             from synthorg.security.uncertainty import (  # noqa: PLC0415
                 UncertaintyChecker,
             )
 
             uncertainty_checker = UncertaintyChecker(
-                provider_registry=provider_registry,
-                model_resolver=model_resolver,
+                provider_registry=llm_infra.provider_registry,
+                model_resolver=llm_infra.model_resolver,
                 config=cfg.uncertainty_check,
-                cost_tracker=cost_tracker,
+                cost_tracker=llm_infra.cost_tracker,
             )
 
     return SecOpsService(

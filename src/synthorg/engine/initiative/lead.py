@@ -58,33 +58,32 @@ def resolve_lead_provider(
     selector: ProviderSelector,
     lead: AgentIdentity,
     *,
-    default_provider: CompletionProvider | None,
     skipped_event: str,
 ) -> CompletionProvider | None:
     """Resolve the completion client an initiative session runs on.
 
+    The lead's own bound connection is the only answer. A provider is a
+    registered connection carrying its own credentials, endpoint and quota, so
+    substituting another one would run the judgement on a model nobody chose
+    and bill it to a connection nobody named.
+
     Args:
         selector: Resolves the client for the lead's bound provider.
         lead: The identity the session runs as.
-        default_provider: The explicit system default, used when the lead's
-            own provider is unregistered.
-        skipped_event: Event name to log the fallback under, so each caller's
-            observability stays in its own event family.
+        skipped_event: Event name to log an unresolved connection under, so
+            each caller's observability stays in its own event family.
 
     Returns:
-        The lead's bound provider, the explicit system default when that is
-        unregistered, or ``None`` when neither resolves.
+        The lead's bound provider, or ``None`` when its connection is not
+        registered and the caller must decline to run.
     """
     try:
         return selector(lead)
     except DriverNotRegisteredError:
-        # WARNING, not DEBUG: this silently runs the judgement (or the
-        # retrospective) on a different model from the one bound to the
-        # accountable lead, and a persistently misconfigured lead should not
-        # need debug logging to be discoverable.
         logger.warning(
             skipped_event,
             lead_id=str(lead.id),
-            reason="lead_provider_unregistered_using_default",
+            reason="lead_provider_unregistered",
+            provider_name=lead.model.provider,
         )
-        return default_provider
+        return None

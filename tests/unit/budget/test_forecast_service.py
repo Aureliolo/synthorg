@@ -7,18 +7,24 @@ rather than touching the repository directly). These cover the generate
 double.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import override
 from uuid import UUID
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
 from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
-from synthorg.core.domain_errors import ConflictError, ResourceNotFoundError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    ResourceNotFoundError,
+    ServiceUnavailableError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.cost_forecast_protocol import (
@@ -71,6 +77,31 @@ class _FakeForecastRepo:
             return False
         self.rows[str(entity_id)] = existing.model_copy(
             update={"decision": to_state, **updates},
+        )
+        return True
+
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        """Claim the row only while it holds no work item.
+
+        Returns:
+            ``True`` when this call claimed the free row.
+        """
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.gated_work_item is not None:
+            return False
+        self.rows[str(entity_id)] = existing.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            },
         )
         return True
 
@@ -140,13 +171,43 @@ def _halted_forecast() -> Forecast:
     )
 
 
-def _service(repo: _FakeForecastRepo) -> BudgetForecastService:
+class _RecordingDispatcher:
+    """Records the forecasts it was asked to run the gated work for."""
+
+    def __init__(self) -> None:
+        self.dispatched: list[UUID] = []
+
+    async def dispatch(self, forecast: Forecast) -> None:
+        self.dispatched.append(forecast.forecast_id)
+
+
+def _gated_forecast() -> Forecast:
+    return _pending_forecast().model_copy(
+        update={
+            "gated_work_item": {
+                "origin_adapter_id": "objective-entry",
+                "source": "objective",
+                "title": "Ship the game",
+                "raw_intent": "A playable Tetris with a browser front end",
+                "project": "tetris",
+                "requested_by": "operator",
+            },
+        },
+    )
+
+
+def _service(
+    repo: _FakeForecastRepo,
+    *,
+    dispatcher: _RecordingDispatcher | None = None,
+) -> BudgetForecastService:
     config = BudgetConfig(total_monthly=100.0)
     return BudgetForecastService(
         repo=repo,
         forecaster=CostForecaster(budget_config=config, clock=lambda: _NOW),
         budget_config=config,
         clock=lambda: _NOW,
+        dispatcher=dispatcher,
     )
 
 
@@ -155,6 +216,8 @@ async def test_generate_persists_and_returns_forecast() -> None:
     service = _service(repo)
     forecast = await service.generate(
         brief_text=NotBlankStr("Build a thing"),
+        project=NotBlankStr("proj-1"),
+        requested_by=NotBlankStr("operator-1"),
         role_skeleton=(NotBlankStr("role-1"),),
         model_assignments={},
         estimated_turns_per_role=None,
@@ -186,6 +249,49 @@ async def test_approve_transitions_pending() -> None:
     )
     assert approved.decision is ForecastDecision.APPROVED
     assert approved.ceiling_amount == 2.0
+
+
+async def test_approve_runs_the_work_it_gated() -> None:
+    """Approval that changes nothing is the dead-end the gate created."""
+    forecast = _gated_forecast()
+    dispatcher = _RecordingDispatcher()
+    service = _service(_FakeForecastRepo(forecast), dispatcher=dispatcher)
+
+    await service.approve(
+        forecast.forecast_id,
+        decided_by=NotBlankStr("op-1"),
+        ceiling_amount=2.0,
+    )
+
+    assert dispatcher.dispatched == [forecast.forecast_id]
+
+
+async def test_approve_without_gated_work_dispatches_nothing() -> None:
+    """A forecast generated through the API held no work to release."""
+    forecast = _pending_forecast()
+    dispatcher = _RecordingDispatcher()
+    service = _service(_FakeForecastRepo(forecast), dispatcher=dispatcher)
+
+    await service.approve(
+        forecast.forecast_id,
+        decided_by=NotBlankStr("op-1"),
+        ceiling_amount=None,
+    )
+
+    assert dispatcher.dispatched == []
+
+
+async def test_approve_with_gated_work_and_no_dispatcher_raises() -> None:
+    """Silently dropping approved work is the failure being fixed."""
+    forecast = _gated_forecast()
+    service = _service(_FakeForecastRepo(forecast))
+
+    with pytest.raises(ServiceUnavailableError):
+        await service.approve(
+            forecast.forecast_id,
+            decided_by=NotBlankStr("op-1"),
+            ceiling_amount=None,
+        )
 
 
 async def test_approve_missing_pending_raises_not_found() -> None:

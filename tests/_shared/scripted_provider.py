@@ -19,6 +19,8 @@ Two construction shapes are supported (both pre-existing call sites):
 import copy
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import date
+from pathlib import Path
+from typing import Final
 
 from pydantic import JsonValue
 
@@ -31,6 +33,7 @@ from synthorg.core.agent import (
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.scripted import (
     ScriptedResponseStrategy,
@@ -52,6 +55,11 @@ from tests._shared.ids import as_uuid
 _TEST_MODEL = "test-model-001"
 _TEST_PROVIDER = "test-provider"
 _QUALITY_MODEL = "test-medium-001"
+
+#: Project every :func:`make_e2e_task` task belongs to. Exported because
+#: file tools scope their workspace to the executing project, so a test
+#: asserting on a written file needs the same identifier the tool used.
+E2E_PROJECT_ID: Final[str] = "proj-e2e"
 
 # Shared capabilities fixture for engine/quality tests. Generic on
 # purpose so decomposer and grader suites need no vendor presets.
@@ -330,8 +338,24 @@ def make_e2e_task(
         description=description,
         type=TaskType.DEVELOPMENT,
         priority=Priority.MEDIUM,
-        project="proj-e2e",
+        project=E2E_PROJECT_ID,
         created_by="manager",
         assigned_to=str(identity.id),
         status=TaskStatus.ASSIGNED,
     )
+
+
+def e2e_tool_workspace(base_root: Path) -> Path:
+    """Where a file tool bound to *base_root* writes for an e2e task.
+
+    A file tool scopes itself to the executing project's workspace, so a
+    test that hands the tool a bare temporary directory and then looks in
+    that same directory is looking one level above where the agent wrote.
+
+    Args:
+        base_root: The ``workspace_root`` the tool was constructed with.
+
+    Returns:
+        The directory files land in for a :func:`make_e2e_task` task.
+    """
+    return project_workspace_dir(base_root, E2E_PROJECT_ID)

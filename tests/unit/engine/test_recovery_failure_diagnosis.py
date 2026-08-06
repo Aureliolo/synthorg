@@ -398,7 +398,7 @@ class TestInferFailureCategoryWithoutEvidence:
         self,
         sample_agent_context: AgentContext,
     ) -> None:
-        """Regression for C1: error messages with 'stagnation' must not crash.
+        """Error messages containing 'stagnation' must not crash recovery.
 
         The original bug: ``FailAndReassignStrategy.recover`` passed
         ``infer_failure_category(error_message)`` directly to
@@ -432,7 +432,7 @@ class TestInferFailureCategoryWithoutEvidence:
         sample_agent_context: AgentContext,
         error_message: str,
     ) -> None:
-        """Regression for C1: evidence-requiring keywords must not crash."""
+        """Evidence-requiring keywords must not crash the recovery path."""
         ctx = sample_agent_context.with_task_transition(
             TaskStatus.IN_PROGRESS, reason="starting"
         )

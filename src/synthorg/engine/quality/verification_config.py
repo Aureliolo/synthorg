@@ -4,8 +4,6 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import ModelTier
-
 
 class DecomposerVariant(StrEnum):
     """Discriminator for criteria decomposition strategies."""
@@ -27,8 +25,6 @@ class VerificationConfig(BaseModel):
     Attributes:
         decomposer: Decomposition strategy variant.
         grader: Grading strategy variant.
-        decomposer_model_tier: Model tier for LLM decomposer.
-        grader_model_tier: Model tier for LLM grader.
         max_probes_per_criterion: Maximum probes per criterion.
         min_confidence_override: Override rubric min_confidence.
     """
@@ -42,14 +38,6 @@ class VerificationConfig(BaseModel):
     grader: GraderVariant = Field(
         default=GraderVariant.HEURISTIC,
         description="Grading strategy",
-    )
-    decomposer_model_tier: ModelTier = Field(
-        default="medium",
-        description="Model tier for LLM decomposer",
-    )
-    grader_model_tier: ModelTier = Field(
-        default="medium",
-        description="Model tier for LLM grader",
     )
     max_probes_per_criterion: int = Field(
         default=5,

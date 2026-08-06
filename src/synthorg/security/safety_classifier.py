@@ -4,9 +4,9 @@ Stage 1: ``InformationStripper`` removes PII, secrets, internal IDs,
 and email addresses from the reviewer-facing description.  The
 original text is preserved for execution.
 
-Stage 2: ``SafetyClassifier`` sends the stripped text to an LLM from
-a different provider family for classification as safe, suspicious,
-or blocked.  Blocked actions are auto-rejected (configurable).
+Stage 2: ``SafetyClassifier`` sends the stripped text to the operator's
+``security.safety_classifier_model`` pair for classification as safe,
+suspicious, or blocked.  Blocked actions are auto-rejected (configurable).
 Suspicious actions receive a warning badge in the reviewer UI.
 
 Design invariants:
@@ -14,15 +14,14 @@ Design invariants:
       rationalizations containing PII/secrets cannot influence it.
     - Classification errors default to SUSPICIOUS (fail-safe):
       neither auto-rejects nor marks as safe.
-    - Cross-family provider selection follows the same pattern as
-      ``LlmSecurityEvaluator``.
+    - The classification connection is named, never inferred: an unset or
+      unregistered pair leaves the classifier unarmed and fails safe.
 """
 
 import asyncio
 import html
-from collections.abc import Mapping
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -71,18 +70,12 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.security._model_selection import select_security_eval_model
 from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.information_stripper import InformationStripper
-
-if TYPE_CHECKING:
-    # ``config.schema`` is a cold-import leaf that transitively reaches this
-    # module (``config.schema`` -> ``communication.config`` -> ... -> ``engine``
-    # -> ``_security_factory`` -> ``service`` -> ``service_safety`` ->
-    # ``safety_classifier``); a module-level import of it here reopens that cold
-    # cycle (and ``security/__init__`` eagerly imports this module). Kept guarded.
-    from synthorg.config.schema import ProviderConfig
+from synthorg.settings.bound_model import resolve_bound_model_live
+from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -90,6 +83,9 @@ logger = get_logger(__name__)
 _MAX_REASON_LENGTH: Final[int] = 300
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
+
+_MODEL_NAMESPACE: Final[str] = "security"
+_MODEL_KEY: Final[str] = "safety_classifier_model"
 
 
 # ── Enums and models ─────────────────────────────────────────────
@@ -250,15 +246,18 @@ class SafetyClassifier:
     """Two-stage safety classifier for approval gate actions.
 
     Stage 1: strip PII, secrets, and internal IDs via
-    ``InformationStripper``.  Stage 2: classify the stripped action
-    via an LLM on the explicitly resolved default system provider
-    (``ProviderRegistry.default_provider``); there is no cross-family or
-    first-available auto-pick.
+    ``InformationStripper``.  Stage 2: classify the stripped action via the
+    operator's own ``security.safety_classifier_model`` pair; there is no
+    cross-family or first-available auto-pick, and no connection is borrowed
+    from another feature.
 
     Args:
         provider_registry: Registry of provider drivers.
-        provider_configs: Provider config dict for family lookup.
         config: Safety classifier configuration.
+        cost_tracker: Optional cost tracker for the classification call.
+        clock: Time source for the duration measurement.
+        config_resolver: Live source for the classification pair, re-read per
+            classification so a reassignment applies without a restart.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.SECURITY_SAFETY_CLASSIFIER
@@ -272,17 +271,17 @@ class SafetyClassifier:
         self,
         *,
         provider_registry: ProviderRegistry,
-        provider_configs: Mapping[str, ProviderConfig],
         config: SafetyClassifierConfig,
         cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._registry = provider_registry
-        self._configs = provider_configs
         self._config = config
         self._cost_tracker = cost_tracker
         self._stripper = InformationStripper()
         self._clock: Clock = clock or SystemClock()
+        self._config_resolver = config_resolver
 
     def classify_tier(self, action_type: str) -> PermissionTier:
         """Determine the permission tier for an action type.
@@ -378,22 +377,18 @@ class SafetyClassifier:
             The classifier result; a SUSPICIOUS fallback result when no
             provider is available.
         """
-        provider_name, driver = self._select_provider()
-        if provider_name is None or driver is None:
+        binding = await self._resolve_binding()
+        if binding is None:
             duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
-            logger.warning(
-                SECURITY_SAFETY_CLASSIFY_ERROR,
-                note="No provider available for safety classification",
-                provider_count=len(self._registry.list_providers()),
-            )
             return SafetyClassifierResult(
                 classification=SafetyClassification.SUSPICIOUS,
                 stripped_description=stripped_description,
-                reason="No provider available for safety classification",
+                reason="No model configured for safety classification",
                 classification_duration_ms=duration_ms,
             )
 
-        model = self._select_model(provider_name)
+        model_ref, driver = binding
+        model = model_ref.model_id
         messages = self._build_messages(
             stripped_description,
             action_type,
@@ -432,39 +427,37 @@ class SafetyClassifier:
             start,
         )
 
-    def _select_provider(
+    async def _resolve_binding(
         self,
-    ) -> tuple[str | None, BaseCompletionProvider | None]:
-        """Select a provider for safety classification.
+    ) -> tuple[ModelRef, BaseCompletionProvider] | None:
+        """Resolve the operator's classification pair and its live client.
 
-        Dispatches on the explicit default system provider. There is no
-        random / first-available pick: the classifier evaluates untrusted
-        input (not an agent's own output), so it needs no cross-family
-        boundary, and it must not silently route to whichever provider sorts
-        first when several are registered.
-
-        Returns:
-            A ``(name, driver)`` pair, or ``(None, None)`` when no default
-            provider is resolvable (unregistered, or ambiguous among several).
-        """
-        name = self._registry.default_provider_resolved_name()
-        if name is None:
-            return None, None
-        return name, self._registry.get(name)
-
-    def _select_model(self, provider_name: str) -> str:
-        """Select the model for classification.
+        The classifier reads attacker-controllable input, so where it runs is
+        the operator's explicit choice, re-read per classification. There is
+        no first-available pick and no borrowed connection: a provider is a
+        registered connection with its own credentials and quota, so a bare
+        model id names no dispatch target.
 
         Returns:
-            The configured model alias or id; falls back to the provider
-            name when no model is configured.
+            The bound ``(ModelRef, driver)`` pair, or ``None`` when the
+            assignment is unset or names an unregistered connection.
         """
-        return select_security_eval_model(
-            self._config.model,
-            self._configs,
-            provider_name,
-            event=SECURITY_SAFETY_CLASSIFY_ERROR,
+        ref = await resolve_bound_model_live(
+            self._config_resolver,
+            namespace=_MODEL_NAMESPACE,
+            key=_MODEL_KEY,
+            unset_event=SECURITY_SAFETY_CLASSIFY_ERROR,
         )
+        if ref is None:
+            return None
+        if ref.provider not in self._registry:
+            logger.warning(
+                SECURITY_SAFETY_CLASSIFY_ERROR,
+                note="configured safety-classifier connection is not registered",
+                provider_name=ref.provider,
+            )
+            return None
+        return ref, self._registry.get(ref.provider)
 
     def _build_messages(
         self,

@@ -11,8 +11,12 @@ branch tolerates both a native :class:`~uuid.UUID` (Postgres) and a
 string (SQLite).
 """
 
+import json
+from collections.abc import Callable
 from typing import LiteralString
 from uuid import UUID
+
+from pydantic import JsonValue
 
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
@@ -33,8 +37,12 @@ COST_FORECAST_COLUMNS: LiteralString = (
     "forecast_id, brief_hash, estimated_cost, lower_bound, upper_bound, "
     "currency, decision, decided_at, decided_by, ceiling_amount, "
     "halt_accumulated_cost, halt_ceiling_amount, halt_currency, halted_at, "
-    "created_at, updated_at"
+    "gated_work_item, created_at, updated_at"
 )
+
+#: Adapts the gated work item to the backend's JSON binding (``json.dumps``
+#: for SQLite's TEXT column, ``Jsonb`` for Postgres's JSONB one).
+type JsonBinder = Callable[[dict[str, JsonValue]], object]
 
 _ALLOWED_TRANSITION_KEYS = frozenset({"decided_by", "decided_at", "ceiling_amount"})
 
@@ -88,6 +96,7 @@ def row_to_forecast(row: RowLike) -> Forecast:
                 else None
             ),
             halt_context=halt_context,
+            gated_work_item=_decode_gated_work_item(row["gated_work_item"]),
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
         )
@@ -105,8 +114,35 @@ def row_to_forecast(row: RowLike) -> Forecast:
         raise MalformedRowError(msg) from exc
 
 
-def forecast_save_params(entity: Forecast) -> tuple[object, ...]:
+def _decode_gated_work_item(raw: object) -> dict[str, JsonValue] | None:
+    """Decode the stored work item from either backend's JSON column.
+
+    Returns:
+        The decoded mapping, or ``None`` when the column is empty.
+
+    Raises:
+        TypeError: When the column holds something that is not a JSON
+            object, which would otherwise reach the re-dispatch parser as
+            a silently wrong shape.
+    """
+    if raw is None:
+        return None
+    decoded = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(decoded, dict):
+        msg = "gated_work_item must be a JSON object"
+        raise TypeError(msg)
+    return decoded
+
+
+def forecast_save_params(
+    entity: Forecast, *, bind_json: JsonBinder
+) -> tuple[object, ...]:
     """Flatten a forecast into the positional upsert params.
+
+    Args:
+        entity: The forecast to flatten.
+        bind_json: The backend's binding for the ``gated_work_item``
+            JSON column.
 
     Returns:
         The matching collection.
@@ -127,6 +163,11 @@ def forecast_save_params(entity: Forecast) -> tuple[object, ...]:
         (float(halt.ceiling_amount) if halt is not None else None),
         (halt.currency if halt is not None else None),
         (format_iso_utc(halt.halted_at) if halt is not None else None),
+        (
+            bind_json(entity.gated_work_item)
+            if entity.gated_work_item is not None
+            else None
+        ),
         format_iso_utc(entity.created_at),
         format_iso_utc(entity.updated_at),
     )
@@ -221,10 +262,40 @@ FORECAST_CLEAR_HALT_SQL_PCT: LiteralString = _clear_halt_sql("%s")
 """Halt-guarded ceiling-raise UPDATE (Postgres ``%s`` token)."""
 
 
+def _claim_sql(placeholder: LiteralString) -> LiteralString:
+    """Assemble the unclaimed-guarded work-item claim for one placeholder.
+
+    Attaches the work item and re-keys the digest to the claiming
+    submission only while the row is still free (``gated_work_item IS
+    NULL``). A standalone estimate carries an approved ceiling, so two
+    submissions reading it free and both writing would spend one approval
+    twice; the condition in the statement leaves the loser unmatched, and
+    it is told so rather than sharing the winner's approval.
+
+    Returns:
+        The full conditional ``UPDATE`` statement.
+    """
+    return (
+        f"UPDATE cost_forecasts SET gated_work_item = {placeholder}, "  # noqa: S608 -- constants only
+        f"brief_hash = {placeholder}, updated_at = {placeholder} "
+        f"WHERE forecast_id = {placeholder} AND gated_work_item IS NULL"
+    )
+
+
+FORECAST_CLAIM_SQL_QMARK: LiteralString = _claim_sql("?")
+"""Unclaimed-guarded work-item claim (SQLite ``?`` token)."""
+
+FORECAST_CLAIM_SQL_PCT: LiteralString = _claim_sql("%s")
+"""Unclaimed-guarded work-item claim (Postgres ``%s`` token)."""
+
+
 __all__ = [
     "COST_FORECAST_COLUMNS",
+    "FORECAST_CLAIM_SQL_PCT",
+    "FORECAST_CLAIM_SQL_QMARK",
     "FORECAST_CLEAR_HALT_SQL_PCT",
     "FORECAST_CLEAR_HALT_SQL_QMARK",
+    "JsonBinder",
     "build_cost_forecast_where",
     "forecast_save_params",
     "row_to_forecast",

@@ -1720,6 +1720,10 @@ CREATE TABLE cost_forecasts (
     halt_currency TEXT
     CHECK (halt_currency IS NULL OR CHAR_LENGTH(halt_currency) = 3),
     halted_at TIMESTAMPTZ,
+    -- The work this forecast gated, so approving it means "run this"
+    -- rather than "note that it was allowed". NULL for a forecast minted
+    -- for a brief that was never gated.
+    gated_work_item JSONB,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT chk_cf_lower_le_upper CHECK (lower_bound <= upper_bound),
@@ -2528,6 +2532,43 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
+
+-- ── Initiative evaluation reports (the delivery verdict) ─────
+-- The verdict is what decides whether an initiative delivered, so it is
+-- a record rather than a log line. Append-only: a re-evaluation is a new
+-- attempt with its own row, because overwriting would erase the evidence
+-- the replan points at. The unique (plan_id, attempt) key is what makes
+-- a lost CAS race cost nothing: the verdict is already on disk.
+--
+-- Placed after ``plans`` rather than beside its sibling append-only tables
+-- because this file is replayed as a migration to check for drift, and
+-- Postgres resolves a REFERENCES target at CREATE TABLE time. SQLite
+-- resolves it lazily, which is why only the Postgres arm cares.
+CREATE TABLE initiative_evaluation_report (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    -- Cascade rather than an age sweeper: per-plan row count is bounded by
+    -- the stage's attempt cap, and purging an attempt of a live plan would
+    -- destroy the evidence its replan points at. A deleted plan's verdicts
+    -- are unreadable by anything, so those go with it.
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL CHECK (attempt >= 1),
+    verdict_summary TEXT NOT NULL
+    CHECK (CHAR_LENGTH(TRIM(verdict_summary)) > 0),
+    verdicts JSONB NOT NULL,
+    -- Parity note: BOOLEAN enforces true/false natively, so no CHECK is
+    -- needed here. SQLite has no boolean type, so its sibling column needs
+    -- an explicit ``objective_met IN (0, 1)`` to get the same domain.
+    objective_met BOOLEAN NOT NULL,
+    evaluated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT uq_evaluation_report_attempt UNIQUE (plan_id, attempt)
+);
+
+CREATE INDEX idx_evaluation_report_plan
+ON initiative_evaluation_report (plan_id, evaluated_at DESC);
+CREATE INDEX idx_evaluation_report_project
+ON initiative_evaluation_report (project_id, evaluated_at DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),

@@ -74,12 +74,13 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import ProviderTimeoutError
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.kill_switch import (
     require_configured_model,
     resolve_model_with_fallback,
 )
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -108,13 +109,13 @@ class ChiefOfStaffChat:
     def __init__(
         self,
         *,
-        provider: CompletionProvider,
+        connections: ConnectionSelector,
         config: ChiefOfStaffConfig,
         outcome_store: OutcomeStore | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
-        self._provider = provider
+        self._connections = connections
         self._config = config
         self._outcome_store = outcome_store
         self._cost_tracker = cost_tracker
@@ -356,7 +357,7 @@ class ChiefOfStaffChat:
         self,
         messages: list[ChatMessage],
         config: CompletionConfig,
-        model: str,
+        model: ModelRef,
     ) -> AsyncGenerator[str]:
         """Yield non-empty content deltas from the provider stream.
 
@@ -378,7 +379,9 @@ class ChiefOfStaffChat:
         timeout = self._config.agent_call_timeout_seconds
         try:
             stream = await asyncio.wait_for(
-                self._provider.stream(messages, model, config=config),
+                self._connections(model.provider).stream(
+                    messages, model.model_id, config=config
+                ),
                 timeout=timeout,
             )
             try:
@@ -397,7 +400,7 @@ class ChiefOfStaffChat:
                 # Runs on normal end, a stall timeout, or the GeneratorExit
                 # thrown in on client disconnect: closes the provider stream
                 # so its rate-limit slot / connection is released promptly.
-                await aclose_quietly(stream, model=model)
+                await aclose_quietly(stream, model=model.model_id)
         except TimeoutError as exc:
             # asyncio.wait_for raises the builtin TimeoutError, not a
             # DomainError: type it so the client sees a retryable 504 rather
@@ -414,7 +417,7 @@ class ChiefOfStaffChat:
         self,
         system: str,
         user: str,
-    ) -> tuple[list[ChatMessage], CompletionConfig, str]:
+    ) -> tuple[list[ChatMessage], CompletionConfig, ModelRef]:
         """Assemble the messages, completion config, and resolved model.
 
         Shared by the buffered (:meth:`_call_llm`) and streaming
@@ -481,9 +484,9 @@ class ChiefOfStaffChat:
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await asyncio.wait_for(
-                    self._provider.complete(
+                    self._connections(model.provider).complete(
                         messages,
-                        model,
+                        model.model_id,
                         config=config,
                     ),
                     timeout=self._config.agent_call_timeout_seconds,

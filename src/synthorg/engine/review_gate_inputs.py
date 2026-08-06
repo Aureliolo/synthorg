@@ -1,12 +1,29 @@
 # module-kind: code
-"""Builds the red-team gate's review input from a completed task.
+"""Builds the review gates' input from a completed task.
 
-The review gate fires the adversarial red-team gate on the production
-completion path (human approve -> COMPLETED). The gate needs a
-``RedTeamReviewInput`` carrying the deliverable text and the execution
-that produced it; this module sources that from the authoritative
-flight-recorder frame store (the agent's recorded output) plus the
-task's own acceptance criteria and assignee.
+The review gate fires the completion oracle's peer reviewer and the
+adversarial red-team gate on the production completion path (human
+approve -> COMPLETED). Both need a ``RedTeamReviewInput`` carrying the
+deliverable and the execution that produced it.
+
+The deliverable is what the task promised: the content of the files at
+its declared artifact paths. The agent's closing message travels
+*alongside* it as its own field, never instead of it, because a reviewer
+given only the closing message approves a convincing summary rather than
+working code.
+
+Both halves are agent-authored, and every consumer fences the composed
+value at its own prompt boundary: the completion-oracle and red-team
+prompts wrap it as an untrusted artifact, and the grounding checker
+truncates then wraps it as task data. This builder therefore does not
+fence again. A second fence here would nest an inner tag inside the one
+the prompts tell the model about, and the grounding path's
+truncate-then-wrap would be free to cut the inner closing tag off.
+
+A task that declared no artifacts, or whose workspace cannot be read,
+still yields a document: the artifacts section says which of the two it
+was, so a reviewer can tell "nothing was promised" from "could not
+verify" instead of silently receiving prose alone.
 
 Kept out of ``review_gate.py`` so the gate module imports neither the
 persistence protocol nor the red-team models package at module scope
@@ -16,13 +33,16 @@ reviewable deliverable exists; the gate maps that to its
 configured security gate never depends on the flight recorder being on.
 """
 
+import json
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
+from synthorg.engine.artifacts.deliverable_content import DeliverableReader
 from synthorg.observability import get_logger
-from synthorg.observability.events.red_team import RED_TEAM_NO_DELIVERABLE
+from synthorg.observability.events.deliverable import DELIVERABLE_NOT_REVIEWABLE
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
     FlightRecorderFrameRepository,
@@ -33,21 +53,30 @@ logger = get_logger(__name__)
 #: Async callable returning the effective company autonomy level.
 AutonomyProvider = Callable[[], Awaitable[AutonomyLevel]]
 
+#: Outcome of consulting the workspace, when there was nothing to consult.
+#: Reported rather than omitted, so the reviewer reads the reason instead of
+#: an absent key it would have to interpret.
+_ARTIFACTS_NONE_DECLARED: Final[str] = "none_declared"
+_ARTIFACTS_UNAVAILABLE: Final[str] = "not_verified"
+
 
 class DeliverableReviewInputBuilder:
     """Assemble a ``RedTeamReviewInput`` for a completed task.
 
-    The deliverable text and its ``execution_id`` come from the latest
-    flight-recorder frame for the task (the terminal turn's recorded
-    response). ``build`` returns ``None`` when no reviewable deliverable
-    exists (no assignee, no acceptance criteria, no recorded frame, or
-    an empty response).
+    The deliverable is the content of the task's declared artifacts, with
+    the terminal flight-recorder frame's closing message alongside it. The
+    ``execution_id`` comes from that frame. ``build`` returns ``None``
+    when no reviewable deliverable exists (no assignee, no acceptance
+    criteria, no recorded frame, or nothing readable to review).
 
     Args:
         frame_repository: Authoritative flight-recorder frame store.
         autonomy_provider: Async callable returning the effective
             company autonomy level (drives the gate's severity-tiered
             routing).
+        deliverable_reader: Reads the declared artifacts from the
+            project's workspace. ``None`` leaves the reviewer with only
+            the recorded closing message.
     """
 
     def __init__(
@@ -55,9 +84,11 @@ class DeliverableReviewInputBuilder:
         *,
         frame_repository: FlightRecorderFrameRepository,
         autonomy_provider: AutonomyProvider,
+        deliverable_reader: DeliverableReader | None = None,
     ) -> None:
         self._frames = frame_repository
         self._autonomy_provider = autonomy_provider
+        self._deliverable_reader = deliverable_reader
 
     async def build(self, task: Task) -> RedTeamReviewInput | None:
         """Build the gate input for ``task``, or ``None`` when not reviewable.
@@ -80,17 +111,63 @@ class DeliverableReviewInputBuilder:
         if deliverable is None:
             self._log_missing("no_recorded_deliverable", str(task.id))
             return None
-        execution_id, content = deliverable
+        execution_id, summary = deliverable
         autonomy = await self._autonomy_provider()
         return RedTeamReviewInput(
             task_id=str(task.id),
             execution_id=execution_id,
-            deliverable_content=content,
+            deliverable_content=await self._compose(task, summary=summary),
+            agent_summary=summary,
             acceptance_criteria=criteria,
             assigned_agent_id=task.assigned_to,
             autonomy=autonomy,
             project_id=task.project,
         )
+
+    async def _compose(self, task: Task, *, summary: str) -> str:
+        """Render the produced artifacts plus the agent's closing message.
+
+        The two halves occupy separate keys of one JSON document rather
+        than being concatenated under text headings. A heading is
+        forgeable: a produced file whose body spells the heading, or a
+        second artifact delimiter, would present itself to the reviewer
+        as further delivered work. A key cannot be forged from inside a
+        value.
+
+        Returns:
+            The reviewable deliverable, as a JSON document.
+        """
+        return json.dumps(
+            {
+                "agent_closing_message": summary,
+                "produced_artifacts": await self._read_artifacts(task),
+            }
+        )
+
+    async def _read_artifacts(self, task: Task) -> object:
+        """Read the task's declared artifacts from its project workspace.
+
+        Always returns something. Omitting the key on failure would make
+        "this task declared no deliverable" and "this task declared one and
+        nobody could look" the same absence, and a reviewer that cannot
+        tell those apart approves the second on the strength of the agent's
+        own closing prose, which is the reading this module exists to stop.
+
+        Returns:
+            The reader's section when the workspace could be consulted, or a
+            mapping naming why it could not.
+        """
+        if not task.artifacts_expected:
+            return {"status": _ARTIFACTS_NONE_DECLARED}
+        if self._deliverable_reader is None:
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "no_reader_wired"}
+        project_id = str(task.project)
+        if not project_id.strip():
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "no_project_workspace"}
+        section = await self._deliverable_reader(project_id, task.artifacts_expected)
+        if section is None:
+            return {"status": _ARTIFACTS_UNAVAILABLE, "reason": "reader_returned_none"}
+        return section
 
     async def _latest_deliverable(self, task_id: str) -> tuple[str, str] | None:
         """Return ``(execution_id, content)`` for the task's latest frame.
@@ -127,7 +204,7 @@ class DeliverableReviewInputBuilder:
     def _log_missing(reason: str, task_id: str) -> None:
         """Log why no review input could be built for ``task_id``."""
         logger.info(
-            RED_TEAM_NO_DELIVERABLE,
+            DELIVERABLE_NOT_REVIEWABLE,
             task_id=task_id,
             reason=reason,
         )

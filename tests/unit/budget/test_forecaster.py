@@ -42,6 +42,8 @@ def _config(
 def _signal(
     *,
     brief_text: str = "Build the marketing site",
+    project: str = "proj-marketing",
+    requested_by: str = "operator-1",
     role_skeleton: tuple[str, ...] = ("Engineer", "Designer"),
     assignments: dict[str, str] | None = None,
     currency: str = "USD",
@@ -49,6 +51,8 @@ def _signal(
 ) -> BriefSignal:
     return BriefSignal(
         brief_text=brief_text,
+        project=project,
+        requested_by=requested_by,
         role_skeleton=role_skeleton,
         model_assignments=assignments if assignments is not None else {},
         currency=currency,
@@ -269,6 +273,31 @@ class TestCostForecaster:
         assert compute_brief_hash(_signal(currency="USD")) != compute_brief_hash(
             _signal(currency="GBP")
         )
+
+    async def test_brief_hash_differs_when_project_differs(self) -> None:
+        # A pending forecast carries the work item it gated, so two projects
+        # sharing one digest would let an approval run the other's work.
+        assert compute_brief_hash(_signal(project="proj-a")) != compute_brief_hash(
+            _signal(project="proj-b")
+        )
+
+    async def test_brief_hash_differs_when_requester_differs(self) -> None:
+        assert compute_brief_hash(
+            _signal(requested_by="operator-1")
+        ) != compute_brief_hash(_signal(requested_by="operator-2"))
+
+    async def test_brief_hash_case_insensitive_project(self) -> None:
+        assert compute_brief_hash(_signal(project="Proj-A")) == compute_brief_hash(
+            _signal(project=" proj-a ")
+        )
+
+    async def test_brief_hash_case_insensitive_requester(self) -> None:
+        # The requester is normalised on the same rule as the project. Both
+        # separate callers in the digest, so both need the rule pinned: one
+        # operator typed two ways is one requester, not two.
+        assert compute_brief_hash(
+            _signal(requested_by="Operator-1")
+        ) == compute_brief_hash(_signal(requested_by=" operator-1 "))
 
     async def test_brief_hash_in_forecast_row(self) -> None:
         forecaster = CostForecaster(

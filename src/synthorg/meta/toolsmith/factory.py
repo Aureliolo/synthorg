@@ -28,6 +28,7 @@ from synthorg.meta.toolsmith.validation_gate import (
     SandboxResolver,
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.providers.protocol import ConnectionSelector
 from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
@@ -42,7 +43,6 @@ if TYPE_CHECKING:
         ToolCreationOverflowHandler,
     )
     from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
-    from synthorg.providers.base import BaseCompletionProvider
 
     SnapshotProvider = Callable[[], Awaitable[OrgSignalSnapshot]]
 
@@ -66,7 +66,7 @@ class ToolsmithRuntime:
 def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborators
     *,
     si_config: SelfImprovementConfig,
-    provider: BaseCompletionProvider,
+    connections: ConnectionSelector,
     repo: DynamicToolRepository,
     sandbox_resolver: SandboxResolver,
     scorecard_provider: GoldenScorecardProvider | None = None,
@@ -84,7 +84,8 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     Args:
         si_config: Self-improvement config (carries the embedded
             ``toolsmith`` config and drives the shared guard chain).
-        provider: Completion provider for blueprint authoring.
+        connections: Resolves the connection a configured model names, for
+            both blueprint authoring and the code-modification overflow arm.
         repo: Durable blueprint store.
         sandbox_resolver: Resolves the sandbox backend per blueprint (so a
             Docker-declared tool runs under Docker, a subprocess one under
@@ -127,9 +128,10 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
 
     generator = LLMToolBlueprintGenerator(
         config=tsc,
-        provider=provider,
+        connections=connections,
         cost_tracker=cost_tracker,
         clock=resolved_clock,
+        config_resolver=config_resolver,
     )
     gate = BenchmarkToolValidationGate(
         config=tsc,
@@ -147,7 +149,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     )
     resolved_overflow = overflow_handler or _build_overflow_handler(
         si_config=si_config,
-        provider=provider,
+        connections=connections,
         cost_tracker=cost_tracker,
         snapshot_provider=snapshot_provider,
         config_resolver=config_resolver,
@@ -188,7 +190,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
 def _build_overflow_handler(
     *,
     si_config: SelfImprovementConfig,
-    provider: BaseCompletionProvider,
+    connections: ConnectionSelector,
     cost_tracker: CostTrackerProtocol | None,
     snapshot_provider: SnapshotProvider | None,
     config_resolver: ConfigResolver | None = None,
@@ -217,7 +219,7 @@ def _build_overflow_handler(
     )
     strategy = CodeModificationStrategy(
         config=si_config,
-        provider=provider,
+        connections=connections,
         scope_validator=scope_validator,
         cost_tracker=cost_tracker,
         config_resolver=config_resolver,

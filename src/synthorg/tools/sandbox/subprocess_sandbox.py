@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.paths import PROJECTS_SUBDIR
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_CLEANUP,
@@ -41,7 +42,6 @@ logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = SubprocessSandboxConfig()
 _DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
-_PROJECTS_SUBDIR: Final[str] = "projects"
 """Fallback kill-grace used when no operator override is supplied.
 
 Mirrors the ``tools.subprocess_kill_grace_timeout_seconds`` setting.
@@ -168,7 +168,7 @@ class SubprocessSandbox(_EnvFilterMixin):
             msg = f"refusing path-separator-bearing project_id {pid!r}"
             logger.warning(SANDBOX_WORKSPACE_VIOLATION, cwd=pid)
             raise SandboxError(msg)
-        root = self._workspace / _PROJECTS_SUBDIR / pid
+        root = self._workspace / PROJECTS_SUBDIR / pid
         try:
             exists = root.is_dir()
         except (OSError, ValueError) as exc:

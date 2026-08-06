@@ -18,6 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import ProposeArgs
 from synthorg.meta.chief_of_staff.routing import LlmConcernRouter
+from tests._shared.model_binding import bound_ref
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import (
     build_proposer,
@@ -75,7 +76,9 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
         config=ChiefOfStaffConfig(
             propose_enabled=True,
             routing_enabled=True,
-            propose_model=NotBlankStr("test-model-001"),
+            # Bound to a connection, not a bare model id: a model without a
+            # provider names no dispatch target, so the feature stays unwired.
+            propose_model=bound_ref("test-model-001"),
         ),
         role_router=router,
     )

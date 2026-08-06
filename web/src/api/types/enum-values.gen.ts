@@ -340,6 +340,13 @@ export const CREATIVITY_LEVEL_VALUES = [
 ] as const
 export type CreativityLevel = (typeof CREATIVITY_LEVEL_VALUES)[number]
 
+export const CRITERION_OUTCOME_VALUES = [
+    'met',
+    'partial',
+    'unmet',
+] as const
+export type CriterionOutcome = (typeof CRITERION_OUTCOME_VALUES)[number]
+
 export const DECISION_MAKING_STYLE_VALUES = [
     'analytical',
     'intuitive',

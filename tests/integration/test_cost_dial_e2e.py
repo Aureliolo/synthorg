@@ -27,6 +27,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
@@ -45,6 +46,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
@@ -127,6 +129,26 @@ class _InMemoryForecastRepo:
         )
         return True
 
+    async def claim_if_unclaimed(
+        self,
+        entity_id: UUID,
+        *,
+        gated_work_item: Mapping[str, JsonValue],
+        brief_hash: NotBlankStr,
+        updated_at: datetime,
+    ) -> bool:
+        row = self.rows.get(entity_id)
+        if row is None or row.gated_work_item is not None:
+            return False
+        self.rows[entity_id] = row.model_copy(
+            update={
+                "gated_work_item": dict(gated_work_item),
+                "brief_hash": brief_hash,
+                "updated_at": updated_at,
+            }
+        )
+        return True
+
     async def query(
         self, filter_spec: object, *, limit: int = 100, offset: int = 0
     ) -> tuple[Forecast, ...]:
@@ -180,6 +202,10 @@ def _task(
 
 
 def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
+    # One submission, dispatched twice: the correlation id is pinned because
+    # it scopes the brief digest, and re-dispatch after approval carries the
+    # very work item the forecast gated rather than a fresh submission of the
+    # same text.
     return WorkItem(
         origin_adapter_id="intake-entry-adapter",
         source=WorkSource.INTAKE,
@@ -187,6 +213,7 @@ def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
         raw_intent="Build a landing experience that converts.",
         project="marketing",
         requested_by="operator-1",
+        correlation_id=NotBlankStr("submission-cost-dial"),
         forecast_id=forecast_id,
     )
 
