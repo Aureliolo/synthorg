@@ -53,10 +53,11 @@ class CostForecastRepository(
     """CRUD + state-transition + filtered query for cost forecasts.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). The one bespoke method, :meth:`raise_ceiling_if_halted`,
-    is sanctioned under ADR-0001 D7 (a domain invariant callers must not
-    bypass): resuming a halted run is a read-modify-write that must clear
-    the halt exactly once, which the generic ``save`` cannot express.
+    (ADR-0001). Two bespoke methods, :meth:`claim_if_unclaimed` and
+    :meth:`raise_ceiling_if_halted`, are sanctioned under ADR-0001 D7
+    (domain invariants callers must not bypass): claiming a standalone
+    estimate and resuming a halted run are each a read-modify-write that
+    must happen exactly once, which the generic ``save`` cannot express.
 
     Implementations enforce the same-currency invariant on
     :meth:`save`: the incoming :attr:`Forecast.currency` MUST equal
