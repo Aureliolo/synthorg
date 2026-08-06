@@ -7,6 +7,37 @@ description: Construction-phase vs on-startup wiring order, the gated best-effor
 
 The API boots in two phases. **Construction** (the `create_app` body) wires synchronous services. **On-startup** (`_build_lifecycle.on_startup`) wires services that need a connected persistence backend. The ordering invariants below are load-bearing: getting them wrong races a dependency and 503s a controller forever, or poisons startup on a transient boot.
 
+## Binary preflight
+
+`run_binary_preflight` (`api/lifecycle_helpers/binary_preflight.py`) runs first
+in the construction phase, before anything is wired. The product shells out to a
+handful of binaries, and an image missing one boots cleanly and fails at the
+moment the feature is used, which for `git` is every single dispatch: workspace
+provisioning is on the critical path of every task and
+`coordination.enable_workspace_isolation` defaults on. The whole test suite is
+blind to it, because tests run where `git` is on PATH.
+
+The manifest is declarative, one record per binary, and the check is tiered so
+the verdict cannot contradict the consumer:
+
+- **REQUIRED** means the product cannot do its job without it. A missing one
+  raises `RequiredBinaryMissingError` and aborts the boot, naming the binary,
+  the apko package that provides it, and the subsystems it breaks. Refusing to
+  start is the honest outcome: the alternative is a backend that accepts work it
+  can never dispatch. `git` is required always; `pg_dump` / `pg_restore` only
+  when the configured backend is Postgres, which is why the preflight is handed
+  the resolved backend name (empty when persistence has not resolved one, so
+  only the backend-independent binaries are demanded).
+- **OPTIONAL** means the consumer already guards the lookup and degrades
+  (`cloudflared`, the `devtunnel` binary). A missing one logs a warning once and
+  is returned to the caller, which records it as the reason its subsystems read
+  `blocked`, so the status surface names the missing binary instead of an
+  unexplained decline.
+
+Nothing else is listed: there is no `create_subprocess_shell` under
+`src/synthorg/`, and the devcontainer image build goes through `aiodocker`
+rather than the `docker` CLI, so no `docker` entry can appear.
+
 ## Construction-phase ordering invariants
 
 - `agent_registry` must be built BEFORE `auto_wire_meetings`.

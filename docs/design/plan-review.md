@@ -89,6 +89,7 @@ stateDiagram-v2
     APPROVED --> EXECUTING: dispatched
     APPROVED --> SUPERSEDED: superseded by a re-plan
     EXECUTING --> INTEGRATING: every item done
+    EXECUTING --> FAILED: dispatch failed
     EXECUTING --> SUPERSEDED: superseded by a re-plan
     INTEGRATING --> EVALUATING: assembly job passed its review gate
     INTEGRATING --> EXECUTING: an item regressed
@@ -113,7 +114,16 @@ than leaving a silent orphan task. A plan the planner built **over the request's
 the limit, so the operator can raise the ceiling or narrow the objective instead
 of silently receiving a thinner plan. A plan can also reach `FAILED` *after*
 decomposition succeeded, if parking the approval fails: it is then FAILED with its
-items intact, so `FAILED` permits (but does not require) an empty item list. The
+items intact, so `FAILED` permits (but does not require) an empty item list.
+
+`FAILED` therefore means "could not be delivered", not the narrower "never
+reached a review decision": decomposition, the approval park, and dispatch all
+land here. `EXECUTING -> FAILED` exists because an approved plan is moved to
+`EXECUTING` *before* `coordinate(...)` runs (load-bearing ordering, so the
+rollup never sees a `PLANNING` project with tasks running), and a raise there
+used to mark only the parent task failed and leave the plan `EXECUTING`
+forever, with no children and no way out. It now syncs to `FAILED` with the
+redacted cause, so an operator sees why instead of a plan that never moves. The
 `PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
 list (enforced by the model validator and the SQLite / Postgres `items` CHECK);
 every other status requires a non-empty, validated item DAG. A `failure_reason` is
