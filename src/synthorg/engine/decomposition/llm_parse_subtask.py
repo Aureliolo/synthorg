@@ -100,7 +100,9 @@ def parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
         A validated ``SubtaskDefinition``.
 
     Raises:
-        DecompositionError: If required fields are missing.
+        DecompositionError: If a required field is missing, ``dependencies``
+            or ``required_skills`` is present but not a list, or
+            ``acceptance_criteria`` resolves empty.
     """
     for field in ("id", "title", "description"):
         if field not in raw:

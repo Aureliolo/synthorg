@@ -353,15 +353,13 @@ class LlmDecompositionStrategy:
             DecompositionSubtaskLimitError: If subtask count exceeds limit.
         """
         if len(plan.subtasks) > context.max_subtasks:
-            msg = (
-                f"Plan has {len(plan.subtasks)} subtasks, "
-                f"exceeds max_subtasks of "
-                f"{context.max_subtasks}"
+            over_limit = DecompositionSubtaskLimitError(
+                produced=len(plan.subtasks), limit=context.max_subtasks
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,
-                subtask_count=len(plan.subtasks),
-                max_subtasks=context.max_subtasks,
-                error=msg,
+                subtask_count=over_limit.produced,
+                max_subtasks=over_limit.limit,
+                error=str(over_limit),
             )
-            raise DecompositionSubtaskLimitError(msg)
+            raise over_limit

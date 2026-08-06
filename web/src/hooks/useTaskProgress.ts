@@ -86,10 +86,6 @@ const HANDLERS: Partial<Record<AguiEventType, Handler>> = {
     status: 'running',
     stages: append(state.stages, toolStage(event)),
   }),
-  [AguiEventType.StepStarted]: (state, event) => ({
-    status: 'running',
-    stages: append(state.stages, toolStage(event)),
-  }),
   [AguiEventType.ApprovalInterrupt]: (state, event) => ({
     status: 'running',
     stages: append(state.stages, {
@@ -101,14 +97,6 @@ const HANDLERS: Partial<Record<AguiEventType, Handler>> = {
   [AguiEventType.ApprovalResumed]: (state) => ({
     status: 'running',
     stages: markLast(state.stages, 'done'),
-  }),
-  [AguiEventType.StepFinished]: (state) => ({
-    status: state.status,
-    stages: markLast(state.stages, 'done'),
-  }),
-  [AguiEventType.StepFailed]: (state) => ({
-    status: state.status,
-    stages: markLast(state.stages, 'failed'),
   }),
   [AguiEventType.RunFinished]: (state) => ({
     status: 'finished',

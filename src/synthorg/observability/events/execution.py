@@ -122,6 +122,10 @@ EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
 # The engine holds its selection config frozen for its lifetime, so this
 # records what a rebuild actually resolved rather than only that one happened.
 EXECUTION_LOOP_SELECTION_RESOLVED: Final[str] = "execution.loop.selection_resolved"
+# A stored setting still naming a retired loop. The dashboard shows the
+# operator the value they chose, so the substitution needs its own record or
+# the running loop silently disagrees with the configured one.
+EXECUTION_LOOP_RETIRED_NAME_COERCED: Final[str] = "execution.loop.retired_name_coerced"
 
 # Metrics events
 EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_type"

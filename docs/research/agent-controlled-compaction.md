@@ -51,7 +51,7 @@ def _do_compaction(ctx, config, estimator):
     # split -> summarize -> return compressed context
 ```
 
-Trigger checked at turn boundaries in all three loops via shared `invoke_compaction()` in
+Trigger checked at turn boundaries in both loops via shared `invoke_compaction()` in
 `src/synthorg/engine/loop_helpers.py` (lines 654-689). Errors are caught, logged as
 `CONTEXT_BUDGET_COMPACTION_FAILED`, and never propagated. `MemoryError`/`RecursionError`
 are re-raised.

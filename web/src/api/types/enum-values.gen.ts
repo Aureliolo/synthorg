@@ -1121,6 +1121,7 @@ export const TASK_STATUS_VALUES = [
 export type TaskStatus = (typeof TASK_STATUS_VALUES)[number]
 
 export const TASK_STRUCTURE_VALUES = [
+    'auto',
     'sequential',
     'parallel',
     'mixed',

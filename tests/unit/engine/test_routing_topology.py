@@ -14,6 +14,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.engine.routing.topology_selector import TopologySelector
 from tests._shared import as_uuid, sid
@@ -154,6 +155,21 @@ class TestTopologySelector:
 
         result = selector.select(task, plan)
         assert result == CoordinationTopology.DECENTRALIZED
+
+    @pytest.mark.unit
+    def test_an_unresolved_structure_is_refused(self) -> None:
+        """AUTO means nobody chose, so there is no topology to derive from it.
+
+        ``DecompositionService`` resolves the structure before a plan leaves
+        it, so reaching here with AUTO means the plan skipped the service.
+        Falling back to a default would route the work on a guess.
+        """
+        selector = TopologySelector()
+        task = _make_task()
+        plan = _make_plan(TaskStructure.AUTO)
+
+        with pytest.raises(DecompositionError, match="unresolved task_structure"):
+            selector.select(task, plan)
 
     @pytest.mark.unit
     def test_config_property(self) -> None:

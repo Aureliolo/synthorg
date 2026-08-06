@@ -1167,10 +1167,10 @@ _r.register(
 )
 
 # ── Execution-loop auto-selection ────────────────────────────────
-# Gate + rules that pick a per-task inner loop (react / plan_execute /
-# hybrid / openhands) from task complexity. Off by default: the engine
-# uses its single static react loop until an operator opts in. This is
-# the knob that makes the OpenHands loop selectable for an A/B.
+# Gate + rules that pick a per-task inner loop (react / openhands) from
+# task complexity. Off by default: the engine uses its single static react
+# loop until an operator opts in. This is the knob that makes the OpenHands
+# loop selectable for an A/B.
 
 _r.register(
     SettingDefinition(

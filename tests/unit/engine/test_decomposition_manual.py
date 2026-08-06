@@ -108,7 +108,9 @@ class TestManualDecompositionStrategy:
         strategy = ManualDecompositionStrategy(plan)
         ctx = DecompositionContext(max_subtasks=3)
 
-        with pytest.raises(DecompositionSubtaskLimitError, match="exceeding max"):
+        with pytest.raises(
+            DecompositionSubtaskLimitError, match="exceeds max_subtasks"
+        ):
             await strategy.decompose(task, ctx)
 
     @pytest.mark.unit

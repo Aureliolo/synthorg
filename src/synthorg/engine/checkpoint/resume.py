@@ -136,6 +136,13 @@ def make_loop_with_callback(
     creates a checkpoint callback and returns a new loop instance
     with it injected.  Otherwise returns the original loop unchanged.
 
+    The branches here dispatch on an already-built loop instance, never on
+    anything a checkpoint persisted: a ``Checkpoint`` stores a serialised
+    ``AgentContext``, which carries no loop identity. Resume always rebuilds
+    the loop from current configuration, so this can only ever see a loop the
+    registry can still build. That is why a loop type disappearing from the
+    registry cannot strand a stored checkpoint.
+
     Returns:
         A new loop instance with the checkpoint callback injected,
         or the original ``loop`` when either repository is ``None``

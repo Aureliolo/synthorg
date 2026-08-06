@@ -518,8 +518,8 @@
     },
     "src/synthorg/engine/loop_helpers.py": {
       "cap": 500,
-      "loc": 449,
-      "ratio": 0.898,
+      "loc": 408,
+      "ratio": 0.816,
       "tier": "code"
     },
     "src/synthorg/engine/middleware/protocol.py": {
@@ -1629,11 +1629,11 @@
     "synthorg.core.role": 22,
     "synthorg.core.task": 143,
     "synthorg.core.task_enums": 133,
-    "synthorg.core.types": 1356,
+    "synthorg.core.types": 1355,
     "synthorg.engine.agent_engine": 20,
     "synthorg.engine.context": 44,
     "synthorg.engine.decomposition.models": 40,
-    "synthorg.engine.errors": 112,
+    "synthorg.engine.errors": 113,
     "synthorg.engine.loop_protocol": 56,
     "synthorg.engine.pipeline.models": 29,
     "synthorg.engine.pipeline.protocol": 21,
@@ -1687,7 +1687,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 1978,
+    "synthorg.observability": 1979,
     "synthorg.observability.background_tasks": 31,
     "synthorg.observability.events.api": 239,
     "synthorg.observability.events.approval_gate": 29,

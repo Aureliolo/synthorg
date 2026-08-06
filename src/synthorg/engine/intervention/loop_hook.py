@@ -3,8 +3,8 @@
 ``check_steering`` is consulted at a turn boundary (mirroring the stagnation
 ``check`` in ``loop_helpers``). It projects the active steering directives for
 the running agent's project, injects each not-yet-adopted one as a USER message,
-records the adoption on the (checkpointed) context, and, for a REDIRECT, records
-a pending replan the Plan/Hybrid loops consume at the next step boundary.
+and records the adoption on the (checkpointed) context so a directive survives
+a crash without being adopted twice.
 
 This module owns the steering message wrap, so ``loop_helpers`` (which must not
 wrap, per its module note) stays pure control flow. The directive text is stored

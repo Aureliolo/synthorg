@@ -10622,11 +10622,7 @@ export type components = {
             readonly parent_task_id: string;
             /** @description Ordered subtask definitions */
             readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
-            /**
-             * @description Structure the planner declared; None means it declared nothing and the classifier heuristic decides
-             * @enum {string|null}
-             */
-            readonly task_structure: "sequential" | "parallel" | "mixed" | null;
+            readonly task_structure: components["schemas"]["TaskStructure"];
         };
         /** DecompositionResult */
         readonly DecompositionResult: {
@@ -10961,7 +10957,7 @@ export type components = {
              * @description Optional override of the classified structure
              * @enum {string|null}
              */
-            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
+            readonly task_structure?: "auto" | "sequential" | "parallel" | "mixed" | null;
         };
         /** EfficiencyAnalysis */
         readonly EfficiencyAnalysis: {
@@ -16179,7 +16175,7 @@ export type components = {
              * @description Optional override of the classified structure
              * @enum {string|null}
              */
-            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
+            readonly task_structure?: "auto" | "sequential" | "parallel" | "mixed" | null;
         };
         /** ReplaySeekView */
         readonly ReplaySeekView: {
@@ -17920,7 +17916,7 @@ export type components = {
              * @description Classification of subtask relationships (None = not classified)
              * @enum {string|null}
              */
-            readonly task_structure: "sequential" | "parallel" | "mixed" | null;
+            readonly task_structure: "auto" | "sequential" | "parallel" | "mixed" | null;
             /** @description Short task title */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
@@ -18021,10 +18017,17 @@ export type components = {
          *
          *     Used by the decomposition engine to determine coordination topology
          *     and execution ordering. See the Engine design page.
-         * @default sequential
+         *
+         *     ``AUTO`` is the unresolved state, not a fourth shape: it says a planner
+         *     declared no structure and something downstream must decide one. It is
+         *     distinct from ``SEQUENTIAL`` precisely so a deliberate sequential
+         *     declaration cannot be mistaken for silence, which is what lets the
+         *     classifier fill only a genuine gap. Nothing accepts it as an answer:
+         *     ``DecompositionResult`` and the plan mapping both refuse it.
+         * @default auto
          * @enum {string}
          */
-        readonly TaskStructure: "sequential" | "parallel" | "mixed";
+        readonly TaskStructure: "auto" | "sequential" | "parallel" | "mixed";
         /**
          * TaskType
          * @description Classification of the kind of work a task represents.

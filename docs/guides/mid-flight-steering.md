@@ -71,4 +71,4 @@ curl -s -X POST https://<host>/api/v1/cockpit/steering/<directive_id>/supersede 
 
 ## Observability
 
-Three WebSocket events are published on the cockpit channel: `steering.directive.issued`, `steering.supersession.proposed`, and `steering.tasks.superseded`. Worker-side adoption and replan progress (`steering.directive.adopted`, `steering.replan.triggered`, and related keys) are emitted as structured log events from the worker process.
+Three WebSocket events are published on the cockpit channel: `steering.directive.issued`, `steering.supersession.proposed`, and `steering.tasks.superseded`. Worker-side adoption (`steering.directive.adopted` and related keys) is emitted as a structured log event from the worker process.

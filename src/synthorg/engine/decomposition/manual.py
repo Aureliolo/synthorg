@@ -73,12 +73,11 @@ class ManualDecompositionStrategy:
             raise DecompositionDepthError(msg)
 
         if len(self._plan.subtasks) > context.max_subtasks:
-            msg = (
-                f"Plan has {len(self._plan.subtasks)} subtasks, "
-                f"exceeding max of {context.max_subtasks}"
+            over_limit = DecompositionSubtaskLimitError(
+                produced=len(self._plan.subtasks), limit=context.max_subtasks
             )
-            logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
-            raise DecompositionSubtaskLimitError(msg)
+            logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=str(over_limit))
+            raise over_limit
 
         logger.debug(
             DECOMPOSITION_COMPLETED,

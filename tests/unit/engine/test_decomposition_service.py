@@ -247,7 +247,7 @@ class TestDecompositionService:
         """
         task = _make_task(task_structure=TaskStructure.PARALLEL)
         plan = _make_plan()
-        assert plan.task_structure is None
+        assert plan.task_structure is TaskStructure.AUTO
         strategy = ManualDecompositionStrategy(plan)
         classifier = TaskStructureClassifier()
         service = DecompositionService(strategy, classifier)
@@ -295,8 +295,8 @@ class TestDecompositionService:
         """The planner's declaration is not overruled by a keyword regex.
 
         The description trips both the sequential ("first") and parallel
-        ("in parallel") banks, which previously classified MIXED and
-        overwrote whatever the planner had reasoned its way to.
+        ("in parallel") banks, so the classifier reads it as MIXED while the
+        planner, which reasoned over the whole objective, declared PARALLEL.
         """
         task = Task(
             id=as_uuid("task-svc-1"),

@@ -332,19 +332,18 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             # operator never sees. Refusing surfaces the real plan's size on
             # the durable Plan as a failure reason instead, the same as every
             # other strategy does.
-            msg = (
-                f"Plan has {len(plan.subtasks)} subtasks, "
-                f"exceeds max_subtasks of {context.max_subtasks}"
+            over_limit = DecompositionSubtaskLimitError(
+                produced=len(plan.subtasks), limit=context.max_subtasks
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,
                 task_id=str(task.id),
                 owner_id=str(owner.id),
-                subtask_count=len(plan.subtasks),
-                max_subtasks=context.max_subtasks,
-                error=msg,
+                subtask_count=over_limit.produced,
+                max_subtasks=over_limit.limit,
+                error=str(over_limit),
             )
-            raise DecompositionSubtaskLimitError(msg)
+            raise over_limit
 
         logger.info(
             DECOMPOSITION_SESSION_COMPLETED,

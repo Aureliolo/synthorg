@@ -18,6 +18,7 @@ from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
     LlmDecompositionStrategy,
 )
+from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -174,7 +175,23 @@ class TestLlmDecompositionStrategy:
 
         plan = await strategy.decompose(_make_task(), _make_context())
 
-        assert plan.task_structure is None
+        assert plan.task_structure is TaskStructure.AUTO
+
+    @pytest.mark.unit
+    def test_an_unmappable_task_structure_is_refused(self) -> None:
+        """A value outside the schema's enum is a failed declaration.
+
+        Degrading it to a default would pick a coordination shape nobody
+        chose, and treating it as silence would hide that the planner
+        answered a closed question with something that is not an answer.
+        Raising makes it correctable: the strategy re-prompts.
+        """
+        args = _valid_plan_args(task_structure="mostly-parallel-ish")
+
+        with pytest.raises(DecompositionError, match="Unknown task_structure"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
 
     @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:

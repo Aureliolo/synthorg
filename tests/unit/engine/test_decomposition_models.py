@@ -127,9 +127,9 @@ class TestDecompositionPlan:
         )
         assert plan.parent_task_id == "task-1"
         assert len(plan.subtasks) == 2
-        # None means the planner declared nothing, which is what lets the
+        # AUTO means the planner declared nothing, which is what lets the
         # service tell that case apart from an explicit SEQUENTIAL.
-        assert plan.task_structure is None
+        assert plan.task_structure is TaskStructure.AUTO
         assert plan.coordination_topology == CoordinationTopology.AUTO
 
     @pytest.mark.unit
@@ -296,7 +296,7 @@ class TestDecompositionResult:
             parent_task_id=str(sample_task_with_criteria.id),
             subtasks=(_sub(sid("sub-1")),),
         )
-        assert plan.task_structure is None
+        assert plan.task_structure is TaskStructure.AUTO
         with pytest.raises(ValueError, match="resolved plan task_structure"):
             DecompositionResult(
                 plan=plan,

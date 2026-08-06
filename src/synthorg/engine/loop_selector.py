@@ -13,14 +13,14 @@ express no opinion the evidence has not yet supported.
 """
 
 from collections.abc import Mapping
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task_enums import Complexity
-from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
@@ -37,21 +37,30 @@ from synthorg.observability.events.execution import EXECUTION_LOOP_NO_RULE_MATCH
 
 logger = get_logger(__name__)
 
-_KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "openhands"})
-"""Loop type identifiers recognized by the auto-selection system."""
 
-_BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset({"react", "openhands"})
-"""Loop types that ``build_execution_loop`` can instantiate."""
+class LoopType(StrEnum):
+    """The inner execution loops an agent can run.
 
-RETIRED_LOOP_TYPES: Final[Mapping[str, str]] = MappingProxyType(
-    {"plan_execute": "react", "hybrid": "react"},
+    A closed vocabulary rather than a validated string, so a misspelled loop
+    is a type error at the point it is written rather than a validation
+    failure when the model is eventually constructed. Settings still store
+    the plain value; :func:`resolve_loop_type` is where a stored string
+    becomes a member.
+    """
+
+    REACT = "react"
+    OPENHANDS = "openhands"
+
+
+RETIRED_LOOP_TYPES: Final[Mapping[str, LoopType]] = MappingProxyType(
+    {"plan_execute": LoopType.REACT, "hybrid": LoopType.REACT},
 )
 """Loop names that shipped and no longer exist, and what runs in their place.
 
 A settings value is validated on write and never on read, so a row written
-while these names were valid outlives them and reaches ``AutoLoopConfig``
-unchanged. ``react`` is the substitute because it is the only loop that needs
-no provisioning.
+while these names were valid outlives them and reaches this code unchanged.
+``react`` is the substitute because it is the only loop that needs no
+provisioning.
 """
 
 
@@ -60,37 +69,20 @@ class AutoLoopRule(BaseModel):
 
     Attributes:
         complexity: The task complexity this rule matches.
-        loop_type: One of the known loop types (``"react"``,
-            ``"openhands"``).
+        loop_type: The loop that complexity runs on.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     complexity: Complexity = Field(description="Task complexity level")
-    loop_type: NotBlankStr = Field(description="Loop type identifier")
-
-    @field_validator("loop_type")
-    @classmethod
-    def _validate_known_loop_type(cls, v: str) -> str:
-        """Reject loop types not in the known set.
-
-        Returns:
-            ``v`` unchanged when it appears in :data:`_KNOWN_LOOP_TYPES`.
-
-        Raises:
-            ValueError: When ``v`` is not a known loop type.
-        """
-        if v not in _KNOWN_LOOP_TYPES:
-            msg = f"Unknown loop_type {v!r}; allowed: {sorted(_KNOWN_LOOP_TYPES)}"
-            raise ValueError(msg)
-        return v
+    loop_type: LoopType = Field(description="Loop the complexity runs on")
 
 
 DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
-    AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),
-    AutoLoopRule(complexity=Complexity.MEDIUM, loop_type="react"),
-    AutoLoopRule(complexity=Complexity.COMPLEX, loop_type="react"),
-    AutoLoopRule(complexity=Complexity.EPIC, loop_type="react"),
+    AutoLoopRule(complexity=Complexity.SIMPLE, loop_type=LoopType.REACT),
+    AutoLoopRule(complexity=Complexity.MEDIUM, loop_type=LoopType.REACT),
+    AutoLoopRule(complexity=Complexity.COMPLEX, loop_type=LoopType.REACT),
+    AutoLoopRule(complexity=Complexity.EPIC, loop_type=LoopType.REACT),
 )
 
 # Import-time completeness guard: ensures every Complexity member has a
@@ -103,28 +95,41 @@ if _covered != _all_complexities:
     raise RuntimeError(msg)
 
 
-def resolve_loop_type(loop_type: str) -> str:
-    """Map a retired loop name onto the loop that runs in its place.
+def resolve_loop_type(loop_type: str) -> LoopType:
+    """Resolve a configured loop name, mapping a retired one onto its substitute.
 
     Args:
         loop_type: A loop-type identifier read from configuration.
 
     Returns:
-        The substitute for a retired name; ``loop_type`` unchanged
-        otherwise, so an unrecognised name still fails validation loudly.
+        The member the name denotes, or the substitute for a retired name.
+
+    Raises:
+        ValueError: When the name is neither current nor retired. Configuration
+            that asks for a loop nobody ships is a mistake worth surfacing at
+            the read, not a reason to run something else.
     """
-    return RETIRED_LOOP_TYPES.get(loop_type, loop_type)
+    retired = RETIRED_LOOP_TYPES.get(loop_type)
+    if retired is not None:
+        return retired
+    try:
+        return LoopType(loop_type)
+    except ValueError as exc:
+        msg = (
+            f"Unknown loop type {loop_type!r}; allowed: "
+            f"{sorted(t.value for t in LoopType)}"
+        )
+        raise ValueError(msg) from exc
 
 
 class AutoLoopConfig(BaseModel):
     """Configuration for automatic execution loop selection.
 
     Attributes:
-        rules: Ordered rules mapping complexity to loop type.
-            Each complexity must appear at most once.  All
-            ``loop_type`` values must be in ``_KNOWN_LOOP_TYPES``.
+        rules: Ordered rules mapping complexity to loop type. Each
+            complexity must appear at most once.
         default_loop_type: Fallback loop type when no rule matches a
-            task's complexity.  Must be a known loop type.
+            task's complexity.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -133,39 +138,28 @@ class AutoLoopConfig(BaseModel):
         default=DEFAULT_AUTO_LOOP_RULES,
         description="Complexity-to-loop mapping rules",
     )
-    default_loop_type: NotBlankStr = Field(
-        default="react",
+    default_loop_type: LoopType = Field(
+        default=LoopType.REACT,
         description="Fallback loop when no rule matches a task complexity",
     )
 
     @model_validator(mode="after")
-    def _validate_rules_and_default(self) -> Self:
-        """Validate unique complexities, known types, and buildability.
+    def _validate_rules(self) -> Self:
+        """Validate that each complexity is routed at most once.
 
         Returns:
-            ``self`` unchanged when every rule and the default resolve
-            to a known, buildable loop type.
+            ``self`` unchanged when no complexity is named twice.
 
         Raises:
-            ValueError: When complexities duplicate, an unknown loop
-                type is named, or the default is not buildable.
+            ValueError: When two rules claim the same complexity, which would
+                make the effective route depend on rule order.
         """
         seen: set[Complexity] = set()
         for rule in self.rules:
             if rule.complexity in seen:
                 msg = f"Duplicate complexity in rules: {rule.complexity.value!r}"
                 raise ValueError(msg)
-            if rule.loop_type not in _KNOWN_LOOP_TYPES:
-                msg = f"Unknown loop type in rules: {rule.loop_type!r}"
-                raise ValueError(msg)
             seen.add(rule.complexity)
-        if self.default_loop_type not in _KNOWN_LOOP_TYPES:
-            msg = f"Unknown default_loop_type: {self.default_loop_type!r}"
-            raise ValueError(msg)
-        # default_loop_type must be buildable.
-        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES:
-            msg = f"default_loop_type {self.default_loop_type!r} is not buildable"
-            raise ValueError(msg)
         return self
 
 
@@ -173,8 +167,8 @@ def select_loop_type(
     *,
     complexity: Complexity,
     rules: tuple[AutoLoopRule, ...],
-    default_loop_type: str = "react",
-) -> str:
+    default_loop_type: LoopType = LoopType.REACT,
+) -> LoopType:
     """Select the execution loop type for a task.
 
     Args:
@@ -194,7 +188,7 @@ def select_loop_type(
         logger.warning(
             EXECUTION_LOOP_NO_RULE_MATCH,
             complexity=complexity.value,
-            fallback=default_loop_type,
+            fallback=default_loop_type.value,
             num_rules=len(rules),
         )
         return default_loop_type
@@ -260,11 +254,25 @@ def _build_openhands_loop(
 
 _LOOP_REGISTRY: StrategyRegistry[ExecutionLoop] = StrategyRegistry(
     {
-        "react": _build_react_loop,
-        "openhands": _build_openhands_loop,
+        LoopType.REACT: _build_react_loop,
+        LoopType.OPENHANDS: _build_openhands_loop,
     },
     kind="execution_loop",
 )
+
+# Import-time completeness guard: a member with no builder would type-check
+# everywhere and fail only when a task of that complexity actually ran.
+_unbuildable = {t for t in LoopType if t.value not in _LOOP_REGISTRY.names()}
+if _unbuildable:
+    msg = f"LoopType members with no registered builder: {_unbuildable}"
+    raise RuntimeError(msg)
+
+# Import-time completeness guard: a retired name pointing at another retired
+# name would resolve in one hop to something that no longer exists.
+_dead_substitutes = {k: v for k, v in RETIRED_LOOP_TYPES.items() if v not in LoopType}
+if _dead_substitutes:
+    msg = f"RETIRED_LOOP_TYPES substitutes that are not current: {_dead_substitutes}"
+    raise RuntimeError(msg)
 
 
 def registered_loop_types() -> tuple[str, ...]:

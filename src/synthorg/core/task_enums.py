@@ -144,8 +144,16 @@ class TaskStructure(StrEnum):
 
     Used by the decomposition engine to determine coordination topology
     and execution ordering. See the Engine design page.
+
+    ``AUTO`` is the unresolved state, not a fourth shape: it says a planner
+    declared no structure and something downstream must decide one. It is
+    distinct from ``SEQUENTIAL`` precisely so a deliberate sequential
+    declaration cannot be mistaken for silence, which is what lets the
+    classifier fill only a genuine gap. Nothing accepts it as an answer:
+    ``DecompositionResult`` and the plan mapping both refuse it.
     """
 
+    AUTO = "auto"
     SEQUENTIAL = "sequential"
     PARALLEL = "parallel"
     MIXED = "mixed"

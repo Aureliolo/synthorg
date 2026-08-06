@@ -17,7 +17,7 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
@@ -27,6 +27,12 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.errors import DecompositionError
+from synthorg.observability import get_logger
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_VALIDATION_ERROR,
+)
+
+logger = get_logger(__name__)
 
 
 class PlanProvenance(BaseModel):
@@ -138,8 +144,13 @@ def plan_from_decomposition(
     """
     items = items_from_decomposition(result)
     structure = result.plan.task_structure
-    if structure is None:
+    if structure is TaskStructure.AUTO:
         msg = "Decomposition reached plan mapping with an unresolved task_structure"
+        logger.warning(
+            DECOMPOSITION_VALIDATION_ERROR,
+            parent_task_id=provenance.parent_task_id,
+            error=msg,
+        )
         raise DecompositionError(msg)
     return Plan(
         project=provenance.project,

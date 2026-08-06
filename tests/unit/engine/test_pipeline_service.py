@@ -404,7 +404,7 @@ class TestPlanReviewGate:
         # max_subtasks or narrow the objective.
         coordinator = mock_of[MultiAgentCoordinator]()
         coordinator.plan_preview.side_effect = DecompositionSubtaskLimitError(
-            "Plan has 14 subtasks, exceeds max_subtasks of 10"
+            produced=14, limit=10
         )
         pipeline, _ = _pipeline(
             intake_result=IntakeResult.accepted_result(

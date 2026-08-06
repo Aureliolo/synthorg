@@ -174,7 +174,12 @@ def build_decomposition_tool() -> ToolDefinition:
             },
             "task_structure": {
                 "type": "string",
-                "enum": [s.value for s in TaskStructure],
+                # AUTO is the absence of a declaration, so offering it as a
+                # choice would invite the planner to punt on a field it is
+                # better placed to answer than the keyword classifier that
+                # otherwise fills the gap. Omitting the field says the same
+                # thing without dressing it as an answer.
+                "enum": [s.value for s in TaskStructure if s is not TaskStructure.AUTO],
                 "description": (
                     "Overall structure: 'parallel'/'mixed' when independent "
                     "workstreams can run at once, 'sequential' only when every "

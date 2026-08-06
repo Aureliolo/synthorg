@@ -131,7 +131,9 @@ class TestPlanFromDecomposition:
         decomposition = _decomposition()
         unresolved = decomposition.model_copy(
             update={
-                "plan": decomposition.plan.model_copy(update={"task_structure": None}),
+                "plan": decomposition.plan.model_copy(
+                    update={"task_structure": TaskStructure.AUTO},
+                ),
             },
         )
         with pytest.raises(DecompositionError, match="unresolved task_structure"):

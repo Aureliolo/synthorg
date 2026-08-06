@@ -136,8 +136,8 @@ class DecompositionPlan(BaseModel):
     Attributes:
         parent_task_id: ID of the task being decomposed.
         subtasks: Ordered subtask definitions.
-        task_structure: Structure the planner declared, or ``None`` when it
-            declared none. ``DecompositionService`` resolves ``None`` through
+        task_structure: Structure the planner declared, or ``AUTO`` when it
+            declared none. ``DecompositionService`` resolves ``AUTO`` through
             the classifier before the plan leaves the service, so every plan
             reaching a :class:`DecompositionResult` names its structure.
         coordination_topology: Selected coordination topology.
@@ -151,10 +151,10 @@ class DecompositionPlan(BaseModel):
     subtasks: tuple[SubtaskDefinition, ...] = Field(
         description="Ordered subtask definitions",
     )
-    task_structure: TaskStructure | None = Field(
-        default=None,
+    task_structure: TaskStructure = Field(
+        default=TaskStructure.AUTO,
         description=(
-            "Structure the planner declared; None means it declared nothing and"
+            "Structure the planner declared; AUTO means it declared nothing and"
             " the classifier heuristic decides"
         ),
     )
@@ -254,9 +254,9 @@ class DecompositionResult(BaseModel):
                 edge endpoint is an unknown task id.
         """
         # A completed decomposition always names its structure: the service
-        # resolves an undeclared one through the classifier. Leaving None
+        # resolves an undeclared one through the classifier. Leaving AUTO
         # reachable here would let it sequentialise silently downstream.
-        if self.plan.task_structure is None:
+        if self.plan.task_structure is TaskStructure.AUTO:
             msg = "DecompositionResult requires a resolved plan task_structure"
             raise ValueError(msg)
 

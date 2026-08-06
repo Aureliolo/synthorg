@@ -13,7 +13,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_selector import AutoLoopConfig, AutoLoopRule
+from synthorg.engine.loop_selector import AutoLoopConfig, AutoLoopRule, LoopType
 from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
@@ -315,7 +315,10 @@ class TestAutoLoopSelection:
             provider=mock_provider_factory([]),
             auto_loop_config=AutoLoopConfig(
                 rules=(
-                    AutoLoopRule(complexity=Complexity.EPIC, loop_type="openhands"),
+                    AutoLoopRule(
+                        complexity=Complexity.EPIC,
+                        loop_type=LoopType.OPENHANDS,
+                    ),
                 ),
             ),
         )

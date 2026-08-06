@@ -51,7 +51,7 @@ sequenceDiagram
     participant Op as Operator / Chief of Staff
     participant Svc as SteeringService
     participant Brain as Project Brain
-    participant Loop as Agent loop (ReAct / Plan / Hybrid)
+    participant Loop as Agent loop (ReAct / OpenHands)
     Op->>Svc: issue(project, REDIRECT, text, supersede)
     Svc->>Brain: append_entry(PLAN_REVISION, tag=steering)
     Svc->>Svc: EXPLICIT -> TaskEngine.cancel_task(each)
@@ -60,9 +60,8 @@ sequenceDiagram
     Loop->>Brain: inbox.pending(project, already_adopted)
     Brain-->>Loop: active directives
     Loop->>Loop: inject directive (wrap_untrusted), mark adopted
-    Loop->>Loop: REDIRECT -> record pending replan
-    Note over Loop: at next step boundary (Plan / Hybrid)
-    Loop->>Loop: consume pending replan -> do_replan()
+    Note over Loop: mid-call, streaming only
+    Loop->>Loop: REDIRECT pending -> abort call, re-issue turn
 ```
 
 The propagation reuses the stagnation inject template. At each **turn

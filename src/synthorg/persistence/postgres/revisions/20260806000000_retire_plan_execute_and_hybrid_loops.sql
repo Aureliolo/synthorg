@@ -6,14 +6,17 @@
 -- that needs no provisioning, unlike openhands with its sandbox image and
 -- gateway boundaries.
 --
--- Without this, a row written while those names were valid outlives them.
--- A setting is validated on write and never on read, so the stale string
--- reaches AutoLoopConfig unchanged and raises there, inside the runtime
--- rebuild that ~30 unrelated watched keys also trigger.
+-- A setting is validated on write and never on read, so a row written while
+-- those names were valid outlives them. resolve_loop_type() keeps such a row
+-- runnable by substituting react at every read, which is what the dashboard
+-- cannot show: the operator reads back the dead name they stored and has no
+-- way to tell it is not the loop running. This corrects the stored value so
+-- the two agree.
 --
--- updated_at is deliberately left alone: it records when the operator last
--- chose a value, which is still true. This corrects a name, it is not an
--- operator edit.
+-- updated_at is deliberately left alone. Beyond recording when the operator
+-- last chose a value, which is still true, it is the optimistic-concurrency
+-- token for set_if_unchanged, so bumping it here would fail an unrelated
+-- in-flight settings write that is holding a pre-migration token.
 
 UPDATE settings
 SET value = 'react'

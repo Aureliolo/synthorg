@@ -6,7 +6,7 @@ to decompose a parent task into executable subtasks.
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
@@ -114,7 +114,7 @@ class DecompositionService:
         # objective, so its declaration stands; the keyword heuristic is
         # the fallback for a plan that declared nothing, never an override.
         structure = plan.task_structure
-        if structure is None:
+        if structure is TaskStructure.AUTO:
             structure = self._classifier.classify(task)
             plan = plan.model_copy(update={"task_structure": structure})
 

@@ -93,7 +93,19 @@ class DecompositionSubtaskLimitError(DecompositionError):
     Every strategy refuses an over-limit plan rather than substituting a
     smaller one: the request named the ceiling, and quietly returning a
     thinner plan the operator never saw is a worse answer wearing a success.
+
+    Both numbers are attributes, not only prose, so a caller can offer to
+    raise the ceiling to the number actually produced without parsing the
+    message. Composing the message here also keeps the three strategies from
+    wording the same refusal differently.
     """
+
+    def __init__(self, *, produced: int, limit: int) -> None:
+        super().__init__(
+            f"Plan has {produced} subtasks, exceeds max_subtasks of {limit}"
+        )
+        self.produced: int = produced
+        self.limit: int = limit
 
 
 class RetrospectiveError(EngineError):
