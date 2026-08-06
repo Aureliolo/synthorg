@@ -22,6 +22,8 @@ from synthorg.engine.loop_selector import (
     DEFAULT_AUTO_LOOP_RULES,
     AutoLoopConfig,
     AutoLoopRule,
+    LoopType,
+    resolve_loop_type,
 )
 from synthorg.engine.openhands.config import (
     OpenHandsLoopConfig,
@@ -30,6 +32,7 @@ from synthorg.engine.openhands.config import (
 from synthorg.engine.openhands.container_runtime import SandboxStreamer
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
+    EXECUTION_LOOP_RETIRED_NAME_COERCED,
     EXECUTION_LOOP_SELECTION_RESOLVED,
     EXECUTION_LOOP_UNAVAILABLE,
 )
@@ -383,6 +386,11 @@ async def build_auto_loop_config_or_none(
     ``engine.default_loop_type`` fallback, so an operator can route any
     complexity (or every unmatched task) to the OpenHands loop.
 
+    Both stored values pass through :func:`resolve_loop_type` first: a
+    setting is validated on write and never on read, so a row naming a
+    retired loop would otherwise reach ``AutoLoopConfig`` and take the whole
+    runtime rebuild down with it.
+
     Returns:
         The :class:`AutoLoopConfig`, or ``None`` when auto-selection is off.
     """
@@ -390,19 +398,48 @@ async def build_auto_loop_config_or_none(
     if not await resolver.get_bool("engine", "loop_auto_select_enabled"):
         logger.debug(EXECUTION_LOOP_SELECTION_RESOLVED, enabled=False)
         return None
-    default_loop_type = await resolver.get_str("engine", "default_loop_type")
+    stored_default = await resolver.get_str("engine", "default_loop_type")
     overrides = await resolver.get_str("engine", "loop_complexity_overrides")
+    default_loop_type = _resolved_loop_type(
+        stored_default or LoopType.REACT.value, key="default_loop_type"
+    )
     rules = _merge_complexity_rules(overrides)
     logger.debug(
         EXECUTION_LOOP_SELECTION_RESOLVED,
         enabled=True,
-        default_loop_type=default_loop_type or "react",
+        default_loop_type=default_loop_type.value,
         rule_count=len(rules),
     )
     return AutoLoopConfig(
         rules=rules,
-        default_loop_type=default_loop_type or "react",
+        default_loop_type=default_loop_type,
     )
+
+
+def _resolved_loop_type(raw: str, *, key: str) -> LoopType:
+    """Resolve a stored loop name, recording any retired-name substitution.
+
+    The substitution is deliberately not silent: an operator reading the
+    dashboard sees the loop they configured, so without this line they have
+    no way to learn that the loop actually running is a different one.
+
+    Args:
+        raw: The loop name as stored.
+        key: The settings key it came from, for the warning context.
+
+    Returns:
+        The resolved loop type.
+    """
+    resolved = resolve_loop_type(raw)
+    if resolved.value != raw:
+        logger.warning(
+            EXECUTION_LOOP_RETIRED_NAME_COERCED,
+            namespace="engine",
+            key=key,
+            stored=raw,
+            running=resolved.value,
+        )
+    return resolved
 
 
 def _merge_complexity_rules(overrides: str) -> tuple[AutoLoopRule, ...]:
@@ -415,12 +452,14 @@ def _merge_complexity_rules(overrides: str) -> tuple[AutoLoopRule, ...]:
     Returns:
         One rule per complexity, override winning over the default.
     """
-    by_complexity: dict[Complexity, str] = {
+    by_complexity: dict[Complexity, LoopType] = {
         rule.complexity: rule.loop_type for rule in DEFAULT_AUTO_LOOP_RULES
     }
     for pair in (p.strip() for p in overrides.split(",") if p.strip()):
         complexity_name, _, loop_type = pair.partition(":")
-        by_complexity[Complexity(complexity_name.strip())] = loop_type.strip()
+        by_complexity[Complexity(complexity_name.strip())] = _resolved_loop_type(
+            loop_type.strip(), key="loop_complexity_overrides"
+        )
     return tuple(
         AutoLoopRule(complexity=complexity, loop_type=loop_type)
         for complexity, loop_type in by_complexity.items()

@@ -108,7 +108,6 @@ if TYPE_CHECKING:
     from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.flight_recording import FlightRecorderSink
-    from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
@@ -121,7 +120,6 @@ if TYPE_CHECKING:
         OpenHandsLoopConfig,
         OpenHandsLoopDeps,
     )
-    from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.recovery import RecoveryStrategy
@@ -233,11 +231,9 @@ class AgentEngine(
         step_classifier: StepQualityClassifier | None = None,
         steering_inbox: SteeringInbox | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
-        hybrid_loop_config: HybridLoopConfig | None = None,
         openhands_loop_config: OpenHandsLoopConfig | None = None,
         openhands_loop_deps: OpenHandsLoopDeps | None = None,
         compaction_callback: CompactionCallback | None = None,
-        plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
         provider_configs: Mapping[str, ProviderConfig] | None = None,
         model_resolver: ModelResolver | None = None,
@@ -322,11 +318,9 @@ class AgentEngine(
         self._step_classifier = step_classifier
         self._steering_inbox = steering_inbox
         self._auto_loop_config = auto_loop_config
-        self._hybrid_loop_config = hybrid_loop_config
         self._openhands_loop_config = openhands_loop_config
         self._openhands_loop_deps = openhands_loop_deps
         self._compaction_callback = compaction_callback
-        self._plan_execute_config = plan_execute_config
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
             self._approval_gate is not None
@@ -442,8 +436,6 @@ class AgentEngine(
             has_budget_enforcer=self._budget_enforcer is not None,
             has_coordinator=self._coordinator is not None,
             has_compaction_callback=self._compaction_callback is not None,
-            has_plan_execute_config=self._plan_execute_config is not None,
-            has_hybrid_loop_config=self._hybrid_loop_config is not None,
             has_openhands_loop_deps=self._openhands_loop_deps is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,

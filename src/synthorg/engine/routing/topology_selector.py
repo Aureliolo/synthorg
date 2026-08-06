@@ -7,6 +7,7 @@ for coordination topologies.
 from synthorg.core.task import Task
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.engine.decomposition.models import DecompositionPlan
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (
@@ -49,8 +50,31 @@ class TopologySelector:
 
         Returns:
             The selected coordination topology.
+
+        Raises:
+            DecompositionError: If the plan's structure was never resolved,
+                which means it did not come through ``DecompositionService``.
+                Picking a topology from a structure nobody chose would route
+                the work on a guess the operator never sees.
         """
-        # Explicit override takes precedence
+        # ``DecompositionService`` resolves an undeclared structure before the
+        # plan leaves it, so AUTO here means the plan never went through it.
+        # The sibling check in ``plan_mapping.plan_from_decomposition`` refuses
+        # the same state, and routing on a guessed structure is the same defect
+        # one layer over. Checked ahead of the explicit override because the
+        # override decides which topology to route to, not whether the plan
+        # reaching this point is one the system is willing to route at all.
+        structure = plan.task_structure
+        if structure is TaskStructure.AUTO:
+            msg = "Topology selection reached an unresolved task_structure"
+            logger.warning(
+                TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
+                task_id=task.id,
+                structure=structure.value,
+                error=msg,
+            )
+            raise DecompositionError(msg)
+
         if task.coordination_topology != CoordinationTopology.AUTO:
             logger.debug(
                 TASK_ROUTING_TOPOLOGY_SELECTED,
@@ -60,28 +84,17 @@ class TopologySelector:
             )
             return task.coordination_topology
 
-        # Auto-select based on structure
-        structure = plan.task_structure
         artifact_count = len(task.artifacts_expected)
 
-        if structure == TaskStructure.SEQUENTIAL:
-            topology = self._config.sequential_override
-        elif structure == TaskStructure.PARALLEL:
+        if structure is TaskStructure.PARALLEL:
             if artifact_count > self._config.parallel_artifact_threshold:
                 topology = CoordinationTopology.DECENTRALIZED
             else:
                 topology = self._config.parallel_default
-        elif structure == TaskStructure.MIXED:
+        elif structure is TaskStructure.MIXED:
             topology = self._config.mixed_default
-        else:  # pragma: no cover -- defensive fallback
-            logger.warning(  # type: ignore[unreachable]
-                TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
-                task_id=task.id,
-                structure=structure.value,
-                fallback=self._config.mixed_default.value,
-                reason="unrecognised task structure, using mixed default",
-            )
-            topology = self._config.mixed_default
+        else:
+            topology = self._config.sequential_override
 
         logger.debug(
             TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,

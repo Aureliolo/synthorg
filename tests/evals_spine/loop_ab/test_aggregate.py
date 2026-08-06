@@ -27,8 +27,7 @@ def _metrics(
     input_tokens: int = 800,
     output_tokens: int = 200,
     repeated_tool_calls: int = 0,
-    provider_retries: int = 0,
-    replans_used: int = 0,
+    provider_retries: int | None = 0,
 ) -> RunMetrics:
     """Build one run's metrics."""
     return RunMetrics(
@@ -41,7 +40,6 @@ def _metrics(
         repeated_tool_calls=repeated_tool_calls,
         provider_retries=provider_retries,
         cache_hits=0,
-        replans_used=replans_used,
     )
 
 
@@ -89,7 +87,7 @@ def test_tokens_are_summed_per_run_then_reduced() -> None:
 def test_pass_rate_is_the_fraction_of_runs_that_landed() -> None:
     """Reliability across repetitions is half the resilience signal."""
     summary = summarise_repetitions(
-        loop_type="hybrid",
+        loop_type="openhands",
         outcomes=(
             _outcome(passed=True),
             _outcome(passed=False, correctness=0),
@@ -101,19 +99,42 @@ def test_pass_rate_is_the_fraction_of_runs_that_landed() -> None:
 
 
 def test_rework_counts_every_kind_of_redone_work() -> None:
-    """Retries, replans and repeated tool calls are all work done twice."""
+    """Retries and repeated tool calls are both work done twice."""
     summary = summarise_repetitions(
-        loop_type="hybrid",
+        loop_type="react",
         outcomes=(
-            _outcome(
-                metrics=_metrics(
-                    provider_retries=1, replans_used=2, repeated_tool_calls=3
-                )
-            ),
+            _outcome(metrics=_metrics(provider_retries=1, repeated_tool_calls=3)),
         ),
     )
 
-    assert summary.aggregate.rework_events == pytest.approx(6.0)
+    assert summary.aggregate.rework_events == pytest.approx(4.0)
+
+
+def test_unobservable_retries_survive_reduction_as_unobservable() -> None:
+    """A loop that measures no retries must not reduce to having had none."""
+    summary = summarise_repetitions(
+        loop_type="openhands",
+        outcomes=(
+            _outcome(metrics=_metrics(provider_retries=None, repeated_tool_calls=2)),
+            _outcome(metrics=_metrics(provider_retries=None, repeated_tool_calls=4)),
+        ),
+    )
+
+    assert summary.aggregate.provider_retries is None
+    assert summary.aggregate.repeated_tool_calls == pytest.approx(3.0)
+
+
+def test_a_partly_measured_retry_count_reduces_to_unobservable() -> None:
+    """One unmeasured repetition makes the loop's retry median unreportable."""
+    summary = summarise_repetitions(
+        loop_type="react",
+        outcomes=(
+            _outcome(metrics=_metrics(provider_retries=2)),
+            _outcome(metrics=_metrics(provider_retries=None)),
+        ),
+    )
+
+    assert summary.aggregate.provider_retries is None
 
 
 def test_the_correctness_spread_is_reported_not_discarded() -> None:

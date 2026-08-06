@@ -10,10 +10,8 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
-from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.openhands.loop import OpenHandsLoop
-from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.recovery import FailureCategory
 from synthorg.engine.sanitization import sanitize_message
@@ -138,6 +136,13 @@ def make_loop_with_callback(
     creates a checkpoint callback and returns a new loop instance
     with it injected.  Otherwise returns the original loop unchanged.
 
+    The branches here dispatch on an already-built loop instance, never on
+    anything a checkpoint persisted: a ``Checkpoint`` stores a serialised
+    ``AgentContext``, which carries no loop identity. Resume always rebuilds
+    the loop from current configuration, so this can only ever see a loop the
+    registry can still build. That is why a loop type disappearing from the
+    registry cannot strand a stored checkpoint.
+
     Returns:
         A new loop instance with the checkpoint callback injected,
         or the original ``loop`` when either repository is ``None``
@@ -159,24 +164,6 @@ def make_loop_with_callback(
     # None inbox and steering silently dead for the rest of the run.
     if isinstance(loop, ReactLoop):
         return ReactLoop(
-            checkpoint_callback=callback,
-            approval_gate=loop.approval_gate,
-            stagnation_detector=loop.stagnation_detector,
-            compaction_callback=loop.compaction_callback,
-            steering_inbox=loop.steering_inbox,
-        )
-    if isinstance(loop, PlanExecuteLoop):
-        return PlanExecuteLoop(
-            config=loop.config,
-            checkpoint_callback=callback,
-            approval_gate=loop.approval_gate,
-            stagnation_detector=loop.stagnation_detector,
-            compaction_callback=loop.compaction_callback,
-            steering_inbox=loop.steering_inbox,
-        )
-    if isinstance(loop, HybridLoop):
-        return HybridLoop(
-            config=loop.config,
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,

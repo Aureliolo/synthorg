@@ -1,6 +1,6 @@
 ---
 title: Mid-Flight Steering
-description: The operator (or the conversational front door) injects a steering directive (a hint or a redirect) into a project at any point during a long-running agent run; in-flight and newly-spawned agents adopt it at safe boundaries, redirects force a re-plan, and obsolete work is cleanly superseded, with no state corruption. The directive is recorded in the project brain as a plan revision with its rationale.
+description: The operator (or the conversational front door) injects a steering directive (a hint or a redirect) into a project at any point during a long-running agent run; in-flight and newly-spawned agents adopt it at safe boundaries, a redirect additionally interrupts a streaming call so the turn is re-issued with it adopted, and obsolete work is cleanly superseded, with no state corruption. The directive is recorded in the project brain as a plan revision with its rationale.
 ---
 
 # Mid-Flight Steering
@@ -8,8 +8,9 @@ description: The operator (or the conversational front door) injects a steering 
 "I steer, it continues." An operator watching a long run can change its
 direction without stopping it: "use Postgres not Mongo", "pivot off the
 frontend". The directive propagates through every in-flight and newly-spawned
-agent on the project, redirects force a re-plan of affected work, and the
-now-obsolete tasks are cleanly superseded. Nothing is corrupted because
+agent on the project; a redirect additionally aborts a streaming call so the
+turn is re-issued with the constraint already in context, and the now-obsolete
+tasks are cleanly superseded. Nothing is corrupted because
 adoption happens only at safe boundaries and cancellation only mutates durable
 state the running agent observes cooperatively.
 
@@ -25,9 +26,12 @@ A steering directive is **project-scoped** with optional task/agent narrowing.
 By default it targets a project, so every agent working that project adopts it;
 optional `narrow_task_ids` / `narrow_agent_ids` restrict it to specific runs
 (for example a single-agent hint). The two steerable kinds reuse
-`InterventionKind`: a `HINT` is advisory, a `REDIRECT` forces a re-plan. `PAUSE`
-and `KILL` are task-lifecycle interventions handled at the cockpit controller,
-not steering.
+`InterventionKind`: a `HINT` is advisory and waits for the next turn boundary,
+a `REDIRECT` is mandatory and additionally interrupts an in-flight *streaming*
+call so the turn is re-issued with it adopted. A buffered call has no interrupt
+point, so it finishes and the redirect is adopted at the boundary that follows;
+neither kind triggers a generic re-plan. `PAUSE` and `KILL` are task-lifecycle
+interventions handled at the cockpit controller, not steering.
 
 The directive is recorded as a project-brain `PLAN_REVISION` entry tagged
 `steering` (see [project-brain.md](project-brain.md)). The operator text is the
@@ -51,7 +55,7 @@ sequenceDiagram
     participant Op as Operator / Chief of Staff
     participant Svc as SteeringService
     participant Brain as Project Brain
-    participant Loop as Agent loop (ReAct / Plan / Hybrid)
+    participant Loop as Agent loop (ReAct / OpenHands)
     Op->>Svc: issue(project, REDIRECT, text, supersede)
     Svc->>Brain: append_entry(PLAN_REVISION, tag=steering)
     Svc->>Svc: EXPLICIT -> TaskEngine.cancel_task(each)
@@ -60,9 +64,8 @@ sequenceDiagram
     Loop->>Brain: inbox.pending(project, already_adopted)
     Brain-->>Loop: active directives
     Loop->>Loop: inject directive (wrap_untrusted), mark adopted
-    Loop->>Loop: REDIRECT -> record pending replan
-    Note over Loop: at next step boundary (Plan / Hybrid)
-    Loop->>Loop: consume pending replan -> do_replan()
+    Note over Loop: mid-call, streaming only
+    Loop->>Loop: REDIRECT pending -> abort call, re-issue turn
 ```
 
 The propagation reuses the stagnation inject template. At each **turn
@@ -81,13 +84,10 @@ project still adopts the same directive independently. The brain status
 (`ACTIVE` / `SUPERSEDED`) is the project-lifecycle axis, orthogonal to
 per-execution adoption.
 
-A `REDIRECT` additionally records a checkpointed
-`pending_steering_replan_id` on the context. Plan-and-Execute and Hybrid loops
-consume it at the next **step boundary** via the existing `do_replan()` and
-clear it; a crash between adoption and the step boundary preserves the
-pending-replan so the forced re-plan still fires on resume. ReAct has no plan
-and ignores the field. The tool batch always finishes first: there is no
-mid-tool cancellation.
+A `REDIRECT` differs from a `HINT` in urgency rather than in machinery: both
+are injected and adopted the same way, but a REDIRECT is worth interrupting an
+in-flight LLM call for (see below) while a HINT waits for the turn boundary.
+The tool batch always finishes first: there is no mid-tool cancellation.
 
 The in-flight **LLM call** is interruptible when the streaming work loop is
 active (`engine.work_loop_streaming_enabled` and the model advertises

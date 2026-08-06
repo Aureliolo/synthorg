@@ -136,11 +136,11 @@ def test_loop_satisfies_the_execution_loop_protocol() -> None:
 
 def test_registry_builds_openhands_with_deps() -> None:
     from synthorg.engine.loop_selector import (
-        _BUILDABLE_LOOP_TYPES,
         build_execution_loop,
+        registered_loop_types,
     )
 
-    assert "openhands" in _BUILDABLE_LOOP_TYPES
+    assert "openhands" in registered_loop_types()
     loop = build_execution_loop("openhands", openhands_loop_deps=_deps((), {}))
     assert loop.get_loop_type() == "openhands"
 

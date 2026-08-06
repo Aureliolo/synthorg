@@ -4,8 +4,8 @@
  *
  * Fills the "nothing is happening" gap between approving proposed work and the
  * completion review: while the backgrounded run executes, the operator sees it
- * start, make progress tool-call by tool-call (and step by step for the
- * plan/hybrid loops), pause for any approval, and finish or fail.
+ * start, make progress tool-call by tool-call, pause for any approval, and
+ * finish or fail.
  *
  * Pure API consumer: no domain state is persisted client-side; the progress is
  * hydrated live from the replayable SSE stream and discarded on unmount.
@@ -86,10 +86,6 @@ const HANDLERS: Partial<Record<AguiEventType, Handler>> = {
     status: 'running',
     stages: append(state.stages, toolStage(event)),
   }),
-  [AguiEventType.StepStarted]: (state, event) => ({
-    status: 'running',
-    stages: append(state.stages, toolStage(event)),
-  }),
   [AguiEventType.ApprovalInterrupt]: (state, event) => ({
     status: 'running',
     stages: append(state.stages, {
@@ -101,14 +97,6 @@ const HANDLERS: Partial<Record<AguiEventType, Handler>> = {
   [AguiEventType.ApprovalResumed]: (state) => ({
     status: 'running',
     stages: markLast(state.stages, 'done'),
-  }),
-  [AguiEventType.StepFinished]: (state) => ({
-    status: state.status,
-    stages: markLast(state.stages, 'done'),
-  }),
-  [AguiEventType.StepFailed]: (state) => ({
-    status: state.status,
-    stages: markLast(state.stages, 'failed'),
   }),
   [AguiEventType.RunFinished]: (state) => ({
     status: 'finished',

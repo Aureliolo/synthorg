@@ -239,10 +239,15 @@ class TestDecompositionService:
         )
 
     @pytest.mark.unit
-    async def test_decompose_classifies_structure(self) -> None:
-        """Service uses classifier to determine task structure."""
+    async def test_undeclared_structure_falls_to_the_classifier(self) -> None:
+        """A plan that declared nothing takes the classifier's verdict.
+
+        The classifier reads the task's own explicit declaration first, so
+        this is the path by which an operator-set structure reaches the plan.
+        """
         task = _make_task(task_structure=TaskStructure.PARALLEL)
         plan = _make_plan()
+        assert plan.task_structure is TaskStructure.AUTO
         strategy = ManualDecompositionStrategy(plan)
         classifier = TaskStructureClassifier()
         service = DecompositionService(strategy, classifier)
@@ -253,9 +258,8 @@ class TestDecompositionService:
         assert result.plan.task_structure == TaskStructure.PARALLEL
 
     @pytest.mark.unit
-    async def test_decompose_structure_override(self) -> None:
-        """Classifier overrides plan's default structure when it differs."""
-        # Task with sequential signals (dependencies + no parallel keywords)
+    async def test_undeclared_structure_falls_to_the_keyword_heuristic(self) -> None:
+        """With nothing declared anywhere, the regex heuristic decides."""
         task = Task(
             id=as_uuid("task-svc-1"),
             title="Service Test Task",
@@ -266,9 +270,47 @@ class TestDecompositionService:
             created_by="creator",
             dependencies=("dep-1",),
         )
-        # Plan defaults to SEQUENTIAL, but classifier should also return
-        # SEQUENTIAL based on dependencies -- so they agree.
-        # Use a plan with PARALLEL structure to test override.
+        plan = DecompositionPlan(
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(
+                    id=sid("sub-1"),
+                    title="A",
+                    description="Desc A",
+                    expected_artifacts=("src/a.py",),
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        result = await service.decompose_task(task, ctx)
+
+        assert result.plan.task_structure == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    async def test_declared_structure_survives_contrary_keywords(self) -> None:
+        """The planner's declaration is not overruled by a keyword regex.
+
+        The description trips both the sequential ("first") and parallel
+        ("in parallel") banks, so the classifier reads it as MIXED while the
+        planner, which reasoned over the whole objective, declared PARALLEL.
+        """
+        task = Task(
+            id=as_uuid("task-svc-1"),
+            title="Service Test Task",
+            description="Do the schema first, then run the checks in parallel",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.HIGH,
+            project="proj-1",
+            created_by="creator",
+            dependencies=("dep-1",),
+        )
+        classifier = TaskStructureClassifier()
+        assert classifier.classify(task) == TaskStructure.MIXED
+
         plan = DecompositionPlan(
             parent_task_id=str(task.id),
             subtasks=(
@@ -282,15 +324,12 @@ class TestDecompositionService:
             task_structure=TaskStructure.PARALLEL,
         )
         strategy = ManualDecompositionStrategy(plan)
-        classifier = TaskStructureClassifier()
         service = DecompositionService(strategy, classifier)
         ctx = DecompositionContext()
 
         result = await service.decompose_task(task, ctx)
 
-        # Classifier infers SEQUENTIAL (dependencies present, no parallel
-        # language), overriding the plan's PARALLEL
-        assert result.plan.task_structure == TaskStructure.SEQUENTIAL
+        assert result.plan.task_structure == TaskStructure.PARALLEL
 
     @pytest.mark.unit
     async def test_decompose_dag_cycle_raises(self) -> None:

@@ -139,17 +139,16 @@ durable cross-process signal (the operator cancels in the API process; the agent
 runs in the worker process)."""
 
 TurnObserver = Callable[[int, tuple[str, ...]], Awaitable[None]]
-"""Async progress callback invoked with ``(index, labels)``: a 1-based step
-index and a tuple of short labels for that step. Two calling conventions share
+"""Async progress callback invoked with ``(index, labels)``: a 1-based turn
+index and a tuple of short labels for that turn. Two calling conventions share
 this shape:
 
 - ReAct loop: fires *after* each continuing turn with the tool names that turn
   requested; the terminal turn (which ends the loop) returns before the hook,
   so no observation marks it.
-- Plan/Hybrid loops: fire *before* each plan step (unconditionally, including
-  the last), passing a one-element tuple of the step's free-text description in
-  the ``labels`` slot -- there are no per-turn tool names to report at the
-  plan level.
+- OpenHands loop: fires as each event arrives off the harness stream, with a
+  one-element tuple naming the tool the event used, or empty when the event
+  named none.
 
 Purely observational: it never affects control flow, and an observer raising
 must not corrupt the run. Used to surface incremental progress on a streamed
@@ -161,8 +160,8 @@ class ExecutionLoop(Protocol):
     """Protocol for agent execution loops.
 
     The agent engine calls ``execute`` to run a task through the loop.
-    Implementations decide the control flow (ReAct, Plan-and-Execute, etc.)
-    but all return an ``ExecutionResult`` with a ``TerminationReason``.
+    Implementations decide the control flow but all return an
+    ``ExecutionResult`` with a ``TerminationReason``.
     """
 
     async def execute(  # noqa: PLR0913
@@ -196,8 +195,8 @@ class ExecutionLoop(Protocol):
             turn_observer: Optional per-run progress callback; used to
                 project live execution progress onto the AG-UI stream. Fired
                 with ``(index, labels)`` per the ``TurnObserver`` contract
-                (the labels are tool names or step descriptions depending on
-                the loop; see its type doc for the two conventions).
+                (the labels are tool names; see its type doc for the two
+                calling conventions).
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.

@@ -13,14 +13,18 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.project import Project
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.errors import DecompositionError, ProjectNotFoundError
+from synthorg.engine.errors import (
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+    ProjectNotFoundError,
+)
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.errors import (
@@ -106,6 +110,7 @@ def _preview() -> DecompositionResult:
                 expected_artifacts=("src/slice.py",),
             ),
         ),
+        task_structure=TaskStructure.SEQUENTIAL,
     )
     return DecompositionResult(
         plan=plan,
@@ -389,6 +394,39 @@ class TestPlanReviewGate:
         assert fail_call is not None
         assert "decompose boom" in fail_call.kwargs["reason"]
         cast("AsyncMock", gate.request_plan_approval).assert_not_awaited()
+
+    async def test_an_over_limit_plan_surfaces_on_the_plan_not_a_thinner_plan(
+        self,
+    ) -> None:
+        # F5: the agent-session strategy used to swap the researched plan for
+        # the single-shot fallback's. It now refuses, and the refusal lands on
+        # the durable plan naming both numbers, so the operator can raise
+        # max_subtasks or narrow the objective.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.side_effect = DecompositionSubtaskLimitError(
+            produced=14, limit=10
+        )
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate]()
+        pipeline.attach_plan_review_gate(gate)
+
+        result = await pipeline.run(_work_item(plan_required=True))
+
+        assert result.is_success is False
+        assert result.final_task_status is TaskStatus.FAILED
+        fail_call = cast("AsyncMock", gate.fail_plan).await_args
+        assert fail_call is not None
+        assert "14 subtasks" in fail_call.kwargs["reason"]
+        assert "max_subtasks of 10" in fail_call.kwargs["reason"]
 
     async def test_approval_park_failure_marks_plan_failed_not_500(self) -> None:
         # A failure AFTER decomposition (parking the approval) is now also

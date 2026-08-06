@@ -1,6 +1,6 @@
 ---
 title: Agent Execution
-description: Agent execution status, execution loops (ReAct, Plan-and-Execute, Hybrid), prompt profiles, stagnation detection, context budget management, context compaction, brain / hands / session semantics, and ACG vocabulary.
+description: Agent execution status, execution loops (ReAct, OpenHands), prompt profiles, stagnation detection, context budget management, context compaction, brain / hands / session semantics, and ACG vocabulary.
 ---
 
 # Agent Execution
@@ -99,7 +99,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     ```
 
     ```yaml
-    execution_loop: "react"              # react, plan_execute, hybrid, auto
+    execution_loop: "react"              # react, openhands, auto
     ```
 
     | | |
@@ -108,78 +108,11 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | **Weaknesses** | Token-heavy on long tasks (re-reads full context every turn). No long-term planning; greedy step-by-step. |
     | **Best for** | Simple tasks, quick fixes, single-file changes. |
 
-=== "Loop 2: Plan-and-Execute"
+=== "Loop 2: OpenHands (embedded harness)"
 
-    A two-phase approach: the agent first generates a step-by-step plan, then
-    executes each step sequentially. On failure, the agent can replan. Different
-    models can be used for planning vs execution (e.g., large model for
-    planning, small model for execution steps).
-
-    ```mermaid
-    graph LR
-        A[Plan<br/>1 call] --> B[Execute Steps<br/>N calls]
-        B --> C{Step failed?}
-        C -->|yes| A
-        C -->|no| D[Done]
-    ```
-
-    ```yaml
-    execution_loop: "plan_execute"
-    plan_execute:
-      planner_model: null              # null = use agent's model; override for cost optimization
-      executor_model: null
-      max_replans: 3
-    ```
-
-    | | |
-    |---|---|
-    | **Strengths** | Token-efficient for long tasks. Auditable plan artifact. Supports model tiering. |
-    | **Weaknesses** | Rigid; plan may be wrong, replanning is expensive. Over-plans simple tasks. |
-    | **Best for** | Complex multi-step tasks, epic-level work, tasks spanning multiple files. |
-
-=== "Loop 3: Hybrid Plan + ReAct Steps"
-
-    **Recommended for Complex Tasks**
-
-    The agent creates a high-level plan (3 to 7 steps). Each step is executed as a
-    mini-ReAct loop with its own turn limit. After each step, the agent
-    checkpoints, summarising progress and optionally replanning remaining
-    steps. Checkpoints are natural points for human inspection or task
-    suspension.
-
-    ```mermaid
-    graph TD
-        A[Plan] --> B[Step 1: mini-ReAct]
-        B --> C[Checkpoint: summarize progress]
-        C --> D[Step 2: mini-ReAct]
-        D --> E[Checkpoint: replan if needed]
-        E --> F[Step N: mini-ReAct]
-        F --> G[Done]
-    ```
-
-    ```yaml
-    execution_loop: "hybrid"
-    hybrid:
-      planner_model: null
-      executor_model: null
-      max_plan_steps: 7
-      max_turns_per_step: 5
-      max_replans: 3
-      checkpoint_after_each_step: true
-      allow_replan_on_completion: true
-    ```
-
-    | | |
-    |---|---|
-    | **Strengths** | Strategic planning + tactical flexibility. Natural checkpoints for suspension/inspection. |
-    | **Weaknesses** | Most complex to implement. Plan granularity needs tuning per task type. |
-    | **Best for** | Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity. |
-
-=== "Loop 4: OpenHands (embedded harness)"
-
-    A selectable fourth loop that runs the best-in-class open OpenHands coder
+    A selectable second loop that runs the best-in-class open OpenHands coder
     as the inner loop, so it can be A/B'd end to end against the native
-    loops and the winner promoted. It satisfies the same `ExecutionLoop`
+    loop and the winner promoted. It satisfies the same `ExecutionLoop`
     protocol (`get_loop_type() -> "openhands"`) and honours the same
     budget / shutdown / cancellation checkers and the NO_OP rule at turn
     boundaries. It reaches models only through the [LLM gateway](llm-gateway.md)
@@ -200,22 +133,23 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | **Best for** | End-to-end A/B against the native loops; heavy autonomous coding once promoted. |
 
 !!! tip "Auto-selection"
-    When `execution_loop: "auto"`, the framework selects the loop via three
-    layers:
+    When `execution_loop: "auto"`, the framework maps `estimated_complexity`
+    to a loop type through `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`),
+    falling back to `default_loop_type` (default: react) when no rule matches.
+    Every loop type in the rules and the default is validated against the
+    registry at construction time.
 
-    1. **Rule matching**: maps `estimated_complexity` to a loop type:
-       simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
-       Configurable via `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`).
-       When no rule matches, falls back to `default_loop_type` (default:
-       react).  All loop types in rules, `hybrid_fallback`, and
-       `default_loop_type` are validated against the known set at
-       construction time.
-    2. **Budget-aware downgrade**: when monthly budget utilisation is at
-       or above `budget_tight_threshold` (default 80%), hybrid selections
-       are downgraded to plan_execute to conserve budget.
-    3. **Hybrid fallback**: when `hybrid_fallback` is set (default:
-       `None`), redirects hybrid selections to the specified loop type.
-       With `None` (default), the hybrid loop runs directly.
+    Every complexity defaults to **react**, the only loop that needs no
+    provisioning. That is deliberately not a judgement about which loop suits
+    which complexity: the [inner-loop A/B harness](loop-ab-harness.md) answers
+    that by measurement, and its scoreboard is applied as
+    `engine.loop_complexity_overrides`, which is merged over these defaults.
+
+    A stored value naming a loop that no longer ships (`plan_execute`,
+    `hybrid`) resolves to react at the settings read. A setting is validated on
+    write and never on read, so a row written while those names were valid
+    would otherwise reach `AutoLoopConfig` and take the whole runtime rebuild
+    with it.
 
 ### AgentEngine Orchestrator
 
@@ -224,9 +158,9 @@ composes the execution loop with prompt construction, context management, tool
 invocation, and cost tracking into a single `run()` call. When an
 `auto_loop_config` is provided (mutually exclusive with `execution_loop`),
 the engine dynamically selects the loop per task via `_resolve_loop()`.
-Optional `plan_execute_config`, `hybrid_loop_config`, and
-`compaction_callback` are forwarded to the auto-selected loop so it
-receives the same configuration as a statically configured loop.
+The optional `compaction_callback` and the OpenHands config / deps are
+forwarded to the auto-selected loop so it receives the same configuration as a
+statically configured loop.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see [Coordination](coordination.md)).
@@ -280,15 +214,16 @@ async run(
    with pre-computed baselines and alert deduplication) or from task budget limit
    alone when no enforcer is configured.
 9. **Resolve execution loop**: if `auto_loop_config` is set, calls
-   `select_loop_type()` with the task's `estimated_complexity` and current
-   budget utilisation (via `BudgetEnforcer.get_budget_utilization_pct()`).
-   Budget-aware downgrade: hybrid is downgraded to plan_execute when
-   utilisation >= threshold. Optional hybrid fallback applies when
-   `hybrid_fallback` is configured. When no auto config is set, uses
-   the statically configured loop. The auto-selected loop receives the
-   engine's `compaction_callback`, `plan_execute_config` (for
-   plan-execute), and `hybrid_loop_config` (for hybrid), along with the
-   approval gate and stagnation detector.
+   `select_loop_type()` with the task's `estimated_complexity`. When no auto
+   config is set, uses the statically configured loop. Each builder takes only
+   the dependencies its loop can act on: React receives the in-process controls
+   (`approval_gate`, `stagnation_detector`, `compaction_callback`,
+   `steering_inbox`, `step_classifier`), while OpenHands receives
+   `openhands_loop_config` and `openhands_loop_deps` and honours the boundary
+   checks passed to `execute()` (budget, shutdown, cancellation, `NO_OP`). The
+   in-process controls are not passed through to it, because the harness runs
+   its own loop in-sandbox where they have nothing to observe: the same split
+   the [stagnation section](#loop-integration) describes.
 10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. The
    provider client is dispatched **per agent**, not fixed to the engine
@@ -619,12 +554,9 @@ sorted per-turn for order-independent comparison.
 
 - **ReactLoop**: stagnation checked after each successful turn; corrections
   counter is loop-scoped
-- **PlanExecuteLoop**: stagnation checked per step (different steps
-  legitimately repeat similar patterns like read->edit->test); corrections
-  counter is step-scoped, window resets across step boundaries
-- **HybridLoop**: same per-step semantics as PlanExecuteLoop; stagnation
-  checked within the mini-ReAct sub-loop, corrections counter and
-  window are step-scoped
+- **OpenHandsLoop**: the harness runs its own loop in-sandbox, so SynthOrg's
+  detector does not see its turns; the turn-boundary checks it does honour are
+  budget, shutdown, cancellation and the `NO_OP` rule
 - `STAGNATION` terminates the task `FAILED` (like `MAX_TURNS` and
   `BUDGET_EXHAUSTED`): a run that stopped mid-way has not delivered, and
   parking it at `IN_PROGRESS` hid it from the stall derivation
@@ -665,9 +597,9 @@ is derived from `CompressionMetadata.compactions_performed`.
 ### Compaction Hook
 
 `CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
-AgentContext | None]]`) wired into `ReactLoop`, `PlanExecuteLoop`, and
-`HybridLoop` via their constructors; the same injection pattern as `checkpoint_callback`,
-`stagnation_detector`, and `approval_gate`.
+AgentContext | None]]`) wired into `ReactLoop` via its constructor; the same
+injection pattern as `checkpoint_callback`, `stagnation_detector`, and
+`approval_gate`.
 
 The default implementation (`make_compaction_callback` in
 `compaction/summarizer.py`) archives oldest conversation turns into a summary
@@ -705,13 +637,10 @@ previously compacted (archived 12 turns). Previous error: ...
 ### Loop Integration
 
 - **ReactLoop**: compaction checked after stagnation detection, at turn
-  boundaries (between completed turns)
-- **PlanExecuteLoop**: compaction checked within step execution at turn
-  boundaries, before stagnation detection
-- **HybridLoop**: compaction checked at turn boundaries within the
-  mini-ReAct sub-loop, same as PlanExecuteLoop
-
-All loops use the shared `invoke_compaction()` helper from `loop_helpers.py`.
+  boundaries (between completed turns), through the shared
+  `invoke_compaction()` helper in `loop_helpers.py`
+- **OpenHandsLoop**: the harness manages its own context in-sandbox, so
+  SynthOrg's compaction hook does not apply
 
 ## Brain / Hands / Session
 
@@ -721,7 +650,7 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
-| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making. Stateless between turns; all state lives in the immutable `AgentContext`. |
+| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `OpenHandsLoop`) | Inference loop, middleware, decision-making. Stateless between turns; all state lives in the immutable `AgentContext`. |
 | **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope. Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager); they never enter the brain or session planes. |
 | **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit. Every significant action emits a structured event; the event stream is the session's source of truth. |
 
@@ -761,10 +690,10 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Strong | Typed via `NodeType` enum on `TurnRecord.node_types` |
 | Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
 | Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` | Strong | Loop selector + topology selection |
-| Conditional Branching | HybridLoop replan, PlanExecuteLoop step checks | Partial | Not expressed as graph-level conditionals |
+| Conditional Branching | Loop termination checks, stagnation intervention | Partial | Not expressed as graph-level conditionals |
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: 3-layer enforcement + in-flight |
-| Graph Mutation | Hybrid replanning, stagnation correction injection | Partial | Runtime; not exposed as first-class graph mutation |
+| Graph Mutation | Stagnation correction injection, mid-flight steering adoption | Partial | Runtime; not exposed as first-class graph mutation |
 | Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
@@ -776,7 +705,8 @@ abstractions above the computation graph level.
 
 Context compaction is invoked at turn boundaries when context fill exceeds the configured
 threshold (`CompactionConfig.fill_threshold_percent`, default 80%). The `invoke_compaction()`
-helper in `engine/loop_helpers.py` is shared across all three execution loops.
+helper in `engine/loop_helpers.py` is the shared entry point for any loop that
+manages its own context in-process.
 
 ### Current Implementation
 
@@ -807,7 +737,7 @@ memory offload, and semantic token-cost weighting) is tracked on the
 
 ## See Also
 
-- [Inner-loop A/B harness](loop-ab-harness.md): how the four loops are measured against each other and the winner promoted
+- [Inner-loop A/B harness](loop-ab-harness.md): how the two loops are measured against each other and the winner promoted
 - [Task & Workflow Engine](engine.md): task dispatch, routing, state coordination
 - [Coordination](coordination.md): multi-agent topology, decomposition, workspace isolation
 - [Verification & Quality](verification-quality.md): verification stage, review pipeline, harness middleware

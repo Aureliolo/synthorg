@@ -9,6 +9,7 @@ driven end to end in ``test_openhands_deps_gate.py``.
 import pytest
 
 from synthorg.core.task_enums import Complexity
+from synthorg.engine.loop_selector import LoopType
 from synthorg.workers._openhands_wiring import (
     _egress_allowlist,
     _egress_path_rules,
@@ -148,19 +149,24 @@ def test_egress_allowlist_keeps_distinct_hosts_sorted() -> None:
 def test_merge_complexity_rules_defaults_when_empty() -> None:
     rules = _merge_complexity_rules("")
     by_complexity = {r.complexity: r.loop_type for r in rules}
-    assert by_complexity[Complexity.SIMPLE] == "react"
-    assert by_complexity[Complexity.MEDIUM] == "plan_execute"
-    assert by_complexity[Complexity.COMPLEX] == "hybrid"
-    assert by_complexity[Complexity.EPIC] == "hybrid"
+    assert set(by_complexity) == set(Complexity)
+    assert set(by_complexity.values()) == {LoopType.REACT}
 
 
 def test_merge_complexity_rules_overrides_selected_complexities() -> None:
     rules = _merge_complexity_rules("complex:openhands,epic:openhands")
     by_complexity = {r.complexity: r.loop_type for r in rules}
     # Overridden complexities route to openhands; the rest keep defaults.
-    assert by_complexity[Complexity.COMPLEX] == "openhands"
-    assert by_complexity[Complexity.EPIC] == "openhands"
-    assert by_complexity[Complexity.SIMPLE] == "react"
-    assert by_complexity[Complexity.MEDIUM] == "plan_execute"
+    assert by_complexity[Complexity.COMPLEX] is LoopType.OPENHANDS
+    assert by_complexity[Complexity.EPIC] is LoopType.OPENHANDS
+    assert by_complexity[Complexity.SIMPLE] is LoopType.REACT
+    assert by_complexity[Complexity.MEDIUM] is LoopType.REACT
     # Every complexity appears exactly once (no duplicate rules).
     assert len(rules) == len({r.complexity for r in rules})
+
+
+def test_merge_complexity_rules_coerces_a_retired_loop_name() -> None:
+    rules = _merge_complexity_rules("medium:hybrid,complex:plan_execute")
+    by_complexity = {r.complexity: r.loop_type for r in rules}
+    assert by_complexity[Complexity.MEDIUM] is LoopType.REACT
+    assert by_complexity[Complexity.COMPLEX] is LoopType.REACT

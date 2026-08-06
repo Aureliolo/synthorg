@@ -50,7 +50,7 @@ src/synthorg/deliverable_receipts/builder.py::ReceiptBuilder.__init__::9
 src/synthorg/engine/_agent_engine_callables.py::HandleFatalError.__call__::11
 src/synthorg/engine/_review_completion_gates.py::run_completion_gates::16
 src/synthorg/engine/_review_gate_record.py::ReviewGateRecordMixin._append_decision::9
-src/synthorg/engine/agent_engine.py::AgentEngine.__init__::69
+src/synthorg/engine/agent_engine.py::AgentEngine.__init__::67
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._build_error_execution::9
 src/synthorg/engine/agent_engine_errors.py::AgentEngineErrorsMixin._handle_fatal_error::11
 src/synthorg/engine/agent_engine_post_exec.py::AgentEnginePostExecMixin._run_loop_with_timeout::12
@@ -66,17 +66,15 @@ src/synthorg/engine/coordination/factory.py::build_coordinator::24
 src/synthorg/engine/coordination/service.py::MultiAgentCoordinator.__init__::11
 src/synthorg/engine/evolution/factory.py::build_evolution_service::9
 src/synthorg/engine/evolution/service.py::EvolutionService.__init__::9
-src/synthorg/engine/hybrid_loop.py::HybridLoop.execute::9
 src/synthorg/engine/initiative/evaluate.py::EvaluationStageService.__init__::11
 src/synthorg/engine/intake/strategies/agent_intake.py::AgentIntake.__init__::9
 src/synthorg/engine/loop_protocol.py::ExecutionLoop.execute::9
-src/synthorg/engine/loop_selector.py::build_execution_loop::11
+src/synthorg/engine/loop_selector.py::build_execution_loop::9
 src/synthorg/engine/loop_streaming.py::run_provider_turn::10
 src/synthorg/engine/loop_streaming.py::stream_provider::9
 src/synthorg/engine/openhands/loop.py::OpenHandsLoop.execute::9
 src/synthorg/engine/pipeline/factory.py::build_work_pipeline::14
 src/synthorg/engine/pipeline/service.py::DefaultWorkPipeline.__init__::11
-src/synthorg/engine/plan_execute_loop.py::PlanExecuteLoop.execute::9
 src/synthorg/engine/prompt.py::build_system_prompt::18
 src/synthorg/engine/prompt_render.py::build_template_context::15
 src/synthorg/engine/prompt_render.py::render_and_estimate::16

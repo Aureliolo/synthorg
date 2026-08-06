@@ -17,7 +17,7 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid
@@ -26,6 +26,13 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import DecompositionError
+from synthorg.observability import get_logger
+from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_VALIDATION_ERROR,
+)
+
+logger = get_logger(__name__)
 
 
 class PlanProvenance(BaseModel):
@@ -128,15 +135,30 @@ def plan_from_decomposition(
 
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
+
+    Raises:
+        DecompositionError: If the decomposition's structure was never
+            resolved, which means it did not come through
+            ``DecompositionService``. Substituting a default here would
+            sequentialise the plan silently.
     """
     items = items_from_decomposition(result)
+    structure = result.plan.task_structure
+    if structure is TaskStructure.AUTO:
+        msg = "Decomposition reached plan mapping with an unresolved task_structure"
+        logger.warning(
+            DECOMPOSITION_VALIDATION_ERROR,
+            parent_task_id=provenance.parent_task_id,
+            error=msg,
+        )
+        raise DecompositionError(msg)
     return Plan(
         project=provenance.project,
         objective_id=provenance.objective_id,
         objective_title=provenance.objective_title,
         parent_task_id=provenance.parent_task_id,
         items=items,
-        task_structure=result.plan.task_structure,
+        task_structure=structure,
         coordination_topology=result.plan.coordination_topology,
         status=provenance.status,
         forecast_id=provenance.forecast_id,

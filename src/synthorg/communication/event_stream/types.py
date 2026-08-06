@@ -30,9 +30,10 @@ class AgUiEventType(StrEnum):
         RUN_STARTED: Execution engine started a run.
         RUN_FINISHED: Execution engine completed a run.
         RUN_ERROR: Execution engine encountered an error.
-        STEP_STARTED: Plan step execution started.
-        STEP_FINISHED: Plan step execution completed.
-        STEP_FAILED: Plan step execution failed.
+        STEP_STARTED: AG-UI step started. Protocol vocabulary; no loop
+            emits a step today, so nothing projects onto it.
+        STEP_FINISHED: AG-UI step completed. Unprojected, as above.
+        STEP_FAILED: AG-UI step failed. Unprojected, as above.
         TEXT_MESSAGE_START: Model response turn started.
         TEXT_MESSAGE_CONTENT: Streamed content chunk.
         TEXT_MESSAGE_END: Model response turn completed.

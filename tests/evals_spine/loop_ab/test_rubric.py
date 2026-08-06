@@ -39,7 +39,8 @@ def _aggregate(
     total_tokens: float = 1000.0,
     duration_seconds: float = 10.0,
     total_turns: float = 5.0,
-    rework_events: float = 0.0,
+    repeated_tool_calls: float = 0.0,
+    provider_retries: float | None = 0.0,
     pass_rate: float = 1.0,
 ) -> LoopAggregate:
     """Build one loop's aggregate for a single (brief, tier) cell."""
@@ -49,7 +50,8 @@ def _aggregate(
         total_tokens=total_tokens,
         duration_seconds=duration_seconds,
         total_turns=total_turns,
-        rework_events=rework_events,
+        repeated_tool_calls=repeated_tool_calls,
+        provider_retries=provider_retries,
         pass_rate=pass_rate,
     )
 
@@ -102,27 +104,27 @@ def test_a_strictly_better_loop_scores_strictly_higher() -> None:
                     total_tokens=1_000.0,
                     duration_seconds=10.0,
                     total_turns=4.0,
-                    rework_events=0.0,
+                    repeated_tool_calls=0.0,
                 ),
                 _aggregate(
-                    "hybrid",
+                    "openhands",
                     correctness=80.0,
                     total_tokens=4_000.0,
                     duration_seconds=40.0,
                     total_turns=12.0,
-                    rework_events=6.0,
+                    repeated_tool_calls=6.0,
                 ),
             )
         )
     )
 
-    assert scores["react"].composite > scores["hybrid"].composite
+    assert scores["react"].composite > scores["openhands"].composite
 
 
 def test_a_dominant_loop_scores_full_marks() -> None:
     """Best on every dimension with a clean pass rate is the 100 case."""
     scores = _by_loop(
-        score_cell((_aggregate("react"), _aggregate("hybrid", correctness=50.0)))
+        score_cell((_aggregate("react"), _aggregate("openhands", correctness=50.0)))
     )
 
     assert scores["react"].composite == pytest.approx(float(RUBRIC_TOTAL))
@@ -134,20 +136,20 @@ def test_the_best_performer_on_a_dimension_normalises_to_one() -> None:
         score_cell(
             (
                 _aggregate("react", total_tokens=500.0),
-                _aggregate("hybrid", total_tokens=2_000.0),
+                _aggregate("openhands", total_tokens=2_000.0),
             )
         )
     )
 
     assert scores["react"].dimensions.tokens == pytest.approx(1.0)
-    assert scores["hybrid"].dimensions.tokens == pytest.approx(0.25)
+    assert scores["openhands"].dimensions.tokens == pytest.approx(0.25)
 
 
 def test_identical_loops_score_identically() -> None:
     """Scoring carries no ordering or naming bias."""
-    scores = _by_loop(score_cell((_aggregate("react"), _aggregate("plan_execute"))))
+    scores = _by_loop(score_cell((_aggregate("react"), _aggregate("openhands"))))
 
-    assert scores["react"].composite == pytest.approx(scores["plan_execute"].composite)
+    assert scores["react"].composite == pytest.approx(scores["openhands"].composite)
 
 
 def test_a_cheap_loop_that_fails_the_task_is_disqualified() -> None:
@@ -162,13 +164,13 @@ def test_a_cheap_loop_that_fails_the_task_is_disqualified() -> None:
                     duration_seconds=0.1,
                     total_turns=1.0,
                 ),
-                _aggregate("hybrid", correctness=100.0, total_tokens=10_000.0),
+                _aggregate("openhands", correctness=100.0, total_tokens=10_000.0),
             )
         )
     )
 
     assert scores["react"].disqualified is True
-    assert scores["hybrid"].disqualified is False
+    assert scores["openhands"].disqualified is False
 
 
 def test_a_disqualified_loop_still_reports_its_real_numbers() -> None:
@@ -177,7 +179,7 @@ def test_a_disqualified_loop_still_reports_its_real_numbers() -> None:
         score_cell(
             (
                 _aggregate("react", correctness=0.0, total_tokens=100.0),
-                _aggregate("hybrid", correctness=100.0, total_tokens=100.0),
+                _aggregate("openhands", correctness=100.0, total_tokens=100.0),
             )
         )
     )
@@ -203,24 +205,77 @@ def test_rework_lowers_resilience_relative_to_a_clean_run() -> None:
     scores = _by_loop(
         score_cell(
             (
-                _aggregate("react", rework_events=0.0),
-                _aggregate("hybrid", rework_events=10.0),
+                _aggregate("react", repeated_tool_calls=0.0),
+                _aggregate("openhands", repeated_tool_calls=10.0),
             )
         )
     )
 
     assert (
-        scores["react"].dimensions.resilience > scores["hybrid"].dimensions.resilience
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
     )
 
 
 def test_zero_rework_everywhere_does_not_zero_the_dimension() -> None:
     """Zero rework is the expected good case, not a degenerate one."""
     scores = _by_loop(
-        score_cell((_aggregate("react", rework_events=0.0), _aggregate("hybrid")))
+        score_cell(
+            (_aggregate("react", repeated_tool_calls=0.0), _aggregate("openhands"))
+        )
     )
 
     assert scores["react"].dimensions.resilience == pytest.approx(1.0)
+
+
+def test_unobservable_retries_do_not_buy_the_best_rework_score() -> None:
+    """A loop nothing watched must not out-score one that reported honestly."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=4.0, provider_retries=4.0),
+                _aggregate("openhands", repeated_tool_calls=4.0, provider_retries=None),
+            )
+        )
+    )
+
+    assert scores["openhands"].dimensions.resilience == pytest.approx(
+        scores["react"].dimensions.resilience
+    )
+
+
+def test_dropping_the_retry_submetric_keeps_the_rest_of_the_comparison() -> None:
+    """Retries go, repeated tool calls stay: the cell still discriminates."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=0.0, provider_retries=9.0),
+                _aggregate("openhands", repeated_tool_calls=8.0, provider_retries=None),
+            )
+        )
+    )
+
+    assert (
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
+    )
+
+
+def test_retries_still_count_when_every_loop_reports_them() -> None:
+    """Dropping the submetric is the exception, not the resting behaviour."""
+    scores = _by_loop(
+        score_cell(
+            (
+                _aggregate("react", repeated_tool_calls=0.0, provider_retries=0.0),
+                _aggregate("openhands", repeated_tool_calls=0.0, provider_retries=9.0),
+            )
+        )
+    )
+
+    assert (
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
+    )
 
 
 def test_a_flaky_loop_scores_below_a_reliable_one() -> None:
@@ -229,13 +284,14 @@ def test_a_flaky_loop_scores_below_a_reliable_one() -> None:
         score_cell(
             (
                 _aggregate("react", pass_rate=1.0),
-                _aggregate("hybrid", pass_rate=1.0 / 3.0),
+                _aggregate("openhands", pass_rate=1.0 / 3.0),
             )
         )
     )
 
     assert (
-        scores["react"].dimensions.resilience > scores["hybrid"].dimensions.resilience
+        scores["react"].dimensions.resilience
+        > scores["openhands"].dimensions.resilience
     )
 
 

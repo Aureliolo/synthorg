@@ -6,7 +6,7 @@ to decompose a parent task into executable subtasks.
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskStatus, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition._artifacts import expected_artifact_from_spec
 from synthorg.engine.decomposition._ids import subtask_uuid as _subtask_uuid
@@ -58,10 +58,10 @@ class DecompositionService:
     ) -> DecompositionResult:
         """Decompose a task into subtasks.
 
-        1. Classify task structure (uses explicit if set,
-           otherwise heuristic inference). Override the plan's
-           structure with the classifier's result when they differ.
-        2. Call strategy.decompose().
+        1. Call strategy.decompose().
+        2. Resolve the task structure: the planner's own declaration
+           stands; only a plan that declared none falls to the
+           classifier.
         3. Validate DAG via DependencyGraph.
         4. Create Task objects from SubtaskDefinitions.
         5. Return DecompositionResult.
@@ -107,14 +107,15 @@ class DecompositionService:
         Returns:
             Decomposition result with created tasks and dependency edges.
         """
-        # 1. Classify structure
-        structure = self._classifier.classify(task)
-
-        # 2. Decompose via strategy
+        # 1. Decompose via strategy
         plan = await self._strategy.decompose(task, context)
 
-        # Override structure if classifier found something different
-        if plan.task_structure != structure:
+        # 2. Resolve the structure. The planner reasoned over the whole
+        # objective, so its declaration stands; the keyword heuristic is
+        # the fallback for a plan that declared nothing, never an override.
+        structure = plan.task_structure
+        if structure is TaskStructure.AUTO:
+            structure = self._classifier.classify(task)
             plan = plan.model_copy(update={"task_structure": structure})
 
         # 3. Validate DAG
@@ -183,7 +184,7 @@ class DecompositionService:
             DECOMPOSITION_COMPLETED,
             task_id=str(task.id),
             subtask_count=len(created_tasks),
-            structure=plan.task_structure.value,
+            structure=structure.value,
             edge_count=len(edges),
         )
 

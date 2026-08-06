@@ -11,7 +11,6 @@ from synthorg.engine.checkpoint.resume import (
     deserialize_and_reconcile,
     make_loop_with_callback,
 )
-from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.recovery import FailureCategory
 from synthorg.providers.enums import MessageRole
@@ -351,37 +350,6 @@ class TestMakeLoopWithCallbackInjection:
         assert isinstance(result, ReactLoop)
         assert result is not original
 
-    def test_plan_execute_loop_gets_callback(self) -> None:
-        cp_repo, hb_repo = _make_repos()
-        original = PlanExecuteLoop()
-        result = make_loop_with_callback(
-            original,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        assert isinstance(result, PlanExecuteLoop)
-        assert result is not original
-
-    def test_plan_execute_loop_preserves_config(self) -> None:
-        from synthorg.engine.plan_models import PlanExecuteConfig
-
-        cp_repo, hb_repo = _make_repos()
-        config = PlanExecuteConfig(max_replans=5)
-        original = PlanExecuteLoop(config=config)
-        result = make_loop_with_callback(
-            original,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        assert isinstance(result, PlanExecuteLoop)
-        assert result.config is config
-
     def test_react_loop_preserves_stagnation_detector(self) -> None:
         from synthorg.engine.stagnation import ToolRepetitionDetector
 
@@ -397,23 +365,6 @@ class TestMakeLoopWithCallbackInjection:
             task_id="task-1",
         )
         assert isinstance(result, ReactLoop)
-        assert result.stagnation_detector is detector
-
-    def test_plan_execute_loop_preserves_stagnation_detector(self) -> None:
-        from synthorg.engine.stagnation import ToolRepetitionDetector
-
-        cp_repo, hb_repo = _make_repos()
-        detector = ToolRepetitionDetector()
-        original = PlanExecuteLoop(stagnation_detector=detector)
-        result = make_loop_with_callback(
-            original,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        assert isinstance(result, PlanExecuteLoop)
         assert result.stagnation_detector is detector
 
     def test_unsupported_loop_type_returns_original(self) -> None:

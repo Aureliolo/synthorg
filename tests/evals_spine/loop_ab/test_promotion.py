@@ -57,7 +57,7 @@ def test_the_highest_scoring_loop_wins_a_complexity_bucket() -> None:
         {
             Complexity.SIMPLE: (
                 _score("react", composite=90.0),
-                _score("hybrid", composite=70.0),
+                _score("openhands", composite=70.0),
             )
         }
     )
@@ -77,12 +77,12 @@ def test_a_disqualified_loop_cannot_win_however_high_it_scores() -> None:
         {
             Complexity.SIMPLE: (
                 _score("react", composite=99.0, disqualified=True),
-                _score("hybrid", composite=40.0),
+                _score("openhands", composite=40.0),
             )
         }
     )
 
-    assert recommendation.winners[0].loop_type == "hybrid"
+    assert recommendation.winners[0].loop_type == "openhands"
 
 
 def test_the_most_frequent_winner_becomes_the_default_loop() -> None:
@@ -91,15 +91,15 @@ def test_the_most_frequent_winner_becomes_the_default_loop() -> None:
         {
             Complexity.SIMPLE: (
                 _score("react", composite=90.0),
-                _score("hybrid", composite=10.0),
+                _score("openhands", composite=10.0),
             ),
             Complexity.MEDIUM: (
                 _score("react", composite=90.0),
-                _score("hybrid", composite=10.0),
+                _score("openhands", composite=10.0),
             ),
             Complexity.COMPLEX: (
                 _score("react", composite=10.0),
-                _score("hybrid", composite=90.0),
+                _score("openhands", composite=90.0),
             ),
         }
     )
@@ -152,9 +152,9 @@ def test_the_recommendation_matches_the_settings_validator_patterns() -> None:
     recommendation = recommend_promotion(
         {
             Complexity.SIMPLE: (_score("react", composite=90.0),),
-            Complexity.MEDIUM: (_score("plan_execute", composite=90.0),),
-            Complexity.COMPLEX: (_score("openhands", composite=90.0),),
-            Complexity.EPIC: (_score("hybrid", composite=90.0),),
+            Complexity.MEDIUM: (_score("react", composite=90.0),),
+            Complexity.COMPLEX: (_score("react", composite=90.0),),
+            Complexity.EPIC: (_score("openhands", composite=90.0),),
         }
     )
 
@@ -210,7 +210,7 @@ def test_an_empty_scoreboard_is_refused() -> None:
 def test_the_recommendation_records_why_each_bucket_was_decided() -> None:
     """Evidence-backed means the winning score travels with the recommendation."""
     recommendation: PromotionRecommendation = recommend_promotion(
-        {Complexity.MEDIUM: (_score("hybrid", composite=77.5),)}
+        {Complexity.MEDIUM: (_score("openhands", composite=77.5),)}
     )
 
     assert recommendation.winners[0].composite == pytest.approx(77.5)

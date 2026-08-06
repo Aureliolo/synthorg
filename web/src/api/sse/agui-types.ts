@@ -41,14 +41,16 @@ function isAguiEventType(value: string): value is AguiEventType {
   return (AGUI_EVENT_TYPES as ReadonlySet<string>).has(value)
 }
 
-/** The subset of event types the progress surface subscribes to + renders. */
+/** The subset of event types the progress surface subscribes to + renders.
+ *
+ * The three `Step*` types are absent deliberately: they are AG-UI protocol
+ * vocabulary the backend mirrors but never projects onto, so subscribing
+ * would register listeners for frames that cannot arrive.
+ */
 export const AGUI_PROGRESS_EVENTS: readonly AguiEventType[] = [
   AguiEventType.RunStarted,
   AguiEventType.RunFinished,
   AguiEventType.RunError,
-  AguiEventType.StepStarted,
-  AguiEventType.StepFinished,
-  AguiEventType.StepFailed,
   AguiEventType.ToolCallStart,
   AguiEventType.ApprovalInterrupt,
   AguiEventType.ApprovalResumed,

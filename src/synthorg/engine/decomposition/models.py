@@ -136,7 +136,10 @@ class DecompositionPlan(BaseModel):
     Attributes:
         parent_task_id: ID of the task being decomposed.
         subtasks: Ordered subtask definitions.
-        task_structure: Classified structure of the subtask graph.
+        task_structure: Structure the planner declared, or ``AUTO`` when it
+            declared none. ``DecompositionService`` resolves ``AUTO`` through
+            the classifier before the plan leaves the service, so every plan
+            reaching a :class:`DecompositionResult` names its structure.
         coordination_topology: Selected coordination topology.
     """
 
@@ -149,8 +152,11 @@ class DecompositionPlan(BaseModel):
         description="Ordered subtask definitions",
     )
     task_structure: TaskStructure = Field(
-        default=TaskStructure.SEQUENTIAL,
-        description="Classified task structure",
+        default=TaskStructure.AUTO,
+        description=(
+            "Structure the planner declared; AUTO means it declared nothing and"
+            " the classifier heuristic decides"
+        ),
     )
     coordination_topology: CoordinationTopology = Field(
         default=CoordinationTopology.AUTO,
@@ -240,13 +246,20 @@ class DecompositionResult(BaseModel):
 
         Returns:
             ``self`` unchanged when tasks and edges are consistent with
-            the plan.
+            the plan and the plan's structure has been resolved.
 
         Raises:
-            ValueError: When the task count mismatches, task ids
-                differ from plan subtask ids, or an edge endpoint is
-                an unknown task id.
+            ValueError: When the structure is unresolved, the task count
+                mismatches, task ids differ from plan subtask ids, or an
+                edge endpoint is an unknown task id.
         """
+        # A completed decomposition always names its structure: the service
+        # resolves an undeclared one through the classifier. Leaving AUTO
+        # reachable here would let it sequentialise silently downstream.
+        if self.plan.task_structure is TaskStructure.AUTO:
+            msg = "DecompositionResult requires a resolved plan task_structure"
+            raise ValueError(msg)
+
         if len(self.created_tasks) != len(self.plan.subtasks):
             msg = (
                 f"created_tasks count ({len(self.created_tasks)}) "

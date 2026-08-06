@@ -517,11 +517,23 @@ Each task carries a `task_structure` field classifying its decomposability:
 | `parallel` | Sub-problems can be investigated independently, then synthesised | **Positive** (+57% to +81%) | Financial analysis (revenue + cost + market), multi-file review, research across sources |
 | `mixed` | Some sub-tasks are parallel, but a sequential backbone connects phases | **Variable** (depends on ratio) | Feature implementation (design // research -> implement -> test) |
 
-Classification can be:
+Three sources can name it, in strict precedence:
 
-- **Explicit**: set in task config by the task creator or manager agent
-- **Inferred**: derived from task properties (tool count, dependency graph,
-  acceptance criteria structure) by the task router
+1. **The planner's declaration** on `DecompositionPlan.task_structure`. It
+   reasoned over the whole objective and its own subtask graph, so its answer
+   stands.
+2. **The task's own explicit `Task.task_structure`**, set by the task creator or
+   a manager agent, when the planner declared nothing.
+3. **`TaskStructureClassifier`'s heuristic**, derived from task properties
+   (language patterns, artifact count, dependency graph), when neither did.
+
+The heuristic is a keyword regex, so it is the last word rather than the first:
+a description reading "do the schema first, then run the checks in parallel"
+trips both its banks and classifies `mixed`, which is a poor reason to overrule
+a planner that decided otherwise. `DecompositionPlan.task_structure` is
+therefore optional, with `None` meaning "declared nothing"; `DecompositionService`
+resolves it before the plan leaves the service, and `DecompositionResult` refuses
+to be constructed around an unresolved one.
 
 ### Per-Task Coordination Topology
 
@@ -603,8 +615,13 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      per-session spend ceiling come from
      `coordination.decomposition_agent_max_turns` /
      `coordination.decomposition_agent_cost_ceiling`. With no owner staffed, or
-     if the session submits no usable plan, it degrades to the single-shot
-     strategy so a greenlight is never blocked.
+     if the session submits no plan at all, it degrades to the single-shot
+     strategy so a greenlight is never blocked. A plan that came back **over
+     `max_subtasks`** is not one of those cases: every strategy refuses it with
+     `DecompositionSubtaskLimitError`, which fails the plan visibly with a
+     reason naming both counts. Swapping in the thinner plan the single-shot
+     strategy would produce discards what the owner researched and shows the
+     operator nothing.
    - **`llm`**: one structured LLM tool call produces the plan.
 
    Both strategies emit, per subtask, `expected_artifacts` + `acceptance_criteria`

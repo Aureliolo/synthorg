@@ -108,7 +108,10 @@ every greenlit objective leaves a first-class, visible plan even if decompositio
 never completes. Decomposition fills the shell in place (moving it to
 `PENDING_REVIEW`); a decomposition that fails or produces no items transitions the
 shell to `FAILED`, carrying a `failure_reason` the review surface shows, rather
-than leaving a silent orphan task. A plan can also reach `FAILED` *after*
+than leaving a silent orphan task. A plan the planner built **over the request's
+`max_subtasks`** takes the same route: the reason names the produced count and
+the limit, so the operator can raise the ceiling or narrow the objective instead
+of silently receiving a thinner plan. A plan can also reach `FAILED` *after*
 decomposition succeeded, if parking the approval fails: it is then FAILED with its
 items intact, so `FAILED` permits (but does not require) an empty item list. The
 `PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item

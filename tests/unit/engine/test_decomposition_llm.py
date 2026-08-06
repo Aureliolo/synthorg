@@ -18,12 +18,17 @@ from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
     LlmDecompositionStrategy,
 )
+from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+)
 from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
@@ -69,10 +74,14 @@ def _make_context(
 def _valid_plan_args(
     *,
     subtask_count: int = 2,
-    task_structure: str = "sequential",
+    task_structure: str | None = "sequential",
     coordination_topology: str = "auto",
 ) -> dict[str, object]:
-    """Build valid tool call arguments for a decomposition plan."""
+    """Build valid tool call arguments for a decomposition plan.
+
+    ``task_structure=None`` omits the key entirely, which is what a planner
+    that declared no structure actually sends.
+    """
     subtasks = [
         {
             "id": f"sub-{i}",
@@ -86,11 +95,13 @@ def _valid_plan_args(
         }
         for i in range(subtask_count)
     ]
-    return {
+    args: dict[str, object] = {
         "subtasks": subtasks,
-        "task_structure": task_structure,
         "coordination_topology": coordination_topology,
     }
+    if task_structure is not None:
+        args["task_structure"] = task_structure
+    return args
 
 
 def _make_tool_call_response(
@@ -154,6 +165,56 @@ class TestLlmDecompositionStrategy:
         assert provider.call_count == 1
 
     @pytest.mark.unit
+    async def test_an_omitted_task_structure_stays_undeclared(self) -> None:
+        """The schema does not require the field, and absence is not a choice.
+
+        Defaulting it to sequential here would make a planner that said
+        nothing indistinguishable from one that chose sequential, which is
+        the distinction the classifier fallback keys off.
+        """
+        args = _valid_plan_args(task_structure=None)
+        response = _make_tool_call_response(args)
+        provider = MockCompletionProvider([response])
+        strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
+
+        plan = await strategy.decompose(_make_task(), _make_context())
+
+        assert plan.task_structure is TaskStructure.AUTO
+
+    @pytest.mark.unit
+    def test_an_unmappable_task_structure_is_refused(self) -> None:
+        """A value outside the schema's enum is a failed declaration.
+
+        Degrading it to a default would pick a coordination shape nobody
+        chose, and treating it as silence would hide that the planner
+        answered a closed question with something that is not an answer.
+        Raising makes it correctable: the strategy re-prompts.
+        """
+        args = _valid_plan_args(task_structure="mostly-parallel-ish")
+
+        with pytest.raises(DecompositionError, match="Unknown task_structure"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
+    def test_an_explicit_null_task_structure_is_refused(self) -> None:
+        """Sending the key as ``null`` is a declaration, not an omission.
+
+        The schema constrains the field to the enum, so ``null`` is a value
+        outside it exactly like any other unmappable one. Reading it as
+        absence would let a planner reach the classifier fallback by naming
+        a value the schema rejects.
+        """
+        args = _valid_plan_args(task_structure=None)
+        args["task_structure"] = None
+
+        with pytest.raises(DecompositionError, match="Unknown task_structure"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:
         """Content-only response is parsed as JSON fallback."""
         args = _valid_plan_args(subtask_count=1)
@@ -186,10 +247,16 @@ class TestLlmDecompositionStrategy:
         assert provider.call_count == 0
 
     @pytest.mark.unit
-    async def test_max_subtasks_exceeded_raises(self) -> None:
-        """Plan with too many subtasks exhausts retries."""
+    async def test_max_subtasks_exceeded_reaches_the_caller_with_both_numbers(
+        self,
+    ) -> None:
+        """An over-limit plan is refused with the count and the ceiling intact.
+
+        Retrying past it would replace the typed error with a bare
+        retries-exhausted one, and the caller could no longer offer to raise
+        the ceiling to the number the planner actually produced.
+        """
         args = _valid_plan_args(subtask_count=5)
-        # Provide enough responses for 1 + max_retries attempts
         responses = [_make_tool_call_response(args) for _ in range(3)]
         provider = MockCompletionProvider(responses)
         config = LlmDecompositionConfig(max_retries=2)
@@ -201,10 +268,12 @@ class TestLlmDecompositionStrategy:
         task = _make_task()
         ctx = _make_context(max_subtasks=3)
 
-        with pytest.raises(DecompositionError, match="retries exhausted"):
+        with pytest.raises(DecompositionSubtaskLimitError) as excinfo:
             await strategy.decompose(task, ctx)
 
-        assert provider.call_count == 3
+        assert excinfo.value.produced == 5
+        assert excinfo.value.limit == 3
+        assert provider.call_count == 1
 
     @pytest.mark.unit
     async def test_malformed_json_retry_success(self) -> None:

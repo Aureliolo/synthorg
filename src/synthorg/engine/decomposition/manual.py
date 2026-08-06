@@ -9,8 +9,12 @@ from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
 )
-from synthorg.engine.errors import DecompositionDepthError, DecompositionError
-from synthorg.observability import get_logger
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+)
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_VALIDATION_ERROR,
@@ -49,7 +53,8 @@ class ManualDecompositionStrategy:
             DecompositionError: If the plan's parent_task_id doesn't
                 match the task.
             DecompositionDepthError: If current depth meets or exceeds max depth.
-            DecompositionError: If subtask count exceeds max_subtasks.
+            DecompositionSubtaskLimitError: If subtask count exceeds
+                max_subtasks.
         """
         if self._plan.parent_task_id != str(task.id):
             msg = (
@@ -68,12 +73,14 @@ class ManualDecompositionStrategy:
             raise DecompositionDepthError(msg)
 
         if len(self._plan.subtasks) > context.max_subtasks:
-            msg = (
-                f"Plan has {len(self._plan.subtasks)} subtasks, "
-                f"exceeding max of {context.max_subtasks}"
+            over_limit = DecompositionSubtaskLimitError(
+                produced=len(self._plan.subtasks), limit=context.max_subtasks
             )
-            logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
-            raise DecompositionError(msg)
+            logger.warning(
+                DECOMPOSITION_VALIDATION_ERROR,
+                error=safe_error_description(over_limit),
+            )
+            raise over_limit
 
         logger.debug(
             DECOMPOSITION_COMPLETED,

@@ -176,13 +176,6 @@ class AgentContext(BaseModel):
         default=frozenset(),
         description="Steering directive entry ids already adopted by this run",
     )
-    pending_steering_replan_id: NotBlankStr | None = Field(
-        default=None,
-        description=(
-            "Steering REDIRECT directive id awaiting a forced replan at the "
-            "next step boundary (Plan/Hybrid only); None when no replan is pending"
-        ),
-    )
 
     @model_validator(mode="after")
     def _validate_disclosure_consistency(self) -> AgentContext:
@@ -289,34 +282,6 @@ class AgentContext(BaseModel):
                 "adopted_steering_ids": self.adopted_steering_ids | {directive_id},
             },
         )
-
-    def with_pending_replan(self, directive_id: NotBlankStr) -> AgentContext:
-        """Record a REDIRECT awaiting a forced replan at the next step.
-
-        The id is carried on the (checkpointed) context rather than a
-        loop-local flag so a crash/resume between adoption and the step
-        boundary still fires the forced replan.
-
-        Args:
-            directive_id: The directive id that requested the replan.
-
-        Returns:
-            New ``AgentContext`` carrying the pending-replan id.
-        """
-        return self.model_copy(
-            update={"pending_steering_replan_id": directive_id},
-        )
-
-    def cleared_pending_replan(self) -> AgentContext:
-        """Clear the pending steering replan after it has been consumed.
-
-        Returns:
-            New ``AgentContext`` with no pending replan; the same instance
-            when none was pending.
-        """
-        if self.pending_steering_replan_id is None:
-            return self
-        return self.model_copy(update={"pending_steering_replan_id": None})
 
     def with_turn_completed(
         self,

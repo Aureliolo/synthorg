@@ -3,29 +3,25 @@
 Pure functions that turn an LLM completion (tool call or JSON content) into a
 validated :class:`DecompositionPlan`. The prompt-building side lives in
 :mod:`synthorg.engine.decomposition.llm_prompt`; both share the canonical
-``submit_decomposition_plan`` tool name.
+``submit_decomposition_plan`` tool name. The per-subtask half lives in
+:mod:`synthorg.engine.decomposition.llm_parse_subtask`.
 """
 
 import json
 import re
-from enum import Enum
 from typing import Final
-from uuid import uuid4
 
 from pydantic import JsonValue
 
-from synthorg.core.plan_enums import PlanItemKind
-from synthorg.core.task_enums import (
-    Complexity,
-    CoordinationTopology,
-    Stakes,
-    TaskStructure,
+from synthorg.core.task_enums import CoordinationTopology, TaskStructure
+from synthorg.engine.decomposition.llm_parse_subtask import (
+    enum_or_default,
+    parse_subtask,
+    remap_subtask_ids,
+    string_array,
 )
 from synthorg.engine.decomposition.llm_prompt import TOOL_NAME
-from synthorg.engine.decomposition.models import (
-    DecompositionPlan,
-    SubtaskDefinition,
-)
+from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
@@ -34,12 +30,6 @@ from synthorg.observability.events.decomposition import (
 from synthorg.providers.models import CompletionResponse
 
 logger = get_logger(__name__)
-
-_COMPLEXITY_MAP: Final[dict[str, Complexity]] = {c.value: c for c in Complexity}
-
-_STAKES_MAP: Final[dict[str, Stakes]] = {s.value: s for s in Stakes}
-
-_PLAN_ITEM_KIND_MAP: Final[dict[str, PlanItemKind]] = {k.value: k for k in PlanItemKind}
 
 _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
     s.value: s for s in TaskStructure
@@ -55,191 +45,44 @@ _MARKDOWN_FENCE_RE = re.compile(
 )
 
 
-def _enum_or_default[E: Enum](
-    raw_value: object,
-    mapping: dict[str, E],
-    default: E,
-    *,
-    field: str,
-) -> E:
-    """Resolve a lowercased enum value from *mapping*, defaulting on a miss.
+def _declared_structure(args: dict[str, JsonValue]) -> TaskStructure:
+    """Resolve the declared task structure, or ``AUTO`` when none was declared.
+
+    Unlike the other enum fields, an unrecognised value raises rather than
+    degrading to a default. The tool schema constrains this field to the
+    enum, so a value outside it is the planner failing to declare rather
+    than declaring awkwardly, and every remaining member is a real answer
+    that would bind the coordination topology. Guessing one would be the
+    silent substitution ``AUTO`` exists to make impossible.
+
+    Only an absent key means "undeclared". An explicit ``null`` is a value
+    the schema does not admit, so it is rejected like any other unknown one
+    rather than read as the omission it is not.
 
     Args:
-        raw_value: The raw value from the LLM response (coerced to a lowercased
-            string for the lookup).
-        mapping: The value-to-member map for the target enum.
-        default: The member returned when *raw_value* is unrecognised.
-        field: The field name, for the warning context.
+        args: The submit-plan arguments the ``task_structure`` key is read
+            from, so presence is distinguishable from an explicit ``null``.
 
     Returns:
-        The mapped enum member, or *default* (with a logged warning) on a miss.
-    """
-    resolved = mapping.get(str(raw_value).lower())
-    if resolved is not None:
-        return resolved
-    logger.warning(
-        DECOMPOSITION_LLM_PARSE_ERROR,
-        raw_value=raw_value,
-        default=default.value,
-        error=f"Unknown {field}: {raw_value!r}, defaulting to {default.value}",
-    )
-    return default
-
-
-def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
-    """Convert a raw subtask dict into a ``SubtaskDefinition``.
-
-    Args:
-        raw: Dict from LLM tool call arguments.
-
-    Returns:
-        A validated ``SubtaskDefinition``.
+        The mapped member, or ``AUTO`` when the planner omitted the field.
 
     Raises:
-        DecompositionError: If required fields are missing.
+        DecompositionError: When the field is present but names no member.
     """
-    for field in ("id", "title", "description"):
-        if field not in raw:
-            msg = (
-                f"Subtask missing required field '{field}'. "
-                f"Available keys: {sorted(raw.keys())}"
-            )
-            logger.warning(
-                DECOMPOSITION_LLM_PARSE_ERROR,
-                error=msg,
-            )
-            raise DecompositionError(msg)
-
-    complexity = _enum_or_default(
-        raw.get("estimated_complexity", "medium"),
-        _COMPLEXITY_MAP,
-        Complexity.MEDIUM,
-        field="complexity",
+    if "task_structure" not in args:
+        return TaskStructure.AUTO
+    raw_value = args["task_structure"]
+    resolved = (
+        None if raw_value is None else _TASK_STRUCTURE_MAP.get(str(raw_value).lower())
     )
-    stakes = _enum_or_default(
-        raw.get("stakes", "normal"),
-        _STAKES_MAP,
-        Stakes.NORMAL,
-        field="stakes",
-    )
-    kind = _enum_or_default(
-        raw.get("kind", "work"),
-        _PLAN_ITEM_KIND_MAP,
-        PlanItemKind.WORK,
-        field="kind",
-    )
-    deps = raw.get("dependencies") or []
-    if not isinstance(deps, list):
-        msg = "Subtask field 'dependencies' must be an array"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
-        raise DecompositionError(msg)
-    skills = raw.get("required_skills") or []
-    if not isinstance(skills, list):
-        msg = "Subtask field 'required_skills' must be an array"
-        logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
-            error=msg,
-        )
-        raise DecompositionError(msg)
-    artifacts = _string_array(raw, "expected_artifacts")
-    acceptance = _string_array(raw, "acceptance_criteria")
-    if not acceptance:
+    if resolved is None:
         msg = (
-            f"Subtask {raw['id']!r} has no acceptance_criteria; every plan item "
-            "must state a verifiable definition of done"
+            f"Unknown task_structure: {raw_value!r}; expected one of "
+            f"{sorted(_TASK_STRUCTURE_MAP)}"
         )
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
-    return SubtaskDefinition.model_validate(
-        {
-            "id": raw["id"],
-            "title": raw["title"],
-            "description": raw["description"],
-            "dependencies": tuple(deps),
-            "estimated_complexity": complexity,
-            "stakes": stakes,
-            "kind": kind,
-            "options": raw.get("options") or (),
-            "required_skills": tuple(skills),
-            "required_role": raw.get("required_role"),
-            "expected_artifacts": artifacts,
-            "acceptance_criteria": acceptance,
-            "satisfies": _string_array(raw, "satisfies"),
-        }
-    )
-
-
-def _string_array(raw: dict[str, JsonValue], field: str) -> tuple[str, ...]:
-    """Coerce an optional LLM string-array field into a tuple.
-
-    Args:
-        raw: The raw subtask dict from tool call arguments.
-        field: The array-valued field name to read.
-
-    Returns:
-        A tuple of the array's entries (empty when the field is absent).
-
-    Raises:
-        DecompositionError: When the field is present and truthy but not a
-            list; a falsy non-list value (``0`` / ``False`` / ``""``) is
-            treated as absent.
-    """
-    values = raw.get(field) or []
-    if not isinstance(values, list):
-        msg = f"Subtask field {field!r} must be an array"
-        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
-        raise DecompositionError(msg)
-    return tuple(str(v) for v in values)
-
-
-def _remap_subtask_ids(
-    parsed: tuple[SubtaskDefinition, ...],
-) -> tuple[SubtaskDefinition, ...]:
-    """Remap model-assigned subtask ids to fresh UUIDs, validating the DAG.
-
-    The model assigns its own subtask ids (e.g. ``"subtask-1"``) purely to
-    express the dependency edges; this remaps each to a globally unique UUID
-    while preserving those edges. Duplicate ids (which would collapse distinct
-    subtasks onto one identifier) and dependencies naming a subtask the model
-    never defined (a hallucination) are both rejected with a correctable
-    :class:`DecompositionError` so the agent-session strategy can resubmit,
-    rather than passing a dangling id through to fail opaquely at DAG
-    validation.
-
-    Args:
-        parsed: The parsed subtasks carrying the model-assigned ids.
-
-    Returns:
-        The subtasks with UUID ids and remapped dependency edges.
-
-    Raises:
-        DecompositionError: On a duplicate id or an unknown dependency id.
-    """
-    id_map: dict[str, str] = {}
-    for sub in parsed:
-        if sub.id in id_map:
-            msg = f"Duplicate subtask id: {sub.id!r}"
-            logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
-            raise DecompositionError(msg)
-        id_map[sub.id] = str(uuid4())
-    for sub in parsed:
-        for dep in sub.dependencies:
-            if dep not in id_map:
-                msg = f"Subtask {sub.id!r} depends on unknown subtask {dep!r}"
-                logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
-                raise DecompositionError(msg)
-    return tuple(
-        sub.model_copy(
-            update={
-                "id": id_map[sub.id],
-                "dependencies": tuple(id_map[dep] for dep in sub.dependencies),
-            }
-        )
-        for sub in parsed
-    )
+    return resolved
 
 
 def _args_to_plan(
@@ -272,16 +115,11 @@ def _args_to_plan(
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
 
-    parsed = tuple(_parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
-    subtasks = _remap_subtask_ids(parsed)
+    parsed = tuple(parse_subtask(s) for s in raw_subtasks if isinstance(s, dict))
+    subtasks = remap_subtask_ids(parsed)
 
-    structure = _enum_or_default(
-        args.get("task_structure", "sequential"),
-        _TASK_STRUCTURE_MAP,
-        TaskStructure.SEQUENTIAL,
-        field="task_structure",
-    )
-    topology = _enum_or_default(
+    structure = _declared_structure(args)
+    topology = enum_or_default(
         args.get("coordination_topology", "auto"),
         _TOPOLOGY_MAP,
         CoordinationTopology.AUTO,
@@ -293,8 +131,8 @@ def _args_to_plan(
         subtasks=subtasks,
         task_structure=structure,
         coordination_topology=topology,
-        open_questions=_string_array(args, "open_questions"),
-        assumptions=_string_array(args, "assumptions"),
+        open_questions=string_array(args, "open_questions"),
+        assumptions=string_array(args, "assumptions"),
     )
 
 

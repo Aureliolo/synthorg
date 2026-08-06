@@ -3,8 +3,8 @@
 ``check_steering`` is consulted at a turn boundary (mirroring the stagnation
 ``check`` in ``loop_helpers``). It projects the active steering directives for
 the running agent's project, injects each not-yet-adopted one as a USER message,
-records the adoption on the (checkpointed) context, and, for a REDIRECT, records
-a pending replan the Plan/Hybrid loops consume at the next step boundary.
+and records the adoption on the (checkpointed) context so a directive survives
+a crash without being adopted twice.
 
 This module owns the steering message wrap, so ``loop_helpers`` (which must not
 wrap, per its module note) stays pure control flow. The directive text is stored
@@ -27,7 +27,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ADOPTED,
     STEERING_INBOX_READ_FAILED,
-    STEERING_REPLAN_TRIGGERED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
@@ -107,9 +106,8 @@ async def check_steering(
         steering_inbox: The steering inbox; ``None`` disables steering.
 
     Returns:
-        The updated context when one or more directives were injected (with
-        adoption recorded and, for a REDIRECT, ``pending_steering_replan_id``
-        set); ``None`` when there was nothing to adopt.
+        The updated context when one or more directives were injected, with
+        adoption recorded; ``None`` when there was nothing to adopt.
     """
     if steering_inbox is None:
         return None
@@ -153,17 +151,4 @@ async def check_steering(
             directive_id=directive.entry_id,
             kind=directive.kind.value,
         )
-        # Record only the first REDIRECT as the replan trigger. A second
-        # REDIRECT adopted in the same pass (or one carried over from a
-        # crash-resumed context) is still injected as a USER message and
-        # adopted; the single forced replan reads every injected directive
-        # from the conversation, so overwriting the trigger id would only
-        # lose the audit trail of which directive fired the replan.
-        if directive.requires_replan and updated.pending_steering_replan_id is None:
-            updated = updated.with_pending_replan(directive.entry_id)
-            logger.info(
-                STEERING_REPLAN_TRIGGERED,
-                execution_id=ctx.execution_id,
-                directive_id=directive.entry_id,
-            )
     return updated

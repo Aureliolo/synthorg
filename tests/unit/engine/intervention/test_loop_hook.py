@@ -117,7 +117,7 @@ class TestCheckSteering:
         inbox = _StubInbox((_directive(),))
         assert await check_steering(ctx, inbox) is None
 
-    async def test_redirect_injects_and_sets_replan(
+    async def test_redirect_injects_and_adopts(
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox((_directive(kind=InterventionKind.REDIRECT),))
@@ -126,23 +126,18 @@ class TestCheckSteering:
         assert len(updated.conversation) == len(sample_agent_context.conversation) + 1
         assert updated.conversation[-1].role is MessageRole.USER
         assert "d1" in updated.adopted_steering_ids
-        assert updated.pending_steering_replan_id == "d1"
 
-    async def test_hint_injects_without_replan(
+    async def test_hint_injects_and_adopts(
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox((_directive(kind=InterventionKind.HINT),))
         updated = await check_steering(sample_agent_context, inbox)
         assert updated is not None
         assert "d1" in updated.adopted_steering_ids
-        assert updated.pending_steering_replan_id is None
 
-    async def test_multiple_redirects_keep_first_as_replan_trigger(
+    async def test_multiple_redirects_are_each_injected_and_adopted(
         self, sample_agent_context: AgentContext
     ) -> None:
-        # Two REDIRECTs adopted in one pass: both are injected and adopted,
-        # but the replan trigger id is deterministic (the first), not
-        # whichever happened to be iterated last.
         inbox = _StubInbox(
             (
                 _directive(entry_id="d1", kind=InterventionKind.REDIRECT),
@@ -153,7 +148,6 @@ class TestCheckSteering:
         assert updated is not None
         assert updated.adopted_steering_ids >= frozenset({"d1", "d2"})
         assert len(updated.conversation) == len(sample_agent_context.conversation) + 2
-        assert updated.pending_steering_replan_id == "d1"
 
     async def test_nothing_pending_returns_none(
         self, sample_agent_context: AgentContext

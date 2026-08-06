@@ -145,9 +145,9 @@ def make_turn_observer(
 
     The returned observer follows the :data:`TurnObserver` contract: the
     ReAct loop invokes it with each turn's requested tool names, the
-    plan/hybrid loops with each step's description. Either way it projects a
-    ``TOOL_CALL_START`` event carrying the index and labels so the operator
-    sees the run making progress step by step.
+    OpenHands loop with the tool each streamed event used. Either way it
+    projects a ``TOOL_CALL_START`` event carrying the index and labels so the
+    operator sees the run making progress turn by turn.
 
     Returns:
         A :data:`TurnObserver` bound to this run's task id + agent.

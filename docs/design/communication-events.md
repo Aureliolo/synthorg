@@ -27,9 +27,6 @@ internal event constants to `AgUiEventType` values:
 | `execution.engine.start` | `run_started` |
 | `execution.engine.complete` | `run_finished` |
 | `execution.engine.error` | `run_error` |
-| `execution.plan.step_start` | `step_started` |
-| `execution.plan.step_complete` | `step_finished` |
-| `execution.plan.step_failed` | `step_failed` |
 | `execution.loop.turn_start` | `text_message_start` |
 | `execution.loop.turn_complete` | `text_message_end` |
 | `execution.loop.tool_calls` | `tool_call_start` |
@@ -41,6 +38,11 @@ Streaming events (`text_message_content`, `tool_call_args`, `tool_call_end`,
 emitted directly by their services via `EventStreamHub.publish_raw()`, not via
 the EventProjector log projection, because they carry structured payloads that
 don't originate from a single log call.
+
+`AgUiEventType` also carries `step_started` / `step_finished` / `step_failed`,
+which are absent from the table above. They are AG-UI protocol vocabulary the
+enum mirrors for completeness; no execution loop emits a step, so nothing
+projects onto them and the dashboard does not subscribe to them.
 
 ## SSE Endpoint
 

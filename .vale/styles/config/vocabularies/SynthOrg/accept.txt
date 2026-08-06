@@ -653,7 +653,6 @@ pdfplumber
 perf
 pipelined
 plaintext
-plan_execute
 pluggability
 pluggable
 pluggy

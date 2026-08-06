@@ -11,7 +11,11 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+)
 from tests._shared import as_uuid, coerce_id
 
 
@@ -98,13 +102,15 @@ class TestManualDecompositionStrategy:
 
     @pytest.mark.unit
     async def test_too_many_subtasks_rejected(self) -> None:
-        """Too many subtasks raises DecompositionError."""
+        """Too many subtasks raises DecompositionSubtaskLimitError."""
         task = _make_task()
         plan = _make_plan(subtask_count=5)
         strategy = ManualDecompositionStrategy(plan)
         ctx = DecompositionContext(max_subtasks=3)
 
-        with pytest.raises(DecompositionError, match="exceeding max"):
+        with pytest.raises(
+            DecompositionSubtaskLimitError, match="exceeds max_subtasks"
+        ):
             await strategy.decompose(task, ctx)
 
     @pytest.mark.unit

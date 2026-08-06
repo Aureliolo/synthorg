@@ -34,6 +34,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
+    DecompositionSubtaskLimitError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
@@ -140,6 +141,9 @@ class LlmDecompositionStrategy:
         Raises:
             DecompositionDepthError: If current depth meets or
                 exceeds max depth.
+            DecompositionSubtaskLimitError: If a planned plan exceeds
+                ``max_subtasks``; raised on the first attempt that does,
+                so the produced count and the ceiling reach the caller.
             DecompositionError: If all retries are exhausted or
                 the plan violates constraints.
         """
@@ -241,6 +245,12 @@ class LlmDecompositionStrategy:
 
             try:
                 self._validate_plan(plan, context)
+            except DecompositionSubtaskLimitError:
+                # Carries the produced count and the ceiling as attributes, so
+                # a caller can offer to raise the limit to the number actually
+                # planned. Retrying past it would replace that with a bare
+                # retries-exhausted error and lose both numbers.
+                raise
             except DecompositionError as exc:
                 last_error = safe_error_description(exc)
                 logger.warning(
@@ -349,18 +359,16 @@ class LlmDecompositionStrategy:
             context: Decomposition constraints.
 
         Raises:
-            DecompositionError: If subtask count exceeds limit.
+            DecompositionSubtaskLimitError: If subtask count exceeds limit.
         """
         if len(plan.subtasks) > context.max_subtasks:
-            msg = (
-                f"Plan has {len(plan.subtasks)} subtasks, "
-                f"exceeds max_subtasks of "
-                f"{context.max_subtasks}"
+            over_limit = DecompositionSubtaskLimitError(
+                produced=len(plan.subtasks), limit=context.max_subtasks
             )
             logger.warning(
                 DECOMPOSITION_VALIDATION_ERROR,
-                subtask_count=len(plan.subtasks),
-                max_subtasks=context.max_subtasks,
-                error=msg,
+                subtask_count=over_limit.produced,
+                max_subtasks=over_limit.limit,
+                error=safe_error_description(over_limit),
             )
-            raise DecompositionError(msg)
+            raise over_limit

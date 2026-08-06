@@ -7,6 +7,9 @@ function pluralItems(count: number): string {
 }
 
 const STRUCTURE_LABEL: Record<TaskStructure, string> = {
+  // A durable plan always names a resolved structure, so 'auto' reaching the
+  // review header means decomposition produced one that skipped the service.
+  auto: 'Unresolved',
   sequential: 'Sequential',
   parallel: 'Parallel',
   mixed: 'Mixed',

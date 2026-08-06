@@ -96,21 +96,6 @@ EXECUTION_DELEGATION_CHILD_CANCELLED: Final[str] = (
 EXECUTION_DELEGATION_DISABLED: Final[str] = "execution.delegation.disabled"
 EXECUTION_DELEGATION_FAILED: Final[str] = "execution.delegation.failed"
 
-EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"
-EXECUTION_PLAN_STEP_START: Final[str] = "execution.plan.step_start"
-EXECUTION_PLAN_STEP_COMPLETE: Final[str] = "execution.plan.step_complete"
-EXECUTION_PLAN_STEP_FAILED: Final[str] = "execution.plan.step_failed"
-EXECUTION_PLAN_REPLAN_START: Final[str] = "execution.plan.replan_start"
-EXECUTION_PLAN_REPLAN_COMPLETE: Final[str] = "execution.plan.replan_complete"
-EXECUTION_PLAN_REPLAN_EXHAUSTED: Final[str] = "execution.plan.replan_exhausted"
-EXECUTION_PLAN_PARSE_ERROR: Final[str] = "execution.plan.parse_error"
-EXECUTION_PLAN_STEP_TRUNCATED: Final[str] = "execution.plan.step_truncated"
-EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE: Final[str] = (
-    "execution.plan.step_index_out_of_range"
-)
-EXECUTION_PLAN_STEP_STATUS_UPDATED: Final[str] = "execution.plan.step_status_updated"
-EXECUTION_PLAN_STEP_TOOL_USE_EMPTY: Final[str] = "execution.plan.step_tool_use_empty"
-
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
 EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"
@@ -133,27 +118,14 @@ EXECUTION_RESUME_FAILED: Final[str] = "execution.resume.failed"
 # Loop auto-selection events
 EXECUTION_LOOP_AUTO_SELECTED: Final[str] = "execution.loop.auto_selected"
 EXECUTION_LOOP_STATIC_SELECTED: Final[str] = "execution.loop.static_selected"
-EXECUTION_LOOP_BUDGET_DOWNGRADE: Final[str] = "execution.loop.budget_downgrade"
-EXECUTION_LOOP_HYBRID_FALLBACK: Final[str] = "execution.loop.hybrid_fallback"
 EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
-EXECUTION_LOOP_BUDGET_UNAVAILABLE: Final[str] = "execution.loop.budget_unavailable"
 # The engine holds its selection config frozen for its lifetime, so this
 # records what a rebuild actually resolved rather than only that one happened.
 EXECUTION_LOOP_SELECTION_RESOLVED: Final[str] = "execution.loop.selection_resolved"
-
-# Hybrid loop events
-EXECUTION_HYBRID_STEP_TURN_LIMIT: Final[str] = "execution.hybrid.step_turn_limit"
-EXECUTION_HYBRID_PROGRESS_SUMMARY: Final[str] = "execution.hybrid.progress_summary"
-EXECUTION_HYBRID_REPLAN_DECIDED: Final[str] = "execution.hybrid.replan_decided"
-EXECUTION_HYBRID_TURN_BUDGET_WARNING: Final[str] = (
-    "execution.hybrid.turn_budget_warning"
-)
-EXECUTION_HYBRID_PLAN_TRUNCATED: Final[str] = "execution.hybrid.plan_truncated"
-EXECUTION_HYBRID_REPLAN_PARSE_TRACE: Final[str] = "execution.hybrid.replan_parse_trace"
-EXECUTION_HYBRID_PROGRESS_SUMMARY_EMPTY: Final[str] = (
-    "execution.hybrid.progress_summary_empty"
-)
-EXECUTION_PLAN_SUMMARY_FALLBACK: Final[str] = "execution.plan.summary_fallback"
+# A stored setting still naming a retired loop. The dashboard shows the
+# operator the value they chose, so the substitution needs its own record or
+# the running loop silently disagrees with the configured one.
+EXECUTION_LOOP_RETIRED_NAME_COERCED: Final[str] = "execution.loop.retired_name_coerced"
 
 # Metrics events
 EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_type"

@@ -1167,10 +1167,10 @@ _r.register(
 )
 
 # ── Execution-loop auto-selection ────────────────────────────────
-# Gate + rules that pick a per-task inner loop (react / plan_execute /
-# hybrid / openhands) from task complexity. Off by default: the engine
-# uses its single static react loop until an operator opts in. This is
-# the knob that makes the OpenHands loop selectable for an A/B.
+# Gate + rules that pick a per-task inner loop (react / openhands) from
+# task complexity. Off by default: the engine uses its single static react
+# loop until an operator opts in. This is the knob that makes the OpenHands
+# loop selectable for an A/B.
 
 _r.register(
     SettingDefinition(
@@ -1183,7 +1183,7 @@ _r.register(
             " instead of always using the static react loop. Off by default."
             " When on, the complexity rules (defaults plus"
             " loop_complexity_overrides) and default_loop_type decide which of"
-            " react / plan_execute / hybrid / openhands runs each task. The"
+            " react / openhands runs each task. The"
             " selection is resolved when the runtime is built and changing this"
             " rebuilds it, so a change applies to the next task with no"
             " restart. The openhands loop additionally needs its gateway +"
@@ -1204,11 +1204,11 @@ _r.register(
             "Fallback inner loop when no complexity rule matches a task (only"
             " consulted when loop_auto_select_enabled is on). Set to 'openhands'"
             " to route every unmatched task through the OpenHands coding harness."
-            " One of: react, plan_execute, hybrid, openhands."
+            " One of: react, openhands."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
-        validator_pattern=r"^(react|plan_execute|hybrid|openhands)$",
+        validator_pattern=r"^(react|openhands)$",
     )
 )
 
@@ -1223,18 +1223,19 @@ _r.register(
             " complexity rules (only consulted when loop_auto_select_enabled is"
             " on). Comma-separated 'complexity:loop' pairs, e.g."
             " 'complex:openhands,epic:openhands' to route the heaviest tasks"
-            " through OpenHands while lighter tasks keep the native loops."
-            " Complexity is one of simple/medium/complex/epic; loop is one of"
-            " react/plan_execute/hybrid/openhands. Empty keeps the defaults"
-            " (simple=react, medium=plan_execute, complex/epic=hybrid)."
+            " through OpenHands while lighter tasks stay on the native react"
+            " loop. Complexity is one of simple/medium/complex/epic; loop is one"
+            " of react/openhands. Empty routes every complexity to react, which"
+            " is what the inner-loop A/B harness expects to overwrite once it"
+            " has measured which loop wins per complexity."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
         validator_pattern=(
             r"^$|^(simple|medium|complex|epic):"
-            r"(react|plan_execute|hybrid|openhands)"
+            r"(react|openhands)"
             r"(,(simple|medium|complex|epic):"
-            r"(react|plan_execute|hybrid|openhands))*$"
+            r"(react|openhands))*$"
         ),
     )
 )

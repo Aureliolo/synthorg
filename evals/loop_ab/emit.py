@@ -110,6 +110,7 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
             -(row.score.composite if row.score else 0.0),
         ),
     )
+    any_partial = False
     for row in rows:
         # Both are non-None on a measured row; the model validator guarantees it.
         score = row.score
@@ -119,14 +120,27 @@ def _results_table(scoreboard: Scoreboard) -> list[str]:
         aggregate = measurement.aggregate
         spend = sum(item.cost for item in row.spend)
         flag = " (disqualified)" if score.disqualified else ""
+        # A loop that cannot report retries has a rework figure covering only
+        # its repeated tool calls; the marker keeps a reader from comparing it
+        # against a fully-measured one as though the two counted the same
+        # things. The footnote below the table spells the marker out.
+        partial = "" if aggregate.provider_retries is not None else "+"
+        any_partial = any_partial or bool(partial)
         lines.append(
             f"| {row.brief_id} | {row.tier} | {row.loop_type}{flag} "
             f"| {score.composite:.1f} | {aggregate.correctness:.0f} "
             f"| {aggregate.total_tokens:.0f} | {aggregate.duration_seconds:.1f}s "
-            f"| {aggregate.total_turns:.0f} | {aggregate.rework_events:.0f} "
+            f"| {aggregate.total_turns:.0f} | {aggregate.rework_events:.0f}{partial} "
             f"| {aggregate.pass_rate:.0%} | {spend:.4f} |"
         )
     lines.append("")
+    if any_partial:
+        lines.append(
+            "`+` on Rework: provider retries are not observable for that loop, so "
+            "the figure counts repeated tool calls only. Scoring drops the retry "
+            "component for every loop in such a cell."
+        )
+        lines.append("")
     return lines
 
 

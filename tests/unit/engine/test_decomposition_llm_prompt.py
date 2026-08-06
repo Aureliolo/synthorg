@@ -399,7 +399,7 @@ class TestParseToolCallResponse:
         assert plan.subtasks[0].required_role is None
         assert plan.subtasks[0].expected_artifacts == ("src/only.py",)
         assert plan.subtasks[0].acceptance_criteria == ("it works",)
-        assert plan.task_structure is TaskStructure.SEQUENTIAL
+        assert plan.task_structure is TaskStructure.AUTO
         assert plan.coordination_topology is CoordinationTopology.AUTO
 
     def test_missing_expected_artifacts_raises(self) -> None:
