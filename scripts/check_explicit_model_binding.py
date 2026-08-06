@@ -120,6 +120,11 @@ def _string_default(value: ast.expr) -> str | None:
     ``Field(default=...)`` / ``SettingDefinition(default=...)`` /
     ``Field("...")`` call (with the default itself possibly wrapped).
 
+    A ``default_factory=lambda: "..."`` is the same default reached through
+    a callable, so it is read the same way: leaving it out would let a
+    model-shaped field ship a baked id past a gate with no opt-out and no
+    baseline, where a silent miss is the only failure mode.
+
     Returns:
         The non-blank default string, or ``None``.
     """
@@ -132,6 +137,10 @@ def _string_default(value: ast.expr) -> str | None:
                 inner = _literal_str(kw.value)
                 if inner is not None:
                     return inner or None
+            if kw.arg == "default_factory" and isinstance(kw.value, ast.Lambda):
+                produced = _literal_str(kw.value.body)
+                if produced is not None:
+                    return produced or None
         if value.args:
             inner = _literal_str(value.args[0])
             if inner is not None:
@@ -258,15 +267,21 @@ def _scan(root: Path) -> list[str]:
         Every finding, sorted by the order the files were walked.
 
     Raises:
-        GateSourceError: When the expected source tree is missing under
-            *root*, so a misconfigured ``--repo-root`` fails closed rather
-            than silently scanning zero files and reporting no violations.
+        GateSourceError: When either expected tree is missing under *root*,
+            so a misconfigured ``--repo-root`` (or a moved tree) fails closed
+            rather than silently scanning zero files and reporting no
+            violations.
     """
     findings: list[str] = []
     definitions_dir = root / _DEFINITIONS_REL
     src_dir = root / _SRC_REL
     if not src_dir.is_dir():
         msg = f"expected source tree not found: {src_dir}"
+        raise GateSourceError(msg)
+    if not definitions_dir.is_dir():
+        # Without this the `SettingDefinition` arm scans zero files whenever
+        # the tree moves, and a gate that inspected nothing still exits 0.
+        msg = f"expected settings-definitions tree not found: {definitions_dir}"
         raise GateSourceError(msg)
     for path in sorted(src_dir.rglob("*.py")):
         relpath = path.relative_to(root).as_posix()

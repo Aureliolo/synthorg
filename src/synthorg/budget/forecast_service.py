@@ -85,6 +85,16 @@ class BudgetForecastService:
         """Attach the port that runs an approved forecast's gated work."""
         self._dispatcher = dispatcher
 
+    def detach_dispatcher(self) -> None:
+        """Drop the attached dispatcher.
+
+        A hot swap that removes the work pipeline or its persistence leaves
+        this service holding a dispatcher bound to the gate that is going
+        away, so an approval would run against a torn-down pipeline. Going
+        back to "no dispatcher" makes the approval refuse loudly instead.
+        """
+        self._dispatcher = None
+
     async def generate(
         self,
         *,

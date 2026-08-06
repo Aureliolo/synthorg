@@ -153,10 +153,35 @@ class TestForgedTestEvidence:
             "gem install rspec",
             "true # pytest",
             "ls jest",
+            # `test` is a real npm package, so these install it and exit 0.
+            # A package-manager verb other than `test` never ran a suite.
+            "npm install test",
+            "yarn add test",
+            "npm uninstall test",
+            "pnpm add test",
+            "bun add test",
         ],
     )
     def test_naming_a_runner_is_not_running_one(self, command: str) -> None:
         assert not is_test_run(command)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "npm test",
+            "npm run test",
+            "pnpm run test -- --watch=false",
+            "yarn test",
+            "deno test",
+            "mvn clean test",
+            "make -j4 test",
+        ],
+    )
+    def test_a_runner_reaching_its_test_target_is_a_test_run(
+        self, command: str
+    ) -> None:
+        """A package manager's ``test`` verb, and a build tool's target."""
+        assert is_test_run(command)
 
     @pytest.mark.parametrize(
         "command",

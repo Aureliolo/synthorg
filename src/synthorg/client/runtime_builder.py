@@ -211,7 +211,7 @@ def _make_verification_config(
     Returns:
         The resolved :class:`VerificationConfig`.
     """
-    if grader == "llm" and grader_model is None:
+    if grader == GraderVariant.LLM.value and grader_model is None:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             note="verification llm grader has no registered (provider, model) "
@@ -219,8 +219,8 @@ def _make_verification_config(
             setting=f"{SettingNamespace.SIMULATIONS.value}."
             f"{_VERIFICATION_GRADER_MODEL_KEY}",
         )
-        grader = "heuristic"
-    if decomposer == "llm" and decomposer_model is None:
+        grader = GraderVariant.HEURISTIC.value
+    if decomposer == DecomposerVariant.LLM.value and decomposer_model is None:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             note="verification llm decomposer has no registered (provider, model) "
@@ -228,7 +228,7 @@ def _make_verification_config(
             setting=f"{SettingNamespace.SIMULATIONS.value}."
             f"{_VERIFICATION_DECOMPOSER_MODEL_KEY}",
         )
-        decomposer = "identity"
+        decomposer = DecomposerVariant.IDENTITY.value
     return VerificationConfig(
         grader=GraderVariant(grader),
         decomposer=DecomposerVariant(decomposer),

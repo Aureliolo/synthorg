@@ -292,14 +292,11 @@ class InitiativeEvaluator:
             session ended without a usable submission.
         """
         capture = _EvaluationCapture()
-        tools: list[BaseTool] = [
-            SubmitEvaluationTool(
-                capture=capture, criteria=criteria, project_id=project_id
-            ),
-            *read_tools,
-        ]
+        submit = SubmitEvaluationTool(
+            capture=capture, criteria=criteria, project_id=project_id
+        )
         invoker = ToolInvoker(
-            ToolRegistry(tools),
+            ToolRegistry([submit, *read_tools]),
             permission_checker=None,
             agent_id=str(lead.id),
             cost_tracker=self._cost_tracker,
@@ -307,11 +304,10 @@ class InitiativeEvaluator:
         logger.info(
             INITIATIVE_EVALUATION_STARTED,
             lead_id=str(lead.id),
-            granted_tools=len(tools),
+            granted_tools=len(read_tools) + 1,
             criteria=len(criteria),
             max_turns=self._config.max_turns,
         )
-        loop = ReactLoop(approval_gate=None)
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr(str(lead.id)),
@@ -319,7 +315,7 @@ class InitiativeEvaluator:
             purpose=None,
             call_category=LLMCallCategory.SYSTEM,
         ):
-            result = await loop.execute(
+            result = await ReactLoop(approval_gate=None).execute(
                 context=self._build_context(lead, brief),
                 provider=provider,
                 tool_invoker=invoker,
@@ -329,23 +325,24 @@ class InitiativeEvaluator:
                     temperature=self._config.temperature
                 ),
             )
-        if capture.report is not None:
-            logger.info(
-                INITIATIVE_EVALUATION_COMPLETED,
+        report = capture.report
+        if report is None:
+            logger.warning(
+                INITIATIVE_EVALUATION_FAILED,
                 lead_id=str(lead.id),
-                objective_met=capture.report.objective_met,
-                criteria=len(capture.report.verdicts),
+                reason="no_report",
                 termination=result.termination_reason.value,
+                termination_detail=result.error_message,
             )
-            return capture.report
-        logger.warning(
-            INITIATIVE_EVALUATION_FAILED,
+            return None
+        logger.info(
+            INITIATIVE_EVALUATION_COMPLETED,
             lead_id=str(lead.id),
-            reason="no_report",
+            objective_met=report.objective_met,
+            criteria=len(report.verdicts),
             termination=result.termination_reason.value,
-            termination_detail=result.error_message,
         )
-        return None
+        return report
 
     def _build_context(self, lead: AgentIdentity, brief: str) -> AgentContext:
         """Build the lead-persona session context.

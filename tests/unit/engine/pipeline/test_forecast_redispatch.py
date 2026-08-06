@@ -15,6 +15,8 @@ from pydantic import JsonValue
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.pipeline.forecast_redispatch import ForecastGateRedispatcher
+from synthorg.notifications.models import Notification, NotificationSeverity
+from synthorg.notifications.protocol import NotificationDispatcherProtocol
 from tests._shared import StubWorkPipeline, as_uuid
 
 pytestmark = pytest.mark.unit
@@ -55,13 +57,27 @@ def _forecast(
     )
 
 
-def _redispatcher() -> tuple[
-    ForecastGateRedispatcher, StubWorkPipeline, set[asyncio.Task[None]]
-]:
-    gate = StubWorkPipeline()
+class _RecordingNotifications:
+    """Notification sink double recording what the failure path sent."""
+
+    def __init__(self) -> None:
+        self.sent: list[Notification] = []
+
+    async def dispatch(self, notification: Notification) -> None:
+        self.sent.append(notification)
+
+
+def _redispatcher(
+    *,
+    run_error: Exception | None = None,
+    notifications: NotificationDispatcherProtocol | None = None,
+) -> tuple[ForecastGateRedispatcher, StubWorkPipeline, set[asyncio.Task[None]]]:
+    gate = StubWorkPipeline(intake_error=run_error)
     tracked: set[asyncio.Task[None]] = set()
     return (
-        ForecastGateRedispatcher(gate=gate, background_tasks=tracked),
+        ForecastGateRedispatcher(
+            gate=gate, background_tasks=tracked, notifications=notifications
+        ),
         gate,
         tracked,
     )
@@ -128,4 +144,37 @@ async def test_the_spawned_run_is_tracked_until_it_finishes() -> None:
 
     assert len(tracked) == 1
     await _settle(tracked)
+    assert tracked == set()
+
+
+async def test_a_run_that_fails_alerts_the_operator_who_approved_it() -> None:
+    """The point of the design: the approval already returned 200.
+
+    Nobody is left to raise into, so a failure that only logged would leave
+    the operator believing the work they paid for is running.
+    """
+    notifications = _RecordingNotifications()
+    redispatcher, gate, tracked = _redispatcher(
+        run_error=RuntimeError("pipeline exploded"), notifications=notifications
+    )
+    forecast = _forecast(gated_work_item=_WORK_ITEM)
+
+    await redispatcher.dispatch(forecast)
+    await _settle(tracked)
+
+    assert [item.title for item in gate.calls] == ["Ship the game"]
+    assert len(notifications.sent) == 1
+    alert = notifications.sent[0]
+    assert alert.severity is NotificationSeverity.ERROR
+    assert str(forecast.forecast_id) in alert.body
+    assert alert.metadata["correlation_id"] == "corr-001"
+
+
+async def test_a_failed_run_never_escapes_the_spawned_task() -> None:
+    """Settling must not re-raise: the failure is reported, not propagated."""
+    redispatcher, _, tracked = _redispatcher(run_error=RuntimeError("boom"))
+
+    await redispatcher.dispatch(_forecast(gated_work_item=_WORK_ITEM))
+    await _settle(tracked)
+
     assert tracked == set()

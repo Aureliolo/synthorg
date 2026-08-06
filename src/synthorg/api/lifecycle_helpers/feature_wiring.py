@@ -243,9 +243,9 @@ async def _build_and_wire_research(
     from synthorg.workers import _web_search_provider_wiring as _wsp  # noqa: PLC0415
 
     # ``research.model`` is a model-assignment setting storing a ``ModelRef``:
-    # the provider travels with the model (the picker writes both). A blank
-    # ref provider falls back to the explicit default system provider, never
-    # a first-registered pick.
+    # the provider travels with the model (the picker writes both). There is
+    # no default to borrow, so a blank ref provider (or one naming an
+    # unregistered connection) leaves research unwired.
     ref = parse_model_ref((await runtime_settings.get("research", "model")).value)
     model = ref.model_id.strip()
     if not model:

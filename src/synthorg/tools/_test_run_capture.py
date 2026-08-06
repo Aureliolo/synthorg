@@ -112,13 +112,23 @@ _IMMEDIATE_SUBCOMMAND_RUNNERS: Final[frozenset[str]] = frozenset(
     {"go", "cargo", "dotnet", "swift"}
 )
 
-#: Programs that run tests via a ``test`` target anywhere among their
-#: non-flag arguments: ``mvn clean test``, ``make -j4 test``, ``npm run test``.
-_TARGET_RUNNERS: Final[frozenset[str]] = frozenset(
-    {"mvn", "gradle", "gradlew", "make", "npm", "pnpm", "yarn", "bun", "deno"}
+#: Build tools that run tests via a ``test`` target anywhere among their
+#: non-flag arguments: ``mvn clean test``, ``make -j4 test``. Their argument
+#: lists are phase / target names, so a ``test`` among them always names the
+#: test phase.
+_TARGET_RUNNERS: Final[frozenset[str]] = frozenset({"mvn", "gradle", "gradlew", "make"})
+
+#: Package managers, whose first non-flag argument is a verb. ``test`` counts
+#: only as that verb, or as the script named by ``run``: ``npm install test``
+#: and ``yarn add test`` install a package that happens to be called ``test``
+#: and would otherwise mint passing test evidence for a command that ran no
+#: tests, which is exactly the forgery this evidence exists to resist.
+_PACKAGE_MANAGER_RUNNERS: Final[frozenset[str]] = frozenset(
+    {"npm", "pnpm", "yarn", "bun", "deno"}
 )
 
 _TEST_TARGET: Final[str] = "test"
+_RUN_SUBCOMMAND: Final[str] = "run"
 
 #: Shells whose ``-c`` argument is itself a command line, so the question
 #: recurses into it once. ``bash -c "pytest -q"`` really did run the suite,
@@ -206,9 +216,33 @@ def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
     arguments = tuple(token for token in tokens[1:] if not token.startswith("-"))
     if program in _IMMEDIATE_SUBCOMMAND_RUNNERS:
         return bool(arguments) and arguments[0] == _TEST_TARGET
+    if program in _PACKAGE_MANAGER_RUNNERS:
+        return _is_package_manager_test(arguments)
     if program in _TARGET_RUNNERS:
         return _TEST_TARGET in arguments
     return False
+
+
+def _is_package_manager_test(arguments: tuple[str, ...]) -> bool:
+    """Whether a package manager's *arguments* invoke its test script.
+
+    Args:
+        arguments: The non-flag arguments following the program name.
+
+    Returns:
+        ``True`` for ``test`` as the verb (``npm test``) or as the script
+        ``run`` names (``pnpm run test``), and ``False`` for every other
+        verb, so ``npm install test`` is an install and not a test run.
+    """
+    if not arguments:
+        return False
+    if arguments[0] == _TEST_TARGET:
+        return True
+    return (
+        arguments[0] == _RUN_SUBCOMMAND
+        and len(arguments) > 1
+        and arguments[1] == _TEST_TARGET
+    )
 
 
 async def record_if_test_run(

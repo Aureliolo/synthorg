@@ -42,6 +42,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CODE_GEN_COMPLETED,
     META_CODE_GEN_FAILED,
+    META_CODE_GEN_MODEL_UNSET,
     META_CODE_GEN_PARSE_FAILED,
     META_CODE_GEN_STARTED,
     META_CODE_SCOPE_VIOLATION,
@@ -338,7 +339,7 @@ class CodeModificationStrategy:
                 self._config_resolver,
                 namespace=SettingNamespace.SELF_IMPROVEMENT,
                 key=_MODEL_KEY,
-                unset_event=META_CODE_GEN_FAILED,
+                unset_event=META_CODE_GEN_MODEL_UNSET,
             ),
             namespace=SettingNamespace.SELF_IMPROVEMENT,
             key=_MODEL_KEY,

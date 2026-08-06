@@ -14,6 +14,8 @@ const log = createLogger('plan-evaluation')
 let requestToken = 0
 
 export interface PlanEvaluationState {
+  /** The plan the attempts and error below belong to, `null` when cleared. */
+  planId: string | null
   attempts: readonly PlanEvaluationAttempt[]
   loading: boolean
   error: string | null
@@ -25,7 +27,10 @@ type PeSet = StoreApi<PlanEvaluationState>['setState']
 
 async function fetchEvaluationImpl(set: PeSet, planId: string): Promise<void> {
   const token = (requestToken += 1)
-  set({ loading: true, error: null, attempts: [] })
+  // The plan id is stamped here, before the request goes out: navigating from
+  // plan A to plan B renders once before the effect runs, and a consumer that
+  // could not tell whose verdicts it holds would paint A's under B's heading.
+  set({ planId, loading: true, error: null, attempts: [] })
   try {
     const evaluation = await getPlanEvaluation(planId)
     if (token !== requestToken) return
@@ -44,12 +49,13 @@ async function fetchEvaluationImpl(set: PeSet, planId: string): Promise<void> {
  * verdicts; still a pure API consumer (re-hydrated on mount, nothing persisted).
  */
 export const usePlanEvaluationStore = create<PlanEvaluationState>((set) => ({
+  planId: null,
   attempts: [],
   loading: false,
   error: null,
   fetchEvaluation: (planId) => fetchEvaluationImpl(set, planId),
   clear: () => {
     requestToken += 1
-    set({ attempts: [], loading: false, error: null })
+    set({ planId: null, attempts: [], loading: false, error: null })
   },
 }))

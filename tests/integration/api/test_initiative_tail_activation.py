@@ -18,9 +18,14 @@ from synthorg.api.lifecycle_helpers.project_rollup_wiring import (
     attach_evaluation_stage,
     attach_integration_stage,
     attach_replan_trigger,
+    attach_ship_retro_capture,
+    detach_ship_retro_capture,
     wire_project_rollup_service,
 )
 from synthorg.api.state import AppState
+from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker import CostTracker
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.initiative.rollup import ProjectRollupService
@@ -29,6 +34,9 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.state import HrStateSlice
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.state import MemoryStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
@@ -38,7 +46,6 @@ from synthorg.settings.state import SettingsStateSlice
 from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import StubWorkPipeline, make_app_state, mock_of
 from tests.unit.api.fakes_backend import FakePersistenceBackend
-from tests.unit.engine.task_engine_helpers import FakeMessageBus
 
 pytestmark = pytest.mark.integration
 
@@ -66,7 +73,7 @@ async def _booted() -> AppState:
     engine = TaskEngine(
         config=TaskEngineConfig(),
         persistence=backend,
-        message_bus=FakeMessageBus(),  # type: ignore[arg-type]
+        message_bus=mock_of[MessageBus](),
     )
     app_state = make_app_state()
     app_state.wire(PersistenceStateSlice, backend=backend)
@@ -86,6 +93,16 @@ def _wire_judgement_dependencies(app_state: AppState) -> None:
     """Wire what the EVALUATE stage needs, and nothing the others do."""
     app_state.wire(ProvidersStateSlice, registry=ProviderRegistry(drivers={}))
     app_state.wire(HrStateSlice, agent_registry=mock_of[AgentRegistryService]())
+
+
+def _wire_memory_layers(app_state: AppState) -> None:
+    """Wire both memory layers the retrospective capture writes into."""
+    app_state.wire(
+        MemoryStateSlice,
+        backend=mock_of[MemoryBackend](),
+        org_memory_backend=mock_of[OrgMemoryBackend](),
+    )
+    app_state.wire(BudgetStateSlice, cost_tracker=CostTracker())
 
 
 class TestInitiativeTailActivation:
@@ -155,3 +172,26 @@ class TestInitiativeTailActivation:
 
         assert rollup.has_replan_trigger()
         assert rollup.replan_trigger() is not None
+
+    async def test_the_retrospective_needs_memory_and_comes_down_again(self) -> None:
+        """The retro tail is probed on its own, so drive it on its own.
+
+        Its dependencies are the two memory layers, which converge on a
+        different schedule from the provider registry. A tail that came up
+        while memory was blocked would otherwise read as converged with the
+        retrospective silently never firing, and the detach is what the
+        reconciler reads as the subsystem being down.
+        """
+        app_state = await _booted()
+        _wire_judgement_dependencies(app_state)
+        rollup = _rollup(app_state)
+
+        await attach_ship_retro_capture(app_state)
+        assert not rollup.has_retro_capture()
+
+        _wire_memory_layers(app_state)
+        await attach_ship_retro_capture(app_state)
+        assert rollup.has_retro_capture()
+
+        await detach_ship_retro_capture(app_state)
+        assert not rollup.has_retro_capture()

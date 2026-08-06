@@ -178,7 +178,11 @@ async def apply_post_execution_transitions(
     is driven to FAILED too, so it becomes retryable and, once retries
     are spent, visible to the stall derivation the replan trigger reads.
     Each transition is synced to TaskEngine incrementally.
-    Transition failures are logged but never discard the result.
+    A transition failure is logged and leaves the result intact, except on
+    the FAILED path: a task that could not be moved off ``IN_PROGRESS``
+    reads as still moving to the stall derivation, so that one raises
+    ``ExecutionStateError`` for the caller to act on rather than returning
+    a result whose recorded state never happened.
     ``MemoryError`` and ``RecursionError`` propagate unconditionally.
 
     When an ``approval_store`` is provided and the task reaches
@@ -201,6 +205,11 @@ async def apply_post_execution_transitions(
         The original ``execution_result`` unchanged if no transitions
         apply, or a copy with updated context reflecting the
         furthest-reached state on success or partial failure.
+
+    Raises:
+        ExecutionStateError: When the FAILED transition cannot land.
+            Callers release the run's checkpoints before letting it
+            through, so an unmoved task does not also leak its rows.
     """
     ctx = execution_result.context
     if ctx.task_execution is None:

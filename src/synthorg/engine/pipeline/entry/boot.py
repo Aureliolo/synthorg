@@ -301,6 +301,7 @@ async def wire_real_objective_entry(
         # install has nothing wired yet.
         if hot_swap:
             app_state.clear_objective_entry_adapter()
+            _detach_forecast_redispatcher(app_state)
         logger.info(
             OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
@@ -338,7 +339,17 @@ def _attach_forecast_redispatcher(
     added to prevent expressed one step later.
     """
     forecast_service = app_state.slice(BudgetStateSlice).forecast_service
-    if gate is None or forecast_service is None:
+    if gate is None:
+        return
+    if forecast_service is None:
+        # A gate with no service is the one arrangement that silently
+        # strands an approval: the gate parks work nobody can later run.
+        logger.warning(
+            BUDGET_FORECAST_UNAVAILABLE,
+            service="forecast_redispatcher",
+            note="forecast gate wired without a forecast service; "
+            "an approval would have nothing to dispatch",
+        )
         return
     forecast_service.attach_dispatcher(
         ForecastGateRedispatcher(
@@ -347,6 +358,19 @@ def _attach_forecast_redispatcher(
             notifications=app_state.slice(NotificationsStateSlice).dispatcher,
         ),
     )
+
+
+def _detach_forecast_redispatcher(app_state: AppState) -> None:
+    """Drop a redispatcher bound to a pipeline that is going away.
+
+    The counterpart of :func:`_attach_forecast_redispatcher`: a hot swap
+    that loses the pipeline or persistence would otherwise leave the
+    forecast service dispatching approvals into the torn-down gate.
+    """
+    forecast_service = app_state.slice(BudgetStateSlice).forecast_service
+    if forecast_service is None:
+        return
+    forecast_service.detach_dispatcher()
 
 
 async def _ensure_project(

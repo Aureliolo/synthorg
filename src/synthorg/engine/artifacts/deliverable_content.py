@@ -97,6 +97,11 @@ def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
     if not is_probeable_path(declared):
         return {"path": label, "status": _STATUS_NOT_A_PATH}
     resolved = (root / Path(declared)).resolve()
+    if resolved == root:
+        # ``.`` and ``src/..`` name the workspace itself, which exists
+        # whenever the run had one. Reading it as a deliverable would let an
+        # empty run present the workspace as its output.
+        return {"path": label, "status": _STATUS_ABSENT}
     if not resolved.is_relative_to(root):
         # A path the run could not legitimately have written is not the
         # task's output, so it is reported as absent rather than read.

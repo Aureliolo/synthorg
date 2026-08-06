@@ -197,8 +197,8 @@ async def _maybe_build_knowledge_synthesizer(
         )
         return None
     # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``,
-    # so the model id and its provider are read together; a blank ref provider
-    # resolves via the explicit default system provider (never first-registered).
+    # so the model id and its provider are read together. There is no default
+    # to borrow: a blank ref provider leaves synthesis off, retrieval-only.
     ref = parse_model_ref(
         (await runtime_settings.get("knowledge", "synthesis_model")).value
     )

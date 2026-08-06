@@ -15,6 +15,7 @@ export interface UsePlanEvaluationReturn {
  * usePlanForecast), and clears it on unmount / when there is no plan.
  */
 export function usePlanEvaluation(planId: string | null): UsePlanEvaluationReturn {
+  const storedPlanId = usePlanEvaluationStore((s) => s.planId)
   const attempts = usePlanEvaluationStore((s) => s.attempts)
   const loading = usePlanEvaluationStore((s) => s.loading)
   const error = usePlanEvaluationStore((s) => s.error)
@@ -30,5 +31,13 @@ export function usePlanEvaluation(planId: string | null): UsePlanEvaluationRetur
     }
   }, [planId])
 
+  // The effect that re-points the store runs after this render, so on the
+  // first render after navigating A -> B the store still holds A's verdicts.
+  // Withholding them until the ids agree is what stops A's text appearing
+  // under B's heading; the request token only guards the late response.
+  const matches = storedPlanId !== null && storedPlanId === planId
+  if (!matches) {
+    return { attempts: [], loading: planId !== null, error: null }
+  }
   return { attempts, loading, error }
 }

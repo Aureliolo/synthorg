@@ -34,15 +34,6 @@ class TestCoordinationSectionConfigDefaults:
         cfg = CoordinationSectionConfig()
         assert cfg.base_branch == "main"
 
-    def test_company_yaml_cannot_carry_a_decomposition_model(self) -> None:
-        from pydantic import ValidationError
-
-        # The decomposition model is a provider + model pair the operator
-        # assigns through settings, not a bare model id a company YAML can
-        # bake in: half a pair names no dispatch target.
-        with pytest.raises(ValidationError, match="extra"):
-            CoordinationSectionConfig(decomposition_model="some-model")  # type: ignore[call-arg]
-
     def test_default_auto_topology_rules(self) -> None:
         cfg = CoordinationSectionConfig()
         assert isinstance(cfg.auto_topology_rules, AutoTopologyConfig)
@@ -122,8 +113,13 @@ class TestCoordinationSectionConfigValidation:
         with pytest.raises(ValidationError):
             CoordinationSectionConfig(base_branch="  ")
 
-    def test_extra_fields_forbidden(self) -> None:
+    # ``decomposition_model`` is listed beside the nonsense key on purpose: a
+    # decomposition model is a provider + model pair the operator assigns
+    # through settings, so a bare model id in a company YAML is as much a
+    # stranger to this config as a field that never existed.
+    @pytest.mark.parametrize("field", ["unknown_field", "decomposition_model"])
+    def test_extra_fields_forbidden(self, field: str) -> None:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="extra"):
-            CoordinationSectionConfig(unknown_field="oops")  # type: ignore[call-arg]
+            CoordinationSectionConfig(**{field: "oops"})  # type: ignore[arg-type]

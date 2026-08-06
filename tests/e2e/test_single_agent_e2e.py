@@ -285,7 +285,10 @@ class TestMaxTurnsExhausted:
         """Agent makes tool calls on both turns, never finishing.
 
         With max_turns=2, after turn 2 the loop exits with MAX_TURNS.
-        Task stays IN_PROGRESS (not FAILED, not COMPLETED).
+        The task terminalises to FAILED (not COMPLETED, and never left at
+        IN_PROGRESS): a run that spent its turns without finishing has
+        stopped, and only a terminal status makes it a stall the replan
+        trigger can see.
         """
         write_tool = WriteFileTool(workspace_root=e2e_workspace)
         registry = ToolRegistry([write_tool])

@@ -291,6 +291,14 @@ class TestCostForecaster:
             _signal(project=" proj-a ")
         )
 
+    async def test_brief_hash_case_insensitive_requester(self) -> None:
+        # The requester is normalised on the same rule as the project. Both
+        # separate callers in the digest, so both need the rule pinned: one
+        # operator typed two ways is one requester, not two.
+        assert compute_brief_hash(
+            _signal(requested_by="Operator-1")
+        ) == compute_brief_hash(_signal(requested_by=" operator-1 "))
+
     async def test_brief_hash_in_forecast_row(self) -> None:
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now

@@ -245,6 +245,21 @@ def _is_clean_model_id(value: str) -> bool:
     )
 
 
+def _matches_fallback(ref: ModelRef, fallback_ref: ModelRef) -> bool:
+    """Whether *ref* is the baked *fallback_ref* pair, both halves alike.
+
+    The baked fallback is trusted by construction, so a resolved value
+    identical to it needs no structural check. Comparing only the model id
+    would trust a pair whose provider came from the settings store.
+
+    Returns:
+        ``True`` when both halves of the pair are the fallback's.
+    """
+    return ref.model_id == fallback_ref.model_id and ref.provider == (
+        fallback_ref.provider
+    )
+
+
 async def resolve_model_with_fallback(
     *,
     resolver: ConfigResolverProtocol | None,
@@ -285,14 +300,23 @@ async def resolve_model_with_fallback(
     # happened to hold, which is the failure this pair exists to prevent.
     ref = parse_model_ref(resolved)
     fallback_ref = parse_model_ref(fallback)
-    if ref.model_id == fallback_ref.model_id or _is_clean_model_id(ref.model_id):
+    # BOTH halves are checked. The provider reaches a connection lookup and
+    # the log line just as the model id reaches the provider call, so
+    # validating only the id would leave a corrupted store free to inject a
+    # control-laden string through the other half of the same pair. An empty
+    # provider is not malformed: it is the unset half, which the caller
+    # handles by leaving the feature off.
+    if _matches_fallback(ref, fallback_ref) or (
+        _is_clean_model_id(ref.model_id)
+        and (not ref.provider or _is_clean_model_id(ref.provider))
+    ):
         return ref
     logger.warning(
         SETTINGS_FETCH_FAILED,
         namespace=namespace,
         key=key,
         error_type="MalformedModelIdentifier",
-        error="resolved model identifier failed structural validation",
+        error="resolved model reference failed structural validation",
         fallback=fallback_ref.model_id,
     )
     return fallback_ref

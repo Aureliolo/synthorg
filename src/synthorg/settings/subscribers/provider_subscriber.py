@@ -146,6 +146,37 @@ class ProviderSettingsSubscriber:
             )
             raise
 
+    def _cassette_holds(
+        self, registry: ProviderRegistry | None, key: str, *, note: str
+    ) -> bool:
+        """Whether *registry* is cassette-bound, so a swap must stand down.
+
+        Asked twice per rebuild, before and after the resolving awaits: a
+        concurrent setup-complete reinit can install a cassette-bound
+        registry mid-flight, and swapping over it would route recorded-LLM
+        traffic to the live provider.
+
+        Args:
+            registry: The registry read from state, or ``None`` when none is
+                wired yet.
+            key: The setting key that triggered the rebuild, for telemetry.
+            note: Which of the two checks declined, so the log says whether
+                the cassette was already there or arrived mid-rebuild.
+
+        Returns:
+            ``True`` when a cassette session is active on *registry*.
+        """
+        if registry is None or registry.cassette_session is None:
+            return False
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            namespace="providers",
+            key=key,
+            note=note,
+        )
+        return True
+
     async def _rebuild_registry(self, key: str) -> None:
         """Rebuild the ProviderRegistry from live settings and swap it in.
 
@@ -170,14 +201,11 @@ class ProviderSettingsSubscriber:
 
         try:
             current = self._app_state.slice(ProvidersStateSlice).registry
-            if current is not None and current.cassette_session is not None:
-                logger.info(
-                    SETTINGS_SUBSCRIBER_NOTIFIED,
-                    subscriber=self.subscriber_name,
-                    namespace="providers",
-                    key=key,
-                    note="cassette active -- change applies on next restart",
-                )
+            if self._cassette_holds(
+                current,
+                key,
+                note="cassette active -- change applies on next restart",
+            ):
                 return
             resolver = config_resolver_of(self._app_state)
             retry_max_attempts = await resolve_retry_max_attempts(resolver)
@@ -187,20 +215,13 @@ class ProviderSettingsSubscriber:
                 connection_catalog=provider_credential_catalog_of(self._app_state),
                 retry_max_attempts=retry_max_attempts,
             )
-            # Re-read after the awaits: a concurrent setup-complete reinit may
-            # have installed a cassette-bound registry while we were resolving
-            # configs. Swapping over it would silently route recorded-LLM
-            # traffic to the live provider, so bail and let the cap apply on
-            # the next restart instead.
+            # Re-read after the awaits; see ``_cassette_holds`` for why.
             live = self._app_state.slice(ProvidersStateSlice).registry
-            if live is not None and live.cassette_session is not None:
-                logger.info(
-                    SETTINGS_SUBSCRIBER_NOTIFIED,
-                    subscriber=self.subscriber_name,
-                    namespace="providers",
-                    key=key,
-                    note="cassette became active during rebuild -- skipped swap",
-                )
+            if self._cassette_holds(
+                live,
+                key,
+                note="cassette became active during rebuild -- skipped swap",
+            ):
                 return
             await self._apply_registry_swap(
                 new_registry, live, trigger=f"setting:providers.{key}"

@@ -129,6 +129,23 @@ class TestReadDeclaredArtifacts:
             "status": "not_a_path",
         }
 
+    @pytest.mark.parametrize("declared", [".", "src/..", "./"])
+    def test_declaring_the_workspace_itself_reads_as_absent(
+        self, tmp_path: Path, declared: str
+    ) -> None:
+        """The workspace exists whenever the run had one.
+
+        Reading it as a deliverable would let an empty run present its own
+        working directory to the reviewer as the thing it produced, which
+        is the same evasion the artifact check refuses.
+        """
+        _write(tmp_path, "src/game.py", "def rotate(): ...")
+
+        entries = _entries(_read(_expected(declared), tmp_path))
+
+        assert entries[0]["status"] == "not_produced"
+        assert "content" not in entries[0]
+
     def test_a_path_escaping_the_workspace_reads_as_absent(
         self, tmp_path: Path
     ) -> None:
