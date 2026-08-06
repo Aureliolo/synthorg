@@ -17,6 +17,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
     parse_tool_call_response,
@@ -150,7 +151,7 @@ class LlmDecompositionStrategy:
         self._check_depth(context)
 
         messages = self._build_initial_messages(task, context)
-        tool_def = build_decomposition_tool()
+        tool_def = build_decomposition_tool(context.available_roles)
         comp_config = CompletionConfig(
             temperature=self._config.temperature,
             max_tokens=self._config.max_output_tokens,
@@ -231,7 +232,9 @@ class LlmDecompositionStrategy:
             )
 
             try:
-                plan = self._parse_response(response, str(task.id))
+                plan = self._parse_response(
+                    response, str(task.id), context.available_roles
+                )
             except DecompositionError as exc:
                 last_error = safe_error_description(exc)
                 logger.warning(
@@ -318,7 +321,7 @@ class LlmDecompositionStrategy:
             List of initial chat messages.
         """
         return [
-            build_system_message(),
+            build_system_message(context.available_roles),
             build_task_message(task, context),
         ]
 
@@ -326,12 +329,15 @@ class LlmDecompositionStrategy:
     def _parse_response(
         response: CompletionResponse,
         parent_task_id: str,
+        available_roles: tuple[NotBlankStr, ...],
     ) -> DecompositionPlan:
         """Parse a plan from tool calls, content fallback, or raise.
 
         Args:
             response: The LLM completion response.
             parent_task_id: ID of the parent task.
+            available_roles: The roles the org staffs, which every owner must
+                be drawn from.
 
         Returns:
             A parsed ``DecompositionPlan``.
@@ -340,9 +346,9 @@ class LlmDecompositionStrategy:
             DecompositionError: If both parsing paths fail.
         """
         if response.tool_calls:
-            return parse_tool_call_response(response, parent_task_id)
+            return parse_tool_call_response(response, parent_task_id, available_roles)
         if response.content is not None:
-            return parse_content_response(response, parent_task_id)
+            return parse_content_response(response, parent_task_id, available_roles)
         msg = "Response has no tool calls and no content"
         logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)

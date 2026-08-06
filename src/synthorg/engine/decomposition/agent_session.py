@@ -124,6 +124,31 @@ class AgentSessionDecompositionConfig(BaseModel):
     )
 
 
+def _roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
+    """Render the roster constraint for the planning brief.
+
+    Stated in the brief as well as in the submit tool's schema, because the
+    schema ``enum`` only reaches a provider that enforces schemas, and left to
+    guess the planner produces plausible near-misses ("Backend Engineer" for
+    an org staffing "Backend Developer") that nothing can be dispatched to.
+
+    Args:
+        available_roles: The roles the org staffs.
+
+    Returns:
+        The brief lines, or empty when no roster is known.
+    """
+    if not available_roles:
+        return ()
+    return (
+        "  This organisation staffs exactly these roles:",
+        f"  {', '.join(available_roles)}.",
+        "  Every owner must be one of them, spelled the same way. Do not",
+        "  invent a role or substitute a similar-sounding title; an owner",
+        "  outside this list is rejected.",
+    )
+
+
 class _PlanCapture:
     """Mutable holder for the plan a session submits via the terminal tool."""
 
@@ -143,7 +168,13 @@ class SubmitDecompositionPlanTool(BaseTool):
     within the same session.
     """
 
-    def __init__(self, *, parent_task_id: NotBlankStr, capture: _PlanCapture) -> None:
+    def __init__(
+        self,
+        *,
+        parent_task_id: NotBlankStr,
+        capture: _PlanCapture,
+        available_roles: tuple[NotBlankStr, ...] = (),
+    ) -> None:
         super().__init__(
             name="submit_decomposition_plan",
             description=(
@@ -153,11 +184,14 @@ class SubmitDecompositionPlanTool(BaseTool):
                 "expected_artifacts, and acceptance_criteria. Call this exactly "
                 "once, last, after you have researched and self-reviewed."
             ),
-            parameters_schema=build_decomposition_tool().parameters_schema,
+            parameters_schema=build_decomposition_tool(
+                available_roles
+            ).parameters_schema,
             category=ToolCategory.OTHER,
         )
         self._parent_task_id = parent_task_id
         self._capture = capture
+        self._available_roles = available_roles
 
     @override
     async def execute(
@@ -175,6 +209,7 @@ class SubmitDecompositionPlanTool(BaseTool):
             plan = args_to_decomposition_plan(
                 cast("dict[str, JsonValue]", arguments),
                 self._parent_task_id,
+                self._available_roles,
             )
         except DecompositionError as exc:
             return ToolExecutionResult(
@@ -383,7 +418,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             The loop's execution result (termination reason + error detail
             for observability).
         """
-        invoker, granted_tools = self._build_invoker(task, owner, capture)
+        invoker, granted_tools = self._build_invoker(task, owner, capture, context)
         ctx = await self._build_context(task, context, owner)
         logger.info(
             DECOMPOSITION_SESSION_STARTED,
@@ -417,6 +452,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         task: Task,
         owner: AgentIdentity,
         capture: _PlanCapture,
+        context: DecompositionContext,
     ) -> tuple[ToolInvoker, int]:
         """Assemble the session's tool invoker over the submit + read tools.
 
@@ -427,6 +463,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         submit_tool = SubmitDecompositionPlanTool(
             parent_task_id=NotBlankStr(str(task.id)),
             capture=capture,
+            available_roles=context.available_roles,
         )
         planning_tools = self._planning_tools(task, owner)
         registry = ToolRegistry([submit_tool, *planning_tools])
@@ -564,6 +601,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 "  parallel, not a single sequential chain).",
                 "- Assign an accountable owning role to every item; leave none",
                 "  unowned.",
+                *_roster_lines(context.available_roles),
                 "- Calibrate: most items are normal stakes; reserve high or",
                 "  critical for irreversible or high-blast-radius work.",
                 "- Give every item concrete expected_artifacts and verifiable",

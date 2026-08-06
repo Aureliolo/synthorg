@@ -437,7 +437,7 @@ async def _deactivate_chief_of_staff_proposer(app_state: AppState) -> None:
 
 async def _activate_turn_intent_classifier(app_state: AppState) -> None:
     """Wire the unified turn-intent classifier."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
         wire_turn_intent_classifier,
     )
 
@@ -451,7 +451,7 @@ async def _activate_turn_intent_classifier(app_state: AppState) -> None:
 
 async def _deactivate_turn_intent_classifier(app_state: AppState) -> None:
     """Take the turn-intent classifier down."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
         unwire_turn_intent_classifier,
     )
 
@@ -460,7 +460,7 @@ async def _deactivate_turn_intent_classifier(app_state: AppState) -> None:
 
 async def _activate_multi_voice_router(app_state: AppState) -> None:
     """Wire the multi-voice chime-in router."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
         wire_multi_voice_router,
     )
 
@@ -474,7 +474,7 @@ async def _activate_multi_voice_router(app_state: AppState) -> None:
 
 async def _deactivate_multi_voice_router(app_state: AppState) -> None:
     """Take the multi-voice router down."""
-    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
         unwire_multi_voice_router,
     )
 

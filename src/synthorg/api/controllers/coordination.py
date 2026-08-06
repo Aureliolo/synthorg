@@ -248,6 +248,7 @@ class CoordinationController(Controller):
         """
         from synthorg.engine.decomposition.models import (  # noqa: PLC0415
             DecompositionContext,
+            roster_from_agents,
         )
 
         coord_config = await config_resolver_of(app_state).get_coordination_config(
@@ -259,6 +260,7 @@ class CoordinationController(Controller):
             available_agents=agents,
             decomposition_context=DecompositionContext(
                 max_subtasks=data.max_subtasks,
+                available_roles=roster_from_agents(agents),
             ),
             config=coord_config,
         )

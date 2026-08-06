@@ -15,6 +15,7 @@ from synthorg.core.task_enums import (
     Stakes,
     TaskStructure,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -30,8 +31,45 @@ from synthorg.providers.models import (
 TOOL_NAME = "submit_decomposition_plan"
 
 
-def build_decomposition_tool() -> ToolDefinition:
+def _role_field(available_roles: tuple[NotBlankStr, ...]) -> dict[str, JsonValue]:
+    """Build the ``required_role`` schema for a given roster.
+
+    Args:
+        available_roles: The roles the org staffs.
+
+    Returns:
+        A schema fragment carrying an ``enum`` when the roster is known, so a
+        schema-enforcing provider cannot emit an unknown role at all, and a
+        free string otherwise.
+    """
+    if not available_roles:
+        return {
+            "type": "string",
+            "description": (
+                "The role accountable for this item. Every item names an owner."
+            ),
+        }
+    return {
+        "type": "string",
+        "enum": list(available_roles),
+        "description": (
+            "The role accountable for this item, selected from the roles this "
+            "organisation staffs. Every item names an owner, and an owner "
+            "outside this list cannot be dispatched to."
+        ),
+    }
+
+
+def build_decomposition_tool(
+    available_roles: tuple[NotBlankStr, ...] = (),
+) -> ToolDefinition:
     """Build the ``submit_decomposition_plan`` tool definition.
+
+    Args:
+        available_roles: The roles the org staffs. Non-empty puts an ``enum``
+            on ``required_role``, so a schema-enforcing provider cannot emit
+            an owner nothing can be dispatched to. Empty leaves the field a
+            free string, which is what an org with no roster needs.
 
     Returns:
         A ``ToolDefinition`` with a JSON Schema describing the plan
@@ -75,13 +113,11 @@ def build_decomposition_tool() -> ToolDefinition:
                     "or high-blast-radius work (a handful, not most)."
                 ),
             },
-            "required_role": {
-                "type": "string",
-                "description": (
-                    "The role accountable for this item (e.g. 'Backend "
-                    "Engineer', 'CTO'). Every item must name an owner."
-                ),
-            },
+            # No worked example: naming a role teaches it, and the one that
+            # used to sit here ('Backend Engineer') was not in the shipped
+            # template, so the planner emitted it for an org staffing
+            # 'Backend Developer'. The roster is the only source of names.
+            "required_role": _role_field(available_roles),
             "required_skills": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -221,12 +257,41 @@ def build_decomposition_tool() -> ToolDefinition:
     )
 
 
-def build_system_message() -> ChatMessage:
+def _roster_guidance(available_roles: tuple[NotBlankStr, ...]) -> str:
+    """Render the roster line for the system prompt.
+
+    Args:
+        available_roles: The roles the org staffs.
+
+    Returns:
+        A guideline naming every role, or the empty string when no roster is
+        known, which leaves the surrounding prompt unchanged.
+    """
+    if not available_roles:
+        return ""
+    return (
+        "- This organisation staffs exactly these roles: "
+        f"{', '.join(available_roles)}. Every required_role must be one of "
+        "them, spelled the same way. Do not invent a role, and do not "
+        "substitute a similar-sounding title: an owner outside this list is "
+        "an item nobody can be dispatched to, and the plan is rejected.\n"
+    )
+
+
+def build_system_message(
+    available_roles: tuple[NotBlankStr, ...] = (),
+) -> ChatMessage:
     """Build the system prompt for decomposition.
 
     The hand-rolled "treat <task-data> as untrusted" warning is
     replaced by the canonical :func:`untrusted_content_directive` so
     the prompt-fingerprint test catches silent drift in the wording.
+
+    Args:
+        available_roles: The roles the org staffs, listed in the prompt.
+            Stated here as well as in the tool schema because the ``enum``
+            only reaches a provider that enforces schemas, and the planner
+            invents plausible near-misses when it is left to guess.
 
     Returns:
         A ``ChatMessage`` with ``MessageRole.SYSTEM``.
@@ -243,7 +308,8 @@ def build_system_message() -> ChatMessage:
         "'parallel', not 'sequential'.\n"
         "- Assign an accountable owning role (required_role) to every item; no "
         "item is left unowned.\n"
-        "- Estimate complexity per item; reserve 'epic' for a whole workstream "
+        + _roster_guidance(available_roles)
+        + "- Estimate complexity per item; reserve 'epic' for a whole workstream "
         "that should be broken down further.\n"
         "- Calibrate stakes: most items are 'normal'. Reserve 'high'/'critical' "
         "for irreversible or high-blast-radius work, a handful, not most.\n"

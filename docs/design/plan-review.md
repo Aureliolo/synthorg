@@ -180,6 +180,35 @@ reply is gated live per comment by `coordination.plan_review_reply_enabled`
 (opt-out, default on). Lightweight discussion never resets the plan; only
 `request-changes` does that.
 
+## Owners come from the roster
+
+Every plan item names an accountable owning role, and that role is the thing a
+dispatch looks up. A role nobody holds produces an item with nobody behind it,
+discovered at dispatch if at all, so the roster is bound at every level rather
+than trusted at one:
+
+- `DecompositionContext.available_roles` carries the distinct roles behind the
+  active agents (`roster_from_agents`), populated wherever a decomposition is
+  started: the pipeline, the coordination and manual-decomposition endpoints,
+  and the stalled-initiative replan.
+- The submit-plan tool schema puts an `enum` on `required_role`, so a
+  schema-enforcing provider cannot emit an unknown role at all, and the system
+  prompt lists the roster in prose, because the enum only reaches a provider
+  that enforces schemas.
+- Parse time rejects an unknown owner with a correctable `DecompositionError`
+  naming the offending role and the valid set, alongside the kind/artifact
+  invariant. The planning session can resubmit inside the same session.
+- `PATCH /plans/{id}` refuses an operator edit that owns an item to a role no
+  agent holds, and the review surface flags such an owner as its own attention
+  row rather than counting it under "all assigned".
+
+An empty roster means "no roster known" and skips every check: an org with no
+agents has nothing to validate against, and failing there would block a
+greenlight for a reason unrelated to the plan.
+
+The prompt deliberately names no example role. The one that used to sit in the
+tool schema was not in the shipped org template, and the planner reproduced it.
+
 ## Decomposition Projection
 
 `engine/decomposition/plan_mapping.py` projects both directions so the gate, the

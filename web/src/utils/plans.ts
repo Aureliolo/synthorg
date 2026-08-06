@@ -104,12 +104,33 @@ export interface PlanItemFlag {
 
 export interface ItemFlagContext {
   readonly onCriticalPath: boolean
+  /**
+   * The roles the org staffs. An owner outside it names nobody, so the item
+   * cannot be dispatched; an empty roster means the agents have not loaded
+   * and every owner is left unjudged rather than flagged wholesale.
+   */
+  readonly roster: ReadonlySet<string> | undefined
+}
+
+/**
+ * Whether a named owner resolves to a role the org staffs.
+ *
+ * An unknown roster (not loaded yet, or an org with no agents) judges nothing:
+ * flagging every owner because the agents list has not arrived would be noise
+ * the reviewer cannot act on.
+ */
+export function isUnroutableOwner(
+  owner: string,
+  roster: ReadonlySet<string> | undefined,
+): boolean {
+  return roster !== undefined && roster.size > 0 && !roster.has(owner)
 }
 
 /**
  * Reasons this item warrants review attention, most severe first. Stakes and
- * complexity carry their own graded tone; the guard-risk gaps (no owner, no
- * acceptance criteria) and the critical-path membership are fixed tones.
+ * complexity carry their own graded tone; the guard-risk gaps (no owner, an
+ * owner nothing can be dispatched to, no acceptance criteria) and the
+ * critical-path membership are fixed tones.
  */
 export function itemFlags(item: PlanItem, ctx: ItemFlagContext): readonly PlanItemFlag[] {
   const flags: PlanItemFlag[] = []
@@ -135,6 +156,13 @@ export function itemFlags(item: PlanItem, ctx: ItemFlagContext): readonly PlanIt
       label: 'Unassigned',
       tone: 'warning',
       detail: 'No role or agent owns this item yet.',
+    })
+  } else if (isUnroutableOwner(item.owner, ctx.roster)) {
+    flags.push({
+      key: 'unroutable-owner',
+      label: 'Owner not in the org',
+      tone: 'warning',
+      detail: `No agent holds the role "${item.owner}", so this item cannot be dispatched.`,
     })
   }
   if (item.acceptance_criteria.length === 0) {
@@ -427,10 +455,23 @@ export interface PlanStats {
   readonly flaggedItems: number
 }
 
-/** Aggregate the review signals across every item in the plan. */
+/** Whether an item has nobody behind it: no owner, or an unroutable one. */
+function hasNobodyBehindIt(item: PlanItem, roster: ReadonlySet<string> | undefined): boolean {
+  return item.owner === null || isUnroutableOwner(item.owner, roster)
+}
+
+/**
+ * Aggregate the review signals across every item in the plan.
+ *
+ * An owner naming a role no agent holds counts as unassigned, not as
+ * assigned: the item has nobody behind it either way, and reading "all
+ * assigned" over a plan whose owners were invented is what let a nine-item
+ * plan reach review with eight of them unroutable.
+ */
 export function derivePlanStats(
   items: readonly PlanItem[],
   criticalPath: ReadonlySet<string>,
+  roster?: ReadonlySet<string>,
 ): PlanStats {
   let highStakes = 0
   let highComplexity = 0
@@ -441,10 +482,10 @@ export function derivePlanStats(
   for (const item of items) {
     if (isHighStakes(item)) highStakes += 1
     if (isHighComplexity(item)) highComplexity += 1
-    if (item.owner === null) unowned += 1
+    if (hasNobodyBehindIt(item, roster)) unowned += 1
     if (item.acceptance_criteria.length === 0) missingCriteria += 1
     dependencyEdges += item.dependencies.length
-    if (itemNeedsAttention(item, { onCriticalPath: criticalPath.has(item.id) })) {
+    if (itemNeedsAttention(item, { onCriticalPath: criticalPath.has(item.id), roster })) {
       flaggedItems += 1
     }
   }

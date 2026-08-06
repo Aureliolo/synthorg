@@ -31,7 +31,10 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import REPLANNABLE_STATUSES, PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import DecompositionContext
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    roster_from_agents,
+)
 from synthorg.engine.decomposition.plan_mapping import items_from_decomposition
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import (
@@ -45,6 +48,7 @@ from synthorg.engine.initiative.ports import InitiativeReplanPort
 from synthorg.engine.initiative.replan_brief import build_replan_brief
 from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_COMPLETED,
@@ -141,6 +145,7 @@ class ReplanTriggerService:
     """
 
     __slots__ = (
+        "_agent_registry",
         "_config_resolver",
         "_decomposition",
         "_persistence",
@@ -157,6 +162,7 @@ class ReplanTriggerService:
         decomposition_service: DecompositionService,
         replan: InitiativeReplanPort,
         config_resolver: ConfigResolver | None = None,
+        agent_registry: AgentRegistryProtocol | None = None,
         clock: Clock,
     ) -> None:
         self._persistence = persistence
@@ -164,6 +170,10 @@ class ReplanTriggerService:
         self._decomposition = decomposition_service
         self._replan = replan
         self._config_resolver = config_resolver
+        # Held rather than snapshotted: the org can be staffed between boot
+        # and a stall, and the successor plan must be owned by whoever is
+        # there when it is drafted.
+        self._agent_registry = agent_registry
         self._runner = StageRunner(
             owner="initiative.replan",
             clock=clock,
@@ -310,6 +320,18 @@ class ReplanTriggerService:
             plan=fresh, reason=live_reason, items=items, detail=detail
         )
 
+    async def _roster(self) -> tuple[NotBlankStr, ...]:
+        """Read the roles the org staffs right now.
+
+        Returns:
+            The distinct roles behind the active agents, or empty when no
+            registry is wired, which leaves the successor's owners unchecked
+            rather than rejecting every one of them.
+        """
+        if self._agent_registry is None:
+            return ()
+        return roster_from_agents(await self._agent_registry.list_active())
+
     async def _open_successor(self, stall: ConfirmedStall, parent: Task) -> None:
         """Decompose the objective afresh and open the successor plan."""
         plan = stall.plan
@@ -321,7 +343,8 @@ class ReplanTriggerService:
             update={"description": f"{parent.description}\n\n{brief}"}
         )
         result = await self._decomposition.decompose_task(
-            briefed, DecompositionContext()
+            briefed,
+            DecompositionContext(available_roles=await self._roster()),
         )
         # No empty-successor guard: DecompositionPlan rejects an empty subtask
         # tree, so a decomposition that produced nothing raised above.

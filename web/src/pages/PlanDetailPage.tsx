@@ -10,6 +10,7 @@ import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-gr
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useOrgRoster } from '@/hooks/useOrgRoster'
 import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
 import { usePlanCommentsStore } from '@/stores/planComments'
@@ -138,25 +139,25 @@ function PlanFailureBanner({ plan }: { plan: Plan }) {
   )
 }
 
-function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
-  const criticalPath = useMemo(
-    () => criticalPathFor(plan.items, plan.task_structure),
-    [plan.items, plan.task_structure],
-  )
-  const stats = useMemo(
-    () => derivePlanStats(plan.items, criticalPath),
-    [plan.items, criticalPath],
-  )
-  const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
-  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+interface ItemComments {
+  readonly byItem: ReadonlyMap<string, PlanItemComment[]>
+  readonly add: (
+    itemId: string,
+    body: string,
+    replyToId?: string,
+  ) => Promise<PlanItemComment | null>
+}
+
+/** Load this plan's item comments and group them by the item they hang off. */
+function usePlanItemComments(planId: string): ItemComments {
   const comments = usePlanCommentsStore((s) => s.comments)
   useEffect(() => {
-    void usePlanCommentsStore.getState().fetchComments(plan.id)
+    void usePlanCommentsStore.getState().fetchComments(planId)
     return () => {
       usePlanCommentsStore.getState().reset()
     }
-  }, [plan.id])
-  const commentsByItem = useMemo(() => {
+  }, [planId])
+  const byItem = useMemo(() => {
     const map = new Map<string, PlanItemComment[]>()
     for (const comment of comments) {
       const bucket = map.get(comment.item_id) ?? []
@@ -165,11 +166,27 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
     }
     return map
   }, [comments])
-  const addComment = useCallback(
+  const add = useCallback(
     (itemId: string, body: string, replyToId?: string) =>
-      usePlanCommentsStore.getState().addComment(plan.id, itemId, body, replyToId),
-    [plan.id],
+      usePlanCommentsStore.getState().addComment(planId, itemId, body, replyToId),
+    [planId],
   )
+  return { byItem, add }
+}
+
+function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
+  const roster = useOrgRoster()
+  const criticalPath = useMemo(
+    () => criticalPathFor(plan.items, plan.task_structure),
+    [plan.items, plan.task_structure],
+  )
+  const stats = useMemo(
+    () => derivePlanStats(plan.items, criticalPath, roster),
+    [plan.items, criticalPath, roster],
+  )
+  const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
+  const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const comments = usePlanItemComments(plan.id)
   const chooseOption = useCallback(
     (itemId: string, optionId: string) =>
       // Record the pick by round-tripping the whole item list through the
@@ -195,7 +212,11 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanEvaluationPanel planId={plan.id} />
       <PlanOpenQuestionsPanel plan={plan} />
-      <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
+      <PlanAttentionPanel
+        items={plan.items}
+        criticalPath={criticalPath}
+        roster={roster}
+      />
       <PlanForecastPanel forecastId={plan.forecast_id} />
       <PlanStaffingPanel plan={plan} />
       <PlanCoveragePanel plan={plan} />
@@ -211,8 +232,8 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
               index={index}
               onCriticalPath={criticalPath.has(item.id)}
               titleById={titleById}
-              comments={commentsByItem.get(item.id) ?? []}
-              onAddComment={addComment}
+              comments={comments.byItem.get(item.id) ?? []}
+              onAddComment={comments.add}
               {...(editable ? { onChooseOption: chooseOption } : {})}
             />
           ))}

@@ -40,8 +40,10 @@ describe('itemFlags', () => {
       estimated_complexity: 'medium',
       acceptance_criteria: ['builds green'],
     })
-    expect(itemFlags(item, { onCriticalPath: false })).toEqual([])
-    expect(itemNeedsAttention(item, { onCriticalPath: false })).toBe(false)
+    expect(itemFlags(item, { onCriticalPath: false, roster: undefined })).toEqual([])
+    expect(itemNeedsAttention(item, { onCriticalPath: false, roster: undefined })).toBe(
+      false,
+    )
   })
 
   it('collects every risk and gap on a bad item', () => {
@@ -51,8 +53,53 @@ describe('itemFlags', () => {
       estimated_complexity: 'epic',
       acceptance_criteria: [],
     })
-    const keys = itemFlags(item, { onCriticalPath: true }).map((f) => f.key)
+    const keys = itemFlags(item, { onCriticalPath: true, roster: undefined }).map(
+      (f) => f.key,
+    )
     expect(keys).toEqual(['stakes', 'complexity', 'unowned', 'no-criteria', 'critical-path'])
+  })
+
+  it('flags an owner no agent holds, rather than reading it as assigned', () => {
+    // The dogfood shape: "Backend Engineer" for an org staffing "Backend
+    // Developer". The item has nobody behind it, but it is not unowned, so
+    // the unassigned check alone reported the plan as fully assigned.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+    const roster = new Set(['Backend Developer', 'QA Engineer'])
+
+    const flags = itemFlags(item, { onCriticalPath: false, roster })
+
+    expect(flags.map((f) => f.key)).toEqual(['unroutable-owner'])
+    expect(flags[0]?.detail).toContain('Backend Engineer')
+  })
+
+  it('accepts an owner the roster holds', () => {
+    const item = makePlanItem('a', {
+      owner: 'Backend Developer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+    const roster = new Set(['Backend Developer'])
+
+    expect(itemFlags(item, { onCriticalPath: false, roster })).toEqual([])
+  })
+
+  it('judges no owner while the roster is unknown', () => {
+    // The agents list has not arrived yet; flagging every item on that would
+    // be noise the reviewer cannot act on.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+
+    expect(itemFlags(item, { onCriticalPath: false, roster: new Set() })).toEqual([])
   })
 })
 
@@ -171,6 +218,21 @@ describe('derivePlanStats', () => {
     // Both items are flagged: 'a' for its risks/gaps, 'b' for sitting on the
     // critical path (a -> b).
     expect(stats.flaggedItems).toBe(2)
+  })
+
+  it('counts an owner no agent holds as unassigned', () => {
+    // "8 of 9 items owned by a role with no agent behind it" read as fully
+    // assigned, because only a null owner counted.
+    const items = [
+      makePlanItem('a', { owner: 'Backend Engineer', acceptance_criteria: ['done'] }),
+      makePlanItem('b', { owner: 'Backend Developer', acceptance_criteria: ['done'] }),
+    ]
+    const roster = new Set(['Backend Developer'])
+
+    const stats = derivePlanStats(items, new Set(), roster)
+
+    expect(stats.unowned).toBe(1)
+    expect(stats.flaggedItems).toBe(1)
   })
 })
 

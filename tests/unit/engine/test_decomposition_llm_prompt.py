@@ -1,7 +1,7 @@
 """Tests for LLM decomposition prompt building and response parsing."""
 
 import json
-from typing import cast
+from typing import Final, cast
 from uuid import UUID
 
 import pytest
@@ -18,6 +18,7 @@ from synthorg.core.task_enums import (
     TaskStructure,
     TaskType,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse import (
     parse_content_response,
     parse_tool_call_response,
@@ -115,11 +116,22 @@ def _make_content_response(content: str) -> CompletionResponse:
     )
 
 
+#: A roster in the shape the shipped template staffs, so "Backend Engineer"
+#: is the near-miss the dogfood actually produced rather than an invention of
+#: this test.
+_ROSTER: Final[tuple[NotBlankStr, ...]] = (
+    NotBlankStr("Backend Developer"),
+    NotBlankStr("Frontend Developer"),
+    NotBlankStr("QA Engineer"),
+)
+
+
 def _valid_plan_args(
     *,
     subtask_count: int = 2,
     task_structure: str = "sequential",
     coordination_topology: str = "auto",
+    required_role: str = "Backend Engineer",
 ) -> dict[str, object]:
     """Build valid tool call arguments for a decomposition plan."""
     subtasks = [
@@ -130,7 +142,7 @@ def _valid_plan_args(
             "dependencies": [] if i == 0 else [f"sub-{i - 1}"],
             "estimated_complexity": "medium",
             "required_skills": ["python"],
-            "required_role": "Backend Engineer",
+            "required_role": required_role,
             "expected_artifacts": [f"src/step_{i}.py"],
             "acceptance_criteria": [f"step {i} verified"],
         }
@@ -184,6 +196,115 @@ class TestBuildDecompositionTool:
         required = cast("list[str]", subtask_schema["required"])
         assert "expected_artifacts" in required
         assert "acceptance_criteria" in required
+
+
+class TestRosterBinding:
+    """The planner selects an owner from the roster rather than inventing one.
+
+    The dogfood produced a nine-item plan whose owners were five roles, four
+    of which the org did not have. The near-misses ("Backend Engineer" for an
+    org staffing "Backend Developer") traced straight to the prompt's own
+    worked example, so the fix is at all three levels: the schema forbids it,
+    the prompt states the roster, and the parser rejects it.
+    """
+
+    def test_the_schema_constrains_the_owner_to_the_roster(self) -> None:
+        tool = build_decomposition_tool(_ROSTER)
+        schema = cast("dict[str, object]", tool.parameters_schema)
+        props = cast("dict[str, object]", schema["properties"])
+        subtask_schema = cast(
+            "dict[str, object]",
+            cast("dict[str, object]", props["subtasks"])["items"],
+        )
+        sub_props = cast("dict[str, object]", subtask_schema["properties"])
+        role = cast("dict[str, object]", sub_props["required_role"])
+
+        assert role["enum"] == list(_ROSTER)
+
+    def test_an_unknown_roster_leaves_the_owner_a_free_string(self) -> None:
+        # An org with no agents has nothing to constrain against, and an enum
+        # over an empty list would make every plan unsatisfiable.
+        tool = build_decomposition_tool()
+        schema = cast("dict[str, object]", tool.parameters_schema)
+        props = cast("dict[str, object]", schema["properties"])
+        subtask_schema = cast(
+            "dict[str, object]",
+            cast("dict[str, object]", props["subtasks"])["items"],
+        )
+        sub_props = cast("dict[str, object]", subtask_schema["properties"])
+        role = cast("dict[str, object]", sub_props["required_role"])
+
+        assert "enum" not in role
+        assert role["type"] == "string"
+
+    def test_no_role_is_named_as_an_example_anywhere_in_the_prompt(self) -> None:
+        # The example taught the hallucination: the model reproduced the one
+        # role the prompt named, and it was not in the shipped template.
+        tool = build_decomposition_tool()
+        message = build_system_message()
+
+        assert message.content is not None
+        assert "Backend Engineer" not in json.dumps(tool.parameters_schema)
+        assert "Backend Engineer" not in message.content
+
+    def test_the_system_prompt_lists_every_staffed_role(self) -> None:
+        # Stated in prose as well as in the schema: the enum only reaches a
+        # provider that enforces schemas.
+        message = build_system_message(_ROSTER)
+
+        assert message.content is not None
+        for role in _ROSTER:
+            assert role in message.content
+
+    def test_an_unknown_owner_is_a_parse_failure_naming_the_valid_set(
+        self,
+    ) -> None:
+        args = _valid_plan_args(subtask_count=1)
+
+        with pytest.raises(DecompositionError) as exc_info:
+            parse_tool_call_response(_make_tool_call_response(args), "task-1", _ROSTER)
+
+        message = str(exc_info.value)
+        assert "Backend Engineer" in message
+        for role in _ROSTER:
+            assert role in message
+
+    def test_an_owner_on_the_roster_parses(self) -> None:
+        args = _valid_plan_args(subtask_count=1, required_role="Backend Developer")
+
+        plan = parse_tool_call_response(
+            _make_tool_call_response(args), "task-1", _ROSTER
+        )
+
+        assert plan.subtasks[0].required_role == "Backend Developer"
+
+    def test_an_empty_roster_skips_the_check(self) -> None:
+        # A greenlight must not fail for a reason unrelated to the plan.
+        args = _valid_plan_args(subtask_count=1)
+
+        plan = parse_tool_call_response(_make_tool_call_response(args), "task-1")
+
+        assert plan.subtasks[0].required_role == "Backend Engineer"
+
+    def test_the_content_fallback_checks_the_roster_too(self) -> None:
+        args = _valid_plan_args(subtask_count=1)
+
+        with pytest.raises(DecompositionError, match="Backend Engineer"):
+            parse_content_response(
+                _make_content_response(json.dumps(args)), "task-1", _ROSTER
+            )
+
+    def test_every_owner_a_roster_bound_plan_emits_resolves(self) -> None:
+        # The acceptance case: decompose against a roster and assert each
+        # emitted owner names an agent the org actually has.
+        args = _valid_plan_args(subtask_count=3, required_role="QA Engineer")
+
+        plan = parse_tool_call_response(
+            _make_tool_call_response(args), "task-1", _ROSTER
+        )
+
+        assert [sub.required_role for sub in plan.subtasks] == ["QA Engineer"] * 3
+        assert all(sub.required_role in _ROSTER for sub in plan.subtasks)
 
 
 class TestBuildSystemMessage:

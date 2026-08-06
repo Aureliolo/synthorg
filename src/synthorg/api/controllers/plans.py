@@ -39,11 +39,14 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_service import PlanService
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import PlanNotDeletableError, ValidationError
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, describe_unroutable_role
 from synthorg.core.plan_enums import REPLANNABLE_STATUSES, TAIL_STATUSES, PlanStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import roster_from_agents
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_PLAN_DELETE_REFUSED,
@@ -76,6 +79,37 @@ def _service(state: State) -> PlanService:
         clock=state.app_state.clock,
         evaluation_reports=persistence.evaluation_reports,
     )
+
+
+async def _reject_unroutable_owners(state: State, data: EditPlanRequest) -> None:
+    """Refuse an edit that owns an item to a role the org does not staff.
+
+    The rework path validated the dependency graph but not the roster, so
+    hand-correcting an owner to another invented role was accepted without
+    complaint and produced an item nothing could be dispatched to. Checked
+    here rather than in the payload validator, which is a pure model and
+    cannot see who the org employs.
+
+    Args:
+        state: Application state carrying the HR slice.
+        data: The revised item list.
+
+    Raises:
+        ValidationError: When an item names a role no agent holds.
+    """
+    app_state: AppState = state.app_state
+    registry = app_state.slice(HrStateSlice).agent_registry
+    if registry is None:
+        return
+    roster = roster_from_agents(await registry.list_active())
+    for item in data.items:
+        detail = describe_unroutable_role(
+            entity_id=item.id,
+            required_role=item.owner,
+            available_roles=roster,
+        )
+        if detail is not None:
+            raise ValidationError(detail)
 
 
 def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
@@ -284,7 +318,8 @@ class PlanController(Controller):
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
-            ValidationError: The revised items violate a plan invariant.
+            ValidationError: The revised items violate a plan invariant, or
+                an item names an owning role the org does not staff.
         """
         service = _service(state)
         existing = require_resource_or_404(
@@ -294,6 +329,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
+        await _reject_unroutable_owners(state, data)
         revised = await service.edit(
             existing,
             items=tuple(_item_from_payload(item) for item in data.items),

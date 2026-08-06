@@ -30,6 +30,7 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionResult,
+    roster_from_agents,
 )
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
@@ -497,16 +498,21 @@ class DefaultWorkPipeline:
 
         The owner rides on the ``DecompositionContext`` so an agent-session
         decomposition strategy plans AS the owner; a single-shot strategy
-        simply ignores it.
+        simply ignores it. The roster rides alongside so the planner selects
+        an owning role per item rather than inventing one nothing can be
+        dispatched to.
 
         Returns:
-            A :class:`CoordinationContext` carrying the owner on its
-            decomposition context.
+            A :class:`CoordinationContext` carrying the owner and the roster
+            on its decomposition context.
         """
         return CoordinationContext(
             task=task,
             available_agents=agents,
-            decomposition_context=DecompositionContext(owner_identity=owner),
+            decomposition_context=DecompositionContext(
+                owner_identity=owner,
+                available_roles=roster_from_agents(agents),
+            ),
         )
 
     async def _try_generate_narrative(self, work_item: WorkItem, task: Task) -> None:
