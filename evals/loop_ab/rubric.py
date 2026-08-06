@@ -148,10 +148,10 @@ def _comparable_rework(aggregates: tuple[LoopAggregate, ...]) -> tuple[float, ..
     Provider retries are only observable for a loop whose driver reports them;
     a loop retrying inside its own harness reports ``None``. Scoring that as
     zero would award it the cell's best rework ratio precisely because nothing
-    watched it, so when any loop here cannot report retries the submetric is
-    dropped for every loop and the ranking rests on repeated tool calls alone.
-    Dropping it cell-wide rather than per loop is what keeps the comparison
-    like for like.
+    watched it, so when any loop here cannot report retries the retry component
+    is dropped for every loop and the ranking rests on repeated tool calls
+    alone. Dropping it cell-wide rather than per loop is what keeps the
+    comparison like for like.
 
     Returns:
         One rework figure per aggregate, in the order supplied.

@@ -104,8 +104,8 @@ repetition measured one, and `score_cell` drops the retry component from the rew
 comparison **for every loop in the cell** the moment one of them cannot report it. Scoring
 an unobservable count as zero would hand the unwatched leg the cell's best rework ratio on
 the strength of nothing having watched it, which is the promotion decision being made
-backwards; dropping the submetric cell-wide rather than per leg is what keeps the remaining
-comparison like for like. The scoreboard marks such a figure with a trailing `+`, and
+backwards; dropping the retry component cell-wide rather than per leg is what keeps the
+remaining comparison like for like. The scoreboard marks such a figure with a trailing `+`, and
 resilience is a 5-point dimension, so the lost signal costs far less than a fabricated one.
 
 Cost is read from the gateway's `CostRecord` ledger, not re-derived from token
