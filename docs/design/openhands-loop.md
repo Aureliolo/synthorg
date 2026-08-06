@@ -1,7 +1,7 @@
 # OpenHands execution loop
 
-OpenHands is a selectable **fourth inner execution loop**, alongside the
-native `react` / `plan_execute` / `hybrid` loops behind the
+OpenHands is a selectable **second inner execution loop**, alongside the
+native `react` loop behind the
 `ExecutionLoop` protocol. The inner coding loop is commodity; SynthOrg's
 product is the orchestration, routing and control plane around it. So
 rather than treat the native loop as the only option, we bundle a

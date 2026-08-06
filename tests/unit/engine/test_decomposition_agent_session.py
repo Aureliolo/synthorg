@@ -22,7 +22,10 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
-from synthorg.engine.errors import DecompositionDepthError
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionSubtaskLimitError,
+)
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from tests._shared import as_uuid, sid
@@ -290,9 +293,10 @@ class TestReadOnlyToolBoundary:
 
 
 class TestAgentSessionGuards:
-    async def test_over_max_subtasks_falls_back(self) -> None:
-        # The session submits 2 subtasks but the context caps at 1, so the
-        # oversized plan is rejected and the fallback runs.
+    async def test_over_max_subtasks_raises_rather_than_falling_back(self) -> None:
+        # The session submits 2 subtasks but the context caps at 1. The
+        # researched plan is surfaced as a failure the operator can act on,
+        # not swapped for the single-shot fallback's thinner one.
         provider = ScriptedProvider(
             [
                 build_tool_call_response("submit_decomposition_plan", _plan_args()),
@@ -305,10 +309,44 @@ class TestAgentSessionGuards:
             owner_identity=make_e2e_identity(), max_subtasks=1
         )
 
+        with pytest.raises(DecompositionSubtaskLimitError) as excinfo:
+            await strategy.decompose(_task(), context)
+
+        assert not fallback.called
+        # The reason reaches the durable plan verbatim, so it has to name
+        # both numbers or the operator cannot tell how far over it was.
+        assert "2 subtasks" in str(excinfo.value)
+        assert "max_subtasks of 1" in str(excinfo.value)
+
+    async def test_a_session_submitting_no_plan_still_falls_back(self) -> None:
+        # Nothing was researched, so there is no better plan to lose.
+        provider = ScriptedProvider([make_text_response("I give up")])
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
         plan = await strategy.decompose(_task(), context)
 
         assert fallback.called
         assert plan is fallback.plan
+
+    async def test_a_within_limit_plan_is_returned_unchanged(self) -> None:
+        provider = ScriptedProvider(
+            [
+                build_tool_call_response("submit_decomposition_plan", _plan_args()),
+                make_text_response("done"),
+            ]
+        )
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+        context = DecompositionContext(
+            owner_identity=make_e2e_identity(), max_subtasks=2
+        )
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert not fallback.called
+        assert len(plan.subtasks) == 2
 
     async def test_depth_limit_raises(self) -> None:
         strategy = _strategy(ScriptedProvider([]), _SentinelFallback())

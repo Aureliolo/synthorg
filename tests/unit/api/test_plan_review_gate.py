@@ -17,7 +17,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.task_enums import Priority, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
@@ -93,6 +93,7 @@ def _decomposition() -> DecompositionResult:
                 expected_artifacts=(NotBlankStr("src/movement.py"),),
             ),
         ),
+        task_structure=TaskStructure.SEQUENTIAL,
     )
     return DecompositionResult(
         plan=plan,

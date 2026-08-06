@@ -7,30 +7,22 @@ import pytest
 import structlog.testing
 
 from synthorg.api.state import AppState
-from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
-from synthorg.budget.enforcer import BudgetEnforcer
-from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.hybrid_loop import HybridLoop
-from synthorg.engine.hybrid_models import HybridLoopConfig
-from synthorg.engine.loop_selector import AutoLoopConfig
-from synthorg.engine.plan_execute_loop import PlanExecuteLoop
-from synthorg.engine.plan_models import PlanExecuteConfig
+from synthorg.engine.loop_selector import AutoLoopConfig, AutoLoopRule
+from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
-    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
     EXECUTION_LOOP_SELECTION_RESOLVED,
     EXECUTION_LOOP_STATIC_SELECTED,
 )
-from synthorg.providers.models import CompletionResponse
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.workers._openhands_wiring import build_auto_loop_config_or_none
 from tests._shared import as_uuid, make_app_state, mock_of
@@ -61,44 +53,6 @@ def _make_task_with_complexity(
         status=TaskStatus.ASSIGNED,
         estimated_complexity=complexity,
     )
-
-
-def _make_plan_exec_responses() -> list[CompletionResponse]:
-    """Build provider responses for a plan-execute loop run."""
-    return [
-        _make_completion_response(
-            content="1. Implement the feature\nExpected: Feature works correctly",
-        ),
-        _make_completion_response(content="Done."),
-    ]
-
-
-def _make_hybrid_responses() -> list[CompletionResponse]:
-    """Build provider responses for a hybrid loop run."""
-    return [
-        _make_completion_response(
-            content="1. Implement the feature\nExpected: Feature works correctly",
-        ),
-        _make_completion_response(content="Done."),
-        _make_completion_response(
-            content='{"summary": "Done", "replan": false}',
-        ),
-    ]
-
-
-def _make_budget_enforcer() -> BudgetEnforcer:
-    """Build a BudgetEnforcer with standard test config.
-
-    Returns a BudgetEnforcer backed by a fresh CostTracker and a
-    BudgetConfig with total_monthly=100, warn_at=70, critical_at=85,
-    hard_stop_at=100.
-    """
-    cfg = BudgetConfig(
-        total_monthly=100.0,
-        alerts=BudgetAlertConfig(warn_at=70, critical_at=85, hard_stop_at=100),
-    )
-    tracker = CostTracker(budget_config=cfg)
-    return BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
 
 def _loop_settings_app_state(values: dict[str, str]) -> AppState:
@@ -163,7 +117,7 @@ class TestLoopSelectionAppliesLive:
         app_state = _loop_settings_app_state(
             {
                 "engine.loop_auto_select_enabled": "true",
-                "engine.default_loop_type": "plan_execute",
+                "engine.default_loop_type": "openhands",
                 "engine.loop_complexity_overrides": "",
             }
         )
@@ -188,7 +142,7 @@ class TestLoopSelectionAppliesLive:
         values = {
             "engine.loop_auto_select_enabled": "false",
             "engine.default_loop_type": "react",
-            "engine.loop_complexity_overrides": "",
+            "engine.loop_complexity_overrides": "medium:openhands",
         }
         app_state = _loop_settings_app_state(values)
         task = _make_task_with_complexity(
@@ -217,14 +171,13 @@ class TestLoopSelectionAppliesLive:
             provider=mock_provider_factory([]),
             auto_loop_config=config,
         )
-        assert isinstance(
-            await after._resolve_loop(task, "agent-live-001", str(task.id)),
-            PlanExecuteLoop,
-        )
+        # The override now routes MEDIUM at openhands, which is unwired here
+        # and says so rather than quietly running react.
+        with pytest.raises(OpenHandsUnavailableError):
+            await after._resolve_loop(task, "agent-live-001", str(task.id))
 
     async def test_an_override_write_changes_the_loop_a_complexity_gets(
         self,
-        mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         values = {
             "engine.loop_auto_select_enabled": "true",
@@ -232,34 +185,79 @@ class TestLoopSelectionAppliesLive:
             "engine.loop_complexity_overrides": "",
         }
         app_state = _loop_settings_app_state(values)
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-live-002",
-            task_id="task-live-002",
-        )
 
         default_config = await build_auto_loop_config_or_none(app_state)
         assert default_config is not None
-        default_engine = AgentEngine(
-            provider=mock_provider_factory([]),
-            auto_loop_config=default_config,
-        )
-        assert isinstance(
-            await default_engine._resolve_loop(task, "agent-live-002", str(task.id)),
-            PlanExecuteLoop,
-        )
+        assert default_config.rules == AutoLoopConfig().rules
 
-        values["engine.loop_complexity_overrides"] = "medium:react"
+        values["engine.loop_complexity_overrides"] = "medium:openhands"
         overridden_config = await build_auto_loop_config_or_none(app_state)
         assert overridden_config is not None
-        overridden_engine = AgentEngine(
-            provider=mock_provider_factory([]),
-            auto_loop_config=overridden_config,
+        by_complexity = {r.complexity: r.loop_type for r in overridden_config.rules}
+        assert by_complexity[Complexity.MEDIUM] == "openhands"
+        assert by_complexity[Complexity.SIMPLE] == "react"
+
+
+# ── Retired stored values ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRetiredStoredLoopValues:
+    """A row naming a deleted loop resolves rather than breaking the rebuild.
+
+    A setting is validated on write and never on read, so a value stored while
+    plan_execute / hybrid were valid reaches ``AutoLoopConfig`` unchanged. The
+    data migration rewrites the stored rows, but an env-supplied value is
+    beyond its reach, so the read boundary maps the name too.
+    """
+
+    @pytest.mark.parametrize("retired", ["plan_execute", "hybrid"])
+    async def test_a_stored_default_loop_type_resolves_to_react(
+        self, retired: str
+    ) -> None:
+        app_state = _loop_settings_app_state(
+            {
+                "engine.loop_auto_select_enabled": "true",
+                "engine.default_loop_type": retired,
+                "engine.loop_complexity_overrides": "",
+            }
         )
-        assert isinstance(
-            await overridden_engine._resolve_loop(task, "agent-live-002", str(task.id)),
-            ReactLoop,
+        config = await build_auto_loop_config_or_none(app_state)
+        assert config is not None
+        assert config.default_loop_type == "react"
+
+    async def test_stored_overrides_naming_retired_loops_resolve_to_react(
+        self,
+    ) -> None:
+        app_state = _loop_settings_app_state(
+            {
+                "engine.loop_auto_select_enabled": "true",
+                "engine.default_loop_type": "react",
+                "engine.loop_complexity_overrides": (
+                    "medium:hybrid,complex:plan_execute"
+                ),
+            }
         )
+        config = await build_auto_loop_config_or_none(app_state)
+        assert config is not None
+        by_complexity = {r.complexity: r.loop_type for r in config.rules}
+        assert by_complexity[Complexity.MEDIUM] == "react"
+        assert by_complexity[Complexity.COMPLEX] == "react"
+
+    async def test_a_retired_value_does_not_shadow_a_live_one(self) -> None:
+        """Only the retired name is rewritten; openhands still routes."""
+        app_state = _loop_settings_app_state(
+            {
+                "engine.loop_auto_select_enabled": "true",
+                "engine.default_loop_type": "react",
+                "engine.loop_complexity_overrides": ("medium:hybrid,epic:openhands"),
+            }
+        )
+        config = await build_auto_loop_config_or_none(app_state)
+        assert config is not None
+        by_complexity = {r.complexity: r.loop_type for r in config.rules}
+        assert by_complexity[Complexity.MEDIUM] == "react"
+        assert by_complexity[Complexity.EPIC] == "openhands"
 
 
 # ── Auto-loop selection ──────────────────────────────────────
@@ -269,8 +267,18 @@ class TestLoopSelectionAppliesLive:
 class TestAutoLoopSelection:
     """AgentEngine with auto_loop_config selects loop per task complexity."""
 
-    async def test_simple_task_uses_react(
+    @pytest.mark.parametrize(
+        "complexity",
+        [
+            Complexity.SIMPLE,
+            Complexity.MEDIUM,
+            Complexity.COMPLEX,
+            Complexity.EPIC,
+        ],
+    )
+    async def test_every_complexity_defaults_to_react(
         self,
+        complexity: Complexity,
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
@@ -281,7 +289,7 @@ class TestAutoLoopSelection:
             auto_loop_config=AutoLoopConfig(),
         )
         task = _make_task_with_complexity(
-            complexity=Complexity.SIMPLE,
+            complexity=complexity,
             agent_id=str(sample_agent_with_personality.id),
         )
 
@@ -298,33 +306,26 @@ class TestAutoLoopSelection:
         assert len(selected_events) == 1
         assert selected_events[0]["selected_loop"] == "react"
 
-    async def test_medium_task_uses_plan_execute(
+    async def test_an_override_rule_routes_that_complexity_elsewhere(
         self,
-        sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        provider = mock_provider_factory(_make_plan_exec_responses())
+        """A measured override reaches the builder, unwired deps and all."""
         engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
+            provider=mock_provider_factory([]),
+            auto_loop_config=AutoLoopConfig(
+                rules=(
+                    AutoLoopRule(complexity=Complexity.EPIC, loop_type="openhands"),
+                ),
+            ),
         )
         task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id=str(sample_agent_with_personality.id),
+            complexity=Complexity.EPIC,
+            agent_id="agent-auto-oh",
+            task_id="task-auto-oh",
         )
-
-        with structlog.testing.capture_logs() as logs:
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=task,
-            )
-
-        assert isinstance(result, AgentRunResult)
-        selected_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
-        ]
-        assert len(selected_events) == 1
-        assert selected_events[0]["selected_loop"] == "plan_execute"
+        with pytest.raises(OpenHandsUnavailableError):
+            await engine._resolve_loop(task, "agent-auto-oh", str(task.id))
 
     async def test_static_loop_emits_static_selected_event(
         self,
@@ -373,158 +374,6 @@ class TestAutoLoopWithExplicitLoop:
                 execution_loop=ReactLoop(),
                 auto_loop_config=AutoLoopConfig(),
             )
-
-
-# ── Budget-aware selection ───────────────────────────────────
-
-
-@pytest.mark.unit
-class TestAutoLoopBudgetAware:
-    """Budget state influences loop selection for complex tasks."""
-
-    async def test_complex_tight_budget_uses_plan_execute(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """Complex + tight budget => plan_execute (not hybrid)."""
-        provider = mock_provider_factory(_make_plan_exec_responses())
-
-        enforcer = _make_budget_enforcer()
-
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(budget_tight_threshold=80),
-            budget_enforcer=enforcer,
-        )
-
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id=str(sample_agent_with_personality.id),
-        )
-
-        # Mock utilization at 90% (above 80% threshold)
-        with (
-            patch.object(
-                enforcer,
-                "get_budget_utilization_pct",
-                new_callable=AsyncMock,
-                return_value=90.0,
-            ),
-            structlog.testing.capture_logs() as logs,
-        ):
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=task,
-            )
-
-        assert isinstance(result, AgentRunResult)
-        selected_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
-        ]
-        assert len(selected_events) == 1
-        assert selected_events[0]["selected_loop"] == "plan_execute"
-
-    async def test_complex_ok_budget_uses_hybrid(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """Complex + OK budget => hybrid loop selected."""
-        provider = mock_provider_factory(_make_hybrid_responses())
-
-        enforcer = _make_budget_enforcer()
-
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            budget_enforcer=enforcer,
-        )
-
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id=str(sample_agent_with_personality.id),
-        )
-
-        # Mock utilization at 30% (well below threshold)
-        with (
-            patch.object(
-                enforcer,
-                "get_budget_utilization_pct",
-                new_callable=AsyncMock,
-                return_value=30.0,
-            ),
-            structlog.testing.capture_logs() as logs,
-        ):
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=task,
-            )
-
-        assert isinstance(result, AgentRunResult)
-        selected_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
-        ]
-        assert len(selected_events) == 1
-        assert selected_events[0]["selected_loop"] == "hybrid"
-
-
-# ── Budget error fallback ────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestAutoLoopFallbackOnBudgetError:
-    """Budget query failure => proceeds without budget awareness."""
-
-    async def test_budget_unavailable_still_selects_loop(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """Budget utilization unknown => proceeds without downgrade."""
-        provider = mock_provider_factory(_make_hybrid_responses())
-
-        enforcer = _make_budget_enforcer()
-
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            budget_enforcer=enforcer,
-        )
-
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id=str(sample_agent_with_personality.id),
-        )
-
-        # Budget query returns None -> no downgrade, hybrid stays
-        with (
-            patch.object(
-                enforcer,
-                "get_budget_utilization_pct",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            structlog.testing.capture_logs() as logs,
-        ):
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=task,
-            )
-
-        assert isinstance(result, AgentRunResult)
-        selected_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
-        ]
-        assert len(selected_events) == 1
-        # Hybrid selected (no budget downgrade since None, no fallback)
-        assert selected_events[0]["selected_loop"] == "hybrid"
-
-        # Verify budget-unavailable debug event was emitted
-        unavail_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_BUDGET_UNAVAILABLE
-        ]
-        assert len(unavail_events) == 1
 
 
 # -- Resume path with auto-loop -----------------------------------
@@ -589,13 +438,12 @@ class TestAutoLoopResumePath:
 
 @pytest.mark.unit
 class TestAutoLoopConfigWiring:
-    """compaction_callback and plan_execute_config are wired through."""
+    """The engine's collaborators reach the auto-selected loop."""
 
-    async def test_compaction_callback_wired_to_react_via_auto_selection(
+    async def test_compaction_callback_wired_via_auto_selection(
         self,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """SIMPLE task -> ReactLoop receives compaction_callback."""
         provider = mock_provider_factory([])
         compact_cb = AsyncMock()
         engine = AgentEngine(
@@ -612,82 +460,10 @@ class TestAutoLoopConfigWiring:
         assert isinstance(loop, ReactLoop)
         assert loop.compaction_callback is compact_cb
 
-    async def test_compaction_callback_wired_to_plan_execute_via_auto_selection(
+    async def test_step_classifier_wired_via_auto_selection(
         self,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """MEDIUM task -> PlanExecuteLoop receives compaction_callback."""
-        provider = mock_provider_factory([])
-        compact_cb = AsyncMock()
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            compaction_callback=compact_cb,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-wire-002",
-            task_id="task-wire-002",
-        )
-        loop = await engine._resolve_loop(task, "agent-wire-002", str(task.id))
-        assert isinstance(loop, PlanExecuteLoop)
-        assert loop.compaction_callback is compact_cb
-
-    async def test_compaction_callback_wired_to_hybrid_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """COMPLEX task + OK budget -> HybridLoop receives compaction_callback."""
-        provider = mock_provider_factory([])
-        compact_cb = AsyncMock()
-        enforcer = _make_budget_enforcer()
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            compaction_callback=compact_cb,
-            budget_enforcer=enforcer,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id="agent-wire-003",
-            task_id="task-wire-003",
-        )
-        with patch.object(
-            enforcer,
-            "get_budget_utilization_pct",
-            new_callable=AsyncMock,
-            return_value=30.0,
-        ):
-            loop = await engine._resolve_loop(task, "agent-wire-003", str(task.id))
-        assert isinstance(loop, HybridLoop)
-        assert loop.compaction_callback is compact_cb
-
-    async def test_plan_execute_config_wired_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """MEDIUM task -> PlanExecuteLoop receives plan_execute_config."""
-        provider = mock_provider_factory([])
-        pe_config = PlanExecuteConfig(max_replans=7)
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            plan_execute_config=pe_config,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-wire-004",
-            task_id="task-wire-004",
-        )
-        loop = await engine._resolve_loop(task, "agent-wire-004", str(task.id))
-        assert isinstance(loop, PlanExecuteLoop)
-        assert loop.config.max_replans == 7
-
-    async def test_step_classifier_wired_to_react_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """SIMPLE task -> ReactLoop receives the engine's step_classifier."""
         provider = mock_provider_factory([])
         classifier = RuleBasedStepClassifier()
         engine = AgentEngine(
@@ -704,27 +480,6 @@ class TestAutoLoopConfigWiring:
         assert isinstance(loop, ReactLoop)
         assert loop._step_classifier is classifier
 
-    async def test_step_classifier_wired_to_plan_execute_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """MEDIUM task -> PlanExecuteLoop receives the engine's step_classifier."""
-        provider = mock_provider_factory([])
-        classifier = RuleBasedStepClassifier()
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            step_classifier=classifier,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-clf-plan",
-            task_id="task-clf-plan",
-        )
-        loop = await engine._resolve_loop(task, "agent-clf-plan", str(task.id))
-        assert isinstance(loop, PlanExecuteLoop)
-        assert loop._step_classifier is classifier
-
     def test_step_classifier_wired_to_default_loop(
         self,
         mock_provider_factory: type[MockCompletionProvider],
@@ -735,35 +490,6 @@ class TestAutoLoopConfigWiring:
         engine = AgentEngine(provider=provider, step_classifier=classifier)
         assert isinstance(engine._loop, ReactLoop)
         assert engine._loop._step_classifier is classifier
-
-    async def test_step_classifier_wired_to_hybrid_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """COMPLEX task + OK budget -> HybridLoop receives the classifier."""
-        provider = mock_provider_factory([])
-        classifier = RuleBasedStepClassifier()
-        enforcer = _make_budget_enforcer()
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            budget_enforcer=enforcer,
-            step_classifier=classifier,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id="agent-clf-hybrid",
-            task_id="task-clf-hybrid",
-        )
-        with patch.object(
-            enforcer,
-            "get_budget_utilization_pct",
-            new_callable=AsyncMock,
-            return_value=30.0,
-        ):
-            loop = await engine._resolve_loop(task, "agent-clf-hybrid", str(task.id))
-        assert isinstance(loop, HybridLoop)
-        assert loop._step_classifier is classifier
 
     def test_compaction_callback_wired_to_default_loop(
         self,
@@ -788,77 +514,3 @@ class TestAutoLoopConfigWiring:
         engine = AgentEngine(provider=provider)
         assert isinstance(engine._loop, ReactLoop)
         assert engine._loop.compaction_callback is None
-
-    async def test_hybrid_loop_config_wired_via_auto_selection(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """COMPLEX task + OK budget -> HybridLoop receives hybrid_loop_config."""
-        provider = mock_provider_factory([])
-        hl_config = HybridLoopConfig(max_plan_steps=3, max_turns_per_step=8)
-        enforcer = _make_budget_enforcer()
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            hybrid_loop_config=hl_config,
-            budget_enforcer=enforcer,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.COMPLEX,
-            agent_id="agent-wire-005",
-            task_id="task-wire-005",
-        )
-        with patch.object(
-            enforcer,
-            "get_budget_utilization_pct",
-            new_callable=AsyncMock,
-            return_value=30.0,
-        ):
-            loop = await engine._resolve_loop(task, "agent-wire-005", str(task.id))
-        assert isinstance(loop, HybridLoop)
-        assert loop.config.max_plan_steps == 3
-        assert loop.config.max_turns_per_step == 8
-
-    async def test_plan_execute_config_defaults_when_none(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """Omitting plan_execute_config uses default PlanExecuteConfig."""
-        provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-wire-006",
-            task_id="task-wire-006",
-        )
-        loop = await engine._resolve_loop(task, "agent-wire-006", str(task.id))
-        assert isinstance(loop, PlanExecuteLoop)
-        default_config = PlanExecuteConfig()
-        assert loop.config.max_replans == default_config.max_replans
-
-    async def test_both_compaction_and_plan_config_wired_simultaneously(
-        self,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """Both compaction_callback and plan_execute_config wired together."""
-        provider = mock_provider_factory([])
-        compact_cb = AsyncMock()
-        pe_config = PlanExecuteConfig(max_replans=5)
-        engine = AgentEngine(
-            provider=provider,
-            auto_loop_config=AutoLoopConfig(),
-            compaction_callback=compact_cb,
-            plan_execute_config=pe_config,
-        )
-        task = _make_task_with_complexity(
-            complexity=Complexity.MEDIUM,
-            agent_id="agent-wire-007",
-            task_id="task-wire-007",
-        )
-        loop = await engine._resolve_loop(task, "agent-wire-007", str(task.id))
-        assert isinstance(loop, PlanExecuteLoop)
-        assert loop.compaction_callback is compact_cb
-        assert loop.config.max_replans == 5

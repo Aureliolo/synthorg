@@ -19,8 +19,8 @@ companion repository: [IBM awesome list](https://github.com/IBM/awesome-agentic-
 introduces the Agentic Computation Graph (ACG) formalism to unify the vocabulary for
 describing agent workflows: from static templates to dynamic runtime graphs, scheduling
 policies, execution traces, and mutation strategies. SynthOrg has all these concepts but
-expresses them through domain-specific names (execution loops, hybrid plans, turn records,
-coordination topology). This evaluation assesses whether adopting ACG vocabulary would
+expresses them through domain-specific names (execution loops, decomposition plans, turn
+records, coordination topology). This evaluation assesses whether adopting ACG vocabulary would
 improve architecture clarity, identify gaps, and inform design decisions for structural
 credit assignment and agent pruning.
 
@@ -40,15 +40,15 @@ assessment and source file references.
 | **Execution Trace** | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. 100+ event constant domains. |
 | **Nodes (atomic actions)** | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `src/synthorg/engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | **Edges (control/data flow)** | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `src/synthorg/engine/decomposition/models.py` | Strong for multi-agent | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
-| **Scheduling Policies** | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `src/synthorg/engine/loop_selector.py`, `src/synthorg/engine/routing/models.py` | Strong | Three-way loop selection (react/plan-execute/hybrid) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. Budget-aware downgrade is a resource-constrained policy. |
+| **Scheduling Policies** | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `src/synthorg/engine/loop_selector.py`, `src/synthorg/engine/routing/models.py` | Strong | Per-complexity loop selection (react/openhands) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. |
 
 ### Dynamic Behaviour Concepts
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
-| **Conditional branching** | HybridLoop replan decisions, PlanExecuteLoop step completion | `src/synthorg/engine/hybrid_loop.py`, `src/synthorg/engine/hybrid/step_helpers.py`, `src/synthorg/engine/hybrid/replan_helpers.py` | Partial | Branching is embedded in loop logic (replan if step fails), not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
+| **Conditional branching** | Loop termination checks, stagnation intervention verdicts | `src/synthorg/engine/react_loop.py`, `src/synthorg/engine/loop_control_helpers.py` | Partial | Branching is embedded in loop logic, not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
 | **Parallel composition** | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | `src/synthorg/engine/parallel.py`, `src/synthorg/engine/coordination/models.py` | Strong | Parallel waves in coordination are first-class. `ParallelExecutor` handles concurrent subtask dispatch with `fail_fast` semantics. |
-| **Graph mutation** | Hybrid replanning (`attempt_replan`), stagnation correction injection | `src/synthorg/engine/hybrid/replan_helpers.py`, `src/synthorg/engine/stagnation/` | Partial | Replanning mutates the execution plan (new subtask list). Stagnation correction injects a new message. These are graph mutations but are not described in those terms. |
+| **Graph mutation** | Stagnation correction injection, mid-flight steering adoption | `src/synthorg/engine/stagnation/`, `src/synthorg/engine/intervention/loop_hook.py` | Partial | Both inject a new message into a running execution. These are graph mutations but are not described in those terms. |
 | **Termination conditions** | `TerminationReason` enum (7 values: COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION, ERROR) | `src/synthorg/engine/loop_protocol.py` | Strong | Richer than typical ACG termination models. 7 named reasons provide precise signal for recovery and routing decisions. |
 
 ### Resource and Cost Concepts
@@ -57,7 +57,7 @@ assessment and source file references.
 |---|---|---|---|---|
 | **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| **Quality-cost tradeoffs** | Budget-aware loop downgrade (hybrid->plan_execute at 80%), model auto-downgrade, quota degradation strategies | `src/synthorg/engine/loop_selector.py`, `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency guarantee). |
+| **Quality-cost tradeoffs** | Model auto-downgrade, quota degradation strategies | `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency guarantee). |
 
 ### Concepts SynthOrg Has That ACG Does Not Capture
 
@@ -83,12 +83,11 @@ The survey identifies four structural findings that apply to SynthOrg's architec
 parallel would be correct), prompt engineering cannot compensate. Structural changes yield
 greater gains.
 
-**SynthOrg validation**: Confirmed by the loop selector. The auto-selector maps task
-complexity to loop type (simple->react, medium->plan_execute, complex->hybrid). The
-documentation for this design explicitly states that choosing the wrong loop for a task
-complexity degrades quality beyond what prompt tuning can recover. The budget-aware downgrade
-(hybrid->plan_execute at 80% monthly) is a deliberate quality tradeoff, accepted because
-the budget constraint makes the simpler structure correct.
+**SynthOrg validation**: Confirmed by the loop selector, which maps task complexity to
+loop type. Which loop suits which complexity is deliberately left to measurement: the
+inner-loop A/B harness ranks the shipped loops on the same coding work and its
+scoreboard is applied as `engine.loop_complexity_overrides`, so the routing is set from
+evidence rather than judgement.
 
 **Implication**: The loop selector is doing real structural work. Adding complexity to
 system prompts for tasks that should use a different loop is not a substitute. This
@@ -99,15 +98,15 @@ validates investing in the auto-selector's classification accuracy over prompt l
 **Claim**: Systems with high-quality output verification can mutate graphs more aggressively
 (add/remove nodes, change topology) because they can catch degradation early.
 
-**SynthOrg validation**: Partially confirmed. The quality scoring system (L2+L3 in
-`src/synthorg/engine/quality/`) provides per-step quality signals. The hybrid loop's replan
-trigger uses these signals to decide whether to add a replan step (graph mutation). However,
-the quality verifier's confidence is not used to modulate mutation aggressiveness; the
-replan threshold is fixed, not adaptive to verifier confidence.
+**SynthOrg validation**: Partially confirmed at a coarser grain than the claim assumes.
+The quality scoring system (L2+L3 in `src/synthorg/engine/quality/`) provides per-step
+quality signals, and the initiative tail mutates the graph when an item stalls: the
+replan trigger opens a fresh plan rather than adjusting a running one. Verifier
+confidence does not modulate how aggressively that fires.
 
-**Implication**: As the quality scoring system matures, consider making the replan threshold
-adaptive to verifier confidence. High-confidence quality signal -> allow more replans.
-Low-confidence signal -> conserve budget.
+**Implication**: As the quality scoring system matures, consider making the replan
+trigger's threshold adaptive to verifier confidence. High-confidence quality signal ->
+replan sooner. Low-confidence signal -> conserve budget.
 
 ### Finding 3: Selection/Pruning from a Super-Graph Beats Unconstrained Generation
 
@@ -332,7 +331,7 @@ The ACG formalism is a useful external reference vocabulary but is incomplete fo
 SynthOrg's concepts (trust, personality, autonomy, memory, prompt profiles). Code-level
 renaming would:
 
-- Remove domain-specific precision (e.g., "HybridLoop" is more descriptive than
+- Remove domain-specific precision (e.g., "ReactLoop" is more descriptive than
   "ConditionalACGNode")
 - Break existing API contracts and test surface
 - Gain little because the ACG vocabulary is not user-facing
@@ -370,5 +369,5 @@ composition" rather than erroring.
 3. **Agent pruning**: Implement `PruningService` + `PruningPolicy`; wire to existing
    `OffboardingService`; human approval gate required
 4. **Optional node typing**: Add `NodeType` enum to `TurnRecord` for richer trace analysis
-5. **Adaptive quality-cost tradeoff**: Make hybrid loop replan threshold adaptive to
-   quality verifier confidence (longer-term)
+5. **Adaptive quality-cost tradeoff**: Make the initiative-tail replan threshold adaptive
+   to quality verifier confidence (longer-term)

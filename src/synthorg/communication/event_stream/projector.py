@@ -27,9 +27,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TOOL_CALLS,
     EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_LOOP_TURN_START,
-    EXECUTION_PLAN_STEP_COMPLETE,
-    EXECUTION_PLAN_STEP_FAILED,
-    EXECUTION_PLAN_STEP_START,
 )
 
 logger = get_logger(__name__)
@@ -40,10 +37,6 @@ PROJECTION_MAP: Mapping[str, AgUiEventType] = MappingProxyType(
         EXECUTION_ENGINE_START: AgUiEventType.RUN_STARTED,
         EXECUTION_ENGINE_COMPLETE: AgUiEventType.RUN_FINISHED,
         EXECUTION_ENGINE_ERROR: AgUiEventType.RUN_ERROR,
-        # Plan steps
-        EXECUTION_PLAN_STEP_START: AgUiEventType.STEP_STARTED,
-        EXECUTION_PLAN_STEP_COMPLETE: AgUiEventType.STEP_FINISHED,
-        EXECUTION_PLAN_STEP_FAILED: AgUiEventType.STEP_FAILED,
         # Model response turns
         EXECUTION_LOOP_TURN_START: AgUiEventType.TEXT_MESSAGE_START,
         EXECUTION_LOOP_TURN_COMPLETE: AgUiEventType.TEXT_MESSAGE_END,

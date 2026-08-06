@@ -940,10 +940,8 @@ distinct write seams:
 
 A loop helper that needs most of a run's collaborators takes two
 parameters, not a long list: a frozen context and a mutable state. The
-canonical pair is `StepRunContext` / `StepRunState`
-(`engine/plan_loop_context.py`), shared by `HybridLoop` and
-`PlanExecuteLoop`; `OpenHandsLoopDeps` / `_RunState`
-(`engine/openhands/`) is the same shape one loop down.
+canonical pair is `OpenHandsLoopDeps` / `_RunState`
+(`engine/openhands/`).
 
 * **Context** -- `@dataclass(frozen=True, slots=True, kw_only=True)`.
   Holds the collaborators fixed for one `execute()` call (provider,

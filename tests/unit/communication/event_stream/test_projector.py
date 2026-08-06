@@ -19,9 +19,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TOOL_CALLS,
     EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_LOOP_TURN_START,
-    EXECUTION_PLAN_STEP_COMPLETE,
-    EXECUTION_PLAN_STEP_FAILED,
-    EXECUTION_PLAN_STEP_START,
 )
 
 
@@ -33,9 +30,6 @@ class TestProjectionMap:
             (EXECUTION_ENGINE_START, AgUiEventType.RUN_STARTED),
             (EXECUTION_ENGINE_COMPLETE, AgUiEventType.RUN_FINISHED),
             (EXECUTION_ENGINE_ERROR, AgUiEventType.RUN_ERROR),
-            (EXECUTION_PLAN_STEP_START, AgUiEventType.STEP_STARTED),
-            (EXECUTION_PLAN_STEP_COMPLETE, AgUiEventType.STEP_FINISHED),
-            (EXECUTION_PLAN_STEP_FAILED, AgUiEventType.STEP_FAILED),
             (EXECUTION_LOOP_TURN_START, AgUiEventType.TEXT_MESSAGE_START),
             (EXECUTION_LOOP_TURN_COMPLETE, AgUiEventType.TEXT_MESSAGE_END),
             (EXECUTION_LOOP_TOOL_CALLS, AgUiEventType.TOOL_CALL_START),
@@ -50,6 +44,13 @@ class TestProjectionMap:
         # Dissent is emitted directly by ConflictResolutionService
         # via EventStreamHub.publish_raw(), not through projection.
         assert CONFLICT_DISSENT_RECORDED not in PROJECTION_MAP
+
+    def test_no_step_events_are_projected(self) -> None:
+        # AG-UI's STEP_* members stay as protocol vocabulary, but no loop
+        # emits a step, so a mapping onto them could never fire.
+        assert AgUiEventType.STEP_STARTED not in PROJECTION_MAP.values()
+        assert AgUiEventType.STEP_FINISHED not in PROJECTION_MAP.values()
+        assert AgUiEventType.STEP_FAILED not in PROJECTION_MAP.values()
 
 
 @pytest.mark.unit

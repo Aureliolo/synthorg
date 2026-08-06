@@ -81,13 +81,10 @@ project still adopts the same directive independently. The brain status
 (`ACTIVE` / `SUPERSEDED`) is the project-lifecycle axis, orthogonal to
 per-execution adoption.
 
-A `REDIRECT` additionally records a checkpointed
-`pending_steering_replan_id` on the context. Plan-and-Execute and Hybrid loops
-consume it at the next **step boundary** via the existing `do_replan()` and
-clear it; a crash between adoption and the step boundary preserves the
-pending-replan so the forced re-plan still fires on resume. ReAct has no plan
-and ignores the field. The tool batch always finishes first: there is no
-mid-tool cancellation.
+A `REDIRECT` differs from a `HINT` in urgency rather than in machinery: both
+are injected and adopted the same way, but a REDIRECT is worth interrupting an
+in-flight LLM call for (see below) while a HINT waits for the turn boundary.
+The tool batch always finishes first: there is no mid-tool cancellation.
 
 The in-flight **LLM call** is interruptible when the streaming work loop is
 active (`engine.work_loop_streaming_enabled` and the model advertises

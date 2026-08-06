@@ -26,6 +26,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import DecompositionError
 
 
 class PlanProvenance(BaseModel):
@@ -128,15 +129,25 @@ def plan_from_decomposition(
 
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
+
+    Raises:
+        DecompositionError: If the decomposition's structure was never
+            resolved, which means it did not come through
+            ``DecompositionService``. Substituting a default here would
+            sequentialise the plan silently.
     """
     items = items_from_decomposition(result)
+    structure = result.plan.task_structure
+    if structure is None:
+        msg = "Decomposition reached plan mapping with an unresolved task_structure"
+        raise DecompositionError(msg)
     return Plan(
         project=provenance.project,
         objective_id=provenance.objective_id,
         objective_title=provenance.objective_title,
         parent_task_id=provenance.parent_task_id,
         items=items,
-        task_structure=result.plan.task_structure,
+        task_structure=structure,
         coordination_topology=result.plan.coordination_topology,
         status=provenance.status,
         forecast_id=provenance.forecast_id,

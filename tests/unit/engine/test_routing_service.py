@@ -8,7 +8,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Complexity, Priority, TaskType
+from synthorg.core.task_enums import Complexity, Priority, TaskStructure, TaskType
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -99,6 +99,7 @@ def _make_decomposition_result(
                 expected_artifacts=("src/frontend.tsx",),
             ),
         ),
+        task_structure=TaskStructure.SEQUENTIAL,
     )
     return DecompositionResult(
         plan=plan,
@@ -210,6 +211,7 @@ class TestTaskRoutingService:
                     expected_artifacts=("src/python_work.py",),
                 ),
             ),
+            task_structure=TaskStructure.SEQUENTIAL,
         )
         decomp = DecompositionResult(
             plan=plan,

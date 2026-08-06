@@ -115,5 +115,3 @@ class TestSteeringEndToEnd:
         steering_msgs = [m for m in run.context.conversation if _is_steering_msg(m)]
         assert len(steering_msgs) == 1
         assert result.directive_id in run.context.adopted_steering_ids
-        # A REDIRECT records a pending replan for the step-boundary consumers.
-        assert run.context.pending_steering_replan_id == result.directive_id

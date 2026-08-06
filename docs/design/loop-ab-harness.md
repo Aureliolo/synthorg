@@ -1,8 +1,8 @@
 # Inner-loop A/B harness
 
-SynthOrg ships four interchangeable inner [execution loops](agent-execution.md):
-`react`, `plan_execute`, `hybrid` and the bundled
-[`openhands`](openhands-loop.md). Which one runs is decided by
+SynthOrg ships two interchangeable inner [execution loops](agent-execution.md):
+`react` and the bundled [`openhands`](openhands-loop.md). Which one runs is
+decided by
 `engine.default_loop_type` and `engine.loop_complexity_overrides`. This harness
 exists so those values are set from measurement rather than from judgement.
 
@@ -15,7 +15,7 @@ strings for settings that already exist.
 
 One cell is a `(loop, tier, brief, repetition)`. The matrix lives in
 `evals/loop_ab/manifest.yaml` and defaults to every registered loop, three model
-tiers, three briefs and three repetitions: 108 runs.
+tiers, three briefs and three repetitions: 54 runs.
 
 The loop list is validated against the live loop registry in both directions. A
 manifest naming an unknown loop is a typo that would shrink the comparison; one
@@ -65,7 +65,7 @@ scoreboard so the artifact is self-describing:
 | Tokens | 15 | `TurnRecord` input + output totals |
 | Latency | 10 | Engine-measured wall clock |
 | Turn efficiency | 10 | Turn count |
-| Resilience / rework | 5 | Retries, replans, repeated tool calls, pass rate |
+| Resilience / rework | 5 | Retries, repeated tool calls, pass rate |
 
 **Correctness is both dominant and a hard gate.** A loop whose median
 correctness falls below `CORRECTNESS_GATE_FLOOR` is ineligible for promotion
@@ -89,12 +89,7 @@ share a median while differing completely in consistency.
 ## Instrumentation
 
 No loop is modified. Every figure the rubric consumes is already recorded:
-`TurnRecord` carries tokens, tool calls, provider retries and cache hits, and
-the planning loops report their replan count in `ExecutionResult.metadata`.
-
-`replans_used` exists only for `plan_execute` and `hybrid`. It is folded in as a
-rework **cost** that is structurally zero for the loops that cannot replan, so a
-loop is never rewarded for lacking the capability.
+`TurnRecord` carries tokens, tool calls, provider retries and cache hits.
 
 **`provider_retries` is a native-leg signal only.** A retry the driver performs
 is counted because the driver reports it; a retry OpenHands performs happens
@@ -127,9 +122,9 @@ reporting none would take the token dimension by reporting nothing at all.
    The seed lands in a project subtree (`<cell>/projects/<project>/`) because
    both sandboxes a cell drives pick their mount by resolving the run's project
    id under the sandbox root, so a flat layout is one neither can bind.
-2. Every loop dispatches through the [LLM gateway](llm-gateway.md), so all four
+2. Every loop dispatches through the [LLM gateway](llm-gateway.md), so both
    are metered by one `cost_recording_scope` writing to one ledger. The native
-   legs carry a per-run bearer of their own and route as an OpenAI-compatible
+   leg carries a per-run bearer of its own and routes as an OpenAI-compatible
    proxy client, exactly as the container's SDK does.
 3. Credentialed tools are reached only through the
    [credentialed-MCP boundary](credentialed-mcp.md); in-workspace file and shell
@@ -139,7 +134,7 @@ reporting none would take the token dimension by reporting nothing at all.
 5. The same `max_turns`, taken from the brief's limits. The OpenHands loop takes
    the lower of that and its own configured ceiling, so the harness overrides
    the ceiling per cell; left at its default, a brief allowed more turns would
-   give that leg fewer than the three it is ranked against.
+   give that leg fewer than the one it is ranked against.
 6. Wall clock is captured when the run happens, never re-measured.
 
 ## The recording host
@@ -214,7 +209,7 @@ Other flags: `--bind-host` overrides the resolved listener address,
 `--bind-port` pins the port instead of taking an ephemeral one,
 `--container-host` overrides the alias the sandbox addresses the recorder by,
 and `--keep-workspaces` retains each cell's tree for inspection rather than
-reclaiming it (a matrix leaves 36 of them, carrying whatever the loops built).
+reclaiming it (a matrix leaves 18 of them, carrying whatever the loops built).
 
 Only a real run produces scoreboard numbers, so a published ranking is always
 something that actually happened. There is deliberately no offline replay that
@@ -268,7 +263,7 @@ recommendation is empty rather than a least-bad guess.
 
 ## See Also
 
-- [Agent Execution](agent-execution.md): the four loops and the selection path
-- [OpenHands loop](openhands-loop.md): the bundled fourth loop
+- [Agent Execution](agent-execution.md): the two loops and the selection path
+- [OpenHands loop](openhands-loop.md): the bundled second loop
 - [LLM Gateway](llm-gateway.md): the authoritative cost boundary
 - [Credentialed-tool MCP server](credentialed-mcp.md): the tool boundary

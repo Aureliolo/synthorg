@@ -156,33 +156,6 @@ def test_distinct_tool_calls_are_not_counted_as_thrash() -> None:
     assert run_metrics(result, duration_seconds=1.0).repeated_tool_calls == 0
 
 
-def test_replans_are_read_from_loop_metadata() -> None:
-    """plan_execute and hybrid stash their replan count in result metadata."""
-    result = _result(turns=(_turn(1),), metadata={"replans_used": 2})
-
-    assert run_metrics(result, duration_seconds=1.0).replans_used == 2
-
-
-def test_a_loop_that_cannot_replan_reports_zero_replans() -> None:
-    """react and openhands emit no replan metadata; absence is zero, not unknown.
-
-    This must never read as an advantage: zero replans is the same value a
-    planning loop reports when it needed no replan, and the rubric treats
-    replans strictly as a rework cost.
-    """
-    assert (
-        run_metrics(_result(turns=(_turn(1),)), duration_seconds=1.0).replans_used == 0
-    )
-
-
-def test_non_integer_replan_metadata_is_refused() -> None:
-    """``metadata`` is untyped, so a drifted value must not silently score as zero."""
-    result = _result(turns=(_turn(1),), metadata={"replans_used": "two"})
-
-    with pytest.raises(ValueError, match="replans_used"):
-        run_metrics(result, duration_seconds=1.0)
-
-
 def test_a_run_with_no_turns_projects_to_zeroes() -> None:
     """A loop that terminated before any turn is scoreable, not a crash."""
     metrics = run_metrics(_result(turns=()), duration_seconds=0.0)
@@ -197,5 +170,4 @@ def test_a_run_with_no_turns_projects_to_zeroes() -> None:
         repeated_tool_calls=0,
         provider_retries=0,
         cache_hits=0,
-        replans_used=0,
     )

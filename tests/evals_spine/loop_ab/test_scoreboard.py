@@ -193,7 +193,7 @@ def test_the_stamped_weights_match_the_rubric_in_force() -> None:
 
 def test_total_cost_sums_every_row_and_provider() -> None:
     """The headline spend figure is the real total, not one row's."""
-    scoreboard = _scoreboard(_measured_row("react"), _measured_row("hybrid"))
+    scoreboard = _scoreboard(_measured_row("react"), _measured_row("openhands"))
 
     assert scoreboard.total_cost == pytest.approx(0.50)
 

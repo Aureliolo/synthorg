@@ -34,6 +34,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.errors import (
     DecompositionDepthError,
     DecompositionError,
+    DecompositionSubtaskLimitError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
@@ -349,7 +350,7 @@ class LlmDecompositionStrategy:
             context: Decomposition constraints.
 
         Raises:
-            DecompositionError: If subtask count exceeds limit.
+            DecompositionSubtaskLimitError: If subtask count exceeds limit.
         """
         if len(plan.subtasks) > context.max_subtasks:
             msg = (
@@ -363,4 +364,4 @@ class LlmDecompositionStrategy:
                 max_subtasks=context.max_subtasks,
                 error=msg,
             )
-            raise DecompositionError(msg)
+            raise DecompositionSubtaskLimitError(msg)

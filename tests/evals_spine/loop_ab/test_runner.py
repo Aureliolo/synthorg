@@ -1,16 +1,19 @@
 # module-kind: tests
 """The matrix runner, driven offline against the real loops.
 
-The loops here are the real registered implementations, not doubles. Only the
-LLM is scripted, which is what makes the discrimination assertion meaningful:
-given the *same* scripted responses, react, plan_execute and hybrid genuinely
-differ in how many turns they take to reach an answer, so the scoreboard
-separates them on measurements they actually produced rather than on behaviour
-the test invented.
+The loops here are the real registered implementations, not doubles; only the
+LLM is scripted. React is the one loop that runs without provisioning, so it is
+the one the runner measures end to end here.
 
 The OpenHands leg is exercised in its unwired state, pinning the reporting rule
 that matters most for an honest scoreboard: a loop that cannot be measured is
 reported with its reason, never dropped and never scored as a zero.
+
+Whether the scoreboard can *separate* two loops is a scoring property rather
+than a runner one, and it is pinned in ``test_rubric.py``, which feeds the
+rubric two aggregates directly. It cannot be shown here: OpenHands needs a
+Docker sandbox and a live gateway, so offline there is only ever one measured
+loop to compare.
 """
 
 import contextlib
@@ -168,7 +171,7 @@ async def test_an_unwired_loop_is_reported_not_dropped(tmp_path: Path) -> None:
     assert "OpenHands" in reason
 
 
-async def test_the_native_loops_are_measured_and_scored(tmp_path: Path) -> None:
+async def test_the_runnable_loop_is_measured_and_scored(tmp_path: Path) -> None:
     """Every loop that could run carries a real measurement and a score."""
     scoreboard = await run_matrix(
         manifest=_manifest(),
@@ -180,53 +183,11 @@ async def test_the_native_loops_are_measured_and_scored(tmp_path: Path) -> None:
     )
 
     measured = {row.loop_type for row in scoreboard.measured_rows}
-    assert measured == {"react", "plan_execute", "hybrid"}
+    assert measured == {"react"}
     for row in scoreboard.measured_rows:
         assert row.score is not None
         assert row.measurement is not None
         assert row.measurement.repetitions == 1
-
-
-async def test_the_scoreboard_separates_loops_on_measured_behaviour(
-    tmp_path: Path,
-) -> None:
-    """The discriminating property the whole harness exists to provide.
-
-    The scripted LLM is identical for every loop, so any difference in turns or
-    tokens comes from the loops themselves: a planning loop spends a turn
-    planning before it executes, a reactive one does not. If the scoreboard
-    cannot separate them here it cannot separate them on real work either.
-    """
-    scoreboard = await run_matrix(
-        manifest=_manifest(),
-        briefs=_simple_brief(),
-        suite_root=_SUITE,
-        work_root=tmp_path / "work",
-        deps=_scripted_deps(),
-        provenance=_provenance(),
-    )
-
-    turns = {
-        row.loop_type: row.measurement.aggregate.total_turns
-        for row in scoreboard.measured_rows
-        if row.measurement is not None
-    }
-    composites = {
-        row.loop_type: row.score.composite
-        for row in scoreboard.measured_rows
-        if row.score is not None
-    }
-
-    assert len(set(turns.values())) > 1, (
-        f"the loops must differ in measured turns to be comparable, got {turns}"
-    )
-    # A whole-turn gap, not merely any difference: the planning loops execute
-    # both scripted steps while the reactive loop stops at the plan, so the
-    # separation is a real measured margin rather than rounding noise.
-    assert max(turns.values()) - min(turns.values()) >= 1, turns
-    assert len(set(composites.values())) > 1, (
-        f"differing measurements must produce differing scores, got {composites}"
-    )
 
 
 async def test_a_cheaper_loop_outscores_a_more_expensive_one(

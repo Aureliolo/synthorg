@@ -87,6 +87,15 @@ class DecompositionDepthError(DecompositionError):
     """Raised when decomposition exceeds the maximum nesting depth."""
 
 
+class DecompositionSubtaskLimitError(DecompositionError):
+    """Raised when a plan carries more subtasks than the caller allowed.
+
+    Every strategy refuses an over-limit plan rather than substituting a
+    smaller one: the request named the ceiling, and quietly returning a
+    thinner plan the operator never saw is a worse answer wearing a success.
+    """
+
+
 class RetrospectiveError(EngineError):
     """Base exception for objective-retrospective capture failures."""
 

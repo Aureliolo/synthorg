@@ -30,9 +30,9 @@ design, and agent pruning recommendations, see
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
-| Conditional branching | HybridLoop replan decisions, PlanExecuteLoop step completion | `engine/hybrid_loop.py`, `engine/hybrid/step_helpers.py`, `engine/hybrid/replan_helpers.py` | Partial | Branching is embedded in loop logic (replan if step fails), not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
+| Conditional branching | Loop termination checks, stagnation intervention verdicts | `engine/react_loop.py`, `engine/loop_control_helpers.py` | Partial | Branching is embedded in loop logic (terminate if budget exhausted, inject if stagnating), not graph-level conditional edges. No formal "if node X succeeds, take edge Y" representation. |
 | Parallel composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | `engine/parallel.py`, `engine/coordination/models.py` | Strong | Parallel waves in coordination are first-class. `ParallelExecutor` handles concurrent subtask dispatch with `fail_fast` semantics. |
-| Graph mutation | Hybrid replanning (`attempt_replan`), stagnation correction injection | `engine/hybrid/replan_helpers.py`, `engine/stagnation/` | Partial | Replanning mutates the execution plan (new subtask list). Stagnation correction injects a new message. These are graph mutations but are not described in those terms. |
+| Graph mutation | Stagnation correction injection, mid-flight steering adoption | `engine/stagnation/`, `engine/intervention/loop_hook.py` | Partial | Both inject a new message into a running execution. These are graph mutations but are not described in those terms. |
 | Termination conditions | `TerminationReason` enum (7 values: COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION, ERROR) | `engine/loop_protocol.py` | Strong | Richer than typical ACG termination models. 7 named reasons provide precise signal for recovery and routing decisions. |
 
 ### Resource and Cost Concepts
@@ -41,7 +41,7 @@ design, and agent pruning recommendations, see
 |---|---|---|---|---|
 | Node cost | `TurnRecord.cost` per turn, `TokenUsage` per completion | `engine/loop_protocol.py`, `providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | Resource constraints | `BudgetEnforcer` (3-layer), quota degradation, context budget | `budget/enforcer.py`, `engine/context_budget.py` | Strong | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| Quality-cost tradeoffs | Budget-aware loop downgrade (hybrid->plan_execute at 80%), model auto-downgrade, quota degradation strategies | `engine/loop_selector.py`, `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency guarantee). |
+| Quality-cost tradeoffs | Model auto-downgrade, quota degradation strategies | `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency guarantee). |
 
 ---
 
@@ -56,8 +56,8 @@ Reverse lookup for readers starting from SynthOrg terminology.
 | `TurnRecord` tuple | Execution Trace | Per-turn cost/token data exceeds ACG baseline |
 | LLM calls, tool invocations, validation gates | Nodes | Implicit typing via function names, not a `Node` type |
 | `SubtaskDefinition.dependencies` | Edges | Explicit in multi-agent DAG, implicit in single-agent |
-| `AutoLoopConfig` + `select_loop_type()` | Scheduling Policies | 3-way loop + topology selection |
-| `HybridLoop` replan | Conditional branching + Graph mutation | Embedded in loop logic |
+| `AutoLoopConfig` + `select_loop_type()` | Scheduling Policies | Per-complexity loop + topology selection |
+| Stagnation correction injection | Conditional branching + Graph mutation | Embedded in loop logic |
 | `ParallelExecutor`, `CoordinationWave` | Parallel composition | First-class with `fail_fast` |
 | `TerminationReason` (7 values) | Termination conditions | Richer taxonomy |
 | `BudgetEnforcer` (3-layer) | Resource constraints | Multi-layer enforcement exceeds ACG |

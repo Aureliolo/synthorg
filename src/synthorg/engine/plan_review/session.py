@@ -361,7 +361,11 @@ def _render_plan(plan: DecompositionResult) -> str:
         dependencies, acceptance criteria, and decision options) for the
         reviewer to read.
     """
-    lines = [f"Plan structure: {plan.plan.task_structure.value}", "Items:"]
+    structure = plan.plan.task_structure
+    lines = [
+        f"Plan structure: {structure.value if structure is not None else 'unset'}",
+        "Items:",
+    ]
     for index, subtask in enumerate(plan.plan.subtasks, start=1):
         lines.extend(_render_item(index, subtask))
     return "\n".join(lines)

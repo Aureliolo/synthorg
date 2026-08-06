@@ -19,21 +19,9 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 
 ::: synthorg.engine.react_loop
 
-## Plan-and-Execute Loop
+## OpenHands Loop
 
-::: synthorg.engine.plan_execute_loop
-
-## Hybrid Plan + ReAct Loop
-
-::: synthorg.engine.hybrid_loop
-
-## Plan-Loop Run Objects
-
-::: synthorg.engine.plan_loop_context
-
-## Plan Models
-
-::: synthorg.engine.plan_models
+::: synthorg.engine.openhands.loop
 
 ## Execution Context
 

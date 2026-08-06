@@ -1,5 +1,5 @@
 ---
-title: "Evaluating Agent-Controlled Context Compaction: From Threshold-Based Triggers to Semantic Compression in the Hybrid Loop"
+title: "Evaluating Agent-Controlled Context Compaction: From Threshold-Based Triggers to Semantic Compression"
 issue: 687
 sources:
   - "https://blog.langchain.com/autonomous-context-compression/"
@@ -276,7 +276,7 @@ executing a task knows when it is at a semantically good moment to compact:
 
 - After completing a sub-goal ("I've gathered all the data I need, now I'll analyse it")
 - Before ingesting a large new tool result
-- At a plan step boundary (already natural in HybridLoop)
+- After a tool batch that returned far more than the agent expected
 
 The threshold-based trigger cannot know these moments. An agent with context fill at 60%
 might be at a perfect compaction moment; an agent at 79% might be mid-reasoning.
@@ -343,8 +343,8 @@ This is consistent with the existing architecture where the loop, not tools, man
 2. `loop_helpers.execute_tool_calls()`: Add compaction directive detection post-tool-batch.
 3. System prompt guidance: Add to context budget indicator: "Consider using `compress_context`
    before large tool results or at task boundaries."
-4. Only expose in HybridLoop initially (where step boundaries are natural compaction moments).
-   Extend to ReactLoop and PlanExecuteLoop after validation.
+4. Expose in `ReactLoop`, the one loop that manages its own context in-process;
+   OpenHands compacts inside its own harness.
 
 ### Dual-Threshold Safety Net
 
@@ -432,7 +432,7 @@ Target files: New `src/synthorg/engine/compaction/tool.py`, `src/synthorg/engine
 | Priority | Change | Scope | Phase |
 |---|---|---|---|
 | 1 | Epistemic marker preservation in `_build_summary()` | Small | Phase 1 |
-| 2 | `compress_context` tool for HybridLoop | Medium | Phase 2 |
+| 2 | `compress_context` tool for `ReactLoop` | Medium | Phase 2 |
 | 3 | LLM-based summarization | Medium | Phase 2 |
 | 4 | Dual-threshold safety net (`safety_threshold_percent`) | Small | Phase 1/2 |
 | 5 | Memory offloading for archived turns | Medium | Phase 2 |

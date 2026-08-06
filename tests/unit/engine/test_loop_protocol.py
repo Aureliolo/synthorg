@@ -14,7 +14,6 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     make_budget_checker,
 )
-from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
@@ -445,7 +444,7 @@ class TestExecutionResult:
 
 @pytest.mark.unit
 class TestProtocolConformance:
-    """ReactLoop and PlanExecuteLoop satisfy ExecutionLoop protocol."""
+    """ReactLoop satisfies the ExecutionLoop protocol."""
 
     def test_react_loop_is_execution_loop(self) -> None:
         loop = ReactLoop()
@@ -454,14 +453,6 @@ class TestProtocolConformance:
     def test_react_loop_type(self) -> None:
         loop = ReactLoop()
         assert loop.get_loop_type() == "react"
-
-    def test_plan_execute_loop_is_execution_loop(self) -> None:
-        loop = PlanExecuteLoop()
-        assert isinstance(loop, ExecutionLoop)
-
-    def test_plan_execute_loop_type(self) -> None:
-        loop = PlanExecuteLoop()
-        assert loop.get_loop_type() == "plan_execute"
 
 
 @pytest.mark.unit

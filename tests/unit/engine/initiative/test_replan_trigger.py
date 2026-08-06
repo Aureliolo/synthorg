@@ -9,7 +9,7 @@ import pytest
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
-from synthorg.core.task_enums import Priority, TaskStatus, TaskType
+from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
@@ -131,7 +131,11 @@ def _decomposition(*subtask_ids: str) -> DecompositionResult:
         for subtask_id in subtask_ids
     )
     return DecompositionResult(
-        plan=DecompositionPlan(parent_task_id=_PARENT, subtasks=subtasks),
+        plan=DecompositionPlan(
+            parent_task_id=_PARENT,
+            subtasks=subtasks,
+            task_structure=TaskStructure.SEQUENTIAL,
+        ),
         created_tasks=tuple(
             Task(
                 id=UUID(subtask.id),

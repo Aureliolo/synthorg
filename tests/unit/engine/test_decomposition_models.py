@@ -127,7 +127,9 @@ class TestDecompositionPlan:
         )
         assert plan.parent_task_id == "task-1"
         assert len(plan.subtasks) == 2
-        assert plan.task_structure == TaskStructure.SEQUENTIAL
+        # None means the planner declared nothing, which is what lets the
+        # service tell that case apart from an explicit SEQUENTIAL.
+        assert plan.task_structure is None
         assert plan.coordination_topology == CoordinationTopology.AUTO
 
     @pytest.mark.unit
@@ -269,6 +271,7 @@ class TestDecompositionResult:
         plan = DecompositionPlan(
             parent_task_id=str(sample_task_with_criteria.id),
             subtasks=(_sub(sid("sub-1")),),
+            task_structure=TaskStructure.SEQUENTIAL,
         )
         child_task = _make_result_task("sub-1")
         result = DecompositionResult(
@@ -281,6 +284,27 @@ class TestDecompositionResult:
         assert len(result.created_tasks) == 1
 
     @pytest.mark.unit
+    def test_unresolved_task_structure_rejected(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """A completed decomposition always names its structure.
+
+        The service resolves an undeclared one through the classifier, so a
+        result carrying None never came through it.
+        """
+        plan = DecompositionPlan(
+            parent_task_id=str(sample_task_with_criteria.id),
+            subtasks=(_sub(sid("sub-1")),),
+        )
+        assert plan.task_structure is None
+        with pytest.raises(ValueError, match="resolved plan task_structure"):
+            DecompositionResult(
+                plan=plan,
+                created_tasks=(_make_result_task("sub-1"),),
+                dependency_edges=(),
+            )
+
+    @pytest.mark.unit
     def test_task_count_mismatch_rejected(self) -> None:
         """Result rejects mismatched task count vs plan subtasks."""
         plan = DecompositionPlan(
@@ -289,6 +313,7 @@ class TestDecompositionResult:
                 _sub("sub-1"),
                 _sub("sub-2", title="B", description="B desc"),
             ),
+            task_structure=TaskStructure.SEQUENTIAL,
         )
         with pytest.raises(ValueError, match="does not match plan subtask count"):
             DecompositionResult(
@@ -306,6 +331,7 @@ class TestDecompositionResult:
                 _sub(sid("sub-1")),
                 _sub(sid("sub-2"), title="B", description="B desc"),
             ),
+            task_structure=TaskStructure.SEQUENTIAL,
         )
         with pytest.raises(
             ValueError,
@@ -326,6 +352,7 @@ class TestDecompositionResult:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(_sub(sid("sub-1")),),
+            task_structure=TaskStructure.SEQUENTIAL,
         )
         with pytest.raises(ValueError, match="unknown task IDs"):
             DecompositionResult(

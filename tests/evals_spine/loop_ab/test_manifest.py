@@ -83,7 +83,11 @@ def test_the_committed_manifest_measures_several_model_tiers() -> None:
 
 def test_a_manifest_omitting_a_registered_loop_is_refused() -> None:
     """Silently dropping a loop would understate the comparison."""
-    partial = tuple(name for name in registered_loop_types() if name != "hybrid")
+    # Dropping the first registered name rather than a hardcoded one: a filter
+    # naming a loop that no longer ships silently becomes a no-op, and the
+    # manifest it builds is complete, so the test stops testing anything.
+    partial = registered_loop_types()[1:]
+    assert partial != registered_loop_types()
 
     with pytest.raises(ValueError, match="omits registered loop"):
         _manifest(loops=partial)
@@ -159,8 +163,8 @@ def test_a_loop_disqualified_on_any_tier_is_disqualified_for_the_bucket() -> Non
     """
     buckets = rollup_by_complexity(
         (
-            (2, (_score("hybrid", composite=95.0),)),
-            (2, (_score("hybrid", composite=20.0, disqualified=True),)),
+            (2, (_score("openhands", composite=95.0),)),
+            (2, (_score("openhands", composite=20.0, disqualified=True),)),
         )
     )
     merged = buckets[Complexity.MEDIUM][0]

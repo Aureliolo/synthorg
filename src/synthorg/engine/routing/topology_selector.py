@@ -60,26 +60,28 @@ class TopologySelector:
             )
             return task.coordination_topology
 
-        # Auto-select based on structure
+        # Auto-select based on structure. ``DecompositionService`` resolves an
+        # undeclared structure before the plan leaves it, so None here means the
+        # plan never went through it.
         structure = plan.task_structure
         artifact_count = len(task.artifacts_expected)
 
-        if structure == TaskStructure.SEQUENTIAL:
+        if structure is TaskStructure.SEQUENTIAL:
             topology = self._config.sequential_override
-        elif structure == TaskStructure.PARALLEL:
+        elif structure is TaskStructure.PARALLEL:
             if artifact_count > self._config.parallel_artifact_threshold:
                 topology = CoordinationTopology.DECENTRALIZED
             else:
                 topology = self._config.parallel_default
-        elif structure == TaskStructure.MIXED:
+        elif structure is TaskStructure.MIXED:
             topology = self._config.mixed_default
-        else:  # pragma: no cover -- defensive fallback
-            logger.warning(  # type: ignore[unreachable]
+        else:
+            logger.warning(
                 TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
                 task_id=task.id,
-                structure=structure.value,
+                structure=None,
                 fallback=self._config.mixed_default.value,
-                reason="unrecognised task structure, using mixed default",
+                reason="unresolved task structure, using mixed default",
             )
             topology = self._config.mixed_default
 
@@ -87,7 +89,7 @@ class TopologySelector:
             TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
             task_id=task.id,
             topology=topology.value,
-            structure=structure.value,
+            structure=structure.value if structure is not None else None,
             artifact_count=artifact_count,
         )
 

@@ -35,16 +35,12 @@ class RepetitionOutcome(BaseModel):
     def rework_events(self) -> float:
         """Total units of work this run had to redo.
 
-        Provider retries, planner replans and repeated tool calls are all a
-        unit of work done more than once, so they count alike. The rubric
-        weights resilience lightly, so the blend matters far less than the
-        signal being present and comparable across loops.
+        Provider retries and repeated tool calls are both a unit of work done
+        more than once, so they count alike. The rubric weights resilience
+        lightly, so the blend matters far less than the signal being present
+        and comparable across loops.
         """
-        return float(
-            self.metrics.provider_retries
-            + self.metrics.replans_used
-            + self.metrics.repeated_tool_calls
-        )
+        return float(self.metrics.provider_retries + self.metrics.repeated_tool_calls)
 
 
 class Spread(BaseModel):

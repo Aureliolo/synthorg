@@ -33,7 +33,11 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
-from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.errors import (
+    DecompositionDepthError,
+    DecompositionError,
+    DecompositionSubtaskLimitError,
+)
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
@@ -267,6 +271,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     ) -> DecompositionPlan:
         """Plan the task via an owner-run agent session, or fall back.
 
+        The fallback covers the cases where there is no researched plan to
+        lose: no owner staffed, an unresolvable provider, or a session that
+        submitted nothing. A plan that came back too big is not one of them.
+
         Returns:
             The decomposition plan the owner submitted, or the fallback
             strategy's plan when no owner is staffed / no plan was submitted.
@@ -274,6 +282,8 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         Raises:
             DecompositionDepthError: If the current depth meets or exceeds the
                 configured max depth.
+            DecompositionSubtaskLimitError: If the submitted plan carries more
+                subtasks than the caller allowed.
             DecompositionError: If both the session and the fallback fail.
         """
         self._check_depth(context)
@@ -306,24 +316,44 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         capture = _PlanCapture()
         result = await self._run_session(task, context, owner, provider, capture)
         plan = capture.plan
-        if plan is not None and len(plan.subtasks) <= context.max_subtasks:
-            logger.info(
-                DECOMPOSITION_SESSION_COMPLETED,
+        if plan is None:
+            logger.warning(
+                DECOMPOSITION_SESSION_NO_PLAN,
+                task_id=str(task.id),
+                owner_id=str(owner.id),
+                termination=result.termination_reason.value,
+                termination_detail=result.error_message,
+            )
+            return await self._fallback.decompose(task, context)
+
+        if len(plan.subtasks) > context.max_subtasks:
+            # The owner researched this plan across turns with read-only
+            # tools; the single-shot fallback would produce a thinner one the
+            # operator never sees. Refusing surfaces the real plan's size on
+            # the durable Plan as a failure reason instead, the same as every
+            # other strategy does.
+            msg = (
+                f"Plan has {len(plan.subtasks)} subtasks, "
+                f"exceeds max_subtasks of {context.max_subtasks}"
+            )
+            logger.warning(
+                DECOMPOSITION_VALIDATION_ERROR,
                 task_id=str(task.id),
                 owner_id=str(owner.id),
                 subtask_count=len(plan.subtasks),
-                termination=result.termination_reason.value,
+                max_subtasks=context.max_subtasks,
+                error=msg,
             )
-            return plan
-        logger.warning(
-            DECOMPOSITION_SESSION_NO_PLAN,
+            raise DecompositionSubtaskLimitError(msg)
+
+        logger.info(
+            DECOMPOSITION_SESSION_COMPLETED,
             task_id=str(task.id),
             owner_id=str(owner.id),
+            subtask_count=len(plan.subtasks),
             termination=result.termination_reason.value,
-            termination_detail=result.error_message,
-            over_limit=plan is not None,
         )
-        return await self._fallback.decompose(task, context)
+        return plan
 
     async def _run_session(
         self,

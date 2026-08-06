@@ -1,20 +1,13 @@
 # module-kind: code
 """Choosing which execution loop runs a task.
 
-Selection is a decision over the task's complexity and, for the hybrid
-candidate only, the live budget utilisation. It is a pure read of
+Selection is a decision over the task's complexity. It is a pure read of
 configuration, so it lives outside the engine's factory mixin: the mixin
-supplies the wiring (the static loop, the budget read, a builder bound to
-the engine's dependencies) and this decides.
-
-The budget read is deliberately conditional. It is a live query with a real
-cost, and only the hybrid candidate can be downgraded by it, so a task that
-selects any other loop never pays for an answer that could not change the
-outcome.
+supplies the wiring (the static loop, a builder bound to the engine's
+dependencies) and this decides.
 """
 
-from collections.abc import Awaitable, Callable
-from typing import Final
+from collections.abc import Callable
 
 from synthorg.core.task import Task
 from synthorg.engine.loop_protocol import ExecutionLoop
@@ -22,20 +15,13 @@ from synthorg.engine.loop_selector import AutoLoopConfig, select_loop_type
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
-    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
     EXECUTION_LOOP_STATIC_SELECTED,
 )
 
 logger = get_logger(__name__)
 
-#: Reads the live budget utilisation, or ``None`` when it is unknowable.
-type BudgetUtilisationReader = Callable[[], Awaitable[float | None]]
-
 #: Builds a loop of the named type from the engine's own dependencies.
 type LoopBuilder = Callable[[str], ExecutionLoop]
-
-#: The loop candidate whose selection the budget can override.
-_BUDGET_SENSITIVE_LOOP: Final[str] = "hybrid"
 
 
 async def resolve_loop(
@@ -45,7 +31,6 @@ async def resolve_loop(
     task_id: str,
     static_loop: ExecutionLoop,
     auto_loop_config: AutoLoopConfig | None,
-    budget_utilisation: BudgetUtilisationReader | None,
     build: LoopBuilder,
 ) -> ExecutionLoop:
     """Select the execution loop for a task.
@@ -58,14 +43,11 @@ async def resolve_loop(
             auto-selection is off.
         auto_loop_config: Auto-selection rules, or ``None`` when the
             operator pinned one loop.
-        budget_utilisation: Live budget-utilisation read, awaited only when
-            the preliminary pick is the budget-sensitive candidate.
         build: Builds the selected loop from the engine's dependencies.
 
     Returns:
         The configured default loop when auto-selection is off; otherwise
-        a loop of the type selected from task complexity and (when
-        relevant) live budget utilisation.
+        a loop of the type selected from task complexity.
     """
     if auto_loop_config is None:
         logger.debug(
@@ -76,30 +58,9 @@ async def resolve_loop(
         )
         return static_loop
 
-    preliminary = select_loop_type(
-        complexity=task.estimated_complexity,
-        rules=auto_loop_config.rules,
-        budget_utilization_pct=None,
-        budget_tight_threshold=auto_loop_config.budget_tight_threshold,
-        hybrid_fallback=None,
-        default_loop_type=auto_loop_config.default_loop_type,
-    )
-
-    utilisation_pct: float | None = None
-    if preliminary == _BUDGET_SENSITIVE_LOOP and budget_utilisation is not None:
-        utilisation_pct = await budget_utilisation()
-        if utilisation_pct is None:
-            logger.debug(
-                EXECUTION_LOOP_BUDGET_UNAVAILABLE,
-                note="budget utilisation unknown; skipping budget-aware downgrade",
-            )
-
     loop_type = select_loop_type(
         complexity=task.estimated_complexity,
         rules=auto_loop_config.rules,
-        budget_utilization_pct=utilisation_pct,
-        budget_tight_threshold=auto_loop_config.budget_tight_threshold,
-        hybrid_fallback=auto_loop_config.hybrid_fallback,
         default_loop_type=auto_loop_config.default_loop_type,
     )
 
@@ -109,9 +70,8 @@ async def resolve_loop(
         task_id=task_id,
         complexity=task.estimated_complexity.value,
         selected_loop=loop_type,
-        budget_utilization_pct=utilisation_pct,
     )
     return build(loop_type)
 
 
-__all__ = ["BudgetUtilisationReader", "LoopBuilder", "resolve_loop"]
+__all__ = ["LoopBuilder", "resolve_loop"]

@@ -37,6 +37,7 @@ from synthorg.engine.decomposition.plan_mapping import (
     decomposition_from_plan,
     plan_from_decomposition,
 )
+from synthorg.engine.errors import DecompositionError
 from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
@@ -120,6 +121,22 @@ class TestPlanFromDecomposition:
         assert plan.updated_at == _CREATED_AT
         assert plan.version == 1
 
+    def test_an_unresolved_structure_fails_loud(self) -> None:
+        """A decomposition that skipped the service must not sequentialise.
+
+        ``DecompositionResult`` rejects an unresolved structure, so this can
+        only arrive by constructing the projection input by hand; substituting
+        a default here would hide that the classifier never ran.
+        """
+        decomposition = _decomposition()
+        unresolved = decomposition.model_copy(
+            update={
+                "plan": decomposition.plan.model_copy(update={"task_structure": None}),
+            },
+        )
+        with pytest.raises(DecompositionError, match="unresolved task_structure"):
+            plan_from_decomposition(unresolved, _provenance())
+
     def test_item_fields_projected(self) -> None:
         plan = plan_from_decomposition(_decomposition(), _provenance())
 
@@ -180,6 +197,7 @@ class TestPlanFromDecomposition:
                 ),
                 open_questions=(NotBlankStr("Which backend?"),),
                 assumptions=(NotBlankStr("Single-player only"),),
+                task_structure=TaskStructure.SEQUENTIAL,
             ),
             created_tasks=(_result_task("sub-1"),),
         )
@@ -208,6 +226,7 @@ class TestPlanFromDecomposition:
                         satisfies=(NotBlankStr("Playable board"),),
                     ),
                 ),
+                task_structure=TaskStructure.SEQUENTIAL,
             ),
             created_tasks=(_result_task("sub-1"),),
         )
@@ -233,6 +252,7 @@ class TestPlanFromDecomposition:
                         acceptance_criteria=(NotBlankStr("renders a 10x20 grid"),),
                     ),
                 ),
+                task_structure=TaskStructure.SEQUENTIAL,
             ),
             created_tasks=(_result_task("sub-1"),),
         )

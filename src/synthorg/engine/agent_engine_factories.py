@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.delegation.protocol import SubAgentRunner
-    from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_selector import AutoLoopConfig
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
@@ -55,7 +54,6 @@ if TYPE_CHECKING:
         OpenHandsLoopConfig,
         OpenHandsLoopDeps,
     )
-    from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.memory.injection import MemoryInjectionStrategy
@@ -108,10 +106,8 @@ class AgentEngineFactoriesMixin:
     _steering_inbox: SteeringInbox | None
     _auto_loop_config: AutoLoopConfig | None
     _loop: ExecutionLoop
-    _hybrid_loop_config: HybridLoopConfig | None
     _openhands_loop_config: OpenHandsLoopConfig | None
     _openhands_loop_deps: OpenHandsLoopDeps | None
-    _plan_execute_config: PlanExecuteConfig | None
     _memory_injection_strategy: MemoryInjectionStrategy | None
     _ontology_injection_strategy: OntologyInjectionStrategy | None
     _model_resolver: ModelResolver | None
@@ -227,19 +223,14 @@ class AgentEngineFactoriesMixin:
         Returns:
             The configured default loop when auto-selection is off;
             otherwise an :class:`ExecutionLoop` of the type selected
-            from task complexity and (when relevant) live budget
-            utilisation.
+            from task complexity.
         """
-        enforcer = self._budget_enforcer
         return await resolve_loop(
             task,
             agent_id=agent_id,
             task_id=task_id,
             static_loop=self._loop,
             auto_loop_config=self._auto_loop_config,
-            budget_utilisation=(
-                None if enforcer is None else enforcer.get_budget_utilization_pct
-            ),
             build=self._build_loop,
         )
 
@@ -254,8 +245,6 @@ class AgentEngineFactoriesMixin:
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
             compaction_callback=self._compaction_callback,
-            plan_execute_config=self._plan_execute_config,
-            hybrid_loop_config=self._hybrid_loop_config,
             openhands_loop_config=self._openhands_loop_config,
             openhands_loop_deps=self._openhands_loop_deps,
             steering_inbox=self._steering_inbox,

@@ -10622,7 +10622,11 @@ export type components = {
             readonly parent_task_id: string;
             /** @description Ordered subtask definitions */
             readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
-            readonly task_structure: components["schemas"]["TaskStructure"];
+            /**
+             * @description Structure the planner declared; None means it declared nothing and the classifier heuristic decides
+             * @enum {string|null}
+             */
+            readonly task_structure: "sequential" | "parallel" | "mixed" | null;
         };
         /** DecompositionResult */
         readonly DecompositionResult: {

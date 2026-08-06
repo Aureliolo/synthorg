@@ -69,10 +69,14 @@ def _make_context(
 def _valid_plan_args(
     *,
     subtask_count: int = 2,
-    task_structure: str = "sequential",
+    task_structure: str | None = "sequential",
     coordination_topology: str = "auto",
 ) -> dict[str, object]:
-    """Build valid tool call arguments for a decomposition plan."""
+    """Build valid tool call arguments for a decomposition plan.
+
+    ``task_structure=None`` omits the key entirely, which is what a planner
+    that declared no structure actually sends.
+    """
     subtasks = [
         {
             "id": f"sub-{i}",
@@ -86,11 +90,13 @@ def _valid_plan_args(
         }
         for i in range(subtask_count)
     ]
-    return {
+    args: dict[str, object] = {
         "subtasks": subtasks,
-        "task_structure": task_structure,
         "coordination_topology": coordination_topology,
     }
+    if task_structure is not None:
+        args["task_structure"] = task_structure
+    return args
 
 
 def _make_tool_call_response(
@@ -152,6 +158,23 @@ class TestLlmDecompositionStrategy:
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
         assert provider.call_count == 1
+
+    @pytest.mark.unit
+    async def test_an_omitted_task_structure_stays_undeclared(self) -> None:
+        """The schema does not require the field, and absence is not a choice.
+
+        Defaulting it to sequential here would make a planner that said
+        nothing indistinguishable from one that chose sequential, which is
+        the distinction the classifier fallback keys off.
+        """
+        args = _valid_plan_args(task_structure=None)
+        response = _make_tool_call_response(args)
+        provider = MockCompletionProvider([response])
+        strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
+
+        plan = await strategy.decompose(_make_task(), _make_context())
+
+        assert plan.task_structure is None
 
     @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:
