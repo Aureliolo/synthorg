@@ -14,7 +14,7 @@ from synthorg.engine.errors import (
     DecompositionError,
     DecompositionSubtaskLimitError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_VALIDATION_ERROR,
@@ -76,7 +76,10 @@ class ManualDecompositionStrategy:
             over_limit = DecompositionSubtaskLimitError(
                 produced=len(self._plan.subtasks), limit=context.max_subtasks
             )
-            logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=str(over_limit))
+            logger.warning(
+                DECOMPOSITION_VALIDATION_ERROR,
+                error=safe_error_description(over_limit),
+            )
             raise over_limit
 
         logger.debug(

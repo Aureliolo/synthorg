@@ -341,7 +341,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 owner_id=str(owner.id),
                 subtask_count=over_limit.produced,
                 max_subtasks=over_limit.limit,
-                error=str(over_limit),
+                error=safe_error_description(over_limit),
             )
             raise over_limit
 
