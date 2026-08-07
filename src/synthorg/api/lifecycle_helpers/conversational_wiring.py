@@ -18,6 +18,7 @@ from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_invites,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -103,10 +104,13 @@ async def wire_conversational_actor(
     Reuses the SHARED boot ``AgentEngine`` (held by the
     ``AgentEngineExecutionService``) so a sensitive chat action parks on
     the same ``ApprovalGate`` the ``/approvals`` controller resumes.
-    Returns ``None`` -- leaving ``POST /meta/chat/act`` at 503 -- when the
-    flag is off, no agent registry is present, or no provider-backed boot
-    engine was installed (empty company). Idempotent: a second boot pass
-    skips when already wired.
+    Idempotent: a second boot pass skips when already wired.
+
+    Raises:
+        SubsystemDeclinedError: The actor cannot be built, naming which
+            precondition refused. Leaves ``POST /meta/chat/act`` at 503, and
+            gives ``GET /subsystems`` the reason to report instead of a
+            BLOCKED with nothing to look at.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -119,7 +123,8 @@ async def wire_conversational_actor(
         return
     agent_registry = app_state.slice(HrStateSlice).agent_registry
     if agent_registry is None:
-        return
+        msg = "no agent registry is wired, so there is nobody to act as"
+        raise SubsystemDeclinedError(msg)
     # Read the slice directly (not ``worker_execution_service_of``) to
     # avoid the lazy fallback that builds a lifecycle-only
     # ``LifecycleAdvancingExecutionService`` (no real agent engine): a
@@ -127,20 +132,30 @@ async def wire_conversational_actor(
     # real boot ``AgentEngineExecutionService`` can drive an MCP action.
     service = app_state.slice(RuntimeStateSlice).worker_execution_service
     if not isinstance(service, AgentEngineExecutionService):
-        return
+        msg = (
+            "no provider-backed boot engine is installed, so no agent can "
+            "drive an MCP action (an empty company reaches this)"
+        )
+        raise SubsystemDeclinedError(msg)
     actor = build_conversational_actor(
         si_config.chief_of_staff,
         engine=service.engine,
         agent_registry=agent_registry,
         autonomy_resolver=service.autonomy_resolver,
     )
-    if actor is not None:
-        app_state.wire(MetaStateSlice, conversational_actor=actor)
-        logger.info(
-            API_APP_STARTUP,
-            service="conversational_actor",
-            note="direct MCP actor wired",
+    if actor is None:
+        msg = (
+            "the fail-closed actor gate refused: direct MCP acting is off, "
+            "or the boot engine has no MCP self-consumer or no enabled "
+            "security governance; the builder logged which"
         )
+        raise SubsystemDeclinedError(msg)
+    app_state.wire(MetaStateSlice, conversational_actor=actor)
+    logger.info(
+        API_APP_STARTUP,
+        service="conversational_actor",
+        note="direct MCP actor wired",
+    )
 
 
 async def unwire_conversational_actor(app_state: AppState) -> None:

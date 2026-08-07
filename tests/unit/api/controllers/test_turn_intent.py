@@ -204,7 +204,9 @@ class TestRoutingDecisionIsLogged:
             MetaStateSlice,
             turn_intent_classifier=_FixedClassifier(
                 IntentOutcome(
-                    intent=TurnIntent.EXPLAIN, reason=IntentRoutingReason.CLASSIFIED
+                    intent=TurnIntent.EXPLAIN,
+                    reason=IntentRoutingReason.CLASSIFIED,
+                    model=NotBlankStr("example-medium-001"),
                 )
             ),
         )

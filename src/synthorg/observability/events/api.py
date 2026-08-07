@@ -263,6 +263,7 @@ API_PROJECT_UPDATED: Final[str] = "api.project.updated"
 API_PROJECT_AUTONOMY_MODE_CHANGED: Final[str] = "api.project.autonomy_mode_changed"
 API_PROJECT_DELETED: Final[str] = "api.project.deleted"
 API_PROJECT_CASCADE_CONTENDED: Final[str] = "api.project.cascade.contended"
+API_PROJECT_CASCADE_COMPLETED: Final[str] = "api.project.cascade.completed"
 API_PROJECT_LISTED: Final[str] = "api.project.listed"
 API_PROJECT_FETCH_FAILED: Final[str] = "api.project.fetch_failed"
 

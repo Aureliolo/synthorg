@@ -13,7 +13,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
+from synthorg.observability.events.api import (
+    API_PROJECT_CASCADE_COMPLETED,
+    API_PROJECT_CASCADE_CONTENDED,
+)
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -121,6 +124,7 @@ async def cascade_supersede_children(
     persistence = persistence_of(app_state)
     plan_service = PlanService(repo=persistence.plans, clock=app_state.clock)
     offset = 0
+    plans_retired = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         plans = await persistence.plans.query(
@@ -136,12 +140,14 @@ async def cascade_supersede_children(
                     plan,
                     requested_by=requested_by,
                 )
+                plans_retired += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
 
     task_engine = task_engine_of(app_state)
     offset = 0
+    tasks_cancelled = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         tasks = await persistence.tasks.query(
@@ -157,6 +163,18 @@ async def cascade_supersede_children(
                     requested_by=requested_by,
                     reason=_CASCADE_REASON,
                 )
+                tasks_cancelled += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
+
+    # The one record of how much a delete actually took with it. Without it a
+    # cascade over dozens of children is indistinguishable from one over none,
+    # and the delete that follows looks like the whole operation.
+    logger.info(
+        API_PROJECT_CASCADE_COMPLETED,
+        project_id=project_id,
+        plans_retired=plans_retired,
+        tasks_cancelled=tasks_cancelled,
+        requested_by=requested_by,
+    )

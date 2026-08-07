@@ -293,7 +293,7 @@ def _blank_default(kwargs: dict[str, ast.expr], aliases: Mapping[str, str]) -> b
     if isinstance(node, ast.Constant):
         return node.value is None or node.value == ""
     if isinstance(node, ast.Name):
-        return aliases.get(node.id, "sentinel-non-blank") == ""
+        return aliases.get(node.id) == ""
     return False
 
 

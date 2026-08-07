@@ -402,16 +402,19 @@ class PlanService:
         if failing and failure_reason is None:
             msg = "a plan may only be failed with a reason Plan Review can show"
             raise ValidationError(msg)
-        # ``model_copy`` does not re-run validators, so the reason is written
-        # only alongside FAILED here rather than relying on the model's
-        # present-iff-FAILED check to catch a mismatch.
-        decided = existing.model_copy(
-            update={
-                "status": status,
-                **({"failure_reason": failure_reason} if failing else {}),
-                "version": existing.version + 1,
-                "updated_at": self._clock.now(),
-            }
+        now = self._clock.now()
+        # ``Plan.fail`` owns the status/reason pairing, which ``model_copy``
+        # cannot police on its own: it does not re-run validators.
+        decided = (
+            existing.fail(failure_reason, now=now)
+            if failing and failure_reason is not None
+            else existing.model_copy(
+                update={
+                    "status": status,
+                    "version": existing.version + 1,
+                    "updated_at": now,
+                }
+            )
         )
         await self._persist_update(
             decided,

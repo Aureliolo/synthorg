@@ -22,9 +22,9 @@ best-effort discipline.
 import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -154,6 +154,23 @@ class IntentRoutingReason(StrEnum):
     RESPONSE_INVALID = "response_invalid"
 
 
+#: Reasons reached only after a classification call returned a parsed verdict,
+#: and therefore the reasons an outcome can name the model it dispatched on.
+#: The degrade reasons belong here because the floor gate runs over a verdict
+#: that already arrived; the two failure reasons do not, because the call that
+#: would have named a model is exactly what did not come back.
+MODEL_ATTRIBUTED_REASONS: Final[frozenset[IntentRoutingReason]] = frozenset(
+    {
+        IntentRoutingReason.CLASSIFIED,
+        IntentRoutingReason.ACT_FLOOR_NOT_MET,
+        IntentRoutingReason.CHARTER_FLOOR_NOT_MET,
+        IntentRoutingReason.CONFIGURE_FLOOR_NOT_MET,
+        IntentRoutingReason.GROUP_TARGETS_MISSING,
+        IntentRoutingReason.ACT_NO_TARGET,
+    }
+)
+
+
 class IntentClassification(BaseModel):
     """Structured output of one intent-classification model turn.
 
@@ -171,7 +188,7 @@ class IntentClassification(BaseModel):
     named_targets: tuple[NotBlankStr, ...] = ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _Classified:
     """One classification and the model that produced it.
 
@@ -214,6 +231,33 @@ class IntentOutcome(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     named_targets: tuple[NotBlankStr, ...] = ()
     model: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_model_attribution(self) -> Self:
+        """Keep the model attribution consistent with ``reason``.
+
+        The model is recorded from the verdict the call returned, so it is
+        present exactly for the reasons a verdict reached, and absent for an
+        override, a fixed kind, an absent classifier, or a call that failed.
+        Mirrors :meth:`ProposeResult._validate_routing_attribution` so a
+        construction bug cannot log a model against a decision no model made,
+        which is worse than logging none: it names an innocent model as the
+        cause of a misroute.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: When the attribution and ``reason`` disagree.
+        """
+        dispatched = self.reason in MODEL_ATTRIBUTED_REASONS
+        if dispatched and self.model is None:
+            msg = f"model is required when reason is {self.reason.value}"
+            raise ValueError(msg)
+        if not dispatched and self.model is not None:
+            msg = f"model must be absent when reason is {self.reason.value}"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

@@ -559,9 +559,8 @@ class TestDecompositionContext:
         angle brackets forge a content fence, so the field type refuses to
         hold either shape in the first place.
         """
-        ctx = DecompositionContext(
-            available_roles=("Backend\nDeveloper <admin>",)  # type: ignore[arg-type]  # the point is what the validator does to it
-        )
+        # Passed raw: what the validator does to it is the assertion.
+        ctx = DecompositionContext(available_roles=("Backend\nDeveloper <admin>",))
 
         assert ctx.available_roles == ("Backend Developer admin",)
 

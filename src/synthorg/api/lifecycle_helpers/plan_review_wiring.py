@@ -18,6 +18,7 @@ from uuid import UUID
 
 from synthorg.api.channels import PlanNotifier
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
@@ -347,14 +348,7 @@ class PlanReviewApprovalGate:
         async def write(plan: Plan, _version: int) -> None:
             if plan.status is PlanStatus.FAILED:
                 return  # idempotent: a prior compensation already marked it
-            failed = plan.model_copy(
-                update={
-                    "status": PlanStatus.FAILED,
-                    "failure_reason": marked_reason,
-                    "version": plan.version + 1,
-                    "updated_at": self._clock.now(),
-                }
-            )
+            failed = plan.fail(marked_reason, now=self._clock.now())
             try:
                 await self._plans.update(failed, expected_version=plan.version)
             except PersistenceVersionConflictError as exc:
@@ -519,10 +513,14 @@ async def wire_plan_item_reply_service(
     """Wire the conversational plan-item reply service when a model is set.
 
     Built unconditionally of ``plan_review_reply_enabled`` so the live
-    per-comment gate can flip without a restart; returns without wiring only
-    when no ``plan_review_reply_model`` is configured or no provider serves it,
-    leaving plan comments unanswered. Best-effort: an absent provider registry
-    or an unresolved model leaves the service unwired rather than failing boot.
+    per-comment gate can flip without a restart.
+
+    Raises:
+        SubsystemDeclinedError: No provider registry, or no
+            ``plan_review_reply_model`` that a registered provider serves.
+            Plan comments then go unanswered, which is a state an operator
+            fixes by naming a model, so the reason is reported rather than
+            the boot being failed over it.
     """
     from synthorg.engine.plan_review.reply import (  # noqa: PLC0415
         build_plan_item_reply_service,
@@ -531,7 +529,8 @@ async def wire_plan_item_reply_service(
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if provider_registry is None:
-        return
+        msg = "no provider registry is wired, so no model can serve a reply"
+        raise SubsystemDeclinedError(msg)
     resolver = config_resolver_of(app_state)
     service = build_plan_item_reply_service(
         reply_model=await resolver.get_str("coordination", "plan_review_reply_model"),
@@ -546,6 +545,11 @@ async def wire_plan_item_reply_service(
         cost_tracker=cost_tracker,
         config_resolver=resolver,
     )
-    if service is not None:
-        app_state.wire(EngineStateSlice, plan_item_reply_service=service)
-        logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+    if service is None:
+        msg = (
+            "unset: coordination.plan_review_reply_model, or no registered "
+            "provider serves the pair it names"
+        )
+        raise SubsystemDeclinedError(msg)
+    app_state.wire(EngineStateSlice, plan_item_reply_service=service)
+    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")

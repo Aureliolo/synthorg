@@ -465,8 +465,8 @@ class SubsystemReconciler:
 
         The mark is what a concurrent ``GET /subsystems`` reads: without it
         the window between teardown and re-activation reports ``WAITING`` with
-        an empty ``waiting_on``, which is the contract's shape for "these
-        capabilities are missing" used to name none of them.
+        an empty ``waiting_on``, which claims the shape for "these capabilities
+        are missing" while naming none of them.
 
         Args:
             spec: The subsystem being replaced.

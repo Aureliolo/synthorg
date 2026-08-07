@@ -33,13 +33,17 @@ from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.protocol import PersistenceBackendKind
 
 logger = get_logger(__name__)
 
 #: The backend that needs the PostgreSQL client tools. A SQLite deployment
 #: never shells out to them, so demanding them there would refuse a boot
-#: over a capability that deployment does not have.
-_POSTGRES_BACKEND: Final[str] = "postgres"
+#: over a capability that deployment does not have. Taken from the backend
+#: discriminator rather than spelled here: a typoed literal would match no
+#: deployment, and a manifest entry that matches nothing is a preflight that
+#: silently checks nothing.
+_POSTGRES_BACKEND: Final[PersistenceBackendKind] = PersistenceBackendKind.POSTGRES
 
 
 class RequiredBinaryMissingError(DomainError):
@@ -59,13 +63,15 @@ class BinaryRecord:
             in the message rather than in a maintainer's head.
         consumers: What stops working without it, in operator terms.
         backend: The persistence backend that needs it, or ``None`` when
-            every deployment does.
+            every deployment does. Typed as the discriminator so a record
+            cannot name a backend that does not exist and quietly apply to
+            no deployment at all.
     """
 
     name: str
     package: str
     consumers: tuple[str, ...]
-    backend: str | None = None
+    backend: PersistenceBackendKind | None = None
 
     def __post_init__(self) -> None:
         """Refuse a record that cannot produce an actionable message.

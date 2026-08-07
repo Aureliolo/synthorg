@@ -9,6 +9,7 @@ the two are projected onto each other by ``engine.decomposition.plan_mapping``.
 """
 
 from collections import Counter
+from datetime import datetime
 from typing import Final, Self
 from uuid import UUID, uuid4
 
@@ -500,6 +501,31 @@ class Plan(BaseModel):
                 raise ValueError(msg)
         self._reject_dependency_cycle()
         return self
+
+    def fail(self, reason: NotBlankStr, *, now: datetime) -> Self:
+        """Return this plan failed, carrying the reason Plan Review shows.
+
+        The only sanctioned way to produce a FAILED plan. ``model_copy`` does
+        not re-run validators, so the present-iff-FAILED rule below cannot
+        police a production write; pairing the two fields in one method is
+        what makes an unpaired write impossible to express, rather than
+        merely absent from the current call sites.
+
+        Args:
+            reason: Why the plan could not be delivered.
+            now: The write's timestamp.
+
+        Returns:
+            A new FAILED revision, version bumped.
+        """
+        return self.model_copy(
+            update={
+                "status": PlanStatus.FAILED,
+                "failure_reason": reason,
+                "version": self.version + 1,
+                "updated_at": now,
+            }
+        )
 
     @model_validator(mode="after")
     def _validate_failure_reason(self) -> Self:
