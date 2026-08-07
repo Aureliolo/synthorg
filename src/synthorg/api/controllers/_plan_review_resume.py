@@ -175,15 +175,17 @@ async def _file_child_tasks(app_state: AppState, children: Sequence[Task]) -> No
     derived from the plan items (``subtask_uuid``), which is what makes a
     re-dispatch of the same plan idempotent, and asking the engine to
     create them would mint new ones and duplicate the tree on every retry.
-    ``save`` is an upsert, so a re-dispatch rewrites the same rows.
+
+    One transaction, because a plan's children are a tree and half a tree
+    is not a smaller plan: the parent rollup would compute over subtasks
+    the plan does not have, and the dispatch that failed marks the plan
+    failed while some of its work sits queryable and unowned.
 
     Args:
         app_state: Application state carrying the persistence backend.
         children: The tasks rebuilt from the approved plan's work items.
     """
-    tasks = persistence_of(app_state).tasks
-    for child in children:
-        await tasks.save(child)
+    await persistence_of(app_state).tasks.save_many(tuple(children))
     logger.info(
         APPROVAL_GATE_PLAN_CHILDREN_FILED,
         child_count=len(children),
@@ -251,7 +253,7 @@ async def _dispatch_approved_plan(
         # Filed BEFORE dispatch, and the reason is the failure this whole
         # path exists to remove: ``coordinate`` takes the rebuilt tasks by
         # value and never writes them, so an approved plan reached EXECUTING
-        # with the children exising only inside the call. Everything that
+        # with the children existing only inside the call. Everything that
         # asks afterwards -- the parent rollup reading each subtask's status,
         # the initiative rollup querying a plan's tasks, the dashboard -- goes
         # to the repository, so an unwritten child is one that never

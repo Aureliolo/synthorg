@@ -11,13 +11,14 @@ the pinned host. The guarantee is that discipline plus this mechanism, not
 call site is allowed to build one.
 """
 
+import ssl
 from collections.abc import Mapping
 from typing import Self
 
 import httpx
 
+from synthorg.core.http_trust_client import TrustFollowingClient
 from synthorg.core.normalization import normalize_base_url, reject_unsafe_url_segment
-from synthorg.core.tls_trust import httpx_verify, trust_revision
 from synthorg.integrations.errors import DeployApiClientError, DeployApiError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import DEPLOY_API_REQUEST_FAILED
@@ -47,27 +48,24 @@ class BaseDeployClient:
         self._api_base_url = normalize_base_url(api_base_url)
         self._headers: dict[str, str] = dict(headers)
         self._timeout = timeout
-        self.__client: httpx.AsyncClient | None = None
-        self.__trust_revision = -1
+        self.__clients = TrustFollowingClient(self.__build_client)
 
-    @property
-    def _client(self) -> httpx.AsyncClient:
-        # Rebuilt on a trust change, not only when absent: TLS is fixed at
-        # construction, so a cached client would keep verifying (or not)
-        # the way it did when it was built.
-        if self.__client is None or self.__trust_revision != trust_revision():
-            self.__trust_revision = trust_revision()
-            self.__client = httpx.AsyncClient(
-                base_url=self._api_base_url,
-                headers=self._headers,
-                timeout=self._timeout,
-                verify=httpx_verify(),
-                # The pin only covers the first hop: a 3xx to another
-                # host would carry the Authorization header off the
-                # pinned origin, so redirects are never followed.
-                follow_redirects=False,
-            )
-        return self.__client
+    def __build_client(self, *, verify: ssl.SSLContext | bool) -> httpx.AsyncClient:
+        """Build a client against the trust the holder resolved.
+
+        Returns:
+            A client for the pinned deploy API base.
+        """
+        return httpx.AsyncClient(
+            base_url=self._api_base_url,
+            headers=self._headers,
+            timeout=self._timeout,
+            verify=verify,
+            # The pin only covers the first hop: a 3xx to another host
+            # would carry the Authorization header off the pinned
+            # origin, so redirects are never followed.
+            follow_redirects=False,
+        )
 
     @staticmethod
     def _safe_segment(value: str, *, field: str) -> str:
@@ -131,9 +129,10 @@ class BaseDeployClient:
             DeployApiError: When the transport raises.
         """
         try:
-            return await self._client.request(
-                method, url.lstrip("/"), json=json, params=params
-            )
+            async with self.__clients.borrow() as client:
+                return await client.request(
+                    method, url.lstrip("/"), json=json, params=params
+                )
         except httpx.HTTPError as exc:
             logger.warning(
                 DEPLOY_API_REQUEST_FAILED,
@@ -175,10 +174,8 @@ class BaseDeployClient:
             raise DeployApiError(msg) from exc
 
     async def aclose(self) -> None:
-        """Close the underlying httpx client if it was created."""
-        if self.__client is not None:
-            await self.__client.aclose()
-            self.__client = None
+        """Close every client this object built."""
+        await self.__clients.aclose()
 
     async def __aenter__(self) -> Self:
         return self

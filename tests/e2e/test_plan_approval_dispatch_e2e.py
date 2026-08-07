@@ -57,6 +57,7 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
@@ -289,6 +290,12 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
         persistence, str(parent.id), str(plan.id)
     )
     assert all(task.plan_item_id is not None for task in children)
+    # One child per item, and each a different item: a count alone passes a
+    # tree that filed one item twice and another not at all, which is the
+    # same "approved work nobody is doing" this asserts against.
+    assert {str(task.plan_item_id) for task in children} == {
+        str(subtask_uuid(item.id)) for item in plan.items
+    }
     assert all(task.parent_task_id == str(parent.id) for task in children)
 
     dispatched = await persistence.plans.get(NotBlankStr(str(plan.id)))

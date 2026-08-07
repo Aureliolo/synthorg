@@ -32,7 +32,10 @@ from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
 from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import get_logger
-from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
+from synthorg.observability.events.coordination import (
+    COORDINATION_ISOLATION_DEGRADED,
+    COORDINATION_PHASE_FAILED,
+)
 from synthorg.observability.tracing.instrumentation import get_tracer
 
 logger = get_logger(__name__)
@@ -45,9 +48,10 @@ class WaveDispatcher:
     Args:
         clock: Injectable time source.
         isolation_required: When ``True`` (decentralized topology), a
-            missing workspace service or disabled isolation raises
-            ``CoordinationError``; when ``False`` (centralized topology),
-            isolation is best-effort and skipped when unavailable.
+            missing workspace service, disabled isolation, or a failed
+            setup raises ``CoordinationError``; when ``False``
+            (centralized topology), isolation is best-effort and the
+            waves run unisolated when it is unavailable or setup fails.
         topology_label: Topology name carried for the precondition
             message and the ``COORDINATION_PHASE_FAILED`` phase tag.
         orchestrator_strategy: Optional subtask-selection strategy. When
@@ -89,8 +93,9 @@ class WaveDispatcher:
             metadata.
 
         Raises:
-            CoordinationError: When ``isolation_required`` is set but the
-                workspace service is missing or isolation is disabled.
+            CoordinationError: When ``isolation_required`` is set and the
+                workspace service is missing, isolation is disabled, or
+                its setup fails.
         """
         validate_routing_against_decomposition(decomposition_result, routing_result)
 
@@ -124,7 +129,7 @@ class WaveDispatcher:
             )
             all_phases.append(setup_phase)
             if not setup_phase.success:
-                return DispatchResult(phases=tuple(all_phases))
+                self._on_setup_failed(setup_phase.error)
 
         try:
             groups = build_execution_waves(
@@ -178,6 +183,38 @@ class WaveDispatcher:
         finally:
             if workspaces and workspace_service is not None:
                 await teardown_workspaces(workspace_service, workspaces)
+
+    def _on_setup_failed(self, error: str | None) -> None:
+        """Decide what a failed workspace setup means for this topology.
+
+        An empty ``DispatchResult`` used to be the answer for both, which
+        reads upstream as "dispatched nothing, successfully": the rollup
+        sees subtasks that never ran, no wave carries an error, and the
+        coordination-metrics collector finds no result to collect. So the
+        two topologies now report what they actually mean. Mandatory
+        isolation is a precondition, and a precondition that failed is a
+        dispatch failure. Best-effort isolation is the case the flag
+        exists for, so the waves run unisolated rather than not at all.
+
+        Raises:
+            CoordinationError: When this topology mandates isolation.
+        """
+        if self._isolation_required:
+            msg = (
+                f"{self._topology_label.capitalize()} topology requires "
+                f"workspace isolation and its setup failed: {error}"
+            )
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=f"{self._topology_label}_precondition",
+                error=msg,
+            )
+            raise CoordinationError(msg)
+        logger.warning(
+            COORDINATION_ISOLATION_DEGRADED,
+            topology=self._topology_label,
+            error=error,
+        )
 
     async def _apply_orchestrator_strategy(
         self,
