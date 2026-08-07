@@ -1,7 +1,7 @@
 """Unit tests for the plan-approval resume dispatch branch."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -113,6 +113,14 @@ def _approval(
 
 
 _UNSET: Any = object()  # type: ignore[explicit-any]
+
+
+class _PreconditionBranch(TypedDict):
+    """One dispatch precondition, as the ``_seed`` overrides that trip it."""
+
+    task: Task | None
+    coordinator_missing: NotRequired[bool]
+    save_project: NotRequired[bool]
 
 
 async def _seed(
@@ -362,17 +370,32 @@ class TestPlanReviewResume:
         assert stored.failure_reason is not None
         assert "dispatch failed" in stored.failure_reason
 
-    async def test_a_precondition_failure_also_fails_the_plan(self) -> None:
+    @pytest.mark.parametrize(
+        "branch",
+        [
+            pytest.param(
+                _PreconditionBranch(task=_task("parent-1"), coordinator_missing=True),
+                id="no_coordinator",
+            ),
+            pytest.param(_PreconditionBranch(task=None), id="no_parent_task"),
+            pytest.param(
+                _PreconditionBranch(task=_task("parent-1"), save_project=False),
+                id="project_not_linkable",
+            ),
+        ],
+    )
+    async def test_a_precondition_failure_also_fails_the_plan(
+        self, branch: _PreconditionBranch
+    ) -> None:
         """A plan that cannot dispatch must not rest in a dispatch status.
 
-        The precondition branches (no coordinator, no task, unlinkable
-        project) return before ``coordinate`` runs, so the plan sits in
-        APPROVED with nothing left to advance it unless it is failed here.
+        Every precondition branch returns before ``coordinate`` runs, so the
+        plan sits in APPROVED with nothing left to advance it unless it is
+        failed here. Parametrised over all three because they are separate
+        early returns through one helper, and a branch added later that
+        forgets the plan write looks identical from the task's side.
         """
-        parent = _task("parent-1")
-        state, _, _, backend = await _seed(
-            task=parent, plan=_durable_plan("parent-1"), coordinator_missing=True
-        )
+        state, _, _, backend = await _seed(plan=_durable_plan("parent-1"), **branch)
 
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"

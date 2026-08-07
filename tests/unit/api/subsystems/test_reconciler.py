@@ -8,6 +8,7 @@ abort the pass or to be forgotten.
 
 import asyncio
 import threading
+from typing import Final
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +32,10 @@ from synthorg.config.schema import RootConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import mock_of
+
+#: Loops contending for one pass. More than two, so a gate that serialises a
+#: pair but not a crowd is not mistaken for one that serialises.
+_CONTENDING_LOOPS: Final[int] = 4
 
 
 class _World:
@@ -574,10 +579,10 @@ class TestPassSerialisation:
         seen: list[int],
         overlaps: list[int],
         *,
-        entered: threading.Event | None = None,
-        release: threading.Event | None = None,
+        entered: threading.Event,
+        release: threading.Event,
     ) -> SubsystemReconciler:
-        """Build a reconciler whose one activation is slow enough to collide.
+        """Build a reconciler whose one activation holds the pass open.
 
         Args:
             world: Capability source the probes read.
@@ -586,8 +591,9 @@ class TestPassSerialisation:
             entered: Set once an activation is running, so a caller can start
                 its own pass against the open window instead of guessing.
             release: Held inside the activation until set, which makes the
-                window last exactly as long as the caller needs rather than a
-                sleep the scheduler is free to overrun.
+                window last exactly as long as the caller needs. Gated rather
+                than slept through, so what the test proves does not depend on
+                a sleep outlasting the scheduler.
 
         Returns:
             A reconciler over one slow subsystem.
@@ -602,18 +608,12 @@ class TestPassSerialisation:
                 seen.append(1)
                 if inside > 1:
                     overlaps.append(inside)
-            if entered is not None:
-                entered.set()
-            if release is None:
-                # Long enough that a second loop asking for a pass lands
-                # inside this window rather than after it.
-                await asyncio.sleep(0.05)
-            else:
-                # Asserted, not discarded: if a change stops the follower
-                # deferring, it blocks here until the timeout and the test
-                # would still see two attempts, passing after a stall.
-                released = await asyncio.to_thread(release.wait, 10)
-                assert released, "the activation window was never released"
+            entered.set()
+            # Asserted, not discarded: if a change stops the follower
+            # deferring, it blocks here until the timeout and the test
+            # would still see two attempts, passing after a stall.
+            released = await asyncio.to_thread(release.wait, 10)
+            assert released, "the activation window was never released"
             with guard:
                 inside -= 1
 
@@ -629,24 +629,36 @@ class TestPassSerialisation:
         world = _World(CapabilityId.PERSISTENCE)
         seen: list[int] = []
         overlaps: list[int] = []
-        reconciler = self._reconciler_that_takes_its_time(world, seen, overlaps)
+        entered = threading.Event()
+        release = threading.Event()
+        reconciler = self._reconciler_that_takes_its_time(
+            world, seen, overlaps, entered=entered, release=release
+        )
         state = _app_state()
+        # Every thread announces itself before asking for a pass, so the
+        # window below is held open until all four have asked rather than for
+        # a fixed sleep the scheduler is free to overrun.
+        asked = threading.Barrier(_CONTENDING_LOOPS + 1)
 
         def _pass_on_its_own_loop() -> None:
+            asked.wait(timeout=10)
             asyncio.run(
                 reconciler.reconcile(state, trigger="thread", retry_declined=True)
             )
 
         threads = [
             threading.Thread(target=_pass_on_its_own_loop, daemon=True)
-            for _ in range(4)
+            for _ in range(_CONTENDING_LOOPS)
         ]
         for thread in threads:
             thread.start()
+        asked.wait(timeout=10)
+        assert entered.wait(timeout=10), "no loop ever reached the activation"
+        release.set()
         for thread in threads:
             thread.join(timeout=10)
 
-        assert [thread.is_alive() for thread in threads] == [False] * 4
+        assert [thread.is_alive() for thread in threads] == [False] * _CONTENDING_LOOPS
         assert overlaps == []
         assert seen
 
@@ -1383,6 +1395,46 @@ class TestWhyItIsNotUp:
         assert status.waiting_on == (CapabilityId.KNOWLEDGE_ENGINE,)
         assert status.detail is None
 
+    async def test_one_stuck_owner_among_late_ones_is_still_unreachable(
+        self,
+    ) -> None:
+        # The two verdicts differ in what the operator must do (change
+        # something vs wait), so a subsystem waiting on both has to report the
+        # one that needs action. Reporting WAITING because most owners are
+        # merely late is how a stuck dependency hides in a crowd.
+        world = _World()
+
+        async def _decline(_state: AppState) -> None:
+            """Install nothing, so this owner rests BLOCKED."""
+
+        stuck = SubsystemSpec(
+            name="knowledge",
+            provides=CapabilityId.KNOWLEDGE_ENGINE,
+            activate=_decline,
+        )
+        consumer = SubsystemSpec(
+            name="brain",
+            provides=CapabilityId.PROJECT_BRAIN,
+            # MEMORY_BACKEND has no spec at all: nothing has run for it yet,
+            # which is the ordinary late case.
+            requires=(CapabilityId.KNOWLEDGE_ENGINE, CapabilityId.MEMORY_BACKEND),
+            activate=_installs(world, "brain", CapabilityId.PROJECT_BRAIN),
+        )
+        reconciler = SubsystemReconciler((stuck, consumer), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "brain")
+
+        assert status.phase is SubsystemPhase.UNREACHABLE
+        # Both are still named: the operator needs the whole gap, not only
+        # the part that needs a change.
+        assert set(status.waiting_on) == {
+            CapabilityId.KNOWLEDGE_ENGINE,
+            CapabilityId.MEMORY_BACKEND,
+        }
+        assert status.detail is not None
+        assert "knowledge" in status.detail
+
     async def test_a_mid_rebuild_read_reports_rebuilding(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
         values = {"memory.backend": "inmemory"}
@@ -1432,6 +1484,72 @@ class TestWhyItIsNotUp:
         status = next(entry for entry in report.statuses if entry.name == "memory")
         assert status.phase is SubsystemPhase.ACTIVE
         assert reconciler.statuses(state)[0].phase is SubsystemPhase.ACTIVE
+
+    async def test_a_rebuild_marks_the_followers_it_takes_down_with_it(
+        self,
+    ) -> None:
+        # A rebuild tears down everything reading through the subsystem, so a
+        # follower is down for the same window and for the same reason. Left
+        # unmarked it answers WAITING with an empty waiting_on, which is the
+        # shape this phase exists to replace, one level removed from the
+        # subsystem the operator actually changed.
+        world = _World(CapabilityId.PERSISTENCE)
+        values = {"memory.backend": "inmemory"}
+        seen: dict[str, SubsystemPhase] = {}
+        state = _app_state()
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        async def _activate_owner(_state: AppState) -> None:
+            world.present.add(CapabilityId.MEMORY_BACKEND)
+
+        async def _deactivate_owner(_state: AppState) -> None:
+            world.present.discard(CapabilityId.MEMORY_BACKEND)
+            seen.update(
+                {status.name: status.phase for status in reconciler.statuses(state)}
+            )
+
+        async def _deactivate_follower(_state: AppState) -> None:
+            world.present.discard(CapabilityId.PROJECT_BRAIN)
+
+        owner = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_activate_owner,
+            deactivate=_deactivate_owner,
+            settings=("memory.backend",),
+            rebuild_on_change=True,
+        )
+        follower = SubsystemSpec(
+            name="brain",
+            provides=CapabilityId.PROJECT_BRAIN,
+            requires=(CapabilityId.MEMORY_BACKEND,),
+            activate=_installs(world, "brain", CapabilityId.PROJECT_BRAIN),
+            deactivate=_deactivate_follower,
+            # Required by the graph: a consumer of a replaceable capability
+            # must be replaceable itself, or it keeps the instance that was
+            # replaced. That is the same rule that makes it a follower here.
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((owner, follower), _all_capabilities(world))
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        values["memory.backend"] = "sqlvector"
+        report = await reconciler.reconcile(state, trigger="settings_write")
+
+        assert seen["memory"] is SubsystemPhase.REBUILDING
+        assert seen["brain"] is SubsystemPhase.REBUILDING
+        # Both come back inside the same pass, so neither keeps the mark.
+        assert {entry.name: entry.phase for entry in report.statuses} == {
+            "memory": SubsystemPhase.ACTIVE,
+            "brain": SubsystemPhase.ACTIVE,
+        }
 
     async def test_a_failed_rebuild_does_not_leave_the_mark_behind(self) -> None:
         # REBUILDING promises "coming back inside this pass". An activation

@@ -15,7 +15,11 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.channels import CHANNEL_PLANS, publish_ws_event
+from synthorg.api.channels import (
+    CHANNEL_PLANS,
+    plan_updated_payload,
+    publish_ws_event,
+)
 from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
@@ -331,11 +335,7 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": str(revised.id),
-                "version": revised.version,
-                "status": revised.status.value,
-            },
+            plan_updated_payload(revised),
         )
         return Response(content=ApiResponse[Plan](data=revised), status_code=200)
 
@@ -391,12 +391,9 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": str(successor.id),
-                "supersedes": str(existing.id),
-                "version": successor.version,
-                "status": successor.status.value,
-            },
+            # The successor's locator, plus the id it retires: a viewer sitting
+            # on the old plan needs to know where the thread continued.
+            {**plan_updated_payload(successor), "supersedes": str(existing.id)},
         )
         return Response(content=ApiResponse[Plan](data=successor), status_code=201)
 
@@ -494,11 +491,7 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": plan_id,
-                "version": existing.version,
-                "status": existing.status.value,
-            },
+            plan_updated_payload(existing),
         )
 
 

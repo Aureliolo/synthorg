@@ -701,3 +701,23 @@ class TestDeletePlan:
             "/api/v1/plans/ghost", headers=make_auth_headers("ceo")
         )
         assert resp.status_code == 404
+
+    async def test_a_read_only_role_cannot_delete(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The one irreversible plan operation is not a read.
+
+        An observer can see every plan, which is what makes the write guard
+        the only thing standing between a viewer and a destroyed review
+        record.
+        """
+        await _seed(async_test_client, _plan(plan_id="watched"))
+        plan_id = str(as_uuid("watched"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("observer")
+        )
+
+        assert resp.status_code == 403
+        survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert survivor.status_code == 200

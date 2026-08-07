@@ -591,6 +591,31 @@ describe('a 401 is confirmed before the session is torn down', () => {
     expect(getMeCalls).toBe(before)
   })
 
+  it('does not probe a 401 it cannot attribute to a request', async () => {
+    // With no url there is nothing to exempt and nothing to confirm against,
+    // so the safe reading is the one that ends the session rather than the
+    // one that keeps an expired session alive on a request nobody can name.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+    const { AxiosError } = await import('axios')
+    const noConfig = new AxiosError('Unauthorized', 'ERR_BAD_RESPONSE', undefined, undefined, {
+      status: 401,
+      data: {},
+      headers: {},
+      statusText: 'Unauthorized',
+      config: {} as AxiosResponse['config'],
+    } as AxiosResponse)
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(noConfig),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
   it('does not probe a rejected login', async () => {
     // An unauthenticated caller has no session to confirm, so the round trip
     // would only ask it to prove something it never had.

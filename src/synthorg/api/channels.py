@@ -201,6 +201,28 @@ def publish_ws_event_with_plugin(
         )
 
 
+def plan_updated_payload(plan: Plan) -> dict[str, object]:
+    """The locator a ``plan.updated`` subscriber refetches from.
+
+    One definition for every publisher, because the payload is a contract
+    with the dashboard's handler and a background publisher that drifted from
+    the controllers' shape would look identical on the wire until a
+    subscriber read a key that was not there. Deliberately minimal: the event
+    is a refresh signal, so a subscriber reloads rather than rendering this.
+
+    Args:
+        plan: The plan whose change is being announced.
+
+    Returns:
+        The event payload.
+    """
+    return {
+        "plan_id": str(plan.id),
+        "version": plan.version,
+        "status": plan.status.value,
+    }
+
+
 def make_plan_notifier(
     channels_plugin: ChannelsPlugin, *, clock: Clock
 ) -> PlanNotifier:
@@ -208,9 +230,9 @@ def make_plan_notifier(
 
     The plan-review gate fills and parks a plan from a background spine, long
     after the request that started it returned, so it cannot resolve the plugin
-    from a request the way a controller does. Without this a page open during
-    decomposition kept rendering the pre-decomposition snapshot beside a fresh
-    approval prompt, because only the operator-edit and replan paths published.
+    from a request the way a controller does. It is what keeps a page open
+    during decomposition from rendering the pre-decomposition snapshot beside a
+    fresh approval prompt.
 
     Args:
         channels_plugin: The plugin resolved once, at construction.
@@ -218,9 +240,9 @@ def make_plan_notifier(
             ``FakeClock`` under test.
 
     Returns:
-        A callable publishing ``plan.updated`` for one plan. The payload
-        matches the controller's, so the dashboard's existing handler refetches
-        with no change.
+        A callable publishing ``plan.updated`` for one plan, over the shared
+        :func:`plan_updated_payload`, so the dashboard's existing handler
+        refetches with no change.
     """
 
     def _notify(plan: Plan) -> None:
@@ -228,11 +250,7 @@ def make_plan_notifier(
             channels_plugin,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": str(plan.id),
-                "version": plan.version,
-                "status": plan.status.value,
-            },
+            plan_updated_payload(plan),
             clock=clock,
         )
 

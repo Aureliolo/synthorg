@@ -312,6 +312,18 @@ describe('answeredQuestions', () => {
     })
   })
 
+  it('leaves a question made only of filler words open', () => {
+    // With no distinctive word to match on, "every word is carried" is
+    // vacuously true, so the question would be settled by the first item on
+    // the plan regardless of what it says.
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Grid renders'] }),
+    ]
+    expect(answeredQuestions(['Is it?'], items)).toEqual([
+      { question: 'Is it?', settledBy: null },
+    ])
+  })
+
   it('ignores case and punctuation', () => {
     const items = [
       makePlanItem('a', {
