@@ -27,11 +27,19 @@ class _RecordingClient(httpx.AsyncClient):
         super().__init__()
         self.built_with = verify
         self.close_count = 0
+        self.raise_on_close = False
 
     @override
     async def aclose(self) -> None:
-        """Count the close so a leak is visible as a zero."""
+        """Count the close so a leak is visible as a zero.
+
+        Raises:
+            ConnectionResetError: When the test armed a failing close.
+        """
         self.close_count += 1
+        if self.raise_on_close:
+            msg = "transport went away before it could be closed"
+            raise ConnectionResetError(msg)
         await super().aclose()
 
 
@@ -135,3 +143,30 @@ class TestClose:
         await holder.aclose()
 
         assert built == []
+
+    async def test_one_failing_close_does_not_strand_the_others(self) -> None:
+        """The holder has already let go, so a stopped loop leaks for good."""
+        holder, built = _holder()
+
+        async with holder.borrow():
+            pass
+        set_tls_trust(TlsTrust(verify=False))
+        async with holder.borrow():
+            pass
+        built[0].raise_on_close = True
+
+        await holder.aclose()
+
+        assert built[1].close_count == 1
+
+    async def test_a_failing_reap_does_not_fail_the_request(self) -> None:
+        """Closing runs on the way out of a request that already worked."""
+        holder, built = _holder()
+
+        async with holder.borrow():
+            pass
+        built[0].raise_on_close = True
+        set_tls_trust(TlsTrust(verify=False))
+
+        async with holder.borrow() as client:
+            assert client is built[1]

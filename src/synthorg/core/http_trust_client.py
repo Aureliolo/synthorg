@@ -22,7 +22,12 @@ from typing import Protocol, runtime_checkable
 
 import httpx
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.tls_trust import httpx_verify, trust_revision
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import SECURITY_TLS_CLIENT_CLOSE_FAILED
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable
@@ -41,6 +46,28 @@ class _Lease:
     client: httpx.AsyncClient
     revision: int
     borrowers: int = field(default=0)
+
+
+async def _close_all(leases: list[_Lease]) -> None:
+    """Close every lease's client, isolating one failure from the rest.
+
+    Each lease is already detached from the holder by the time it gets
+    here, so a raise that stopped the loop would strand the remaining
+    clients with nothing left holding a reference to retry them: their
+    pools and sockets would be held for the life of the process. A close
+    also runs on the way out of a successful request, where letting it
+    raise would fail a request that had already worked.
+    """
+    for lease in leases:
+        try:
+            await lease.client.aclose()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                SECURITY_TLS_CLIENT_CLOSE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
 
 class TrustFollowingClient:
@@ -82,8 +109,7 @@ class TrustFollowingClient:
         if not idle:
             return
         self._retired = [lease for lease in self._retired if lease.borrowers]
-        for lease in idle:
-            await lease.client.aclose()
+        await _close_all(idle)
 
     @asynccontextmanager
     async def borrow(self) -> AsyncIterator[httpx.AsyncClient]:
@@ -114,8 +140,7 @@ class TrustFollowingClient:
         leases = [*self._retired, *([self._current] if self._current else [])]
         self._retired = []
         self._current = None
-        for lease in leases:
-            await lease.client.aclose()
+        await _close_all(leases)
 
 
 __all__ = ["ClientBuilder", "TrustFollowingClient"]

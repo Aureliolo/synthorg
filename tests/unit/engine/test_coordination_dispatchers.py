@@ -732,7 +732,10 @@ class TestDecentralizedWorkspaceSetupFailure:
         executor = _mock_executor()
 
         dispatcher = _decentralized()
-        with pytest.raises(CoordinationError, match="workspace isolation"):
+        # Matched on wording unique to this path: "workspace isolation"
+        # alone also matches the missing-service precondition beside it,
+        # so a regression routing here to that branch would still pass.
+        with pytest.raises(CoordinationError, match="its setup failed"):
             await dispatcher.dispatch(
                 decomposition_result=decomp,
                 routing_result=routing,
