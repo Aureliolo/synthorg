@@ -15,16 +15,22 @@ const NO_CRITICAL_PATH: ReadonlySet<string> = new Set()
 
 export interface PlanListItemProps {
   plan: Plan
+  /**
+   * The roles the org staffs, or `undefined` while unknown. Supplied by the
+   * page rather than fetched per row, so every row on a page counts against
+   * the same roster the detail page will.
+   */
+  roster: ReadonlySet<string> | undefined
   className?: string
 }
 
 /** A single plan row in the review inbox, linking to its detail workspace. */
-export function PlanListItem({ plan, className }: PlanListItemProps) {
+export function PlanListItem({ plan, roster, className }: PlanListItemProps) {
   const itemCount = plan.items.length
   const headline = plan.objective_title
   const stats = useMemo(
-    () => derivePlanStats(plan.items, NO_CRITICAL_PATH),
-    [plan.items],
+    () => derivePlanStats(plan.items, NO_CRITICAL_PATH, roster),
+    [plan.items, roster],
   )
   return (
     <Link

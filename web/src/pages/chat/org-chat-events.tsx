@@ -34,8 +34,9 @@ function PlanDraftedCard({ event }: { event: PlanDraftedEvent }) {
     <div className={CARD}>
       <p className="text-sm font-medium text-foreground">Review the plan</p>
       <p className="text-xs text-muted-foreground">
-        The org drafted one plan for this request. Review it as a whole in Plan
-        Review; no work runs until you approve it.
+        {event.reusedProject
+          ? 'This request joined a run already under way rather than starting a second one. Review that plan as a whole in Plan Review; no work runs until you approve it.'
+          : 'The org drafted one plan for this request. Review it as a whole in Plan Review; no work runs until you approve it.'}
       </p>
       <Link
         to={ROUTES.PLANS}

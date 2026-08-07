@@ -108,6 +108,41 @@ describe('usePlansStore', () => {
     })
   })
 
+  describe('deletePlan', () => {
+    it('drops the plan from the list and the open detail', async () => {
+      const plan = makePlan('plan-1')
+      usePlansStore.setState({
+        plans: [plan, makePlan('plan-2')],
+        selectedPlan: plan,
+      })
+      server.use(
+        http.delete('/api/v1/plans/:id', () => new HttpResponse(null, { status: 204 })),
+      )
+
+      const removed = await usePlansStore.getState().deletePlan('plan-1')
+
+      expect(removed).toBe(true)
+      expect(usePlansStore.getState().plans.map((p) => p.id)).toEqual(['plan-2'])
+      expect(usePlansStore.getState().selectedPlan).toBeNull()
+    })
+
+    it('keeps the plan when the API refuses the delete', async () => {
+      const plan = makePlan('plan-1', { status: 'executing' })
+      usePlansStore.setState({ plans: [plan], selectedPlan: plan })
+      server.use(
+        http.delete('/api/v1/plans/:id', () =>
+          HttpResponse.json(apiError('Plan is dispatched'), { status: 409 }),
+        ),
+      )
+
+      const removed = await usePlansStore.getState().deletePlan('plan-1')
+
+      expect(removed).toBe(false)
+      expect(usePlansStore.getState().plans).toEqual([plan])
+      expect(usePlansStore.getState().selectedPlan).toEqual(plan)
+    })
+  })
+
   describe('requestPlanChanges', () => {
     it('drafts the plan and returns it', async () => {
       const drafted = makePlan('plan-1', { status: 'draft' })

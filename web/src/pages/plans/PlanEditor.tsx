@@ -6,8 +6,10 @@ import type { EditPlanRequest, Plan, PlanItem } from '@/api/types/plans'
 import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enums'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import type { SelectOption } from '@/components/ui/select-field'
 import { SelectField } from '@/components/ui/select-field'
 import { usePlansStore } from '@/stores/plans'
+import { isUnroutableOwner } from '@/utils/plans'
 
 const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
 const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
@@ -133,6 +135,7 @@ interface RowProps {
   index: number
   draft: DraftItem
   canRemove: boolean
+  roster: ReadonlySet<string> | undefined
   onChange: (index: number, patch: Partial<DraftItem>) => void
   onRemove: (index: number) => void
 }
@@ -141,6 +144,58 @@ interface GradingProps {
   index: number
   draft: DraftItem
   onChange: (index: number, patch: Partial<DraftItem>) => void
+}
+
+/** The message for an owner the org cannot route to, or null when it can. */
+function ownerError(
+  owner: string,
+  roster: ReadonlySet<string> | undefined,
+): string | null {
+  const trimmed = owner.trim()
+  if (trimmed === '' || !isUnroutableOwner(trimmed, roster)) return null
+  return `No agent holds the role "${trimmed}". Pick a role the org staffs, or leave the item unassigned.`
+}
+
+const UNASSIGNED_OWNER: SelectOption = { value: '', label: 'Unassigned' }
+
+/**
+ * The owning role for an item.
+ *
+ * Offered as a choice whenever the roster is known, because the backend
+ * accepts only a role the org staffs and a free-text field invites the
+ * invented near-miss ("Backend Engineer" for a "Backend Developer" org) that
+ * left a plan's items undispatchable. An owner already outside the roster
+ * still shows as itself, flagged, so the operator can see what to replace.
+ * With no roster to offer, the field stays free text rather than presenting
+ * an empty list of choices.
+ */
+function OwnerField({ index, draft, roster, onChange }: GradingProps & {
+  roster: ReadonlySet<string> | undefined
+}) {
+  if (roster === undefined || roster.size === 0) {
+    return (
+      <InputField
+        label="Owner (role)"
+        value={draft.owner}
+        maxLength={TITLE_MAX}
+        onValueChange={(value) => onChange(index, { owner: value })}
+      />
+    )
+  }
+  const options = [
+    UNASSIGNED_OWNER,
+    ...[...roster].sort().map((role) => ({ value: role, label: role })),
+  ]
+  return (
+    <SelectField
+      label="Owner (role)"
+      options={options}
+      value={draft.owner}
+      error={ownerError(draft.owner, roster)}
+      hint="Only a role the org staffs can be dispatched to."
+      onChange={(value) => onChange(index, { owner: value })}
+    />
+  )
 }
 
 function ItemGradingFields({ index, draft, onChange }: GradingProps) {
@@ -166,7 +221,14 @@ function ItemGradingFields({ index, draft, onChange }: GradingProps) {
   )
 }
 
-function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps) {
+function PlanEditorRow({
+  index,
+  draft,
+  canRemove,
+  roster,
+  onChange,
+  onRemove,
+}: RowProps) {
   return (
     <div className="space-y-3 rounded-md border border-border p-card">
       <div className="flex items-center justify-between">
@@ -224,12 +286,7 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
           onChange(index, { expectedArtifacts: value.split('\n') })
         }
       />
-      <InputField
-        label="Owner (role or agent)"
-        value={draft.owner}
-        maxLength={TITLE_MAX}
-        onValueChange={(value) => onChange(index, { owner: value })}
-      />
+      <OwnerField index={index} draft={draft} roster={roster} onChange={onChange} />
       <ItemGradingFields index={index} draft={draft} onChange={onChange} />
     </div>
   )
@@ -237,11 +294,13 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
 
 export interface PlanEditorProps {
   plan: Plan
+  /** The roles the org staffs, or `undefined` while unknown. */
+  roster: ReadonlySet<string> | undefined
   onDone: () => void
 }
 
 /** Editable form for reworking a plan's items, producing a new revision. */
-export function PlanEditor({ plan, onDone }: PlanEditorProps) {
+export function PlanEditor({ plan, roster, onDone }: PlanEditorProps) {
   const [drafts, setDrafts] = useState<readonly DraftItem[]>(() =>
     plan.items.map(toDraft),
   )
@@ -271,15 +330,17 @@ export function PlanEditor({ plan, onDone }: PlanEditorProps) {
   }, [plan.id, drafts, onDone])
 
   // The backend requires every item to carry a title, at least one acceptance
-  // criterion (capped at MAX_CRITERIA), and, for a work item, at least one
-  // expected deliverable. Gate the save on all of them rather than surfacing
-  // the 422 after a round trip.
+  // criterion (capped at MAX_CRITERIA), a dispatchable owner or none, and, for
+  // a work item, at least one expected deliverable. Gate the save on all of
+  // them rather than surfacing the 422 after a round trip.
   const canSave =
     drafts.length > 0 &&
     drafts.length <= MAX_ITEMS &&
     drafts.every(
       (d) =>
-        isComplete(d) && nonBlankCriteria(d.acceptanceCriteria).length <= MAX_CRITERIA,
+        isComplete(d) &&
+        nonBlankCriteria(d.acceptanceCriteria).length <= MAX_CRITERIA &&
+        ownerError(d.owner, roster) === null,
     )
 
   return (
@@ -290,6 +351,7 @@ export function PlanEditor({ plan, onDone }: PlanEditorProps) {
           index={index}
           draft={draft}
           canRemove={drafts.length > 1}
+          roster={roster}
           onChange={handleChange}
           onRemove={handleRemove}
         />

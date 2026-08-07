@@ -118,6 +118,7 @@ function mapPropose(propose: ProposeResult | null): OrgTurn[] {
         type: 'plan-drafted',
         title: propose.plan_draft.title,
         project: propose.plan_draft.project,
+        reusedProject: propose.plan_draft.reused_project,
       },
     })
   }

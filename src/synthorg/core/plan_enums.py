@@ -93,6 +93,24 @@ REPLANNABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     }
 )
 
+#: Statuses a plan may be deleted from, stated as an allowlist rather than as
+#: the complement of "dispatched". The route exists to clear a request that
+#: never became work: a shell whose decomposition stranded, a draft, one still
+#: waiting on review, or one that failed. Everything else is refused, and for
+#: two different reasons. A dispatched plan is the record its running tasks
+#: were approved against. A terminal one is the record of what was decided:
+#: ``initiative_evaluation_report`` cascades off the plan row, so deleting a
+#: COMPLETED plan destroys its delivery verdicts, and deleting a REJECTED or
+#: SUPERSEDED one erases the decision not to build it.
+DELETABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
+    {
+        PlanStatus.PLANNING,
+        PlanStatus.DRAFT,
+        PlanStatus.PENDING_REVIEW,
+        PlanStatus.FAILED,
+    }
+)
+
 #: Statuses whose plan may carry an empty item list: the PLANNING shell has not
 #: been filled yet, and a FAILED plan may have failed before any items were
 #: produced (which is also why a project teardown fails an itemless plan rather

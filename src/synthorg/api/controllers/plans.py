@@ -41,16 +41,14 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.domain_errors import PlanNotDeletableError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.plan import Plan, PlanItem, describe_unroutable_role
-from synthorg.core.plan_enums import REPLANNABLE_STATUSES, TAIL_STATUSES, PlanStatus
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import roster_from_agents
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_PLAN_DELETE_REFUSED,
-    API_PLAN_DELETED,
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.persistence.state import persistence_of
@@ -58,13 +56,6 @@ from synthorg.persistence.state import persistence_of
 logger = get_logger(__name__)
 
 _DEFAULT_LIMIT: Final[int] = 50
-
-#: Statuses whose items are already building, so the plan is the record those
-#: running tasks were approved against. Exactly the set a re-plan accepts:
-#: revising dispatched work retires the revision rather than removing it.
-_DISPATCHED_STATUSES: Final[frozenset[PlanStatus]] = (
-    REPLANNABLE_STATUSES | TAIL_STATUSES
-)
 
 
 def _service(state: State) -> PlanService:
@@ -486,7 +477,7 @@ class PlanController(Controller):
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
-            PlanNotDeletableError: The plan's items are already building.
+            PlanNotDeletableError: The plan is dispatched or already decided.
         """
         service = _service(state)
         existing = require_resource_or_404(
@@ -496,14 +487,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="delete",
         )
-        _require_deletable(existing)
-        await persistence_of(state.app_state).plans.delete(NotBlankStr(plan_id))
-        logger.info(
-            API_PLAN_DELETED,
-            plan_id=plan_id,
-            status=existing.status.value,
-            requested_by=extract_requester(state),
-        )
+        await service.delete(existing, requested_by=extract_requester(state))
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(
@@ -516,30 +500,6 @@ class PlanController(Controller):
                 "status": existing.status.value,
             },
         )
-
-
-def _require_deletable(plan: Plan) -> None:
-    """Refuse to delete a plan whose items are already building.
-
-    Removing it would orphan every task dispatched under it and destroy
-    the record those tasks were approved against. Revising dispatched work
-    is a re-plan, which retires the revision and opens a successor.
-
-    Raises:
-        PlanNotDeletableError: When the plan is mid-dispatch.
-    """
-    if plan.status not in _DISPATCHED_STATUSES:
-        return
-    logger.info(
-        API_PLAN_DELETE_REFUSED,
-        plan_id=str(plan.id),
-        status=plan.status.value,
-    )
-    msg = (
-        f"plan {plan.id} is {plan.status.value} and its items are building; "
-        "replan it instead of deleting it"
-    )
-    raise PlanNotDeletableError(msg)
 
 
 def _parse_status(status: NotBlankStr | None) -> PlanStatus | None:

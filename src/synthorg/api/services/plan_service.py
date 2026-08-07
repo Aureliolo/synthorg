@@ -1,3 +1,4 @@
+# module-kind: service
 """Plan-review service layer.
 
 Thin wrapper over :class:`PlanRepository` so callers do not reach into
@@ -24,6 +25,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
+    PlanNotDeletableError,
     ServiceUnavailableError,
     ValidationError,
     VersionConflictError,
@@ -32,6 +34,9 @@ from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
+    DELETABLE_STATUSES,
+    REPLANNABLE_STATUSES,
+    TAIL_STATUSES,
     PlanStatus,
 )
 from synthorg.core.plan_transitions import validate_transition
@@ -41,6 +46,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PLAN_CHANGES_REQUEST_FAILED,
     API_PLAN_CHANGES_REQUESTED,
+    API_PLAN_DELETE_REFUSED,
+    API_PLAN_DELETED,
     API_PLAN_FETCH_FAILED,
     API_PLAN_LIST_FAILED,
     API_PLAN_LISTED,
@@ -298,6 +305,59 @@ class PlanService:
         logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id), note=note)
         self._log_transition(existing.status, drafted)
         return drafted
+
+    @staticmethod
+    def _require_deletable(plan: Plan) -> None:
+        """Refuse a delete that would destroy a record rather than a request.
+
+        Raises:
+            PlanNotDeletableError: When the plan is dispatched (its items are
+                already building, so it is what those tasks were approved
+                against) or terminal (it is the record of what was decided,
+                and its delivery verdicts cascade off the row).
+        """
+        if plan.status in DELETABLE_STATUSES:
+            return
+        logger.info(
+            API_PLAN_DELETE_REFUSED,
+            plan_id=str(plan.id),
+            status=plan.status.value,
+        )
+        building = plan.status in REPLANNABLE_STATUSES | TAIL_STATUSES
+        detail = (
+            "its items are building; replan it instead of deleting it"
+            if building
+            else "already decided; its record and its verdicts outlive it"
+        )
+        msg = f"plan {plan.id} is {plan.status.value} and is {detail}"
+        raise PlanNotDeletableError(msg)
+
+    async def delete(self, existing: Plan, *, requested_by: str) -> None:
+        """Remove a request that never became work.
+
+        The route exists to clear a plan an operator has decided not to
+        pursue: a shell whose decomposition stranded, a draft, one waiting
+        on review, or one that failed. Every other status is refused, and
+        the refusal routes through here rather than the controller so the
+        one irreversible plan operation is audited on the same path as
+        every reversible one.
+
+        Args:
+            existing: The plan being removed (already fetched by the caller).
+            requested_by: Who asked, recorded on the audit event.
+
+        Raises:
+            PlanNotDeletableError: The plan is dispatched or terminal.
+            QueryError: Repository write failure.
+        """
+        self._require_deletable(existing)
+        await self._repo.delete(NotBlankStr(str(existing.id)))
+        logger.info(
+            API_PLAN_DELETED,
+            plan_id=str(existing.id),
+            status=existing.status.value,
+            requested_by=requested_by,
+        )
 
     async def sync_status(
         self,

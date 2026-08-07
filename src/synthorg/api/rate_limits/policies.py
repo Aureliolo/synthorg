@@ -95,6 +95,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "auth.api_keys_issue": (10, 60),
     "auth.api_keys_list": (30, 60),
     "auth.api_keys_revoke": (30, 60),
+    # Generous: the dashboard hydrates from it and the client probes it once
+    # per burst of 401s, so the ceiling bounds a loop without touching a
+    # legitimately busy tab.
+    "auth.me": (120, 60),
     # kanban board
     "board.move": (100, 60),
     # brain (project brain)

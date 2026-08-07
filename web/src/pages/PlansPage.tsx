@@ -8,6 +8,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { useListPagination } from '@/hooks/use-list-pagination'
+import { judgedRoles, useOrgRoster } from '@/hooks/useOrgRoster'
 import { usePlansData } from '@/hooks/usePlansData'
 
 import { PlanListItem } from './plans/PlanListItem'
@@ -43,6 +44,10 @@ function sortForReview(plans: readonly Plan[]): readonly Plan[] {
 export default function PlansPage() {
   const { filteredPlans, totalPlans, loading, error, wsConnected, wsSetupError } =
     usePlansData()
+  // Fetched once for the whole inbox: the "to review" count on a row is the
+  // same derivation the detail page runs, so a row that omitted the roster
+  // would advertise nothing to review on a plan the detail page flags.
+  const roster = judgedRoles(useOrgRoster())
 
   const ordered = useMemo(() => sortForReview(filteredPlans), [filteredPlans])
 
@@ -89,7 +94,7 @@ export default function PlansPage() {
         <>
           <div className="flex flex-col gap-2">
             {paginatedItems.map((plan) => (
-              <PlanListItem key={plan.id} plan={plan} />
+              <PlanListItem key={plan.id} plan={plan} roster={roster} />
             ))}
           </div>
           <Pagination

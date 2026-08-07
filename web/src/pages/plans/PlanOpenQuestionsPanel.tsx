@@ -22,9 +22,8 @@ function OpenQuestions({ questions }: { questions: readonly QuestionAnswer[] }) 
           </li>
         ))}
       </ul>
-      {/* The answering path is chat, and the panel used to be read-only with no
-          hint of that: an operator could see what was wanted and not where to
-          say it. */}
+      {/* The answering path is chat, so the panel says where: seeing what the
+          org wants without seeing where to say it is a dead end. */}
       <Button asChild variant="outline" size="sm" className="mt-1">
         <Link to={ROUTES.CHAT}>
           <MessagesSquare className="size-3.5" aria-hidden="true" />

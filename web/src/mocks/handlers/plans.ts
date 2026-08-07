@@ -10,7 +10,7 @@ import type {
 } from '@/api/endpoints/plans'
 import type { Plan, PlanItem } from '@/api/types/plans'
 
-import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
+import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 function buildItem(overrides: Partial<PlanItem> = {}): PlanItem {
   return {
@@ -93,6 +93,7 @@ export const plansHandlers = [
       ),
     )
   }),
+  http.delete('/api/v1/plans/:id', () => HttpResponse.json(voidSuccess())),
   http.post('/api/v1/plans/:id/replan', async ({ request }) => {
     // Validate rather than cast: a null body would throw on property access,
     // and a bare string would satisfy a `.length` check the backend rejects.

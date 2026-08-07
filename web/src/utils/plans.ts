@@ -119,7 +119,7 @@ export interface ItemFlagContext {
  * flagging every owner because the agents list has not arrived would be noise
  * the reviewer cannot act on.
  */
-function isUnroutableOwner(
+export function isUnroutableOwner(
   owner: string,
   roster: ReadonlySet<string> | undefined,
 ): boolean {
