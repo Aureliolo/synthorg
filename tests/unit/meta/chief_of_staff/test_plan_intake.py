@@ -95,7 +95,8 @@ def _empty_tasks() -> TaskRepository:
     Returns:
         A task repository whose ``query`` answers with no rows.
     """
-    return mock_of[TaskRepository](query=_no_tasks)
+    repo: TaskRepository = mock_of[TaskRepository](query=_no_tasks)
+    return repo
 
 
 async def _no_tasks(spec: TaskFilterSpec, /, **_: object) -> tuple[Task, ...]:
