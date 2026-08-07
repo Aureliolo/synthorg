@@ -11,6 +11,7 @@ persisted :attr:`ApprovalItem.source` discriminator, matching the sibling
 resume flows.
 """
 
+from collections.abc import Sequence
 from typing import Final
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
@@ -38,6 +39,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_PLAN_CHILDREN_FILED,
     APPROVAL_GATE_PLAN_DISPATCH_FAILED,
     APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
     APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
@@ -166,6 +168,28 @@ async def _resolve_dispatch_inputs(
     return None
 
 
+async def _file_child_tasks(app_state: AppState, children: Sequence[Task]) -> None:
+    """Persist the rebuilt child tasks so the plan's work is queryable.
+
+    Saved rather than created through the engine: the ids are already
+    derived from the plan items (``subtask_uuid``), which is what makes a
+    re-dispatch of the same plan idempotent, and asking the engine to
+    create them would mint new ones and duplicate the tree on every retry.
+    ``save`` is an upsert, so a re-dispatch rewrites the same rows.
+
+    Args:
+        app_state: Application state carrying the persistence backend.
+        children: The tasks rebuilt from the approved plan's work items.
+    """
+    tasks = persistence_of(app_state).tasks
+    for child in children:
+        await tasks.save(child)
+    logger.info(
+        APPROVAL_GATE_PLAN_CHILDREN_FILED,
+        child_count=len(children),
+    )
+
+
 async def _dispatch_approved_plan(
     app_state: AppState,
     *,
@@ -224,6 +248,17 @@ async def _dispatch_approved_plan(
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
         decomposition = decomposition_from_plan(plan, parent_task=task)
+        # Filed BEFORE dispatch, and the reason is the failure this whole
+        # path exists to remove: ``coordinate`` takes the rebuilt tasks by
+        # value and never writes them, so an approved plan reached EXECUTING
+        # with the children exising only inside the call. Everything that
+        # asks afterwards -- the parent rollup reading each subtask's status,
+        # the initiative rollup querying a plan's tasks, the dashboard -- goes
+        # to the repository, so an unwritten child is one that never
+        # happened. Before rather than after so a dispatch that dies partway
+        # still leaves the tree it was working on, which is what an operator
+        # needs to see to know anything was attempted at all.
+        await _file_child_tasks(app_state, decomposition.created_tasks)
         agents = await agent_registry_of(app_state).list_active()
         await coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents),

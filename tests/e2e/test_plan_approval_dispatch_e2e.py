@@ -190,6 +190,36 @@ async def task_engine(
     await engine.stop()
 
 
+async def _why_no_children(
+    persistence: FakePersistenceBackend, parent_id: str, plan_id: str
+) -> str:
+    """Report the state the dispatch left behind, for the assertion message.
+
+    "assert 0 == 2" is the symptom this test exists to catch and says
+    nothing about the cause, which is the same gap the dogfood hit. The
+    engine logs the failing coordination phase, but structlog does not
+    route through the stdlib handlers ``caplog`` attaches to and an xdist
+    worker's stdout never reaches the CI report, so the durable state is
+    the only diagnosis that survives to a failure message.
+
+    The two statuses separate the cases that matter: a FAILED parent means
+    dispatch raised and was caught, BLOCKED means coordination ran and
+    every subtask was unroutable or its workspace never came up, and an
+    untouched parent means nothing dispatched at all.
+
+    Returns:
+        A one-line description of the parent task and plan statuses.
+    """
+    parent = await persistence.tasks.get(parent_id)
+    plan = await persistence.plans.get(NotBlankStr(plan_id))
+    parent_status = parent.status.value if parent is not None else "<missing>"
+    plan_status = plan.status.value if plan is not None else "<missing>"
+    return (
+        f"no children were persisted; parent task is {parent_status} "
+        f"and the plan is {plan_status}"
+    )
+
+
 async def test_approving_a_plan_dispatches_its_child_tasks(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
@@ -255,7 +285,9 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     # that reaches EXECUTING with no children is the exact failure the
     # dogfood hit, and it is invisible from the plan's status alone.
     children = await persistence.tasks.query(TaskFilterSpec(plan=plan.id))
-    assert len(children) == len(plan.items)
+    assert len(children) == len(plan.items), await _why_no_children(
+        persistence, str(parent.id), str(plan.id)
+    )
     assert all(task.plan_item_id is not None for task in children)
     assert all(task.parent_task_id == str(parent.id) for task in children)
 

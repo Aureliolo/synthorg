@@ -30,6 +30,7 @@ subscriber replaces the snapshot on every write, so it is as live as a
 resolver read at the only granularity that matters here: the next command.
 """
 
+import ssl
 from types import MappingProxyType
 from typing import Final
 
@@ -61,6 +62,13 @@ class TlsTrust(BaseModel):
 _DEFAULT: Final[TlsTrust] = TlsTrust()
 
 _current: TlsTrust = _DEFAULT
+#: Bumped on every install so a client that cached a connection built under
+#: an older snapshot can tell. Without it a long-lived client keeps the TLS
+#: configuration it was constructed with, and a verify-off -> verify-on write
+#: would leave exactly the traffic that most needs verifying still skipping
+#: it. Comparing a value beats comparing the model: two equal-valued
+#: snapshots are genuinely interchangeable, and an int is cheap to hold.
+_revision: int = 0
 
 
 def set_tls_trust(trust: TlsTrust) -> None:
@@ -69,8 +77,9 @@ def set_tls_trust(trust: TlsTrust) -> None:
     Args:
         trust: The resolved configuration.
     """
-    global _current  # noqa: PLW0603 -- process-wide snapshot, see module docstring
+    global _current, _revision  # noqa: PLW0603 -- process-wide snapshot, see module docstring
     _current = trust
+    _revision += 1
 
 
 def current_tls_trust() -> TlsTrust:
@@ -81,6 +90,19 @@ def current_tls_trust() -> TlsTrust:
         on when nothing has been installed.
     """
     return _current
+
+
+def trust_revision() -> int:
+    """Return the generation of the installed trust configuration.
+
+    A client that caches a connection records this alongside it and rebuilds
+    when it no longer matches, which is what makes the settings live for
+    already-constructed clients rather than only for the next one.
+
+    Returns:
+        A counter incremented on every :func:`set_tls_trust`.
+    """
+    return _revision
 
 
 def git_tls_config() -> MappingProxyType[str, str]:
@@ -101,17 +123,27 @@ def git_tls_config() -> MappingProxyType[str, str]:
     return MappingProxyType(rendered)
 
 
-def httpx_verify() -> str | bool:
+def httpx_verify() -> ssl.SSLContext | bool:
     """Render the trust configuration as httpx's ``verify`` argument.
 
+    A context rather than a path, for two reasons that point the same way.
+    Passing ``verify="<path>"`` REPLACES the trust store with that one file,
+    which contradicts the additive policy this module documents: an operator
+    naming their internal CA would silently stop trusting every public root.
+    Loading the bundle into a default context adds it instead. It also
+    avoids the string form httpx deprecated.
+
     Returns:
-        ``False`` when verification is off, the bundle path when one is
-        configured, else ``True`` for the system trust store.
+        ``False`` when verification is off, else a context trusting the
+        system roots plus any configured bundle.
     """
     trust = _current
     if not trust.verify:
         return False
-    return trust.ca_bundle or True
+    context = ssl.create_default_context()
+    if trust.ca_bundle:
+        context.load_verify_locations(cafile=trust.ca_bundle)
+    return context
 
 
 __all__ = [
@@ -122,4 +154,5 @@ __all__ = [
     "git_tls_config",
     "httpx_verify",
     "set_tls_trust",
+    "trust_revision",
 ]

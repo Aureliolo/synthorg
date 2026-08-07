@@ -17,7 +17,7 @@ from typing import Self
 import httpx
 
 from synthorg.core.normalization import normalize_base_url, reject_unsafe_url_segment
-from synthorg.core.tls_trust import httpx_verify
+from synthorg.core.tls_trust import httpx_verify, trust_revision
 from synthorg.integrations.errors import DeployApiClientError, DeployApiError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import DEPLOY_API_REQUEST_FAILED
@@ -48,10 +48,15 @@ class BaseDeployClient:
         self._headers: dict[str, str] = dict(headers)
         self._timeout = timeout
         self.__client: httpx.AsyncClient | None = None
+        self.__trust_revision = -1
 
     @property
     def _client(self) -> httpx.AsyncClient:
-        if self.__client is None:
+        # Rebuilt on a trust change, not only when absent: TLS is fixed at
+        # construction, so a cached client would keep verifying (or not)
+        # the way it did when it was built.
+        if self.__client is None or self.__trust_revision != trust_revision():
+            self.__trust_revision = trust_revision()
             self.__client = httpx.AsyncClient(
                 base_url=self._api_base_url,
                 headers=self._headers,
