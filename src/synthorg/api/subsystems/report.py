@@ -7,7 +7,12 @@ lives apart from the reconciler that produces it.
 
 from dataclasses import dataclass
 
-from synthorg.api.subsystems.spec import CapabilityId, SubsystemPhase
+from synthorg.api.subsystems.spec import (
+    PHASES_NAMING_UNMET,
+    PHASES_WITH_DETAIL,
+    CapabilityId,
+    SubsystemPhase,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,23 +46,13 @@ class SubsystemStatus:
                 to explain. An operator reads this to find out why something is
                 off, so a stale field from a previous phase is worse than none.
         """
-        names_unmet = {
-            SubsystemPhase.WAITING,
-            SubsystemPhase.UNREACHABLE,
-            SubsystemPhase.DEGRADED,
-        }
-        if self.waiting_on and self.phase not in names_unmet:
+        if self.waiting_on and self.phase not in PHASES_NAMING_UNMET:
             msg = (
                 "waiting_on is only valid on WAITING, UNREACHABLE or DEGRADED,"
                 f" got {self.phase.value}"
             )
             raise ValueError(msg)
-        explains = {
-            SubsystemPhase.FAILED,
-            SubsystemPhase.BLOCKED,
-            SubsystemPhase.UNREACHABLE,
-        }
-        if self.detail is not None and self.phase not in explains:
+        if self.detail is not None and self.phase not in PHASES_WITH_DETAIL:
             msg = (
                 "detail is only valid on FAILED, BLOCKED or UNREACHABLE, got "
                 f"{self.phase.value}"

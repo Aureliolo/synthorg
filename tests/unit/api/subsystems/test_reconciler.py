@@ -13,7 +13,10 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.api.state import AppState
-from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
+from synthorg.api.subsystems.errors import (
+    SubsystemDeclinedError,
+    SubsystemGraphInvalidError,
+)
 from synthorg.api.subsystems.reconciler import SubsystemReconciler
 from synthorg.api.subsystems.runtime import reconcile_subsystems
 from synthorg.api.subsystems.spec import (
@@ -1184,10 +1187,13 @@ class TestWhyItIsNotUp:
         # one, which is the search the detail exists to remove.
         assert status.detail == "unset: memory.embedder_model"
 
-    async def test_a_decline_with_nothing_declared_says_nothing(self) -> None:
-        # An honest absence. The condition lives inside the activation, so a
-        # spec declaring no settings has nothing to point at, and inventing a
-        # plausible reason would be worse than none.
+    async def test_a_decline_with_nothing_declared_still_points_somewhere(
+        self,
+    ) -> None:
+        # BLOCKED with no detail is the state an operator cannot act on, and
+        # is what the status surface exists to remove. When the declarations
+        # genuinely say nothing, saying so IS the reason, and it names the
+        # one place the condition can be.
         world = _World(CapabilityId.PERSISTENCE)
 
         async def _decline(_state: AppState) -> None:
@@ -1205,7 +1211,60 @@ class TestWhyItIsNotUp:
         status = next(entry for entry in report.statuses if entry.name == "memory")
 
         assert status.phase is SubsystemPhase.BLOCKED
-        assert status.detail is None
+        assert status.detail is not None
+        assert "does not declare" in status.detail
+        assert "memory" in status.detail
+
+    async def test_an_activation_that_knows_why_is_believed(self) -> None:
+        # The guess from declared settings is a fallback. An activation that
+        # raises with its own reason is the one that actually knows, so its
+        # message reaches the operator verbatim rather than being replaced by
+        # a blank-setting inference that may name the wrong thing.
+        world = _World(CapabilityId.PERSISTENCE)
+
+        async def _decline(_state: AppState) -> None:
+            """Refuse, naming the condition the declaration cannot express."""
+            msg = "waiting on: the vector extension"
+            raise SubsystemDeclinedError(msg)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            settings=("memory.embedder_model",),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+
+        assert status.phase is SubsystemPhase.BLOCKED
+        assert status.detail == "waiting on: the vector extension"
+
+    async def test_a_declined_activation_is_not_a_failure(self) -> None:
+        # A subsystem that declined is correctly not up and will be retried;
+        # reporting it FAILED would send an operator looking for a fault.
+        world = _World(CapabilityId.PERSISTENCE)
+
+        async def _decline(_state: AppState) -> None:
+            """Refuse with a reason."""
+            msg = "waiting on: an operator choice"
+            raise SubsystemDeclinedError(msg)
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_decline,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+
+        report = await reconciler.reconcile(_app_state(), trigger="boot")
+        status = next(entry for entry in report.statuses if entry.name == "memory")
+
+        assert status.phase is SubsystemPhase.BLOCKED
+        assert report.failed == ()
 
     async def test_a_reason_clears_when_the_subsystem_comes_up(self) -> None:
         world = _World(CapabilityId.PERSISTENCE)
@@ -1415,6 +1474,49 @@ class TestWhyItIsNotUp:
         status = next(entry for entry in report.statuses if entry.name == "memory")
         assert status.phase is SubsystemPhase.FAILED
         assert reconciler.statuses(state)[0].phase is SubsystemPhase.FAILED
+
+    async def test_a_pass_that_raises_does_not_leave_the_mark_behind(self) -> None:
+        # The mark is cleared at both ends of a pass, so only a raise between
+        # them can strand it, and a teardown is where one can: ``_deactivate``
+        # records every ordinary failure and carries on, but re-raises an
+        # interpreter-level critical, which leaves the pass mid-rebuild. A
+        # stranded mark reports a real outage as REBUILDING until some later
+        # pass happens to clear it, which is the one reading that tells an
+        # operator to wait rather than look.
+        world = _World(CapabilityId.PERSISTENCE)
+        values = {"memory.backend": "inmemory"}
+
+        async def _get_str(namespace: str, key: str) -> str:
+            return values[f"{namespace}.{key}"]
+
+        async def _critical_teardown(_state: AppState) -> None:
+            raise MemoryError
+
+        spec = SubsystemSpec(
+            name="memory",
+            provides=CapabilityId.MEMORY_BACKEND,
+            requires=(CapabilityId.PERSISTENCE,),
+            activate=_installs(world, "memory", CapabilityId.MEMORY_BACKEND),
+            deactivate=_critical_teardown,
+            settings=("memory.backend",),
+            rebuild_on_change=True,
+        )
+        reconciler = SubsystemReconciler((spec,), _all_capabilities(world))
+        state = _app_state()
+        state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](get_str=_get_str),
+        )
+
+        await reconciler.reconcile(state, trigger="boot")
+        values["memory.backend"] = "sqlvector"
+        with pytest.raises(MemoryError):
+            await reconciler.reconcile(state, trigger="settings_write")
+
+        assert all(
+            status.phase is not SubsystemPhase.REBUILDING
+            for status in reconciler.statuses(state)
+        )
 
 
 @pytest.mark.unit

@@ -10,6 +10,7 @@ declarations against live state and activates or deactivates accordingly, so
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
@@ -120,11 +121,14 @@ class SubsystemPhase(StrEnum):
     that is not there, which is the drift reading liveness from ``provides``
     exists to prevent.
 
-    ``UNREACHABLE`` is ``WAITING`` with no exit. Level-triggering rests on "a
-    dependency absent at boot is not a verdict: the next pass picks it up",
-    which holds for a dependency that is merely late and not for one an
-    operator switched off or that declined on its own condition. Reporting
-    that as ``WAITING`` promises a pass that will never come.
+    ``UNREACHABLE`` is ``WAITING`` that waiting alone will not resolve.
+    Level-triggering rests on "a dependency absent at boot is not a verdict:
+    the next pass picks it up", which holds for a dependency that is merely
+    late and not for one an operator switched off or that declined on its own
+    condition. Reporting that as ``WAITING`` promises a pass that will change
+    nothing. It is re-derived every pass, so the operator action that fixes
+    the owner clears it on the next one; what it says is "this needs a
+    change, not more time".
 
     ``REBUILDING`` is the window inside a pass where a subsystem has been torn
     down and not yet brought back. It reads as neither up nor waiting-on-
@@ -140,6 +144,20 @@ class SubsystemPhase(StrEnum):
     BLOCKED = "blocked"
     DISABLED = "disabled"
     FAILED = "failed"
+
+
+#: Phases that name an unmet requirement, so may carry ``waiting_on``.
+#: Beside the enum rather than in the status model, so a ninth phase is
+#: classified where it is declared instead of somewhere that has to be
+#: remembered.
+PHASES_NAMING_UNMET: Final[frozenset[SubsystemPhase]] = frozenset(
+    {SubsystemPhase.WAITING, SubsystemPhase.UNREACHABLE, SubsystemPhase.DEGRADED}
+)
+
+#: Phases that have something to explain, so may carry ``detail``.
+PHASES_WITH_DETAIL: Final[frozenset[SubsystemPhase]] = frozenset(
+    {SubsystemPhase.FAILED, SubsystemPhase.BLOCKED, SubsystemPhase.UNREACHABLE}
+)
 
 
 type Activate = Callable[[AppState], Awaitable[None]]

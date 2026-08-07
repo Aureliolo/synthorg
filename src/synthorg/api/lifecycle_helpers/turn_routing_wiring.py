@@ -16,6 +16,7 @@ owns the write-path services and its own size tier.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger
@@ -40,6 +41,13 @@ async def wire_turn_intent_classifier(
     ``None`` only when no ``turn_intent_model`` is configured or its bound
     provider is absent, leaving the unified router to answer every turn as a
     plain question.
+
+    Raises:
+        SubsystemDeclinedError: When it cannot be built, naming which of the
+            two causes applied. Named here rather than left to the
+            reconciler's guess because "the model is set but its provider is
+            not registered" and "no model is set" are different operator
+            actions, and the dogfood could tell neither from the status.
     """
     from synthorg.meta.chief_of_staff.intent_router import (  # noqa: PLC0415
         build_intent_classifier,
@@ -48,20 +56,45 @@ async def wire_turn_intent_classifier(
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if provider_registry is None:
-        return
+        msg = "waiting on: provider registry"
+        raise SubsystemDeclinedError(msg)
     classifier = build_intent_classifier(
         config=si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
-    if classifier is not None:
-        app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
-        logger.info(
-            API_APP_STARTUP,
-            service="turn_intent_classifier",
-            note="turn intent classifier wired",
+    if classifier is None:
+        raise SubsystemDeclinedError(
+            _model_decline("chief_of_staff.turn_intent_model", si_config)
         )
+    app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
+    logger.info(
+        API_APP_STARTUP,
+        service="turn_intent_classifier",
+        note="turn intent classifier wired",
+    )
+
+
+def _model_decline(setting: str, si_config: SelfImprovementConfig) -> str:
+    """Explain why a component bound to *setting* could not be built.
+
+    Args:
+        setting: The dotted ``chief_of_staff.*_model`` key it binds.
+        si_config: The config the build read.
+
+    Returns:
+        A message naming the operator action: set the model, or register the
+        provider the model already names.
+    """
+    _, _, field = setting.partition(".")
+    value = str(getattr(si_config.chief_of_staff, field, "") or "")
+    if not value:
+        return f"unset: {setting}"
+    return (
+        f"{setting} names a provider that is not registered; "
+        "add the connection or choose a model on a registered one"
+    )
 
 
 async def unwire_turn_intent_classifier(app_state: AppState) -> None:
@@ -95,6 +128,10 @@ async def wire_multi_voice_router(
     ``multi_voice_enabled`` so the live per-turn gate can flip without a
     restart; it returns ``None`` only when no ``multi_voice_model`` is set or
     its bound provider is absent, leaving turns to carry no chime-ins.
+
+    Raises:
+        SubsystemDeclinedError: When it cannot be built, naming which of the
+            two causes applied.
     """
     from synthorg.meta.chief_of_staff._multi_voice import (  # noqa: PLC0415
         build_multi_voice_router,
@@ -103,20 +140,24 @@ async def wire_multi_voice_router(
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if provider_registry is None:
-        return
+        msg = "waiting on: provider registry"
+        raise SubsystemDeclinedError(msg)
     router = build_multi_voice_router(
         config=si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
-    if router is not None:
-        app_state.wire(MetaStateSlice, multi_voice_router=router)
-        logger.info(
-            API_APP_STARTUP,
-            service="multi_voice_router",
-            note="multi-voice router wired",
+    if router is None:
+        raise SubsystemDeclinedError(
+            _model_decline("chief_of_staff.multi_voice_model", si_config)
         )
+    app_state.wire(MetaStateSlice, multi_voice_router=router)
+    logger.info(
+        API_APP_STARTUP,
+        service="multi_voice_router",
+        note="multi-voice router wired",
+    )
 
 
 async def unwire_multi_voice_router(app_state: AppState) -> None:
