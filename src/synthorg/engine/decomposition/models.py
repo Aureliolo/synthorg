@@ -25,7 +25,7 @@ from synthorg.core.task_enums import (
     TaskStatus,
     TaskStructure,
 )
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, PersonaLabelStr
 
 
 class SubtaskDefinition(BaseModel):
@@ -421,6 +421,11 @@ class DecompositionContext(BaseModel):
             selects an owner rather than inventing one. Empty means "no
             roster known", which leaves the owner a free string and skips the
             check: an org with no agents has nothing to validate against.
+            Typed as persona labels rather than plain non-blank strings: a
+            role name is operator-authored, and these go into the SYSTEM
+            prompt and the tool schema, where a newline or an angle bracket
+            would be a forged instruction line or a forged content fence
+            rather than a funny-looking job title.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -444,7 +449,7 @@ class DecompositionContext(BaseModel):
         default=None,
         description="Accountable owner the planning agent-session runs as",
     )
-    available_roles: tuple[NotBlankStr, ...] = Field(
+    available_roles: tuple[PersonaLabelStr, ...] = Field(
         default=(),
         description="Roles the org staffs, which an owner must be drawn from",
     )

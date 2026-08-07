@@ -26,7 +26,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.llm_parse import args_to_decomposition_plan
-from synthorg.engine.decomposition.llm_prompt import build_decomposition_tool
+from synthorg.engine.decomposition.llm_prompt import (
+    build_decomposition_tool,
+    safe_roles,
+)
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -156,8 +159,8 @@ def _roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
 
     Stated in the brief as well as in the submit tool's schema, because the
     schema ``enum`` only reaches a provider that enforces schemas, and left to
-    guess the planner produces plausible near-misses ("Backend Engineer" for
-    an org staffing "Backend Developer") that nothing can be dispatched to.
+    guess the planner produces plausible near-misses (an "Engineer" title for
+    an org staffing a "Developer" one) that nothing can be dispatched to.
 
     Args:
         available_roles: The roles the org staffs.
@@ -169,7 +172,7 @@ def _roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
         return ()
     return (
         "  This organisation staffs exactly these roles:",
-        f"  {', '.join(available_roles)}.",
+        f"  {', '.join(safe_roles(available_roles))}.",
         "  Every owner must be one of them, spelled the same way. Do not",
         "  invent a role or substitute a similar-sounding title; an owner",
         "  outside this list is rejected.",

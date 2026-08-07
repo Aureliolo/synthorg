@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import PlanOption
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
@@ -15,15 +16,18 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from tests._shared import as_uuid, sid
+from tests._shared.scripted_provider import make_e2e_identity
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
     SubtaskStatusRollup,
+    roster_from_agents,
 )
 
 
@@ -546,3 +550,53 @@ class TestDecompositionContext:
         """current_depth must be >= 0."""
         with pytest.raises(ValueError, match="greater than or equal to 0"):
             DecompositionContext(current_depth=-1)
+
+    @pytest.mark.unit
+    def test_a_role_is_flattened_on_the_way_in(self) -> None:
+        """The roster reaches the SYSTEM prompt and the tool schema.
+
+        A newline in a role name opens a fresh instruction line there and
+        angle brackets forge a content fence, so the field type refuses to
+        hold either shape in the first place.
+        """
+        ctx = DecompositionContext(
+            available_roles=("Backend\nDeveloper <admin>",)  # type: ignore[arg-type]  # the point is what the validator does to it
+        )
+
+        assert ctx.available_roles == ("Backend Developer admin",)
+
+
+class TestRosterFromAgents:
+    """The roster is what the planner is allowed to assign work to."""
+
+    @staticmethod
+    def _agent(role: str) -> AgentIdentity:
+        return make_e2e_identity(label=f"agent-{role}").model_copy(
+            update={"role": NotBlankStr(role)}
+        )
+
+    @pytest.mark.unit
+    def test_a_role_several_agents_hold_is_listed_once(self) -> None:
+        """Repeating it would just spend prompt on the same instruction."""
+        roster = roster_from_agents(
+            [self._agent("Backend Developer"), self._agent("Backend Developer")]
+        )
+
+        assert roster == ("Backend Developer",)
+
+    @pytest.mark.unit
+    def test_the_order_does_not_depend_on_the_agent_order(self) -> None:
+        """The prompt and the schema enum are pinned by fingerprint tests."""
+        forwards = roster_from_agents(
+            [self._agent("Writer"), self._agent("Backend Developer")]
+        )
+        backwards = roster_from_agents(
+            [self._agent("Backend Developer"), self._agent("Writer")]
+        )
+
+        assert forwards == backwards == ("Backend Developer", "Writer")
+
+    @pytest.mark.unit
+    def test_no_agents_means_no_roster(self) -> None:
+        """Empty is "no roster known", which leaves the owner a free string."""
+        assert roster_from_agents([]) == ()

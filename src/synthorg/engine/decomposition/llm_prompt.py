@@ -15,7 +15,7 @@ from synthorg.core.task_enums import (
     Stakes,
     TaskStructure,
 )
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, flatten_label
 from synthorg.engine.decomposition.models import DecompositionContext
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -29,6 +29,26 @@ from synthorg.providers.models import (
 )
 
 TOOL_NAME = "submit_decomposition_plan"
+
+
+def safe_roles(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
+    """Flatten roster role names for interpolation into a trusted region.
+
+    Role names are operator-authored and land in the SYSTEM prompt, the
+    planning brief and the tool schema, all of which the model reads as
+    instructions. A name carrying a newline forges an instruction line;
+    one carrying angle brackets forges an untrusted-content fence tag.
+    The persona renderer and the chief-of-staff router flatten at their
+    render sites for the same reason, and so does this one, on top of the
+    field type that flattens at construction.
+
+    Args:
+        available_roles: The roles the org staffs.
+
+    Returns:
+        The same roles, each on one line and without angle brackets.
+    """
+    return tuple(flatten_label(role) for role in available_roles)
 
 
 def _role_field(available_roles: tuple[NotBlankStr, ...]) -> dict[str, JsonValue]:
@@ -51,7 +71,7 @@ def _role_field(available_roles: tuple[NotBlankStr, ...]) -> dict[str, JsonValue
         }
     return {
         "type": "string",
-        "enum": list(available_roles),
+        "enum": list(safe_roles(available_roles)),
         "description": (
             "The role accountable for this item, selected from the roles this "
             "organisation staffs. Every item names an owner, and an owner "
@@ -113,10 +133,11 @@ def build_decomposition_tool(
                     "or high-blast-radius work (a handful, not most)."
                 ),
             },
-            # No worked example: naming a role teaches it, and the one that
-            # used to sit here ('Backend Engineer') was not in the shipped
-            # template, so the planner emitted it for an org staffing
-            # 'Backend Developer'. The roster is the only source of names.
+            # Deliberately no worked example. A role name in the schema is a
+            # role name the planner will reach for, and an example that is
+            # not in the org's own template is one it will assign work to
+            # that nothing can be dispatched to. The roster below is the only
+            # source of role names.
             "required_role": _role_field(available_roles),
             "required_skills": {
                 "type": "array",
@@ -271,7 +292,7 @@ def _roster_guidance(available_roles: tuple[NotBlankStr, ...]) -> str:
         return ""
     return (
         "- This organisation staffs exactly these roles: "
-        f"{', '.join(available_roles)}. Every required_role must be one of "
+        f"{', '.join(safe_roles(available_roles))}. Every required_role must be one of "
         "them, spelled the same way. Do not invent a role, and do not "
         "substitute a similar-sounding title: an owner outside this list is "
         "an item nobody can be dispatched to, and the plan is rejected.\n"
