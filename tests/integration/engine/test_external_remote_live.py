@@ -8,10 +8,13 @@ manager level by ``tests/unit/integrations/oauth/test_token_manager``;
 here the backend re-resolves the token from the catalog each call, so a
 refreshed credential propagates without extra wiring.
 
-TLS trust without touching production code: the backend deliberately
-strips ``GIT_*`` env vars (``_git_subprocess``), so the test points
-``HOME`` at a temp dir whose ``.gitconfig`` disables SSL verification.
-``HOME`` is not a ``GIT_*`` var, so it survives into the subprocess.
+TLS trust goes through the product's own configuration, which is the
+point of exercising it here: the hardened environment cuts out the host's
+git config, so a ``~/.gitconfig`` saying ``sslVerify = false`` reaches
+nothing. ``security.tls_ca_bundle`` is what an operator sets for a forge
+behind an internal CA, and installing this server's own certificate
+through it means the test proves the supported path rather than a
+side-channel that only tests can use.
 
 POSIX + git + cryptography only; skipped otherwise (CI runs it on
 Linux). Heavy by design; marked integration.
@@ -22,11 +25,13 @@ import os
 import ssl
 import subprocess
 import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Final, cast, override
 
 import pytest
 
+from synthorg.core.tls_trust import TlsTrust, current_tls_trust, set_tls_trust
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.git_backend import ExternalRemoteGitBackend
 from synthorg.engine.workspace.git_backend.forge_api import ForgeApiClient, ForgeRepo
@@ -241,16 +246,40 @@ def _init_bare_with_commit(repo: Path) -> None:
 
 @pytest.fixture
 def _git_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point HOME at a temp .gitconfig that trusts the self-signed cert."""
+    """Point HOME at a temp .gitconfig carrying a commit identity.
+
+    Identity only. TLS trust deliberately does NOT come from here: the
+    backend's hardened environment cuts the global config out, so an
+    ``sslVerify`` written here would reach nothing. The commits this test
+    makes are its own ``subprocess.run`` setup calls, which do inherit
+    ``HOME`` and do need a name and email.
+    """
     home = tmp_path / "home"
     home.mkdir()
     (home / ".gitconfig").write_text(
-        "[http]\n\tsslVerify = false\n[user]\n"
-        "\tname = SynthOrg\n\temail = bot@synthorg.local\n",
+        "[user]\n\tname = SynthOrg\n\temail = bot@synthorg.local\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(home))
     return home
+
+
+@pytest.fixture
+def trust_cert() -> Iterator[Callable[[Path], None]]:
+    """Install a CA bundle the way an operator configures one, then restore.
+
+    Yields:
+        A callable taking the certificate to trust. It writes the same
+        process-wide snapshot ``security.tls_ca_bundle`` feeds, so both the
+        git subprocess and the forge API client pick it up.
+    """
+    previous = current_tls_trust()
+
+    def _install(cert: Path) -> None:
+        set_tls_trust(TlsTrust(ca_bundle=str(cert)))
+
+    yield _install
+    set_tls_trust(previous)
 
 
 def _backend(port: int) -> tuple[ExternalRemoteGitBackend, ConnectionCatalog]:
@@ -277,10 +306,12 @@ class TestExternalRemoteLive:
     async def test_clone_push_fetch_round_trip(
         self,
         tmp_path: Path,
+        trust_cert: Callable[[Path], None],
     ) -> None:
         server_root = tmp_path / "srv"
         _init_bare_with_commit(server_root / _OWNER / "proj-1.git")
         cert, key = _self_signed_cert(tmp_path)
+        trust_cert(cert)
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # Pin the floor to TLS 1.2 explicitly: ``create_default_context``
         # already does this at runtime, but the static analyser models it
@@ -341,10 +372,12 @@ class TestExternalRemoteLive:
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
+        trust_cert: Callable[[Path], None],
     ) -> None:
         server_root = tmp_path / "srv"
         server_root.mkdir()
         cert, key = _self_signed_cert(tmp_path)
+        trust_cert(cert)
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         # Pin the floor to TLS 1.2 explicitly: ``create_default_context``
         # already does this at runtime, but the static analyser models it

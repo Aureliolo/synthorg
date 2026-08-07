@@ -99,6 +99,9 @@ from synthorg.settings.subscribers.telemetry_subscriber import (
 from synthorg.settings.subscribers.timeout_enforcement_subscriber import (
     EngineTimeoutEnforcementSettingsSubscriber,
 )
+from synthorg.settings.subscribers.tls_trust_subscriber import (
+    TlsTrustSettingsSubscriber,
+)
 from synthorg.settings.subscribers.tools_bridge_subscriber import (
     ToolsBridgeSettingsSubscriber,
 )
@@ -143,6 +146,7 @@ __all__ = [
     "SimulationsSettingsSubscriber",
     "SubsystemReconcileSettingsSubscriber",
     "TelemetrySettingsSubscriber",
+    "TlsTrustSettingsSubscriber",
     "ToolsBridgeSettingsSubscriber",
     "WorkersBridgeSettingsSubscriber",
     "WsAuthLimitsSettingsSubscriber",

@@ -15,6 +15,7 @@ from unittest.mock import Mock
 import pytest
 
 from synthorg.api.lifecycle_helpers.sprint_wiring import wire_sprint_service
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
@@ -74,8 +75,17 @@ async def test_wires_service_and_registers_observer_once(
 
 
 async def test_unwired_without_persistence() -> None:
+    """A missing dependency declines by name, and wires nothing.
+
+    The decline is the reconciler's BLOCKED reason, so naming the absent
+    collaborator is the point: a silent return would leave the subsystem
+    endpoint reporting 503 with nothing to say about why.
+    """
     app_state = make_app_state(**_deps())
-    await wire_sprint_service(app_state)
+
+    with pytest.raises(SubsystemDeclinedError, match="persistence backend"):
+        await wire_sprint_service(app_state)
+
     assert app_state.slice(EngineStateSlice).sprint_service is None
 
 
@@ -87,5 +97,8 @@ async def test_unwired_without_ceremony_scheduler(
         task_engine=_task_engine(),
         config_resolver=mock_of[ConfigResolverProtocol](),
     )
-    await wire_sprint_service(app_state)
+
+    with pytest.raises(SubsystemDeclinedError, match="ceremony scheduler"):
+        await wire_sprint_service(app_state)
+
     assert app_state.slice(EngineStateSlice).sprint_service is None

@@ -17,6 +17,7 @@ from typing import Self
 import httpx
 
 from synthorg.core.normalization import normalize_base_url, reject_unsafe_url_segment
+from synthorg.core.tls_trust import httpx_verify
 from synthorg.integrations.errors import DeployApiClientError, DeployApiError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import DEPLOY_API_REQUEST_FAILED
@@ -55,6 +56,7 @@ class BaseDeployClient:
                 base_url=self._api_base_url,
                 headers=self._headers,
                 timeout=self._timeout,
+                verify=httpx_verify(),
                 # The pin only covers the first hop: a 3xx to another
                 # host would carry the Authorization header off the
                 # pinned origin, so redirects are never followed.

@@ -27,6 +27,7 @@ from typing import Final, Protocol
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.pagination import collect_all
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -386,7 +387,16 @@ class ConversationalPlanDispatcher:
             objective, which is what re-sending a brief after a failed
             intake is asking for.
         """
-        tasks = await self._task_repo.query(TaskFilterSpec(project=project))
+        # Drained rather than read as one page: the filter has no
+        # root-task predicate, so the objective is found by inspecting
+        # every task in the project, and a project past one page would
+        # otherwise answer "no standing run" and file a duplicate
+        # objective. Each underlying query stays bounded.
+        tasks = await collect_all(
+            lambda limit, offset: self._task_repo.query(
+                TaskFilterSpec(project=project), limit=limit, offset=offset
+            )
+        )
         objectives = [
             task
             for task in tasks

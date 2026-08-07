@@ -78,6 +78,46 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SECURITY,
+        key="tls_ca_bundle",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Path to an additional CA bundle trusted by every outbound call:"
+            " the git subprocesses (workspace backends, docs engine, agent git"
+            " tools) and the httpx clients (forge, chat, deploy, health, A2A)."
+            " Additional, not replacing, so naming a private CA does not stop"
+            " the public roots being trusted. Blank uses the system trust store"
+            " alone. Read live per call, so a change applies to the next one"
+            " without a restart."
+        ),
+        group="TLS Trust",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="tls_verify",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether outbound TLS certificates are verified at all, across"
+            " both the git and httpx transports. It exists because a"
+            " self-signed host is a real situation an operator will otherwise"
+            " work around with something worse, but turning it off"
+            " (true->false) trusts any certificate presented to the product"
+            " and is a security-weakening transition requiring the deliberate"
+            " confirm+reason+actor guardrail. Prefer tls_ca_bundle."
+        ),
+        group="TLS Trust",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
         key="output_scan_policy_type",
         type=SettingType.ENUM,
         default="autonomy_tiered",

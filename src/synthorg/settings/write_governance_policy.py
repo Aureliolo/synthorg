@@ -74,7 +74,7 @@ _OUTPUT_STYLE_PACK_DEFAULT: Final[str] = "default"
 
 # Boolean security toggles whose ``true -> false`` transition weakens posture.
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
-    {"enabled", "audit_enabled", "post_tool_scanning_enabled"}
+    {"enabled", "audit_enabled", "post_tool_scanning_enabled", "tls_verify"}
 )
 
 # Token entropy for the auth surface: session tickets, password-reset and
