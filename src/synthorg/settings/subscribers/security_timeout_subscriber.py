@@ -7,6 +7,8 @@ startup-time application of the same setting lives in
 ``synthorg.api.lifecycle_helpers._apply_security_timeout_interval``.
 """
 
+from collections.abc import Sequence
+
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -61,9 +63,17 @@ class SecurityTimeoutSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
+        """Handle each change to the timeout-check-interval setting.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Handle a change to the timeout-check-interval setting.
 
         Args:

@@ -253,18 +253,149 @@ function _isRetryable429(error: ApiAxiosError): boolean {
   )
 }
 
+/**
+ * Endpoint that answers "is this session still good?". A 200 here means the
+ * cookie is live; a 401 means it genuinely is not.
+ */
+const SESSION_PROBE_URL = '/auth/me'
+
+/**
+ * Paths where a 401 is a rejected credential rather than an expired session.
+ * Probing them would ask an unauthenticated caller to prove it has a session,
+ * which it never had, so the answer is known without the round trip.
+ */
+const UNAUTHENTICATED_PATHS = ['/auth/login', '/auth/setup', '/auth/dev-login']
+
+/**
+ * What a probe established about the session cookie.
+ *
+ * `unknown` is a real third answer, not a lean towards either: a probe that
+ * never reached the backend (network drop, timeout, 5xx, CORS) says nothing
+ * about the cookie, and it runs the same wire as the 401 that prompted it, in
+ * the same instability window. Reading it as `gone` would log the operator
+ * out for exactly the reason this probe exists to rule out.
+ */
+type SessionVerdict = 'alive' | 'gone' | 'unknown'
+
+/** Marks the client's own session probe so the interceptor leaves it alone. */
+interface ProbeConfig extends AxiosRequestConfig {
+  _sessionProbe?: boolean
+}
+
+/** The in-flight session probe, shared so a burst of 401s costs one request. */
+let sessionProbe: Promise<SessionVerdict> | null = null
+
+/** Ask the backend whether the session is still valid. Never throws. */
+async function probeSession(): Promise<SessionVerdict> {
+  sessionProbe ??= apiClient
+    .get(SESSION_PROBE_URL, { _sessionProbe: true } as ProbeConfig)
+    .then((): SessionVerdict => 'alive')
+    .catch((err: unknown): SessionVerdict =>
+      (err as ApiAxiosError | null)?.response?.status === 401 ? 'gone' : 'unknown',
+    )
+    .finally(() => {
+      sessionProbe = null
+    })
+  return sessionProbe
+}
+
+/**
+ * Resolve once no session probe is in flight.
+ *
+ * The teardown decision is deliberately fire-and-forget, so a test asserting
+ * on probe counts has no other way to tell "the probe this test caused" from
+ * "one the last test left running".
+ */
+export async function _settleSessionProbeForTests(): Promise<void> {
+  while (sessionProbe !== null) await sessionProbe
+}
+
+/**
+ * The request target's path, with any origin and query string dropped.
+ *
+ * Matched on rather than the raw `config.url` because that carries whatever
+ * the caller passed: a query string, an absolute form, a `baseURL` prefix.
+ * Exact-string equality on it would silently stop recognising a path the
+ * moment one of those changed.
+ */
+function _pathOf(url: string): string {
+  try {
+    return new URL(url, 'http://x').pathname
+  } catch {
+    return url
+  }
+}
+
+/**
+ * The API prefix `baseURL` contributes, as a path with no trailing slash.
+ *
+ * Derived from the same value axios is configured with rather than written
+ * out again, so a deployment serving the API under a sub-path does not need
+ * this constant maintained alongside it.
+ */
+const API_PATH_PREFIX = _pathOf(`${BASE_URL}/api/v1`).replace(/\/+$/, '')
+
+/**
+ * The request path as the exemption constants spell it.
+ *
+ * The constants are `baseURL`-relative (`/auth/me`), which is the form a
+ * caller normally passes, but `_pathOf` returns the whole path, so a caller
+ * that passed an absolute or already-prefixed URL yields `/api/v1/auth/me`
+ * and matches none of them. That 401 then costs a session probe the answer
+ * was already known without.
+ */
+function _apiRelativePath(url: string): string {
+  const path = _pathOf(url)
+  if (API_PATH_PREFIX !== '' && path.startsWith(`${API_PATH_PREFIX}/`)) {
+    return path.slice(API_PATH_PREFIX.length)
+  }
+  return path
+}
+
+/** Whether a 401 on this request can be answered without asking the backend. */
+function _knownWithoutProbing(url: string | undefined): boolean {
+  if (url === undefined) return true
+  const path = _apiRelativePath(url)
+  return path === SESSION_PROBE_URL || UNAUTHENTICATED_PATHS.includes(path)
+}
+
+/**
+ * Decide whether a 401 means the session is over.
+ *
+ * A single 401 is not proof. The very next call can return 200 on the same
+ * cookie, so the session is torn down only once the backend confirms it is
+ * gone. That keeps the dev-bypass re-login path (a genuine expiry still
+ * notifies) intact.
+ */
+async function _handleUnauthorized(url: string | undefined): Promise<void> {
+  if (!_knownWithoutProbing(url)) {
+    const verdict = await probeSession()
+    if (verdict !== 'gone') {
+      log.warn(`auth.401_${verdict === 'alive' ? 'transient' : 'unconfirmed'}`, {
+        url,
+      })
+      return
+    }
+  }
+  // The server clears the session cookie via Set-Cookie: Max-Age=0. We only
+  // need to sync the Zustand auth state. Routed through the leaf
+  // `unauthorized-handler` module so the client has no static dependency on
+  // the auth store: the auth store decides what a 401 means (redirect to
+  // login, or a password-free re-login under the dev bypass).
+  notifyUnauthorized()
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: ApiAxiosError) => {
-    if (error.response?.status === 401) {
-      // The server clears the session cookie via Set-Cookie: Max-Age=0.
-      // We only need to sync the Zustand auth state. Routed through the
-      // leaf `unauthorized-handler` module so the client has no static
-      // dependency on the auth store. The auth store decides what a 401
-      // means (redirect to login, or a password-free re-login under the
-      // dev bypass); swallowing it here would leave an expired dev
-      // session permanently broken.
-      notifyUnauthorized()
+    // The probe's own 401 is the confirmation the awaiting caller is already
+    // waiting on, so it is not itself a request whose 401 needs deciding.
+    const isProbe = (error.config as ProbeConfig | undefined)?._sessionProbe === true
+    if (error.response?.status === 401 && !isProbe) {
+      // Deliberately not awaited: the failing request reports its own 401 to
+      // its caller now, and only the session-teardown decision waits on the
+      // confirmation.
+      void _handleUnauthorized(error.config?.url)
     }
     // Transparent retry for 429 responses when the backend surfaces a
     // Retry-After. Bounded so a hostile or mis-tuned server can't hang

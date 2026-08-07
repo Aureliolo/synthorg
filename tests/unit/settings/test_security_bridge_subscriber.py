@@ -89,7 +89,7 @@ class TestSwap:
         assert before is not None
         assert before.enabled is True
 
-        await sub.on_settings_changed("security", "enabled")
+        await sub.on_settings_changed([("security", "enabled")])
 
         live = app_state.security_runtime_config.current
         assert live is not None
@@ -99,7 +99,7 @@ class TestSwap:
 
     async def test_output_scan_policy_applies_live(self) -> None:
         sub, app_state = _make_subscriber(output_scan_policy_type="log_only")
-        await sub.on_settings_changed("security", "output_scan_policy_type")
+        await sub.on_settings_changed([("security", "output_scan_policy_type")])
         live = app_state.security_runtime_config.current
         assert live is not None
         assert live.output_scan_policy_type == "log_only"
@@ -110,12 +110,13 @@ class TestSwap:
         )
         prior = app_state.security_runtime_config.current
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("security", "enabled")
+            await sub.on_settings_changed([("security", "enabled")])
         # The prior (more secure) config stays in place; no partial swap.
         assert app_state.security_runtime_config.current is prior
 
-    async def test_unknown_key_is_noop(self) -> None:
-        sub, app_state = _make_subscriber(enabled=False)
-        prior = app_state.security_runtime_config.current
-        await sub.on_settings_changed("security", "unrelated")
-        assert app_state.security_runtime_config.current is prior
+    def test_an_unwatched_key_is_not_declared(self) -> None:
+        # Filtering a batch to a subscriber's watched pairs is the
+        # dispatcher's job and is asserted there; what is left here is that
+        # the declared set does not reach beyond the four toggles.
+        sub, _ = _make_subscriber(enabled=False)
+        assert ("security", "unrelated") not in sub.watched_keys

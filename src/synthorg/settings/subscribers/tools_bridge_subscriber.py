@@ -10,16 +10,18 @@ The full ``ToolsBridgeConfig`` is re-resolved wholesale (DB > env > default per
 field) and swapped, mirroring :class:`ObservabilityBridgeSettingsSubscriber`.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.bridge_configs import ToolsBridgeConfig
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
+from synthorg.settings.subscriber import describe_changes
 from synthorg.tools.sandbox._sidecar_resolution import set_resolved_sidecar_limits
 
 logger = get_logger(__name__)
@@ -82,17 +84,16 @@ class ToolsBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "tools-bridge-config"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-resolve the whole snapshot, swap it, and re-seed the cache."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve the whole snapshot, swap it, and re-seed the cache.
+
+        One swap per batch: the snapshot is re-resolved from every key it
+        covers, so re-running it once per changed key would repeat identical
+        work and publish the same snapshot several times.
+
+        Args:
+            changes: The watched writes this swap carries.
+        """
         try:
             resolver = config_resolver_of(self._app_state)
             snapshot = await resolver.get_tools_bridge_config()
@@ -103,8 +104,7 @@ class ToolsBridgeSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="tools_bridge_config",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

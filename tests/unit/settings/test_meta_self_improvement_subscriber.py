@@ -80,14 +80,14 @@ class TestInvalidation:
         assert isinstance(cached, SelfImprovementConfig)
         assert app_state.slice(MetaStateSlice).self_improvement_config is cached
 
-        await sub.on_settings_changed("meta", "self_improvement")
+        await sub.on_settings_changed([("meta", "self_improvement")])
 
         assert app_state.slice(MetaStateSlice).self_improvement_config is None
 
     async def test_invalidation_noop_when_already_empty(self) -> None:
         sub, app_state = _make_subscriber()
 
-        await sub.on_settings_changed("meta", "self_improvement")
+        await sub.on_settings_changed([("meta", "self_improvement")])
 
         assert app_state.slice(MetaStateSlice).self_improvement_config is None
 
@@ -102,4 +102,4 @@ class TestErrorPath:
         sub._app_state = boom
 
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("meta", "self_improvement")
+            await sub.on_settings_changed([("meta", "self_improvement")])

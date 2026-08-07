@@ -1,10 +1,11 @@
 """Project domain model for task collection management."""
 
 from collections import Counter
+from datetime import UTC, datetime
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.project_enums import ProjectStatus
@@ -43,6 +44,11 @@ class Project(BaseModel):
         version: Optimistic-concurrency revision, bumped on each persisted
             edit so a version-guarded write cannot silently clobber a
             concurrent update (e.g. two workers staffing the same lead).
+        created_at: When the project was opened (tz-aware UTC). Load-bearing
+            beyond the audit trail: intake bounds its reuse of an existing
+            project by age, and without a recorded start there is nothing to
+            measure that age against.
+        updated_at: Last-revision timestamp (tz-aware UTC).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -87,6 +93,14 @@ class Project(BaseModel):
         default=1,
         ge=1,
         description="Optimistic-concurrency revision, bumped on each edit",
+    )
+    created_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the project was opened (tz-aware UTC)",
+    )
+    updated_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="Last-revision timestamp (tz-aware UTC)",
     )
 
     @model_validator(mode="after")

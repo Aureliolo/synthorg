@@ -3557,7 +3557,8 @@ export type paths = {
         readonly get: operations["ApiV1PlansPlanIdGetPlan"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /** DeletePlan */
+        readonly delete: operations["ApiV1PlansPlanIdDeletePlan"];
         readonly options?: never;
         readonly head?: never;
         /** EditPlan */
@@ -11179,7 +11180,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059 | 8060;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058 | 8059 | 8060 | 8061;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -14667,6 +14668,8 @@ export type components = {
         /** PlanDraftSummary */
         readonly PlanDraftSummary: {
             readonly project: string;
+            /** @default false */
+            readonly reused_project: boolean;
             readonly task_id: string;
             readonly title: string;
         };
@@ -14937,11 +14940,12 @@ export type components = {
          *     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
          *     rework or request-changes is only accepted while the plan is still under
          *     review (see :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run
-         *     failed to reach review (decomposition failed, or parking the approval
-         *     failed after it was filled), so a failed run always leaves a visible plan
-         *     carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
-         *     retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
-         *     stage up to and including the tail.
+         *     could not be delivered at all: decomposition failed, parking the approval
+         *     failed after it was filled, or an approved plan could not be dispatched. A
+         *     failed run therefore always leaves a visible plan carrying its
+         *     :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
+         *     plan. SUPERSEDED marks a plan retired by a re-plan, at any stage up to and
+         *     including the tail.
          * @default draft
          * @enum {string}
          */
@@ -15213,6 +15217,11 @@ export type components = {
              * @default 0
              */
             readonly budget: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Optional deadline (ISO 8601 string) */
             readonly deadline: string | null;
             /**
@@ -15240,6 +15249,11 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
             /**
              * @description Optimistic-concurrency revision, bumped on each edit
              * @default 1
@@ -17692,18 +17706,32 @@ export type components = {
          *     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
          *     that is not there, which is the drift reading liveness from ``provides``
          *     exists to prevent.
+         *
+         *     ``UNREACHABLE`` is ``WAITING`` that waiting alone will not resolve.
+         *     Level-triggering rests on "a dependency absent at boot is not a verdict:
+         *     the next pass picks it up", which holds for a dependency that is merely
+         *     late and not for one an operator switched off or that declined on its own
+         *     condition. Reporting that as ``WAITING`` promises a pass that will change
+         *     nothing. It is re-derived every pass, so the operator action that fixes
+         *     the owner clears it on the next one; what it says is "this needs a
+         *     change, not more time".
+         *
+         *     ``REBUILDING`` is the window inside a pass where a subsystem has been torn
+         *     down and not yet brought back. It reads as neither up nor waiting-on-
+         *     anything, and a concurrent read answering ``WAITING`` with an empty
+         *     ``waiting_on`` is the contract's own shape used to say nothing.
          * @enum {string}
          */
-        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "blocked" | "disabled" | "failed";
+        readonly SubsystemPhase: "active" | "degraded" | "waiting" | "unreachable" | "rebuilding" | "blocked" | "disabled" | "failed";
         /** SubsystemReport */
         readonly SubsystemReport: {
-            /** @description Failure description, when failed */
+            /** @description Why it is not up, when failed, blocked or unreachable */
             readonly detail: string | null;
             /** @description Subsystem identifier */
             readonly name: string;
             readonly phase: components["schemas"]["SubsystemPhase"];
             /**
-             * @description Unmet dependencies, when waiting or degraded
+             * @description Unmet dependencies, when waiting, unreachable or degraded
              * @default []
              */
             readonly waiting_on: readonly string[];
@@ -17720,8 +17748,12 @@ export type components = {
             readonly disabled: number;
             /** @description Count whose activation raised */
             readonly failed: number;
+            /** @description Count mid-rebuild in this pass */
+            readonly rebuilding: number;
             /** @description Declared subsystems in activation order */
             readonly subsystems: readonly components["schemas"]["SubsystemReport"][];
+            /** @description Count waiting with no exit */
+            readonly unreachable: number;
             /** @description Count waiting on a dependency */
             readonly waiting: number;
         };
@@ -27467,6 +27499,34 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
                 };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdDeletePlan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, nothing follows */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];

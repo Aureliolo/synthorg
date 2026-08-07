@@ -16,7 +16,9 @@ from datetime import datetime
 from typing import Final
 from uuid import UUID
 
+from synthorg.api.channels import PlanNotifier
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
@@ -25,7 +27,11 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
+from synthorg.core.domain_errors import (
+    PlanParentTaskMissingError,
+    ResourceNotFoundError,
+    VersionConflictError,
+)
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
@@ -46,9 +52,11 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_FAIL_SHELL_MISSING,
     PIPELINE_PLAN_FAIL_WRITE_FAILED,
     PIPELINE_PLAN_MARKED_FAILED,
+    PIPELINE_PLAN_PARENT_MISSING,
     PIPELINE_PLAN_SHELL_OPENED,
 )
 from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -117,18 +125,36 @@ class PlanReviewApprovalGate:
     into a dispatch tree, so an operator's edits are what actually build.
     """
 
-    __slots__ = ("_approval_store", "_clock", "_plans")
+    __slots__ = ("_approval_store", "_clock", "_notifier", "_plans", "_tasks")
 
     def __init__(
         self,
         *,
         approval_store: ApprovalStoreProtocol,
         plans: PlanRepository,
+        tasks: TaskRepository,
         clock: Clock,
+        notifier: PlanNotifier | None = None,
     ) -> None:
         self._approval_store = approval_store
         self._plans = plans
+        self._tasks = tasks
         self._clock = clock
+        self._notifier = notifier
+
+    def _announce(self, plan: Plan) -> None:
+        """Tell open viewers the plan moved, if a publisher is wired.
+
+        Every write here happens on a background spine, after the request that
+        started it returned, so nothing else announces them: a page open during
+        decomposition rendered the pre-decomposition snapshot next to a fresh
+        approval prompt until it was reloaded by hand.
+
+        Args:
+            plan: The plan as it now stands.
+        """
+        if self._notifier is not None:
+            self._notifier(plan)
 
     def _provenance(
         self,
@@ -158,6 +184,33 @@ class PlanReviewApprovalGate:
                 NotBlankStr(c.description) for c in task.acceptance_criteria
             ),
         )
+
+    async def _require_parent(self, task: Task, plan_id: UUID) -> None:
+        """Refuse to park a plan whose objective task is gone.
+
+        Decomposition runs for minutes, and a delete landing in that window is
+        invisible to the run itself: it completes against a deleted row and
+        asks an operator to approve items under a task that 404s. The foreign
+        key refuses the delete, so this catches what the constraint cannot: a
+        row that predates it, or one removed by a path that bypasses the API.
+        Checked before the approval is parked, because an orphan in the review
+        queue can be neither approved nor removed.
+
+        Raises:
+            PlanParentTaskMissingError: When the task no longer exists.
+        """
+        if await self._tasks.get(NotBlankStr(str(task.id))) is not None:
+            return
+        logger.warning(
+            PIPELINE_PLAN_PARENT_MISSING,
+            plan_id=str(plan_id),
+            task_id=str(task.id),
+        )
+        msg = (
+            f"objective task {task.id} was deleted while its plan was being "
+            "decomposed, so the plan has nothing to build under"
+        )
+        raise PlanParentTaskMissingError(msg)
 
     async def open_plan(self, *, work_item: WorkItem, task: Task) -> UUID:
         """Persist a PLANNING plan shell before decomposition runs.
@@ -197,7 +250,13 @@ class PlanReviewApprovalGate:
 
         Returns:
             A :class:`PlanReviewHandoff` naming the parked approval item.
+
+        Raises:
+            PlanParentTaskMissingError: When the objective task was deleted
+                while decomposition ran. The caller compensates by failing
+                the plan, so an orphan never reaches the review queue.
         """
+        await self._require_parent(task, plan_id)
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
         now = self._clock.now()
@@ -257,6 +316,7 @@ class PlanReviewApprovalGate:
                 plan_id=durable_plan.id, reason="approval-store write failed"
             )
             raise
+        self._announce(durable_plan)
         return PlanReviewHandoff(
             approval_id=NotBlankStr(str(approval_id)),
             plan_id=NotBlankStr(str(durable_plan.id)),
@@ -288,19 +348,16 @@ class PlanReviewApprovalGate:
         async def write(plan: Plan, _version: int) -> None:
             if plan.status is PlanStatus.FAILED:
                 return  # idempotent: a prior compensation already marked it
-            failed = plan.model_copy(
-                update={
-                    "status": PlanStatus.FAILED,
-                    "failure_reason": marked_reason,
-                    "version": plan.version + 1,
-                    "updated_at": self._clock.now(),
-                }
-            )
+            failed = plan.fail(marked_reason, now=self._clock.now())
             try:
                 await self._plans.update(failed, expected_version=plan.version)
             except PersistenceVersionConflictError as exc:
                 # Translate to the domain twin CASRetryHandler retries on.
                 raise VersionConflictError(str(exc)) from exc
+            # After the write, never before: a viewer told the plan failed and
+            # then refetching a plan that is still PENDING_REVIEW would read as
+            # the announcement being wrong rather than early.
+            self._announce(failed)
 
         try:
             await CASRetryHandler(
@@ -372,10 +429,14 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
             note="skipped: plan_approval_required but persistence not wired",
         )
         return
+    from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
+
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
         plans=backend.plans,
+        tasks=backend.tasks,
         clock=app_state.clock,
+        notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)
     logger.info(API_APP_STARTUP, service="plan_review_gate", note="wired")
@@ -452,10 +513,14 @@ async def wire_plan_item_reply_service(
     """Wire the conversational plan-item reply service when a model is set.
 
     Built unconditionally of ``plan_review_reply_enabled`` so the live
-    per-comment gate can flip without a restart; returns without wiring only
-    when no ``plan_review_reply_model`` is configured or no provider serves it,
-    leaving plan comments unanswered. Best-effort: an absent provider registry
-    or an unresolved model leaves the service unwired rather than failing boot.
+    per-comment gate can flip without a restart.
+
+    Raises:
+        SubsystemDeclinedError: No provider registry, or no
+            ``plan_review_reply_model`` that a registered provider serves.
+            Plan comments then go unanswered, which is a state an operator
+            fixes by naming a model, so the reason is reported rather than
+            the boot being failed over it.
     """
     from synthorg.engine.plan_review.reply import (  # noqa: PLC0415
         build_plan_item_reply_service,
@@ -464,7 +529,8 @@ async def wire_plan_item_reply_service(
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if provider_registry is None:
-        return
+        msg = "no provider registry is wired, so no model can serve a reply"
+        raise SubsystemDeclinedError(msg)
     resolver = config_resolver_of(app_state)
     service = build_plan_item_reply_service(
         reply_model=await resolver.get_str("coordination", "plan_review_reply_model"),
@@ -479,6 +545,26 @@ async def wire_plan_item_reply_service(
         cost_tracker=cost_tracker,
         config_resolver=resolver,
     )
-    if service is not None:
-        app_state.wire(EngineStateSlice, plan_item_reply_service=service)
-        logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+    if service is None:
+        msg = (
+            "unset: coordination.plan_review_reply_model, or no registered "
+            "provider serves the pair it names"
+        )
+        raise SubsystemDeclinedError(msg)
+    app_state.wire(EngineStateSlice, plan_item_reply_service=service)
+    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+
+
+async def unwire_plan_item_reply_service(app_state: AppState) -> None:
+    """Drop the reply service so the next pass rebuilds it.
+
+    The service bakes its provider driver in at construction, so replacing
+    the instance is what makes ``plan_review_reply_model`` live in both
+    directions: renaming or clearing the pair retargets a service that is
+    already answering, which the per-call live re-read cannot do because its
+    fallback is the build-time pair it is trying to leave.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    app_state.wire(EngineStateSlice, plan_item_reply_service=None)
+    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="unwired")

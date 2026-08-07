@@ -137,9 +137,33 @@ construction rather than letting it fail silently at runtime.
 
 Declaring `settings=` without `rebuild_on_change` is the weaker and commoner
 case: it does not replace a running instance, but it does put the key in the
-settings subscriber's watched set, so a subsystem waiting on a value (the
-Chief-of-Staff features, each blank until an operator names a model) comes up
+settings subscriber's watched set, so a subsystem waiting on a value comes up
 on the write rather than on the next restart.
+
+### A per-feature model needs both halves
+
+Every Chief-of-Staff feature model is blank by default and baked into its
+component at construction, so its declaration has to buy two distinct things.
+A blank-to-named write brings an inactive subsystem up, which `settings=`
+alone delivers. A named-to-renamed or named-to-blank write has to *replace* a
+component already serving on its build-time pair, which only
+`rebuild_on_change` plus a `deactivate` delivers. Declaring the key without
+the flag gives an operator a feature that can be switched on without a restart
+but never off, and never moved to a different model.
+
+The classifier and the multi-voice router are their own subsystems for the
+same reason rather than steps inside the proposer's activation: the reconciler
+leaves an already-active subsystem alone, so a classifier wired from within the
+proposer's activation could never appear after the proposer was up, which is
+exactly when an operator names the model.
+
+Making the proposer replaceable makes its consumers replaceable too, which the
+graph invariant enforces rather than hopes for. `refinement_router` wraps the
+proposer instance and lives on the work pipeline, so a replaced proposer would
+leave it refining through the instance that went away;
+`conversational_plan_dispatcher` attaches to the proposer itself. Both declare
+a `deactivate` and `rebuild_on_change=True`, so they go down with their
+provider and come back bound to the replacement.
 
 A setting the resolver cannot serve is not a change. Its snapshot records "no
 reading" rather than a value, and the comparison skips those positions; the
@@ -177,8 +201,11 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 | Phase | Meaning |
 | --- | --- |
 | `active` | Its capability reads as available. |
+| `degraded` | Up, with a requirement it named gone. Only a subsystem with no teardown can rest here; one with a teardown is taken down instead. |
 | `waiting` | A declared dependency is not here yet; `waiting_on` names every one. |
-| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). It logs the reason. |
+| `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so waiting alone will not supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
+| `rebuilding` | Torn down and coming back inside the pass currently running. |
+| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` always says something: the activation's own reason when it raised `SubsystemDeclinedError`, else the declared settings that are blank, else that it declined on a condition it does not declare. |
 | `disabled` | An operator turned it off via `enabled_by`. |
 | `failed` | Activation raised; `detail` carries the redacted description. |
 
@@ -187,6 +214,32 @@ because reporting that case as `waiting` would name no dependency and leave an
 operator with nowhere to look. It is also the phase the retry snapshot is for:
 a `blocked` subsystem is re-attempted when something it declares moves, and
 otherwise on the next sweep.
+
+`unreachable` exists because level-triggering rests on "a dependency absent at
+boot is not a verdict: the next pass picks it up", and that holds for a
+dependency that is merely late, not for one an operator switched off or that
+declined on its own condition. Reporting those as `waiting` promises a pass that
+will change nothing, which leaves a kanban board waiting indefinitely on a
+setting-disabled sprint service. It is re-derived every pass, so the operator
+action that fixes the owner clears it on the next one: what it says is "this
+needs a change, not more time".
+
+`rebuilding` covers the window between a teardown and the re-activation that
+follows it in the same pass. Without it a concurrent read lands mid-rebuild and
+answers `waiting` with an empty `waiting_on`, which claims the contract's shape
+for "these capabilities are missing" while naming none of them.
+
+A `blocked` subsystem's `detail` is never null and never hand-written at the
+reporting end. An activation that knows why it declined says so by raising
+`SubsystemDeclinedError(reason)`: the reconciler records that reason and treats
+the pass as a decline rather than a failure, and it is believed over anything
+derived. Absent one, the reconciler resolves the spec's own `settings=` keys and
+reports the blank ones, hedged as the likely reason because the declining
+condition lives inside the activation. When a spec declares no settings and the
+activation raised nothing, the detail says exactly that and points at the
+wiring log, which is still a place to look. Only 9 of the 54 shipped specs
+declare settings, so the derived guess alone would have left the majority
+blocked with nothing to read.
 
 ## Why not the alternatives
 

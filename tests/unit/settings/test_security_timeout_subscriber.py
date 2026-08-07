@@ -79,14 +79,14 @@ class TestOnSettingsChanged:
     async def test_reschedules_on_watched_key(self) -> None:
         sub, scheduler, _ = _make_subscriber(interval_value="42.0")
 
-        await sub.on_settings_changed("security", "timeout_check_interval_seconds")
+        await sub.on_settings_changed([("security", "timeout_check_interval_seconds")])
 
         scheduler.reschedule.assert_called_once_with(42.0)
 
     async def test_unwatched_key_is_noop(self) -> None:
         sub, scheduler, settings_service = _make_subscriber()
 
-        await sub.on_settings_changed("security", "audit_retention_days")
+        await sub.on_settings_changed([("security", "audit_retention_days")])
 
         settings_service.get.assert_not_awaited()
         scheduler.reschedule.assert_not_called()
@@ -94,14 +94,14 @@ class TestOnSettingsChanged:
     async def test_invalid_value_skipped(self) -> None:
         sub, scheduler, _ = _make_subscriber(interval_value="not-a-float")
 
-        await sub.on_settings_changed("security", "timeout_check_interval_seconds")
+        await sub.on_settings_changed([("security", "timeout_check_interval_seconds")])
 
         scheduler.reschedule.assert_not_called()
 
     async def test_settings_read_failure_skipped(self) -> None:
         sub, scheduler, _ = _make_subscriber(raise_on_get=True)
 
-        await sub.on_settings_changed("security", "timeout_check_interval_seconds")
+        await sub.on_settings_changed([("security", "timeout_check_interval_seconds")])
 
         scheduler.reschedule.assert_not_called()
 
@@ -111,6 +111,6 @@ class TestOnSettingsChanged:
             reschedule_raises=True,
         )
 
-        await sub.on_settings_changed("security", "timeout_check_interval_seconds")
+        await sub.on_settings_changed([("security", "timeout_check_interval_seconds")])
 
         scheduler.reschedule.assert_called_once_with(-1.0)

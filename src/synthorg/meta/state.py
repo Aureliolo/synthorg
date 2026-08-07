@@ -21,7 +21,7 @@ from synthorg.meta.chief_of_staff.console_conversation_store import (
     ConsoleConversationStore,
 )
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
-from synthorg.meta.chief_of_staff.intent_router import IntentClassifier
+from synthorg.meta.chief_of_staff.intent_models import IntentClassifier
 from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
 from synthorg.meta.chief_of_staff.operator_console import OperatorConsoleService
 from synthorg.meta.chief_of_staff.propose import (

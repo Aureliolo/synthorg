@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -19,12 +20,8 @@ from tests.unit.engine.conftest import (
 )
 
 
-def _make_routing_decision(
-    subtask_id: str,
-    agent_name: str,
-) -> RoutingDecision:
-    """Build a RoutingDecision for a subtask → agent mapping."""
-    agent = make_assignment_agent(agent_name)
+def _decision_for(subtask_id: str, agent: AgentIdentity) -> RoutingDecision:
+    """Build a RoutingDecision routing a subtask to a given agent."""
     return RoutingDecision(
         subtask_id=coerce_id(subtask_id),
         selected_candidate=RoutingCandidate(
@@ -34,6 +31,14 @@ def _make_routing_decision(
         ),
         topology=CoordinationTopology.CENTRALIZED,
     )
+
+
+def _make_routing_decision(
+    subtask_id: str,
+    agent_name: str,
+) -> RoutingDecision:
+    """Build a RoutingDecision for a subtask → freshly-minted agent."""
+    return _decision_for(subtask_id, make_assignment_agent(agent_name))
 
 
 class TestBuildExecutionWaves:
@@ -110,6 +115,42 @@ class TestBuildExecutionWaves:
 
         assert len(waves) == 1
         assert len(waves[0].assignments) == 2
+
+    @pytest.mark.unit
+    def test_one_agent_on_two_independent_subtasks_runs_them_in_turn(self) -> None:
+        """A wave is a dependency fact; who does the work is a separate one.
+
+        An org staffing one developer routes both independent subtasks to
+        them, and an execution group holding the same agent twice is a
+        contradiction the model rejects. The wave splits so the developer
+        does one after the other, rather than the dispatch failing.
+        """
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        # The same identity object, not two agents that share a name: what
+        # collides in a group is the agent id.
+        alice = make_assignment_agent("alice")
+        routing = RoutingResult(
+            parent_task_id="parent-1",
+            decisions=(
+                _decision_for("sub-a", alice),
+                _decision_for("sub-b", alice),
+            ),
+        )
+
+        waves = build_execution_waves(
+            decomposition_result=decomp,
+            routing_result=routing,
+            config=CoordinationConfig(),
+        )
+
+        assert [len(wave.assignments) for wave in waves] == [1, 1]
+        assert [wave.group_id for wave in waves] == ["wave-0", "wave-0-1"]
+        dispatched = {
+            assignment.task.id for wave in waves for assignment in wave.assignments
+        }
+        assert dispatched == {as_uuid("sub-a"), as_uuid("sub-b")}
 
     @pytest.mark.unit
     def test_sequential_chain_two_waves(self) -> None:

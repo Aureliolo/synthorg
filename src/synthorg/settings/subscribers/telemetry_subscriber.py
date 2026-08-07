@@ -5,6 +5,8 @@ resident either way and short-circuits when disabled, so the switch is a
 question of whether anything is sent, not of whether the machinery exists.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -50,7 +52,16 @@ class TelemetrySettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "telemetry-opt-in"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed opt-in to the collector.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the opt-in and apply it to the collector.
 
         Raises:

@@ -23,6 +23,7 @@ from synthorg.api.auth.api_key_service import ApiKeyService
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.ticket_store import WsTicketStore
+from synthorg.api.channels import PlanNotifier
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.services.analytics_read_service import AnalyticsReadService
 from synthorg.api.services.org_mutations import OrgMutationService
@@ -59,6 +60,7 @@ class ApiCoreStateSlice(BaseFeatureStateSlice):
     workflow_rollback_service: WorkflowRollbackService | None = None
     idempotency_service: IdempotencyService | None = None
     analytics_read_service: AnalyticsReadService | None = None
+    plan_notifier: PlanNotifier | None = None
 
 
 def auth_service_of(app_state: AppStateSliceMixin) -> AuthService:

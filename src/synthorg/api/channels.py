@@ -4,6 +4,7 @@ Defines the named channels for real-time event feeds and
 creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
+from collections.abc import Callable
 from typing import Final
 
 from litestar import Request
@@ -15,10 +16,16 @@ from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan import Plan
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
 
 logger = get_logger(__name__)
+
+#: Publishes ``plan.updated`` for one plan. Narrow on purpose: a plan writer
+#: that outlives its request needs to announce a change, not the whole channels
+#: surface, and holding the plugin itself would let it publish anything.
+type PlanNotifier = Callable[[Plan], None]
 
 CHANNEL_TASKS: Final[str] = "tasks"
 CHANNEL_AGENTS: Final[str] = "agents"
@@ -192,6 +199,76 @@ def publish_ws_event_with_plugin(
             channel=channel,
             note="Failed to publish WS event",
         )
+
+
+def plan_updated_payload(
+    plan: Plan, *, supersedes: Plan | None = None
+) -> dict[str, object]:
+    """The locator a ``plan.updated`` subscriber refetches from.
+
+    One definition for every publisher, because the payload is a contract
+    with the dashboard's handler and a background publisher that drifted from
+    the controllers' shape would look identical on the wire until a
+    subscriber read a key that was not there. Deliberately minimal: the event
+    is a refresh signal, so a subscriber reloads rather than rendering this.
+
+    ``supersedes`` is built here rather than merged in by the replan
+    controller for that same reason: the key names a plan the subscriber
+    refetches, so it is part of the locator, and a shape only one publisher
+    knows about is the drift this function exists to prevent.
+
+    Args:
+        plan: The plan whose change is being announced.
+        supersedes: The plan this one retires, when the change is a
+            replan. A viewer sitting on the retired plan is not looking at
+            ``plan``, so without this the successor's event names an id
+            that viewer does not hold and its detail stays stale.
+
+    Returns:
+        The event payload.
+    """
+    payload: dict[str, object] = {
+        "plan_id": str(plan.id),
+        "version": plan.version,
+        "status": plan.status.value,
+    }
+    if supersedes is not None:
+        payload["supersedes"] = str(supersedes.id)
+    return payload
+
+
+def make_plan_notifier(
+    channels_plugin: ChannelsPlugin, *, clock: Clock
+) -> PlanNotifier:
+    """Build the publisher a plan writer outside a request uses.
+
+    The plan-review gate fills and parks a plan from a background spine, long
+    after the request that started it returned, so it cannot resolve the plugin
+    from a request the way a controller does. It is what keeps a page open
+    during decomposition from rendering the pre-decomposition snapshot beside a
+    fresh approval prompt.
+
+    Args:
+        channels_plugin: The plugin resolved once, at construction.
+        clock: The application clock seam, so the event timestamp honours a
+            ``FakeClock`` under test.
+
+    Returns:
+        A callable publishing ``plan.updated`` for one plan, over the shared
+        :func:`plan_updated_payload`, so the dashboard's existing handler
+        refetches with no change.
+    """
+
+    def _notify(plan: Plan) -> None:
+        publish_ws_event_with_plugin(
+            channels_plugin,
+            WsEventType.PLAN_UPDATED,
+            CHANNEL_PLANS,
+            plan_updated_payload(plan),
+            clock=clock,
+        )
+
+    return _notify
 
 
 def publish_ws_event(

@@ -7,6 +7,8 @@ re-read by the janitor itself each sweep, so they need no subscriber; the
 history bounds are instance fields on the hub's ledger and are pushed in here.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
@@ -57,7 +59,16 @@ class EventStreamHistorySettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "event-stream-history"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Push each changed bound onto the hub's ledger.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Resolve the new bound and push it onto the hub's ledger."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

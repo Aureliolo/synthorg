@@ -16,6 +16,7 @@ Three entities, linked by scalar foreign keys pointing *upward* only.
 flowchart LR
     Project -->|plan_id| Plan
     Plan -->|project| Project
+    Plan -->|parent_task_id| Task
     Task -->|plan_id| Plan
     Task -->|plan_item_id| PlanItem
     Task -->|project| Project
@@ -26,9 +27,17 @@ flowchart LR
 | --- | --- | --- |
 | Project to Plan | `Project.plan_id` | the plan currently being executed |
 | Plan to Project | `Plan.project` | set at plan creation, immutable |
+| Plan to Task | `Plan.parent_task_id` | the objective task the plan decomposes; a real FK, `ON DELETE RESTRICT` |
 | Task to Plan | `Task.plan_id` | stamped at dispatch |
 | Task to PlanItem | `Task.plan_item_id` | stamped at dispatch |
 | Task to Project | `Task.project` | set at intake, immutable |
+
+`Plan.parent_task_id` is the one downward-pointing edge, and the only one the
+database enforces, because it is the one whose violation strands a row an
+operator cannot reach: an orphaned plan cannot be approved (its parent 404s),
+superseded, or deleted. Deleting a task a plan references is refused
+(409) rather than allowed to orphan it; the exit is `DELETE /plans/{id}`. See
+[Plan review](plan-review.md#persistence).
 
 **No entity stores a collection of its children.** Reverse lookups are indexed
 queries: `TaskFilterSpec(plan=...)` for a plan's tasks,
@@ -270,6 +279,26 @@ whole life.
 
 `projects.plan_id`, `tasks.plan_id`, and `tasks.plan_item_id` are nullable TEXT
 columns; `tasks.plan_id` is indexed because the rollup and the progress endpoint
-both query by it. The `plans` status CHECK carries the full enum including
-`executing` and `completed`. SQLite and Postgres are in parity, with one yoyo
-revision per backend.
+both query by it. `plans.parent_task_id` is the one enforced reference
+(`REFERENCES tasks (id) ON DELETE RESTRICT`, indexed `(parent_task_id, id)`).
+`projects` records `created_at` / `updated_at`, which is what lets conversational
+intake bound project reuse by age rather than by an in-process cache. The `plans`
+status CHECK carries the full enum including `executing` and `completed`. SQLite
+and Postgres are in parity, with one yoyo revision per backend.
+
+Deleting a project resolves its children first and only then removes the row:
+every non-terminal plan is retired (SUPERSEDED, or FAILED with "project deleted"
+when it has no items, because the `items` CHECK forbids superseding an itemless
+plan) and every non-terminal task is cancelled, each through its own audited
+transition. The cascade and the delete are separate audited operations rather
+than one transaction, because the task transitions emit domain events that
+cannot be rolled back; consistency comes from idempotent forward recovery
+instead, so re-issuing a failed delete re-runs the cascade as a no-op over the
+already-resolved children.
+
+Forward recovery is what makes a *partial* cascade safe, not a licence to
+delete past one. A plan the initiative rollup is writing concurrently gets a
+bounded re-read budget, and exhausting it aborts the delete with a 409 rather
+than counting the plan retired: `plans.project` carries no foreign key, so a
+project removed over a plan still live leaves an orphan nothing can reach.
+Contention is transient, so repeating the delete is the resolution.

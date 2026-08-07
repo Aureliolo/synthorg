@@ -10,12 +10,22 @@ reworking its items, and sending it back for revision.
 
 from typing import Annotated, Final
 
-from litestar import Controller, Request, Response, get, patch, post
+from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.channels import CHANNEL_PLANS, publish_ws_event
-from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
+from synthorg.api.channels import (
+    CHANNEL_PLANS,
+    plan_updated_payload,
+    publish_ws_event,
+)
+from synthorg.api.controllers._plan_approval_retire import retire_review_approval
+from synthorg.api.controllers._plan_replan import (
+    RevisionInputs,
+    reject_unroutable_owners,
+    replan_initiative,
+)
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -37,14 +47,20 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
+from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_RESOURCE_NOT_FOUND,
+)
 from synthorg.persistence.state import persistence_of
+
+logger = get_logger(__name__)
 
 _DEFAULT_LIMIT: Final[int] = 50
 
@@ -53,13 +69,20 @@ def _service(state: State) -> PlanService:
     """Build the per-request :class:`PlanService` instance.
 
     Returns:
-        ``PlanService`` bound to this backend's plan and judgement stores.
+        ``PlanService`` bound to this backend's plan store.
     """
     persistence = persistence_of(state.app_state)
-    return PlanService(
-        repo=persistence.plans,
-        clock=state.app_state.clock,
-        evaluation_reports=persistence.evaluation_reports,
+    return PlanService(repo=persistence.plans, clock=state.app_state.clock)
+
+
+def _evaluation_service(state: State) -> PlanEvaluationService:
+    """Build the per-request judgement reader.
+
+    Returns:
+        ``PlanEvaluationService`` bound to this backend's judgement store.
+    """
+    return PlanEvaluationService(
+        reports=persistence_of(state.app_state).evaluation_reports
     )
 
 
@@ -223,7 +246,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
         )
-        records = await service.evaluation_history(plan_id)
+        records = await _evaluation_service(state).history(plan_id)
         payload = PlanEvaluationResponse(
             plan_id=plan_id,
             attempts=tuple(
@@ -269,7 +292,8 @@ class PlanController(Controller):
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
-            ValidationError: The revised items violate a plan invariant.
+            ValidationError: The revised items violate a plan invariant, or
+                an item names an owning role the org does not staff.
         """
         service = _service(state)
         existing = require_resource_or_404(
@@ -279,9 +303,11 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
+        items = tuple(_item_from_payload(item) for item in data.items)
+        await reject_unroutable_owners(state.app_state, items)
         revised = await service.edit(
             existing,
-            items=tuple(_item_from_payload(item) for item in data.items),
+            items=items,
             task_structure=data.task_structure,
             coordination_topology=data.coordination_topology,
         )
@@ -289,11 +315,7 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": str(revised.id),
-                "version": revised.version,
-                "status": revised.status.value,
-            },
+            plan_updated_payload(revised),
         )
         return Response(content=ApiResponse[Plan](data=revised), status_code=200)
 
@@ -349,12 +371,7 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            {
-                "plan_id": str(successor.id),
-                "supersedes": str(existing.id),
-                "version": successor.version,
-                "status": successor.status.value,
-            },
+            plan_updated_payload(successor, supersedes=existing),
         )
         return Response(content=ApiResponse[Plan](data=successor), status_code=201)
 
@@ -406,6 +423,61 @@ class PlanController(Controller):
             },
         )
         return Response(content=ApiResponse[Plan](data=drafted), status_code=200)
+
+    @delete(
+        "/{plan_id:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("plans.delete", key="user"),
+        ],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_plan(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        plan_id: PathId,
+    ) -> None:
+        """Remove a plan that is not building.
+
+        Without this route a plan whose parent task is gone, or whose
+        project is being cleaned up, had no way out at all: it stayed in
+        the review queue asking for a decision on work with no owner, and
+        the task holding it could not be deleted either.
+
+        Args:
+            request: The incoming request.
+            state: Application state.
+            plan_id: Plan identifier.
+
+        Raises:
+            NotFoundError: No plan with ``plan_id`` exists.
+            PlanNotDeletableError: The plan is dispatched or already decided.
+            ConflictError: The parked review approval was decided while the
+                delete was being prepared, so the plan is still being acted
+                on. Nothing is removed and the operator retries.
+        """
+        service = _service(state)
+        existing = require_resource_or_404(
+            await service.get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="delete",
+        )
+        # Ahead of the delete, and gating it: an approval left pending would
+        # drive the resume path at a missing plan, and retiring it afterwards
+        # has no recovery if the write does not land.
+        await retire_review_approval(state.app_state, existing)
+        await service.delete(existing, requested_by=extract_requester(state))
+        # The review inbox and any open detail view drop it on the same
+        # event every other plan mutation publishes.
+        publish_ws_event(
+            request,
+            WsEventType.PLAN_UPDATED,
+            CHANNEL_PLANS,
+            plan_updated_payload(existing),
+        )
 
 
 def _parse_status(status: NotBlankStr | None) -> PlanStatus | None:

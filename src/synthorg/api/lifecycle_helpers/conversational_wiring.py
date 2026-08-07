@@ -18,6 +18,7 @@ from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_invites,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -103,10 +104,13 @@ async def wire_conversational_actor(
     Reuses the SHARED boot ``AgentEngine`` (held by the
     ``AgentEngineExecutionService``) so a sensitive chat action parks on
     the same ``ApprovalGate`` the ``/approvals`` controller resumes.
-    Returns ``None`` -- leaving ``POST /meta/chat/act`` at 503 -- when the
-    flag is off, no agent registry is present, or no provider-backed boot
-    engine was installed (empty company). Idempotent: a second boot pass
-    skips when already wired.
+    Idempotent: a second boot pass skips when already wired.
+
+    Raises:
+        SubsystemDeclinedError: The actor cannot be built, naming which
+            precondition refused. Leaves ``POST /meta/chat/act`` at 503, and
+            gives ``GET /subsystems`` the reason to report instead of a
+            BLOCKED with nothing to look at.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -119,7 +123,8 @@ async def wire_conversational_actor(
         return
     agent_registry = app_state.slice(HrStateSlice).agent_registry
     if agent_registry is None:
-        return
+        msg = "no agent registry is wired, so there is nobody to act as"
+        raise SubsystemDeclinedError(msg)
     # Read the slice directly (not ``worker_execution_service_of``) to
     # avoid the lazy fallback that builds a lifecycle-only
     # ``LifecycleAdvancingExecutionService`` (no real agent engine): a
@@ -127,20 +132,30 @@ async def wire_conversational_actor(
     # real boot ``AgentEngineExecutionService`` can drive an MCP action.
     service = app_state.slice(RuntimeStateSlice).worker_execution_service
     if not isinstance(service, AgentEngineExecutionService):
-        return
+        msg = (
+            "no provider-backed boot engine is installed, so no agent can "
+            "drive an MCP action (an empty company reaches this)"
+        )
+        raise SubsystemDeclinedError(msg)
     actor = build_conversational_actor(
         si_config.chief_of_staff,
         engine=service.engine,
         agent_registry=agent_registry,
         autonomy_resolver=service.autonomy_resolver,
     )
-    if actor is not None:
-        app_state.wire(MetaStateSlice, conversational_actor=actor)
-        logger.info(
-            API_APP_STARTUP,
-            service="conversational_actor",
-            note="direct MCP actor wired",
+    if actor is None:
+        msg = (
+            "the fail-closed actor gate refused: direct MCP acting is off, "
+            "or the boot engine has no MCP self-consumer or no enabled "
+            "security governance; the builder logged which"
         )
+        raise SubsystemDeclinedError(msg)
+    app_state.wire(MetaStateSlice, conversational_actor=actor)
+    logger.info(
+        API_APP_STARTUP,
+        service="conversational_actor",
+        note="direct MCP actor wired",
+    )
 
 
 async def unwire_conversational_actor(app_state: AppState) -> None:
@@ -324,78 +339,6 @@ def _wire_role_router(
     return role_router
 
 
-def _wire_turn_intent_classifier(
-    app_state: AppState,
-    config: ChiefOfStaffConfig,
-    *,
-    provider_registry: ProviderRegistry,
-    cost_tracker: CostTrackerProtocol | None,
-) -> None:
-    """Build + wire the unified turn-intent classifier when a model is set.
-
-    ``build_intent_classifier`` builds the classifier unconditionally of
-    ``turn_router_enabled`` so the live per-request gate (applied in the
-    ``/meta/chat/turn`` endpoint) can flip without a restart; it returns
-    ``None`` only when no ``turn_intent_model`` is configured or its bound
-    provider is absent, leaving the unified router to answer every turn as a
-    plain question.
-    """
-    from synthorg.meta.chief_of_staff.intent_router import (  # noqa: PLC0415
-        build_intent_classifier,
-    )
-    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
-    classifier = build_intent_classifier(
-        config=config,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
-    )
-    if classifier is not None:
-        app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
-        logger.info(
-            API_APP_STARTUP,
-            service="turn_intent_classifier",
-            note="turn intent classifier wired",
-        )
-
-
-def _wire_multi_voice_router(
-    app_state: AppState,
-    config: ChiefOfStaffConfig,
-    *,
-    provider_registry: ProviderRegistry,
-    cost_tracker: CostTrackerProtocol | None,
-) -> None:
-    """Build + wire the multi-voice chime-in router when a model is set.
-
-    ``build_multi_voice_router`` builds the router unconditionally of
-    ``multi_voice_enabled`` so the live per-turn gate can flip without a
-    restart; it returns ``None`` only when no ``multi_voice_model`` is set or
-    its bound provider is absent, leaving turns to carry no chime-ins.
-    """
-    from synthorg.meta.chief_of_staff._multi_voice import (  # noqa: PLC0415
-        build_multi_voice_router,
-    )
-    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
-    router = build_multi_voice_router(
-        config=config,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
-    )
-    if router is not None:
-        app_state.wire(MetaStateSlice, multi_voice_router=router)
-        logger.info(
-            API_APP_STARTUP,
-            service="multi_voice_router",
-            note="multi-voice router wired",
-        )
-
-
 async def wire_chief_of_staff_proposer(
     app_state: AppState,
     *,
@@ -415,24 +358,6 @@ async def wire_chief_of_staff_proposer(
             503 base a genuine wiring fault raises.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-
-    # The turn-intent classifier and multi-voice router are optional and each
-    # guards its own state field idempotently, so wire them on every pass -- even
-    # once the proposer exists -- so a classifier / multi-voice model configured
-    # after the proposer was first built still wires without a restart.
-    if provider_registry is not None:
-        _wire_turn_intent_classifier(
-            app_state,
-            si_config.chief_of_staff,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
-        _wire_multi_voice_router(
-            app_state,
-            si_config.chief_of_staff,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
 
     if app_state.slice(MetaStateSlice).chief_of_staff_proposer is not None:
         return
@@ -475,6 +400,30 @@ async def wire_chief_of_staff_proposer(
         )
 
 
+async def unwire_chief_of_staff_proposer(app_state: AppState) -> None:
+    """Take the proposer and its role router down so a pass can rebuild them.
+
+    Both bake their model choice in at construction, so replacing the
+    instance is what makes ``propose_model`` and ``routing_model`` live in
+    both directions: naming a model brings the proposer up, and changing or
+    clearing one replaces it rather than leaving the previous instance
+    answering on its build-time pair.
+
+    The conversational repositories and the resume service stay wired on
+    purpose. They are ungated: a decided intake approval from a previous
+    boot still needs its repository to route the decision, even once the
+    propose feature is switched off.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    app_state.wire(MetaStateSlice, chief_of_staff_proposer=None, role_router=None)
+    logger.info(
+        API_APP_STARTUP,
+        service="chief_of_staff_proposer",
+        note="proposer unwired",
+    )
+
+
 async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     """Attach the plan dispatcher to the proposer once its deps are up.
 
@@ -492,6 +441,7 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     )
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
     from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
     proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
@@ -509,8 +459,10 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=backend.projects,
         work_pipeline=work_pipeline,
+        task_repo=backend.tasks,
         clock=app_state.clock,
         dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
     )
     proposer.attach_plan_dispatcher(dispatcher)
     logger.info(
@@ -520,8 +472,29 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     )
 
 
+async def unwire_conversational_plan_dispatcher(app_state: AppState) -> None:
+    """Detach the plan dispatcher from the proposer.
+
+    Runs before the proposer itself goes down, so the outgoing instance
+    cannot draft one more plan through collaborators the pass is replacing.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
+    if proposer is None:
+        return
+    proposer.attach_plan_dispatcher(None)
+    logger.info(
+        API_APP_STARTUP,
+        service="chief_of_staff_proposer",
+        note="plan dispatcher detached",
+    )
+
+
 __all__ = [
+    "unwire_chief_of_staff_proposer",
     "unwire_conversational_actor",
+    "unwire_conversational_plan_dispatcher",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
     "wire_conversational_plan_dispatcher",

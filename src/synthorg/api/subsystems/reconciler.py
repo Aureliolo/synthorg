@@ -24,8 +24,13 @@ from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.bookkeeping import ReconcileBook
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.api.subsystems.graph import order_subsystems
-from synthorg.api.subsystems.liveness import is_active, missing_capabilities
+from synthorg.api.subsystems.liveness import (
+    is_active,
+    missing_capabilities,
+    settings_fingerprint,
+)
 from synthorg.api.subsystems.report import ReconcileReport, SubsystemStatus
 from synthorg.api.subsystems.spec import (
     Capability,
@@ -86,11 +91,17 @@ class SubsystemReconciler:
         """
         self._capabilities = {cap.id: cap for cap in capabilities}
         self._specs = order_subsystems(specs, self._capabilities)
+        # Who supplies each capability, so a consumer waiting on one can be
+        # told whether its owner is merely late or switched off for good.
+        self._owners = {spec.provides: spec for spec in self._specs}
         self._book = ReconcileBook(capabilities=self._capabilities)
         # Scoped to one pass, which the guard below serialises. Teardown can
         # happen during a provider's turn rather than the subsystem's own, so
         # the pass cannot reconstruct it from what each turn returned.
         self._torn_down: list[str] = []
+        # Down and coming back inside this pass. A concurrent GET /subsystems
+        # lands in that window and must not read the absence as waiting.
+        self._rebuilding: set[str] = set()
         # Created on first use, not here: an event loop may not exist yet at
         # construction, and binding a lock to the wrong loop is unrecoverable.
         self._lock: asyncio.Lock | None = None
@@ -256,13 +267,28 @@ class SubsystemReconciler:
         """
         logger.debug(SUBSYSTEM_RECONCILE_STARTED, trigger=trigger)
         self._torn_down.clear()
+        self._rebuilding.clear()
         activated: list[str] = []
-        for spec in self._specs:
-            outcome = await self._converge(
-                spec, app_state, retry_declined=retry_declined
-            )
-            if outcome is _Outcome.ACTIVATED:
-                activated.append(spec.name)
+        try:
+            for spec in self._specs:
+                outcome = await self._converge(
+                    spec, app_state, retry_declined=retry_declined
+                )
+                if outcome is _Outcome.ACTIVATED:
+                    activated.append(spec.name)
+                # Back up, so it is no longer mid-rebuild. Cleared here rather
+                # than at the teardown, because a consumer torn down during its
+                # provider's turn stays down until its own turn arrives later in
+                # this same pass, and that whole window is the rebuild.
+                self._rebuilding.discard(spec.name)
+        finally:
+            # By the end of the pass nothing is mid-rebuild: whatever did not
+            # come back reports its real phase (waiting, blocked, failed)
+            # rather than promising a return that is no longer coming. In a
+            # finally because a raise partway through would otherwise leave
+            # the mark standing, and a real outage would read as REBUILDING
+            # until some later pass happened to clear it.
+            self._rebuilding.clear()
         # Read from what teardown actually did rather than from this loop: a
         # subsystem taken down as a consumer of something being rebuilt is
         # torn down during its provider's turn, not its own. Anything back up
@@ -321,7 +347,7 @@ class SubsystemReconciler:
             and spec.rebuild_on_change
             and await self._book.drifted(spec, app_state)
         ):
-            await self._take_down(spec, app_state, returning=True)
+            await self._rebuild(spec, app_state)
             active = is_active(spec, self._capabilities, app_state)
         if active:
             return _Outcome.NONE
@@ -349,8 +375,14 @@ class SubsystemReconciler:
         Returns:
             ``ACTIVATED`` when it came up, ``NONE`` otherwise.
         """
+        declared: str | None = None
         try:
             await spec.activate(app_state)
+        except SubsystemDeclinedError as exc:
+            # Not a failure: the subsystem is deliberately not up and has
+            # said why. Carried to the decline branch below so the reason
+            # reaches the status surface instead of being guessed at.
+            declared = exc.reason
         except Exception as exc:  # noqa: BLE001 -- recorded, surfaced, retried
             reraise_critical(exc)
             detail = safe_error_description(exc)
@@ -364,7 +396,7 @@ class SubsystemReconciler:
             )
             return _Outcome.NONE
         self._book.failures.pop(spec.name, None)
-        if not is_active(spec, self._capabilities, app_state):
+        if declared is not None or not is_active(spec, self._capabilities, app_state):
             # Activation returned without installing its capability. Its own
             # internal gate declined for a reason the declaration does not
             # model, so leave it alone and let the next pass try again.
@@ -374,14 +406,77 @@ class SubsystemReconciler:
             # Logged on the transition only: a subsystem an operator has
             # switched off declines on every pass, and a warning per pass
             # would bury the one that matters.
+            reason = declared or await self._decline_reason(spec, app_state)
             if spec.name not in self._book.declined:
-                logger.warning(SUBSYSTEM_ACTIVATION_DECLINED, subsystem=spec.name)
+                logger.warning(
+                    SUBSYSTEM_ACTIVATION_DECLINED, subsystem=spec.name, detail=reason
+                )
             self._book.declined.add(spec.name)
+            self._book.decline_reasons[spec.name] = reason
             await self._book.record_attempt(spec, app_state)
             return _Outcome.NONE
         await self._book.record_activation(spec, app_state)
         logger.info(SUBSYSTEM_ACTIVATED, subsystem=spec.name)
         return _Outcome.ACTIVATED
+
+    async def _decline_reason(self, spec: SubsystemSpec, app_state: AppState) -> str:
+        """Name what an activation most likely declined on.
+
+        Every declared dependency was present, so there is nothing in the
+        graph to point at. What the declarations DO expose is the settings
+        the activation reads: a blank one is the shape behind nearly every
+        decline in this tree (memory with no embedder chosen, a feature whose
+        model an operator has not named). Reported as the likely reason, not
+        a certainty, because the condition itself lives inside the
+        activation, which is why an activation that knows better raises
+        :class:`SubsystemDeclinedError` and is believed over this guess.
+
+        Never ``None``. A subsystem reported BLOCKED with no detail leaves an
+        operator with nowhere to look, which is the whole reason this exists;
+        when the declarations say nothing, saying so IS the reason, and it
+        points at the one place the condition can be.
+
+        Args:
+            spec: The subsystem that declined.
+            app_state: Application state the resolver reads.
+
+        Returns:
+            A message naming the blank declared settings, or a message saying
+            the activation declined on a condition it does not declare.
+        """
+        undeclared = (
+            "declined on a condition it does not declare; see the "
+            f"{spec.name} wiring log for the branch it returned on"
+        )
+        if not spec.settings:
+            return undeclared
+        readings = await settings_fingerprint(spec.settings, app_state)
+        blank = [
+            key
+            for key, value in zip(spec.settings, readings, strict=True)
+            if value is not None and not value.strip()
+        ]
+        if not blank:
+            return undeclared
+        return f"unset: {', '.join(blank)}"
+
+    async def _rebuild(self, spec: SubsystemSpec, app_state: AppState) -> None:
+        """Take a subsystem and its captors down, marked as coming back.
+
+        The mark is what a concurrent ``GET /subsystems`` reads: without it
+        the window between teardown and re-activation reports ``WAITING`` with
+        an empty ``waiting_on``, which claims the shape for "these capabilities
+        are missing" while naming none of them.
+
+        Args:
+            spec: The subsystem being replaced.
+            app_state: Application state the teardown reads.
+        """
+        self._rebuilding |= {spec.name} | {
+            follower.name
+            for follower in self._followers(spec, app_state, returning=True)
+        }
+        await self._take_down(spec, app_state, returning=True)
 
     async def _take_down(
         self, spec: SubsystemSpec, app_state: AppState, *, returning: bool
@@ -503,6 +598,8 @@ class SubsystemReconciler:
         """
         if not self._enabled(spec, app_state):
             return SubsystemStatus(name=spec.name, phase=SubsystemPhase.DISABLED)
+        if spec.name in self._rebuilding:
+            return SubsystemStatus(name=spec.name, phase=SubsystemPhase.REBUILDING)
         # Ahead of the liveness read: a subsystem whose requirement went away
         # still provides its own capability until its teardown runs, so
         # reading liveness first would report it ACTIVE while it serves from
@@ -512,11 +609,7 @@ class SubsystemReconciler:
         missing = missing_capabilities(spec, self._capabilities, app_state)
         active = is_active(spec, self._capabilities, app_state)
         if missing:
-            return SubsystemStatus(
-                name=spec.name,
-                phase=SubsystemPhase.DEGRADED if active else SubsystemPhase.WAITING,
-                waiting_on=missing,
-            )
+            return self._blocked_or_waiting(spec, app_state, missing, active=active)
         if active:
             return SubsystemStatus(name=spec.name, phase=SubsystemPhase.ACTIVE)
         failure = self._book.failures.get(spec.name)
@@ -525,5 +618,73 @@ class SubsystemReconciler:
                 name=spec.name, phase=SubsystemPhase.FAILED, detail=failure
             )
         if spec.name in self._book.declined:
-            return SubsystemStatus(name=spec.name, phase=SubsystemPhase.BLOCKED)
+            return SubsystemStatus(
+                name=spec.name,
+                phase=SubsystemPhase.BLOCKED,
+                detail=self._book.decline_reasons.get(spec.name),
+            )
         return SubsystemStatus(name=spec.name, phase=SubsystemPhase.WAITING)
+
+    def _blocked_or_waiting(
+        self,
+        spec: SubsystemSpec,
+        app_state: AppState,
+        missing: tuple[CapabilityId, ...],
+        *,
+        active: bool,
+    ) -> SubsystemStatus:
+        """Classify a subsystem that is missing a requirement.
+
+        Args:
+            spec: The subsystem to classify.
+            app_state: Application state the checks read.
+            missing: The capabilities it needs and does not have.
+            active: Whether it is nonetheless up.
+
+        Returns:
+            ``DEGRADED`` when it is up regardless, ``UNREACHABLE`` when a
+            missing requirement is one that waiting alone will not supply,
+            else the ordinary ``WAITING``.
+        """
+        if active:
+            return SubsystemStatus(
+                name=spec.name, phase=SubsystemPhase.DEGRADED, waiting_on=missing
+            )
+        stuck = self._never_coming(missing, app_state)
+        if stuck:
+            return SubsystemStatus(
+                name=spec.name,
+                phase=SubsystemPhase.UNREACHABLE,
+                waiting_on=missing,
+                detail=f"will not arrive: {', '.join(sorted(stuck))}",
+            )
+        return SubsystemStatus(
+            name=spec.name, phase=SubsystemPhase.WAITING, waiting_on=missing
+        )
+
+    def _never_coming(
+        self, missing: tuple[CapabilityId, ...], app_state: AppState
+    ) -> tuple[str, ...]:
+        """Return the owners of *missing* that another pass alone will not fix.
+
+        A dependency an operator switched off, or one that declined on its own
+        condition, is not late: every pass reaches the same verdict until
+        something changes. Naming it is the difference between an operator
+        with a setting to change and one watching a subsystem wait. Re-derived
+        per pass, so it clears itself the moment the owner comes up.
+
+        Args:
+            missing: The capabilities the consumer needs.
+            app_state: Application state the checks read.
+
+        Returns:
+            The names of the owning subsystems that need a change, not time.
+        """
+        stuck: list[str] = []
+        for capability in missing:
+            owner = self._owners.get(capability)
+            if owner is None:
+                continue
+            if not self._enabled(owner, app_state) or owner.name in self._book.declined:
+                stuck.append(owner.name)
+        return tuple(stuck)

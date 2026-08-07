@@ -19,6 +19,7 @@ from litestar.channels import ChannelsPlugin
 from litestar.types import Middleware
 
 from synthorg.api._comms_conflict_wiring import wire_conflict_resolution_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
     _build_performance_tracker,
@@ -34,7 +35,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auto_wire import auto_wire_meetings, auto_wire_phase1
 from synthorg.api.boot_persistence import BootPersistence
 from synthorg.api.bus_bridge import MessageBusBridge
-from synthorg.api.channels import create_channels_plugin
+from synthorg.api.channels import create_channels_plugin, make_plan_notifier
 from synthorg.api.config import ApiConfig
 from synthorg.api.construction_wiring import ConstructionDeps, run_construction_wiring
 from synthorg.api.cursor import CursorSecret
@@ -44,6 +45,7 @@ from synthorg.api.integrations_wiring import (
     auto_wire_integrations,
     wire_rate_limit_coordinator_factory,
 )
+from synthorg.api.lifecycle_helpers.binary_preflight import run_binary_preflight
 from synthorg.api.lifecycle_helpers.boot_resolvers import (
     build_default_approval_timeout_scheduler,
     resolve_budget_int,
@@ -316,8 +318,18 @@ def build_construction_services(
 
     Raises:
         RuntimeError: When the pagination cursor secret is ephemeral.
+        RequiredBinaryMissingError: When the image omits a binary the
+            backend shells out to on a critical path.
     """
     persistence = boot.persistence
+
+    # Before anything is wired: an image missing a binary the backend spawns
+    # would otherwise boot cleanly and fail at the moment the feature is used,
+    # which for git is every single dispatch. With no backend resolved yet,
+    # only the backend-independent binaries are demanded.
+    run_binary_preflight(
+        backend_name="" if persistence is None else str(persistence.backend_name)
+    )
 
     # ── Construction-time auto-wire: services that don't need connected
     # persistence ──
@@ -516,6 +528,12 @@ def build_construction_services(
     app_state.wire(
         CockpitStateSlice,
         steering_notifier=make_steering_notifier(channels_plugin),
+    )
+    # Parked for the same reason: the plan-review gate fills and parks a plan
+    # from a background spine, so it has no request to resolve a plugin from.
+    app_state.wire(
+        ApiCoreStateSlice,
+        plan_notifier=make_plan_notifier(channels_plugin, clock=boot_clock),
     )
 
     # Compose the config resolver + management / org-mutation / audit / preset

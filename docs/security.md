@@ -140,6 +140,33 @@ token is brokered from the connection catalog at send time.
   The Slack sink posts via ``chat.postMessage`` with egress pinned to
   ``slack.com`` by the chat client factory.
 
+### Outbound TLS trust
+
+Two transports dial out and neither reads the other's configuration: the git
+child processes (workspace backends, docs engine, agent git tools) and the
+httpx clients (forge, chat, deploy, health, A2A). The git hardening in
+``core/git_env.py`` deliberately cuts the host's own git configuration out of
+the first, which is what stops an operator's ``insteadOf`` rewrite redirecting
+a clone, and that necessarily takes the host's TLS trust with it. So trust is
+configured in the product instead, once, and both transports read it from
+``core/tls_trust.py``:
+
+| Setting | Effect |
+|---------|--------|
+| ``security.tls_ca_bundle`` | Path to a CA bundle trusted **in addition** to the system trust store. This is the supported way to reach a self-hosted forge behind an internal CA. Blank uses the system store alone. |
+| ``security.tls_verify`` | Whether certificates are verified at all. ``true`` by default; ``true -> false`` is a security-weakening write and routes through the confirm+reason+actor guardrail in ``settings/write_governance.py``. |
+
+Additional rather than replacing: a private CA is normally one issuer alongside
+the public roots, so naming one must not silently stop trusting everything
+else. Verification-off is deliberately available because self-signed hosts are
+real and an operator will otherwise reach for something worse, but it trusts
+any certificate presented to the product and ``tls_ca_bundle`` is the answer
+that does not.
+
+Both are live: a settings subscriber replaces the process-wide snapshot on
+write, so the next git command and the next API call use the new value with no
+restart.
+
 ### Frontend Security
 
 The React dashboard enforces several measures to reduce the client-side attack

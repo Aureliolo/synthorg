@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { listPlans } from '@/api/endpoints/plans'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
@@ -108,6 +108,41 @@ describe('usePlansStore', () => {
     })
   })
 
+  describe('deletePlan', () => {
+    it('drops the plan from the list and the open detail', async () => {
+      const plan = makePlan('plan-1')
+      usePlansStore.setState({
+        plans: [plan, makePlan('plan-2')],
+        selectedPlan: plan,
+      })
+      server.use(
+        http.delete('/api/v1/plans/:id', () => new HttpResponse(null, { status: 204 })),
+      )
+
+      const removed = await usePlansStore.getState().deletePlan('plan-1')
+
+      expect(removed).toBe(true)
+      expect(usePlansStore.getState().plans.map((p) => p.id)).toEqual(['plan-2'])
+      expect(usePlansStore.getState().selectedPlan).toBeNull()
+    })
+
+    it('keeps the plan when the API refuses the delete', async () => {
+      const plan = makePlan('plan-1', { status: 'executing' })
+      usePlansStore.setState({ plans: [plan], selectedPlan: plan })
+      server.use(
+        http.delete('/api/v1/plans/:id', () =>
+          HttpResponse.json(apiError('Plan is dispatched'), { status: 409 }),
+        ),
+      )
+
+      const removed = await usePlansStore.getState().deletePlan('plan-1')
+
+      expect(removed).toBe(false)
+      expect(usePlansStore.getState().plans).toEqual([plan])
+      expect(usePlansStore.getState().selectedPlan).toEqual(plan)
+    })
+  })
+
   describe('requestPlanChanges', () => {
     it('drafts the plan and returns it', async () => {
       const drafted = makePlan('plan-1', { status: 'draft' })
@@ -125,6 +160,40 @@ describe('usePlansStore', () => {
         .requestPlanChanges('plan-1', 'please revise')
       expect(result?.status).toBe('draft')
       expect(usePlansStore.getState().selectedPlan?.status).toBe('draft')
+    })
+  })
+
+  describe('updateFromWsEvent', () => {
+    it('refreshes the open plan when a replan retires it', async () => {
+      // The event names the successor, so `plan_id` is an id this viewer
+      // does not hold; `supersedes` is the only one that reaches them.
+      const retired = makePlan('plan-1')
+      const superseded = makePlan('plan-1', { status: 'superseded' })
+      usePlansStore.setState({ plans: [retired], selectedPlan: retired })
+      server.use(
+        http.get('/api/v1/plans/plan-1', () => HttpResponse.json(apiSuccess(superseded))),
+        http.get('/api/v1/plans', () =>
+          HttpResponse.json(
+            paginatedFor<typeof listPlans>({
+              data: [superseded],
+              limit: 200,
+              nextCursor: null,
+              hasMore: false,
+              pagination: { limit: 200, next_cursor: null, has_more: false },
+            }),
+          ),
+        ),
+      )
+
+      usePlansStore.getState().updateFromWsEvent({
+        event_type: 'plan.updated',
+        channel: 'plans',
+        timestamp: '2026-01-01T00:00:00Z',
+        payload: { plan_id: 'plan-2', version: 1, status: 'draft', supersedes: 'plan-1' },
+      })
+      await vi.waitFor(() =>
+        expect(usePlansStore.getState().selectedPlan?.status).toBe('superseded'),
+      )
     })
   })
 })

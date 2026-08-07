@@ -576,16 +576,23 @@ class TestCentralizedWorkspaceFailure:
     """CentralizedDispatcher workspace setup failure tests."""
 
     @pytest.mark.unit
-    async def test_workspace_setup_failure_returns_early(self) -> None:
-        """CentralizedDispatcher returns early when workspace setup fails."""
+    async def test_workspace_setup_failure_still_runs_the_waves(self) -> None:
+        """Best-effort isolation that fails runs unisolated, not not-at-all.
+
+        Returning an empty result reads upstream as "dispatched nothing,
+        successfully": the rollup sees subtasks that never ran, no wave
+        carries the error, and the coordination-metrics collector finds no
+        result to collect, so a whole team run vanishes behind a warning.
+        """
         sub_a = make_subtask("sub-a")
         decomp = make_decomposition((sub_a,))
         routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         ws_service = AsyncMock()
         ws_service.setup_group.side_effect = RuntimeError("setup failed")
 
-        executor = _mock_executor()
+        executor = _mock_executor([make_exec_result("wave-0", [("sub-a", agent_id)])])
 
         dispatcher = _centralized()
         result = await dispatcher.dispatch(
@@ -596,11 +603,13 @@ class TestCentralizedWorkspaceFailure:
             config=CoordinationConfig(),
         )
 
-        assert len(result.phases) == 1
-        assert result.phases[0].phase == "workspace_setup"
-        assert not result.phases[0].success
-        executor.execute_group.assert_not_called()
-        assert len(result.waves) == 0
+        setup = next(p for p in result.phases if p.phase == "workspace_setup")
+        assert not setup.success
+        executor.execute_group.assert_called_once()
+        assert len(result.waves) == 1
+        # Nothing was provisioned, so nothing may be merged back.
+        assert result.workspaces == ()
+        ws_service.merge_group.assert_not_called()
 
 
 class TestContextDependentFailFast:
@@ -704,11 +713,18 @@ class TestDecentralizedWorkspaceSetupFailure:
     """DecentralizedDispatcher workspace setup failure tests."""
 
     @pytest.mark.unit
-    async def test_workspace_setup_failure_returns_early(self) -> None:
-        """DecentralizedDispatcher returns early on workspace setup failure."""
+    async def test_workspace_setup_failure_raises(self) -> None:
+        """Mandatory isolation that failed is a dispatch failure.
+
+        It is the same precondition the missing-service check enforces,
+        and it has to report the same way: an empty result would hand the
+        caller a dispatch that looks merely empty.
+        """
         sub_a = make_subtask("sub-a")
         decomp = make_decomposition((sub_a,))
         routing = make_routing([("sub-a", "alice")])
+
+        from synthorg.engine.errors import CoordinationError
 
         ws_service = AsyncMock()
         ws_service.setup_group.side_effect = RuntimeError("setup failed")
@@ -716,19 +732,19 @@ class TestDecentralizedWorkspaceSetupFailure:
         executor = _mock_executor()
 
         dispatcher = _decentralized()
-        result = await dispatcher.dispatch(
-            decomposition_result=decomp,
-            routing_result=routing,
-            parallel_executor=executor,
-            workspace_service=ws_service,
-            config=CoordinationConfig(),
-        )
+        # Matched on wording unique to this path: "workspace isolation"
+        # alone also matches the missing-service precondition beside it,
+        # so a regression routing here to that branch would still pass.
+        with pytest.raises(CoordinationError, match="its setup failed"):
+            await dispatcher.dispatch(
+                decomposition_result=decomp,
+                routing_result=routing,
+                parallel_executor=executor,
+                workspace_service=ws_service,
+                config=CoordinationConfig(),
+            )
 
-        assert len(result.phases) == 1
-        assert result.phases[0].phase == "workspace_setup"
-        assert not result.phases[0].success
         executor.execute_group.assert_not_called()
-        assert len(result.waves) == 0
 
 
 class TestExecuteWavesExceptionContinuation:

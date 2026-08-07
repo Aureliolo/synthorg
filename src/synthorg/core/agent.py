@@ -12,7 +12,12 @@ from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
 from synthorg.core.tool_constraints import ToolAccessLevel, ToolSubConstraints
-from synthorg.core.types import MODEL_TIER_LADDER, ModelTier, NotBlankStr
+from synthorg.core.types import (
+    MODEL_TIER_LADDER,
+    ModelTier,
+    NotBlankStr,
+    PersonaLabelStr,
+)
 from synthorg.hr.enums import (
     AgentStatus,
     CollaborationPreference,
@@ -502,9 +507,15 @@ class AgentIdentity(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4, description="Unique agent identifier")
-    name: NotBlankStr = Field(description="Agent display name")
-    role: NotBlankStr = Field(description="Role name")
-    department: NotBlankStr = Field(description="Department name")
+    # Persona labels, not plain non-blank strings: all three are rendered
+    # into the trusted region of a prompt (the persona, the router's
+    # candidate list, the decomposition roster), so they are flattened to
+    # one line with angle brackets stripped at construction. The render
+    # sites flatten again; this stops the value existing in that shape at
+    # all.
+    name: PersonaLabelStr = Field(description="Agent display name")
+    role: PersonaLabelStr = Field(description="Role name")
+    department: PersonaLabelStr = Field(description="Department name")
     personality: PersonalityConfig = Field(
         default_factory=PersonalityConfig,
         description="Personality configuration",

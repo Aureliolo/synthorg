@@ -8,6 +8,8 @@ per connection-open. The startup application of the same settings lives in
 ``_apply_ws_dos_settings``; this subscriber is the hot-reload counterpart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -85,7 +87,34 @@ class WsAuthLimitsSettingsSubscriber:
         else:
             limits.set_auth_revalidate_max_failures(value)
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed value to ``WsAuthLimits``.
+
+        Each pair drives its own setter, so one that fails says nothing
+        about the rest: the loop runs to the end and a non-critical
+        failure is raised after it. Stopping at the first would leave the
+        later limits persisted and not live until an unrelated write, and
+        the dispatcher records one failure per subscriber call either way.
+        A critical error still aborts on the spot.
+
+        Args:
+            changes: The watched writes to apply.
+
+        Raises:
+            Exception: The first non-critical per-pair failure, re-raised
+                once every pair has been attempted.
+        """
+        deferred: Exception | None = None
+        for namespace, key in changes:
+            try:
+                await self._apply_change(namespace, key)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                deferred = deferred or exc
+        if deferred is not None:
+            raise deferred
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the new value and apply it to ``WsAuthLimits``."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

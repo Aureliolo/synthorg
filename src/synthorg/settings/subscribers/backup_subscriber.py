@@ -1,5 +1,7 @@
 """Backup settings subscriber -- react to backup setting changes."""
 
+from collections.abc import Sequence
+
 from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
@@ -65,9 +67,18 @@ class BackupSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
+        """Handle each backup setting change.
+
+        Args:
+            changes: The watched writes to apply. Each key drives a different
+                action, so the batch is applied one key at a time.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Handle a backup setting change.
 
         ``enabled`` toggles the scheduler. ``schedule_hours`` updates

@@ -73,6 +73,7 @@ class StubWorkPipeline:
         continue_error: Exception | None = None,
     ) -> None:
         self.calls: list[WorkItem] = []
+        self.tasks: list[Task] = []
         self.continue_calls: list[tuple[WorkItem, Task]] = []
         self.intake_error = intake_error
         self.continue_error = continue_error
@@ -91,7 +92,12 @@ class StubWorkPipeline:
         self.calls.append(work_item)
         if self.intake_error is not None:
             raise self.intake_error
-        return task_from_work_item(work_item)
+        task = task_from_work_item(work_item)
+        # Retained so a test can stand a task repository on what intake
+        # actually filed, rather than on a second, unrelated fixture that
+        # can silently disagree with it.
+        self.tasks.append(task)
+        return task
 
     async def continue_from_intake(
         self, work_item: WorkItem, task: Task
@@ -104,7 +110,7 @@ class StubWorkPipeline:
     def attach_narrator(self, narrator: RunNarrator | None) -> None:
         self.narrator = narrator
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
         self.refinement_router = router
 
     def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:

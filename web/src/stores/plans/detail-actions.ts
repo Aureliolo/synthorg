@@ -1,4 +1,5 @@
 import {
+  deletePlan as deletePlanApi,
   editPlan as editPlanApi,
   getPlan,
   requestPlanChanges as requestPlanChangesApi,
@@ -92,10 +93,35 @@ async function requestPlanChangesImpl(
   }
 }
 
+async function deletePlanImpl(set: PlansSet, id: string): Promise<boolean> {
+  try {
+    await deletePlanApi(id)
+    // Dropped locally as well as over the WS event, so the row goes on the
+    // click that removed it rather than on the round trip back.
+    nextDetailRequestToken()
+    set((state) => ({
+      plans: state.plans.filter((p) => p.id !== id),
+      selectedPlan: state.selectedPlan?.id === id ? null : state.selectedPlan,
+      detailLoading: false,
+    }))
+    useToastStore.getState().add({ variant: 'success', title: 'Plan deleted' })
+    return true
+  } catch (err) {
+    log.error('Delete plan failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to delete plan'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
 export function createDetailActions(set: PlansSet) {
   return {
     fetchPlanDetail: (id: string) => fetchPlanDetailImpl(set, id),
     editPlan: (id: string, data: EditPlanRequest) => editPlanImpl(set, id, data),
+    deletePlan: (id: string) => deletePlanImpl(set, id),
     requestPlanChanges: (id: string, note: string) =>
       requestPlanChangesImpl(set, id, note),
   }

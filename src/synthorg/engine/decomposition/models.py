@@ -5,17 +5,18 @@ results, status rollups, and decomposition context.
 """
 
 from collections import Counter
+from collections.abc import Sequence
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.plan import (
-    PlanOption,
+from synthorg.core.plan import PlanOption
+from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_validation import (
     validate_decision_options,
     validate_expected_artifacts,
 )
-from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -24,7 +25,7 @@ from synthorg.core.task_enums import (
     TaskStatus,
     TaskStructure,
 )
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, PersonaLabelStr
 
 
 class SubtaskDefinition(BaseModel):
@@ -388,6 +389,23 @@ class SubtaskStatusRollup(BaseModel):
         return TaskStatus.IN_PROGRESS
 
 
+def roster_from_agents(agents: Sequence[AgentIdentity]) -> tuple[NotBlankStr, ...]:
+    """Return the distinct roles a set of agents staffs, in a stable order.
+
+    Derived from the agents themselves rather than from the role catalogue: a
+    role nobody holds cannot own a plan item any more than an invented one
+    can, so the planner is offered what can actually be dispatched to.
+
+    Args:
+        agents: The agents available to the plan.
+
+    Returns:
+        Each role once, sorted, so the prompt and the schema enum are stable
+        across runs and a fingerprint test can pin them.
+    """
+    return tuple(sorted({agent.role for agent in agents}))
+
+
 class DecompositionContext(BaseModel):
     """Configuration context for a decomposition operation.
 
@@ -399,6 +417,15 @@ class DecompositionContext(BaseModel):
             or ``None`` when the initiative is unowned. An agent-session
             decomposition strategy plans AS this owner (its persona, tools,
             and memory); a single-shot strategy ignores it.
+        available_roles: The roles the org actually staffs, so the planner
+            selects an owner rather than inventing one. Empty means "no
+            roster known", which leaves the owner a free string and skips the
+            check: an org with no agents has nothing to validate against.
+            Typed as persona labels rather than plain non-blank strings: a
+            role name is operator-authored, and these go into the SYSTEM
+            prompt and the tool schema, where a newline or an angle bracket
+            would be a forged instruction line or a forged content fence
+            rather than a funny-looking job title.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -421,4 +448,8 @@ class DecompositionContext(BaseModel):
     owner_identity: AgentIdentity | None = Field(
         default=None,
         description="Accountable owner the planning agent-session runs as",
+    )
+    available_roles: tuple[PersonaLabelStr, ...] = Field(
+        default=(),
+        description="Roles the org staffs, which an owner must be drawn from",
     )

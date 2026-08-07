@@ -6,7 +6,7 @@ Follows the same polling-loop pattern as
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Final, NamedTuple
 
 from synthorg.communication.bus_protocol import MessageBus
@@ -17,6 +17,7 @@ from synthorg.communication.errors import (
     CommunicationError,
 )
 from synthorg.communication.message import Message
+from synthorg.communication.subscription import DeliveryEnvelope
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -36,12 +37,22 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.settings.dispatcher_config import DispatcherConfigReader
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from synthorg.settings.subscriber import SettingsSubscriber
+from synthorg.settings.subscriber import (
+    SettingChange,
+    SettingsSubscriber,
+    describe_changes,
+)
 
 logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__settings_dispatcher__"
 _SETTINGS_CHANNEL: Final[str] = "#settings"
+
+# Ceiling on one coalesced batch. Bulk paths (a template pack, posture
+# seeding) can publish far more writes than a form, and holding them all for
+# one dispatch would trade the per-key rebuild storm for a single unbounded
+# one. Past this the batch dispatches and the remainder opens the next.
+_MAX_COALESCED_WRITES: Final[int] = 64
 
 
 class _ChangeMetadata(NamedTuple):
@@ -587,8 +598,10 @@ class SettingsChangeDispatcher:
                 )
                 if envelope is None:
                     continue
-                await self._dispatch(envelope.message)
-                await envelope.ack()
+                batch = await self._drain(envelope)
+                await self._dispatch(batch)
+                for delivered in batch:
+                    await delivered.ack()
                 # Reset the streak only after both dispatch and ack
                 # succeed; a pre-ack reset lets a repeating ack
                 # failure bypass ``max_errors`` indefinitely.
@@ -619,24 +632,65 @@ class SettingsChangeDispatcher:
                 log_exception_redacted(logger, SETTINGS_DISPATCHER_CHANNEL_DEAD, exc)
                 break
 
-    async def _dispatch(self, message: Message) -> None:
-        """Route a single settings change to matching subscribers."""
-        meta = _extract_metadata(message)
-        if meta is None:
+    async def _drain(self, first: DeliveryEnvelope) -> list[DeliveryEnvelope]:
+        """Collect the writes that arrived alongside *first*.
+
+        A settings form save publishes one message per field, and the write
+        that matters to a subscriber is the whole form, not each field: served
+        one at a time, a subsystem is torn down and rebuilt once per field
+        while the org is trying to answer. Coalescing has to happen here
+        because this loop is the only place the messages are ever
+        simultaneously in hand: it receives, dispatches and acks strictly in
+        sequence, so a subscriber can never see two writes at once no matter
+        what it does internally.
+
+        The window runs from *first* rather than resetting per message, so a
+        steady stream of writes delays dispatch by at most one window instead
+        of holding it open indefinitely.
+
+        Args:
+            first: The envelope that opened this batch.
+
+        Returns:
+            *first* followed by every further envelope that arrived inside the
+            coalesce window.
+        """
+        batch = [first]
+        window = await self._config.coalesce_window()
+        if window <= 0:
+            return batch
+        deadline = asyncio.get_running_loop().time() + window
+        while len(batch) < _MAX_COALESCED_WRITES:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            nxt = await self._bus.receive(
+                _SETTINGS_CHANNEL,
+                _SUBSCRIBER_ID,
+                timeout=remaining,
+            )
+            if nxt is None:
+                break
+            batch.append(nxt)
+        return batch
+
+    async def _dispatch(self, batch: Sequence[DeliveryEnvelope]) -> None:
+        """Route one batch of settings changes to matching subscribers."""
+        changes = _extract_changes(batch)
+        if not changes:
             return
 
-        namespace, key = meta
-
         for subscriber in self._subscribers:
+            watched = [pair for pair in changes if pair in subscriber.watched_keys]
+            if not watched:
+                continue
             try:
-                if (namespace, key) not in subscriber.watched_keys:
-                    continue
-                await subscriber.on_settings_changed(namespace, key)
+                await subscriber.on_settings_changed(watched)
                 logger.info(
                     SETTINGS_SUBSCRIBER_NOTIFIED,
                     subscriber=subscriber.subscriber_name,
-                    namespace=namespace,
-                    key=key,
+                    writes=len(watched),
+                    changes=describe_changes(watched),
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
@@ -645,9 +699,29 @@ class SettingsChangeDispatcher:
                     SETTINGS_SUBSCRIBER_ERROR,
                     exc,
                     subscriber=getattr(subscriber, "subscriber_name", "unknown"),
-                    namespace=namespace,
-                    key=key,
+                    changes=describe_changes(watched),
                 )
+
+
+def _extract_changes(
+    batch: Sequence[DeliveryEnvelope],
+) -> list[SettingChange]:
+    """Reduce a drained batch to the ordered, deduplicated pairs it carries.
+
+    Args:
+        batch: The envelopes drained for one dispatch.
+
+    Returns:
+        Every readable ``(namespace, key)`` in publication order, with a key
+        written twice inside the window appearing once: two writes to one key
+        need one reaction, and the later value is the one a subscriber reads.
+    """
+    pairs: list[SettingChange] = [
+        (meta.namespace, meta.key)
+        for meta in (_extract_metadata(envelope.message) for envelope in batch)
+        if meta is not None
+    ]
+    return list(dict.fromkeys(pairs))
 
 
 def _extract_metadata(

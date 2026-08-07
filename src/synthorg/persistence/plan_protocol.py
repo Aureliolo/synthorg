@@ -34,6 +34,10 @@ class PlanFilterSpec(BaseModel):
         default=None,
         description="Filter by the charter/objective the plan serves",
     )
+    parent_task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Filter by the objective task the plan decomposes",
+    )
 
 
 @runtime_checkable
@@ -142,8 +146,8 @@ class PlanRepository(
         """List plans matching the filter spec, ordered by id ascending.
 
         Args:
-            filter_spec: Optional ``status`` / ``project`` / ``objective_id``
-                filters.
+            filter_spec: Optional ``status`` / ``project`` /
+                ``objective_id`` / ``parent_task_id`` filters.
             limit: Maximum plans to return.
             offset: Rows to skip from the head of the ordering.
 

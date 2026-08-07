@@ -71,7 +71,7 @@ class TestRebuild:
         build = AsyncMock()
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("knowledge", "synthesis_model")
+        await sub.on_settings_changed([("knowledge", "synthesis_model")])
         build.assert_awaited_once()
         call = build.await_args
         assert call is not None
@@ -87,7 +87,7 @@ class TestRebuild:
         build = AsyncMock()
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("knowledge", "synthesis_model")
+        await sub.on_settings_changed([("knowledge", "synthesis_model")])
         build.assert_not_awaited()
 
     async def test_rebuild_failure_propagates(
@@ -98,7 +98,7 @@ class TestRebuild:
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("knowledge", "synthesis_max_chunks")
+            await sub.on_settings_changed([("knowledge", "synthesis_max_chunks")])
 
     async def test_memory_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
@@ -108,4 +108,4 @@ class TestRebuild:
         monkeypatch.setattr(_WIRE_TARGET, build)
         sub = _make_subscriber(state)
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("knowledge", "synthesis_model")
+            await sub.on_settings_changed([("knowledge", "synthesis_model")])

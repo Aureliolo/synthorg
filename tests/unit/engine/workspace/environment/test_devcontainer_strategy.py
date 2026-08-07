@@ -16,7 +16,10 @@ from synthorg.engine.errors import (
 from synthorg.engine.workspace.environment.devcontainer import (
     DevcontainerEnvironmentStrategy,
 )
-from synthorg.engine.workspace.environment.image_builder import BuildOutcome
+from synthorg.engine.workspace.environment.image_builder import (
+    BuildFailure,
+    BuildOutcome,
+)
 from synthorg.engine.workspace.environment.protocol import (
     CommandOutcome,
     EnvironmentStrategy,
@@ -30,9 +33,9 @@ _SUBPROCESS = NotBlankStr("subprocess")
 
 
 class _FakeBuilder:
-    def __init__(self, *, exit_code: int = 0) -> None:
+    def __init__(self, *, failure: BuildFailure | None = None) -> None:
         self.builds: list[NotBlankStr] = []
-        self._exit_code = exit_code
+        self._failure = failure
 
     async def build(
         self,
@@ -44,7 +47,7 @@ class _FakeBuilder:
     ) -> BuildOutcome:
         del dockerfile, context_dir, timeout
         self.builds.append(tag)
-        return BuildOutcome(tag=tag, exit_code=self._exit_code)
+        return BuildOutcome(tag=tag, failure=self._failure)
 
 
 class _SequenceBuilder:
@@ -168,7 +171,7 @@ class TestDevcontainerStrategy:
         (tmp_path / ".devcontainer" / "Dockerfile").write_text(
             "FROM x\n", encoding="utf-8"
         )
-        builder = _FakeBuilder(exit_code=1)
+        builder = _FakeBuilder(failure=BuildFailure.BUILD_FAILED)
 
         with pytest.raises(EnvironmentDockerBuildError):
             await _strategy(builder).provision(
@@ -253,8 +256,27 @@ class TestDevcontainerStrategy:
         # A timed-out build is transient: retry, then succeed.
         builder = _SequenceBuilder(
             [
-                BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True),
-                BuildOutcome(tag=NotBlankStr("t"), exit_code=0),
+                BuildOutcome(tag=NotBlankStr("t"), failure=BuildFailure.TIMED_OUT),
+                BuildOutcome(tag=NotBlankStr("t")),
+            ]
+        )
+        await self._provision_build(tmp_path, builder)
+        assert len(builder.builds) == 2
+
+    async def test_unreachable_daemon_retried_then_succeeds(
+        self, tmp_path: Path
+    ) -> None:
+        """A daemon blip is transient even though its log says nothing.
+
+        The build never ran, so there is no log to scan for a marker; the
+        failure kind is the only evidence there is.
+        """
+        builder = _SequenceBuilder(
+            [
+                BuildOutcome(
+                    tag=NotBlankStr("t"), failure=BuildFailure.DAEMON_UNAVAILABLE
+                ),
+                BuildOutcome(tag=NotBlankStr("t")),
             ]
         )
         await self._provision_build(tmp_path, builder)
@@ -265,19 +287,25 @@ class TestDevcontainerStrategy:
             [
                 BuildOutcome(
                     tag=NotBlankStr("t"),
-                    exit_code=1,
+                    failure=BuildFailure.BUILD_FAILED,
                     log="failed to pull: connection refused",
                 ),
-                BuildOutcome(tag=NotBlankStr("t"), exit_code=0),
+                BuildOutcome(tag=NotBlankStr("t")),
             ]
         )
         await self._provision_build(tmp_path, builder)
         assert len(builder.builds) == 2
 
     async def test_deterministic_failure_not_retried(self, tmp_path: Path) -> None:
-        # A plain non-zero exit with no transient marker is deterministic.
+        # A build the daemon ran and rejected, with no transient marker.
         builder = _SequenceBuilder(
-            [BuildOutcome(tag=NotBlankStr("t"), exit_code=1, log="invalid Dockerfile")]
+            [
+                BuildOutcome(
+                    tag=NotBlankStr("t"),
+                    failure=BuildFailure.BUILD_FAILED,
+                    log="invalid Dockerfile",
+                )
+            ]
         )
         with pytest.raises(EnvironmentDockerBuildError):
             await self._provision_build(tmp_path, builder)
@@ -285,18 +313,23 @@ class TestDevcontainerStrategy:
 
     async def test_transient_failure_exhausts_retries(self, tmp_path: Path) -> None:
         builder = _SequenceBuilder(
-            [BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True)]
+            [BuildOutcome(tag=NotBlankStr("t"), failure=BuildFailure.TIMED_OUT)]
         )
         with pytest.raises(EnvironmentDockerBuildError):
             await self._provision_build(tmp_path, builder)
         assert len(builder.builds) == 2  # build_max_attempts in _strategy
 
 
-class TestBuildOutcomeValidator:
-    def test_timed_out_requires_minus_one_exit(self) -> None:
-        with pytest.raises(ValueError, match="exit_code -1"):
-            BuildOutcome(tag=NotBlankStr("t"), exit_code=0, timed_out=True)
+class TestBuildOutcome:
+    def test_no_failure_is_success(self) -> None:
+        assert BuildOutcome(tag=NotBlankStr("t")).success is True
 
-    def test_timed_out_with_minus_one_ok(self) -> None:
-        outcome = BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True)
-        assert outcome.success is False
+    @pytest.mark.parametrize("failure", list(BuildFailure))
+    def test_every_failure_kind_is_unsuccessful(self, failure: BuildFailure) -> None:
+        """No failure kind can be mistaken for a built image.
+
+        The shape this replaces used ``exit_code=-1`` for both a timeout
+        and a build that never spawned, so the two were indistinguishable
+        downstream.
+        """
+        assert BuildOutcome(tag=NotBlankStr("t"), failure=failure).success is False

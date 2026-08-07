@@ -1,8 +1,13 @@
 name: 'Smoke-test backend container image'
 description: |
-  Run a backend container image, verify it serves a 200 response on its
-  API liveness endpoint, and fail if it took long enough to erode the
-  health budget the image ships. Catches:
+  Run a backend container image, verify it carries the external binaries
+  the backend spawns, verify it serves a 200 response on its API
+  liveness endpoint, and fail if it took long enough to erode the health
+  budget the image ships. Catches:
+    - an image missing a binary the product shells out to, which boots
+      cleanly and fails at the moment the feature is used (for `git`,
+      that is every dispatch: workspace provisioning is on the critical
+      path and no test on a developer machine can see its absence)
     - image builds green but crashes at startup (missing migration,
       env mismatch, library regression, broken entrypoint)
     - 404 on the wrong probe URL (e.g. `/healthz` vs the actual
@@ -97,6 +102,27 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Verify the image carries the binaries the backend spawns
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+
+        # Runs the shipped preflight against the shipped image, so the
+        # manifest is the single source and a new record is covered with
+        # no change here. `postgres` because it is the superset: a
+        # SQLite boot never demands pg_dump / pg_restore, so the
+        # liveness probe below cannot catch their absence.
+        #
+        # Deliberately before the probe: a missing binary aborts the boot
+        # by design, and reported here it names the binary and the apko
+        # package that provides it, rather than surfacing as an
+        # indistinguishable "did not return 200 in time".
+        docker run --rm "$IMAGE" /app/.venv/bin/python -c \
+          'from synthorg.api.lifecycle_helpers.binary_preflight import run_binary_preflight; run_binary_preflight(backend_name="postgres")'
+        echo "Every binary in the preflight manifest resolves inside $IMAGE"
+
     - name: Derive the boot deadline from the image's health budget
       id: budget
       shell: bash

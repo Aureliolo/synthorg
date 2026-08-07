@@ -30,6 +30,7 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionResult,
+    roster_from_agents,
 )
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
@@ -219,14 +220,18 @@ class DefaultWorkPipeline:
         """
         self._narrator = narrator
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
-        """Attach the under-specified-team-work refinement router.
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
+        """Attach (or clear) the under-specified-team-work refinement router.
 
         Late-bind seam: the router wraps the Chief-of-Staff proposer,
         which wires only after persistence and a provider are available,
         so it is attached to the already-built pipeline by the startup
         hook. Absent, team-bound work with no definition of done falls
         through to the coordinator, where the clarification gate blocks it.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        router down when the proposer it wraps is replaced: the router binds
+        that proposer at construction, so a stale one would keep refining
+        through the instance the operator's model change replaced.
         """
         self._refinement_router = router
 
@@ -493,16 +498,21 @@ class DefaultWorkPipeline:
 
         The owner rides on the ``DecompositionContext`` so an agent-session
         decomposition strategy plans AS the owner; a single-shot strategy
-        simply ignores it.
+        simply ignores it. The roster rides alongside so the planner selects
+        an owning role per item rather than inventing one nothing can be
+        dispatched to.
 
         Returns:
-            A :class:`CoordinationContext` carrying the owner on its
-            decomposition context.
+            A :class:`CoordinationContext` carrying the owner and the roster
+            on its decomposition context.
         """
         return CoordinationContext(
             task=task,
             available_agents=agents,
-            decomposition_context=DecompositionContext(owner_identity=owner),
+            decomposition_context=DecompositionContext(
+                owner_identity=owner,
+                available_roles=roster_from_agents(agents),
+            ),
         )
 
     async def _try_generate_narrative(self, work_item: WorkItem, task: Task) -> None:

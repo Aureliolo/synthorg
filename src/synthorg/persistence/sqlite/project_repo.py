@@ -26,6 +26,7 @@ from synthorg.observability.events.persistence.project import (
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.sqlite._shared import (
@@ -50,6 +51,8 @@ def _row_to_project(row: aiosqlite.Row) -> Project:
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
     data["team"] = tuple(json.loads(data["team"]))
+    data["created_at"] = coerce_row_timestamp(data["created_at"])
+    data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return Project.model_validate(data)
 
 
@@ -98,6 +101,8 @@ class SQLiteProjectRepository:
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
+            format_iso_utc(project.created_at),
+            format_iso_utc(project.updated_at),
         )
 
     async def create(self, project: Project) -> None:
@@ -115,8 +120,9 @@ class SQLiteProjectRepository:
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      plan_id, deadline, budget, status, autonomy_mode, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      plan_id, deadline, budget, status, autonomy_mode, version,
+                      created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._row_params(project),
                 )
                 await self._db.commit()
@@ -202,16 +208,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
+            format_iso_utc(project.updated_at),
             str(project.id),
         ]
         guard = ""
         if expected_version is not None:
             guard = " AND version=?"
             params.append(expected_version)
+        # created_at is not in the SET list: an edit does not change when the
+        # project was opened.
         query = (
             "UPDATE projects SET name=?, description=?, team=?, lead=?, "  # noqa: S608
-            "plan_id=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=? "
-            f"WHERE id=?{guard}"
+            "plan_id=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=?, "
+            f"updated_at=? WHERE id=?{guard}"
         )
         async with self._write_context():
             try:
@@ -274,8 +283,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      plan_id, deadline, budget, status, autonomy_mode, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      plan_id, deadline, budget, status, autonomy_mode, version,
+                      created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
@@ -286,7 +296,10 @@ ON CONFLICT(id) DO UPDATE SET
     budget=excluded.budget,
     status=excluded.status,
     autonomy_mode=excluded.autonomy_mode,
-    version=excluded.version""",
+    version=excluded.version,
+    -- created_at is deliberately absent: an upsert over an existing row
+    -- must not re-date when that project was opened.
+    updated_at=excluded.updated_at""",
                     self._row_params(project),
                 )
                 await self._db.commit()

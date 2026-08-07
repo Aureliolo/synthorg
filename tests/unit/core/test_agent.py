@@ -36,6 +36,10 @@ from .conftest import (
     ToolPermissionsFactory,
 )
 
+#: The persona-label fields flatten whitespace before the length check, so a
+#: whitespace-only value arrives at that check as the empty string.
+_EMPTY_LABEL = "at least 1 item after validation"
+
 # ── PersonalityConfig ──────────────────────────────────────────────
 
 
@@ -744,8 +748,8 @@ class TestAgentIdentity:
             )
 
     def test_whitespace_name_rejected(self, sample_model_config: ModelConfig) -> None:
-        """Reject whitespace-only name string."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        """A label that is empty once flattened is not a label."""
+        with pytest.raises(ValidationError, match=_EMPTY_LABEL):
             AgentIdentity(
                 name="   ",
                 role="Dev",
@@ -755,8 +759,8 @@ class TestAgentIdentity:
             )
 
     def test_whitespace_role_rejected(self, sample_model_config: ModelConfig) -> None:
-        """Reject whitespace-only role string."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        """A label that is empty once flattened is not a label."""
+        with pytest.raises(ValidationError, match=_EMPTY_LABEL):
             AgentIdentity(
                 name="Test",
                 role="   ",
@@ -768,8 +772,8 @@ class TestAgentIdentity:
     def test_whitespace_department_rejected(
         self, sample_model_config: ModelConfig
     ) -> None:
-        """Reject whitespace-only department string."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        """A label that is empty once flattened is not a label."""
+        with pytest.raises(ValidationError, match=_EMPTY_LABEL):
             AgentIdentity(
                 name="Test",
                 role="Dev",

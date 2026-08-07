@@ -380,6 +380,15 @@ async def _activate_chief_of_staff_chat(app_state: AppState) -> None:
     )
 
 
+async def _deactivate_chief_of_staff_chat(app_state: AppState) -> None:
+    """Take the Chief-of-Staff chat surface down."""
+    from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
+        _unwire_chief_of_staff_chat,
+    )
+
+    await _unwire_chief_of_staff_chat(app_state)
+
+
 async def _activate_chief_of_staff_proposer(app_state: AppState) -> None:
     """Wire the Chief-of-Staff proposer.
 
@@ -415,6 +424,61 @@ async def _activate_chief_of_staff_proposer(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def _deactivate_chief_of_staff_proposer(app_state: AppState) -> None:
+    """Take the Chief-of-Staff proposer and its role router down."""
+    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+        unwire_chief_of_staff_proposer,
+    )
+
+    await unwire_chief_of_staff_proposer(app_state)
+
+
+async def _activate_turn_intent_classifier(app_state: AppState) -> None:
+    """Wire the unified turn-intent classifier."""
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
+        wire_turn_intent_classifier,
+    )
+
+    await wire_turn_intent_classifier(
+        app_state,
+        provider_registry=_registry(app_state),
+        cost_tracker=_cost_tracker(app_state),
+        si_config=await _si_config(app_state),
+    )
+
+
+async def _deactivate_turn_intent_classifier(app_state: AppState) -> None:
+    """Take the turn-intent classifier down."""
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
+        unwire_turn_intent_classifier,
+    )
+
+    await unwire_turn_intent_classifier(app_state)
+
+
+async def _activate_multi_voice_router(app_state: AppState) -> None:
+    """Wire the multi-voice chime-in router."""
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
+        wire_multi_voice_router,
+    )
+
+    await wire_multi_voice_router(
+        app_state,
+        provider_registry=_registry(app_state),
+        cost_tracker=_cost_tracker(app_state),
+        si_config=await _si_config(app_state),
+    )
+
+
+async def _deactivate_multi_voice_router(app_state: AppState) -> None:
+    """Take the multi-voice router down."""
+    from synthorg.api.lifecycle_helpers.turn_routing_wiring import (  # noqa: PLC0415
+        unwire_multi_voice_router,
+    )
+
+    await unwire_multi_voice_router(app_state)
 
 
 async def _activate_conversational_actor(app_state: AppState) -> None:
@@ -581,6 +645,15 @@ async def _activate_refinement_router(app_state: AppState) -> None:
     await wire_refinement_router(app_state)
 
 
+async def _deactivate_refinement_router(app_state: AppState) -> None:
+    """Detach the refinement router from the work pipeline."""
+    from synthorg.api.lifecycle_helpers.refinement_wiring import (  # noqa: PLC0415
+        unwire_refinement_router,
+    )
+
+    await unwire_refinement_router(app_state)
+
+
 async def _activate_plan_review_gate(app_state: AppState) -> None:
     """Attach the human plan-approval gate to the work pipeline."""
     from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
@@ -610,6 +683,15 @@ async def _activate_plan_dispatcher(app_state: AppState) -> None:
     )
 
     await wire_conversational_plan_dispatcher(app_state)
+
+
+async def _deactivate_plan_dispatcher(app_state: AppState) -> None:
+    """Detach the conversational plan dispatcher from the proposer."""
+    from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
+        unwire_conversational_plan_dispatcher,
+    )
+
+    await unwire_conversational_plan_dispatcher(app_state)
 
 
 async def _activate_steering_service(app_state: AppState) -> None:
@@ -710,6 +792,15 @@ async def _activate_plan_item_reply(app_state: AppState) -> None:
         provider_registry=_registry(app_state),
         cost_tracker=_cost_tracker(app_state),
     )
+
+
+async def _deactivate_plan_item_reply(app_state: AppState) -> None:
+    """Take the conversational plan-item reply service down."""
+    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
+        unwire_plan_item_reply_service,
+    )
+
+    await unwire_plan_item_reply_service(app_state)
 
 
 async def _activate_analytics_collector(app_state: AppState) -> None:
@@ -939,16 +1030,21 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         activate=_activate_self_improvement,
         deactivate=_deactivate_self_improvement,
     ),
+    # Each per-feature model below is blank by default and baked into its
+    # component at construction, so the declaration has to buy two distinct
+    # things. A blank -> named write brings an inactive subsystem up, which
+    # `settings=` alone delivers. A named -> renamed or named -> blank write
+    # has to REPLACE a component that is already serving on its build-time
+    # pair, which only `rebuild_on_change` + `deactivate` deliver, because the
+    # reconciler otherwise leaves an active subsystem alone.
     SubsystemSpec(
         name="chief_of_staff_chat",
         provides=CapabilityId.CHIEF_OF_STAFF_CHAT,
         requires=(CapabilityId.PROVIDER_REGISTRY,),
         activate=_activate_chief_of_staff_chat,
-        # Each per-feature model is blank by default, so the feature stays
-        # unwired until an operator names one. The value itself is re-read per
-        # call; what the declaration buys is the unwired -> wired transition a
-        # live read cannot make on its own.
+        deactivate=_deactivate_chief_of_staff_chat,
         settings=("chief_of_staff.chat_model",),
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="chief_of_staff_proposer",
@@ -959,10 +1055,36 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.APPROVAL_STORE,
         ),
         activate=_activate_chief_of_staff_proposer,
+        deactivate=_deactivate_chief_of_staff_proposer,
         settings=(
             "chief_of_staff.propose_model",
             "chief_of_staff.routing_model",
         ),
+        rebuild_on_change=True,
+    ),
+    # Declared apart from the proposer, not wired inside its activation. The
+    # reconciler leaves an already-active subsystem alone, so a classifier
+    # wired from within the proposer's activation could never appear after the
+    # proposer was up -- which is precisely when an operator names the model.
+    # As its own subsystem a blank model simply leaves it inactive, and the
+    # write that fills it is the change that brings it up.
+    SubsystemSpec(
+        name="turn_intent_classifier",
+        provides=CapabilityId.TURN_INTENT_CLASSIFIER,
+        requires=(CapabilityId.PROVIDER_REGISTRY,),
+        activate=_activate_turn_intent_classifier,
+        deactivate=_deactivate_turn_intent_classifier,
+        settings=("chief_of_staff.turn_intent_model",),
+        rebuild_on_change=True,
+    ),
+    SubsystemSpec(
+        name="multi_voice_router",
+        provides=CapabilityId.MULTI_VOICE_ROUTER,
+        requires=(CapabilityId.PROVIDER_REGISTRY,),
+        activate=_activate_multi_voice_router,
+        deactivate=_deactivate_multi_voice_router,
+        settings=("chief_of_staff.multi_voice_model",),
+        rebuild_on_change=True,
     ),
     # The toggle is what the operator changes, and the builder is fail-closed
     # on it, so a rebuild IS the live path: teardown, then an activation that
@@ -1078,11 +1200,18 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_role_version_service,
     ),
+    # Another blank-default per-feature model, declared for the same two
+    # reasons as the block above: the write that names a model is the one that
+    # brings the service up, and a later rename has to replace an instance
+    # holding the driver it was built with.
     SubsystemSpec(
         name="plan_item_reply_service",
         provides=CapabilityId.PLAN_ITEM_REPLY_SERVICE,
         requires=(CapabilityId.PROVIDER_REGISTRY,),
         activate=_activate_plan_item_reply,
+        deactivate=_deactivate_plan_item_reply,
+        settings=("coordination.plan_review_reply_model",),
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="analytics_collector",
@@ -1194,6 +1323,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         settings=("chief_of_staff.narrative_model",),
         rebuild_on_change=True,
     ),
+    # The router wraps the proposer instance and lives on the work pipeline,
+    # so a replaced proposer leaves it attached and refining through the
+    # instance that went away: it rebuilds with its provider rather than
+    # outliving it.
     SubsystemSpec(
         name="refinement_router",
         provides=CapabilityId.REFINEMENT_ROUTER,
@@ -1202,6 +1335,8 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.CHIEF_OF_STAFF_PROPOSER,
         ),
         activate=_activate_refinement_router,
+        deactivate=_deactivate_refinement_router,
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="plan_review_gate",
@@ -1228,6 +1363,8 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.CHIEF_OF_STAFF_PROPOSER,
         ),
         activate=_activate_plan_dispatcher,
+        deactivate=_deactivate_plan_dispatcher,
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="eval_loop",

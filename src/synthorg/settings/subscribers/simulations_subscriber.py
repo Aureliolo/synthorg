@@ -10,6 +10,8 @@ coordinator around it, keeping them coherent. The reload is atomic per service,
 so an in-flight task keeps its captured engine.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -17,6 +19,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -68,40 +71,38 @@ class SimulationsSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
         """Rebuild the client-simulation runtime from current settings.
 
+        One rebuild per batch: the runtime reload re-reads every watched key,
+        so repeating it per key would redo the most expensive step here.
+
         Args:
-            namespace: Changed setting namespace.
-            key: Changed setting key.
+            changes: The watched writes this rebuild carries.
         """
         from synthorg.client.state import has_simulation_runtime  # noqa: PLC0415
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
+        trigger = describe_changes(changes)
         if not has_simulation_runtime(self._app_state):
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=trigger,
                 note="no simulation runtime wired; nothing to rebuild",
             )
             return
         try:
-            await reload_runtime_services(
-                self._app_state, trigger=f"setting:{namespace}.{key}"
-            )
+            await reload_runtime_services(self._app_state, trigger=f"setting:{trigger}")
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="client_simulation_runtime",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=trigger,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -109,7 +110,6 @@ class SimulationsSettingsSubscriber:
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
-            namespace=namespace,
-            key=key,
+            trigger=trigger,
             note="client simulation runtime rebuilt",
         )

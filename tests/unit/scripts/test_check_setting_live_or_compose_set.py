@@ -403,6 +403,191 @@ class TestUnreachable:
         assert _keys(scan_repo(root)) == ["engine.knob:unreachable"]
 
 
+class TestBlankDefaultGatedByItself:
+    """A blank-default setting is judged on what works from cold.
+
+    The hole this closes: a per-feature model was written, persisted, shown in
+    the dashboard, and applied to nothing until a restart, while the gate
+    passed it on a live read that lived inside the classifier the setting
+    itself decided whether to build. That read is real; it just cannot run
+    until the value it re-reads is already in place.
+    """
+
+    _FALLBACK_READ = _lines(
+        "async def dispatch(self):",
+        "    raw = await resolve_str_with_fallback(",
+        "        resolver=self._resolver,",
+        '        namespace="engine",',
+        '        key="knob",',
+        '        fallback="",',
+        "    )",
+        "    return raw or self._built_in",
+    )
+
+    def test_a_fallback_read_alone_does_not_bring_a_blank_default_up(
+        self, tmp_path: Path
+    ) -> None:
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:gated-by-itself"]
+
+    def test_the_same_read_is_enough_when_the_setting_ships_a_value(
+        self, tmp_path: Path
+    ) -> None:
+        # The rule is about the first write, so a setting that already has a
+        # value is unaffected: its component is built before anyone writes.
+        root = _repo(tmp_path, sources={_CONSUMER: self._FALLBACK_READ})
+        assert scan_repo(root) == []
+
+    @pytest.mark.parametrize("default_expr", ['""', "None"], ids=["empty", "none"])
+    def test_both_spellings_of_blank_count(
+        self, tmp_path: Path, default_expr: str
+    ) -> None:
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(
+                    registration("knob", default_expr=default_expr)
+                )
+            },
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:gated-by-itself"]
+
+    def test_a_read_with_nowhere_to_fall_back_to_is_enough(
+        self, tmp_path: Path
+    ) -> None:
+        # The sanctioned live-per-call shape: no build-time pair to keep
+        # serving from, so an unset value fails loud and a first write arms
+        # the very next call.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            sources={
+                _CONSUMER: _lines(
+                    "async def author(self):",
+                    "    return require_configured_model(",
+                    "        await resolve_bound_model_live(",
+                    "            self._resolver,",
+                    '            namespace="engine",',
+                    '            key="knob",',
+                    "            unset_event=EVENT,",
+                    "        ),",
+                    '        namespace="engine",',
+                    '        key="knob",',
+                    "    )",
+                )
+            },
+        )
+        assert scan_repo(root) == []
+
+    def test_a_rebuild_backed_declaration_is_enough(self, tmp_path: Path) -> None:
+        # The fix the issue asked for: the subsystem that builds the component
+        # declares the setting and rebuilds on it, so the first write is what
+        # brings the component into being.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            registry=registry_module(settings=("engine.knob",)),
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert scan_repo(root) == []
+
+    def test_a_declaration_without_a_rebuild_is_not_enough(
+        self, tmp_path: Path
+    ) -> None:
+        # Declaring the key without the flag is exactly the shape that shipped:
+        # the write is watched, the reconciler short-circuits on the already
+        # active subsystem, and nothing is replaced.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            registry=registry_module(
+                settings=("engine.knob",), rebuild_on_change=False
+            ),
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:gated-by-itself"]
+
+    def test_the_shape_that_shipped_is_reported(self, tmp_path: Path) -> None:
+        # The pre-fix situation, reproduced: the value is swept into a boot
+        # config by a namespace-wide read, the built component re-reads it with
+        # a fallback to its build-time pair, and no declaration ties the two
+        # together. Both reads are real, and between them they left the first
+        # write reaching nothing.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            sources={
+                _CONSUMER: self._FALLBACK_READ,
+                "meta/overlay.py": _lines(
+                    "async def load(svc):",
+                    '    return await svc.get_namespace("engine")',
+                ),
+            },
+        )
+        assert _keys(scan_repo(root)) == ["engine.knob:gated-by-itself"]
+
+    def test_a_namespace_read_still_covers_a_setting_that_ships_a_value(
+        self, tmp_path: Path
+    ) -> None:
+        # Narrowing the bulk read applies to the blank-default case only: a
+        # setting whose consumer is already running is reached by it, which is
+        # the seam the gate has always accepted.
+        root = _repo(
+            tmp_path,
+            sources={
+                _CONSUMER: _lines(
+                    "async def load(svc):",
+                    '    return await svc.get_namespace("engine")',
+                )
+            },
+        )
+        assert scan_repo(root) == []
+
+    def test_a_subscriber_pair_is_enough(self, tmp_path: Path) -> None:
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            subscribers={"engine_sub.py": subscriber_module(("engine", "knob"))},
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert scan_repo(root) == []
+
+    def test_the_message_names_the_seam_the_setting_needs(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The next author has to read the reason, not just the verdict: the
+        # fix is a seam, and "unreachable" would send them looking for a read
+        # that is already there.
+        root = make_repo(
+            tmp_path,
+            definitions={
+                "engine.py": definitions_module(registration("knob", default_expr='""'))
+            },
+            sources={_CONSUMER: self._FALLBACK_READ},
+        )
+        assert main(["--repo-root", str(root)]) == 1
+        out = capsys.readouterr().out
+        assert "blank by default" in out
+        assert "rebuild_on_change=True" in out
+
+
 class TestConstructionPath:
     """A read that only runs while the runtime is built is not liveness."""
 

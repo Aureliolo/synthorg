@@ -141,6 +141,13 @@ class WsPlanUpdatedPayload(BaseModel):
     """Payload for ``plan.updated``.
 
     Emitted by ``api/controllers/plans.py`` when an operator reworks a plan.
+
+    ``supersedes`` names the plan a replan retires, so a dashboard holding
+    the old one open drops it in the same event that introduces its
+    successor. Declared here because ``PAYLOAD_CONFIG`` forbids extras and
+    every event is validated against this union before it is dispatched: an
+    undeclared key does not travel as an ignored field, it raises and the
+    subscriber receives nothing at all.
     """
 
     model_config = PAYLOAD_CONFIG
@@ -149,6 +156,7 @@ class WsPlanUpdatedPayload(BaseModel):
     plan_id: NotBlankStr
     version: int = Field(ge=1)
     status: PlanStatus
+    supersedes: NotBlankStr | None = None
 
 
 class WsPlanChangesRequestedPayload(BaseModel):

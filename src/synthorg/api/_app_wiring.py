@@ -482,6 +482,7 @@ def _wire_environment_service(app_state: AppState) -> None:
     from synthorg.engine.workspace.environment.service import (  # noqa: PLC0415
         EnvironmentService,
     )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     environment_config = EnvironmentConfig()
     app_state.wire(
@@ -490,7 +491,10 @@ def _wire_environment_service(app_state: AppState) -> None:
             repo=persistence_of(app_state).project_environments,
             strategy=build_environment_strategy(
                 environment_config,
-                EnvironmentDeps(clock=app_state.clock),
+                EnvironmentDeps(
+                    clock=app_state.clock,
+                    config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+                ),
             ),
             config=environment_config,
             committer=GitWorkspaceCommitter(),

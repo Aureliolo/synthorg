@@ -37,7 +37,9 @@ from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
+from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
+)
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskNotFoundError
@@ -421,7 +423,11 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
     ) -> None:
-        """Delete a task.
+        """Delete a task, unless a plan still names it as its objective.
+
+        The refusal is the engine's, not this route's: three callers
+        reach ``delete_task`` and the guard belongs on the path all
+        three take.
 
         Args:
             state: Application state.
@@ -429,6 +435,7 @@ class TaskController(Controller):
 
         Raises:
             NotFoundError: If the task is not found.
+            PlanParentTaskInUseError: If a plan still references this task.
         """
         app_state: AppState = state.app_state
         task_engine = task_engine_of(app_state)

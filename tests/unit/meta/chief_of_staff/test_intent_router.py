@@ -10,10 +10,14 @@ import pytest
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
+    MODEL_ATTRIBUTED_REASONS,
+    IntentOutcome,
     IntentRoutingReason,
-    LlmIntentClassifier,
     TurnIntent,
+)
+from synthorg.meta.chief_of_staff.intent_router import (
+    LlmIntentClassifier,
     build_intent_classifier,
 )
 from synthorg.meta.chief_of_staff.models import ConversationTurn
@@ -229,6 +233,35 @@ class TestLlmIntentClassifier:
         outcome = await classifier.classify(_user_turn("anything"))
         assert outcome.intent is TurnIntent.EXPLAIN
         assert outcome.reason is IntentRoutingReason.CLASSIFY_CALL_FAILED
+
+
+class TestModelAttribution:
+    """``IntentOutcome.model`` names the model that produced the verdict."""
+
+    @pytest.mark.parametrize("reason", sorted(MODEL_ATTRIBUTED_REASONS))
+    def test_a_dispatched_verdict_must_name_its_model(
+        self, reason: IntentRoutingReason
+    ) -> None:
+        # Logging a routing decision with no model is what left the dogfood
+        # unable to tell which model misrouted a turn.
+        with pytest.raises(ValueError, match="model is required"):
+            IntentOutcome(intent=TurnIntent.EXPLAIN, reason=reason)
+
+    @pytest.mark.parametrize(
+        "reason",
+        sorted(set(IntentRoutingReason) - MODEL_ATTRIBUTED_REASONS),
+    )
+    def test_an_undispatched_outcome_must_not_name_one(
+        self, reason: IntentRoutingReason
+    ) -> None:
+        # Naming a model against a decision it never made is worse than naming
+        # none: it points the diagnosis at an innocent model.
+        with pytest.raises(ValueError, match="model must be absent"):
+            IntentOutcome(
+                intent=TurnIntent.EXPLAIN,
+                reason=reason,
+                model=NotBlankStr("example-medium-001"),
+            )
 
 
 class TestBuildIntentClassifier:

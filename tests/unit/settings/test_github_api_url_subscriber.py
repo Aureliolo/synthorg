@@ -54,7 +54,7 @@ class TestRebind:
         )
         sub = _make_subscriber(resolver)
 
-        await sub.on_settings_changed("integrations", "github_api_url")
+        await sub.on_settings_changed([("integrations", "github_api_url")])
 
         bind.assert_called_once_with("https://github.example.com/api/v3")
 
@@ -69,5 +69,5 @@ class TestRebind:
         sub = _make_subscriber(resolver)
 
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("integrations", "github_api_url")
+            await sub.on_settings_changed([("integrations", "github_api_url")])
         bind.assert_not_called()

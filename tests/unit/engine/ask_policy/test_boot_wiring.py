@@ -58,7 +58,7 @@ class TestAskPolicySubscriber:
     async def test_a_watched_edit_rebinds_the_provider(self) -> None:
         subscriber = self._subscriber(ask_policy_enabled="false")
 
-        await subscriber.on_settings_changed("engine", "ask_policy_enabled")
+        await subscriber.on_settings_changed([("engine", "ask_policy_enabled")])
 
         provider = current_ask_policy_provider()
         assert provider is not None
@@ -69,7 +69,7 @@ class TestAskPolicySubscriber:
         # else is a wiring fault: rebinding on it would hide that.
         subscriber = self._subscriber()
 
-        await subscriber.on_settings_changed("engine", "clarification_enabled")
+        await subscriber.on_settings_changed([("engine", "clarification_enabled")])
 
         assert current_ask_policy_provider() is None
 

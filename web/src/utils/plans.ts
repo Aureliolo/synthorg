@@ -104,12 +104,35 @@ export interface PlanItemFlag {
 
 export interface ItemFlagContext {
   readonly onCriticalPath: boolean
+  /**
+   * The roles the org staffs, or `undefined` while that is unknown. An owner
+   * outside a known roster names nobody, so the item cannot be dispatched.
+   */
+  readonly roster: ReadonlySet<string> | undefined
+}
+
+/**
+ * Whether a named owner resolves to a role the org staffs.
+ *
+ * `undefined` is the only unknown-roster sentinel, which `judgedRoles` produces
+ * for both the loading and the failed read: judging off an answer that never
+ * arrived would flag every owner as noise the reviewer cannot act on. An empty
+ * ready roster is the opposite case and is judged like any other, because an
+ * org staffing nobody can dispatch nothing, and that is precisely what a
+ * reviewer needs told before approving the plan.
+ */
+export function isUnroutableOwner(
+  owner: string,
+  roster: ReadonlySet<string> | undefined,
+): boolean {
+  return roster !== undefined && !roster.has(owner)
 }
 
 /**
  * Reasons this item warrants review attention, most severe first. Stakes and
- * complexity carry their own graded tone; the guard-risk gaps (no owner, no
- * acceptance criteria) and the critical-path membership are fixed tones.
+ * complexity carry their own graded tone; the guard-risk gaps (no owner, an
+ * owner nothing can be dispatched to, no acceptance criteria) and the
+ * critical-path membership are fixed tones.
  */
 export function itemFlags(item: PlanItem, ctx: ItemFlagContext): readonly PlanItemFlag[] {
   const flags: PlanItemFlag[] = []
@@ -135,6 +158,13 @@ export function itemFlags(item: PlanItem, ctx: ItemFlagContext): readonly PlanIt
       label: 'Unassigned',
       tone: 'warning',
       detail: 'No role or agent owns this item yet.',
+    })
+  } else if (isUnroutableOwner(item.owner, ctx.roster)) {
+    flags.push({
+      key: 'unroutable-owner',
+      label: 'Owner not in the org',
+      tone: 'warning',
+      detail: `No agent holds the role "${item.owner}", so this item cannot be dispatched.`,
     })
   }
   if (item.acceptance_criteria.length === 0) {
@@ -357,6 +387,62 @@ export function derivePlanCoverage(
   }
 }
 
+// ── Open questions the plan already answers ────────────────────────────────
+
+export interface QuestionAnswer {
+  /** The open question as the planner wrote it. */
+  readonly question: string
+  /** Title of the item whose acceptance criteria settle it, if any. */
+  readonly settledBy: string | null
+}
+
+/**
+ * Words carried by nearly every question, so matching on them would settle a
+ * question against any criterion at all.
+ */
+const QUESTION_NOISE: ReadonlySet<string> = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for',
+  'from', 'has', 'have', 'how', 'in', 'is', 'it', 'of', 'on', 'or', 'should',
+  'so', 'that', 'the', 'this', 'to', 'we', 'what', 'when', 'where', 'which',
+  'who', 'why', 'will', 'with',
+])
+
+/** The distinctive words of a phrase: lower-cased, punctuation-free, no noise. */
+function contentWords(text: string): readonly string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length > 1 && !QUESTION_NOISE.has(word))
+}
+
+/**
+ * Pair every open question with the plan item whose acceptance criteria already
+ * settle it, matching when the criteria carry every distinctive word of the
+ * question.
+ *
+ * The result separates rather than hides: a question the plan answers stops
+ * demanding input, but the operator can still see it and the item it was
+ * matched against, because a wrong match must cost attention rather than a
+ * question they never got to answer.
+ */
+export function answeredQuestions(
+  questions: readonly string[],
+  items: readonly PlanItem[],
+): readonly QuestionAnswer[] {
+  const criteria = items.map((item) => ({
+    title: item.title,
+    words: new Set(contentWords(item.acceptance_criteria.join(' '))),
+  }))
+  return questions.map((question) => {
+    const words = contentWords(question)
+    const match =
+      words.length === 0
+        ? undefined
+        : criteria.find((item) => words.every((word) => item.words.has(word)))
+    return { question, settledBy: match?.title ?? null }
+  })
+}
+
 // ── Staffing / team summary ────────────────────────────────────────────────
 
 export interface StaffingEntry {
@@ -427,10 +513,23 @@ export interface PlanStats {
   readonly flaggedItems: number
 }
 
-/** Aggregate the review signals across every item in the plan. */
+/** Whether an item has nobody behind it: no owner, or an unroutable one. */
+function hasNobodyBehindIt(item: PlanItem, roster: ReadonlySet<string> | undefined): boolean {
+  return item.owner === null || isUnroutableOwner(item.owner, roster)
+}
+
+/**
+ * Aggregate the review signals across every item in the plan.
+ *
+ * An owner naming a role no agent holds counts as unassigned, not as
+ * assigned: the item has nobody behind it either way, and reading "all
+ * assigned" over a plan whose owners were invented is what let a nine-item
+ * plan reach review with eight of them unroutable.
+ */
 export function derivePlanStats(
   items: readonly PlanItem[],
   criticalPath: ReadonlySet<string>,
+  roster?: ReadonlySet<string>,
 ): PlanStats {
   let highStakes = 0
   let highComplexity = 0
@@ -441,10 +540,10 @@ export function derivePlanStats(
   for (const item of items) {
     if (isHighStakes(item)) highStakes += 1
     if (isHighComplexity(item)) highComplexity += 1
-    if (item.owner === null) unowned += 1
+    if (hasNobodyBehindIt(item, roster)) unowned += 1
     if (item.acceptance_criteria.length === 0) missingCriteria += 1
     dependencyEdges += item.dependencies.length
-    if (itemNeedsAttention(item, { onCriticalPath: criticalPath.has(item.id) })) {
+    if (itemNeedsAttention(item, { onCriticalPath: criticalPath.has(item.id), roster })) {
       flaggedItems += 1
     }
   }

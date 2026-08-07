@@ -13,6 +13,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_REPO_FAILED
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.approval_transition import approval_decision_values
+from synthorg.persistence.postgres._integrity import constraint_name
 from synthorg.persistence.postgres.approval_repo._base import _ApprovalRepoBase
 from synthorg.persistence.postgres.approval_repo._marshalling import item_save_params
 from synthorg.persistence.postgres.approval_repo._sql import APPROVALS_UPSERT_SQL
@@ -31,15 +32,6 @@ _TRANSITION_SQL = (
     "decision_reason = COALESCE(%s, decision_reason) "
     "WHERE id = %s AND status = %s"
 )
-
-
-def _constraint_name(exc: psycopg.errors.IntegrityError) -> str:
-    """Extract the violated constraint name from an integrity error.
-
-    Returns:
-        The constraint name, or ``"<unknown>"`` when unavailable.
-    """
-    return getattr(getattr(exc, "diag", None), "constraint_name", None) or "<unknown>"
 
 
 class _WriteMixin(_ApprovalRepoBase):
@@ -67,7 +59,7 @@ class _WriteMixin(_ApprovalRepoBase):
             )
             raise ConstraintViolationError(
                 msg,
-                constraint=_constraint_name(exc),
+                constraint=constraint_name(exc),
                 sqlstate=exc.sqlstate,
             ) from exc
         except psycopg.Error as exc:
@@ -110,7 +102,7 @@ class _WriteMixin(_ApprovalRepoBase):
                 error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
-                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
+                msg, constraint=constraint_name(exc), sqlstate=exc.sqlstate
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval batch (size={len(items)})"
@@ -229,7 +221,7 @@ class _WriteMixin(_ApprovalRepoBase):
                 error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
-                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
+                msg, constraint=constraint_name(exc), sqlstate=exc.sqlstate
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to transition approval {entity_id!r}"

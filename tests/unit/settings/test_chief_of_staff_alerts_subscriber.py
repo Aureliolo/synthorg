@@ -68,7 +68,7 @@ async def test_enable_starts_the_monitor(settings: SettingsService) -> None:
     monitor = mock_of[OrgInflectionMonitor](start=AsyncMock(), stop=AsyncMock())
     sub = _wire(settings, monitor)
 
-    await sub.on_settings_changed("chief_of_staff", "alerts_enabled")
+    await sub.on_settings_changed([("chief_of_staff", "alerts_enabled")])
 
     monitor.start.assert_awaited_once()
     monitor.stop.assert_not_awaited()
@@ -80,7 +80,7 @@ async def test_disable_stops_the_monitor(settings: SettingsService) -> None:
     monitor = mock_of[OrgInflectionMonitor](start=AsyncMock(), stop=AsyncMock())
     sub = _wire(settings, monitor)
 
-    await sub.on_settings_changed("chief_of_staff", "alerts_enabled")
+    await sub.on_settings_changed([("chief_of_staff", "alerts_enabled")])
 
     monitor.stop.assert_awaited_once()
     monitor.start.assert_not_awaited()
@@ -93,7 +93,7 @@ async def test_master_off_stops_the_monitor(settings: SettingsService) -> None:
     monitor = mock_of[OrgInflectionMonitor](start=AsyncMock(), stop=AsyncMock())
     sub = _wire(settings, monitor)
 
-    await sub.on_settings_changed("self_improvement", "chief_of_staff_enabled")
+    await sub.on_settings_changed([("self_improvement", "chief_of_staff_enabled")])
 
     monitor.stop.assert_awaited_once()
     monitor.start.assert_not_awaited()

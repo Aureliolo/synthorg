@@ -5,7 +5,7 @@ from typing import Final
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
@@ -13,7 +13,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
+from synthorg.observability.events.api import (
+    API_PROJECT_CASCADE_COMPLETED,
+    API_PROJECT_CASCADE_CONTENDED,
+)
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -28,6 +31,23 @@ _CASCADE_REASON: Final[str] = "project deleted"
 _SUPERSEDE_ATTEMPTS: Final[int] = 3
 
 
+def _retire_target(plan: Plan) -> tuple[PlanStatus, NotBlankStr | None]:
+    """Choose the terminal status a teardown may legally write for *plan*.
+
+    SUPERSEDED demands a non-empty item DAG, so a plan still being drafted
+    (the state a fresh proposal sits in) cannot be superseded at all: the
+    write violates the items CHECK and surfaces as a 500 on an otherwise
+    valid project delete. An itemless plan is failed instead, which is the
+    status that permits an empty list and which carries the reason.
+
+    Returns:
+        The ``(status, failure_reason)`` pair to write.
+    """
+    if plan.items:
+        return PlanStatus.SUPERSEDED, None
+    return PlanStatus.FAILED, NotBlankStr(_CASCADE_REASON)
+
+
 async def _supersede_plan(
     plan_service: PlanService,
     repository: PlanRepository,
@@ -35,21 +55,35 @@ async def _supersede_plan(
     *,
     requested_by: str,
 ) -> None:
-    """Supersede *plan*, re-reading if the rollup writes it first.
+    """Retire *plan*, re-reading if the rollup writes it first.
 
     The initiative rollup advances the same plan row whenever a task under it
     changes status, so deleting a project while its last task completes can
     lose the race. Without this, the conflict would abort the whole cascade
     mid-loop and surface as a 500 on an otherwise valid delete.
+
+    Raises:
+        ConflictError: The retry budget ran out with the plan still
+            non-terminal. Raised rather than logged and returned: the
+            caller deletes the project once the cascade reports done, and
+            ``plans.project`` carries no foreign key, so a plan counted as
+            retired but still live outlives the project as an orphan
+            nothing can reach. Contention is transient by definition, so
+            the honest answer is to refuse this delete and let the
+            operator repeat it.
     """
     current = plan
     for _ in range(_SUPERSEDE_ATTEMPTS):
+        # Re-derived per attempt: the winner of a lost race may have filled
+        # the items, which changes which terminal is legal.
+        status, failure_reason = _retire_target(current)
         try:
             await plan_service.sync_status(
                 current,
-                PlanStatus.SUPERSEDED,
+                status,
                 requested_by=requested_by,
                 reason=_CASCADE_REASON,
+                failure_reason=failure_reason,
             )
         except VersionConflictError:
             refreshed = await repository.get(NotBlankStr(str(current.id)))
@@ -64,6 +98,12 @@ async def _supersede_plan(
         plan_id=str(plan.id),
         attempts=_SUPERSEDE_ATTEMPTS,
     )
+    msg = (
+        f"plan {plan.id} is being written concurrently and could not be "
+        f"retired in {_SUPERSEDE_ATTEMPTS} attempts; the project was not "
+        "deleted. Retry the delete."
+    )
+    raise ConflictError(msg)
 
 
 async def cascade_supersede_children(
@@ -100,6 +140,7 @@ async def cascade_supersede_children(
     persistence = persistence_of(app_state)
     plan_service = PlanService(repo=persistence.plans, clock=app_state.clock)
     offset = 0
+    plans_retired = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         plans = await persistence.plans.query(
@@ -115,12 +156,14 @@ async def cascade_supersede_children(
                     plan,
                     requested_by=requested_by,
                 )
+                plans_retired += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
 
     task_engine = task_engine_of(app_state)
     offset = 0
+    tasks_cancelled = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
         tasks = await persistence.tasks.query(
@@ -136,6 +179,18 @@ async def cascade_supersede_children(
                     requested_by=requested_by,
                     reason=_CASCADE_REASON,
                 )
+                tasks_cancelled += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
+
+    # The one record of how much a delete actually took with it. Without it a
+    # cascade over dozens of children is indistinguishable from one over none,
+    # and the delete that follows looks like the whole operation.
+    logger.info(
+        API_PROJECT_CASCADE_COMPLETED,
+        project_id=project_id,
+        plans_retired=plans_retired,
+        tasks_cancelled=tasks_cancelled,
+        requested_by=requested_by,
+    )

@@ -1,6 +1,7 @@
 ---
 description: Validates Mermaid and D2 diagram syntax in documentation files, checking for syntax errors, consistent styling, and correct fence types
 mode: subagent
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow

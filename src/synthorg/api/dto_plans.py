@@ -15,12 +15,12 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.evaluation_verdict import CriterionVerdict
-from synthorg.core.plan import (
-    PlanOption,
+from synthorg.core.plan import PlanOption
+from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_validation import (
     validate_decision_options,
     validate_expected_artifacts,
 )
-from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,

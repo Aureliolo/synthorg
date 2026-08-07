@@ -8,7 +8,11 @@ import pytest
 
 from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import ConflictError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    ServiceUnavailableError,
+    ValidationError,
+)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
@@ -18,10 +22,13 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
+from synthorg.hr.state import HrStateSlice
 from synthorg.persistence.plan_protocol import PlanFilterSpec
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.app_state import make_app_state
 from tests.unit.api.fakes_backend import FakePersistenceBackend
+from tests.unit.meta.chief_of_staff.propose_fakes import make_identity
 
 pytestmark = pytest.mark.unit
 
@@ -105,7 +112,14 @@ async def _seed(
         transition_task=AsyncMock(return_value=(None, None)),
         get_task=AsyncMock(side_effect=_get_task),
     )
-    state = make_app_state(persistence=backend, task_engine=engine)
+    # A replan validates its revised owners against the live roster, and
+    # refuses outright when there is none: no roster means no answer, and
+    # accepting the revision would assert one. The items here name no
+    # owner, so an empty roster is enough to get past the check.
+    registry = mock_of[AgentRegistryProtocol](list_active=AsyncMock(return_value=()))
+    state = make_app_state(
+        persistence=backend, task_engine=engine, agent_registry=registry
+    )
     return state, backend, engine
 
 
@@ -474,3 +488,50 @@ class TestReplan:
         untouched = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
         assert untouched is not None
         assert untouched.status is status
+
+    async def test_an_owner_the_org_cannot_staff_is_refused(self) -> None:
+        """A replan enters through here too, so it validates its own owners.
+
+        The automatic trigger calls this function with items no human
+        reviewed, so checking in the controller would leave that path free
+        to persist a successor nothing can be dispatched to.
+        """
+        state, backend, _ = await _seed()
+        state.wire(
+            HrStateSlice,
+            agent_registry=mock_of[AgentRegistryProtocol](
+                list_active=AsyncMock(
+                    return_value=(make_identity(name="Dana", role="Developer"),)
+                )
+            ),
+        )
+        existing = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert existing is not None
+        owned = _item(_ITEM_B, "Revised B").model_copy(
+            update={"owner": NotBlankStr("Chief Imaginary Officer")}
+        )
+
+        with pytest.raises(ValidationError):
+            await replan_initiative(
+                state,
+                existing,
+                revision=RevisionInputs(items=(owned,)),
+                requested_by="admin",
+            )
+
+        # Rejected before any write: nothing retired, no orphan successor.
+        untouched = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert untouched is not None
+        assert untouched.status is PlanStatus.EXECUTING
+
+    async def test_an_unwired_roster_refuses_rather_than_passing(self) -> None:
+        """No roster is no answer, and accepting would assert one."""
+        state, backend, _ = await _seed()
+        state.wire(HrStateSlice, agent_registry=None)
+        existing = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert existing is not None
+
+        with pytest.raises(ServiceUnavailableError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )

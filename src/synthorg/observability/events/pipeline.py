@@ -51,6 +51,9 @@ PIPELINE_PLAN_SHELL_OPENED: Final[str] = "pipeline.plan_review.shell_opened"
 PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 """A decomposed plan was parked for human approval before team dispatch."""
 
+PIPELINE_PLAN_PARENT_MISSING: Final[str] = "pipeline.plan_review.parent_missing"
+"""The objective task was deleted mid-decomposition; the plan is not parked."""
+
 PIPELINE_PLAN_DECOMPOSITION_FAILED: Final[str] = (
     "pipeline.plan_review.decomposition_failed"
 )

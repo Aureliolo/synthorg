@@ -23,6 +23,7 @@ export interface PlansState {
   fetchPlans: () => Promise<void>
   fetchPlanDetail: (id: string) => Promise<void>
   editPlan: (id: string, data: EditPlanRequest) => Promise<Plan | null>
+  deletePlan: (id: string) => Promise<boolean>
   requestPlanChanges: (id: string, note: string) => Promise<Plan | null>
   setStatusFilter: (status: PlanStatus | null) => void
   clearDetail: () => void

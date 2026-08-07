@@ -46,7 +46,7 @@ _SI_BOOL_FIELDS: tuple[str, ...] = (
 # distinctly from the self-improvement ``chief_of_staff_enabled`` switch),
 # but the config field it maps to is ``chat_enabled``. Every other flag
 # shares its name between the setting and the config field.
-_COS_BOOL_FIELDS: dict[str, str] = {
+_COS_BOOL_SETTING_TO_FIELD: dict[str, str] = {
     "explain_chat_enabled": "chat_enabled",
     "propose_enabled": "propose_enabled",
     "routing_enabled": "routing_enabled",
@@ -97,6 +97,43 @@ _CHARTER_SCALAR_FIELDS: tuple[str, ...] = (
     "interview_max_turns",
     "default_currency",
 )
+
+
+# ``code_modification_enabled`` is overlaid but deliberately not published as
+# watchable. Nothing should make it take effect faster than the load path,
+# which re-reads the credentials on every parse and forces the flag back off
+# when they are absent.
+_UNWATCHABLE: frozenset[tuple[str, str]] = frozenset(
+    {(SettingNamespace.SELF_IMPROVEMENT.value, "code_modification_enabled")}
+)
+
+
+def overlaid_setting_keys() -> frozenset[tuple[str, str]]:
+    """Return every ``(namespace, key)`` whose value this overlay reads.
+
+    The cache of the config this overlay builds is only as live as the set of
+    settings that invalidate it, so that set is derived from the field tuples
+    the overlay itself iterates rather than restated by each consumer. A key
+    added to one of those tuples becomes watched by construction.
+
+    Returns:
+        The watchable ``(namespace, key)`` pairs the overlay consumes.
+    """
+    si = SettingNamespace.SELF_IMPROVEMENT.value
+    cos = SettingNamespace.CHIEF_OF_STAFF.value
+    charter = SettingNamespace.CHARTER.value
+    return (
+        frozenset(
+            {(si, key) for key in _SI_BOOL_FIELDS}
+            | {(si, "tool_creation_allowed_capabilities")}
+            | {(cos, key) for key in _COS_BOOL_SETTING_TO_FIELD}
+            | {(cos, key) for key in _COS_MODEL_FIELDS}
+            | {(cos, key) for key in _COS_SCALAR_FIELDS}
+            | {(charter, key) for key in _CHARTER_MODEL_FIELDS}
+            | {(charter, key) for key in _CHARTER_SCALAR_FIELDS}
+        )
+        - _UNWATCHABLE
+    )
 
 
 def _as_bool(value: str) -> bool:
@@ -231,7 +268,7 @@ async def overlay_feature_settings(
     # overlaid: each is a ``(provider, model)`` pair its consumer re-reads at
     # dispatch time, so there is no baked field to seed from a settings blob.
     cos_overrides = _nested(overrides, "chief_of_staff")
-    for setting_key, field in _COS_BOOL_FIELDS.items():
+    for setting_key, field in _COS_BOOL_SETTING_TO_FIELD.items():
         if setting_key in cos:
             cos_overrides[field] = _as_bool(cos[setting_key])
     for field in _COS_MODEL_FIELDS:

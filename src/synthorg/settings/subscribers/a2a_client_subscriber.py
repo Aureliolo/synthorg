@@ -5,6 +5,8 @@ client, whose ``_do_post`` passes the timeout per request, so a change applies
 without a restart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
@@ -50,7 +52,16 @@ class A2AClientSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "a2a-client"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed timeout onto the live A2A client.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Resolve the new timeout and push it onto the A2A client."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

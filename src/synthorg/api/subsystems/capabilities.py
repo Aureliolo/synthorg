@@ -233,6 +233,14 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(MetaStateSlice).chief_of_staff_proposer is not None,
     ),
     Capability(
+        id=CapabilityId.TURN_INTENT_CLASSIFIER,
+        present=lambda s: s.slice(MetaStateSlice).turn_intent_classifier is not None,
+    ),
+    Capability(
+        id=CapabilityId.MULTI_VOICE_ROUTER,
+        present=lambda s: s.slice(MetaStateSlice).multi_voice_router is not None,
+    ),
+    Capability(
         id=CapabilityId.GROUP_CHAT,
         present=lambda s: s.slice(MetaStateSlice).group_chat_service is not None,
     ),

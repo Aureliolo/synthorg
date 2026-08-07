@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.engine.errors import EnvironmentProvisionError
-from synthorg.engine.workspace._git_subprocess import run_git_subprocess
+from synthorg.engine.workspace._git_subprocess import (
+    git_failure_detail,
+    run_git_subprocess,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import ENVIRONMENT_PROVISION_FAILED
 
@@ -75,7 +78,10 @@ class GitWorkspaceCommitter:
                 reason="git_add_failed",
                 return_code=add_rc,
             )
-            msg = f"failed to stage environment declaration (rc={add_rc})"
+            msg = (
+                "failed to stage environment declaration "
+                f"({git_failure_detail(add_rc)})"
+            )
             raise EnvironmentProvisionError(msg)
         commit_rc, commit_out, commit_err = await run_git_subprocess(
             workspace_path,
@@ -93,7 +99,10 @@ class GitWorkspaceCommitter:
                 reason="git_commit_failed",
                 return_code=commit_rc,
             )
-            msg = f"failed to commit environment declaration (rc={commit_rc})"
+            msg = (
+                "failed to commit environment declaration "
+                f"({git_failure_detail(commit_rc)})"
+            )
             raise EnvironmentProvisionError(msg)
         return True
 

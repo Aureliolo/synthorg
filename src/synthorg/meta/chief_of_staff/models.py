@@ -578,6 +578,10 @@ class PlanDraftSummary(BaseModel):
         project: The project the work was filed under (provisioned when
             the request named none).
         title: The objective title.
+        reused_project: Whether this brief joined a request already in flight
+            instead of starting one. Reported rather than left implicit:
+            folding two sends into one project silently would leave the
+            operator believing they had filed two.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -585,6 +589,7 @@ class PlanDraftSummary(BaseModel):
     task_id: NotBlankStr
     project: NotBlankStr
     title: NotBlankStr
+    reused_project: bool = False
 
 
 class SteeringProposalSummary(BaseModel):

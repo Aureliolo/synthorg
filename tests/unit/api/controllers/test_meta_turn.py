@@ -13,7 +13,7 @@ from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.group_models import GroupConverseResult
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     IntentOutcome,
     IntentRoutingReason,
     TurnIntent,
@@ -44,6 +44,9 @@ pytestmark = pytest.mark.unit
 
 _BASE = "/api/v1/meta/chat/turn"
 _HEADERS = make_auth_headers("ceo")
+#: A classified outcome names the model that produced it, so a fixed
+#: classifier has to name one too.
+_CLASSIFIER_MODEL = "example-medium-001"
 
 
 def _empty_snapshot() -> OrgSignalSnapshot:
@@ -293,6 +296,7 @@ class TestMetaTurn:
                 intent=TurnIntent.ACT,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state
@@ -325,6 +329,7 @@ class TestMetaTurn:
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
                 named_targets=(NotBlankStr("CFO"),),
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state
@@ -351,6 +356,7 @@ class TestMetaTurn:
                 intent=TurnIntent.CONFIGURE,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state

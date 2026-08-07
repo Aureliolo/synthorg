@@ -1,4 +1,5 @@
 import type { AxiosResponse } from 'axios'
+import { http, HttpResponse } from 'msw'
 import { vi } from 'vitest'
 
 // Mock dev auth bypass OFF so the 401 interceptor actually fires.
@@ -7,15 +8,42 @@ vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
 import {
   ApiRequestError,
+  _settleSessionProbeForTests,
   unwrap,
   unwrapNullable,
   unwrapPaginated,
   unwrapVoid,
   apiClient,
 } from '@/api/client'
+import { _resetUnauthorizedRedirectGuardForTests } from '@/stores/auth'
 import { cookieJar } from '@/cookie-shim'
 import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
+import { server } from '@/test-setup'
+
+/**
+ * Session probes the interceptor issued. Counted from the request event rather
+ * than a handler override, so a test that replaces the ``/auth/me`` handler
+ * still counts the call it made.
+ */
+let getMeCalls = 0
+
+server.events.on('request:start', ({ request }) => {
+  if (new URL(request.url).pathname === '/api/v1/auth/me') getMeCalls += 1
+})
+
+beforeEach(async () => {
+  // The teardown decision is fire-and-forget, so a probe from the previous
+  // test can still be in flight; draining it first is what makes both the
+  // counter and the latch below start from a known state rather than from
+  // whatever the last test happened to leave running.
+  await _settleSessionProbeForTests()
+  getMeCalls = 0
+  // The auth store latches after one teardown so a burst of 401s bounces to
+  // login once. Reset per test rather than per block: every test that drives
+  // the interceptor needs the latch open, whichever order they run in.
+  _resetUnauthorizedRedirectGuardForTests()
+})
 
 /**
  * Build an AxiosResponse fixture. ``data`` is widened to ``unknown`` so
@@ -430,5 +458,196 @@ describe('apiClient 401 response interceptor', () => {
       expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
       expect(useAuthStore.getState().user).toBeNull()
     })
+  })
+})
+
+describe('a 401 is confirmed before the session is torn down', () => {
+  async function unauthorized(url: string) {
+    const { AxiosError } = await import('axios')
+    return new AxiosError('Unauthorized', 'ERR_BAD_RESPONSE', { url, headers: {} } as never, undefined, {
+      status: 401,
+      data: {},
+      headers: {},
+      statusText: 'Unauthorized',
+      config: {} as AxiosResponse['config'],
+    } as AxiosResponse)
+  }
+
+  async function signedIn() {
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      user: {
+        id: '1',
+        username: 'admin',
+        role: 'ceo',
+        must_change_password: false,
+        org_roles: [],
+        scoped_departments: [],
+      },
+      loading: false,
+    })
+    return useAuthStore
+  }
+
+  it('keeps a session the backend still recognises', async () => {
+    // A single 401 is not proof of expiry: the very next call can return 200
+    // on the same cookie.
+    const useAuthStore = await signedIn()
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    // The probe resolves on a later tick, so a passing assertion here has to
+    // outlive it rather than beat it.
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(0)
+    })
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+  })
+
+  it('tears down when the backend confirms the session is gone', async () => {
+    const useAuthStore = await signedIn()
+    server.use(
+      http.get('/api/v1/auth/me', () => new HttpResponse(null, { status: 401 })),
+    )
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+  })
+
+  it('keeps the session when the probe cannot reach the backend', async () => {
+    // The probe runs the same wire as the 401 that prompted it, in the same
+    // instability window. A probe that never got an answer is not an answer.
+    const useAuthStore = await signedIn()
+    server.use(http.get('/api/v1/auth/me', () => HttpResponse.error()))
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(0)
+    })
+    await _settleSessionProbeForTests()
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+  })
+
+  it('keeps the session when the probe itself errors', async () => {
+    // A 500 on /auth/me says the backend is unwell, not that the cookie died.
+    const useAuthStore = await signedIn()
+    server.use(
+      http.get('/api/v1/auth/me', () => new HttpResponse(null, { status: 500 })),
+    )
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/tasks')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(0)
+    })
+    await _settleSessionProbeForTests()
+    expect(useAuthStore.getState().authStatus).toBe('authenticated')
+  })
+
+  it('matches an unauthenticated path carrying a query string', async () => {
+    // The path is what decides, so a caller appending a query must not start
+    // asking an unauthenticated caller to prove a session it never had.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(
+        await unauthorized('/auth/login?next=%2Fplans'),
+      ),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('does not probe when the probe itself is what returned 401', async () => {
+    // Otherwise the answer to "is the session gone" is another request that
+    // asks the same question.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/auth/me')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('does not probe a 401 it cannot attribute to a request', async () => {
+    // With no url there is nothing to exempt and nothing to confirm against,
+    // so the safe reading is the one that ends the session rather than the
+    // one that keeps an expired session alive on a request nobody can name.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+    const { AxiosError } = await import('axios')
+    const noConfig = new AxiosError('Unauthorized', 'ERR_BAD_RESPONSE', undefined, undefined, {
+      status: 401,
+      data: {},
+      headers: {},
+      statusText: 'Unauthorized',
+      config: {} as AxiosResponse['config'],
+    } as AxiosResponse)
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(noConfig),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('does not probe a rejected login', async () => {
+    // An unauthenticated caller has no session to confirm, so the round trip
+    // would only ask it to prove something it never had.
+    const useAuthStore = await signedIn()
+    const before = getMeCalls
+
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(await unauthorized('/auth/login')),
+    ).rejects.toBeDefined()
+
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+    expect(getMeCalls).toBe(before)
+  })
+
+  it('shares one probe across a burst of 401s', async () => {
+    // A page mounting fires many requests at once; one expiry must not cost
+    // one confirmation each.
+    await signedIn()
+    const before = getMeCalls
+    const rejected = apiClient.interceptors.response.handlers?.[0]?.rejected
+
+    await Promise.allSettled(
+      ['/tasks', '/agents', '/plans'].map(async (url) => {
+        await rejected?.(await unauthorized(url))
+      }),
+    )
+
+    await vi.waitFor(() => {
+      expect(getMeCalls).toBeGreaterThan(before)
+    })
+    expect(getMeCalls - before).toBe(1)
   })
 })

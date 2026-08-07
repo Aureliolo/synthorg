@@ -9,6 +9,7 @@ the two are projected onto each other by ``engine.decomposition.plan_mapping``.
 """
 
 from collections import Counter
+from datetime import datetime
 from typing import Final, Self
 from uuid import UUID, uuid4
 
@@ -16,6 +17,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_validation import (
+    validate_decision_options,
+    validate_expected_artifacts,
+)
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -46,7 +51,6 @@ class PlanOption(BaseModel):
     )
 
 
-_MIN_DECISION_OPTIONS: Final[int] = 2
 _MAX_DECISION_OPTIONS: Final[int] = 50
 MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 
@@ -56,84 +60,6 @@ MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 #: to produce a submission the coverage check must reject. Refusing it at
 #: write time says so once, at the point an operator can fix it.
 MAX_OBJECTIVE_CRITERIA: Final[int] = 100
-
-
-def validate_decision_options(
-    *,
-    entity_id: str,
-    kind: PlanItemKind,
-    options: tuple[PlanOption, ...],
-    chosen_option_id: str | None = None,
-) -> None:
-    """Enforce the WORK-vs-DECISION option invariants shared by items/subtasks.
-
-    A ``WORK`` unit carries no options; a ``DECISION`` offers at least two
-    options with unique ids and exactly one recommended, and any recorded
-    ``chosen_option_id`` must name one of them.
-
-    Raises:
-        ValueError: When a work unit carries options, a decision has fewer than
-            two options / not exactly one recommended / duplicate option ids, or
-            the chosen option is unknown.
-    """
-    if kind is PlanItemKind.WORK:
-        if options or chosen_option_id is not None:
-            msg = f"{entity_id!r} is WORK but carries decision options"
-            raise ValueError(msg)
-        return
-    if len(options) < _MIN_DECISION_OPTIONS:
-        msg = f"Decision {entity_id!r} must offer at least two options"
-        raise ValueError(msg)
-    option_ids = [option.id for option in options]
-    if len(option_ids) != len(set(option_ids)):
-        msg = f"Decision {entity_id!r} has duplicate option ids"
-        raise ValueError(msg)
-    if sum(option.recommended for option in options) != 1:
-        msg = f"Decision {entity_id!r} needs exactly one recommended option"
-        raise ValueError(msg)
-    if chosen_option_id is not None and chosen_option_id not in option_ids:
-        msg = f"Decision {entity_id!r} chose an unknown option"
-        raise ValueError(msg)
-
-
-def validate_expected_artifacts(
-    *,
-    entity_id: str,
-    kind: PlanItemKind,
-    expected_artifacts: tuple[NotBlankStr, ...],
-) -> None:
-    """Enforce that a WORK unit declares a deliverable and a DECISION does not.
-
-    The two fail-loud zero-artifact guards (the loop's ``NO_OP``
-    reclassification and the post-execution transition) both key off the
-    dispatched task's ``artifacts_expected``, so a WORK unit declaring none
-    disarms both and a chat-text-only run reaches review as a silent success.
-    Requiring one deliverable per WORK unit arms them structurally, mirroring
-    the non-empty ``acceptance_criteria`` invariant beside it.
-
-    A ``DECISION`` never dispatches, so a deliverable on one means the unit was
-    typed wrong: the coverage map would expect an artifact no task will produce.
-
-    Args:
-        entity_id: Identifier of the plan item / subtask, for the message.
-        kind: Whether the unit is executed work or a recorded decision.
-        expected_artifacts: The declared deliverables.
-
-    Raises:
-        ValueError: When a WORK unit declares no deliverable, or a DECISION
-            declares one.
-    """
-    if kind is PlanItemKind.WORK:
-        if not expected_artifacts:
-            msg = (
-                f"{entity_id!r} is WORK and must declare at least one expected "
-                "artifact, so the zero-artifact guard engages when it runs"
-            )
-            raise ValueError(msg)
-        return
-    if expected_artifacts:
-        msg = f"{entity_id!r} is a DECISION and declares expected artifacts"
-        raise ValueError(msg)
 
 
 class PlanItem(BaseModel):
@@ -459,6 +385,45 @@ class Plan(BaseModel):
                 raise ValueError(msg)
         self._reject_dependency_cycle()
         return self
+
+    def fail(self, reason: NotBlankStr, *, now: datetime) -> Self:
+        """Return this plan failed, carrying the reason Plan Review shows.
+
+        The only sanctioned way to produce a FAILED plan. ``model_copy`` does
+        not re-run validators, so the present-iff-FAILED rule below cannot
+        police a production write; pairing the two fields in one method is
+        what makes an unpaired write impossible to express, rather than
+        merely absent from the current call sites.
+
+        ``updated_at`` is an ``AwareDatetime``, and the same skipped
+        validators mean a naive value passed here is stored and only
+        surfaces later, at persistence or at a comparison against an aware
+        one. Annotating the parameter ``AwareDatetime`` does not catch it:
+        it is a pydantic annotated form with no runtime class, so typeguard
+        rejects every ordinary aware ``datetime`` against it. The check is
+        therefore explicit.
+
+        Args:
+            reason: Why the plan could not be delivered.
+            now: The write's timestamp. Must be timezone-aware.
+
+        Returns:
+            A new FAILED revision, version bumped.
+
+        Raises:
+            ValueError: *now* is naive.
+        """
+        if now.tzinfo is None or now.utcoffset() is None:
+            msg = f"now must be timezone-aware, got naive datetime {now!r}"
+            raise ValueError(msg)
+        return self.model_copy(
+            update={
+                "status": PlanStatus.FAILED,
+                "failure_reason": reason,
+                "version": self.version + 1,
+                "updated_at": now,
+            }
+        )
 
     @model_validator(mode="after")
     def _validate_failure_reason(self) -> Self:

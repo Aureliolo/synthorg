@@ -18,7 +18,11 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.runtime import reconciler_of
-from synthorg.api.subsystems.spec import SubsystemPhase
+from synthorg.api.subsystems.spec import (
+    PHASES_NAMING_UNMET,
+    PHASES_WITH_DETAIL,
+    SubsystemPhase,
+)
 from synthorg.core.types import NotBlankStr
 
 
@@ -29,9 +33,15 @@ class SubsystemReport(BaseModel):
         name: Stable identifier, also the reconciler's key for it.
         phase: Its resting state. ``waiting`` and ``disabled`` are ordinary,
             not faults: the first will come up when its dependency arrives.
+            ``unreachable`` is the one that will not, because the dependency's
+            owner is off or has declined; ``rebuilding`` is a subsystem down
+            and coming back inside the pass currently running.
         waiting_on: Every unmet dependency, not just the first, so an
             operator fixes them in one pass rather than one per round trip.
-        detail: Redacted failure description, present only for ``failed``.
+        detail: Why this subsystem is not simply up: a redacted failure
+            description on ``failed``, what the activation declined on for
+            ``blocked``, and which owner will never supply the dependency for
+            ``unreachable``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -40,11 +50,11 @@ class SubsystemReport(BaseModel):
     phase: SubsystemPhase = Field(description="Current resting state")
     waiting_on: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Unmet dependencies, when waiting or degraded",
+        description="Unmet dependencies, when waiting, unreachable or degraded",
     )
     detail: str | None = Field(
         default=None,
-        description="Failure description, when failed",
+        description="Why it is not up, when failed, blocked or unreachable",
     )
 
     @model_validator(mode="after")
@@ -56,22 +66,25 @@ class SubsystemReport(BaseModel):
 
         Raises:
             ValueError: When ``waiting_on`` is populated on a phase that names
-                no unmet requirement, or ``detail`` on anything but ``failed``.
+                no unmet requirement, or ``detail`` on a phase that has
+                nothing to explain.
                 This is what an operator reads to find out why something is
                 off, so a field left over from a previous phase is worse than
                 an empty one. ``degraded`` carries ``waiting_on`` for the same
                 reason ``waiting`` does: it is up, but a requirement it names
                 has gone away.
         """
-        names_unmet = {SubsystemPhase.WAITING, SubsystemPhase.DEGRADED}
-        if self.waiting_on and self.phase not in names_unmet:
+        if self.waiting_on and self.phase not in PHASES_NAMING_UNMET:
             msg = (
-                "waiting_on is only valid on waiting or degraded, got "
-                f"{self.phase.value}"
+                "waiting_on is only valid on waiting, unreachable or degraded,"
+                f" got {self.phase.value}"
             )
             raise ValueError(msg)
-        if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
-            msg = f"detail is only valid on failed, got {self.phase.value}"
+        if self.detail is not None and self.phase not in PHASES_WITH_DETAIL:
+            msg = (
+                "detail is only valid on failed, blocked or unreachable, got "
+                f"{self.phase.value}"
+            )
             raise ValueError(msg)
         return self
 
@@ -85,6 +98,10 @@ class SubsystemsResponse(BaseModel):
         active: How many are up.
         degraded: How many are up while a requirement is gone.
         waiting: How many are waiting on a named dependency.
+        unreachable: How many are waiting on a dependency no pass will
+            supply, because its owner is switched off or declined.
+        rebuilding: How many are down and coming back inside the pass
+            currently running.
         blocked: How many have every dependency but declined to activate.
         failed: How many raised on their last activation attempt.
         disabled: How many an operator has switched off.
@@ -98,6 +115,8 @@ class SubsystemsResponse(BaseModel):
     active: int = Field(ge=0, description="Count in the active phase")
     degraded: int = Field(ge=0, description="Count up with a missing requirement")
     waiting: int = Field(ge=0, description="Count waiting on a dependency")
+    unreachable: int = Field(ge=0, description="Count waiting with no exit")
+    rebuilding: int = Field(ge=0, description="Count mid-rebuild in this pass")
     blocked: int = Field(ge=0, description="Count that declined to activate")
     failed: int = Field(ge=0, description="Count whose activation raised")
     disabled: int = Field(ge=0, description="Count an operator switched off")
@@ -143,6 +162,8 @@ class SubsystemsController(Controller):
                 active=counts[SubsystemPhase.ACTIVE],
                 degraded=counts[SubsystemPhase.DEGRADED],
                 waiting=counts[SubsystemPhase.WAITING],
+                unreachable=counts[SubsystemPhase.UNREACHABLE],
+                rebuilding=counts[SubsystemPhase.REBUILDING],
                 blocked=counts[SubsystemPhase.BLOCKED],
                 failed=counts[SubsystemPhase.FAILED],
                 disabled=counts[SubsystemPhase.DISABLED],

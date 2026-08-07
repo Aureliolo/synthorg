@@ -30,6 +30,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_coalesce_window_seconds",
+        type=SettingType.FLOAT,
+        default="0.75",
+        description=(
+            "How long the settings dispatcher waits for further writes before"
+            " delivering a batch. Saving a settings form publishes one write"
+            " per field, and a subscriber that rebuilds a subsystem rebuilds"
+            " once per batch rather than once per field, so the window turns a"
+            " form save from one rebuild per field into one rebuild. Delivery"
+            " is asynchronous, so this is not latency on the write itself."
+            " 0 turns coalescing off and delivers each write on its own."
+        ),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=30.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
         key="dispatcher_error_backoff_seconds",
         type=SettingType.FLOAT,
         default="1.0",

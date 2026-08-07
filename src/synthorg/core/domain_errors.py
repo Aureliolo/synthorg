@@ -424,6 +424,52 @@ class TrainingPlanNotModifiableError(ConflictError):
     error_code: ClassVar[ErrorCode] = ErrorCode.TRAINING_PLAN_NOT_MODIFIABLE
 
 
+class PlanParentTaskMissingError(NotFoundError):
+    """Raised when a plan's objective task is gone before it is parked (404).
+
+    Decomposition runs for minutes, so a task deleted in that window used
+    to leave the finished plan pointing at nothing while still reaching
+    the review queue. The plan-review gate refuses to park it instead, and
+    the pipeline's compensation marks the plan FAILED with the reason.
+    """
+
+    default_message: ClassVar[str] = "The plan's objective task no longer exists"
+    error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_PARENT_TASK_MISSING
+
+
+class PlanParentTaskInUseError(ConflictError):
+    """Raised when a task is deleted while a plan still names it (409).
+
+    A plan is a reviewed decision record carrying its own review and
+    delivery verdicts, so deleting its objective task must not destroy it
+    behind a 204. The distinct ``error_code`` lets the dashboard say which
+    plan is holding the task and offer to resolve it, rather than
+    rendering a generic conflict the operator cannot act on.
+    """
+
+    default_message: ClassVar[str] = "A plan still references this task"
+    error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_PARENT_TASK_IN_USE
+
+
+class PlanNotDeletableError(ConflictError):
+    """Raised when a plan's status refuses deletion (409).
+
+    Two distinct refusals, so a caller reading only the dispatched one
+    would infer that waiting is a route to deleting the other. A plan
+    mid-dispatch has items already building, so removing it would orphan
+    every running task under it; revising dispatched work is a re-plan,
+    which supersedes the current revision instead. A decided plan is
+    refused for the opposite reason: it is the record of what was
+    decided, and its delivery verdicts hang off it, so it outlives the
+    initiative rather than becoming deletable once the work stops.
+    """
+
+    default_message: ClassVar[str] = (
+        "A dispatched or already-decided plan cannot be deleted"
+    )
+    error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_NOT_DELETABLE
+
+
 class ConcurrencyLimitExceededError(PerOperationRateLimitError):
     """Raised when a per-operation concurrency (inflight) cap is hit (429).
 

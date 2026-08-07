@@ -20,7 +20,6 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage
-from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     MalformedRowError,
@@ -45,69 +44,12 @@ from synthorg.persistence._shared import (
 )
 from synthorg.persistence._shared.approval_transition import approval_decision_values
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
+from synthorg.persistence.sqlite._integrity import classify_sqlite_integrity
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
-
-# SQL-standard class codes (SQLSTATE). SQLite does not emit them, so its
-# integrity-failure messages are mapped onto these so the API integrity
-# handler can branch a uniqueness clash (409) apart from a foreign-key /
-# not-null violation (400) identically across both backends.
-_SQLSTATE_UNIQUE: str = "23505"
-_SQLSTATE_FOREIGN_KEY: str = "23503"
-_SQLSTATE_NOT_NULL: str = "23502"
-
-
-def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | None]:
-    """Map a SQLite ``IntegrityError`` to a stable label + SQLSTATE.
-
-    Returns a stable constraint token (``table.column`` for unique /
-    not-null, a fixed label for foreign-key / check) rather than the raw
-    message, so a CHECK-constraint expression never leaks into the
-    surfaced ``constraint`` attribute, plus the Postgres-equivalent
-    SQLSTATE (``None`` when the failure does not map to a branch the API
-    handler distinguishes).
-
-    Returns:
-        ``(constraint_label, sqlstate)``.
-    """
-    head, _, target = str(exc).partition(":")
-    label = target.strip() or ConstraintViolationError.UNKNOWN_CONSTRAINT
-
-    # Prefer the extended result code: it classifies the violation kind
-    # reliably regardless of the SQLite build's localised message text,
-    # which the string parse below depends on. The message is still the
-    # only source for the ``table.column`` label, so both are used. A
-    # PRIMARY KEY clash is a uniqueness violation and maps to 23505.
-    # ``getattr`` (not direct access) so an IntegrityError without the
-    # attribute -- a non-driver-originated one -- degrades to the
-    # message-string fallback below instead of raising.
-    ext_code = getattr(exc, "sqlite_errorcode", None)
-    if ext_code in (
-        sqlite3.SQLITE_CONSTRAINT_UNIQUE,
-        sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
-    ):
-        return label, _SQLSTATE_UNIQUE
-    if ext_code == sqlite3.SQLITE_CONSTRAINT_NOTNULL:
-        return label, _SQLSTATE_NOT_NULL
-    if ext_code == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY:
-        return "foreign_key", _SQLSTATE_FOREIGN_KEY
-    if ext_code == sqlite3.SQLITE_CONSTRAINT_CHECK:
-        return "check_constraint", None
-
-    kind = normalize_ascii_lowercase(head)
-    if kind == "unique constraint failed":
-        return label, _SQLSTATE_UNIQUE
-    if kind == "not null constraint failed":
-        return label, _SQLSTATE_NOT_NULL
-    if kind == "foreign key constraint failed":
-        return "foreign_key", _SQLSTATE_FOREIGN_KEY
-    if kind == "check constraint failed":
-        return "check_constraint", None
-    return ConstraintViolationError.UNKNOWN_CONSTRAINT, None
-
 
 # Atomic status flip + optional decision triple. ``COALESCE`` keeps the
 # existing column when the caller omits a decision field (e.g. a plain
@@ -364,7 +306,7 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                label, sqlstate = _classify_sqlite_integrity(exc)
+                label, sqlstate = classify_sqlite_integrity(exc)
                 raise ConstraintViolationError(
                     msg,
                     constraint=label,
@@ -442,7 +384,7 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                label, sqlstate = _classify_sqlite_integrity(exc)
+                label, sqlstate = classify_sqlite_integrity(exc)
                 raise ConstraintViolationError(
                     msg, constraint=label, sqlstate=sqlstate
                 ) from exc
@@ -797,7 +739,7 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                label, sqlstate = _classify_sqlite_integrity(exc)
+                label, sqlstate = classify_sqlite_integrity(exc)
                 raise ConstraintViolationError(
                     msg, constraint=label, sqlstate=sqlstate
                 ) from exc

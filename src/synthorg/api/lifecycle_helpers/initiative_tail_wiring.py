@@ -85,6 +85,7 @@ def build_replan_trigger(
         ReplanTriggerService,
     )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
     from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
@@ -104,6 +105,10 @@ def build_replan_trigger(
             decomposition_service=coordinator.decomposition_service,
             replan=_ReplanAdapter(app_state),
             config_resolver=config_resolver_of(app_state),
+            # The registry itself, not a roster read here: a successor plan
+            # is drafted long after boot and must be owned by whoever the org
+            # staffs then.
+            agent_registry=app_state.slice(HrStateSlice).agent_registry,
             clock=app_state.clock,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

@@ -86,7 +86,7 @@ class TestRebuild:
         )
         sub, app_state = _make_subscriber(snapshot=original, resolved=resolved)
 
-        await sub.on_settings_changed("memory", _WATCHED_KEY)
+        await sub.on_settings_changed([("memory", _WATCHED_KEY)])
 
         swapped = app_state.bridge_config.memory
         assert swapped is resolved
@@ -102,7 +102,7 @@ class TestRebuild:
         )
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("memory", _WATCHED_KEY)
+            await sub.on_settings_changed([("memory", _WATCHED_KEY)])
 
         assert app_state.bridge_config.memory is original
 
@@ -111,36 +111,23 @@ class TestRebuild:
         before = app_state.bridge_config.memory
 
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("memory", _WATCHED_KEY)
+            await sub.on_settings_changed([("memory", _WATCHED_KEY)])
 
         assert app_state.bridge_config.memory is before
 
 
-class TestUnexpectedRouting:
-    """Unexpected (namespace, key) pairs are logged and no-op."""
+class TestWatchedKeys:
+    """What this subscriber asks to be told about.
 
-    async def test_unknown_namespace_is_ignored(self) -> None:
-        original = MemoryBridgeConfig()
-        sub, app_state = _make_subscriber(
-            snapshot=original,
-            resolved=MemoryBridgeConfig(
-                fine_tune_vram_batch_table=((48.0, 256),),
-            ),
+    Filtering a batch down to a subscriber's watched pairs is the
+    dispatcher's job and is asserted there, so what is left to check here is
+    that the declared set is the one the swap actually needs.
+    """
+
+    def test_the_watched_key_is_declared(self) -> None:
+        sub, _ = _make_subscriber(
+            snapshot=MemoryBridgeConfig(),
+            resolved=MemoryBridgeConfig(),
         )
 
-        await sub.on_settings_changed("other", _WATCHED_KEY)
-
-        assert app_state.bridge_config.memory is original
-
-    async def test_unknown_key_is_ignored(self) -> None:
-        original = MemoryBridgeConfig()
-        sub, app_state = _make_subscriber(
-            snapshot=original,
-            resolved=MemoryBridgeConfig(
-                fine_tune_vram_batch_table=((48.0, 256),),
-            ),
-        )
-
-        await sub.on_settings_changed("memory", "some_unrelated_key")
-
-        assert app_state.bridge_config.memory is original
+        assert ("memory", _WATCHED_KEY) in sub.watched_keys

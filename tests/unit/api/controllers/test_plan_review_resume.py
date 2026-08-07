@@ -1,7 +1,7 @@
 """Unit tests for the plan-approval resume dispatch branch."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 from unittest.mock import AsyncMock
 
 import pytest
@@ -113,6 +113,14 @@ def _approval(
 
 
 _UNSET: Any = object()  # type: ignore[explicit-any]
+
+
+class _PreconditionBranch(TypedDict):
+    """One dispatch precondition, as the ``_seed`` overrides that trip it."""
+
+    task: Task | None
+    coordinator_missing: NotRequired[bool]
+    save_project: NotRequired[bool]
 
 
 async def _seed(
@@ -333,14 +341,15 @@ class TestPlanReviewResume:
         engine.transition_task.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
 
-    async def test_dispatch_failure_marks_task_failed_without_rolling_back(
+    async def test_dispatch_failure_fails_both_the_task_and_the_plan(
         self,
     ) -> None:
         # A dispatch failure must not 5xx the approval-decision request: the flow
-        # still owns the decision (True) and marks the task FAILED. The plan is
-        # left EXECUTING rather than rolled back: the decision stands, the
-        # failure belongs to the task, and it surfaces as a failed-item count on
-        # the project rather than by rewinding the plan's lifecycle.
+        # still owns the decision (True) and marks the task FAILED. The plan
+        # leaves EXECUTING too: dispatch moves it there before building the task
+        # tree, so a failure would otherwise leave it EXECUTING forever with a
+        # failed parent and no children, which nothing watches and nothing can
+        # move.
         parent = _task("parent-1")
         state, coordinator, engine, backend = await _seed(
             task=parent,
@@ -356,4 +365,43 @@ class TestPlanReviewResume:
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.EXECUTING
+        assert stored.status is PlanStatus.FAILED
+        # Plan Review shows the reason rather than an unexplained failure.
+        assert stored.failure_reason is not None
+        assert "dispatch failed" in stored.failure_reason
+
+    @pytest.mark.parametrize(
+        "branch",
+        [
+            pytest.param(
+                _PreconditionBranch(task=_task("parent-1"), coordinator_missing=True),
+                id="no_coordinator",
+            ),
+            pytest.param(_PreconditionBranch(task=None), id="no_parent_task"),
+            pytest.param(
+                _PreconditionBranch(task=_task("parent-1"), save_project=False),
+                id="project_not_linkable",
+            ),
+        ],
+    )
+    async def test_a_precondition_failure_also_fails_the_plan(
+        self, branch: _PreconditionBranch
+    ) -> None:
+        """A plan that cannot dispatch must not rest in a dispatch status.
+
+        Every precondition branch returns before ``coordinate`` runs, so the
+        plan sits in APPROVED with nothing left to advance it unless it is
+        failed here. Parametrised over all three because they are separate
+        early returns through one helper, and a branch added later that
+        forgets the plan write looks identical from the task's side.
+        """
+        state, _, _, backend = await _seed(plan=_durable_plan("parent-1"), **branch)
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None

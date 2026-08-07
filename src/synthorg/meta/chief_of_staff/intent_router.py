@@ -17,14 +17,16 @@ only returned above their own, stricter confidence floors; a malformed or
 failed classification falls back to ``EXPLAIN``, mirroring
 :class:`~synthorg.meta.chief_of_staff.routing.LlmConcernRouter`'s
 best-effort discipline.
+
+The vocabulary this produces (``TurnIntent``, ``IntentRoutingReason``,
+``IntentOutcome`` and the classifier protocol) lives in ``intent_models.py``.
 """
 
 import asyncio
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -36,6 +38,13 @@ from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.intent_models import (
+    IntentClassification,
+    IntentClassifier,
+    IntentOutcome,
+    IntentRoutingReason,
+    TurnIntent,
+)
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import (
     TURN_INTENT_SYSTEM,
@@ -86,133 +95,22 @@ class _IntentFloors:
 _MIN_GROUP_TARGETS: int = 2
 
 
-class TurnIntent(StrEnum):
-    """Which org capability a single operator turn is asking for.
+@dataclass(frozen=True, slots=True)
+class _Classified:
+    """One classification and the model that produced it.
+
+    The model rides with the verdict rather than being read back off the
+    classifier, because the pair is resolved live per call: a field on the
+    instance would name the pair the classifier was built with, which is
+    exactly the thing an operator changing the model is trying to move.
 
     Attributes:
-        EXPLAIN: Answer a question about the org (read-only). The default
-            and the safe fallback for any uncertain classification.
-        PROPOSE: Turn a work request into a plan for holistic review.
-        ACT: Perform a concrete system action now, via a tool, under the
-            acting agent's trust level. Gated behind a stricter floor.
-        GROUP_CONVENE: Convene several named agents in a group discussion.
-        CHARTER: Interview the operator to draft a company charter.
-        CONFIGURE: Configure or operate the control plane through the
-            operator console (connect an integration, change a setting,
-            call a control-plane tool). Gated behind a stricter floor and
-            its own default-off toggle.
+        classification: The parsed structured output.
+        model: The model id the call dispatched on.
     """
 
-    EXPLAIN = "explain"
-    PROPOSE = "propose"
-    ACT = "act"
-    GROUP_CONVENE = "group_convene"
-    CHARTER = "charter"
-    CONFIGURE = "configure"
-
-
-class IntentRoutingReason(StrEnum):
-    """Why a turn resolved to the intent it did.
-
-    Surfaced on the turn result so a human can see whether the intent was
-    classified, forced by an explicit override, fixed by the conversation's
-    kind, or degraded to ``EXPLAIN`` because a stricter gate was not met.
-
-    Attributes:
-        CLASSIFIED: The classifier's pick was taken as-is.
-        EXPLICIT_OVERRIDE: The caller supplied an explicit intent override.
-        CONVERSATION_KIND_FIXED: An in-flight GROUP conversation dispatches
-            straight to group chat without re-classification, so a follow-up
-            turn cannot collapse the thread to EXPLAIN.
-        NO_INTENT_CLASSIFIER: No classifier is wired; defaulted to EXPLAIN.
-        ACT_FLOOR_NOT_MET: A confident-enough ACT was not reached; degraded
-            to EXPLAIN.
-        CHARTER_FLOOR_NOT_MET: A confident-enough CHARTER was not reached;
-            degraded to EXPLAIN.
-        CONFIGURE_FLOOR_NOT_MET: A confident-enough CONFIGURE was not
-            reached; degraded to EXPLAIN.
-        GROUP_TARGETS_MISSING: A group was requested without enough named
-            participants; degraded to EXPLAIN.
-        ACT_NO_TARGET: An act was requested without naming an acting agent;
-            degraded to EXPLAIN so an ambiguous turn never acts on a guess.
-        CLASSIFY_CALL_FAILED: The classifier call errored or timed out;
-            defaulted to EXPLAIN.
-        RESPONSE_INVALID: The classifier reply failed to parse/validate;
-            defaulted to EXPLAIN.
-    """
-
-    CLASSIFIED = "classified"
-    EXPLICIT_OVERRIDE = "explicit_override"
-    CONVERSATION_KIND_FIXED = "conversation_kind_fixed"
-    NO_INTENT_CLASSIFIER = "no_intent_classifier"
-    ACT_FLOOR_NOT_MET = "act_floor_not_met"
-    CHARTER_FLOOR_NOT_MET = "charter_floor_not_met"
-    CONFIGURE_FLOOR_NOT_MET = "configure_floor_not_met"
-    GROUP_TARGETS_MISSING = "group_targets_missing"
-    ACT_NO_TARGET = "act_no_target"
-    CLASSIFY_CALL_FAILED = "classify_call_failed"
-    RESPONSE_INVALID = "response_invalid"
-
-
-class IntentClassification(BaseModel):
-    """Structured output of one intent-classification model turn.
-
-    Attributes:
-        intent: The capability the classifier picked.
-        confidence: Classifier confidence (0-1) in the pick.
-        named_targets: Roles/names the operator explicitly addressed, as
-            the classifier read them; empty when none.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    intent: TurnIntent
-    confidence: float = Field(ge=0.0, le=1.0)
-    named_targets: tuple[NotBlankStr, ...] = ()
-
-
-class IntentOutcome(BaseModel):
-    """The resolved intent for a turn, plus why it landed.
-
-    Attributes:
-        intent: The capability the turn dispatches to.
-        reason: Why this intent was chosen (classified, overridden, fixed
-            by conversation kind, or degraded).
-        confidence: Classifier confidence (0-1) when a classification ran;
-            ``None`` for an override / fixed-kind / no-classifier outcome.
-        named_targets: Roles/names surfaced by the classifier for a group
-            convene; empty otherwise.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    intent: TurnIntent
-    reason: IntentRoutingReason
-    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
-    named_targets: tuple[NotBlankStr, ...] = ()
-
-
-@runtime_checkable
-class IntentClassifier(Protocol):
-    """Classifies one operator turn to a :class:`TurnIntent`.
-
-    Implementations are best-effort: :meth:`classify` always returns an
-    :class:`IntentOutcome`. Any uncertainty (classifier error, invalid
-    reply, a below-floor ACT/CHARTER, a group without enough targets)
-    yields ``EXPLAIN`` with the reason it landed there.
-    """
-
-    async def classify(self, history: tuple[ConversationTurn, ...]) -> IntentOutcome:
-        """Classify the latest human turn to a capability intent.
-
-        Args:
-            history: Conversation turns oldest-first, ending with the human
-                turn to classify.
-
-        Returns:
-            The resolved :class:`IntentOutcome`.
-        """
-        ...
+    classification: IntentClassification
+    model: NotBlankStr
 
 
 class LlmIntentClassifier:
@@ -311,11 +209,11 @@ class LlmIntentClassifier:
             The resolved outcome: the classifier's pick when it clears its
             floor, else ``EXPLAIN`` with the degrade reason.
         """
-        classification = await self._classify(history)
-        if isinstance(classification, IntentRoutingReason):
-            return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classification)
+        classified = await self._classify(history)
+        if isinstance(classified, IntentRoutingReason):
+            return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classified)
         floors = await self._resolve_live_floors()
-        return self._apply_floors(classification, floors)
+        return self._apply_floors(classified, floors)
 
     async def _resolve_live_floors(self) -> _IntentFloors:
         """Resolve the live ACT + CHARTER + CONFIGURE confidence floors.
@@ -391,7 +289,7 @@ class LlmIntentClassifier:
 
     def _apply_floors(
         self,
-        classification: IntentClassification,
+        classified: _Classified,
         floors: _IntentFloors,
     ) -> IntentOutcome:
         """Degrade a raw classification that does not clear its gate.
@@ -400,6 +298,7 @@ class LlmIntentClassifier:
             The classified outcome, or an ``EXPLAIN`` outcome carrying the
             reason the stricter intent was not reached.
         """
+        classification = classified.classification
         intent = classification.intent
         confidence = classification.confidence
         degrade: IntentRoutingReason | None = None
@@ -427,6 +326,7 @@ class LlmIntentClassifier:
                 intent=TurnIntent.EXPLAIN,
                 reason=degrade,
                 confidence=confidence,
+                model=classified.model,
             )
         logger.info(
             COS_INTENT_CLASSIFIED,
@@ -438,11 +338,12 @@ class LlmIntentClassifier:
             reason=IntentRoutingReason.CLASSIFIED,
             confidence=confidence,
             named_targets=classification.named_targets,
+            model=classified.model,
         )
 
     async def _classify(
         self, history: tuple[ConversationTurn, ...]
-    ) -> IntentClassification | IntentRoutingReason:
+    ) -> _Classified | IntentRoutingReason:
         """Run one classification call and parse its structured output.
 
         Classification is best-effort, so a classifier hiccup degrades to
@@ -451,8 +352,9 @@ class LlmIntentClassifier:
         surface why.
 
         Returns:
-            The parsed classification, or the fallback reason on a call
-            failure (``CLASSIFY_CALL_FAILED``) or invalid response
+            The parsed classification paired with the model it dispatched on,
+            or the fallback reason on a call failure
+            (``CLASSIFY_CALL_FAILED``) or invalid response
             (``RESPONSE_INVALID``).
         """
         user = TURN_INTENT_USER.format(
@@ -508,7 +410,10 @@ class LlmIntentClassifier:
         if parsed is None:
             return IntentRoutingReason.RESPONSE_INVALID
         try:
-            return IntentClassification.model_validate(parsed)
+            return _Classified(
+                classification=IntentClassification.model_validate(parsed),
+                model=NotBlankStr(model),
+            )
         except ValidationError as exc:
             logger.warning(
                 COS_INTENT_RESPONSE_INVALID,
@@ -605,11 +510,6 @@ def build_intent_classifier(
 
 
 __all__ = [
-    "IntentClassification",
-    "IntentClassifier",
-    "IntentOutcome",
-    "IntentRoutingReason",
     "LlmIntentClassifier",
-    "TurnIntent",
     "build_intent_classifier",
 ]

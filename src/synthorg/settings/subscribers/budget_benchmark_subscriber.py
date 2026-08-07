@@ -6,14 +6,16 @@ then reloads runtime services so the engine routing strategy (which reads the
 slice provider at engine-build time) picks up the new provider.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -51,17 +53,16 @@ class BudgetBenchmarkProviderSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "budget-benchmark-provider"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Rebuild the provider + analyzer and reload runtime services."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Rebuild the provider + analyzer and reload runtime services.
+
+        One rebuild per batch: the provider is rebuilt from every watched key
+        and the runtime reload behind it is the most expensive step here, so
+        repeating either per key would redo identical work.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+        """
         from synthorg.api._benchmark_wiring import (  # noqa: PLC0415
             rebuild_cost_dial_benchmark_provider,
         )
@@ -81,7 +82,7 @@ class BudgetBenchmarkProviderSettingsSubscriber:
         try:
             await rebuild_cost_dial_benchmark_provider(self._app_state)
             await reload_runtime_services(
-                self._app_state, trigger=f"setting:{namespace}.{key}"
+                self._app_state, trigger=f"setting:{describe_changes(changes)}"
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -93,8 +94,7 @@ class BudgetBenchmarkProviderSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="budget_benchmark_provider",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -56,15 +56,15 @@ class TestRebuild:
         spy = create_autospec(config_apply._apply_notification_dispatcher_config)
         monkeypatch.setattr(config_apply, "_apply_notification_dispatcher_config", spy)
         sub, app_state, config = _make_subscriber()
-        await sub.on_settings_changed("notifications", "slack_timeout_seconds")
+        await sub.on_settings_changed([("notifications", "slack_timeout_seconds")])
         spy.assert_awaited_once_with(app_state, config)
 
-    async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        spy = create_autospec(config_apply._apply_notification_dispatcher_config)
-        monkeypatch.setattr(config_apply, "_apply_notification_dispatcher_config", spy)
+    async def test_an_unwatched_key_is_not_declared(self) -> None:
+        # Filtering a batch to a subscriber's watched pairs is the
+        # dispatcher's job and is asserted there; what is left here is that
+        # the declared set does not reach beyond what the rebuild needs.
         sub, _, _ = _make_subscriber()
-        await sub.on_settings_changed("notifications", "unrelated")
-        spy.assert_not_awaited()
+        assert ("notifications", "unrelated") not in sub.watched_keys
 
     async def test_rebuild_failure_reraises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -74,4 +74,4 @@ class TestRebuild:
         monkeypatch.setattr(config_apply, "_apply_notification_dispatcher_config", spy)
         sub, _, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="dispatcher boom"):
-            await sub.on_settings_changed("notifications", "ntfy_default_url")
+            await sub.on_settings_changed([("notifications", "ntfy_default_url")])

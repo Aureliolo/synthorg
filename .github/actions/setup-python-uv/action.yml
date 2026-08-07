@@ -23,6 +23,26 @@ runs:
         restore-keys: |
           uv-${{ runner.os }}-
 
+    # uv puts a managed interpreter under its data dir, which the uv cache
+    # above does not cover, so every job re-fetched the CPython standalone
+    # tarball from Astral's CDN. Pinned to an explicit directory rather than
+    # left at the platform default: the cache path has to be written as a
+    # literal here, and a default that moves between uv releases would turn
+    # into a permanent silent cache miss rather than a visible failure.
+    #
+    # Keyed on the interpreter's identity (platform + requested version) and
+    # on the uv release that laid it out, so a uv upgrade that changed the
+    # directory layout misses rather than restoring something uv cannot use.
+    # No restore-keys: a partial match here would hand uv a tree for a
+    # different Python, which is worse than the download it saves.
+    - name: Restore managed Python
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/uv-python
+        key: >-
+          uv-python-${{ runner.os }}-${{ runner.arch }}-${{ inputs.python-version
+          }}-${{ hashFiles('.github/actions/install-uv/action.yml') }}
+
     - uses: ./.github/actions/install-uv
 
     # Both installs are wrapped in retry_cmd.sh: a cold run (or evicted
@@ -47,10 +67,19 @@ runs:
     # -- a ladder whose retry cannot be reached is the very defect the
     # deadline exists to remove.
     #
-    # ``uv python install`` is a quick, bounded fetch (a ~30 MB CPython
-    # standalone tarball), so 90s per attempt is generous for a healthy run
-    # while still converting a stall into a retry: 90 + 15 + 90 = 195s leaves
-    # room inside the 240s deadline for a third, clamped attempt.
+    # A per-attempt timeout has a second bound the rule above does not state,
+    # and ``uv python install`` is where it bites: the fetch does not resume,
+    # so a retry restarts the same 34 MiB from zero. Against a hard failure
+    # (DNS, a 5xx) that is fine, because the attempt ends early and the retry
+    # is the whole point. Against a runner whose throughput sits below what
+    # the timeout implies, every attempt dies at the same place and the
+    # ladder converts slow-but-progressing into a guaranteed failure -- three
+    # attempts, 240s spent, nothing downloaded. The timeout therefore has to
+    # clear the download at the WORST throughput worth completing, not the
+    # healthy one: 180s puts that floor near 0.19 MB/s, and 180 + 15 still
+    # leaves a clamped second attempt inside the deadline for the fast-fail
+    # case the ladder exists to catch. The cache above is what keeps this
+    # path rare; the timeout is what keeps it survivable when it is hit.
     #
     # ``uv sync`` sets no per-attempt timeout of its own, because a cold
     # cross-platform resolve has no honest fixed duration to pick. Its
@@ -59,11 +88,18 @@ runs:
     # running at 240s is failed deliberately. That is the right trade at this
     # budget -- a resolve that slow would exhaust the 300s job regardless, and
     # failing at the ladder names the cause instead of leaving a cancellation.
+    #
+    # The install directory is set per step rather than exported job-wide:
+    # ``uv sync`` writes the interpreter's ABSOLUTE path into the project
+    # venv's ``pyvenv.cfg``, so every later ``uv run`` in the job resolves it
+    # through the venv and needs no variable of its own. Only the two steps
+    # that place the interpreter and bind it have to agree on where it goes.
     - name: Install Python
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
-        RETRY_CMD_ATTEMPT_TIMEOUT: "90"
+        UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/uv-python
+        RETRY_CMD_ATTEMPT_TIMEOUT: "180"
         RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "uv python install" \
@@ -73,6 +109,7 @@ runs:
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
+        UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/uv-python
         RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "uv sync --frozen" \

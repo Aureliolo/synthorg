@@ -1,3 +1,4 @@
+# module-kind: service
 """Plan-review service layer.
 
 Thin wrapper over :class:`PlanRepository` so callers do not reach into
@@ -8,8 +9,6 @@ logging, mirroring :class:`ProjectService`. A terminal plan cannot be reworked,
 and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
-
-from typing import Final
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -24,14 +23,20 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
-    ServiceUnavailableError,
+    PlanNotDeletableError,
     ValidationError,
     VersionConflictError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
+    DELETABLE_STATUSES,
+    REPLANNABLE_STATUSES,
+    TAIL_STATUSES,
     PlanStatus,
 )
 from synthorg.core.plan_transitions import validate_transition
@@ -41,6 +46,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PLAN_CHANGES_REQUEST_FAILED,
     API_PLAN_CHANGES_REQUESTED,
+    API_PLAN_DELETE_REFUSED,
+    API_PLAN_DELETED,
     API_PLAN_FETCH_FAILED,
     API_PLAN_LIST_FAILED,
     API_PLAN_LISTED,
@@ -50,72 +57,38 @@ from synthorg.observability.events.api import (
     API_PLAN_UPDATE_FAILED,
     API_PLAN_UPDATED,
 )
-from synthorg.persistence.evaluation_report_protocol import (
-    EvaluationReportFilterSpec,
-    EvaluationReportRecord,
-    EvaluationReportRepository,
-)
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
 
 
-#: Judgement history a single read returns. The evaluate stage caps its own
-#: attempts well below this, so the page holds every verdict a plan can have
-#: while still refusing to stream an unbounded history to a caller.
-MAX_EVALUATION_ATTEMPTS: Final[int] = 20
-
-
 class PlanService:
     """Wraps :class:`PlanRepository` with uniform audit logging.
+
+    Every plan write funnels through here, so the audit line, the terminal
+    guard and the version-conflict translation have one definition. Reading
+    the evaluate stage's verdicts is a different store and a different
+    responsibility, and lives in
+    :class:`~synthorg.api.services.plan_evaluation_service.PlanEvaluationService`.
 
     Args:
         repo: Plan repository implementation.
         clock: Time seam; edits/transitions stamp ``updated_at`` from it.
-        evaluation_reports: Judgement store backing
-            :meth:`evaluation_history`. Optional because most callers build
-            this service purely as the audited plan-status writer and never
-            read a verdict.
     """
 
-    __slots__ = ("_clock", "_evaluation_reports", "_repo")
+    __slots__ = ("_clock", "_repo")
 
     _repo: PlanRepository
     _clock: Clock
-    _evaluation_reports: EvaluationReportRepository | None
 
     def __init__(
         self,
         *,
         repo: PlanRepository,
         clock: Clock,
-        evaluation_reports: EvaluationReportRepository | None = None,
     ) -> None:
         self._repo = repo
         self._clock = clock
-        self._evaluation_reports = evaluation_reports
-
-    async def evaluation_history(
-        self, plan_id: NotBlankStr
-    ) -> tuple[EvaluationReportRecord, ...]:
-        """Return the evaluate stage's judgements for *plan_id*, newest first.
-
-        Returns:
-            The recorded judgements, bounded by
-            :data:`MAX_EVALUATION_ATTEMPTS`.
-
-        Raises:
-            ServiceUnavailableError: When this service was built without a
-                judgement store, so an empty history cannot be told apart
-                from a plan that has never been judged.
-        """
-        if self._evaluation_reports is None:
-            msg = "Plan evaluation history is unavailable: no judgement store wired"
-            raise ServiceUnavailableError(msg)
-        return await self._evaluation_reports.query(
-            EvaluationReportFilterSpec(plan_id=plan_id),
-            limit=MAX_EVALUATION_ATTEMPTS,
-        )
 
     async def get(self, plan_id: NotBlankStr) -> Plan | None:
         """Fetch a plan by id.
@@ -299,6 +272,67 @@ class PlanService:
         self._log_transition(existing.status, drafted)
         return drafted
 
+    @staticmethod
+    def _require_deletable(plan: Plan) -> None:
+        """Refuse a delete that would destroy a record rather than a request.
+
+        Raises:
+            PlanNotDeletableError: When the plan is dispatched (its items are
+                already building, so it is what those tasks were approved
+                against) or terminal (it is the record of what was decided,
+                and its delivery verdicts cascade off the row).
+        """
+        if plan.status in DELETABLE_STATUSES:
+            return
+        logger.info(
+            API_PLAN_DELETE_REFUSED,
+            plan_id=str(plan.id),
+            status=plan.status.value,
+        )
+        building = plan.status in REPLANNABLE_STATUSES | TAIL_STATUSES
+        detail = (
+            "its items are building; replan it instead of deleting it"
+            if building
+            else "already decided; its record and its verdicts outlive it"
+        )
+        msg = f"plan {plan.id} is {plan.status.value} and is {detail}"
+        raise PlanNotDeletableError(msg)
+
+    async def delete(self, existing: Plan, *, requested_by: str) -> None:
+        """Remove a request that never became work.
+
+        The route exists to clear a plan an operator has decided not to
+        pursue: a shell whose decomposition stranded, a draft, one waiting
+        on review, or one that failed. Every other status is refused, and
+        the refusal routes through here rather than the controller so the
+        one irreversible plan operation is audited on the same path as
+        every reversible one.
+
+        Args:
+            existing: The plan being removed (already fetched by the caller).
+            requested_by: Who asked, recorded on the audit event.
+
+        Raises:
+            PlanNotDeletableError: The plan is dispatched or terminal.
+            RecordNotFoundError: The plan went between the caller's fetch
+                and this write. The audit line is the record that a plan
+                was destroyed, so it may only follow a delete that found
+                one; emitting it regardless would attest to a deletion
+                that did not happen.
+            QueryError: Repository write failure.
+        """
+        self._require_deletable(existing)
+        deleted = await self._repo.delete(NotBlankStr(str(existing.id)))
+        if not deleted:
+            msg = f"plan {existing.id} no longer exists"
+            raise RecordNotFoundError(msg)
+        logger.info(
+            API_PLAN_DELETED,
+            plan_id=str(existing.id),
+            status=existing.status.value,
+            requested_by=requested_by,
+        )
+
     async def sync_status(
         self,
         existing: Plan,
@@ -306,6 +340,7 @@ class PlanService:
         *,
         requested_by: str | None = None,
         reason: str | None = None,
+        failure_reason: NotBlankStr | None = None,
     ) -> Plan:
         """Reflect an approval decision onto the plan (status -> approved/rejected).
 
@@ -321,23 +356,39 @@ class PlanService:
                 a task transition retains.
             reason: Why the transition happened (e.g. a project teardown),
                 recorded on the audit log alongside ``requested_by``.
+            failure_reason: Why the plan failed, persisted ON the plan so Plan
+                Review shows it. Required by the model (and the column check)
+                exactly when *status* is FAILED, and rejected otherwise, so it
+                is passed only alongside that status.
 
         Returns:
             The persisted, decided plan.
 
         Raises:
             ConflictError: The transition is not legal for the plan lifecycle.
+            ValidationError: FAILED was requested with no ``failure_reason``.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
         self._require_legal_transition(existing, status)
-        decided = existing.model_copy(
-            update={
-                "status": status,
-                "version": existing.version + 1,
-                "updated_at": self._clock.now(),
-            }
+        failing = status is PlanStatus.FAILED
+        if failing and failure_reason is None:
+            msg = "a plan may only be failed with a reason Plan Review can show"
+            raise ValidationError(msg)
+        now = self._clock.now()
+        # ``Plan.fail`` owns the status/reason pairing, which ``model_copy``
+        # cannot police on its own: it does not re-run validators.
+        decided = (
+            existing.fail(failure_reason, now=now)
+            if failing and failure_reason is not None
+            else existing.model_copy(
+                update={
+                    "status": status,
+                    "version": existing.version + 1,
+                    "updated_at": now,
+                }
+            )
         )
         await self._persist_update(
             decided,

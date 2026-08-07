@@ -8,14 +8,10 @@ from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.api.subsystems.spec import SubsystemPhase
 from tests._shared import LoopAsyncClient
 
-_PHASE_COUNT_KEYS = (
-    "active",
-    "degraded",
-    "waiting",
-    "blocked",
-    "failed",
-    "disabled",
-)
+# Derived from the phase enum, not written out: a new phase with no counter
+# leaves its subsystems invisible on the summary an operator reads first, and
+# a hand-listed set would pass by simply not knowing about it.
+_PHASE_COUNT_KEYS = tuple(phase.value for phase in SubsystemPhase)
 
 
 @pytest.mark.unit

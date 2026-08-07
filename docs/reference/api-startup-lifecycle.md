@@ -7,6 +7,39 @@ description: Construction-phase vs on-startup wiring order, the gated best-effor
 
 The API boots in two phases. **Construction** (the `create_app` body) wires synchronous services. **On-startup** (`_build_lifecycle.on_startup`) wires services that need a connected persistence backend. The ordering invariants below are load-bearing: getting them wrong races a dependency and 503s a controller forever, or poisons startup on a transient boot.
 
+## Binary preflight
+
+`run_binary_preflight` (`api/lifecycle_helpers/binary_preflight.py`) runs first
+in the construction phase, before anything is wired. The product shells out to a
+handful of binaries, and an image missing one boots cleanly and fails at the
+moment the feature is used, which for `git` is every single dispatch: workspace
+provisioning is on the critical path of every task and
+`coordination.enable_workspace_isolation` defaults on. The whole test suite is
+blind to it, because tests run where `git` is on PATH.
+
+The manifest is declarative, one record per binary, and holds exactly the
+programs the backend needs and **cannot obtain for itself**. A missing one
+raises `RequiredBinaryMissingError` and aborts the boot, naming the binary, the
+apko package that provides it, and the subsystems it breaks. Refusing to start
+is the honest outcome: the alternative is a backend that accepts work it can
+never dispatch. `git` is required always; `pg_dump` / `pg_restore` only when the
+configured backend is Postgres, which is why the preflight is handed the
+resolved backend name (empty when persistence has not resolved one, so only the
+backend-independent binaries are demanded).
+
+A binary the backend provisions at runtime is deliberately absent. Both tunnel
+adapters download their vendor CLI on first start
+(`integrations.tunnel.cloudflared_download_enabled` /
+`devtunnel_download_enabled`, both on by default) and each answers
+`availability()` with the live state, including the case where that download is
+switched off. Checking PATH at boot would report a binary the adapter downloads
+on demand as missing, and duplicate a better, later report. The same reasoning excludes `nix`, which
+provisions inside the sandbox.
+
+Nothing else is listed: there is no `create_subprocess_shell` under
+`src/synthorg/`, and the devcontainer image build goes through `aiodocker`
+rather than the `docker` CLI, so no `docker` entry can appear.
+
 ## Construction-phase ordering invariants
 
 - `agent_registry` must be built BEFORE `auto_wire_meetings`.

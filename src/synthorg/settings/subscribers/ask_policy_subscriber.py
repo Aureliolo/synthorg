@@ -10,6 +10,8 @@ rebuild can install, so they stay owned by ``RuntimeReloadSettingsSubscriber``.
 The directive text names no tool, so nothing here depends on them.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
@@ -52,9 +54,21 @@ class AskPolicySettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "ask-policy"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-bind the ask-policy provider so the new value goes live."""
-        if (namespace, key) not in _WATCHED:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-bind the ask-policy provider once for the whole batch.
+
+        The rebuild re-reads every watched key whichever one changed, so a
+        batch carrying several of them would otherwise re-bind the same
+        provider once per key for one identical result.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        applies = False
+        for namespace, key in changes:
+            if (namespace, key) in _WATCHED:
+                applies = True
+                continue
             logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
@@ -62,7 +76,11 @@ class AskPolicySettingsSubscriber:
                 key=key,
                 note="ignored unexpected pair",
             )
-            return
+        if applies:
+            await self._apply()
+
+    async def _apply(self) -> None:
+        """Re-bind the ask-policy provider so the new values go live."""
         from synthorg.engine.ask_policy.wiring import (  # noqa: PLC0415
             rebuild_and_bind_ask_policy,
         )

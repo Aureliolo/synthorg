@@ -24,9 +24,10 @@ from synthorg.engine.workspace.environment.hash_cache import (
     ProvisionedEnvironmentCache,
 )
 from synthorg.engine.workspace.environment.image_builder import (
+    AiodockerImageBuilder,
+    BuildFailure,
     BuildOutcome,
     ImageBuilder,
-    SubprocessImageBuilder,
 )
 from synthorg.engine.workspace.environment.manifest import (
     BOOTSTRAP_SCRIPT_NAME,
@@ -45,6 +46,8 @@ from synthorg.engine.workspace.environment.service import EnvironmentService
 
 __all__ = [
     "BOOTSTRAP_SCRIPT_NAME",
+    "AiodockerImageBuilder",
+    "BuildFailure",
     "BuildOutcome",
     "CommandOutcome",
     "DevcontainerEnvironmentStrategy",
@@ -61,7 +64,6 @@ __all__ = [
     "ProvisionedEnvironment",
     "ProvisionedEnvironmentCache",
     "ScaffoldResult",
-    "SubprocessImageBuilder",
     "WorkspaceCommitter",
     "build_environment_strategy",
 ]

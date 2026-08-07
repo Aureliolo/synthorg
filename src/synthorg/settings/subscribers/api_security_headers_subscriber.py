@@ -10,6 +10,8 @@ this subscriber re-invokes the same idempotent resolver so a change takes
 effect within the eventual-consistency window of one in-flight response.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -62,9 +64,21 @@ class ApiSecurityHeadersSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "api-security-headers"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-resolve and re-apply the CSP origins + error-docs base URL."""
-        if (namespace, key) not in _WATCHED:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-apply the header configuration once for the whole batch.
+
+        The resolver re-reads both watched keys whichever one changed, so a
+        batch carrying two of them would otherwise run the same re-resolve
+        twice for the same result: the batch is what gets applied, not each
+        pair in it.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        triggers = [pair for pair in changes if pair in _WATCHED]
+        for namespace, key in changes:
+            if (namespace, key) in _WATCHED:
+                continue
             logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
@@ -72,7 +86,16 @@ class ApiSecurityHeadersSettingsSubscriber:
                 key=key,
                 note="ignored unexpected pair",
             )
-            return
+        if triggers:
+            await self._apply(triggers)
+
+    async def _apply(self, triggers: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve and re-apply the CSP origins + error-docs base URL.
+
+        Args:
+            triggers: The watched pairs this re-resolve answers, for the
+                failure log.
+        """
         from synthorg.api.lifecycle_helpers.startup_steps import (  # noqa: PLC0415
             resolve_runtime_security_settings,
         )
@@ -84,8 +107,7 @@ class ApiSecurityHeadersSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="api_security_headers",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger_keys=sorted(f"{ns}.{key}" for ns, key in triggers),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

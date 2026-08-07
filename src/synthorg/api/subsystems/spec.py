@@ -10,6 +10,7 @@ declarations against live state and activates or deactivates accordingly, so
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemGraphInvalidError
@@ -55,6 +56,8 @@ class CapabilityId(StrEnum):
     CONVERSATIONAL_ACTOR = "conversational_actor"
     CHIEF_OF_STAFF_CHAT = "chief_of_staff_chat"
     CHIEF_OF_STAFF_PROPOSER = "chief_of_staff_proposer"
+    TURN_INTENT_CLASSIFIER = "turn_intent_classifier"
+    MULTI_VOICE_ROUTER = "multi_voice_router"
     GROUP_CHAT = "group_chat"
     SIGNALS_SERVICE = "signals_service"
     CUSTOM_RULES = "custom_rules"
@@ -117,14 +120,44 @@ class SubsystemPhase(StrEnum):
     taken down instead. Reporting it as ``ACTIVE`` would claim a collaborator
     that is not there, which is the drift reading liveness from ``provides``
     exists to prevent.
+
+    ``UNREACHABLE`` is ``WAITING`` that waiting alone will not resolve.
+    Level-triggering rests on "a dependency absent at boot is not a verdict:
+    the next pass picks it up", which holds for a dependency that is merely
+    late and not for one an operator switched off or that declined on its own
+    condition. Reporting that as ``WAITING`` promises a pass that will change
+    nothing. It is re-derived every pass, so the operator action that fixes
+    the owner clears it on the next one; what it says is "this needs a
+    change, not more time".
+
+    ``REBUILDING`` is the window inside a pass where a subsystem has been torn
+    down and not yet brought back. It reads as neither up nor waiting-on-
+    anything, and a concurrent read answering ``WAITING`` with an empty
+    ``waiting_on`` is the contract's own shape used to say nothing.
     """
 
     ACTIVE = "active"
     DEGRADED = "degraded"
     WAITING = "waiting"
+    UNREACHABLE = "unreachable"
+    REBUILDING = "rebuilding"
     BLOCKED = "blocked"
     DISABLED = "disabled"
     FAILED = "failed"
+
+
+#: Phases that name an unmet requirement, so may carry ``waiting_on``.
+#: Beside the enum rather than in the status model, so a ninth phase is
+#: classified where it is declared instead of somewhere that has to be
+#: remembered.
+PHASES_NAMING_UNMET: Final[frozenset[SubsystemPhase]] = frozenset(
+    {SubsystemPhase.WAITING, SubsystemPhase.UNREACHABLE, SubsystemPhase.DEGRADED}
+)
+
+#: Phases that have something to explain, so may carry ``detail``.
+PHASES_WITH_DETAIL: Final[frozenset[SubsystemPhase]] = frozenset(
+    {SubsystemPhase.FAILED, SubsystemPhase.BLOCKED, SubsystemPhase.UNREACHABLE}
+)
 
 
 type Activate = Callable[[AppState], Awaitable[None]]

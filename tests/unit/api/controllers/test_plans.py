@@ -1,19 +1,35 @@
 """Tests for the plan controller (read / rework / request-changes)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
 from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.evaluation_report_protocol import EvaluationReportRecord
 from synthorg.persistence.state import persistence_of
 from tests._shared import LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 _CREATED_AT = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+_HIRED_ON = date(2026, 1, 1)
+
+
+def _agent(role: str) -> AgentIdentity:
+    """An agent holding *role*, so the roster the edit path reads is non-empty."""
+    return AgentIdentity(
+        id=as_uuid(f"agent-{role}"),
+        name=NotBlankStr(f"agent-{role}"),
+        role=NotBlankStr(role),
+        department=NotBlankStr("engineering"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
+        hiring_date=_HIRED_ON,
+    )
+
 
 # Plan item ids must be canonical UUID strings (dispatch rebuilds child tasks
 # from them); use stable, labelled UUIDs so payloads read clearly.
@@ -27,6 +43,7 @@ def _plan(
     status: PlanStatus = PlanStatus.PENDING_REVIEW,
     project: str = "beachhead",
     objective_id: str = "obj-001",
+    failure_reason: str | None = None,
 ) -> Plan:
     return Plan(
         id=as_uuid(plan_id),
@@ -34,6 +51,7 @@ def _plan(
         objective_id=NotBlankStr(objective_id),
         objective_title=NotBlankStr("Ship the Tetris game"),
         parent_task_id=NotBlankStr("task-root"),
+        failure_reason=NotBlankStr(failure_reason) if failure_reason else None,
         items=(
             PlanItem(
                 id=NotBlankStr(_I1),
@@ -237,6 +255,70 @@ class TestPlanController:
         snapshot = data["version_history"][0]
         assert snapshot["version"] == 1
         assert [item["id"] for item in snapshot["items"]] == [_I1, _I2]
+
+    async def test_edit_refuses_an_owner_the_org_does_not_staff(
+        self,
+        async_test_client: LoopAsyncClient,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        # Hand-correcting an owner to another invented role was accepted
+        # without complaint, which is how the edit path could validate the
+        # dependency graph and still leave every item unroutable.
+        await agent_registry.clear()
+        await agent_registry.register(_agent("Backend Developer"))
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Reworked scaffold",
+                        "description": "New scope for the board",
+                        "owner": "Backend Engineer",
+                        "acceptance_criteria": ["board scaffolded"],
+                        "expected_artifacts": ["src/board.py"],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 422, resp.text
+        assert "Backend Engineer" in resp.text
+        assert "Backend Developer" in resp.text
+
+    async def test_edit_accepts_an_owner_on_the_roster(
+        self,
+        async_test_client: LoopAsyncClient,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        await agent_registry.clear()
+        await agent_registry.register(_agent("Backend Developer"))
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Reworked scaffold",
+                        "description": "New scope for the board",
+                        "owner": "Backend Developer",
+                        "acceptance_criteria": ["board scaffolded"],
+                        "expected_artifacts": ["src/board.py"],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["data"]["items"][0]["owner"] == "Backend Developer"
 
     async def test_version_history_is_bounded(
         self, async_test_client: LoopAsyncClient
@@ -543,3 +625,99 @@ class TestPlanController:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+
+@pytest.mark.unit
+class TestDeletePlan:
+    """The route that gives a stuck plan a way out.
+
+    Without it a plan whose parent task was deleted sat in the review
+    queue forever: it could not be approved (no parent), could not be
+    superseded (the items check forbids it while empty), and had no
+    delete route at all.
+    """
+
+    async def test_deletes_a_plan_under_review(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed(async_test_client, _plan(plan_id="doomed"))
+        plan_id = str(as_uuid("doomed"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+        follow_up = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert follow_up.status_code == 404
+
+    async def test_deletes_a_failed_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The status a stranded plan lands in has to be removable."""
+        await _seed(
+            async_test_client,
+            _plan(
+                plan_id="burned",
+                status=PlanStatus.FAILED,
+                failure_reason="dispatch failed",
+            ),
+        )
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{as_uuid('burned')}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PlanStatus.APPROVED,
+            PlanStatus.EXECUTING,
+            PlanStatus.INTEGRATING,
+            PlanStatus.EVALUATING,
+        ],
+        ids=lambda value: str(value.value),
+    )
+    async def test_refuses_a_dispatched_plan(
+        self, async_test_client: LoopAsyncClient, status: PlanStatus
+    ) -> None:
+        """Removing it would orphan every task already building under it."""
+        await _seed(async_test_client, _plan(plan_id="building", status=status))
+        plan_id = str(as_uuid("building"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 409
+        # Still there: the refusal is not a partial delete.
+        survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert survivor.status_code == 200
+
+    async def test_missing_plan_404(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.delete(
+            "/api/v1/plans/ghost", headers=make_auth_headers("ceo")
+        )
+        assert resp.status_code == 404
+
+    async def test_a_read_only_role_cannot_delete(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The one irreversible plan operation is not a read.
+
+        An observer can see every plan, which is what makes the write guard
+        the only thing standing between a viewer and a destroyed review
+        record.
+        """
+        await _seed(async_test_client, _plan(plan_id="watched"))
+        plan_id = str(as_uuid("watched"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("observer")
+        )
+
+        assert resp.status_code == 403
+        survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert survivor.status_code == 200

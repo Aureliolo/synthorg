@@ -69,7 +69,7 @@ class TestApply:
         hub = mock_of[EventStreamHub]()
         sub = _make_subscriber(hub=hub, int_return=16)
         await sub.on_settings_changed(
-            "communication", "event_stream_history_max_sessions"
+            [("communication", "event_stream_history_max_sessions")]
         )
         hub.set_history_max_sessions.assert_called_once_with(16)
         hub.set_history_per_session.assert_not_called()
@@ -78,7 +78,7 @@ class TestApply:
         hub = mock_of[EventStreamHub]()
         sub = _make_subscriber(hub=hub, int_return=8)
         await sub.on_settings_changed(
-            "communication", "event_stream_history_per_session"
+            [("communication", "event_stream_history_per_session")]
         )
         hub.set_history_per_session.assert_called_once_with(8)
         hub.set_history_max_sessions.assert_not_called()
@@ -86,7 +86,9 @@ class TestApply:
     async def test_max_queue_size_routes_to_hub(self) -> None:
         hub = mock_of[EventStreamHub]()
         sub = _make_subscriber(hub=hub, int_return=512)
-        await sub.on_settings_changed("communication", "event_stream_max_queue_size")
+        await sub.on_settings_changed(
+            [("communication", "event_stream_max_queue_size")]
+        )
         # Applies to subscribers opened after this; one already streaming
         # keeps its queue, which is why the hub only stores the bound.
         hub.set_max_queue_size.assert_called_once_with(512)
@@ -97,7 +99,7 @@ class TestApply:
         sub = _make_subscriber(hub=None)
         # No hub wired; resolving + applying must not raise.
         await sub.on_settings_changed(
-            "communication", "event_stream_history_max_sessions"
+            [("communication", "event_stream_history_max_sessions")]
         )
 
     async def test_resolver_failure_reraises(self) -> None:
@@ -105,12 +107,12 @@ class TestApply:
         sub = _make_subscriber(hub=hub, int_side_effect=RuntimeError("resolver outage"))
         with pytest.raises(RuntimeError, match="resolver outage"):
             await sub.on_settings_changed(
-                "communication", "event_stream_history_max_sessions"
+                [("communication", "event_stream_history_max_sessions")]
             )
         hub.set_history_max_sessions.assert_not_called()
 
     async def test_unknown_key_is_noop(self) -> None:
         hub = mock_of[EventStreamHub]()
         sub = _make_subscriber(hub=hub)
-        await sub.on_settings_changed("communication", "unrelated")
+        await sub.on_settings_changed([("communication", "unrelated")])
         hub.set_history_max_sessions.assert_not_called()

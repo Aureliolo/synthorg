@@ -293,3 +293,7 @@ SECURITY_CUSTOM_RULE_CREATED: Final[str] = "security.custom_rule.created"
 SECURITY_CUSTOM_RULE_UPDATED: Final[str] = "security.custom_rule.updated"
 SECURITY_CUSTOM_RULE_DELETED: Final[str] = "security.custom_rule.deleted"
 SECURITY_CUSTOM_RULE_TOGGLED: Final[str] = "security.custom_rule.toggled"
+
+# An outbound client the TLS trust snapshot displaced could not be
+# closed, so its connection pool and sockets stay held for the process.
+SECURITY_TLS_CLIENT_CLOSE_FAILED: Final[str] = "security.tls.client_close_failed"

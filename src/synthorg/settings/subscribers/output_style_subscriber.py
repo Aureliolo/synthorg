@@ -6,14 +6,16 @@ a pack swap, an enable/shadow toggle, or an exemption change takes effect on the
 next output boundary and prompt build with no restart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -55,17 +57,15 @@ class OutputStyleSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "output-style"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Rebuild the policy service so the new value goes live."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Rebuild the policy service so the new values go live.
+
+        One rebuild per batch: the service is rebuilt from every watched key,
+        so repeating it per key would rebuild the same service several times.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+        """
         from synthorg.engine.output_style.wiring import (  # noqa: PLC0415
             rebuild_and_bind_output_style,
         )
@@ -79,8 +79,7 @@ class OutputStyleSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="output_style_policy",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

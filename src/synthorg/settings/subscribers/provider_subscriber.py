@@ -1,6 +1,6 @@
 """Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 
 from synthorg.api.state import AppState
@@ -14,6 +14,7 @@ from synthorg.observability.events.settings import (
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -115,30 +116,56 @@ class ProviderSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
-        """Handle a provider setting change.
+        """Handle a batch of provider setting changes.
 
         ``routing_strategy`` triggers a :class:`ModelRouter` rebuild;
         ``retry_max_attempts`` triggers a :class:`ProviderRegistry` rebuild so
-        the new retry cap goes live. Other keys are advisory and logged at
-        INFO level.
+        the new retry cap goes live. Each rebuild runs at most once for the
+        batch, since each re-reads its own setting. Other keys are advisory
+        and logged at INFO level.
+
+        The two rebuilds read different settings and swap different
+        services, so a failure in one says nothing about the other: the
+        second is attempted regardless and a non-critical failure is held
+        until both have run. Raising at the first would leave the second
+        setting persisted and not live until an unrelated write or a
+        restart, since the dispatcher sees one exception per subscriber
+        call either way. A critical error still aborts on the spot.
 
         Args:
-            namespace: Changed setting namespace.
-            key: Changed setting key.
+            changes: The watched writes this rebuild carries.
+
+        Raises:
+            Exception: The first non-critical rebuild failure, re-raised
+                once every independent rebuild in the batch has run, so
+                the dispatcher records the batch as failed.
         """
-        if namespace == "providers" and key == "routing_strategy":
-            await self._rebuild_router()
-        elif namespace == "providers" and key == "retry_max_attempts":
-            await self._rebuild_registry(key)
-        else:
+        pairs = set(changes)
+        rebuilt = False
+        deferred: Exception | None = None
+        if ("providers", "routing_strategy") in pairs:
+            rebuilt = True
+            try:
+                await self._rebuild_router()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                deferred = exc
+        if ("providers", "retry_max_attempts") in pairs:
+            rebuilt = True
+            try:
+                await self._rebuild_registry("retry_max_attempts")
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                deferred = deferred or exc
+        if deferred is not None:
+            raise deferred
+        if not rebuilt:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=describe_changes(changes),
                 note="advisory -- no service rebuild required",
             )
 

@@ -96,7 +96,7 @@ class TestRebuild:
         )
         sub, app_state = _make_subscriber(snapshot=original, int_return=7)
 
-        await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
+        await sub.on_settings_changed([("workers", "dispatcher_publish_max_attempts")])
 
         swapped = app_state.bridge_config.workers
         assert swapped.dispatcher_publish_max_attempts == 7
@@ -108,7 +108,7 @@ class TestRebuild:
         sub, app_state = _make_subscriber(snapshot=original, float_return=2.5)
 
         await sub.on_settings_changed(
-            "workers", "dispatcher_publish_backoff_base_seconds"
+            [("workers", "dispatcher_publish_backoff_base_seconds")]
         )
 
         swapped = app_state.bridge_config.workers
@@ -123,7 +123,9 @@ class TestRebuild:
         )
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
+            await sub.on_settings_changed(
+                [("workers", "dispatcher_publish_max_attempts")]
+            )
 
         assert app_state.bridge_config.workers is original
         assert app_state.bridge_config.workers.dispatcher_publish_max_attempts == 4
@@ -133,7 +135,9 @@ class TestRebuild:
         before = app_state.bridge_config.workers
 
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
+            await sub.on_settings_changed(
+                [("workers", "dispatcher_publish_max_attempts")]
+            )
 
         assert app_state.bridge_config.workers is before
 
@@ -149,7 +153,9 @@ class TestRebuild:
         )
 
         with pytest.raises(Exception) as exc_info:  # noqa: PT011 -- pydantic
-            await sub.on_settings_changed("workers", "dispatcher_publish_max_attempts")
+            await sub.on_settings_changed(
+                [("workers", "dispatcher_publish_max_attempts")]
+            )
         assert exc_info.type.__name__ == "ValidationError"
 
         assert app_state.bridge_config.workers is original
@@ -163,7 +169,7 @@ class TestUnexpectedRouting:
         original = WorkersBridgeConfig(dispatcher_publish_max_attempts=6)
         sub, app_state = _make_subscriber(snapshot=original, int_return=9)
 
-        await sub.on_settings_changed("other", "dispatcher_publish_max_attempts")
+        await sub.on_settings_changed([("other", "dispatcher_publish_max_attempts")])
 
         assert app_state.bridge_config.workers is original
 
@@ -171,6 +177,6 @@ class TestUnexpectedRouting:
         original = WorkersBridgeConfig(dispatcher_publish_max_attempts=6)
         sub, app_state = _make_subscriber(snapshot=original, int_return=9)
 
-        await sub.on_settings_changed("workers", "some_unrelated_key")
+        await sub.on_settings_changed([("workers", "some_unrelated_key")])
 
         assert app_state.bridge_config.workers is original

@@ -7,7 +7,12 @@ lives apart from the reconciler that produces it.
 
 from dataclasses import dataclass
 
-from synthorg.api.subsystems.spec import CapabilityId, SubsystemPhase
+from synthorg.api.subsystems.spec import (
+    PHASES_NAMING_UNMET,
+    PHASES_WITH_DETAIL,
+    CapabilityId,
+    SubsystemPhase,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,10 +22,14 @@ class SubsystemStatus:
     Attributes:
         name: The subsystem's stable identifier.
         phase: Its resting state after the pass.
-        waiting_on: Unmet requirements, populated for ``WAITING`` and for
+        waiting_on: Unmet requirements, populated for ``WAITING``, for
+            ``UNREACHABLE`` (which is waiting with no exit), and for
             ``DEGRADED``, which is up with a requirement gone. Names every
             missing capability, not just the first.
-        detail: Redacted failure description, populated only for ``FAILED``.
+        detail: Why this subsystem is not simply up. A redacted failure
+            description on ``FAILED``, what the activation declined on for
+            ``BLOCKED``, and which owner will never supply the requirement for
+            ``UNREACHABLE``. Absent on every phase that has nothing to add.
     """
 
     name: str
@@ -33,21 +42,21 @@ class SubsystemStatus:
 
         Raises:
             ValueError: When ``waiting_on`` is populated on a phase that names
-                no unmet requirement, or ``detail`` on anything but
-                ``FAILED``. An operator reads this to find out why something
-                is off, so a stale field from a previous phase is worse than
-                none. ``DEGRADED`` carries it for the same reason ``WAITING``
-                does: it is up, but the requirement it names is gone.
+                no unmet requirement, or ``detail`` on a phase that has nothing
+                to explain. An operator reads this to find out why something is
+                off, so a stale field from a previous phase is worse than none.
         """
-        names_unmet = {SubsystemPhase.WAITING, SubsystemPhase.DEGRADED}
-        if self.waiting_on and self.phase not in names_unmet:
+        if self.waiting_on and self.phase not in PHASES_NAMING_UNMET:
             msg = (
-                "waiting_on is only valid on WAITING or DEGRADED, got "
-                f"{self.phase.value}"
+                "waiting_on is only valid on WAITING, UNREACHABLE or DEGRADED,"
+                f" got {self.phase.value}"
             )
             raise ValueError(msg)
-        if self.detail is not None and self.phase is not SubsystemPhase.FAILED:
-            msg = f"detail is only valid on FAILED, got {self.phase.value}"
+        if self.detail is not None and self.phase not in PHASES_WITH_DETAIL:
+            msg = (
+                "detail is only valid on FAILED, BLOCKED or UNREACHABLE, got "
+                f"{self.phase.value}"
+            )
             raise ValueError(msg)
 
 

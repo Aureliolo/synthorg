@@ -65,12 +65,12 @@ class TestApply:
     async def test_timeout_applies_to_client(self) -> None:
         client = mock_of[A2AClient]()
         sub = _make_subscriber(client=client, float_return=12.5)
-        await sub.on_settings_changed("a2a", "client_timeout_seconds")
+        await sub.on_settings_changed([("a2a", "client_timeout_seconds")])
         client.set_timeout_seconds.assert_called_once_with(12.5)
 
     async def test_no_client_is_silent_noop(self) -> None:
         sub = _make_subscriber(client=None)
-        await sub.on_settings_changed("a2a", "client_timeout_seconds")
+        await sub.on_settings_changed([("a2a", "client_timeout_seconds")])
 
     async def test_resolver_failure_reraises(self) -> None:
         client = mock_of[A2AClient]()
@@ -78,11 +78,11 @@ class TestApply:
             client=client, float_side_effect=RuntimeError("resolver outage")
         )
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("a2a", "client_timeout_seconds")
+            await sub.on_settings_changed([("a2a", "client_timeout_seconds")])
         client.set_timeout_seconds.assert_not_called()
 
     async def test_unknown_key_is_noop(self) -> None:
         client = mock_of[A2AClient]()
         sub = _make_subscriber(client=client)
-        await sub.on_settings_changed("a2a", "unrelated")
+        await sub.on_settings_changed([("a2a", "unrelated")])
         client.set_timeout_seconds.assert_not_called()

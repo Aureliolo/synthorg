@@ -46,6 +46,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="devcontainer_context_max_bytes",
+        type=SettingType.INTEGER,
+        default="536870912",
+        description=(
+            "Ceiling on the uncompressed size of the build context uploaded"
+            " to the Docker daemon when a project declares a 'devcontainer'"
+            " environment. The context is an agent-writable workspace and is"
+            " packed in the backend process, so an agent that writes a large"
+            " artefact into it would otherwise exhaust the memory that also"
+            " hosts the API, auth and the settings store. A build whose"
+            " context exceeds this is refused with the size in the message"
+            " rather than attempted. Read live: a change applies to the next"
+            " build with no restart."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1048576,
+        max_value=8589934592,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="base_branch",
         type=SettingType.STRING,
         default="main",

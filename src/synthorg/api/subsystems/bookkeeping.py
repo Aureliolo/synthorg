@@ -34,11 +34,17 @@ class ReconcileBook:
             keyed by subsystem name.
         declined: Subsystems whose activation returned without installing
             anything, so the warning is logged on the transition only.
+        decline_reasons: Why each declined subsystem declined, keyed by name.
+            An activation that returns without installing anything did so on
+            a condition the declaration does not model, so nothing in the
+            graph can name it afterwards; it is recorded at the decline, when
+            the pass can still read what the activation saw.
     """
 
     capabilities: Mapping[CapabilityId, Capability]
     failures: dict[str, str] = field(default_factory=dict)
     declined: set[str] = field(default_factory=set)
+    decline_reasons: dict[str, str] = field(default_factory=dict)
     _fingerprints: dict[str, _Capabilities] = field(default_factory=dict)
     _settings: dict[str, _Settings] = field(default_factory=dict)
     _generations: dict[CapabilityId, int] = field(default_factory=dict)
@@ -106,6 +112,7 @@ class ReconcileBook:
             app_state: Application state the checks read.
         """
         self.declined.discard(spec.name)
+        self.decline_reasons.pop(spec.name, None)
         self._attempted.pop(spec.name, None)
         # Bumped before the consumers' snapshots are taken (they activate
         # later in the same ordered pass), so a consumer records the
@@ -131,6 +138,7 @@ class ReconcileBook:
         self._attempted.pop(spec.name, None)
         self.failures.pop(spec.name, None)
         self.declined.discard(spec.name)
+        self.decline_reasons.pop(spec.name, None)
 
     async def drifted(self, spec: SubsystemSpec, app_state: AppState) -> bool:
         """Report whether a requirement or declared setting changed.

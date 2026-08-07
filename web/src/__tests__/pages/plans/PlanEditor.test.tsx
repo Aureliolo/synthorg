@@ -22,7 +22,7 @@ describe('PlanEditor', () => {
   it('adds and removes items', async () => {
     resetStore()
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} onDone={vi.fn()} />)
+    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
 
     expect(screen.getByText('Item 1')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Add item/ }))
@@ -35,7 +35,7 @@ describe('PlanEditor', () => {
   it('disables save when an item title is blank', async () => {
     resetStore()
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} onDone={vi.fn()} />)
+    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
 
     const titleInput = screen.getByDisplayValue('Scaffold')
     await user.clear(titleInput)
@@ -54,7 +54,7 @@ describe('PlanEditor', () => {
         }),
       ],
     })
-    render(<PlanEditor plan={withCriterion} onDone={vi.fn()} />)
+    render(<PlanEditor plan={withCriterion} roster={undefined} onDone={vi.fn()} />)
 
     // The backend requires at least one acceptance criterion per item, so
     // clearing the last one disables save rather than round-tripping to a 422.
@@ -71,11 +71,55 @@ describe('PlanEditor', () => {
       http.patch('/api/v1/plans/:id', () => HttpResponse.json(apiSuccess(revised))),
     )
     const user = userEvent.setup()
-    render(<PlanEditor plan={plan} onDone={onDone} />)
+    render(<PlanEditor plan={plan} roster={undefined} onDone={onDone} />)
 
     await user.click(screen.getByRole('button', { name: /Save revision/ }))
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledOnce()
     })
+  })
+
+  it('offers the staffed roles as owner choices', () => {
+    resetStore()
+    render(
+      <PlanEditor
+        plan={plan}
+        roster={new Set(['Backend Developer', 'Designer'])}
+        onDone={vi.fn()}
+      />,
+    )
+
+    const owner = screen.getByLabelText('Owner (role)')
+    expect(owner).toHaveRole('combobox')
+    const offered = [...(owner as HTMLSelectElement).options].map((o) => o.value)
+    expect(offered).toEqual(['', 'Backend Developer', 'Designer'])
+  })
+
+  it('flags an owner no agent holds and blocks the save', () => {
+    resetStore()
+    const invented = makePlan('plan-1', {
+      items: [makePlanItem('i1', { title: 'Scaffold', owner: 'Backend Engineer' })],
+    })
+    render(
+      <PlanEditor
+        plan={invented}
+        roster={new Set(['Backend Developer'])}
+        onDone={vi.fn()}
+      />,
+    )
+
+    // The near-miss the decomposer invented is exactly what the backend
+    // refuses, so the editor names it rather than letting the save 422.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'No agent holds the role "Backend Engineer"',
+    )
+    expect(screen.getByRole('button', { name: /Save revision/ })).toBeDisabled()
+  })
+
+  it('leaves the owner free text while the roster is unknown', () => {
+    resetStore()
+    render(<PlanEditor plan={plan} roster={undefined} onDone={vi.fn()} />)
+
+    expect(screen.getByLabelText('Owner (role)')).toHaveRole('textbox')
   })
 })

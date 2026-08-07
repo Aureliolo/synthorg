@@ -88,14 +88,16 @@ class WorkPipeline(Protocol):
         """
         ...
 
-    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
-        """Attach the refinement router for under-specified team work.
+    def attach_refinement_router(self, router: WorkRefinementRouter | None) -> None:
+        """Attach (or clear) the refinement router for under-specified team work.
 
         Late-bind seam: the router wraps the Chief-of-Staff proposer,
         which wires only after persistence and a provider are available,
         so the startup hook attaches it to the already-built pipeline.
         Absent, team-bound work with no definition of done is blocked by
         the coordinator's clarification gate instead of being refined.
+        Passing ``None`` detaches it, which is how the reconciler takes the
+        router down when the proposer it wraps is replaced.
         """
         ...
 

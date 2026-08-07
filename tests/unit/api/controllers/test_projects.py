@@ -516,6 +516,48 @@ class TestProjectController:
         assert await _reloaded_status(str(running_task.id)) is TaskStatus.CANCELLED
         assert await _reloaded_status(str(stuck_task.id)) is TaskStatus.CANCELLED
 
+    async def test_delete_project_fails_an_itemless_plan_rather_than_500(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A plan still being drafted has no items, and SUPERSEDED needs them.
+
+        Superseding it violates the items check, which surfaced as a raw
+        500 on an otherwise valid project delete and left the project
+        permanently undeletable. A PLANNING shell is exactly the state a
+        fresh proposal sits in, so this is the common case, not an edge.
+        """
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Drafting"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+
+        backend = persistence_of(async_test_client.app.state.app_state)
+        shell = Plan(
+            id=as_uuid("plan-shell"),
+            project=NotBlankStr(project_id),
+            objective_id=NotBlankStr("obj-shell"),
+            objective_title=NotBlankStr("Still drafting"),
+            parent_task_id=NotBlankStr("task-root"),
+            items=(),
+            status=PlanStatus.PLANNING,
+            created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        )
+        await backend.plans.save(shell)
+
+        delete_resp = await async_test_client.delete(
+            f"/api/v1/projects/{project_id}",
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert delete_resp.status_code == 204
+        retired = await backend.plans.get(str(shell.id))
+        assert retired is not None
+        assert retired.status is PlanStatus.FAILED
+        assert retired.failure_reason == "project deleted"
+
 
 @pytest.mark.unit
 class TestProjectProgress:

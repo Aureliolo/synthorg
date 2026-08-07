@@ -4,6 +4,7 @@ Takes a pre-built ``DecompositionPlan`` at construction and returns it
 from ``decompose()``, validating against context limits.
 """
 
+from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -81,6 +82,18 @@ class ManualDecompositionStrategy:
                 error=safe_error_description(over_limit),
             )
             raise over_limit
+
+        for subtask in self._plan.subtasks:
+            # A hand-authored plan invents an owner as readily as a model
+            # does, and the item is just as unroutable either way.
+            detail = describe_unroutable_role(
+                entity_id=subtask.id,
+                required_role=subtask.required_role,
+                available_roles=context.available_roles,
+            )
+            if detail is not None:
+                logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=detail)
+                raise DecompositionError(detail)
 
         logger.debug(
             DECOMPOSITION_COMPLETED,

@@ -46,7 +46,7 @@ from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_models import (
     GroupConverseArgs,
 )
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     IntentRoutingReason,
     TurnIntent,
 )

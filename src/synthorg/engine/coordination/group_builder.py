@@ -47,6 +47,41 @@ def _build_routing_lookup(
     return {d.subtask_id: d for d in routing_result.decisions}
 
 
+def _rounds_by_agent(
+    assignments: list[AgentAssignment],
+) -> list[list[AgentAssignment]]:
+    """Split one wave's assignments into rounds of distinct agents.
+
+    A DAG wave says its subtasks do not depend on each other; it says
+    nothing about who does them, and routing is free to put one agent on
+    several. An execution group is the other thing: agents running at the
+    same time, so the same agent twice in one group is a contradiction
+    the model rejects. A small org staffing one developer produces
+    exactly that, so the wave is spread over as many rounds as the
+    busiest agent needs, which the executor then runs in order.
+
+    Args:
+        assignments: The wave's assignments, in routing order.
+
+    Returns:
+        Rounds, each holding at most one assignment per agent, with the
+        first round as full as the routing order allows.
+    """
+    rounds: list[list[AgentAssignment]] = []
+    agents_per_round: list[set[str]] = []
+    for assignment in assignments:
+        agent_id = str(assignment.identity.id)
+        for taken, round_assignments in zip(agents_per_round, rounds, strict=True):
+            if agent_id not in taken:
+                taken.add(agent_id)
+                round_assignments.append(assignment)
+                break
+        else:
+            agents_per_round.append({agent_id})
+            rounds.append([assignment])
+    return rounds
+
+
 def build_execution_waves(
     *,
     decomposition_result: DecompositionResult,
@@ -61,7 +96,8 @@ def build_execution_waves(
     3. For each wave, look up ``RoutingDecision`` to build
        ``AgentAssignment``.
     4. Map workspace ``worktree_path`` to ``resource_claims``.
-    5. Return tuple of ``ParallelExecutionGroup`` (one per wave).
+    5. Split each wave into rounds of distinct agents and return one
+       ``ParallelExecutionGroup`` per round.
 
     Subtasks without a routing decision are skipped with a debug log
     (they were already reported as unroutable by the routing phase).
@@ -73,7 +109,7 @@ def build_execution_waves(
         workspaces: Optional workspaces for resource claim mapping.
 
     Returns:
-        Tuple of execution groups, one per wave.
+        Tuple of execution groups, in the order they must run.
 
     Raises:
         CoordinationError: When the plan / routing inputs are
@@ -181,21 +217,29 @@ def build_execution_waves(
             )
             continue
 
-        group_id = f"wave-{wave_idx}"
-        logger.debug(
-            COORDINATION_WAVE_BUILT,
-            wave_index=wave_idx,
-            assignment_count=len(assignments),
-            group_id=group_id,
-        )
-
-        groups.append(
-            ParallelExecutionGroup(
-                group_id=group_id,
-                assignments=tuple(assignments),
-                max_concurrency=config.max_concurrency_per_wave,
-                fail_fast=config.fail_fast,
+        for round_idx, round_assignments in enumerate(_rounds_by_agent(assignments)):
+            # The first round keeps the wave's own id, so the common case
+            # (every subtask on a different agent) reads as one wave and
+            # one group; only a wave that actually split grows a suffix.
+            group_id = (
+                f"wave-{wave_idx}"
+                if round_idx == 0
+                else (f"wave-{wave_idx}-{round_idx}")
             )
-        )
+            logger.debug(
+                COORDINATION_WAVE_BUILT,
+                wave_index=wave_idx,
+                assignment_count=len(round_assignments),
+                group_id=group_id,
+            )
+
+            groups.append(
+                ParallelExecutionGroup(
+                    group_id=group_id,
+                    assignments=tuple(round_assignments),
+                    max_concurrency=config.max_concurrency_per_wave,
+                    fail_fast=config.fail_fast,
+                )
+            )
 
     return tuple(groups)

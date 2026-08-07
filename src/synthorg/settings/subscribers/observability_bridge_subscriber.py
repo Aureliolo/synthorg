@@ -18,20 +18,26 @@ into their clients at ``configure_logging`` and are compose-set (not
 watched here).
 """
 
+from collections.abc import Sequence
+from typing import Final
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.bridge_configs import ObservabilityBridgeConfig
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
 _NAMESPACE = "observability"
+# Named because the batch is tested for it: the signing timeout is the one
+# watched key whose value does not live on the bridge snapshot.
+_SIGNING_TIMEOUT_KEY: Final[str] = "audit_chain_signing_timeout_seconds"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     (_NAMESPACE, k)
     for k in (
@@ -39,7 +45,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         "http_flush_interval_seconds",
         "http_timeout_seconds",
         "http_max_retries",
-        "audit_chain_signing_timeout_seconds",
+        _SIGNING_TIMEOUT_KEY,
     )
 )
 # The ``tsa_endpoint_*`` keys are deliberately NOT watched: the timestamp
@@ -95,17 +101,16 @@ class ObservabilityBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "observability-bridge-config"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-resolve the whole snapshot and swap it atomically."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve the whole snapshot and swap it atomically.
+
+        One swap per batch: the snapshot is re-resolved from every key it
+        covers, so re-running it once per changed key would repeat identical
+        work and publish the same snapshot several times.
+
+        Args:
+            changes: The watched writes this swap carries.
+        """
         from synthorg.api.lifecycle_helpers.config_apply import (  # noqa: PLC0415
             _apply_audit_chain_signing_timeout,
             apply_http_log_handler_settings,
@@ -116,7 +121,7 @@ class ObservabilityBridgeSettingsSubscriber:
             snapshot = await resolver.get_observability_bridge_config()
             self._app_state.bridge_config.swap_observability(snapshot)
             apply_http_log_handler_settings(snapshot)
-            if key == "audit_chain_signing_timeout_seconds":
+            if any(key == _SIGNING_TIMEOUT_KEY for _, key in changes):
                 # The signing timeout lives on each live ``AuditChainSink``
                 # instance, not on the bridge snapshot, so push it onto the
                 # running sinks; the snapshot swap above only keeps
@@ -127,8 +132,7 @@ class ObservabilityBridgeSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="observability_bridge_config",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

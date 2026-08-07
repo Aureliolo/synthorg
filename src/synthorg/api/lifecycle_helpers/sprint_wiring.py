@@ -11,6 +11,7 @@ so a re-run cannot double-register it.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -27,6 +28,10 @@ async def wire_sprint_service(app_state: AppState) -> None:
     it live and registers the completion observer once.
 
     Raises:
+        SubsystemDeclinedError: When a collaborator it needs is not wired
+            yet, naming which. The reconciler reports it as the BLOCKED
+            reason rather than guessing from the declared settings, of which
+            this subsystem has none.
         MemoryError: Propagated from construction; interpreter-level
             criticals are never swallowed by the best-effort handler.
         RecursionError: Propagated from construction for the same reason.
@@ -44,6 +49,16 @@ async def wire_sprint_service(app_state: AppState) -> None:
     task_engine = app_state.slice(EngineStateSlice).task_engine
     ceremony_scheduler = app_state.slice(EngineStateSlice).ceremony_scheduler
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    missing = [
+        name
+        for name, present in (
+            ("persistence backend", persistence is not None),
+            ("task engine", task_engine is not None),
+            ("ceremony scheduler", ceremony_scheduler is not None),
+            ("settings resolver", config_resolver is not None),
+        )
+        if not present
+    ]
     if (
         persistence is None
         or task_engine is None
@@ -54,8 +69,10 @@ async def wire_sprint_service(app_state: AppState) -> None:
             API_APP_STARTUP,
             service="sprint_service",
             note="sprint service not wired; dependencies not yet present",
+            missing=", ".join(missing),
         )
-        return
+        msg = f"waiting on: {', '.join(missing)}"
+        raise SubsystemDeclinedError(msg)
     try:
         from synthorg.engine.workflow.sprint_service import (  # noqa: PLC0415
             SprintService,

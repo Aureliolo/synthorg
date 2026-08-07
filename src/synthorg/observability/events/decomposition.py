@@ -39,3 +39,12 @@ DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
 The runtime then builds without a coordinator. Its own event so that
 outcome is attributable on its own terms rather than only through the
 degraded-mode line that follows it."""
+
+DECOMPOSITION_REBUILT_FROM_PLAN: Final[str] = "decomposition.rebuilt_from_plan"
+"""An approved plan was projected back onto a dispatchable decomposition.
+
+Emitted on the approval-dispatch path, where the reviewed plan (not the
+snapshot captured at gate time) decides what builds. It records how many
+items were dropped as decisions and how many edges survived, which is the
+only place the difference between what an operator approved and what was
+dispatched is visible."""

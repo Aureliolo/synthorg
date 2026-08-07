@@ -98,6 +98,9 @@ _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
     # renovate: datasource=docker depName=postgres
     "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15"
 )
+_DRIFT_EXIT_CODE: Final[int] = 1
+"""Exit code for "the revisions do not build the declared schema"."""
+
 _PROVISION_EXIT_CODE: Final[int] = 3
 """Exit code for "the throwaway Postgres container never came up".
 
@@ -128,6 +131,16 @@ class SchemaDriftError(
 
 class SchemaDriftProvisionError(SchemaDriftError):
     """The Postgres throwaway container could not be started."""
+
+
+class SchemaDriftReferenceError(SchemaDriftError):
+    """The migrated schema carries a foreign key that does not resolve.
+
+    Distinct from drift: the two schemas may agree perfectly and both be
+    broken. This is the one failure a schema comparison cannot see,
+    because it is a property of the migrated database rather than a
+    difference between two texts.
+    """
 
 
 class SchemaDriftParseError(SchemaDriftError):
@@ -218,14 +231,113 @@ class _TriggerOrFunction:
 # ── Schema dump helpers ─────────────────────────────────────────
 
 
+def _quoted(identifier: str) -> str:
+    """Return *identifier* as a SQLite quoted name.
+
+    Returns:
+        The name wrapped in double quotes, with any internal quote doubled.
+    """
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _user_tables(conn: sqlite3.Connection) -> tuple[str, ...]:
+    """List the tables this gate is responsible for.
+
+    Returns:
+        Every table name except SQLite's and yoyo's own bookkeeping.
+    """
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' "
+        "AND name NOT LIKE '_yoyo%' "
+        "AND name NOT LIKE 'yoyo%' "
+        "ORDER BY name"
+    ).fetchall()
+    return tuple(row[0] for row in rows)
+
+
+def _dangling_parents(
+    conn: sqlite3.Connection, table: str, known: frozenset[str]
+) -> tuple[str, ...]:
+    """Name each reference from *table* to a table that does not exist.
+
+    Returns:
+        One ``child -> parent`` phrase per reference whose parent is absent.
+    """
+    rows = conn.execute(f"PRAGMA foreign_key_list({_quoted(table)})").fetchall()
+    parents = {str(row[2]) for row in rows}
+    return tuple(
+        f"{table} -> {parent} (no such table)"
+        for parent in sorted(parents)
+        if parent.lower() not in known
+    )
+
+
+def _assert_references_resolve(conn: sqlite3.Connection) -> None:
+    """Refuse a migrated schema whose foreign keys do not resolve.
+
+    yoyo applies revisions with ``foreign_keys`` at its OFF default, so a
+    table rebuild that renames or drops a referenced table leaves the
+    references dangling and nothing complains until the application
+    reconnects with ``foreign_keys = ON``. This gate builds an empty
+    database, so it can prove the structural half of that (a reference
+    whose parent table or parent key is gone) and only that half; the
+    data half -- a migration that leaves real orphan rows behind -- is
+    proved by the migration tests, which seed rows first.
+
+    Structural is exactly the half ``PRAGMA foreign_key_check`` alone
+    does NOT deliver, because it reports per ROW and an empty table has
+    none. A dropped parent table is silent under it, and a parent key
+    that is missing or not unique arrives as a raised ``foreign key
+    mismatch`` rather than a reported row. So each class is proved by
+    the pragma that actually carries it: ``foreign_key_list`` names the
+    declared parent whether or not it exists, and a per-table
+    ``foreign_key_check`` turns a mismatch into a finding instead of an
+    untyped abort. Per table rather than whole-database because the
+    whole-database form stops at the first mismatch, which would mask
+    every table after it.
+
+    Raises:
+        SchemaDriftReferenceError: When any reference fails to resolve.
+    """
+    tables = _user_tables(conn)
+    known = frozenset(name.lower() for name in tables)
+    broken: list[str] = []
+    for table in tables:
+        broken.extend(_dangling_parents(conn, table, known))
+        try:
+            rows = conn.execute(
+                f"PRAGMA foreign_key_check({_quoted(table)})"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            broken.append(f"{table}: {exc}")
+            continue
+        broken.extend(
+            f"{child} -> {parent} (rowid={rowid}, fk_index={fk_index})"
+            for child, rowid, parent, fk_index in rows
+        )
+    if not broken:
+        return
+    detail = "; ".join(broken)
+    msg = f"migrated SQLite schema has unresolved foreign keys: {detail}"
+    raise SchemaDriftReferenceError(msg)
+
+
 async def _dump_sqlite_schema(revisions_path: Path) -> str:
-    """Apply revisions to a temp SQLite DB and return its schema dump."""
+    """Apply revisions to a temp SQLite DB and return its schema dump.
+
+    Raises:
+        SchemaDriftReferenceError: When the migrated schema's foreign
+            keys do not resolve.
+    """
     with tempfile.TemporaryDirectory(prefix="drift-sqlite-") as tmp:
         db_path = Path(tmp) / "drift.db"
         url = migrations.to_sqlite_url(str(db_path))
         await migrations.migrate_apply(url, revisions_path=revisions_path)
         conn = sqlite3.connect(db_path)
         try:
+            _assert_references_resolve(conn)
             rows = conn.execute(
                 "SELECT sql FROM sqlite_master "
                 "WHERE type IN ('table', 'index', 'trigger', 'view') "
@@ -807,7 +919,7 @@ async def _main(backend: BackendName, postgres_image: str) -> int:
     print(f"  {len(findings)} finding(s):")
     for f in findings:
         print(f"    - {f}")
-    return 1
+    return _DRIFT_EXIT_CODE
 
 
 def _build_argparser() -> argparse.ArgumentParser:
@@ -860,6 +972,11 @@ def main(argv: list[str] | None = None) -> int:
         # drift, with a traceback where the finding list should be.
         print(f"PARSE-FAILED: {exc}", file=sys.stderr)
         return _PARSE_EXIT_CODE
+    except SchemaDriftReferenceError as exc:
+        # Shares the drift exit code: both mean "fix the revisions", and
+        # the message says which of the two it is.
+        print(f"BROKEN-REFERENCES: {exc}", file=sys.stderr)
+        return _DRIFT_EXIT_CODE
 
 
 if __name__ == "__main__":

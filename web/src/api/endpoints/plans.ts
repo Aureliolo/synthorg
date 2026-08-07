@@ -1,4 +1,10 @@
-import { apiClient, type PaginatedResult, unwrap, unwrapPaginated } from '../client'
+import {
+  apiClient,
+  type PaginatedResult,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+} from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   EditPlanRequest,
@@ -62,6 +68,21 @@ export async function replanPlan(planId: string, data: ReplanRequest): Promise<P
     data,
   )
   return unwrap(response)
+}
+
+/**
+ * Remove a plan that never became work.
+ *
+ * The exit for a plan asking for a decision on work nothing can build: a shell
+ * whose decomposition stranded, a draft, one waiting on review, or one that
+ * failed. The API refuses a dispatched or decided plan, so the caller surfaces
+ * that refusal rather than pre-judging it.
+ */
+export async function deletePlan(planId: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/plans/${encodeURIComponent(planId)}`,
+  )
+  unwrapVoid(response)
 }
 
 /** Send a plan back to the org for revision, with a note. */

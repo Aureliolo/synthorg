@@ -8,12 +8,15 @@ a timed-out stop marks it unrestartable, so re-enabling builds a fresh
 instance rather than restarting the dead one.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAP_FAILED
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -52,8 +55,22 @@ class ChiefOfStaffAlertsSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "chief-of-staff-alerts"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Start or stop the alerts daemon to match the live capability."""
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Match the alerts daemon to the live capability once per batch.
+
+        Args:
+            changes: The watched writes that triggered this check. The daemon
+                is resolved from the live capability rather than from any one
+                of them, so the batch is one check.
+        """
+        await self._apply(describe_changes(changes))
+
+    async def _apply(self, trigger: str) -> None:
+        """Start or stop the alerts daemon to match the live capability.
+
+        Args:
+            trigger: The batch that prompted this check, for the failure log.
+        """
         from synthorg.meta.chief_of_staff._capability_gate import (  # noqa: PLC0415
             resolve_cos_autonomous_cap,
         )
@@ -86,8 +103,7 @@ class ChiefOfStaffAlertsSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="chief_of_staff_alerts",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=trigger,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

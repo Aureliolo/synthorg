@@ -196,6 +196,9 @@ CREATE INDEX idx_tm_agent_id ON task_metrics (agent_id);
 CREATE INDEX idx_tm_completed_at ON task_metrics (completed_at);
 CREATE INDEX idx_tm_agent_completed
 ON task_metrics (agent_id, completed_at);
+-- A referencing column with no index makes every delete of the referenced
+-- row a full scan of this table.
+CREATE INDEX idx_tm_task_id ON task_metrics (task_id);
 
 -- ── Collaboration metrics ─────────────────────────────────────
 CREATE TABLE collaboration_metrics (
@@ -554,11 +557,15 @@ CREATE TABLE projects (
     budget REAL NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
     autonomy_mode TEXT CHECK (autonomy_mode IN ('full', 'semi', 'supervised', 'locked')),
-    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE INDEX idx_projects_status ON projects (status);
 CREATE INDEX idx_projects_lead ON projects (lead);
+-- Intake looks up a live project by age, so the ordering column is indexed.
+CREATE INDEX idx_projects_created_at ON projects (created_at);
 
 -- ── Persistent per-project workspace (1:1 with projects) ─────
 CREATE TABLE project_workspaces (
@@ -2632,7 +2639,16 @@ CREATE TABLE plans (
     project TEXT NOT NULL CHECK (LENGTH(TRIM(project)) > 0),
     objective_id TEXT NOT NULL CHECK (LENGTH(TRIM(objective_id)) > 0),
     objective_title TEXT NOT NULL CHECK (LENGTH(TRIM(objective_title)) > 0),
-    parent_task_id TEXT NOT NULL CHECK (LENGTH(TRIM(parent_task_id)) > 0),
+    -- RESTRICT, not CASCADE: a plan is a reviewed decision record, and
+    -- deleting the objective task should not silently destroy it (nor its
+    -- evaluation reports, which cascade off plans). Deleting a task that
+    -- still owns a plan is refused so the operator resolves the plan first,
+    -- via DELETE /plans/{id}. Without the reference at all, a deleted task
+    -- left the plan pointing at nothing, and the orphan still ran to
+    -- completion and reached the review queue.
+    parent_task_id TEXT NOT NULL
+    REFERENCES tasks (id) ON DELETE RESTRICT
+    CHECK (LENGTH(TRIM(parent_task_id)) > 0),
     items TEXT NOT NULL
     CHECK (
         JSON_VALID(items) AND JSON_TYPE(items) = 'array'
@@ -2666,10 +2682,19 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
+-- The task-delete guard reads `WHERE parent_task_id = ? ORDER BY id LIMIT 1`,
+-- so `id` rides the index: equality first, then the ordering, as
+-- idx_plans_project_status already does.
+CREATE INDEX idx_plans_parent_task ON plans (parent_task_id, id);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    plan_id TEXT NOT NULL CHECK (LENGTH(TRIM(plan_id)) > 0),
+    -- A comment is a remark ON a plan and has no meaning once the plan is
+    -- gone, so it cascades. This is the same orphan class the plans
+    -- parent-task reference closes, one table down.
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE
+    CHECK (LENGTH(TRIM(plan_id)) > 0),
     item_id TEXT NOT NULL CHECK (LENGTH(TRIM(item_id)) > 0),
     author TEXT NOT NULL CHECK (LENGTH(TRIM(author)) > 0),
     body TEXT NOT NULL CHECK (LENGTH(TRIM(body)) > 0),

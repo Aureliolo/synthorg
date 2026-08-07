@@ -183,7 +183,7 @@ class TestInMemoryBounds:
         sub, metrics, *_ = self._wired(settings)
         await settings.set("budget", "coordination_metrics_max_entries", "9")
 
-        await sub.on_settings_changed("budget", "coordination_metrics_max_entries")
+        await sub.on_settings_changed([("budget", "coordination_metrics_max_entries")])
 
         assert _bound_of(metrics) == 9
 
@@ -193,7 +193,7 @@ class TestInMemoryBounds:
         sub, _metrics, baseline, *_ = self._wired(settings)
         await settings.set("budget", "baseline_window_size", "12")
 
-        await sub.on_settings_changed("budget", "baseline_window_size")
+        await sub.on_settings_changed([("budget", "baseline_window_size")])
 
         assert _bound_of(baseline) == 12
 
@@ -205,7 +205,7 @@ class TestInMemoryBounds:
         await settings.set("communication", "delegation_record_store_max_size", "150")
 
         await sub.on_settings_changed(
-            "communication", "delegation_record_store_max_size"
+            [("communication", "delegation_record_store_max_size")]
         )
 
         assert _bound_of(delegation) == 150
@@ -216,7 +216,7 @@ class TestInMemoryBounds:
         sub, _metrics, _baseline, _delegation, engine = self._wired(settings)
         await settings.set("engine", "task_engine_max_queue_size", "42")
 
-        await sub.on_settings_changed("engine", "task_engine_max_queue_size")
+        await sub.on_settings_changed([("engine", "task_engine_max_queue_size")])
 
         engine.set_max_queue_size.assert_called_once_with(42)
 
@@ -224,7 +224,7 @@ class TestInMemoryBounds:
         self, settings: SettingsService
     ) -> None:
         sub, metrics, *_ = self._wired(settings)
-        await sub.on_settings_changed("budget", "some_unrelated_key")
+        await sub.on_settings_changed([("budget", "some_unrelated_key")])
         assert _bound_of(metrics) == 5
 
     async def test_an_unwired_buffer_is_not_an_error(
@@ -234,7 +234,7 @@ class TestInMemoryBounds:
         # next reconcile pass builds it from the stored value.
         sub = InMemoryBoundsSettingsSubscriber(_app_state(settings), settings)
         await settings.set("budget", "coordination_metrics_max_entries", "9")
-        await sub.on_settings_changed("budget", "coordination_metrics_max_entries")
+        await sub.on_settings_changed([("budget", "coordination_metrics_max_entries")])
 
     async def test_a_rejected_bound_leaves_the_buffer_alone(
         self, settings: SettingsService
@@ -245,7 +245,9 @@ class TestInMemoryBounds:
         resolver = mock_of[ConfigResolver](get_int=AsyncMock(return_value=0))
         sub, metrics, *_ = self._wired(settings, resolver=resolver)
         with pytest.raises(ValueError, match="max_entries"):
-            await sub.on_settings_changed("budget", "coordination_metrics_max_entries")
+            await sub.on_settings_changed(
+                [("budget", "coordination_metrics_max_entries")]
+            )
         assert _bound_of(metrics) == 5
 
 
@@ -278,7 +280,7 @@ class TestGlobalRateLimit:
         await settings.set("api", "rate_limit_auth_max_requests", "150")
         await settings.set("api", "rate_limit_floor_max_requests", "600")
 
-        await sub.on_settings_changed("api", "rate_limit_auth_max_requests")
+        await sub.on_settings_changed([("api", "rate_limit_auth_max_requests")])
 
         swapped = state.per_op_limits.global_config
         assert swapped is not None
@@ -289,7 +291,7 @@ class TestGlobalRateLimit:
         sub, state = self._wired(settings)
         await settings.set("api", "rate_limit_time_unit", "hour")
 
-        await sub.on_settings_changed("api", "rate_limit_time_unit")
+        await sub.on_settings_changed([("api", "rate_limit_time_unit")])
 
         swapped = state.per_op_limits.global_config
         assert swapped is not None
@@ -322,7 +324,7 @@ class TestGlobalRateLimit:
         state.per_op_limits.set_global_config(previous)
 
         with pytest.raises(ValueError, match="would cap a tier"):
-            await sub.on_settings_changed("api", "rate_limit_floor_max_requests")
+            await sub.on_settings_changed([("api", "rate_limit_floor_max_requests")])
 
         assert state.per_op_limits.global_config == previous
 
@@ -340,7 +342,7 @@ class TestGlobalRateLimit:
         state.per_op_limits.set_global_config(previous)
 
         with pytest.raises(ValueError, match="not a valid boolean"):
-            await sub.on_settings_changed("api", "rate_limiter_enabled")
+            await sub.on_settings_changed([("api", "rate_limiter_enabled")])
 
         assert state.per_op_limits.global_config is previous
 
@@ -362,7 +364,7 @@ class TestGlobalRateLimit:
         state.per_op_limits.set_global_config(previous)
 
         with pytest.raises(ValueError, match="not a known window"):
-            await sub.on_settings_changed("api", "rate_limit_time_unit")
+            await sub.on_settings_changed([("api", "rate_limit_time_unit")])
 
         assert state.per_op_limits.global_config is previous
 
@@ -394,7 +396,7 @@ class TestCompressionThreshold:
         sub, state = self._wired(settings)
         await settings.set("api", "compression_minimum_size_bytes", "2048")
 
-        await sub.on_settings_changed("api", "compression_minimum_size_bytes")
+        await sub.on_settings_changed([("api", "compression_minimum_size_bytes")])
 
         assert state.compression.minimum_size == 2048
 
@@ -402,7 +404,7 @@ class TestCompressionThreshold:
         sub, state = self._wired(settings, with_app=False)
         await settings.set("api", "compression_minimum_size_bytes", "2048")
 
-        await sub.on_settings_changed("api", "compression_minimum_size_bytes")
+        await sub.on_settings_changed([("api", "compression_minimum_size_bytes")])
 
         assert state.compression.minimum_size is None
 
@@ -411,7 +413,7 @@ class TestCompressionThreshold:
     ) -> None:
         sub, state = self._wired(settings)
         before = state.compression.minimum_size
-        await sub.on_settings_changed("api", "some_unrelated_key")
+        await sub.on_settings_changed([("api", "some_unrelated_key")])
         assert state.compression.minimum_size == before
 
 
@@ -445,13 +447,15 @@ class TestFlightRecorder:
         assert sink is not None
         await settings.set("cockpit", "flight_recorder_summary_max_chars", "1234")
 
-        await sub.on_settings_changed("cockpit", "flight_recorder_summary_max_chars")
+        await sub.on_settings_changed(
+            [("cockpit", "flight_recorder_summary_max_chars")]
+        )
 
         assert sink.summary_max_chars == 1234
 
     async def test_no_sink_yet_is_not_an_error(self, settings: SettingsService) -> None:
         sub, _ = self._wired(settings, with_sink=False)
-        await sub.on_settings_changed("cockpit", "flight_recorder_enabled")
+        await sub.on_settings_changed([("cockpit", "flight_recorder_enabled")])
 
     async def test_an_unexpected_pair_is_ignored(
         self, settings: SettingsService
@@ -459,7 +463,7 @@ class TestFlightRecorder:
         sub, sink = self._wired(settings)
         assert sink is not None
         before = sink.summary_max_chars
-        await sub.on_settings_changed("cockpit", "some_unrelated_key")
+        await sub.on_settings_changed([("cockpit", "some_unrelated_key")])
         assert sink.summary_max_chars == before
 
 
@@ -494,7 +498,7 @@ class TestTelemetryOptIn:
         assert collector is not None
         await settings.set("telemetry", "enabled", raw)
 
-        await sub.on_settings_changed("telemetry", "enabled")
+        await sub.on_settings_changed([("telemetry", "enabled")])
 
         collector.apply_resolved_enabled.assert_called_once_with(enabled=expected)
 
@@ -502,12 +506,12 @@ class TestTelemetryOptIn:
         self, settings: SettingsService
     ) -> None:
         sub, _ = self._wired(settings, with_collector=False)
-        await sub.on_settings_changed("telemetry", "enabled")
+        await sub.on_settings_changed([("telemetry", "enabled")])
 
     async def test_an_unexpected_pair_is_ignored(
         self, settings: SettingsService
     ) -> None:
         sub, collector = self._wired(settings)
         assert collector is not None
-        await sub.on_settings_changed("telemetry", "some_unrelated_key")
+        await sub.on_settings_changed([("telemetry", "some_unrelated_key")])
         collector.apply_resolved_enabled.assert_not_called()

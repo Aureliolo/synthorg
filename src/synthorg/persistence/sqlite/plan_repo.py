@@ -33,6 +33,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 from synthorg.persistence.sqlite._shared import (
     WriteContext,
     is_unique_constraint_error,
@@ -142,6 +143,10 @@ class SQLitePlanRepository:
 
         Raises:
             DuplicateRecordError: A plan with the same id exists.
+            ConstraintViolationError: An invariant the schema holds was
+                broken, most often a ``parent_task_id`` naming no task.
+                Typed rather than a retryable ``QueryError``: the insert
+                is refused identically on every retry.
             QueryError: If the database operation fails.
         """
         async with self._write_context():
@@ -159,12 +164,13 @@ class SQLitePlanRepository:
                     plan_id=str(plan.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                    sqlite_errorname=getattr(exc, "sqlite_errorname", None),
                 )
                 if is_unique_constraint_error(exc):
                     msg = f"Plan with id {plan.id!r} already exists"
                     raise DuplicateRecordError(msg) from exc
                 msg = f"Failed to create plan {plan.id!r}"
-                raise QueryError(msg) from exc
+                raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to create plan {plan.id!r}"
@@ -274,9 +280,12 @@ class SQLitePlanRepository:
         """Persist a plan via upsert (migration / import paths).
 
         Raises:
+            ConstraintViolationError: An invariant the schema holds was
+                broken, most often a ``parent_task_id`` naming no task.
             QueryError: If the database operation fails.
         """
         async with self._write_context():
+            msg = f"Failed to save plan {plan.id!r}"
             try:
                 await self._db.execute(
                     f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- clauses are fixed literals, values parameterized
@@ -285,9 +294,18 @@ class SQLitePlanRepository:
                     self._row_params(plan),
                 )
                 await self._db.commit()
+            except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
+                await self._safe_rollback()
+                logger.warning(
+                    PERSISTENCE_PLAN_SAVE_FAILED,
+                    plan_id=str(plan.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    sqlite_errorname=getattr(exc, "sqlite_errorname", None),
+                )
+                raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
-                msg = f"Failed to save plan {plan.id!r}"
                 logger.warning(
                     PERSISTENCE_PLAN_SAVE_FAILED,
                     plan_id=str(plan.id),
@@ -372,6 +390,9 @@ class SQLitePlanRepository:
         if filter_spec.objective_id is not None:
             conditions.append("objective_id = ?")
             params.append(filter_spec.objective_id)
+        if filter_spec.parent_task_id is not None:
+            conditions.append("parent_task_id = ?")
+            params.append(filter_spec.parent_task_id)
         return conditions, params
 
     async def query(

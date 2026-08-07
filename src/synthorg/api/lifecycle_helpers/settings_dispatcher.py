@@ -51,6 +51,7 @@ from synthorg.settings.subscribers import (
     SimulationsSettingsSubscriber,
     SubsystemReconcileSettingsSubscriber,
     TelemetrySettingsSubscriber,
+    TlsTrustSettingsSubscriber,
     ToolsBridgeSettingsSubscriber,
     WorkersBridgeSettingsSubscriber,
     WsAuthLimitsSettingsSubscriber,
@@ -139,6 +140,10 @@ def _build_settings_dispatcher(
         meta_self_improvement_sub,
         cos_alerts_sub,
         ApiSecurityHeadersSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        TlsTrustSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

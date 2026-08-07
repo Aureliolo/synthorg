@@ -5,7 +5,7 @@ Maps :class:`~synthorg.core.project_enums.EnvironmentType` to a concrete
 :class:`~synthorg.core.registry.StrategyRegistry`, mirroring
 ``build_git_backend``.  The ``MANIFEST`` default needs no external
 dependency; ``DEVCONTAINER`` falls back to the default
-:class:`SubprocessImageBuilder` when no builder is injected.
+:class:`AiodockerImageBuilder` when no builder is injected.
 """
 
 from synthorg.core.project_enums import EnvironmentType
@@ -17,7 +17,7 @@ from synthorg.engine.workspace.environment.config import (
 from synthorg.engine.workspace.environment.devcontainer import (
     DevcontainerEnvironmentStrategy,
 )
-from synthorg.engine.workspace.environment.image_builder import SubprocessImageBuilder
+from synthorg.engine.workspace.environment.image_builder import AiodockerImageBuilder
 from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
 from synthorg.engine.workspace.environment.nix import NixEnvironmentStrategy
 from synthorg.engine.workspace.environment.protocol import EnvironmentStrategy
@@ -51,7 +51,7 @@ def _build_devcontainer(
     image_builder = (
         deps.image_builder
         if deps.image_builder is not None
-        else SubprocessImageBuilder()
+        else AiodockerImageBuilder(deps.config_resolver)
     )
     return DevcontainerEnvironmentStrategy(
         image_builder=image_builder,

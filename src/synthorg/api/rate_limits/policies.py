@@ -95,6 +95,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "auth.api_keys_issue": (10, 60),
     "auth.api_keys_list": (30, 60),
     "auth.api_keys_revoke": (30, 60),
+    # Generous: the dashboard hydrates from it and the client probes it once
+    # per burst of 401s, so the ceiling bounds a loop without touching a
+    # legitimately busy tab.
+    "auth.me": (120, 60),
     # kanban board
     "board.move": (100, 60),
     # brain (project brain)
@@ -245,6 +249,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # it is rarer and far more expensive than an in-place edit.
     "plans.replan": (10, 60),
     "plans.request_changes": (20, 60),
+    # Removing a plan is a rare, irreversible cleanup, matched to the
+    # project delete it usually accompanies.
+    "plans.delete": (5, 60),
     "plans.comment": (60, 60),
     # projects
     "projects.create": (10, 60),

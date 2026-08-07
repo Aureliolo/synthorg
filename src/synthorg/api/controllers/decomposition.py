@@ -39,9 +39,11 @@ from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
+    roster_from_agents,
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 
@@ -221,6 +223,25 @@ def _build_plan(
         raise ValidationError(msg) from exc
 
 
+async def _live_roster(app_state: AppState) -> tuple[NotBlankStr, ...]:
+    """Read the roles the org currently staffs.
+
+    An empty roster (no registry wired, or an empty-company boot) means "no
+    roster known" and leaves every owner accepted, which is what a
+    pre-staffing decomposition needs.
+
+    Args:
+        app_state: Application state carrying the HR slice.
+
+    Returns:
+        The distinct roles behind the active agents.
+    """
+    registry = app_state.slice(HrStateSlice).agent_registry
+    if registry is None:
+        return ()
+    return roster_from_agents(await registry.list_active())
+
+
 class DecompositionController(Controller):
     """Manual task decomposition into a validated subtask plan."""
 
@@ -276,6 +297,7 @@ class DecompositionController(Controller):
             DecompositionContext(
                 max_subtasks=data.max_subtasks,
                 max_depth=data.max_depth,
+                available_roles=await _live_roster(app_state),
             ),
         )
         return ApiResponse(data=result)

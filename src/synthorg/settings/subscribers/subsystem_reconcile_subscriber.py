@@ -10,11 +10,14 @@ instruction. A write to a key nothing declares is still safe; it simply
 converges a system that is already converged.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.registry import SUBSYSTEMS
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -66,15 +69,25 @@ class SubsystemReconcileSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "subsystem-reconcile"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Reconcile so a subsystem built from this setting is replaced."""
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Reconcile so every subsystem built from these settings is replaced.
+
+        One pass per batch. A reconcile is level-triggered and idempotent: it
+        evaluates every subsystem against current state regardless of what
+        prompted it, so a pass per changed key would tear down and rebuild the
+        same subsystems repeatedly for a single form save.
+
+        Args:
+            changes: The watched writes this pass carries.
+        """
         from synthorg.api.subsystems.runtime import (  # noqa: PLC0415
             reconcile_subsystems,
         )
 
+        trigger = describe_changes(changes)
         report = await reconcile_subsystems(
             self._app_state,
-            trigger=f"setting:{namespace}.{key}",
+            trigger=f"setting:{trigger}",
         )
         if report is None:
             # A pass that could not run is not a pass that found nothing to
@@ -83,16 +96,14 @@ class SubsystemReconcileSettingsSubscriber:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=trigger,
                 outcome="not_run",
             )
             return
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
-            namespace=namespace,
-            key=key,
+            trigger=trigger,
             outcome="reconciled",
             activated=len(report.activated),
             deactivated=len(report.deactivated),

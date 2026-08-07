@@ -21,6 +21,31 @@ class SubsystemGraphInvalidError(DomainError):
     status_code: ClassVar[int] = 500
 
 
+class SubsystemDeclinedError(DomainError):
+    """An activation refused to install its capability, and says why.
+
+    Not a failure: the subsystem is correctly and deliberately not up, and
+    the next pass will try again. It exists because the reconciler can
+    otherwise only guess at the reason from the declared settings, which
+    leaves a subsystem that declined on an undeclared condition reading
+    BLOCKED with nowhere for an operator to look. An activation that knows
+    why it is declining raises this instead of returning quietly, and the
+    reason reaches ``GET /subsystems`` verbatim.
+
+    Args:
+        reason: What is missing, phrased for an operator who has to fix it.
+    """
+
+    default_message: ClassVar[str] = "Subsystem activation declined"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBSYSTEM_DECLINED
+    status_code: ClassVar[int] = 503
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class SubsystemActivationError(DomainError):
     """A subsystem's activation raised during a pass whose caller cannot proceed.
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { makePlanItem } from '@/__tests__/helpers/factories'
 import {
+  answeredQuestions,
   computeCriticalPath,
   computeWaves,
   criticalPathFor,
@@ -40,8 +41,10 @@ describe('itemFlags', () => {
       estimated_complexity: 'medium',
       acceptance_criteria: ['builds green'],
     })
-    expect(itemFlags(item, { onCriticalPath: false })).toEqual([])
-    expect(itemNeedsAttention(item, { onCriticalPath: false })).toBe(false)
+    expect(itemFlags(item, { onCriticalPath: false, roster: undefined })).toEqual([])
+    expect(itemNeedsAttention(item, { onCriticalPath: false, roster: undefined })).toBe(
+      false,
+    )
   })
 
   it('collects every risk and gap on a bad item', () => {
@@ -51,8 +54,69 @@ describe('itemFlags', () => {
       estimated_complexity: 'epic',
       acceptance_criteria: [],
     })
-    const keys = itemFlags(item, { onCriticalPath: true }).map((f) => f.key)
+    const keys = itemFlags(item, { onCriticalPath: true, roster: undefined }).map(
+      (f) => f.key,
+    )
     expect(keys).toEqual(['stakes', 'complexity', 'unowned', 'no-criteria', 'critical-path'])
+  })
+
+  it('flags an owner no agent holds, rather than reading it as assigned', () => {
+    // The dogfood shape: "Backend Engineer" for an org staffing "Backend
+    // Developer". The item has nobody behind it, but it is not unowned, so
+    // the unassigned check alone reported the plan as fully assigned.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+    const roster = new Set(['Backend Developer', 'QA Engineer'])
+
+    const flags = itemFlags(item, { onCriticalPath: false, roster })
+
+    expect(flags.map((f) => f.key)).toEqual(['unroutable-owner'])
+    expect(flags[0]?.detail).toContain('Backend Engineer')
+  })
+
+  it('accepts an owner the roster holds', () => {
+    const item = makePlanItem('a', {
+      owner: 'Backend Developer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+    const roster = new Set(['Backend Developer'])
+
+    expect(itemFlags(item, { onCriticalPath: false, roster })).toEqual([])
+  })
+
+  it('judges no owner while the roster is unknown', () => {
+    // The agents list has not arrived yet; flagging every item on that would
+    // be noise the reviewer cannot act on. `undefined` is the sentinel for
+    // that, not an empty set.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+
+    expect(itemFlags(item, { onCriticalPath: false, roster: undefined })).toEqual([])
+  })
+
+  it('flags every named owner when the org staffs nobody', () => {
+    // A loaded empty roster is an answer: nothing can be dispatched, which
+    // is exactly what a reviewer needs told before approving the plan.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+
+    expect(
+      itemFlags(item, { onCriticalPath: false, roster: new Set() }).map((f) => f.key),
+    ).toEqual(['unroutable-owner'])
   })
 })
 
@@ -172,6 +236,21 @@ describe('derivePlanStats', () => {
     // critical path (a -> b).
     expect(stats.flaggedItems).toBe(2)
   })
+
+  it('counts an owner no agent holds as unassigned', () => {
+    // "8 of 9 items owned by a role with no agent behind it" read as fully
+    // assigned, because only a null owner counted.
+    const items = [
+      makePlanItem('a', { owner: 'Backend Engineer', acceptance_criteria: ['done'] }),
+      makePlanItem('b', { owner: 'Backend Developer', acceptance_criteria: ['done'] }),
+    ]
+    const roster = new Set(['Backend Developer'])
+
+    const stats = derivePlanStats(items, new Set(), roster)
+
+    expect(stats.unowned).toBe(1)
+    expect(stats.flaggedItems).toBe(1)
+  })
 })
 
 describe('dependency resolution', () => {
@@ -212,6 +291,71 @@ describe('derivePlanCoverage', () => {
     const coverage = derivePlanCoverage([], [makePlanItem('a')])
     expect(coverage.total).toBe(0)
     expect(coverage.uncovered).toEqual([])
+  })
+})
+
+describe('answeredQuestions', () => {
+  it('settles a question whose distinctive words the criteria all carry', () => {
+    const items = [
+      makePlanItem('a', {
+        title: 'Storage layer',
+        acceptance_criteria: ['The persistence backend is SQLite'],
+      }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)).toEqual([
+      { question: 'Which persistence backend?', settledBy: 'Storage layer' },
+    ])
+  })
+
+  it('leaves a question the plan does not address open', () => {
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Grid renders'] }),
+    ]
+    expect(answeredQuestions(['Is offline play in scope?'], items)).toEqual([
+      { question: 'Is offline play in scope?', settledBy: null },
+    ])
+  })
+
+  it('does not settle a question on filler words alone', () => {
+    // Matching on "which"/"the"/"is" would settle every question against any
+    // criterion at all, which is a worse failure than asking twice.
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Which is the one'] }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)[0]).toEqual({
+      question: 'Which persistence backend?',
+      settledBy: null,
+    })
+  })
+
+  it('leaves a question made only of filler words open', () => {
+    // With no distinctive word to match on, "every word is carried" is
+    // vacuously true, so the question would be settled by the first item on
+    // the plan regardless of what it says.
+    const items = [
+      makePlanItem('a', { title: 'Board', acceptance_criteria: ['Grid renders'] }),
+    ]
+    expect(answeredQuestions(['Is it?'], items)).toEqual([
+      { question: 'Is it?', settledBy: null },
+    ])
+  })
+
+  it('ignores case and punctuation', () => {
+    const items = [
+      makePlanItem('a', {
+        title: 'Storage',
+        acceptance_criteria: ['persistence: BACKEND chosen'],
+      }),
+    ]
+    expect(answeredQuestions(['Which persistence backend?'], items)[0]?.settledBy).toBe(
+      'Storage',
+    )
+  })
+
+  it('leaves everything open when the plan has no items yet', () => {
+    expect(answeredQuestions(['Which backend?'], [])).toEqual([
+      { question: 'Which backend?', settledBy: null },
+    ])
   })
 })
 

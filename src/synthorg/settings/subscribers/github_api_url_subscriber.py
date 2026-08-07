@@ -10,6 +10,8 @@ self-improvement code-mod subsystem, so that consumer applies a change on the
 next restart.)
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -49,7 +51,16 @@ class GithubApiUrlSettingsSubscriber:
         """Human-readable subscriber name for logging."""
         return "github-api-url"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-bind the health checker for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Re-resolve ``github_api_url`` and re-bind it onto the health checker."""
         from synthorg.integrations.health.prober import (  # noqa: PLC0415
             bind_github_default_api_url,

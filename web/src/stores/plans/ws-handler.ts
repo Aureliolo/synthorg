@@ -18,10 +18,27 @@ function refreshCommentsForOpenPlan(get: PlansGet, planId: string | null): void 
   }
 }
 
+/**
+ * The open plan this event touches, or null when it touches none.
+ *
+ * A replan announces the successor, so `plan_id` is an id the viewer sitting
+ * on the retired plan does not hold. `supersedes` is the one that reaches
+ * them, and without reading it their detail goes on showing a plan that has
+ * been retired.
+ */
+function openPlanTouchedBy(get: PlansGet, event: WsEvent): string | null {
+  const openId = get().selectedPlan?.id ?? null
+  if (openId === null) return null
+  const named = [
+    sanitizeWsString(event.payload['plan_id']),
+    sanitizeWsString(event.payload['supersedes']),
+  ]
+  return named.includes(openId) ? openId : null
+}
+
 function updateFromWsEventImpl(get: PlansGet, event: WsEvent): void {
-  const planId = sanitizeWsString(event.payload['plan_id']) ?? null
   if (event.event_type === 'plan.comment_added') {
-    refreshCommentsForOpenPlan(get, planId)
+    refreshCommentsForOpenPlan(get, sanitizeWsString(event.payload['plan_id']) ?? null)
     return
   }
   if (!PLAN_EVENT_TYPES.has(event.event_type)) return
@@ -33,9 +50,10 @@ function updateFromWsEventImpl(get: PlansGet, event: WsEvent): void {
   // reflected immediately, then the list (even if the detail read failed), so
   // the list never resolves ahead of the detail. Incremental payload merges
   // are not worth the complexity given the list is a small review inbox.
-  if (planId && get().selectedPlan?.id === planId) {
+  const openId = openPlanTouchedBy(get, event)
+  if (openId !== null) {
     void get()
-      .fetchPlanDetail(planId)
+      .fetchPlanDetail(openId)
       .catch((err: unknown) => log.warn('plan ws detail refetch failed', sanitizeForLog(err)))
       .finally(refreshList)
     return

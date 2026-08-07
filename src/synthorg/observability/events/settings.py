@@ -57,6 +57,12 @@ SETTINGS_SUBSCRIBER_ERROR: Final[str] = "settings.subscriber.error"
 SETTINGS_SERVICE_SWAPPED: Final[str] = "settings.service.swapped"
 SETTINGS_SERVICE_SWAP_FAILED: Final[str] = "settings.service.swap_failed"
 SETTINGS_CHANNEL_CREATED: Final[str] = "settings.channel.created"
+SETTINGS_RUNTIME_RELOAD_COALESCED: Final[str] = "settings.runtime_reload.coalesced"
+"""One runtime rebuild served the writes that arrived inside its window.
+
+Carries how many writes the rebuild served, so it saved one fewer rebuild
+than that: first-run setup writes a settings form in one burst, and one
+rebuild per key made the org unreachable for as long as the burst lasted."""
 
 # ── Observability subscriber events ──────────────────────────────
 

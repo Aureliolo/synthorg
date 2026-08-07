@@ -39,6 +39,9 @@ class AuthIdentityController(Controller):
     @get(
         "/me",
         summary="Get current user info",
+        guards=[
+            per_op_rate_limit_from_policy("auth.me", key="user"),
+        ],
     )
     async def me(
         self,

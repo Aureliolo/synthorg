@@ -7,19 +7,27 @@ model-matcher knobs, the external-API runtime gate, and the coordination
 middleware toggle. The rebuild hot-swaps the agent engine, coordinator, work
 pipeline, and entry adapters with no process restart.
 
-A single subscriber coalesces these keys because they all converge on the same
-``reload_runtime_services`` call (serialised by its module lock); one reload per
-change is correct and cheap relative to a restart.
+A single subscriber owns these keys because they all converge on the same
+``reload_runtime_services`` call, and writes arrive in bursts: an operator
+saving a settings form, or first-run setup writing a form's worth of model
+refs, produces one notification per field. One batch is therefore one rebuild.
+The batching itself belongs to the dispatcher, which is the only place the
+writes are ever simultaneously in hand; this subscriber simply treats the
+batch it is handed as a single trigger.
 """
+
+from collections.abc import Sequence
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
+    SETTINGS_RUNTIME_RELOAD_COALESCED,
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import SettingChange, describe_changes
 
 logger = get_logger(__name__)
 
@@ -127,6 +135,19 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
 )
 
 
+def _trigger(pairs: Sequence[SettingChange]) -> str:
+    """Render a rebuild trigger naming the writes that caused it.
+
+    Args:
+        pairs: The writes the batch carried.
+
+    Returns:
+        The batch label under the ``setting:`` prefix every rebuild trigger
+        carries, so the log reads the same for a single write and a burst.
+    """
+    return f"setting:{describe_changes(pairs)}"
+
+
 class RuntimeReloadSettingsSubscriber:
     """Rebuild runtime services on a watched engine/external_api/coordination edit.
 
@@ -144,7 +165,7 @@ class RuntimeReloadSettingsSubscriber:
         self._settings_service = settings_service
 
     @property
-    def watched_keys(self) -> frozenset[tuple[str, str]]:
+    def watched_keys(self) -> frozenset[SettingChange]:
         """Return the ``(namespace, key)`` pairs this subscriber watches."""
         return _WATCHED
 
@@ -153,33 +174,41 @@ class RuntimeReloadSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "runtime-reload"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Trigger a runtime-services rebuild so the new value goes live."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[SettingChange]) -> None:
+        """Rebuild the runtime services once for the whole batch.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+
+        Raises:
+            Exception: Whatever the rebuild raised, after logging it, so the
+                dispatcher records the failure with subscriber context.
+        """
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             reload_runtime_services,
         )
 
-        try:
-            await reload_runtime_services(
-                self._app_state, trigger=f"setting:{namespace}.{key}"
+        if len(changes) > 1:
+            logger.info(
+                SETTINGS_RUNTIME_RELOAD_COALESCED,
+                subscriber=self.subscriber_name,
+                writes=len(changes),
             )
+        try:
+            await reload_runtime_services(self._app_state, trigger=_trigger(changes))
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="runtime_services",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=_trigger(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
+        logger.info(
+            SETTINGS_SUBSCRIBER_NOTIFIED,
+            subscriber=self.subscriber_name,
+            trigger=_trigger(changes),
+            note="runtime services rebuilt",
+        )

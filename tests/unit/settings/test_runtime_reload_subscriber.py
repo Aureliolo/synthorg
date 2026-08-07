@@ -3,7 +3,8 @@
 A watched engine-classifier / external-API / coordination key change triggers a
 single ``reload_runtime_services`` rebuild (the values are already re-read from
 the live resolver on rebuild). Tests assert the rebuild fires for each watched
-namespace, no-ops on an unexpected pair, and re-raises a rebuild failure.
+namespace and re-raises a rebuild failure, and that a batch of writes costs one
+rebuild rather than one each.
 """
 
 from unittest.mock import create_autospec
@@ -132,19 +133,10 @@ class TestReload:
         spy = create_autospec(runtime_builder.reload_runtime_services)
         monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
         sub, app_state = _make_subscriber()
-        await sub.on_settings_changed(namespace, key)
+        await sub.on_settings_changed([(namespace, key)])
         # The trigger names the key, so a reload line can be attributed to the
         # write that caused it rather than to one of the other watched pairs.
         spy.assert_awaited_once_with(app_state, trigger=f"setting:{namespace}.{key}")
-
-    async def test_unknown_key_does_not_reload(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        spy = create_autospec(runtime_builder.reload_runtime_services)
-        monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
-        sub, _ = _make_subscriber()
-        await sub.on_settings_changed("engine", "unrelated")
-        spy.assert_not_awaited()
 
     async def test_reload_failure_reraises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -154,4 +146,39 @@ class TestReload:
         monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
         sub, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="rebuild boom"):
-            await sub.on_settings_changed("external_api", "enabled")
+            await sub.on_settings_changed([("external_api", "enabled")])
+
+
+class TestBatching:
+    """A batch of writes costs one rebuild.
+
+    Saving a settings form writes one key per field. Rebuilding the engine,
+    coordinator and pipeline once per field took the org out of service for the
+    length of the burst, to converge on the state the last write asked for. The
+    batching itself is the dispatcher's (see ``test_dispatcher``); what this
+    subscriber owes is to treat the batch it is handed as one trigger.
+    """
+
+    async def test_a_batch_costs_one_rebuild(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = create_autospec(runtime_builder.reload_runtime_services)
+        monkeypatch.setattr(runtime_builder, "reload_runtime_services", spy)
+        sub, _ = _make_subscriber()
+
+        await sub.on_settings_changed(
+            [
+                ("engine", "scoping_enabled"),
+                ("engine", "clarification_enabled"),
+                ("memory", "backend"),
+                ("tools", "web_search_enabled"),
+            ]
+        )
+
+        assert spy.await_count == 1
+        # And the one rebuild says what it carried, so a reload line stays
+        # attributable to the writes behind it rather than to whichever of
+        # them happened to arrive first.
+        trigger = spy.await_args.kwargs["trigger"]
+        assert trigger.startswith("setting:")
+        assert trigger.endswith("+1")

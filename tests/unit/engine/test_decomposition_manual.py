@@ -4,6 +4,7 @@ import pytest
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -35,6 +36,8 @@ def _make_task(task_id: str = "task-manual-1") -> Task:
 def _make_plan(
     parent_task_id: str = "task-manual-1",
     subtask_count: int = 2,
+    *,
+    required_role: str | None = None,
 ) -> DecompositionPlan:
     """Helper to create a plan with N subtasks."""
     subtasks = tuple(
@@ -43,6 +46,7 @@ def _make_plan(
             title=f"Subtask {i}",
             description=f"Description {i}",
             expected_artifacts=(f"src/sub_{i}.py",),
+            required_role=None if required_role is None else NotBlankStr(required_role),
         )
         for i in range(subtask_count)
     )
@@ -112,6 +116,39 @@ class TestManualDecompositionStrategy:
             DecompositionSubtaskLimitError, match="exceeds max_subtasks"
         ):
             await strategy.decompose(task, ctx)
+
+    @pytest.mark.unit
+    async def test_an_owner_the_org_does_not_staff_is_rejected(self) -> None:
+        # A hand-authored plan invents an owner as readily as a model does,
+        # and the item is just as unroutable either way.
+        task = _make_task()
+        plan = _make_plan(required_role="Backend Engineer")
+        strategy = ManualDecompositionStrategy(plan)
+        ctx = DecompositionContext(
+            available_roles=(NotBlankStr("Backend Developer"),),
+        )
+
+        with pytest.raises(DecompositionError, match="Backend Developer"):
+            await strategy.decompose(task, ctx)
+
+    @pytest.mark.unit
+    async def test_an_owner_on_the_roster_is_accepted(self) -> None:
+        task = _make_task()
+        plan = _make_plan(required_role="Backend Developer")
+        strategy = ManualDecompositionStrategy(plan)
+        ctx = DecompositionContext(
+            available_roles=(NotBlankStr("Backend Developer"),),
+        )
+
+        assert await strategy.decompose(task, ctx) is plan
+
+    @pytest.mark.unit
+    async def test_an_unknown_roster_leaves_the_owner_unchecked(self) -> None:
+        task = _make_task()
+        plan = _make_plan(required_role="Backend Engineer")
+        strategy = ManualDecompositionStrategy(plan)
+
+        assert await strategy.decompose(task, DecompositionContext()) is plan
 
     @pytest.mark.unit
     def test_strategy_name(self) -> None:

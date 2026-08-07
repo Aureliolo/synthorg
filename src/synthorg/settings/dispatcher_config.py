@@ -41,6 +41,13 @@ _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Bootstrap consecutive-error budget used before the resolver is ready."""
 _STOP_DRAIN_TIMEOUT: Final[float] = 10.0
 """Bootstrap stop() drain deadline used before the resolver is ready."""
+_COALESCE_WINDOW: Final[float] = 0.75
+"""Bootstrap coalesce window used before the resolver is ready.
+
+Matches the registered default rather than standing in for it: first-run setup
+writes a form's worth of keys before the resolver exists, which is exactly the
+burst the window serves, so falling back to zero would leave it uncoalesced.
+"""
 
 
 class DispatcherConfigReader:
@@ -276,6 +283,41 @@ class DispatcherConfigReader:
             )
             return _POLL_TIMEOUT
         self._note_resolve_success("dispatcher_poll_timeout_seconds")
+        return value
+
+    async def coalesce_window(self) -> float:
+        """Resolve how long one dispatch waits for further writes to join it.
+
+        Read per batch rather than held, so an operator widening the window
+        after a burst of rebuilds sees the next burst honour it. ``0`` turns
+        coalescing off and dispatches each write on its own.
+
+        Returns:
+            The configured window in seconds, or the bootstrap default when
+            the resolver is unavailable.
+
+        Raises:
+            asyncio.CancelledError: If the coroutine is cancelled while
+                awaiting the resolver.
+        """
+        resolver = self._resolver()
+        if resolver is None:
+            return _COALESCE_WINDOW
+        try:
+            value = await resolver.get_float(
+                SettingNamespace.SETTINGS.value, "dispatcher_coalesce_window_seconds"
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            self._note_resolve_failure(
+                exc,
+                key="dispatcher_coalesce_window_seconds",
+                fallback=_COALESCE_WINDOW,
+            )
+            return _COALESCE_WINDOW
+        self._note_resolve_success("dispatcher_coalesce_window_seconds")
         return value
 
     async def error_backoff(self) -> float:

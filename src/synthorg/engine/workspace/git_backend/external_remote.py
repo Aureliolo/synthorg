@@ -14,15 +14,20 @@ token for HTTPS auth, and hardens the clone/push/fetch path:
   working tree when the remote does not exist yet, so the first push
   creates it.
 
-Tokens travel in the ``Authorization`` header (forge API) or as
-percent-encoded HTTPS userinfo (git); both paths are redacted before
-any log line.
+Tokens travel in the ``Authorization`` header (forge API) or, for git,
+as a per-invocation ``insteadOf`` rewrite carried in the child
+environment. The remote written into the workspace's ``.git/config`` is
+always credential-free: the workspace is agent-writable and a
+devcontainer build can copy it into an image layer, so a token stored
+there would outlive the command that needed it. Both paths are redacted
+before any log line.
 """
 
 import asyncio
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
@@ -41,7 +46,11 @@ from synthorg.engine.errors import (
     GitBackendRateLimitError,
     GitBackendRemoteMissingError,
 )
-from synthorg.engine.workspace._git_subprocess import _redact_args, run_git_subprocess
+from synthorg.engine.workspace._git_subprocess import (
+    _redact_args,
+    git_failure_detail,
+    run_git_subprocess,
+)
 from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
     git,
@@ -159,6 +168,24 @@ def _matches(haystack: str, markers: tuple[str, ...]) -> bool:
     return any(marker in haystack for marker in markers)
 
 
+class _RemoteAccess(NamedTuple):
+    """How to reach one project's forge remote.
+
+    The two halves are kept apart because only one of them is safe to
+    write down: git records ``url`` in ``.git/config``, which lives in an
+    agent-writable workspace, while ``config`` reaches git through the
+    child environment and is gone when the command exits.
+
+    Attributes:
+        url: The credential-free HTTPS clone URL.
+        config: Git config for one invocation, rewriting ``url``'s base
+            to a token-carrying one at connect time.
+    """
+
+    url: str
+    config: Mapping[str, str]
+
+
 # git echoes the failing remote URL in clone/push stderr, and that URL
 # carries the percent-encoded token as HTTPS userinfo. Mask the
 # userinfo before any stderr text reaches a log line so the token is
@@ -271,12 +298,13 @@ class ExternalRemoteGitBackend:
         owner = split.path.strip("/")
         return split.scheme, host_with_port, split.path, owner
 
-    async def _authenticated_remote_url(self, project_id: str) -> str:
-        """Resolve ``<base_url>/<project_id>.git`` with a token injected.
+    async def _remote_access(self, project_id: str) -> _RemoteAccess:
+        """Resolve the remote for *project_id* and how to authenticate to it.
 
         Returns:
-            The HTTPS clone URL with ``x-access-token`` userinfo set so
-            git can authenticate without a credential helper.
+            The credential-free clone URL, which is what any git command
+            may record on disk, alongside the per-invocation config that
+            authenticates it.
 
         Raises:
             GitBackendConfigError: If the base URL is not HTTPS, has no
@@ -292,13 +320,19 @@ class ExternalRemoteGitBackend:
                 f"build a remote URL for project {project_id!r}"
             )
             raise GitBackendConfigError(msg)
+        base = urlunsplit((scheme, host_with_port, f"{path}/", "", ""))
+        repo_segment = quote(project_id, safe="")
+        url = urlunsplit((scheme, host_with_port, f"{path}/{repo_segment}.git", "", ""))
         # Use hostname/port instead of raw netloc so any pre-existing
         # userinfo on the configured base_url cannot collide with the
         # token; percent-encode the token so reserved characters survive
         # URL parsing rather than breaking the netloc.
         netloc = f"{_TOKEN_USER}:{quote(token, safe='')}@{host_with_port}"
-        repo_segment = quote(project_id, safe="")
-        return urlunsplit((scheme, netloc, f"{path}/{repo_segment}.git", "", ""))
+        authenticated_base = urlunsplit((scheme, netloc, f"{path}/", "", ""))
+        return _RemoteAccess(
+            url=url,
+            config={f"url.{authenticated_base}.insteadOf": base},
+        )
 
     async def provision(
         self,
@@ -333,7 +367,7 @@ class ExternalRemoteGitBackend:
                 default_branch=default_branch,
                 newly_created=False,
             )
-        url = await self._authenticated_remote_url(pid)
+        access = await self._remote_access(pid)
         try:
             await asyncio.to_thread(workspace_path.mkdir, parents=True, exist_ok=True)
         except OSError as exc:
@@ -349,10 +383,11 @@ class ExternalRemoteGitBackend:
         rc, _stdout, stderr = await run_git_subprocess(
             workspace_path,
             "clone",
-            url,
+            access.url,
             ".",
             cmd_timeout=self._cmd_timeout,
             log_event=GIT_BACKEND_PROVISION_FAILED,
+            config=access.config,
         )
         if rc == 0:
             logger.info(
@@ -416,7 +451,7 @@ class ExternalRemoteGitBackend:
             await init_working_tree_with_remote(
                 workspace_path,
                 default_branch=str(default_branch),
-                remote_url=await self._authenticated_remote_url(pid),
+                remote_url=(await self._remote_access(pid)).url,
                 cmd_timeout=self._cmd_timeout,
                 fail_exc=GitBackendProvisionError,
                 project_id=pid,
@@ -517,6 +552,10 @@ class ExternalRemoteGitBackend:
     async def _do_push(self, repo_root: Path, branch: str, pid: str) -> None:
         """Run one push attempt; classify a failure into a typed error.
 
+        The credential is resolved per attempt rather than once per
+        push, so a token rotated between the first failure and the retry
+        is the one the retry uses.
+
         Raises:
             GitBackendForgeAuthError: If git stderr matches an auth
                 marker.
@@ -526,6 +565,7 @@ class ExternalRemoteGitBackend:
                 the repo does not exist and lazy provisioning is on.
             GitBackendPushError: For any other non-zero git exit.
         """
+        access = await self._remote_access(pid)
         rc, _stdout, stderr = await run_git_subprocess(
             repo_root,
             "push",
@@ -533,6 +573,7 @@ class ExternalRemoteGitBackend:
             branch,
             cmd_timeout=self._cmd_timeout,
             log_event=GIT_BACKEND_PUSH_FAILED,
+            config=access.config,
         )
         if rc == 0:
             return
@@ -552,7 +593,7 @@ class ExternalRemoteGitBackend:
         if self._forge_provisioning_enabled and not await self._remote_repo_exists(pid):
             msg = f"forge repo for project {pid!r} does not exist"
             raise GitBackendRemoteMissingError(msg)
-        msg = f"git push failed for project {pid!r} (rc={rc})"
+        msg = f"git push failed for project {pid!r} ({git_failure_detail(rc)})"
         raise GitBackendPushError(msg)
 
     async def fetch(
@@ -591,7 +632,8 @@ class ExternalRemoteGitBackend:
         non-retryable :class:`GitBackendForgeAuthError` instead of the
         retryable :class:`GitBackendFetchError` that ``git`` would wrap
         every non-zero exit as: otherwise the retry handler would burn
-        attempts re-running a fetch that can only ever fail.
+        attempts re-running a fetch that can only ever fail. The
+        credential is likewise resolved per attempt.
 
         Raises:
             GitBackendForgeAuthError: If git stderr matches an auth
@@ -600,11 +642,13 @@ class ExternalRemoteGitBackend:
                 marker.
             GitBackendFetchError: For any other non-zero git exit.
         """
+        access = await self._remote_access(pid)
         rc, _stdout, stderr = await run_git_subprocess(
             repo_root,
             *args,
             cmd_timeout=self._cmd_timeout,
             log_event=GIT_BACKEND_FETCH_FAILED,
+            config=access.config,
         )
         if rc == 0:
             return
@@ -621,7 +665,7 @@ class ExternalRemoteGitBackend:
         if _is_rate_limit(lowered):
             msg = f"forge rate-limited fetching project {pid!r}"
             raise GitBackendRateLimitError(msg)
-        msg = f"git fetch failed for project {pid!r} (rc={rc})"
+        msg = f"git fetch failed for project {pid!r} ({git_failure_detail(rc)})"
         raise GitBackendFetchError(msg)
 
     async def _remote_repo_exists(self, pid: str) -> bool:

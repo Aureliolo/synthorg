@@ -5,15 +5,50 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
+from tests.unit.persistence.conftest import make_task
 
 pytestmark = pytest.mark.integration
 
 _T0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+#: A comment is a remark ON a plan, so ``plan_item_comments.plan_id`` is a
+#: foreign key and every plan named here has to exist first. The plans in
+#: turn point at an objective task, which is a foreign key of its own.
+_PARENT_TASK_ID = "task-root"
+_PLAN_IDS = ("plan-1", "plan-2")
+
+
+@pytest.fixture(autouse=True)
+async def _commented_plans(backend: PersistenceBackend) -> None:
+    """Persist the objective task and the plans these comments hang off."""
+    await backend.tasks.save(make_task(task_id=_PARENT_TASK_ID, title="Ship the board"))
+    for label in _PLAN_IDS:
+        await backend.plans.save(
+            Plan(
+                id=as_uuid(label),
+                project=NotBlankStr("beachhead"),
+                objective_id=NotBlankStr("obj-1"),
+                objective_title=NotBlankStr("Ship the board"),
+                parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),
+                created_at=_T0,
+                updated_at=_T0,
+                items=(
+                    PlanItem(
+                        id=NotBlankStr(sid("item-1")),
+                        title=NotBlankStr("Scaffold board"),
+                        description=NotBlankStr("Set up the game board grid"),
+                        acceptance_criteria=(NotBlankStr("board grid renders"),),
+                        expected_artifacts=(NotBlankStr("src/board.py"),),
+                    ),
+                ),
+            ),
+        )
 
 
 def _comment(
@@ -26,7 +61,7 @@ def _comment(
 ) -> PlanItemComment:
     return PlanItemComment(
         id=as_uuid(label),
-        plan_id=NotBlankStr(plan_id),
+        plan_id=NotBlankStr(sid(plan_id)),
         item_id=NotBlankStr(item_id),
         author=NotBlankStr(author),
         body=NotBlankStr(f"Comment {label}"),
@@ -42,7 +77,7 @@ class TestPlanItemCommentRepository:
         await backend.plan_comments.append(_comment("c1", minute=1))
 
         result = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1"))
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-1")))
         )
         assert [c.id for c in result] == [as_uuid("c1"), as_uuid("c2")]
         assert result[0].author == "reviewer"
@@ -54,12 +89,14 @@ class TestPlanItemCommentRepository:
             await backend.plan_comments.append(_comment(f"c{i}", minute=i))
 
         first = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1")), limit=2
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-1"))), limit=2
         )
         assert [c.id for c in first] == [as_uuid("c0"), as_uuid("c1")]
 
         second = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1")), limit=2, offset=2
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-1"))),
+            limit=2,
+            offset=2,
         )
         assert [c.id for c in second] == [as_uuid("c2"), as_uuid("c3")]
 
@@ -69,7 +106,7 @@ class TestPlanItemCommentRepository:
 
         result = await backend.plan_comments.query(
             PlanItemCommentFilterSpec(
-                plan_id=NotBlankStr("plan-1"), item_id=NotBlankStr("item-2")
+                plan_id=NotBlankStr(sid("plan-1")), item_id=NotBlankStr("item-2")
             )
         )
         assert [c.id for c in result] == [as_uuid("b")]
@@ -82,7 +119,7 @@ class TestPlanItemCommentRepository:
 
         result = await backend.plan_comments.query(
             PlanItemCommentFilterSpec(
-                plan_id=NotBlankStr("plan-1"),
+                plan_id=NotBlankStr(sid("plan-1")),
                 item_id=NotBlankStr("item-1"),
                 comment_id=as_uuid("b"),
             )
@@ -98,7 +135,7 @@ class TestPlanItemCommentRepository:
 
         result = await backend.plan_comments.query(
             PlanItemCommentFilterSpec(
-                plan_id=NotBlankStr("plan-1"),
+                plan_id=NotBlankStr(sid("plan-1")),
                 item_id=NotBlankStr("item-1"),
                 comment_id=as_uuid("a"),
             )
@@ -110,7 +147,7 @@ class TestPlanItemCommentRepository:
         await backend.plan_comments.append(_comment("b", plan_id="plan-2"))
 
         result = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-2"))
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-2")))
         )
         assert [c.id for c in result] == [as_uuid("b")]
 
@@ -128,7 +165,7 @@ class TestPlanItemCommentRepository:
         removed = await backend.plan_comments.purge_before(_T0.replace(minute=10))
         assert removed == 1
         result = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1"))
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-1")))
         )
         assert [c.id for c in result] == [as_uuid("new")]
 
@@ -138,7 +175,7 @@ class TestPlanItemCommentRepository:
         human = _comment("human", minute=1)
         agent = PlanItemComment(
             id=as_uuid("agent"),
-            plan_id=NotBlankStr("plan-1"),
+            plan_id=NotBlankStr(sid("plan-1")),
             item_id=NotBlankStr("item-1"),
             author=NotBlankStr("Casey"),
             author_kind="agent",
@@ -151,7 +188,7 @@ class TestPlanItemCommentRepository:
         await backend.plan_comments.append(agent)
 
         result = await backend.plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1"))
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr(sid("plan-1")))
         )
         assert [c.author_kind for c in result] == ["human", "agent"]
         loaded_human, loaded_agent = result

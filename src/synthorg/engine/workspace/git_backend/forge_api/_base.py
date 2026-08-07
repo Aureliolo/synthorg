@@ -1,10 +1,12 @@
 """Shared httpx lifecycle for the per-forge REST clients."""
 
+import ssl
 from collections.abc import Mapping
 from typing import Self
 
 import httpx
 
+from synthorg.core.http_trust_client import TrustFollowingClient
 from synthorg.core.normalization import normalize_base_url
 from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.observability import get_logger, safe_error_description
@@ -38,17 +40,23 @@ class BaseForgeClient:
         # cannot retroactively change this client's auth/headers.
         self._headers: dict[str, str] = dict(headers)
         self._timeout = timeout
-        self.__client: httpx.AsyncClient | None = None
+        self.__clients = TrustFollowingClient(self.__build_client)
 
-    @property
-    def _client(self) -> httpx.AsyncClient:
-        if self.__client is None:
-            self.__client = httpx.AsyncClient(
-                base_url=self._api_base_url,
-                headers=self._headers,
-                timeout=self._timeout,
-            )
-        return self.__client
+    def __build_client(self, *, verify: ssl.SSLContext | bool) -> httpx.AsyncClient:
+        """Build a client against the trust the holder resolved.
+
+        Returns:
+            A client for the pinned forge API base.
+        """
+        return httpx.AsyncClient(
+            base_url=self._api_base_url,
+            headers=self._headers,
+            timeout=self._timeout,
+            # The same trust the git half of this backend uses, so a
+            # self-hosted forge behind an internal CA is not reachable
+            # over one transport and refused over the other.
+            verify=verify,
+        )
 
     async def _request(
         self,
@@ -84,12 +92,13 @@ class BaseForgeClient:
                 retryable).
         """
         try:
-            # Strip any leading slash so the endpoint resolves *against*
-            # the base_url path prefix; a leading slash would make httpx
-            # treat it as host-absolute and discard the prefix.
-            return await self._client.request(
-                method, url.lstrip("/"), json=json, params=params
-            )
+            async with self.__clients.borrow() as client:
+                # Strip any leading slash so the endpoint resolves *against*
+                # the base_url path prefix; a leading slash would make httpx
+                # treat it as host-absolute and discard the prefix.
+                return await client.request(
+                    method, url.lstrip("/"), json=json, params=params
+                )
         except httpx.HTTPError as exc:
             logger.warning(
                 FORGE_API_REQUEST_FAILED,
@@ -101,10 +110,8 @@ class BaseForgeClient:
             raise GitBackendForgeApiError(msg) from exc
 
     async def aclose(self) -> None:
-        """Close the underlying httpx client if it was created."""
-        if self.__client is not None:
-            await self.__client.aclose()
-            self.__client = None
+        """Close every client this object built."""
+        await self.__clients.aclose()
 
     async def __aenter__(self) -> Self:
         return self

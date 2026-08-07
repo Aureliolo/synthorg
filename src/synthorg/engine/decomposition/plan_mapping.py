@@ -29,6 +29,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
+    DECOMPOSITION_REBUILT_FROM_PLAN,
     DECOMPOSITION_VALIDATION_ERROR,
 )
 
@@ -316,6 +317,16 @@ def decomposition_from_plan(
         for item in dispatchable
     )
     edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)
+    # What an operator approved and what the org dispatches differ by the
+    # decision items stripped here, and nothing else on this path says so.
+    logger.info(
+        DECOMPOSITION_REBUILT_FROM_PLAN,
+        plan_id=str(plan.id),
+        parent_task_id=str(parent_task.id),
+        dispatched_items=len(dispatchable),
+        decision_items=len(decision_ids),
+        dependency_edges=len(edges),
+    )
     decomposition_plan = DecompositionPlan(
         parent_task_id=str(parent_task.id),
         subtasks=subtasks,

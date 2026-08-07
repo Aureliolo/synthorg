@@ -2,87 +2,61 @@
 
 Invalidates the cached :class:`~synthorg.meta.config.SelfImprovementConfig`
 on the meta slice when an operator edits the structural ``meta.self_improvement``
-blob OR any of the hot ``self_improvement.*`` / ``chief_of_staff.*`` overlay
-settings. The meta slice caches the parsed config so the read endpoints do not
-re-parse per request; this subscriber wires the cache field back to ``None`` so
-the next read reloads the fresh value, keeping the effective-config view in step
-with the live overlay (the running services already read each value live).
+blob OR any setting the feature overlay reads. The meta slice caches the parsed
+config so the read endpoints do not re-parse per request; this subscriber wires
+the cache field back to ``None`` so the next read reloads the fresh value.
 
-``self_improvement.code_modification_enabled`` is deliberately NOT watched.
-It is not that the value cannot change while the system runs; it is that
-nothing here should make it take effect faster than the load path, which
-re-reads the credentials on every parse and forces the flag back off when
-they are absent. ``chief_of_staff.direct_mcp_enabled`` IS watched, because
-the actor it gates is rebuilt by the subsystem reconciler behind the same
-fail-closed governance gate, so the cached config has to move with it.
+The cache is not only a read-path optimisation: subsystem activations build
+from it (``_si_config`` in the registry hands it to every wirer that needs a
+per-feature model), so a key the overlay reads but this subscriber does not
+watch produces a subsystem that rebuilds on a settings write and then
+reconstructs itself from the pre-write value. That is why the watch set is
+derived from :func:`overlaid_setting_keys` rather than listed here: the two
+cannot drift apart.
 """
+
+from collections.abc import Sequence
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta._config_overlay import overlaid_setting_keys
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
-# The structural blob plus every hot overlay flag/model, so the cached
-# effective config is invalidated whenever a live value changes. The KEEP
-# settings are excluded by design (see module docstring).
-_SELF_IMPROVEMENT_HOT_KEYS: frozenset[str] = frozenset(
-    {
-        "enabled",
-        "chief_of_staff_enabled",
-        "config_tuning_enabled",
-        "architecture_proposals_enabled",
-        "prompt_tuning_enabled",
-        "tool_creation_enabled",
-        "tool_creation_allowed_capabilities",
-        "analysis_model",
-        "code_modification_model",
-    }
-)
-_CHIEF_OF_STAFF_HOT_KEYS: frozenset[str] = frozenset(
-    {
-        "routing_enabled",
-        "learning_enabled",
-        "alerts_enabled",
-        "narrative_enabled",
-        "invite_enabled",
-        "direct_mcp_enabled",
-        "chat_model",
-        "propose_model",
-        "routing_model",
-        "narrative_model",
-    }
-)
+# The structural blob plus every setting the overlay reads. Derived rather
+# than listed: a hand-written list is only correct on the day it is written,
+# and the cost of a missing key is silent, because the write reaches the
+# store, triggers a rebuild, and the rebuild reads the stale cache.
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
-    {("meta", "self_improvement")}
-    | {("self_improvement", key) for key in _SELF_IMPROVEMENT_HOT_KEYS}
-    | {("chief_of_staff", key) for key in _CHIEF_OF_STAFF_HOT_KEYS}
+    {("meta", "self_improvement")} | overlaid_setting_keys()
 )
 
 
 class MetaSelfImprovementSettingsSubscriber:
     """Invalidate the cached ``SelfImprovementConfig`` on a config edit.
 
-    Holds :class:`AppState` (where the cache lives) and
-    :class:`SettingsService` (for parity with peer subscribers). On a
-    watched-key change it wires ``MetaStateSlice.self_improvement_config``
-    back to ``None`` so the next :func:`self_improvement_config_of` read
-    reloads the operator's new value.
+    Holds :class:`AppState` (where the cache lives) and the settings service
+    (for parity with peer subscribers). On a watched-key change it wires
+    ``MetaStateSlice.self_improvement_config`` back to ``None`` so the next
+    :func:`self_improvement_config_of` read reloads the operator's new value.
 
     Args:
         app_state: Application state that owns the cached config.
         settings_service: Settings service held for symmetry with peers.
+            Typed as the protocol because nothing here reaches past it.
     """
 
     def __init__(
         self,
         app_state: AppState,
-        settings_service: SettingsService,
+        settings_service: SettingsServiceProtocol,
     ) -> None:
         self._app_state = app_state
         self._settings_service = settings_service
@@ -99,10 +73,16 @@ class MetaSelfImprovementSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
-        """Invalidate the cached config so the next read reloads it."""
+        """Invalidate the cached config so the next read reloads it.
+
+        One invalidation per batch: the cache is a single field, so clearing
+        it once covers every key in the batch.
+
+        Args:
+            changes: The watched writes that prompted the invalidation.
+        """
         from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
         try:
@@ -110,8 +90,7 @@ class MetaSelfImprovementSettingsSubscriber:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=describe_changes(changes),
                 note="invalidated cached self-improvement config",
             )
         except Exception as exc:
@@ -119,8 +98,7 @@ class MetaSelfImprovementSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="meta_self_improvement",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -19,8 +19,9 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan import PlanOption
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_validation import validate_decision_options
 from synthorg.core.structured_artifact import StructuredArtifact
 from synthorg.core.types import NotBlankStr
 

@@ -1,14 +1,40 @@
 """Tests for task controller."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 
 from synthorg.api.state import AppState
 from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import EngineStateSlice
 from tests._shared import LoopAsyncClient, sid
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
+
+_PLAN_AT = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
+
+
+def _plan_for(task_id: str) -> Plan:
+    """A minimal durable plan whose objective is *task_id*."""
+    return Plan(
+        project=NotBlankStr("beachhead"),
+        objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the game"),
+        parent_task_id=NotBlankStr(task_id),
+        items=(
+            PlanItem(
+                id=NotBlankStr(sid("item-1")),
+                title=NotBlankStr("Scaffold"),
+                description=NotBlankStr("Set up the board"),
+                acceptance_criteria=(NotBlankStr("board scaffolded"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
+            ),
+        ),
+        created_at=_PLAN_AT,
+        updated_at=_PLAN_AT,
+    )
 
 
 @pytest.mark.unit
@@ -148,6 +174,53 @@ class TestTaskController:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+    async def test_delete_refused_while_a_plan_owns_the_task(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Deleting the objective used to silently orphan its plan.
+
+        The orphan kept running, reached the review queue asking for a
+        decision on work with no parent, and could then not be removed at
+        all.
+        """
+        task = make_task()
+        fake_persistence.tasks._tasks[str(task.id)] = task
+        await fake_persistence.plans.save(_plan_for(str(task.id)))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/tasks/{sid('task-001')}",
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 409
+        detail = resp.json()["error_detail"]
+        assert detail["error_code"] == ErrorCode.PLAN_PARENT_TASK_IN_USE.value
+        # The message names the plan and the way out, not a constraint.
+        assert "/plans/" in resp.text
+        # Refused, not partially applied.
+        assert str(task.id) in fake_persistence.tasks._tasks
+
+    async def test_delete_succeeds_once_the_plan_is_resolved(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """The refusal is a gate, not a trap."""
+        task = make_task()
+        fake_persistence.tasks._tasks[str(task.id)] = task
+        plan = _plan_for(str(task.id))
+        await fake_persistence.plans.save(plan)
+        await fake_persistence.plans.delete(NotBlankStr(str(plan.id)))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/tasks/{sid('task-001')}",
+            headers=make_auth_headers("ceo"),
+        )
+
+        assert resp.status_code == 204
 
     async def test_oversized_task_id_rejected(
         self, async_test_client: LoopAsyncClient

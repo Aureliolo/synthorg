@@ -66,6 +66,12 @@ export interface PlanDraftedEvent {
   type: 'plan-drafted'
   title: string
   project: string
+  /**
+   * Whether the request joined a run already in flight instead of starting
+   * one. Shown, because a card that reads the same either way leaves the
+   * operator expecting a second project that will never appear.
+   */
+  reusedProject: boolean
 }
 
 /** Parked steering directives, each with its approval id for a deep link. */

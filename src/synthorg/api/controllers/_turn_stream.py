@@ -32,7 +32,7 @@ from synthorg.api.exception_handlers import build_error_detail
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
-from synthorg.meta.chief_of_staff.intent_router import IntentOutcome, TurnIntent
+from synthorg.meta.chief_of_staff.intent_models import IntentOutcome, TurnIntent
 from synthorg.meta.chief_of_staff.models import ChatAnswerComplete, ChatResponse
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import COS_CHAT_FAILED

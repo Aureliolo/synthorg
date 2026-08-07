@@ -56,6 +56,10 @@ APPROVAL_GATE_BRAIN_RECORD_SKIPPED: Final[str] = "approval_gate.brain.record_ski
 # APPROVAL_GATE_RESUME_FAILED so an operator can tell a dispatch failure from a
 # status-sync lag from a decision-record miss without parsing a free-text note.
 APPROVAL_GATE_PLAN_DISPATCH_FAILED: Final[str] = "approval_gate.plan.dispatch_failed"
+#: The approved plan's work items became persisted child tasks. Counted
+#: because "the plan is EXECUTING" and "the plan has work" are different
+#: facts, and only this one says the second.
+APPROVAL_GATE_PLAN_CHILDREN_FILED: Final[str] = "approval_gate.plan.children_filed"
 APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED: Final[str] = (
     "approval_gate.plan.status_sync_failed"
 )
