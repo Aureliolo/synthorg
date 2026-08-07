@@ -51,13 +51,13 @@ from synthorg.settings.resolver import ConfigResolver
 logger = get_logger(__name__)
 
 _ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("conversational-cos")
-# Fixed namespace for deriving a deterministic, retry-stable project id from the
-# normalised objective via uuid5. The derivation is what makes an identical
-# brief converge on one project without a lock or a lookup: two processes racing
-# the same text derive the same id, so one create wins and the other is told so.
-# Follows the same derivation pattern as the charter dispatcher (a distinct
-# namespace uuid). Keyed on the objective rather than the conversation because
-# every turn opens a new conversation, which made every re-send a new project.
+# Fixed namespace for deriving a deterministic, retry-stable project id from
+# the requester and their normalised objective via uuid5. The derivation is
+# what makes an identical brief converge on one project without a lock or a
+# lookup: two processes racing the same brief derive the same id, so one
+# create wins and the other is told so. Follows the same derivation pattern as
+# the charter dispatcher (a distinct namespace uuid). Keyed on the objective
+# rather than the conversation because every turn opens a new conversation.
 _PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000003")
 
 # Used when the window's own setting cannot be read, which is the boot window
@@ -65,34 +65,38 @@ _PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000003"
 # standing in for it.
 _DEFAULT_DEDUPE_WINDOW_SECONDS: Final[float] = 300.0
 
+#: Separates the two halves of the dedupe key so no requester id and objective
+#: can concatenate into another pair's key.
+_KEY_SEPARATOR: Final[str] = "\n"
 
-def _normalise_objective(text: str) -> str:
-    """Reduce a brief to the key two re-sends of it share.
+#: A window at or below this switches deduping off entirely.
+_NO_WINDOW: Final[timedelta] = timedelta(0)
 
-    Casefold plus whitespace collapse, which is what differs between an
-    impatient operator's second send and their first. Nothing semantic: a
-    reworded brief is a different request and must get its own project.
+
+def _dedupe_key(created_by: str, text: str) -> str:
+    """Reduce a requester's brief to the key two re-sends of it share.
+
+    Casefold plus whitespace collapse on the text, which is what differs
+    between an impatient operator's second send and their first. Nothing
+    semantic: a reworded brief is a different request and must get its own
+    project.
+
+    The requester is part of the key, and load-bearing rather than tidy.
+    Joining a project means inheriting its governance envelope, including
+    ``Project.autonomy_mode``, which the dispatch path reads live as the
+    per-run autonomy override. An objective-only key would let anyone whose
+    wording collided with a permissive in-flight project land inside it, and
+    would equally let a generically worded permissive project be parked in
+    advance for someone else's request to fall into.
 
     Args:
+        created_by: The user id the request arrived under.
         text: The operator's raw brief.
 
     Returns:
         The comparison key.
     """
-    return " ".join(text.split()).casefold()
-
-
-@dataclass(frozen=True, slots=True)
-class _Dispatched:
-    """One objective this process has already filed, and where.
-
-    Attributes:
-        project: The project it was filed under.
-        at: When it was filed, against which the dedupe window is measured.
-    """
-
-    project: NotBlankStr
-    at: datetime
+    return f"{created_by}{_KEY_SEPARATOR}{' '.join(text.split()).casefold()}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +160,6 @@ class ConversationalPlanDispatcher:
         "_config_resolver",
         "_dispatch_port",
         "_project_repo",
-        "_recent",
         "_work_pipeline",
     )
 
@@ -174,11 +177,6 @@ class ConversationalPlanDispatcher:
         self._clock: Clock = clock or SystemClock()
         self._dispatch_port = dispatch_port
         self._config_resolver = config_resolver
-        # What this process has filed recently, pruned to the window on every
-        # intake so it stays bounded by the burst rather than by uptime. A
-        # cache, never an authority: losing it (a restart, a second worker)
-        # falls back to the derived id below, which is durable.
-        self._recent: dict[str, _Dispatched] = {}
 
     async def draft_plan(
         self,
@@ -259,20 +257,29 @@ class ConversationalPlanDispatcher:
             # raises a typed ProjectNotFoundError -- that check is the authority.
             if existing is not None:
                 return _ProjectChoice(project=named)
-        return await self._provision(conversation, work, now)
+        return await self._provision(conversation, args, work, now)
 
     async def _provision(
         self,
         conversation: Conversation,
+        args: ProposeArgs,
         work: ProposedWork,
         now: datetime,
     ) -> _ProjectChoice:
         """Provision the project for an unnamed brief, deduping a re-send.
 
         An operator who gets no feedback for fifteen seconds sends the brief
-        again, and each send used to fork its own project, its own plan and its
-        own decomposition run over the same objective. A re-send inside the
-        dedupe window that finds its earlier request still unacted-on joins it.
+        again. Both sends derive the same project id from the requester and
+        the normalised objective, so the second finds the first's project and,
+        if it is young enough and still unacted-on, joins it instead of
+        forking a second plan and a second decomposition run over the same
+        words.
+
+        The evidence is the project row itself rather than an in-process
+        memory of what this worker filed. A cache would answer differently
+        after a restart, on a second worker, or once unrelated traffic had
+        evicted the entry, and "how long ago was this filed" would then depend
+        on which process happened to take the request.
 
         Returns:
             The resolved project and whether this intake joined a request that
@@ -283,59 +290,44 @@ class ConversationalPlanDispatcher:
                 which is a store that is not accepting projects rather than a
                 collision, and is not something to retry into.
         """
-        objective = _normalise_objective(work.raw_intent)
+        derived = uuid.uuid5(
+            _PROJECT_NAMESPACE, _dedupe_key(args.created_by, work.raw_intent)
+        )
         window = await self._dedupe_window()
-        remembered = self._recent.get(objective)
-        self._forget_stale(now, window)
-        # Read before the prune, because "this objective was filed, and the
-        # window has since closed" is a verdict, and an entry that is merely
-        # dropped is indistinguishable from one that never existed.
-        aged_out = remembered is not None and now - remembered.at > window
-        if remembered is not None and not aged_out:
-            joined = await self._still_in_flight(remembered.project)
-            if joined is not None:
-                return self._joined(conversation, objective, joined, now)
-        derived = uuid.uuid5(_PROJECT_NAMESPACE, f"objective-{objective}")
-        created = await self._create(work, derived)
-        if created is not None:
-            return self._filed(conversation, objective, created, now)
-        if not aged_out:
-            # The derived id is taken and this process has no record of taking
-            # it: another worker did, or this one restarted. Its status is then
-            # the evidence the window would have given, since a project still
-            # PLANNING has not been acted on. Skipped when the window HAS
-            # spoken, or a closed window would be overridden by the very
-            # project it closed on.
-            standing = await self._still_in_flight(NotBlankStr(str(derived)))
+        # Zero (or negative) switches deduping off, which the setting's own
+        # description promises. Checked before the lookup so "off" costs no
+        # read and cannot be talked out of by a standing project.
+        if window > _NO_WINDOW:
+            standing = await self._joinable(derived, now, window)
             if standing is not None:
-                return self._joined(conversation, objective, standing, now)
-        # A genuine second run of the same words, so it gets its own project.
-        fresh = await self._create(work, uuid.uuid4())
+                return self._joined(conversation, standing)
+        created = await self._create(work, derived, now)
+        if created is not None:
+            return self._filed(conversation, created)
+        # The derived id exists but is not joinable: it was acted on, or it
+        # predates the window, or deduping is off. Either way this is a
+        # genuine second run of the same words, so it gets its own project.
+        fresh = await self._create(work, uuid.uuid4(), now)
         if fresh is None:  # pragma: no cover -- a uuid4 collision
             msg = "Could not provision a project for the objective."
             raise ServiceUnavailableError(msg)
-        return self._filed(conversation, objective, fresh, now)
+        return self._filed(conversation, fresh)
 
     def _filed(
         self,
         conversation: Conversation,
-        objective: str,
         project: NotBlankStr,
-        now: datetime,
     ) -> _ProjectChoice:
-        """Record and report an intake that opened its own project.
+        """Report an intake that opened its own project.
 
         Args:
             conversation: The conversation the brief arrived on.
-            objective: The normalised objective key.
             project: The project just provisioned.
-            now: The intake time, from which the window runs.
 
         Returns:
             The choice naming the new project.
         """
-        self._recent[objective] = _Dispatched(project=project, at=now)
-        logger.debug(
+        logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=str(conversation.id),
             project=project,
@@ -344,13 +336,16 @@ class ConversationalPlanDispatcher:
         return _ProjectChoice(project=project)
 
     async def _create(
-        self, work: ProposedWork, project_id: uuid.UUID
+        self, work: ProposedWork, project_id: uuid.UUID, now: datetime
     ) -> NotBlankStr | None:
         """Create the project under *project_id*.
 
         Args:
             work: The brief the project is being provisioned for.
             project_id: The id to claim.
+            now: The intake time, recorded as the project's start so the
+                dedupe window is measured against the injected clock rather
+                than against whatever the model's own default stamped.
 
         Returns:
             The claimed id, or ``None`` when it was already taken.
@@ -362,50 +357,52 @@ class ConversationalPlanDispatcher:
                     name=NotBlankStr(work.title),
                     description=work.raw_intent,
                     status=ProjectStatus.PLANNING,
+                    created_at=now,
+                    updated_at=now,
                 )
             )
         except DuplicateRecordError:
             return None
         return NotBlankStr(str(project_id))
 
-    async def _still_in_flight(self, project: NotBlankStr | None) -> NotBlankStr | None:
-        """Report whether a candidate project is still an unacted-on request.
+    async def _joinable(
+        self, project_id: uuid.UUID, now: datetime, window: timedelta
+    ) -> NotBlankStr | None:
+        """Report whether a candidate project is a re-send's own, still open.
 
         Args:
-            project: The candidate project id, or ``None`` for none.
+            project_id: The id derived from this requester and objective.
+            now: The intake time.
+            window: How long a filed request stays a dedupe candidate.
 
         Returns:
-            The project id when it exists and is still PLANNING, else ``None``.
-            Anything past PLANNING has been approved and dispatched, so folding
-            a new brief into it would file work against a decision that was
-            made about different words.
+            The project id when it exists, is still PLANNING, and was opened
+            inside the window; else ``None``. Anything past PLANNING has been
+            approved and dispatched, so folding a new brief into it would file
+            work against a decision made about different words; anything older
+            than the window is a request the operator has had time to forget.
         """
-        if project is None:
-            return None
-        existing = await self._project_repo.get(project)
+        existing = await self._project_repo.get(NotBlankStr(str(project_id)))
         if existing is None or existing.status is not ProjectStatus.PLANNING:
             return None
-        return project
+        if now - existing.created_at > window:
+            return None
+        return NotBlankStr(str(project_id))
 
     def _joined(
         self,
         conversation: Conversation,
-        objective: str,
         project: NotBlankStr,
-        now: datetime,
     ) -> _ProjectChoice:
-        """Record and report an intake that joined a request already in flight.
+        """Report an intake that joined a request already in flight.
 
         Args:
             conversation: The conversation the brief arrived on.
-            objective: The normalised objective key.
             project: The project being joined.
-            now: The intake time, which restarts the window.
 
         Returns:
             The choice naming the joined project.
         """
-        self._recent[objective] = _Dispatched(project=project, at=now)
         logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=str(conversation.id),
@@ -413,22 +410,6 @@ class ConversationalPlanDispatcher:
             note="objective already in flight; joined its project",
         )
         return _ProjectChoice(project=project, reused=True)
-
-    def _forget_stale(self, now: datetime, window: timedelta) -> None:
-        """Drop remembered dispatches the window no longer covers.
-
-        Pruned per intake rather than on a timer, so the memory is bounded by
-        one window's traffic instead of by uptime.
-
-        Args:
-            now: The current time.
-            window: How long a dispatch stays a dedupe candidate.
-        """
-        self._recent = {
-            objective: dispatched
-            for objective, dispatched in self._recent.items()
-            if now - dispatched.at <= window
-        }
 
     async def _dedupe_window(self) -> timedelta:
         """Resolve how long a dispatched objective deduplicates a re-send.

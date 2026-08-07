@@ -5,6 +5,7 @@ project provision-vs-reuse + idempotent re-dispatch, and intake-failure
 propagation.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -62,10 +63,10 @@ def _conversation() -> Conversation:
     )
 
 
-def _args() -> ProposeArgs:
+def _args(created_by: str = "user-1") -> ProposeArgs:
     return ProposeArgs(
         message=NotBlankStr("build the thing"),
-        created_by=NotBlankStr("user-1"),
+        created_by=NotBlankStr(created_by),
     )
 
 
@@ -337,9 +338,9 @@ class TestDuplicateWorkRequest:
         assert second.reused_project is False
 
     async def test_a_restart_still_dedupes_through_the_derived_id(self) -> None:
-        # The in-process record is a cache, not the authority: a second worker
-        # (or the same one after a restart) derives the same id from the
-        # objective, so the create loses the race and the reuse still happens.
+        # The project row is the authority, not any in-process memory: a
+        # second worker (or the same one after a restart) derives the same id
+        # and reads the same evidence, so the reuse still happens.
         store = _LiveProjects()
         first = await _dedupe_dispatcher(store).draft_plan(
             conversation=_conversation(), args=_args(), work=_work(), now=_NOW
@@ -353,6 +354,82 @@ class TestDuplicateWorkRequest:
 
         assert second.project == first.project
         assert second.reused_project is True
+
+    async def test_the_window_is_measured_from_the_project_not_a_cache(
+        self,
+    ) -> None:
+        """A fresh dispatcher must reach the same verdict as the one that filed.
+
+        The bug this replaces read the age from an in-process dict, so after a
+        restart -- or after unrelated traffic evicted the entry -- a project
+        well past the window was joined anyway, with no time bound at all.
+        """
+        store = _LiveProjects()
+        await _dedupe_dispatcher(store, window_seconds=60.0).draft_plan(
+            conversation=_conversation(), args=_args(), work=_work(), now=_NOW
+        )
+
+        late = await _dedupe_dispatcher(store, window_seconds=60.0).draft_plan(
+            conversation=_conversation(),
+            args=_args(),
+            work=_work(),
+            now=_NOW + timedelta(seconds=3600),
+        )
+
+        assert late.reused_project is False
+
+    async def test_another_requesters_identical_wording_gets_its_own_project(
+        self,
+    ) -> None:
+        """Joining a project means inheriting its governance envelope.
+
+        ``Project.autonomy_mode`` is read live as the per-run autonomy
+        override, so an objective-only key would let a wording collision drop
+        one actor's work inside another's oversight settings, and would let a
+        permissive project be parked in advance for someone else to land in.
+        """
+        store = _LiveProjects()
+        dispatcher = _dedupe_dispatcher(store)
+
+        mine = await dispatcher.draft_plan(
+            conversation=_conversation(),
+            args=_args(created_by="user-1"),
+            work=_work(),
+            now=_NOW,
+        )
+        theirs = await dispatcher.draft_plan(
+            conversation=_conversation(),
+            args=_args(created_by="user-2"),
+            work=_work(),
+            now=_NOW + timedelta(seconds=5),
+        )
+
+        assert theirs.project != mine.project
+        assert theirs.reused_project is False
+
+    async def test_a_burst_of_identical_sends_files_one_request(self) -> None:
+        """Concurrent, not sequential: the derived id is what settles the race.
+
+        Every send derives the same project id, so exactly one create wins
+        and the losers read the winner's row.
+        """
+        store = _LiveProjects()
+        dispatcher = _dedupe_dispatcher(store)
+
+        summaries = await asyncio.gather(
+            *(
+                dispatcher.draft_plan(
+                    conversation=_conversation(),
+                    args=_args(),
+                    work=_work(),
+                    now=_NOW + timedelta(seconds=index),
+                )
+                for index in range(4)
+            )
+        )
+
+        assert len({summary.project for summary in summaries}) == 1
+        assert len(store.created) == 1
 
     async def test_a_named_project_is_never_reported_as_deduped(self) -> None:
         # Filing under a project the operator named is not a duplicate, so
