@@ -9,18 +9,24 @@ has the binaries.
 
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from synthorg.api import construction_phase
+from synthorg.api.app_overrides import AppOverrides
+from synthorg.api.boot_persistence import BootPersistence
+from synthorg.api.config import ApiConfig
+from synthorg.api.construction_phase import build_construction_services
 from synthorg.api.lifecycle_helpers.binary_preflight import (
     BINARY_MANIFEST,
     BinaryRecord,
-    BinaryRequirement,
     RequiredBinaryMissingError,
     required_binaries_for,
     run_binary_preflight,
 )
+from synthorg.config.schema import RootConfig
 
 pytestmark = pytest.mark.unit
 
@@ -45,20 +51,38 @@ def _every_name() -> Iterator[str]:
 
 
 class TestManifest:
-    def test_git_is_required(self) -> None:
+    def test_git_is_listed(self) -> None:
         """Workspace provisioning is on the critical path of every dispatch."""
-        git = next(record for record in BINARY_MANIFEST if record.name == "git")
-        assert git.requirement is BinaryRequirement.REQUIRED
+        assert "git" in _names(BINARY_MANIFEST)
 
     def test_no_docker_entry(self) -> None:
         """The image builder runs through aiodocker, so no CLI is shelled out."""
         assert "docker" not in _names(BINARY_MANIFEST)
+
+    def test_no_self_provisioning_binary_is_listed(self) -> None:
+        """A binary the backend downloads on demand is not missing at boot.
+
+        Both tunnel adapters fetch their vendor CLI on first start and report
+        their own live availability (including when that download is switched
+        off), so demanding them here would refuse to acknowledge a fetchable
+        binary and duplicate a better report.
+        """
+        assert _names(BINARY_MANIFEST).isdisjoint({"cloudflared", "devtunnel", "nix"})
 
     def test_every_record_names_its_package_and_consumers(self) -> None:
         """A preflight failure has to be actionable without reading the code."""
         for record in BINARY_MANIFEST:
             assert record.package.strip()
             assert record.consumers
+
+    def test_a_record_with_nothing_to_say_is_refused(self) -> None:
+        """The record's fields ARE the operator's message, so none may be blank."""
+        with pytest.raises(ValueError, match="must not be blank"):
+            BinaryRecord(name=" ", package="git", consumers=("something",))
+        with pytest.raises(ValueError, match="must not be blank"):
+            BinaryRecord(name="git", package="", consumers=("something",))
+        with pytest.raises(ValueError, match="at least one non-blank consumer"):
+            BinaryRecord(name="git", package="git", consumers=())
 
     def test_postgres_tools_are_required_only_on_postgres(self) -> None:
         sqlite_required = _names(required_binaries_for("sqlite"))
@@ -90,32 +114,71 @@ class TestRequired:
 
     def test_present_required_binaries_pass(self) -> None:
         with _resolving(*_every_name()):
-            assert run_binary_preflight(backend_name="postgres") == ()
+            run_binary_preflight(backend_name="postgres")
 
     def test_postgres_tools_do_not_block_a_sqlite_boot(self) -> None:
         """A SQLite deployment never shells out to the Postgres tools."""
         with _resolving("git"):
-            missing = run_binary_preflight(backend_name="sqlite")
-
-        # The boot proceeds; only the optional binaries are reported.
-        assert _names(missing).isdisjoint({"pg_dump", "pg_restore"})
+            run_binary_preflight(backend_name="sqlite")
 
 
-class TestOptional:
-    def test_missing_optional_binary_is_reported_not_raised(self) -> None:
-        with _resolving("git"):
-            missing = run_binary_preflight(backend_name="sqlite")
+class TestItRunsAtBoot:
+    """The half a well-tested pure function does not buy.
 
-        assert "cloudflared" in {record.name for record in missing}
+    The defect was an image that booted cleanly and could not dispatch, so
+    what has to hold is that the boot path actually asks: a preflight
+    nothing calls is the same image with a longer test suite.
+    """
 
-    def test_a_reported_optional_binary_names_its_package(self) -> None:
-        """The operator's fix is an image rebuild, so name what to add."""
-        with _resolving("git"):
-            missing = run_binary_preflight(backend_name="sqlite")
+    @staticmethod
+    def _build(tmp_path: Path) -> None:
+        """Run the construction phase over an otherwise-valid boot bundle."""
+        build_construction_services(
+            effective_config=RootConfig(company_name="test-co"),
+            api_config=ApiConfig(),
+            overrides=AppOverrides(),
+            boot=BootPersistence(
+                persistence=None,
+                artifact_storage=None,
+                resolved_db_path=None,
+                resolved_config_path=tmp_path / "company.yaml",
+                db_url="",
+                db_path="",
+            ),
+        )
 
-        assert missing
-        assert all(record.package.strip() for record in missing)
+    def test_construction_refuses_a_boot_without_git(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        called: list[str] = []
 
-    def test_nothing_reported_when_everything_resolves(self) -> None:
-        with _resolving(*_every_name()):
-            assert run_binary_preflight(backend_name="postgres") == ()
+        def _refuse(*, backend_name: str) -> None:
+            called.append(backend_name)
+            msg = "'git' is not on PATH"
+            raise RequiredBinaryMissingError(msg)
+
+        monkeypatch.setattr(construction_phase, "run_binary_preflight", _refuse)
+
+        with pytest.raises(RequiredBinaryMissingError, match="git"):
+            self._build(tmp_path)
+
+        # Called with the resolved backend, and with none resolved yet that
+        # is the empty string: only the backend-independent binaries can be
+        # demanded at this point in the boot.
+        assert called == [""]
+
+    def test_a_present_toolchain_lets_the_boot_proceed(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The other direction, so the test above cannot pass by construction
+        # happening to fail for an unrelated reason.
+        calls: list[str] = []
+
+        def _accept(*, backend_name: str) -> None:
+            calls.append(backend_name)
+
+        monkeypatch.setattr(construction_phase, "run_binary_preflight", _accept)
+
+        self._build(tmp_path)
+
+        assert calls == [""]

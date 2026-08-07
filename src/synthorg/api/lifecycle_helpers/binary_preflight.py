@@ -1,5 +1,5 @@
 # module-kind: code
-"""Startup assertion that every binary the backend shells out to is present.
+"""Startup assertion that the binaries the backend cannot supply are present.
 
 The backend spawns a handful of external programs, and a shipped image
 that omits one fails only at the moment the feature is used: workspace
@@ -7,23 +7,26 @@ provisioning is on the critical path of every dispatch, so an image
 without ``git`` cannot execute a single task while every test passes on a
 developer machine where ``git`` is on PATH.
 
-Two tiers, because the tree already treats them differently and one rule
-would contradict the other. A REQUIRED binary is one whose absence makes
-the product unable to do its job, so the boot is refused with an error
-naming the binary, the package that provides it, and what it breaks: the
-operator's fix is an image rebuild, and there is nothing to gain from
-booting into a backend that cannot dispatch. An OPTIONAL binary already
-guards its own use with a PATH lookup and degrades cleanly, so its
-absence is reported as the reason its subsystems are blocked instead.
+The manifest holds the programs the backend needs and cannot obtain for
+itself. Their absence makes the product unable to do its job, so the boot
+is refused with an error naming the binary, the package that provides it,
+and what it breaks: the operator's fix is an image rebuild, and there is
+nothing to gain from booting into a backend that cannot dispatch.
 
-The manifest is the single place the two lists are stated, so
+A program the backend provisions at runtime is deliberately NOT here. The
+Cloudflare and Dev Tunnels adapters download their vendor CLI on first
+start, and each already answers ``availability()`` with the live state
+including whether that download is switched off, so a PATH check at boot
+would report a fetchable binary as missing and duplicate a better report.
+The same reasoning excludes ``nix``, which provisions inside the sandbox.
+
+The manifest is the single place the list is stated, so
 ``docker/backend/apko.yaml`` and this file cannot drift apart without the
 boot saying so.
 """
 
 import shutil
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import ClassVar, Final
 
 from synthorg.core.domain_errors import DomainError
@@ -46,27 +49,12 @@ class RequiredBinaryMissingError(DomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
 
 
-class BinaryRequirement(StrEnum):
-    """How badly the backend needs a binary.
-
-    Attributes:
-        REQUIRED: Its absence makes the product unable to do its job, so
-            the boot is refused rather than deferred to first use.
-        OPTIONAL: Its consumer guards the lookup and degrades, so the
-            absence blocks that subsystem and nothing else.
-    """
-
-    REQUIRED = "required"
-    OPTIONAL = "optional"
-
-
 @dataclass(frozen=True, slots=True)
 class BinaryRecord:
-    """One external program the backend spawns.
+    """One external program the backend spawns and cannot supply itself.
 
     Attributes:
         name: The program as it is spawned, resolved through PATH.
-        requirement: Whether its absence refuses the boot.
         package: The image package providing it, so the operator's fix is
             in the message rather than in a maintainer's head.
         consumers: What stops working without it, in operator terms.
@@ -75,24 +63,43 @@ class BinaryRecord:
     """
 
     name: str
-    requirement: BinaryRequirement
     package: str
     consumers: tuple[str, ...]
     backend: str | None = None
 
+    def __post_init__(self) -> None:
+        """Refuse a record that cannot produce an actionable message.
 
-#: Every program the backend spawns. Derived from the subprocess call sites:
-#: ``engine/workspace/_git_subprocess.py`` (git, eleven consumers),
-#: ``persistence/postgres/pg_subprocess.py`` (the backup handlers), and the
-#: two tunnel adapters. Deliberately no ``docker``: the devcontainer image
-#: build goes through ``aiodocker`` over the mounted socket. Deliberately no
-#: shell either: nothing under ``src/synthorg/`` calls
-#: ``create_subprocess_shell``, so the distroless image having no shell is
-#: not a defect.
+        Raises:
+            ValueError: When the name, the package or the consumer list is
+                empty. Each is rendered into the boot-refusal message an
+                operator acts on, and a blank one turns that message into
+                "'' is not on PATH, which breaks ; install the '' package".
+        """
+        for field, value in (
+            ("name", self.name),
+            ("package", self.package),
+        ):
+            if not value.strip():
+                msg = f"BinaryRecord.{field} must not be blank"
+                raise ValueError(msg)
+        if not self.consumers or not all(item.strip() for item in self.consumers):
+            msg = "BinaryRecord.consumers must name at least one non-blank consumer"
+            raise ValueError(msg)
+
+
+#: Every program the backend spawns and cannot obtain for itself. Derived
+#: from the subprocess call sites: ``engine/workspace/_git_subprocess.py``
+#: and ``tools/_git_subprocess.py`` (git, across the workspace, docs-engine,
+#: project-brain and agent-tool paths), and
+#: ``persistence/postgres/pg_subprocess.py`` (the backup handlers).
+#: Deliberately no ``docker``: the devcontainer image build goes through
+#: ``aiodocker`` over the mounted socket. Deliberately no shell either:
+#: nothing under ``src/synthorg/`` calls ``create_subprocess_shell``, so the
+#: distroless image having no shell is not a defect.
 BINARY_MANIFEST: Final[tuple[BinaryRecord, ...]] = (
     BinaryRecord(
         name="git",
-        requirement=BinaryRequirement.REQUIRED,
         package="git",
         consumers=(
             "workspace provisioning (every dispatch)",
@@ -104,29 +111,15 @@ BINARY_MANIFEST: Final[tuple[BinaryRecord, ...]] = (
     ),
     BinaryRecord(
         name="pg_dump",
-        requirement=BinaryRequirement.REQUIRED,
         package="postgresql-client",
         consumers=("the Postgres backup handler",),
         backend=_POSTGRES_BACKEND,
     ),
     BinaryRecord(
         name="pg_restore",
-        requirement=BinaryRequirement.REQUIRED,
         package="postgresql-client",
         consumers=("the Postgres restore handler",),
         backend=_POSTGRES_BACKEND,
-    ),
-    BinaryRecord(
-        name="cloudflared",
-        requirement=BinaryRequirement.OPTIONAL,
-        package="cloudflared",
-        consumers=("the Cloudflare tunnel adapter",),
-    ),
-    BinaryRecord(
-        name="devtunnel",
-        requirement=BinaryRequirement.OPTIONAL,
-        package="devtunnel",
-        consumers=("the dev-tunnels adapter",),
     ),
 )
 
@@ -147,24 +140,9 @@ def required_binaries_for(backend_name: str) -> tuple[BinaryRecord, ...]:
         backend_name: The configured persistence backend.
 
     Returns:
-        The applicable REQUIRED records, in manifest order.
+        The applicable records, in manifest order.
     """
-    return tuple(
-        record
-        for record in BINARY_MANIFEST
-        if record.requirement is BinaryRequirement.REQUIRED
-        and _applies(record, backend_name)
-    )
-
-
-def _optional_binaries_for(backend_name: str) -> tuple[BinaryRecord, ...]:
-    """Return the applicable OPTIONAL records, in manifest order."""
-    return tuple(
-        record
-        for record in BINARY_MANIFEST
-        if record.requirement is BinaryRequirement.OPTIONAL
-        and _applies(record, backend_name)
-    )
+    return tuple(record for record in BINARY_MANIFEST if _applies(record, backend_name))
 
 
 def _absent(records: tuple[BinaryRecord, ...]) -> tuple[BinaryRecord, ...]:
@@ -185,58 +163,41 @@ def _describe(record: BinaryRecord) -> str:
     )
 
 
-def run_binary_preflight(*, backend_name: str) -> tuple[BinaryRecord, ...]:
-    """Assert the required binaries are present; report the optional ones.
+def run_binary_preflight(*, backend_name: str) -> None:
+    """Assert every binary this deployment cannot supply for itself is present.
 
     Args:
         backend_name: The configured persistence backend, which decides
             whether the PostgreSQL client tools are required.
 
-    Returns:
-        The absent OPTIONAL records, for the caller to record as blocked
-        reasons.
-
     Raises:
-        RequiredBinaryMissingError: When any required binary is absent.
-            Raised rather than logged: the product cannot dispatch
-            without it, and an image that ships without one is a build
-            defect the operator fixes by rebuilding, not by restarting.
+        RequiredBinaryMissingError: When any of them is absent. Raised
+            rather than logged: the product cannot dispatch without it,
+            and an image that ships without one is a build defect the
+            operator fixes by rebuilding, not by restarting.
     """
-    missing_required = _absent(required_binaries_for(backend_name))
-    if missing_required:
-        detail = "; ".join(_describe(record) for record in missing_required)
+    missing = _absent(required_binaries_for(backend_name))
+    if missing:
+        detail = "; ".join(_describe(record) for record in missing)
         logger.error(
             API_APP_STARTUP,
             service="binary_preflight",
             note="required binary missing; refusing to boot",
-            binaries=[record.name for record in missing_required],
+            binaries=[record.name for record in missing],
             backend_name=backend_name,
         )
         raise RequiredBinaryMissingError(detail)
-
-    missing_optional = _absent(_optional_binaries_for(backend_name))
-    for record in missing_optional:
-        logger.warning(
-            API_APP_STARTUP,
-            service="binary_preflight",
-            note="optional binary missing; its subsystems stay blocked",
-            binary=record.name,
-            detail=_describe(record),
-        )
     logger.info(
         API_APP_STARTUP,
         service="binary_preflight",
         note="required binaries present",
         backend_name=backend_name,
-        optional_missing=len(missing_optional),
     )
-    return missing_optional
 
 
 __all__ = [
     "BINARY_MANIFEST",
     "BinaryRecord",
-    "BinaryRequirement",
     "RequiredBinaryMissingError",
     "required_binaries_for",
     "run_binary_preflight",

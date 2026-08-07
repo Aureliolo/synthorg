@@ -17,22 +17,24 @@ provisioning is on the critical path of every task and
 `coordination.enable_workspace_isolation` defaults on. The whole test suite is
 blind to it, because tests run where `git` is on PATH.
 
-The manifest is declarative, one record per binary, and the check is tiered so
-the verdict cannot contradict the consumer:
+The manifest is declarative, one record per binary, and holds exactly the
+programs the backend needs and **cannot obtain for itself**. A missing one
+raises `RequiredBinaryMissingError` and aborts the boot, naming the binary, the
+apko package that provides it, and the subsystems it breaks. Refusing to start
+is the honest outcome: the alternative is a backend that accepts work it can
+never dispatch. `git` is required always; `pg_dump` / `pg_restore` only when the
+configured backend is Postgres, which is why the preflight is handed the
+resolved backend name (empty when persistence has not resolved one, so only the
+backend-independent binaries are demanded).
 
-- **REQUIRED** means the product cannot do its job without it. A missing one
-  raises `RequiredBinaryMissingError` and aborts the boot, naming the binary,
-  the apko package that provides it, and the subsystems it breaks. Refusing to
-  start is the honest outcome: the alternative is a backend that accepts work it
-  can never dispatch. `git` is required always; `pg_dump` / `pg_restore` only
-  when the configured backend is Postgres, which is why the preflight is handed
-  the resolved backend name (empty when persistence has not resolved one, so
-  only the backend-independent binaries are demanded).
-- **OPTIONAL** means the consumer already guards the lookup and degrades
-  (`cloudflared`, the `devtunnel` binary). A missing one logs a warning once and
-  is returned to the caller, which records it as the reason its subsystems read
-  `blocked`, so the status surface names the missing binary instead of an
-  unexplained decline.
+A binary the backend provisions at runtime is deliberately absent. Both tunnel
+adapters download their vendor CLI on first start
+(`integrations.tunnel.cloudflared_download_enabled` /
+`devtunnel_download_enabled`, both on by default) and each answers
+`availability()` with the live state, including the case where that download is
+switched off. Checking PATH at boot would report a fetchable binary as missing
+and duplicate a better, later report. The same reasoning excludes `nix`, which
+provisions inside the sandbox.
 
 Nothing else is listed: there is no `create_subprocess_shell` under
 `src/synthorg/`, and the devcontainer image build goes through `aiodocker`
