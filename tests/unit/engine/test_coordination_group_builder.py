@@ -122,8 +122,8 @@ class TestBuildExecutionWaves:
 
         An org staffing one developer routes both independent subtasks to
         them, and an execution group holding the same agent twice is a
-        contradiction the model rejects, which used to fail the whole
-        dispatch rather than the agent simply doing one after the other.
+        contradiction the model rejects. The wave splits so the developer
+        does one after the other, rather than the dispatch failing.
         """
         sub_a = make_subtask("sub-a")
         sub_b = make_subtask("sub-b")

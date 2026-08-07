@@ -218,8 +218,9 @@ def build_execution_waves(
             continue
 
         for round_idx, round_assignments in enumerate(_rounds_by_agent(assignments)):
-            # Round 0 keeps the wave's own id so the common case (every
-            # subtask on a different agent) reads as one wave, one group.
+            # The first round keeps the wave's own id, so the common case
+            # (every subtask on a different agent) reads as one wave and
+            # one group; only a wave that actually split grows a suffix.
             group_id = (
                 f"wave-{wave_idx}"
                 if round_idx == 0

@@ -184,17 +184,23 @@ class WaveDispatcher:
             if workspaces and workspace_service is not None:
                 await teardown_workspaces(workspace_service, workspaces)
 
-    def _on_setup_failed(self, error: str | None) -> None:
+    def _on_setup_failed(self, detail: str | None) -> None:
         """Decide what a failed workspace setup means for this topology.
 
-        An empty ``DispatchResult`` used to be the answer for both, which
-        reads upstream as "dispatched nothing, successfully": the rollup
-        sees subtasks that never ran, no wave carries an error, and the
-        coordination-metrics collector finds no result to collect. So the
-        two topologies now report what they actually mean. Mandatory
+        Each topology reports what the failure means for it. Mandatory
         isolation is a precondition, and a precondition that failed is a
         dispatch failure. Best-effort isolation is the case the flag
         exists for, so the waves run unisolated rather than not at all.
+
+        Neither may answer with an empty ``DispatchResult``: upstream
+        that reads as "dispatched nothing, successfully", because the
+        rollup sees subtasks that never ran, no wave carries an error,
+        and the coordination-metrics collector finds nothing to collect.
+
+        Args:
+            detail: The setup phase's description of what went wrong,
+                already redacted by ``safe_error_description`` where the
+                phase was built.
 
         Raises:
             CoordinationError: When this topology mandates isolation.
@@ -202,7 +208,7 @@ class WaveDispatcher:
         if self._isolation_required:
             msg = (
                 f"{self._topology_label.capitalize()} topology requires "
-                f"workspace isolation and its setup failed: {error}"
+                f"workspace isolation and its setup failed: {detail}"
             )
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -213,7 +219,7 @@ class WaveDispatcher:
         logger.warning(
             COORDINATION_ISOLATION_DEGRADED,
             topology=self._topology_label,
-            error=error,
+            detail=detail,
         )
 
     async def _apply_orchestrator_strategy(
