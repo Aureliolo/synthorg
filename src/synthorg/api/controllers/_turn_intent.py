@@ -12,7 +12,7 @@ from synthorg.api.state import AppState
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationKind
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     IntentOutcome,
     IntentRoutingReason,
     TurnIntent,

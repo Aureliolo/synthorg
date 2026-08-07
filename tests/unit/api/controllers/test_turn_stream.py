@@ -13,7 +13,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     IntentOutcome,
     IntentRoutingReason,
     TurnIntent,

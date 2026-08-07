@@ -13,7 +13,7 @@ from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.group_models import GroupConverseResult
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     IntentOutcome,
     IntentRoutingReason,
     TurnIntent,

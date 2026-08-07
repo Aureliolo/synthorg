@@ -10,12 +10,14 @@ import pytest
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.chief_of_staff.intent_router import (
+from synthorg.meta.chief_of_staff.intent_models import (
     MODEL_ATTRIBUTED_REASONS,
     IntentOutcome,
     IntentRoutingReason,
-    LlmIntentClassifier,
     TurnIntent,
+)
+from synthorg.meta.chief_of_staff.intent_router import (
+    LlmIntentClassifier,
     build_intent_classifier,
 )
 from synthorg.meta.chief_of_staff.models import ConversationTurn
