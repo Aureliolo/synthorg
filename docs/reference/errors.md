@@ -42,6 +42,8 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 1007 | `TOOL_PERMISSION_DENIED` | Agent not permitted to invoke the tool |
 | 1008 | `SESSION_NO_TOKEN` | No session cookie or bearer token on the request |
 | 1009 | `SESSION_EXPIRED` | Session cookie / JWT decoded but past expiry |
+| 1010 | `SECURITY_TOGGLE_CONFIRM_REQUIRED` | Weakening a security setting without explicit confirmation and a reason |
+| 1011 | `GATEWAY_TOKEN_INVALID` | LLM-gateway run token missing, malformed or expired |
 
 ## Validation (2xxx)
 
@@ -79,6 +81,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2029 | `OUTPUT_STYLE_VIOLATION` | Agent output violates a hard output-style rule |
 | 2030 | `OUTPUT_STYLE_PACK_INVALID` | Output-style rule pack failed schema validation |
 | 2031 | `OUTPUT_STYLE_EXEMPTION_INVALID` | Sanctioned-exemption definition is malformed |
+| 2032 | `GATEWAY_MODEL_UNBOUND` | Gateway request names no explicit `(provider, model)` pair |
 
 ## Not Found (3xxx)
 
@@ -192,6 +195,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 6006 | `RUN_HARD_CEILING_EXCEEDED` | Per-brief hard ceiling exceeded |
 | 6007 | `COST_FORECAST_REJECTED` | Cost forecast was rejected |
 | 6008 | `RESEARCH_BUDGET_EXCEEDED` | Research budget exhausted |
+| 6009 | `GATEWAY_BUDGET_EXHAUSTED` | Run token/cost ceiling exhausted at the LLM gateway |
 
 ## Provider / Integration (7xxx)
 
@@ -209,6 +213,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 7009 | `WEBHOOK_ERROR` | Webhook receive/replay failure |
 | 7010 | `CONVERSATIONAL_PROPOSE_RESPONSE_INVALID` | Chief-of-Staff proposer returned an invalid response |
 | 7011 | `CHARTER_INTERVIEW_RESPONSE_INVALID` | Charter interview agent returned an invalid response |
+| 7012 | `STAKES_MODEL_UNAVAILABLE` | No configured tool-capable model meets the tier this task's stakes require |
 
 ## Internal (8xxx)
 
@@ -260,14 +265,22 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8043 | `CHARTER_INTERVIEW_UNAVAILABLE` | Charter interview mode not wired (503) |
 | 8044 | `KNOWLEDGE_SYNTHESIS_ERROR` | Knowledge synthesis failed |
 | 8045 | `KNOWLEDGE_SYNTHESIS_UNAVAILABLE` | Knowledge synthesis not wired (503) |
-| 8046 | `RED_TEAM_REPORT_MISSING` | Red-team agent filed no report for the deliverable |
-| 8047 | `RED_TEAM_DISPATCH_FAILED` | Red-team agent dispatch failed before a report |
-| 8048 | `RED_TEAM_ROLE_MISSING` | Built-in red-team role absent from the catalog |
-| 8049 | `RED_TEAM_RUNTIME_SEED_INCOMPLETE` | Red-team runtime seed incomplete (wiring fault) |
-| 8050 | `BACKUP_COMPONENT_FAILED` | A per-component backup or restore step failed |
-| 8051 | `BACKUP_RETENTION_FAILED` | Backup retention pruning failed |
-| 8052 | `BACKUP_CONFIGURATION_INVALID` | Backup handler configuration is invalid |
-| 8053 | `CI_HOST_EXECUTION_REFUSED` | CI validator refused host execution (container required) |
+| 8046 | `EVAL_BENCHMARK_RUNNER_UNSET` | Benchmark run started with no agent runner configured |
+| 8047 | `RED_TEAM_REPORT_MISSING` | Red-team agent filed no report for the deliverable |
+| 8048 | `RED_TEAM_DISPATCH_FAILED` | Red-team agent dispatch failed before a report |
+| 8049 | `RED_TEAM_ROLE_MISSING` | Built-in red-team role absent from the catalog |
+| 8050 | `RED_TEAM_RUNTIME_SEED_INCOMPLETE` | Red-team runtime seed incomplete (wiring fault) |
+| 8051 | `BACKUP_COMPONENT_FAILED` | A per-component backup or restore step failed |
+| 8052 | `BACKUP_RETENTION_FAILED` | Backup retention pruning failed |
+| 8053 | `BACKUP_CONFIGURATION_INVALID` | Backup handler configuration is invalid |
+| 8054 | `CI_HOST_EXECUTION_REFUSED` | CI validator refused host execution (container required) |
+| 8055 | `COMPLETION_ORACLE_VERDICT_MISSING` | Completion-oracle reviewer produced no verdict for the deliverable |
+| 8056 | `COMPLETION_ORACLE_DISPATCH_FAILED` | Completion-oracle reviewer dispatch failed before a verdict |
+| 8057 | `COMPLETION_ORACLE_ROLE_MISSING` | Built-in completion-reviewer role absent from the catalog |
+| 8058 | `COMPLETION_ORACLE_RUNTIME_SEED_INCOMPLETE` | Completion-oracle runtime seed incomplete (wiring fault) |
+| 8059 | `SUBSYSTEM_GRAPH_INVALID` | Subsystem dependency graph is invalid |
+| 8060 | `SUBSYSTEM_ACTIVATION_FAILED` | A subsystem's activation raised during a reconciliation pass |
+| 8061 | `SUBSYSTEM_DECLINED` | A subsystem declined activation on a condition it named |
 
 ## Content negotiation
 

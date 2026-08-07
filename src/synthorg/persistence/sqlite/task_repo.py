@@ -70,7 +70,7 @@ class SQLiteTaskRepository:
         self._db = db
         self._write_context = write_context
 
-    async def _safe_rollback(self) -> None:
+    async def _safe_rollback(self, *, event: str) -> None:
         """Best-effort rollback on the shared connection.
 
         Every repository in this package shares one
@@ -84,12 +84,18 @@ class SQLiteTaskRepository:
         error the caller is propagating. It is still logged, so a tainted
         shared connection leaves a trail instead of silently degrading
         later writes.
+
+        Args:
+            event: The caller's own persistence event. Passed rather than
+                fixed here because the rollback belongs to whichever write
+                raised: a save that adopts this helper would otherwise
+                report its failure under the delete event.
         """
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
             logger.warning(
-                PERSISTENCE_TASK_DELETE_FAILED,
+                event,
                 error_type=type(rollback_exc).__name__,
                 error=safe_error_description(rollback_exc),
                 rollback_failed=True,
@@ -435,14 +441,14 @@ id, title, description, type, priority, project, plan_id, plan_item_id,
                 async with self._db.execute(
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
                 ) as cursor:
-                    await self._db.commit()
                     deleted = cursor.rowcount > 0
+                    await self._db.commit()
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
                 # The shared connection runs in WAL mode, so a refused
                 # delete that leaves its transaction open holds a RESERVED
                 # write lock and mis-frames the next repository's
                 # transaction boundary until an unrelated commit fires.
-                await self._safe_rollback()
+                await self._safe_rollback(event=PERSISTENCE_TASK_DELETE_FAILED)
                 logger.warning(
                     PERSISTENCE_TASK_DELETE_FAILED,
                     task_id=task_id,
@@ -452,7 +458,7 @@ id, title, description, type, priority, project, plan_id, plan_item_id,
                 )
                 raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._safe_rollback()
+                await self._safe_rollback(event=PERSISTENCE_TASK_DELETE_FAILED)
                 logger.warning(
                     PERSISTENCE_TASK_DELETE_FAILED,
                     task_id=task_id,

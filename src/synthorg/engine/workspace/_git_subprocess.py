@@ -20,7 +20,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
-from synthorg.core.git_env import GIT_HARDENING_OVERRIDES, git_config_env
+from synthorg.core.git_env import (
+    GIT_HARDENING_OVERRIDES,
+    LOCAL_TRANSPORT_GIT_CONFIG,
+    git_config_env,
+)
 from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 
@@ -81,6 +85,13 @@ def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
     agent-facing tools spawn under are applied on top of the result, so
     the two git paths cannot diverge on how much of the host they trust.
 
+    Every repository reached from here is one the system named itself, so
+    :data:`LOCAL_TRANSPORT_GIT_CONFIG` travels with each invocation: the
+    hardening's ``GIT_PROTOCOL_FROM_USER=0`` otherwise refuses the file
+    transport, which is what a bare repo at a local path speaks. It merges
+    into a single mapping with *config* rather than rendering separately,
+    because both share one ``GIT_CONFIG_COUNT``.
+
     Args:
         config: Per-invocation git config, for a credential that must
             reach git without being written anywhere it outlives the
@@ -91,7 +102,7 @@ def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
     """
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_HARDENING_OVERRIDES)
-    env.update(git_config_env(config or {}))
+    env.update(git_config_env({**LOCAL_TRANSPORT_GIT_CONFIG, **(config or {})}))
     return env
 
 

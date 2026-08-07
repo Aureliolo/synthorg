@@ -326,10 +326,36 @@ function _pathOf(url: string): string {
   }
 }
 
+/**
+ * The API prefix `baseURL` contributes, as a path with no trailing slash.
+ *
+ * Derived from the same value axios is configured with rather than written
+ * out again, so a deployment serving the API under a sub-path does not need
+ * this constant maintained alongside it.
+ */
+const API_PATH_PREFIX = _pathOf(`${BASE_URL}/api/v1`).replace(/\/+$/, '')
+
+/**
+ * The request path as the exemption constants spell it.
+ *
+ * The constants are `baseURL`-relative (`/auth/me`), which is the form a
+ * caller normally passes, but `_pathOf` returns the whole path, so a caller
+ * that passed an absolute or already-prefixed URL yields `/api/v1/auth/me`
+ * and matches none of them. That 401 then costs a session probe the answer
+ * was already known without.
+ */
+function _apiRelativePath(url: string): string {
+  const path = _pathOf(url)
+  if (API_PATH_PREFIX !== '' && path.startsWith(`${API_PATH_PREFIX}/`)) {
+    return path.slice(API_PATH_PREFIX.length)
+  }
+  return path
+}
+
 /** Whether a 401 on this request can be answered without asking the backend. */
 function _knownWithoutProbing(url: string | undefined): boolean {
   if (url === undefined) return true
-  const path = _pathOf(url)
+  const path = _apiRelativePath(url)
   return path === SESSION_PROBE_URL || UNAUTHENTICATED_PATHS.includes(path)
 }
 

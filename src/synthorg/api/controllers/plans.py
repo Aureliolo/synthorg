@@ -20,7 +20,12 @@ from synthorg.api.channels import (
     plan_updated_payload,
     publish_ws_event,
 )
-from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
+from synthorg.api.controllers._plan_approval_retire import retire_review_approval
+from synthorg.api.controllers._plan_replan import (
+    RevisionInputs,
+    reject_unroutable_owners,
+    replan_initiative,
+)
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -44,15 +49,11 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
-from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.models import roster_from_agents
-from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
@@ -83,37 +84,6 @@ def _evaluation_service(state: State) -> PlanEvaluationService:
     return PlanEvaluationService(
         reports=persistence_of(state.app_state).evaluation_reports
     )
-
-
-async def _reject_unroutable_owners(state: State, data: EditPlanRequest) -> None:
-    """Refuse an edit that owns an item to a role the org does not staff.
-
-    The rework path validated the dependency graph but not the roster, so
-    hand-correcting an owner to another invented role was accepted without
-    complaint and produced an item nothing could be dispatched to. Checked
-    here rather than in the payload validator, which is a pure model and
-    cannot see who the org employs.
-
-    Args:
-        state: Application state carrying the HR slice.
-        data: The revised item list.
-
-    Raises:
-        ValidationError: When an item names a role no agent holds.
-    """
-    app_state: AppState = state.app_state
-    registry = app_state.slice(HrStateSlice).agent_registry
-    if registry is None:
-        return
-    roster = roster_from_agents(await registry.list_active())
-    for item in data.items:
-        detail = describe_unroutable_role(
-            entity_id=item.id,
-            required_role=item.owner,
-            available_roles=roster,
-        )
-        if detail is not None:
-            raise ValidationError(detail)
 
 
 def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
@@ -333,10 +303,11 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="update",
         )
-        await _reject_unroutable_owners(state, data)
+        items = tuple(_item_from_payload(item) for item in data.items)
+        await reject_unroutable_owners(state.app_state, items)
         revised = await service.edit(
             existing,
-            items=tuple(_item_from_payload(item) for item in data.items),
+            items=items,
             task_structure=data.task_structure,
             coordination_topology=data.coordination_topology,
         )
@@ -400,9 +371,7 @@ class PlanController(Controller):
             request,
             WsEventType.PLAN_UPDATED,
             CHANNEL_PLANS,
-            # The successor's locator, plus the id it retires: a viewer sitting
-            # on the old plan needs to know where the thread continued.
-            {**plan_updated_payload(successor), "supersedes": str(existing.id)},
+            plan_updated_payload(successor, supersedes=existing),
         )
         return Response(content=ApiResponse[Plan](data=successor), status_code=201)
 
@@ -494,6 +463,10 @@ class PlanController(Controller):
             operation="delete",
         )
         await service.delete(existing, requested_by=extract_requester(state))
+        # The plan is gone, so the approval parked against it has nothing
+        # left to decide. Left pending, approving it would drive the resume
+        # path at a missing plan and fail the parent task.
+        await retire_review_approval(state.app_state, existing)
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(

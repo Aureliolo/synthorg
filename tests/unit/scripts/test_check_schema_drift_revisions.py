@@ -232,3 +232,82 @@ class TestParseFailureReachesTheCliBoundary:
 
         assert code == _MODULE._PROVISION_EXIT_CODE
         assert "PROVISION-FAILED" in capsys.readouterr().err
+
+
+# The gate builds an EMPTY database, so every fixture below has zero rows.
+# That is the point: a row-reporting check has nothing to report here, and
+# these are the structural breakages it therefore has to catch some other way.
+_RESOLVED = """
+CREATE TABLE parent (id TEXT PRIMARY KEY);
+CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES parent(id));
+"""  # lint-allow: persistence-boundary -- DDL fixture the gate inspects
+_DROPPED_PARENT_TABLE = """
+CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES gone(id));
+"""  # lint-allow: persistence-boundary -- DDL fixture the gate inspects
+_RENAMED_PARENT_KEY = """
+CREATE TABLE parent (id TEXT PRIMARY KEY);
+CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES parent(was_id));
+"""  # lint-allow: persistence-boundary -- DDL fixture the gate inspects
+_TWO_BROKEN_TABLES = """
+CREATE TABLE parent (id TEXT PRIMARY KEY);
+CREATE TABLE a_child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES parent(was_id));
+CREATE TABLE z_child (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES also_gone(id));
+"""  # lint-allow: persistence-boundary -- DDL fixture the gate inspects
+
+
+def _schema(ddl: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(ddl)
+    return conn
+
+
+class TestReferencesResolve:
+    """An empty database still has to prove its references are structural."""
+
+    def test_a_resolved_schema_passes(self) -> None:
+        conn = _schema(_RESOLVED)
+        try:
+            _MODULE._assert_references_resolve(conn)
+        finally:
+            conn.close()
+
+    def test_a_dropped_parent_table_is_refused(self) -> None:
+        # `PRAGMA foreign_key_check` reports this as no violation at all,
+        # because with no rows there is no row to violate anything. Only the
+        # declared reference list carries the parent name here.
+        conn = _schema(_DROPPED_PARENT_TABLE)
+        try:
+            with pytest.raises(
+                _MODULE.SchemaDriftReferenceError, match="child -> gone"
+            ):
+                _MODULE._assert_references_resolve(conn)
+        finally:
+            conn.close()
+
+    def test_a_renamed_parent_key_is_refused_as_the_typed_error(self) -> None:
+        # SQLite raises `foreign key mismatch` for this rather than reporting
+        # a row, so an unguarded call leaves through OperationalError and the
+        # gate reports a crash where it should report a finding.
+        conn = _schema(_RENAMED_PARENT_KEY)
+        try:
+            with pytest.raises(
+                _MODULE.SchemaDriftReferenceError, match="foreign key mismatch"
+            ):
+                _MODULE._assert_references_resolve(conn)
+        finally:
+            conn.close()
+
+    def test_one_mismatch_does_not_mask_the_next_table(self) -> None:
+        # The whole-database pragma aborts on the first mismatch, so a single
+        # bad table would hide every table after it and an operator would fix
+        # one breakage per CI run.
+        conn = _schema(_TWO_BROKEN_TABLES)
+        try:
+            with pytest.raises(_MODULE.SchemaDriftReferenceError) as caught:
+                _MODULE._assert_references_resolve(conn)
+        finally:
+            conn.close()
+
+        detail = str(caught.value)
+        assert "a_child" in detail
+        assert "z_child -> also_gone" in detail

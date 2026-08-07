@@ -49,6 +49,7 @@ import { resetHealthRevision } from '@/stores/providers/health-revision'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
+import { _settleSessionProbeForTests } from '@/api/client'
 import { resetCircuitBreaker } from '@/utils/circuit-breaker'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
@@ -99,7 +100,12 @@ beforeAll(() => {
   server.listen({ onUnhandledRequest: 'error' })
 })
 
-afterEach(() => {
+afterEach(async () => {
+  // The session probe is module-level state a 401 starts fire-and-forget, so
+  // any suite that provokes one leaves it running into the next test. Drained
+  // here rather than in the one suite that asserts on probe counts, because
+  // the suite that leaks it is not the suite that notices.
+  await _settleSessionProbeForTests()
   server.resetHandlers()
   // Clear any cookies a test wrote to the jar so state cannot leak across
   // tests in the same Vitest worker, then restore the global CSRF seed so

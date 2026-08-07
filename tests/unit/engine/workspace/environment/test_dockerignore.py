@@ -87,6 +87,43 @@ class TestFileSemantics:
         assert matcher.excludes("anything") is False
 
 
+class TestARefusedLineDoesNotFailTheBuild:
+    """The file is agent-authored; the caller is packing a build context.
+
+    Raising out of the parser unwinds the whole provision and reports it
+    as a Dockerfile build failure that did not happen, so a line the
+    packer will not take is dropped and the rest of the file still
+    applies.
+    """
+
+    def test_an_unbalanced_bracket_is_dropped(self) -> None:
+        """``[`` and ``]`` pass through unescaped, so this reaches re.compile."""
+        matcher = parse_dockerignore("*.log\n[unclosed\n*.tmp\n")
+
+        assert matcher.excludes("app.log") is True
+        assert matcher.excludes("scratch.tmp") is True
+        assert matcher.excludes("[unclosed") is False
+
+    def test_a_pattern_past_the_length_ceiling_is_dropped(self) -> None:
+        matcher = parse_dockerignore(f"*.log\n{'a' * 513}\n")
+
+        assert matcher.excludes("app.log") is True
+        assert matcher.excludes("a" * 513) is False
+
+    def test_a_pattern_repeating_double_stars_is_dropped(self) -> None:
+        """``**`` becomes ``(.*/)?``; nesting them backtracks catastrophically."""
+        matcher = parse_dockerignore("*.log\n" + "**/" * 5 + "x\n")
+
+        assert matcher.excludes("app.log") is True
+        assert matcher.excludes("a/b/c/d/e/x") is False
+
+    def test_the_ceilings_admit_a_pattern_written_on_purpose(self) -> None:
+        """The bound has to sit above what an author actually writes."""
+        matcher = parse_dockerignore("**/build/**/*.map\n")
+
+        assert matcher.excludes("web/build/assets/app.map") is True
+
+
 class TestLoading:
     def test_the_context_root_file_is_read(self, tmp_path: Path) -> None:
         (tmp_path / ".dockerignore").write_text("*.log\n", encoding="utf-8")

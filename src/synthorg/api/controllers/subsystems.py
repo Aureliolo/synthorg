@@ -18,7 +18,11 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.runtime import reconciler_of
-from synthorg.api.subsystems.spec import SubsystemPhase
+from synthorg.api.subsystems.spec import (
+    PHASES_NAMING_UNMET,
+    PHASES_WITH_DETAIL,
+    SubsystemPhase,
+)
 from synthorg.core.types import NotBlankStr
 
 
@@ -62,30 +66,21 @@ class SubsystemReport(BaseModel):
 
         Raises:
             ValueError: When ``waiting_on`` is populated on a phase that names
-                no unmet requirement, or ``detail`` on anything but ``failed``.
+                no unmet requirement, or ``detail`` on a phase that has
+                nothing to explain.
                 This is what an operator reads to find out why something is
                 off, so a field left over from a previous phase is worse than
                 an empty one. ``degraded`` carries ``waiting_on`` for the same
                 reason ``waiting`` does: it is up, but a requirement it names
                 has gone away.
         """
-        names_unmet = {
-            SubsystemPhase.WAITING,
-            SubsystemPhase.UNREACHABLE,
-            SubsystemPhase.DEGRADED,
-        }
-        if self.waiting_on and self.phase not in names_unmet:
+        if self.waiting_on and self.phase not in PHASES_NAMING_UNMET:
             msg = (
                 "waiting_on is only valid on waiting, unreachable or degraded,"
                 f" got {self.phase.value}"
             )
             raise ValueError(msg)
-        explains = {
-            SubsystemPhase.FAILED,
-            SubsystemPhase.BLOCKED,
-            SubsystemPhase.UNREACHABLE,
-        }
-        if self.detail is not None and self.phase not in explains:
+        if self.detail is not None and self.phase not in PHASES_WITH_DETAIL:
             msg = (
                 "detail is only valid on failed, blocked or unreachable, got "
                 f"{self.phase.value}"

@@ -395,13 +395,27 @@ class Plan(BaseModel):
         what makes an unpaired write impossible to express, rather than
         merely absent from the current call sites.
 
+        ``updated_at`` is an ``AwareDatetime``, and the same skipped
+        validators mean a naive value passed here is stored and only
+        surfaces later, at persistence or at a comparison against an aware
+        one. Annotating the parameter ``AwareDatetime`` does not catch it:
+        it is a pydantic annotated form with no runtime class, so typeguard
+        rejects every ordinary aware ``datetime`` against it. The check is
+        therefore explicit.
+
         Args:
             reason: Why the plan could not be delivered.
-            now: The write's timestamp.
+            now: The write's timestamp. Must be timezone-aware.
 
         Returns:
             A new FAILED revision, version bumped.
+
+        Raises:
+            ValueError: *now* is naive.
         """
+        if now.tzinfo is None or now.utcoffset() is None:
+            msg = f"now must be timezone-aware, got naive datetime {now!r}"
+            raise ValueError(msg)
         return self.model_copy(
             update={
                 "status": PlanStatus.FAILED,

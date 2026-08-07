@@ -92,7 +92,8 @@ describe('itemFlags', () => {
 
   it('judges no owner while the roster is unknown', () => {
     // The agents list has not arrived yet; flagging every item on that would
-    // be noise the reviewer cannot act on.
+    // be noise the reviewer cannot act on. `undefined` is the sentinel for
+    // that, not an empty set.
     const item = makePlanItem('a', {
       owner: 'Backend Engineer',
       stakes: 'normal',
@@ -100,7 +101,22 @@ describe('itemFlags', () => {
       acceptance_criteria: ['builds green'],
     })
 
-    expect(itemFlags(item, { onCriticalPath: false, roster: new Set() })).toEqual([])
+    expect(itemFlags(item, { onCriticalPath: false, roster: undefined })).toEqual([])
+  })
+
+  it('flags every named owner when the org staffs nobody', () => {
+    // A loaded empty roster is an answer: nothing can be dispatched, which
+    // is exactly what a reviewer needs told before approving the plan.
+    const item = makePlanItem('a', {
+      owner: 'Backend Engineer',
+      stakes: 'normal',
+      estimated_complexity: 'medium',
+      acceptance_criteria: ['builds green'],
+    })
+
+    expect(
+      itemFlags(item, { onCriticalPath: false, roster: new Set() }).map((f) => f.key),
+    ).toEqual(['unroutable-owner'])
   })
 })
 

@@ -483,12 +483,13 @@ Everything else is live, through whichever seam its consumer allows:
   `budget.benchmark_provider` / `model_tier_overrides`, and the
   `simulations.verification_review_enabled` / `verification_grader` /
   `verification_decomposer` pipeline rebuild). These writes arrive in bursts,
-  because saving a settings form writes one key per field, so the subscriber
-  batches them over `engine.runtime_reload_coalesce_window_seconds` and serves
-  the batch with one rebuild. What a write promises is unchanged: it returns
-  only after a rebuild that started after it, and a failed rebuild still raises
-  to every write it carried. The window is the added latency on a single write,
-  and 0 turns the wait off;
+  because saving a settings form writes one key per field, so the dispatcher
+  batches them over `settings.dispatcher_coalesce_window_seconds` and hands the
+  subscriber one batch to serve with one rebuild. The window is the dispatcher's
+  and applies to every subscriber, not a knob of this one. What a write promises
+  is unchanged: it returns only after a rebuild that started after it, and a
+  failed rebuild still raises to every write it carried. The window is the added
+  latency on a single write, and 0 turns the wait off;
 - a `settings=` declaration on a `SubsystemSpec`, which puts the key in the
   watched set so a write to it triggers a reconcile pass. That alone does not
   replace a running subsystem: `rebuild_on_change=True` is what makes the pass

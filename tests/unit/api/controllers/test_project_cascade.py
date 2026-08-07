@@ -13,9 +13,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers._project_cascade import _supersede_plan
+from synthorg.api.controllers._project_cascade import (
+    _SUPERSEDE_ATTEMPTS,
+    _supersede_plan,
+)
 from synthorg.api.services.plan_service import PlanService
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -120,3 +123,24 @@ class TestSupersedeUnderContention:
         await _supersede_plan(service, repository, live, requested_by="admin")
 
         assert service.sync_status.await_count == 1
+
+    async def test_an_exhausted_budget_aborts_the_delete(self) -> None:
+        """Returning quietly would let the caller delete over a live plan.
+
+        The caller removes the project once the cascade reports done, and
+        ``plans.project`` carries no foreign key, so the plan would survive
+        pointing at nothing. Contention is transient, so refusing this
+        delete is what the operator can act on.
+        """
+        live = _plan(status=PlanStatus.PENDING_REVIEW, filled=True)
+        service: _Configured = mock_of[PlanService](
+            sync_status=AsyncMock(side_effect=VersionConflictError("lost"))
+        )
+        repository: _Configured = mock_of[PlanRepository](
+            get=AsyncMock(return_value=live)
+        )
+
+        with pytest.raises(ConflictError):
+            await _supersede_plan(service, repository, live, requested_by="admin")
+
+        assert service.sync_status.await_count == _SUPERSEDE_ATTEMPTS

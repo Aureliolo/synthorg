@@ -15,8 +15,19 @@ from synthorg.persistence.evaluation_report_protocol import (
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
+from tests.unit.persistence.conftest import make_task
 
 pytestmark = pytest.mark.integration
+
+#: The objective task every plan here decomposes. ``plans.parent_task_id``
+#: is a foreign key, so the parent has to exist before any plan naming it.
+_PARENT_TASK_ID = "parent-1"
+
+
+@pytest.fixture(autouse=True)
+async def _parent_task(backend: PersistenceBackend) -> None:
+    """Persist the objective task the plans in this module point at."""
+    await backend.tasks.save(make_task(task_id=_PARENT_TASK_ID, title="Ship it"))
 
 
 async def _seed_plans(backend: PersistenceBackend, *plan_ids: str) -> None:
@@ -33,7 +44,7 @@ async def _seed_plans(backend: PersistenceBackend, *plan_ids: str) -> None:
                 project=NotBlankStr("proj-001"),
                 objective_id=NotBlankStr("obj-1"),
                 objective_title=NotBlankStr("Ship it"),
-                parent_task_id=NotBlankStr("parent-1"),
+                parent_task_id=NotBlankStr(sid(_PARENT_TASK_ID)),
                 created_at=now,
                 updated_at=now,
                 items=(

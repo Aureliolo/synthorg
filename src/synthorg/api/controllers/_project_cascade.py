@@ -5,7 +5,7 @@ from typing import Final
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
@@ -61,6 +61,16 @@ async def _supersede_plan(
     changes status, so deleting a project while its last task completes can
     lose the race. Without this, the conflict would abort the whole cascade
     mid-loop and surface as a 500 on an otherwise valid delete.
+
+    Raises:
+        ConflictError: The retry budget ran out with the plan still
+            non-terminal. Raised rather than logged and returned: the
+            caller deletes the project once the cascade reports done, and
+            ``plans.project`` carries no foreign key, so a plan counted as
+            retired but still live outlives the project as an orphan
+            nothing can reach. Contention is transient by definition, so
+            the honest answer is to refuse this delete and let the
+            operator repeat it.
     """
     current = plan
     for _ in range(_SUPERSEDE_ATTEMPTS):
@@ -88,6 +98,12 @@ async def _supersede_plan(
         plan_id=str(plan.id),
         attempts=_SUPERSEDE_ATTEMPTS,
     )
+    msg = (
+        f"plan {plan.id} is being written concurrently and could not be "
+        f"retired in {_SUPERSEDE_ATTEMPTS} attempts; the project was not "
+        "deleted. Retry the delete."
+    )
+    raise ConflictError(msg)
 
 
 async def cascade_supersede_children(

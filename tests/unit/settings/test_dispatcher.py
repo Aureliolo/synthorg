@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 from collections.abc import AsyncGenerator, Sequence
-from datetime import UTC, datetime
 from typing import Final, cast, override
 
 import pytest
@@ -16,12 +15,18 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings import dispatcher_config as _cfg
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 
 # Mirror the dispatcher's own bootstrap timing defaults so the fake resolver's
 # defaults track the real ones rather than baking in drifting literals.
 _FAKE_RESOLVER_DEFAULT_POLL_TIMEOUT_SECONDS: Final = _cfg._POLL_TIMEOUT
 _FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS: Final = _cfg._ERROR_BACKOFF
+
+# Every timestamp this module stamps is inert fixture data the dispatcher
+# never compares against wall-clock time, so it is read from a fake rather
+# than the system clock: a test that reads the real one is one whose failure
+# can depend on when it ran.
+_CLOCK: Final = FakeClock()
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -29,7 +34,7 @@ _FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS: Final = _cfg._ERROR_BACKOFF
 def _settings_message(namespace: str, key: str) -> Message:
     """Build a #settings channel message matching SettingsService format."""
     return Message(
-        timestamp=datetime.now(UTC),
+        timestamp=_CLOCK.now(),
         sender="system",
         to="#settings",
         type=MessageType.ANNOUNCEMENT,
@@ -48,7 +53,7 @@ def _envelope(msg: Message) -> DeliveryEnvelope:
     return DeliveryEnvelope(
         message=msg,
         channel_name="#settings",
-        delivered_at=datetime.now(UTC),
+        delivered_at=_CLOCK.now(),
     )
 
 
@@ -190,7 +195,7 @@ class _FakeBus:
         return Subscription(
             channel_name=channel_name,
             subscriber_id=subscriber_id,
-            subscribed_at=datetime.now(UTC),
+            subscribed_at=_CLOCK.now(),
         )
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
@@ -467,7 +472,7 @@ class TestCoalescing:
             return DeliveryEnvelope(
                 message=_settings_message("ns", key),
                 channel_name="#settings",
-                delivered_at=datetime.now(UTC),
+                delivered_at=_CLOCK.now(),
                 ack=_ack,
             )
 
@@ -625,7 +630,7 @@ class TestMetadataExtraction:
     ) -> None:
         """Messages without namespace/key in metadata are skipped."""
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=_CLOCK.now(),
             sender="system",
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
@@ -645,7 +650,7 @@ class TestMetadataExtraction:
     ) -> None:
         """Message with namespace but no key is skipped."""
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=_CLOCK.now(),
             sender="system",
             to="#settings",
             type=MessageType.ANNOUNCEMENT,
@@ -674,7 +679,7 @@ class TestMetadataExtraction:
             subscribers=(sub,),
         )
         msg = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=_CLOCK.now(),
             sender="system",
             to="#settings",
             type=MessageType.ANNOUNCEMENT,

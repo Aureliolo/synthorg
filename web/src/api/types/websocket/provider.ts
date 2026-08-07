@@ -50,6 +50,10 @@ export interface WsPlanUpdatedPayload {
   plan_id: string
   version: number
   status: PlanStatus
+  // Present only on a replan: the plan `plan_id` retires. A viewer sitting
+  // on the retired plan holds neither `plan_id` nor fresh data, so this is
+  // the only id in the event that reaches them.
+  supersedes?: string
 }
 
 export interface WsPlanChangesRequestedPayload {

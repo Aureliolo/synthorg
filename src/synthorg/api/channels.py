@@ -201,7 +201,9 @@ def publish_ws_event_with_plugin(
         )
 
 
-def plan_updated_payload(plan: Plan) -> dict[str, object]:
+def plan_updated_payload(
+    plan: Plan, *, supersedes: Plan | None = None
+) -> dict[str, object]:
     """The locator a ``plan.updated`` subscriber refetches from.
 
     One definition for every publisher, because the payload is a contract
@@ -210,17 +212,29 @@ def plan_updated_payload(plan: Plan) -> dict[str, object]:
     subscriber read a key that was not there. Deliberately minimal: the event
     is a refresh signal, so a subscriber reloads rather than rendering this.
 
+    ``supersedes`` is built here rather than merged in by the replan
+    controller for that same reason: the key names a plan the subscriber
+    refetches, so it is part of the locator, and a shape only one publisher
+    knows about is the drift this function exists to prevent.
+
     Args:
         plan: The plan whose change is being announced.
+        supersedes: The plan this one retires, when the change is a
+            replan. A viewer sitting on the retired plan is not looking at
+            ``plan``, so without this the successor's event names an id
+            that viewer does not hold and its detail stays stale.
 
     Returns:
         The event payload.
     """
-    return {
+    payload: dict[str, object] = {
         "plan_id": str(plan.id),
         "version": plan.version,
         "status": plan.status.value,
     }
+    if supersedes is not None:
+        payload["supersedes"] = str(supersedes.id)
+    return payload
 
 
 def make_plan_notifier(

@@ -794,6 +794,15 @@ async def _activate_plan_item_reply(app_state: AppState) -> None:
     )
 
 
+async def _deactivate_plan_item_reply(app_state: AppState) -> None:
+    """Take the conversational plan-item reply service down."""
+    from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
+        unwire_plan_item_reply_service,
+    )
+
+    await unwire_plan_item_reply_service(app_state)
+
+
 async def _activate_analytics_collector(app_state: AppState) -> None:
     """Configure the cross-deployment analytics collector role."""
     from synthorg.api.lifecycle_helpers.meta_wiring import (  # noqa: PLC0415
@@ -1191,11 +1200,18 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_role_version_service,
     ),
+    # Another blank-default per-feature model, declared for the same two
+    # reasons as the block above: the write that names a model is the one that
+    # brings the service up, and a later rename has to replace an instance
+    # holding the driver it was built with.
     SubsystemSpec(
         name="plan_item_reply_service",
         provides=CapabilityId.PLAN_ITEM_REPLY_SERVICE,
         requires=(CapabilityId.PROVIDER_REGISTRY,),
         activate=_activate_plan_item_reply,
+        deactivate=_deactivate_plan_item_reply,
+        settings=("coordination.plan_review_reply_model",),
+        rebuild_on_change=True,
     ),
     SubsystemSpec(
         name="analytics_collector",

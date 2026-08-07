@@ -231,29 +231,95 @@ class _TriggerOrFunction:
 # ── Schema dump helpers ─────────────────────────────────────────
 
 
+def _quoted(identifier: str) -> str:
+    """Return *identifier* as a SQLite quoted name.
+
+    Returns:
+        The name wrapped in double quotes, with any internal quote doubled.
+    """
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _user_tables(conn: sqlite3.Connection) -> tuple[str, ...]:
+    """List the tables this gate is responsible for.
+
+    Returns:
+        Every table name except SQLite's and yoyo's own bookkeeping.
+    """
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' "
+        "AND name NOT LIKE '_yoyo%' "
+        "AND name NOT LIKE 'yoyo%' "
+        "ORDER BY name"
+    ).fetchall()
+    return tuple(row[0] for row in rows)
+
+
+def _dangling_parents(
+    conn: sqlite3.Connection, table: str, known: frozenset[str]
+) -> tuple[str, ...]:
+    """Name each reference from *table* to a table that does not exist.
+
+    Returns:
+        One ``child -> parent`` phrase per reference whose parent is absent.
+    """
+    rows = conn.execute(f"PRAGMA foreign_key_list({_quoted(table)})").fetchall()
+    parents = {str(row[2]) for row in rows}
+    return tuple(
+        f"{table} -> {parent} (no such table)"
+        for parent in sorted(parents)
+        if parent.lower() not in known
+    )
+
+
 def _assert_references_resolve(conn: sqlite3.Connection) -> None:
     """Refuse a migrated schema whose foreign keys do not resolve.
 
     yoyo applies revisions with ``foreign_keys`` at its OFF default, so a
     table rebuild that renames or drops a referenced table leaves the
     references dangling and nothing complains until the application
-    reconnects with ``foreign_keys = ON``. ``PRAGMA foreign_key_check``
-    reports each unresolved reference: on the empty database this gate
-    builds, that is the structural half (a reference whose parent table
-    or unique key is gone), which is the half a schema-only run can
-    prove. The data half -- a migration that leaves real orphan rows
-    behind -- is proved by the migration tests, which seed rows first.
+    reconnects with ``foreign_keys = ON``. This gate builds an empty
+    database, so it can prove the structural half of that (a reference
+    whose parent table or parent key is gone) and only that half; the
+    data half -- a migration that leaves real orphan rows behind -- is
+    proved by the migration tests, which seed rows first.
+
+    Structural is exactly the half ``PRAGMA foreign_key_check`` alone
+    does NOT deliver, because it reports per ROW and an empty table has
+    none. A dropped parent table is silent under it, and a parent key
+    that is missing or not unique arrives as a raised ``foreign key
+    mismatch`` rather than a reported row. So each class is proved by
+    the pragma that actually carries it: ``foreign_key_list`` names the
+    declared parent whether or not it exists, and a per-table
+    ``foreign_key_check`` turns a mismatch into a finding instead of an
+    untyped abort. Per table rather than whole-database because the
+    whole-database form stops at the first mismatch, which would mask
+    every table after it.
 
     Raises:
         SchemaDriftReferenceError: When any reference fails to resolve.
     """
-    broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    tables = _user_tables(conn)
+    known = frozenset(name.lower() for name in tables)
+    broken: list[str] = []
+    for table in tables:
+        broken.extend(_dangling_parents(conn, table, known))
+        try:
+            rows = conn.execute(
+                f"PRAGMA foreign_key_check({_quoted(table)})"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            broken.append(f"{table}: {exc}")
+            continue
+        broken.extend(
+            f"{child} -> {parent} (rowid={rowid}, fk_index={fk_index})"
+            for child, rowid, parent, fk_index in rows
+        )
     if not broken:
         return
-    detail = "; ".join(
-        f"{child} -> {parent} (rowid={rowid}, fk_index={fk_index})"
-        for child, rowid, parent, fk_index in broken
-    )
+    detail = "; ".join(broken)
     msg = f"migrated SQLite schema has unresolved foreign keys: {detail}"
     raise SchemaDriftReferenceError(msg)
 

@@ -126,17 +126,41 @@ class ProviderSettingsSubscriber:
         batch, since each re-reads its own setting. Other keys are advisory
         and logged at INFO level.
 
+        The two rebuilds read different settings and swap different
+        services, so a failure in one says nothing about the other: the
+        second is attempted regardless and a non-critical failure is held
+        until both have run. Raising at the first would leave the second
+        setting persisted and not live until an unrelated write or a
+        restart, since the dispatcher sees one exception per subscriber
+        call either way. A critical error still aborts on the spot.
+
         Args:
             changes: The watched writes this rebuild carries.
+
+        Raises:
+            Exception: The first non-critical rebuild failure, re-raised
+                once every independent rebuild in the batch has run, so
+                the dispatcher records the batch as failed.
         """
         pairs = set(changes)
         rebuilt = False
+        deferred: Exception | None = None
         if ("providers", "routing_strategy") in pairs:
-            await self._rebuild_router()
             rebuilt = True
+            try:
+                await self._rebuild_router()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                deferred = exc
         if ("providers", "retry_max_attempts") in pairs:
-            await self._rebuild_registry("retry_max_attempts")
             rebuilt = True
+            try:
+                await self._rebuild_registry("retry_max_attempts")
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                deferred = deferred or exc
+        if deferred is not None:
+            raise deferred
         if not rebuilt:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,

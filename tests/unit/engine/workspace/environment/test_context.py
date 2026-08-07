@@ -102,8 +102,15 @@ class TestContextTar:
 
         with tarfile.open(fileobj=stream, mode="r:gz") as archive:
             member = archive.getmember("./link.txt")
-            assert member.issym()
-            assert archive.extractfile(member) is None
+            names = archive.getnames()
+
+        # A followed symlink would arrive as a regular member carrying the
+        # target's bytes. Archived as a link it carries the path and
+        # nothing else, and the target stays outside the archive entirely,
+        # so no member can hand a reader what it points at.
+        assert member.issym()
+        assert member.size == 0
+        assert not any(Path(name).name == secret.name for name in names)
 
     def test_the_git_directory_never_enters_the_context(self, tmp_path: Path) -> None:
         """``.git`` holds the forge remote and the whole object history.

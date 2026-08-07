@@ -46,6 +46,15 @@ _CONTEXT_MAX_BYTES_KEY: Final[str] = "devcontainer_context_max_bytes"
 #: build nobody is reading.
 _PENDING_CLOSES: Final[set[asyncio.Task[None]]] = set()
 
+#: Ceiling on WAITING for a connection close, not on the close itself.
+#: The wait runs in a ``finally`` after the build already has its verdict
+#: and after the caller's own deadline is spent, so a daemon socket that
+#: hangs on close would otherwise hold a provisioning run open past the
+#: ceiling ``build`` documents. The close task keeps running past this,
+#: since dropping the connection is what stops the daemon streaming;
+#: only the wait for it gives up.
+_CLOSE_WAIT_SECONDS: Final[float] = 5.0
+
 
 def _chunk_error(chunk: object) -> str | None:
     """Return the daemon's error text for *chunk*, or ``None``.
@@ -283,7 +292,10 @@ class AiodockerImageBuilder:
         streaming a build nobody is reading. A close that fails is
         logged rather than raised: it runs in a ``finally``, so raising
         would replace the outcome the caller is waiting for with a
-        teardown detail, turning a reported build failure into a 500.
+        teardown detail, turning a reported build failure into a 500. A
+        close that neither fails nor finishes is bounded the same way,
+        by :data:`_CLOSE_WAIT_SECONDS`, since an unbounded wait here
+        outlives the deadline the build already answered under.
 
         Raises:
             CancelledError: Propagated, leaving the close running.
@@ -292,7 +304,16 @@ class AiodockerImageBuilder:
         _PENDING_CLOSES.add(closing)
         closing.add_done_callback(_forget_close)
         try:
-            await asyncio.shield(closing)
+            async with asyncio.timeout(_CLOSE_WAIT_SECONDS):
+                await asyncio.shield(closing)
+        except TimeoutError:
+            # The task stays in _PENDING_CLOSES and keeps running; only
+            # this wait gave up.
+            logger.warning(
+                ENVIRONMENT_IMAGE_BUILD_FAILED,
+                tag=str(tag),
+                note="daemon connection close did not complete in time",
+            )
         except asyncio.CancelledError:
             # ``closing`` keeps running; _PENDING_CLOSES is the strong
             # reference that stops it being collected before it does.

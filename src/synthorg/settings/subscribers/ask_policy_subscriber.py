@@ -55,17 +55,20 @@ class AskPolicySettingsSubscriber:
         return "ask-policy"
 
     async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
-        """Re-bind the ask-policy provider for each changed key.
+        """Re-bind the ask-policy provider once for the whole batch.
+
+        The rebuild re-reads every watched key whichever one changed, so a
+        batch carrying several of them would otherwise re-bind the same
+        provider once per key for one identical result.
 
         Args:
             changes: The watched writes to apply.
         """
+        applies = False
         for namespace, key in changes:
-            await self._apply(namespace, key)
-
-    async def _apply(self, namespace: str, key: str) -> None:
-        """Re-bind the ask-policy provider so the new value goes live."""
-        if (namespace, key) not in _WATCHED:
+            if (namespace, key) in _WATCHED:
+                applies = True
+                continue
             logger.warning(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
@@ -73,7 +76,11 @@ class AskPolicySettingsSubscriber:
                 key=key,
                 note="ignored unexpected pair",
             )
-            return
+        if applies:
+            await self._apply()
+
+    async def _apply(self) -> None:
+        """Re-bind the ask-policy provider so the new values go live."""
         from synthorg.engine.ask_policy.wiring import (  # noqa: PLC0415
             rebuild_and_bind_ask_policy,
         )

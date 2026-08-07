@@ -14,6 +14,14 @@ change what a backend command does. ``GIT_PROTOCOL_FROM_USER=0`` marks
 every URL as untrusted input, which confines the transports git will use
 to the ones ``protocol.allow`` permits rather than the wider set it grants
 a URL a human typed.
+
+That last one costs the ``file`` transport, whose default policy is
+``user`` rather than ``always``, and a local path is the file transport
+too. The agent-facing tools give it up outright. The system-internal
+backends cannot: an embedded workspace IS a bare repository at a path the
+system computed, so :data:`LOCAL_TRANSPORT_GIT_CONFIG` restores that one
+transport for them rather than dropping the override that confines every
+other.
 """
 
 import os
@@ -30,6 +38,18 @@ GIT_HARDENING_OVERRIDES: Final[MappingProxyType[str, str]] = MappingProxyType(
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_PROTOCOL_FROM_USER": "0",
     }
+)
+
+#: Re-permits the ``file`` transport for the paths whose repositories the
+#: system itself names: the workspace git backends, the docs engine and the
+#: project brain all address bare repositories and worktrees by local path,
+#: and none of them takes a URL from an agent. Carried as git config through
+#: :func:`git_config_env` rather than by relaxing
+#: :data:`GIT_HARDENING_OVERRIDES`, so an exotic transport reached through a
+#: URL stays refused on these paths and the agent-facing tools, which have no
+#: local repository to address, keep the file transport closed as well.
+LOCAL_TRANSPORT_GIT_CONFIG: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {"protocol.file.allow": "always"}
 )
 
 
@@ -63,4 +83,8 @@ def git_config_env(config: Mapping[str, str]) -> dict[str, str]:
     return rendered
 
 
-__all__ = ["GIT_HARDENING_OVERRIDES", "git_config_env"]
+__all__ = [
+    "GIT_HARDENING_OVERRIDES",
+    "LOCAL_TRANSPORT_GIT_CONFIG",
+    "git_config_env",
+]

@@ -105,9 +105,8 @@ export interface PlanItemFlag {
 export interface ItemFlagContext {
   readonly onCriticalPath: boolean
   /**
-   * The roles the org staffs. An owner outside it names nobody, so the item
-   * cannot be dispatched; an empty roster means the agents have not loaded
-   * and every owner is left unjudged rather than flagged wholesale.
+   * The roles the org staffs, or `undefined` while that is unknown. An owner
+   * outside a known roster names nobody, so the item cannot be dispatched.
    */
   readonly roster: ReadonlySet<string> | undefined
 }
@@ -115,15 +114,18 @@ export interface ItemFlagContext {
 /**
  * Whether a named owner resolves to a role the org staffs.
  *
- * An unknown roster (not loaded yet, or an org with no agents) judges nothing:
- * flagging every owner because the agents list has not arrived would be noise
- * the reviewer cannot act on.
+ * `undefined` is the only unknown-roster sentinel, which `judgedRoles` produces
+ * for both the loading and the failed read: judging off an answer that never
+ * arrived would flag every owner as noise the reviewer cannot act on. An empty
+ * ready roster is the opposite case and is judged like any other, because an
+ * org staffing nobody can dispatch nothing, and that is precisely what a
+ * reviewer needs told before approving the plan.
  */
 export function isUnroutableOwner(
   owner: string,
   roster: ReadonlySet<string> | undefined,
 ): boolean {
-  return roster !== undefined && roster.size > 0 && !roster.has(owner)
+  return roster !== undefined && !roster.has(owner)
 }
 
 /**

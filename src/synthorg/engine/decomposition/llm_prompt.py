@@ -5,6 +5,8 @@ Pure functions that construct the system/user messages and the
 :mod:`synthorg.engine.decomposition.llm_parse`; both share ``TOOL_NAME``.
 """
 
+from typing import Final
+
 from pydantic import JsonValue
 
 from synthorg.core.plan_enums import PlanItemKind
@@ -80,6 +82,171 @@ def _role_field(available_roles: tuple[NotBlankStr, ...]) -> dict[str, JsonValue
     }
 
 
+#: Every subtask property except ``required_role``, which is the one the
+#: roster changes. Module-level because a JSON Schema is data: rebuilding it
+#: per call put a 180-line literal inside the builder and buried the one
+#: roster-dependent line in the middle of it. Treated as read-only; the
+#: builder composes a fresh outer mapping around it and never mutates it.
+_SUBTASK_PROPERTIES: Final[dict[str, JsonValue]] = {
+    "id": {
+        "type": "string",
+        "description": "Unique subtask identifier",
+    },
+    "title": {
+        "type": "string",
+        "description": "Short subtask title",
+    },
+    "description": {
+        "type": "string",
+        "description": "Detailed subtask description",
+    },
+    "dependencies": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "IDs of subtasks this depends on",
+    },
+    "estimated_complexity": {
+        "type": "string",
+        "enum": [c.value for c in Complexity],
+        "description": (
+            "Effort/uncertainty estimate. Reserve 'epic' for a whole "
+            "workstream that should itself be broken down further."
+        ),
+    },
+    "stakes": {
+        "type": "string",
+        "enum": [s.value for s in Stakes],
+        "description": (
+            "How consequential this item is if done wrong. Most items "
+            "are 'normal'; reserve 'high'/'critical' for irreversible "
+            "or high-blast-radius work (a handful, not most)."
+        ),
+    },
+    "required_skills": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Skills needed for this subtask",
+    },
+    # No minItems: a 'decision' item builds nothing and MUST declare an empty
+    # list, so a schema-level floor of one would make a decision item
+    # unsatisfiable and push a schema-enforcing provider into emitting
+    # artifacts the parser then rejects. The kind-dependent invariant is
+    # stated here and enforced by ``validate_expected_artifacts`` at parse
+    # time, where it can see the kind.
+    "expected_artifacts": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "Concrete deliverables this subtask must produce "
+            "(file paths, docs, or test suites). A 'work' item must "
+            "list at least one and the plan is rejected without it, "
+            "because the fail-loud zero-artifact guard engages off "
+            "this list when the item runs. A 'decision' item builds "
+            "nothing and must leave this empty."
+        ),
+    },
+    "acceptance_criteria": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Verifiable criteria that define done for this subtask",
+    },
+    "satisfies": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "Which of the objective's acceptance criteria (copied "
+            "verbatim) this item advances, so success-criteria coverage "
+            "can be checked. Omit only for pure-support items that "
+            "advance no objective criterion directly."
+        ),
+    },
+    "kind": {
+        "type": "string",
+        "enum": [k.value for k in PlanItemKind],
+        "description": (
+            "'work' for a unit of work, or 'decision' for a real choice "
+            "the reviewer must make (e.g. stack/architecture). A decision "
+            "carries options and records the choice rather than building."
+        ),
+    },
+    "options": {
+        "type": "array",
+        "description": (
+            "For a 'decision' subtask only: 2-4 options to choose among, "
+            "exactly one marked recommended."
+        ),
+        "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Stable option id"},
+                "title": {"type": "string", "description": "Option title"},
+                "summary": {
+                    "type": "string",
+                    "description": "The option's tradeoffs and rationale",
+                },
+                "recommended": {
+                    "type": "boolean",
+                    "description": "Whether the owner recommends this option",
+                },
+            },
+            "required": ["id", "title", "summary"],
+        },
+    },
+}
+
+#: The subtask fields a plan is rejected without.
+_SUBTASK_REQUIRED: Final[list[JsonValue]] = [
+    "id",
+    "title",
+    "description",
+    "stakes",
+    "required_role",
+    "expected_artifacts",
+    "acceptance_criteria",
+]
+
+#: Every plan-level property except ``subtasks``, which is the one that
+#: embeds the roster-dependent subtask schema.
+_PLAN_PROPERTIES: Final[dict[str, JsonValue]] = {
+    "task_structure": {
+        "type": "string",
+        # AUTO is the absence of a declaration, so offering it as a choice
+        # would invite the planner to punt on a field it is better placed to
+        # answer than the keyword classifier that otherwise fills the gap.
+        # Omitting the field says the same thing without dressing it as an
+        # answer.
+        "enum": [s.value for s in TaskStructure if s is not TaskStructure.AUTO],
+        "description": (
+            "Overall structure: 'parallel'/'mixed' when independent "
+            "workstreams can run at once, 'sequential' only when every "
+            "item genuinely depends on the previous one."
+        ),
+    },
+    "coordination_topology": {
+        "type": "string",
+        "enum": [t.value for t in CoordinationTopology],
+        "description": "Coordination topology",
+    },
+    "open_questions": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "Questions you could not resolve that need the human's input "
+            "before the plan is approved (e.g. an ambiguous requirement or "
+            "an external dependency). Omit when nothing is open."
+        ),
+    },
+    "assumptions": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": (
+            "Load-bearing assumptions the plan rests on, so the human can "
+            "correct a wrong one before approving. Omit when none."
+        ),
+    },
+}
+
+
 def build_decomposition_tool(
     available_roles: tuple[NotBlankStr, ...] = (),
 ) -> ToolDefinition:
@@ -98,128 +265,15 @@ def build_decomposition_tool(
     """
     subtask_schema: dict[str, JsonValue] = {
         "type": "object",
+        # The roster is the only source of role names, and deliberately the
+        # only one: a worked example in the schema is a role name the planner
+        # will reach for, and one outside the org's own template is work it
+        # assigns to nothing that can be dispatched to.
         "properties": {
-            "id": {
-                "type": "string",
-                "description": "Unique subtask identifier",
-            },
-            "title": {
-                "type": "string",
-                "description": "Short subtask title",
-            },
-            "description": {
-                "type": "string",
-                "description": "Detailed subtask description",
-            },
-            "dependencies": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "IDs of subtasks this depends on",
-            },
-            "estimated_complexity": {
-                "type": "string",
-                "enum": [c.value for c in Complexity],
-                "description": (
-                    "Effort/uncertainty estimate. Reserve 'epic' for a whole "
-                    "workstream that should itself be broken down further."
-                ),
-            },
-            "stakes": {
-                "type": "string",
-                "enum": [s.value for s in Stakes],
-                "description": (
-                    "How consequential this item is if done wrong. Most items "
-                    "are 'normal'; reserve 'high'/'critical' for irreversible "
-                    "or high-blast-radius work (a handful, not most)."
-                ),
-            },
-            # Deliberately no worked example. A role name in the schema is a
-            # role name the planner will reach for, and an example that is
-            # not in the org's own template is one it will assign work to
-            # that nothing can be dispatched to. The roster below is the only
-            # source of role names.
+            **_SUBTASK_PROPERTIES,
             "required_role": _role_field(available_roles),
-            "required_skills": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Skills needed for this subtask",
-            },
-            # No minItems: a 'decision' item builds nothing and MUST declare
-            # an empty list, so a schema-level floor of one would make a
-            # decision item unsatisfiable and push a schema-enforcing provider
-            # into emitting artifacts the parser then rejects. The
-            # kind-dependent invariant is stated here and enforced by
-            # ``validate_expected_artifacts`` at parse time, where it can see
-            # the kind.
-            "expected_artifacts": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Concrete deliverables this subtask must produce "
-                    "(file paths, docs, or test suites). A 'work' item must "
-                    "list at least one and the plan is rejected without it, "
-                    "because the fail-loud zero-artifact guard engages off "
-                    "this list when the item runs. A 'decision' item builds "
-                    "nothing and must leave this empty."
-                ),
-            },
-            "acceptance_criteria": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Verifiable criteria that define done for this subtask",
-            },
-            "satisfies": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Which of the objective's acceptance criteria (copied "
-                    "verbatim) this item advances, so success-criteria coverage "
-                    "can be checked. Omit only for pure-support items that "
-                    "advance no objective criterion directly."
-                ),
-            },
-            "kind": {
-                "type": "string",
-                "enum": [k.value for k in PlanItemKind],
-                "description": (
-                    "'work' for a unit of work, or 'decision' for a real choice "
-                    "the reviewer must make (e.g. stack/architecture). A decision "
-                    "carries options and records the choice rather than building."
-                ),
-            },
-            "options": {
-                "type": "array",
-                "description": (
-                    "For a 'decision' subtask only: 2-4 options to choose among, "
-                    "exactly one marked recommended."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "string", "description": "Stable option id"},
-                        "title": {"type": "string", "description": "Option title"},
-                        "summary": {
-                            "type": "string",
-                            "description": "The option's tradeoffs and rationale",
-                        },
-                        "recommended": {
-                            "type": "boolean",
-                            "description": "Whether the owner recommends this option",
-                        },
-                    },
-                    "required": ["id", "title", "summary"],
-                },
-            },
         },
-        "required": [
-            "id",
-            "title",
-            "description",
-            "stakes",
-            "required_role",
-            "expected_artifacts",
-            "acceptance_criteria",
-        ],
+        "required": _SUBTASK_REQUIRED,
     }
     schema: dict[str, JsonValue] = {
         "type": "object",
@@ -229,42 +283,7 @@ def build_decomposition_tool(
                 "items": subtask_schema,
                 "description": "Ordered subtask definitions",
             },
-            "task_structure": {
-                "type": "string",
-                # AUTO is the absence of a declaration, so offering it as a
-                # choice would invite the planner to punt on a field it is
-                # better placed to answer than the keyword classifier that
-                # otherwise fills the gap. Omitting the field says the same
-                # thing without dressing it as an answer.
-                "enum": [s.value for s in TaskStructure if s is not TaskStructure.AUTO],
-                "description": (
-                    "Overall structure: 'parallel'/'mixed' when independent "
-                    "workstreams can run at once, 'sequential' only when every "
-                    "item genuinely depends on the previous one."
-                ),
-            },
-            "coordination_topology": {
-                "type": "string",
-                "enum": [t.value for t in CoordinationTopology],
-                "description": "Coordination topology",
-            },
-            "open_questions": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Questions you could not resolve that need the human's input "
-                    "before the plan is approved (e.g. an ambiguous requirement or "
-                    "an external dependency). Omit when nothing is open."
-                ),
-            },
-            "assumptions": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Load-bearing assumptions the plan rests on, so the human can "
-                    "correct a wrong one before approving. Omit when none."
-                ),
-            },
+            **_PLAN_PROPERTIES,
         },
         "required": ["subtasks"],
     }

@@ -16,6 +16,7 @@ import aiodocker
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.environment import image_builder
 from synthorg.engine.workspace.environment.image_builder import (
     AiodockerImageBuilder,
     BuildFailure,
@@ -70,11 +71,14 @@ class _FakeDocker:
         self.images = _FakeImages(chunks)
         self.closed = False
         self.close_error: BaseException | None = None
+        self.close_hangs = False
 
     async def version(self) -> dict[str, str]:
         return {"Version": "test"}
 
     async def close(self) -> None:
+        if self.close_hangs:
+            await asyncio.Event().wait()
         self.closed = True
         if self.close_error is not None:
             raise self.close_error
@@ -311,8 +315,36 @@ class TestBuild:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
+            # The close is shielded, so the cancellation is delivered to
+            # the await rather than to the close, which is still pending
+            # when the task finishes unwinding. Without a yield the
+            # assertion below reads whichever order the loop happened to
+            # schedule.
+            await asyncio.sleep(0)
 
         assert client.closed is True
+
+    async def test_a_hung_close_does_not_hold_the_build_open(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The build already has its verdict; teardown must not outlive it.
+
+        The wait is bounded, not the close: the close task keeps running,
+        because dropping the connection is what stops the daemon
+        streaming a build nobody is reading.
+        """
+        monkeypatch.setattr(image_builder, "_CLOSE_WAIT_SECONDS", 0.01)
+        context, dockerfile = _context(tmp_path)
+        client = _FakeDocker([{"stream": "done\n"}])
+        client.close_hangs = True
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.success is True
+        assert client.closed is False
 
     async def test_the_daemon_gets_the_relative_dockerfile_and_a_gzip_context(
         self, tmp_path: Path

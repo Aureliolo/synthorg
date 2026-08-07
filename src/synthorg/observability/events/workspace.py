@@ -94,6 +94,9 @@ ENVIRONMENT_LOCKFILE_PATH_REJECTED: Final[str] = "environment.lockfile.path.reje
 ENVIRONMENT_DECLARATION_INVALID: Final[str] = "environment.declaration.invalid"
 ENVIRONMENT_ROW_PERSISTED: Final[str] = "environment.row.persisted"
 ENVIRONMENT_PROVISION_SKIPPED: Final[str] = "environment.provision.skipped"
+ENVIRONMENT_DOCKERIGNORE_LINE_SKIPPED: Final[str] = (
+    "environment.dockerignore.line.skipped"
+)
 
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"

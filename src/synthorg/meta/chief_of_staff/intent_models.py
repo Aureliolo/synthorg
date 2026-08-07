@@ -127,8 +127,9 @@ class IntentOutcome(BaseModel):
         intent: The capability the turn dispatches to.
         reason: Why this intent was chosen (classified, overridden, fixed
             by conversation kind, or degraded).
-        confidence: Classifier confidence (0-1) when a classification ran;
-            ``None`` for an override / fixed-kind / no-classifier outcome.
+        confidence: Classifier confidence (0-1) when a classification
+            returned a verdict; ``None`` for an override / fixed-kind /
+            no-classifier outcome, and for a call that never came back.
         named_targets: Roles/names surfaced by the classifier for a group
             convene; empty otherwise.
         model: The model id the classification actually dispatched on, which
@@ -148,15 +149,18 @@ class IntentOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_attribution(self) -> Self:
-        """Keep the model attribution consistent with ``reason``.
+        """Keep the verdict attribution consistent with ``reason``.
 
-        The model is recorded from the verdict the call returned, so it is
-        present exactly for the reasons a verdict reached, and absent for an
+        Both fields come off the same parsed verdict, so both are present
+        exactly for the reasons a verdict reached, and absent for an
         override, a fixed kind, an absent classifier, or a call that failed.
         Mirrors :meth:`ProposeResult._validate_routing_attribution` so a
         construction bug cannot log a model against a decision no model made,
         which is worse than logging none: it names an innocent model as the
-        cause of a misroute.
+        cause of a misroute. ``confidence`` is held to the same rule for the
+        same reason in reverse: a floor decision reads it, so an outcome that
+        reached a floor reason without one would be judged on a number that
+        never existed.
 
         Returns:
             ``Self`` instance.
@@ -165,12 +169,13 @@ class IntentOutcome(BaseModel):
             ValueError: When the attribution and ``reason`` disagree.
         """
         dispatched = self.reason in MODEL_ATTRIBUTED_REASONS
-        if dispatched and self.model is None:
-            msg = f"model is required when reason is {self.reason.value}"
-            raise ValueError(msg)
-        if not dispatched and self.model is not None:
-            msg = f"model must be absent when reason is {self.reason.value}"
-            raise ValueError(msg)
+        for field, value in (("model", self.model), ("confidence", self.confidence)):
+            if dispatched and value is None:
+                msg = f"{field} is required when reason is {self.reason.value}"
+                raise ValueError(msg)
+            if not dispatched and value is not None:
+                msg = f"{field} must be absent when reason is {self.reason.value}"
+                raise ValueError(msg)
         return self
 
 

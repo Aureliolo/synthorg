@@ -452,14 +452,21 @@ class PlanParentTaskInUseError(ConflictError):
 
 
 class PlanNotDeletableError(ConflictError):
-    """Raised when a plan is deleted mid-dispatch (409).
+    """Raised when a plan's status refuses deletion (409).
 
-    Its items are already building, so removing the plan would orphan
-    every running task under it. Revising dispatched work is a re-plan,
-    which supersedes the current revision instead.
+    Two distinct refusals, so a caller reading only the dispatched one
+    would infer that waiting is a route to deleting the other. A plan
+    mid-dispatch has items already building, so removing it would orphan
+    every running task under it; revising dispatched work is a re-plan,
+    which supersedes the current revision instead. A decided plan is
+    refused for the opposite reason: it is the record of what was
+    decided, and its delivery verdicts hang off it, so it outlives the
+    initiative rather than becoming deletable once the work stops.
     """
 
-    default_message: ClassVar[str] = "A dispatched plan cannot be deleted"
+    default_message: ClassVar[str] = (
+        "A dispatched or already-decided plan cannot be deleted"
+    )
     error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_NOT_DELETABLE
 
 

@@ -206,6 +206,7 @@ class TestRoutingDecisionIsLogged:
                 IntentOutcome(
                     intent=TurnIntent.EXPLAIN,
                     reason=IntentRoutingReason.CLASSIFIED,
+                    confidence=0.9,
                     model=NotBlankStr("example-medium-001"),
                 )
             ),

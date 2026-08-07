@@ -295,3 +295,10 @@ than one transaction, because the task transitions emit domain events that
 cannot be rolled back; consistency comes from idempotent forward recovery
 instead, so re-issuing a failed delete re-runs the cascade as a no-op over the
 already-resolved children.
+
+Forward recovery is what makes a *partial* cascade safe, not a licence to
+delete past one. A plan the initiative rollup is writing concurrently gets a
+bounded re-read budget, and exhausting it aborts the delete with a 409 rather
+than counting the plan retired: `plans.project` carries no foreign key, so a
+project removed over a plan still live leaves an orphan nothing can reach.
+Contention is transient, so repeating the delete is the resolution.

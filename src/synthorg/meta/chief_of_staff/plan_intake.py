@@ -46,6 +46,7 @@ from synthorg.observability.events.chief_of_staff import (
     COS_PROPOSE_PROPOSED,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -148,6 +149,10 @@ class ConversationalPlanDispatcher:
     Args:
         project_repo: Project store (resolve / create).
         work_pipeline: The work pipeline spine entry.
+        task_repo: Task store, read to find the run a joined project
+            already has. Without it a re-send that deduped the project
+            would still file a second objective and a second decomposition
+            into it, which is the fork the dedupe exists to prevent.
         clock: Injectable time source.
         dispatch_port: Background-dispatch port; ``None`` until wired, at
             which point drafting fails closed.
@@ -160,6 +165,7 @@ class ConversationalPlanDispatcher:
         "_config_resolver",
         "_dispatch_port",
         "_project_repo",
+        "_task_repo",
         "_work_pipeline",
     )
 
@@ -168,12 +174,14 @@ class ConversationalPlanDispatcher:
         *,
         project_repo: ProjectRepository,
         work_pipeline: WorkPipeline,
+        task_repo: TaskRepository,
         clock: Clock | None = None,
         dispatch_port: ConversationalWorkDispatchPort | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._project_repo = project_repo
         self._work_pipeline = work_pipeline
+        self._task_repo = task_repo
         self._clock: Clock = clock or SystemClock()
         self._dispatch_port = dispatch_port
         self._config_resolver = config_resolver
@@ -196,7 +204,8 @@ class ConversationalPlanDispatcher:
 
         Returns:
             The :class:`PlanDraftSummary` naming the objective task and
-            project the plan is being drafted for.
+            project the plan is being drafted for. On a re-send that
+            deduped, the task is the one the first send filed.
 
         Raises:
             ServiceUnavailableError: When the dispatch port is not wired.
@@ -213,6 +222,15 @@ class ConversationalPlanDispatcher:
             raise ServiceUnavailableError(msg)
         choice = await self._resolve_project(conversation, args, work, now)
         project_id = choice.project
+        if choice.reused:
+            standing = await self._standing_run(project_id)
+            if standing is not None:
+                return PlanDraftSummary(
+                    task_id=NotBlankStr(str(standing.id)),
+                    project=project_id,
+                    title=work.title,
+                    reused_project=True,
+                )
         work_item = self._build_work_item(conversation, args, work, project_id, now)
         task = await self._work_pipeline.intake_only(work_item)
         # The port spawns a tracked spine that fails the task on its own error;
@@ -304,6 +322,17 @@ class ConversationalPlanDispatcher:
         created = await self._create(work, derived, now)
         if created is not None:
             return self._filed(conversation, created)
+        # The insert lost the id, and two causes look identical from here:
+        # a concurrent send of the same words that won the race, or a
+        # project that already existed and the check above rejected. Only
+        # the row separates them, so it is re-read. Without this, a burst
+        # deduplicates only as far as the first send's row being visible
+        # when the second one looked, which is the one case a burst does
+        # not satisfy: every send checks before any of them has written.
+        if window > _NO_WINDOW:
+            standing = await self._joinable(derived, now, window)
+            if standing is not None:
+                return self._joined(conversation, standing)
         # The derived id exists but is not joinable: it was acted on, or it
         # predates the window, or deduping is off. Either way this is a
         # genuine second run of the same words, so it gets its own project.
@@ -312,6 +341,34 @@ class ConversationalPlanDispatcher:
             msg = "Could not provision a project for the objective."
             raise ServiceUnavailableError(msg)
         return self._filed(conversation, fresh)
+
+    async def _standing_run(self, project: NotBlankStr) -> Task | None:
+        """The objective run a joined project already has, if it has one.
+
+        Args:
+            project: The project this intake joined.
+
+        Returns:
+            The objective task filed against *project*, or ``None`` when the
+            send that opened it has not reached intake yet. That gap is real
+            and narrow: a project row exists from ``create``, and its task
+            only after ``intake_only`` returns, so a burst can join in
+            between. Answering ``None`` there files a second objective,
+            which is the safe direction to be wrong in: a duplicate run is
+            recoverable and a brief with no run at all is the operator
+            getting nothing back.
+
+            A deduped project holds one objective by construction, this
+            being what stops a second one being filed. The id ordering is
+            not a preference between two of them; it is so a repository
+            whose row order is unspecified cannot answer differently on two
+            calls if that invariant were ever broken.
+        """
+        tasks = await self._task_repo.query(TaskFilterSpec(project=project))
+        objectives = [task for task in tasks if task.parent_task_id is None]
+        if not objectives:
+            return None
+        return min(objectives, key=lambda task: str(task.id))
 
     def _filed(
         self,

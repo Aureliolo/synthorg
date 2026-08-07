@@ -25,6 +25,13 @@ import re
 from pathlib import Path
 from typing import Final, NamedTuple
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.workspace import (
+    ENVIRONMENT_DOCKERIGNORE_LINE_SKIPPED,
+)
+
+logger = get_logger(__name__)
+
 #: Regex metacharacters that must survive as literals. moby escapes the
 #: first group; ``^`` is ours. ``[`` and ``]`` are deliberately absent:
 #: a bracket expression is part of the pattern syntax and passes through.
@@ -33,6 +40,17 @@ _ESCAPED: Final[str] = ".+()|{}$^"
 #: The Dockerfile-adjacent ignore file, which takes precedence over the
 #: context-root one when a build names a Dockerfile explicitly.
 _DOCKERIGNORE: Final[str] = ".dockerignore"
+
+#: Ceilings on one translated pattern. The file is agent-writable, and
+#: ``**`` translates to ``(.*/)?``, so a line repeating it produces nested
+#: quantifiers that backtrack catastrophically against a long path that
+#: does not match: matching is per candidate path per rule, so one line is
+#: enough to stall a whole provision. Neither ceiling constrains a pattern
+#: anyone writes on purpose (moby's own longest documented example is far
+#: under both), and a line over either is dropped like one that will not
+#: compile.
+_MAX_PATTERN_LENGTH: Final[int] = 512
+_MAX_DOUBLE_STARS: Final[int] = 4
 
 
 class _Rule(NamedTuple):
@@ -100,11 +118,45 @@ def _clean(line: str) -> str:
     return line.strip().replace("\\", "/").strip("/")
 
 
-def _compile(line: str) -> _Rule | None:
-    """Compile one raw ``.dockerignore`` line.
+def _too_costly(cleaned: str) -> str | None:
+    """Whether *cleaned* is outside the bounds a pattern is matched under.
+
+    Args:
+        cleaned: A separator-normalised pattern with no ``!`` prefix.
 
     Returns:
-        The rule, or ``None`` for a blank line or a comment.
+        Which ceiling it breached, or ``None`` when it is within both.
+    """
+    if len(cleaned) > _MAX_PATTERN_LENGTH:
+        return "pattern_too_long"
+    if cleaned.count("**") > _MAX_DOUBLE_STARS:
+        return "too_many_double_stars"
+    return None
+
+
+def _compile(line: str, line_number: int) -> _Rule | None:
+    """Compile one raw ``.dockerignore`` line.
+
+    A line the packer refuses is dropped rather than raised on. The file
+    is read from an agent-authored workspace, and the caller is packing a
+    build context: raising here unwinds the whole provision and reports it
+    as a Dockerfile build failure, which is a failure that did not happen.
+    Dropping the line loses only an exclusion its author cannot have been
+    relying on, and every path the packer excludes unconditionally is
+    excluded regardless.
+
+    Args:
+        line: The raw line, verbatim.
+        line_number: Its 1-based position, logged instead of the pattern
+            itself: the file comes from an agent-writable workspace, and
+            the position identifies the line for an operator without
+            echoing its content into the log.
+
+    Returns:
+        The rule, or ``None`` for a blank line, a comment, a pattern past
+        the matching-cost ceilings, or one that is not a valid regex (an
+        unbalanced ``[``, since bracket expressions pass through
+        unescaped).
     """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -113,7 +165,21 @@ def _compile(line: str) -> _Rule | None:
     cleaned = _clean(stripped[1:] if negated else stripped)
     if not cleaned:
         return None
-    return _Rule(pattern=re.compile(_translate(cleaned)), negated=negated)
+    if (breach := _too_costly(cleaned)) is not None:
+        logger.warning(
+            ENVIRONMENT_DOCKERIGNORE_LINE_SKIPPED, reason=breach, line=line_number
+        )
+        return None
+    try:
+        pattern = re.compile(_translate(cleaned))
+    except re.error:
+        logger.warning(
+            ENVIRONMENT_DOCKERIGNORE_LINE_SKIPPED,
+            reason="pattern_invalid",
+            line=line_number,
+        )
+        return None
+    return _Rule(pattern=pattern, negated=negated)
 
 
 def _self_and_parents(relative_path: str) -> tuple[str, ...]:
@@ -168,7 +234,11 @@ def parse_dockerignore(text: str) -> DockerignoreMatcher:
     Returns:
         A matcher over the file's rules, in file order.
     """
-    rules = tuple(rule for line in text.splitlines() if (rule := _compile(line)))
+    rules = tuple(
+        rule
+        for number, line in enumerate(text.splitlines(), start=1)
+        if (rule := _compile(line, number))
+    )
     return DockerignoreMatcher(rules)
 
 

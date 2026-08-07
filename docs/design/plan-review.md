@@ -307,7 +307,7 @@ so approval stays atomic).
 | `GET` | `/plans/{id}` | Fetch a plan |
 | `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
-| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise) |
+| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise). Expires the plan's parked `PLAN_REVIEW` approval in the same operation: left pending it would still be approvable, and the resume path would then fail the parent task over a plan that no longer exists |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |
@@ -347,8 +347,10 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 - On approve, the durable plan is loaded and rebuilt via `decomposition_from_plan`
   and dispatched through `coordinate(precomputed_plan=...)`. A dispatch failure
   (missing coordinator, missing task, missing plan, or a coordinator error) marks
-  the parent task `FAILED` so the stuck plan surfaces on the board and stays
-  re-runnable; the plan stays `APPROVED` because the decision stands.
+  the parent task `FAILED` so the stuck plan surfaces on the board, and moves the
+  plan to `FAILED` carrying the redacted cause. The decision stands, but the plan
+  does not: leaving it `APPROVED` would show a plan the operator greenlit with
+  nothing running under it and nothing saying why.
 - On reject, the parent task is cancelled and nothing builds.
 - The gate persists the plan before parking the approval; if the approval write
   fails, the filled plan is marked `FAILED` (carrying the reason) rather than

@@ -1,6 +1,7 @@
 ---
 description: Verifies Claude Code and OpenCode configuration parity; checks that changes to .claude/ or .opencode/ files maintain dual-tool compatibility
 mode: subagent
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow

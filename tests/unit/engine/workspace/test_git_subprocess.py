@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.git_env import GIT_HARDENING_OVERRIDES
+from synthorg.core.git_env import GIT_HARDENING_OVERRIDES, LOCAL_TRANSPORT_GIT_CONFIG
 from synthorg.engine.workspace._git_subprocess import (
     GIT_RC_BINARY_NOT_FOUND,
     GIT_RC_SPAWN_FAILED,
@@ -59,6 +59,22 @@ async def _spawn_env(**kwargs: object) -> dict[str, str]:
             **kwargs,  # type: ignore[arg-type]  # forwarded verbatim to the helper
         )
     return dict(run_mock.call_args.kwargs["env"])
+
+
+def _decoded_config(env: dict[str, str]) -> dict[str, str]:
+    """Read the ``GIT_CONFIG_*`` triplets back into the mapping git sees.
+
+    Decoding beats asserting on a fixed index: the pairs are rendered in
+    mapping order, so a positional assertion pins where a key landed
+    rather than that git receives it.
+
+    Returns:
+        Config keys mapped to their values, empty when no count is set.
+    """
+    count = int(env.get("GIT_CONFIG_COUNT", "0"))
+    return {
+        env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"] for i in range(count)
+    }
 
 
 class TestTheEnvironmentGitRunsUnder:
@@ -101,22 +117,30 @@ class TestTheEnvironmentGitRunsUnder:
         """
         env = await _spawn_env(config={"url.https://x:tok@h/.insteadOf": "https://h/"})
 
-        assert env["GIT_CONFIG_COUNT"] == "1"
-        assert env["GIT_CONFIG_KEY_0"] == "url.https://x:tok@h/.insteadOf"
-        assert env["GIT_CONFIG_VALUE_0"] == "https://h/"
+        assert _decoded_config(env)["url.https://x:tok@h/.insteadOf"] == "https://h/"
 
-    async def test_no_config_sets_no_count(self) -> None:
-        """A stray count with no keys makes git refuse the command outright."""
-        env = await _spawn_env()
+    async def test_the_file_transport_stays_reachable(self) -> None:
+        """An embedded workspace IS a bare repo at a local path.
 
-        assert "GIT_CONFIG_COUNT" not in env
+        ``GIT_PROTOCOL_FROM_USER=0`` drops the file transport to git's
+        ``user`` policy, which refuses it outright, so every clone, fetch
+        and push this path makes would fail ``rc=128``.
+        """
+        assert _decoded_config(await _spawn_env())["protocol.file.allow"] == "always"
+
+    async def test_a_caller_key_does_not_displace_the_transport_allowance(self) -> None:
+        """Both share one ``GIT_CONFIG_COUNT``; rendering twice loses one."""
+        decoded = _decoded_config(await _spawn_env(config={"http.version": "HTTP/1.1"}))
+
+        assert decoded["http.version"] == "HTTP/1.1"
+        assert decoded.keys() >= LOCAL_TRANSPORT_GIT_CONFIG.keys()
 
     async def test_the_config_survives_the_disabled_config_files(self) -> None:
         """``GIT_CONFIG_GLOBAL``/``NOSYSTEM`` cut the files, not this channel."""
         env = await _spawn_env(config={"http.version": "HTTP/1.1"})
 
         assert env["GIT_CONFIG_GLOBAL"] == os.devnull
-        assert env["GIT_CONFIG_KEY_0"] == "http.version"
+        assert _decoded_config(env)["http.version"] == "HTTP/1.1"
 
 
 async def test_falls_back_to_thread_when_loop_cannot_spawn() -> None:

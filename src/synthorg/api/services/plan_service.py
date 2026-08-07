@@ -28,7 +28,10 @@ from synthorg.core.domain_errors import (
     VersionConflictError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    RecordNotFoundError,
+)
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
     DELETABLE_STATUSES,
@@ -311,10 +314,18 @@ class PlanService:
 
         Raises:
             PlanNotDeletableError: The plan is dispatched or terminal.
+            RecordNotFoundError: The plan went between the caller's fetch
+                and this write. The audit line is the record that a plan
+                was destroyed, so it may only follow a delete that found
+                one; emitting it regardless would attest to a deletion
+                that did not happen.
             QueryError: Repository write failure.
         """
         self._require_deletable(existing)
-        await self._repo.delete(NotBlankStr(str(existing.id)))
+        deleted = await self._repo.delete(NotBlankStr(str(existing.id)))
+        if not deleted:
+            msg = f"plan {existing.id} no longer exists"
+            raise RecordNotFoundError(msg)
         logger.info(
             API_PLAN_DELETED,
             plan_id=str(existing.id),

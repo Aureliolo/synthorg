@@ -27,6 +27,7 @@ from synthorg.meta.chief_of_staff.models import (
 )
 from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import as_uuid, mock_of
 from tests._shared.work_pipeline import StubWorkPipeline
@@ -88,11 +89,31 @@ def _project_repo() -> Any:  # type: ignore[explicit-any]  # mock factory; see t
     return repo
 
 
+def _empty_tasks() -> TaskRepository:
+    """A task store holding nothing, for the paths that never join a project.
+
+    Returns:
+        A task repository whose ``query`` answers with no rows.
+    """
+    return mock_of[TaskRepository](query=_no_tasks)
+
+
+async def _no_tasks(spec: TaskFilterSpec, /, **_: object) -> tuple[Task, ...]:
+    """Answer every task query with nothing.
+
+    Returns:
+        An empty tuple.
+    """
+    assert spec.project is not None
+    return ()
+
+
 async def test_no_dispatch_port_fails_closed_before_intake() -> None:
     pipeline = StubWorkPipeline()
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
         work_pipeline=pipeline,
+        task_repo=_empty_tasks(),
         dispatch_port=None,
     )
     with pytest.raises(ServiceUnavailableError):
@@ -109,6 +130,7 @@ async def test_happy_path_intakes_and_backgrounds_a_plan_gated_item() -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
         work_pipeline=pipeline,
+        task_repo=_empty_tasks(),
         dispatch_port=port,
     )
     summary = await dispatcher.draft_plan(
@@ -132,6 +154,7 @@ async def test_named_project_that_exists_is_reused() -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=repo,
         work_pipeline=StubWorkPipeline(),
+        task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
     summary = await dispatcher.draft_plan(
@@ -149,6 +172,7 @@ async def test_absent_project_is_minted_objective_keyed() -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=repo,
         work_pipeline=StubWorkPipeline(),
+        task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
     summary = await dispatcher.draft_plan(
@@ -165,6 +189,7 @@ async def test_intake_failure_propagates() -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=_project_repo(),
         work_pipeline=pipeline,
+        task_repo=_empty_tasks(),
         dispatch_port=_RecordingPort(),
     )
     with pytest.raises(RuntimeError, match="intake rejected"):
@@ -188,6 +213,11 @@ class _LiveProjects:
         return self.projects.get(str(entity_id))
 
     async def create(self, project: Project) -> None:
+        # Yield between the check and the insert so a concurrent burst can
+        # actually interleave. Without it both halves run in one step on a
+        # single event loop, the losing creates never see the winner's row,
+        # and the race the burst test names is unreachable.
+        await asyncio.sleep(0)
         if str(project.id) in self.projects:
             msg = f"project {project.id} already exists"
             raise DuplicateRecordError(msg)
@@ -196,7 +226,10 @@ class _LiveProjects:
 
 
 def _dedupe_dispatcher(
-    store: _LiveProjects, window_seconds: float = 300.0
+    store: _LiveProjects,
+    window_seconds: float = 300.0,
+    *,
+    pipeline: StubWorkPipeline | None = None,
 ) -> ConversationalPlanDispatcher:
     async def _get_float(namespace: str, key: str) -> float:
         assert (namespace, key) == (
@@ -205,9 +238,17 @@ def _dedupe_dispatcher(
         )
         return window_seconds
 
+    spine = pipeline or StubWorkPipeline()
+
+    async def _query(spec: TaskFilterSpec, /, **_: object) -> tuple[Task, ...]:
+        # Served from what intake actually filed, so joining a project finds
+        # the run that project really has rather than a parallel fixture.
+        return tuple(task for task in spine.tasks if task.project == spec.project)
+
     return ConversationalPlanDispatcher(
         project_repo=mock_of[ProjectRepository](get=store.get, create=store.create),
-        work_pipeline=StubWorkPipeline(),
+        work_pipeline=spine,
+        task_repo=mock_of[TaskRepository](query=_query),
         dispatch_port=_RecordingPort(),
         config_resolver=mock_of[ConfigResolver](get_float=_get_float),
     )
@@ -241,6 +282,31 @@ class TestDuplicateWorkRequest:
         # believe they had filed two initiatives.
         assert first.reused_project is False
         assert second.reused_project is True
+
+    async def test_a_joined_request_files_no_second_run(self) -> None:
+        """One project with two decompositions is the fork, one level down.
+
+        Sharing the project is only half of it: a second objective in it
+        runs the same words through decomposition again, produces a second
+        plan for the same brief, and parks both for review.
+        """
+        pipeline = StubWorkPipeline()
+        dispatcher = _dedupe_dispatcher(_LiveProjects(), pipeline=pipeline)
+
+        first = await dispatcher.draft_plan(
+            conversation=_conversation(), args=_args(), work=_work(), now=_NOW
+        )
+        second = await dispatcher.draft_plan(
+            conversation=_conversation(),
+            args=_args(),
+            work=_work(),
+            now=_NOW + timedelta(seconds=15),
+        )
+
+        assert len(pipeline.calls) == 1
+        # And the operator is pointed at the run that does exist, not at a
+        # task id nothing filed.
+        assert second.task_id == first.task_id
 
     async def test_wording_that_only_differs_in_spacing_and_case_is_the_same(
         self,
@@ -410,8 +476,11 @@ class TestDuplicateWorkRequest:
     async def test_a_burst_of_identical_sends_files_one_request(self) -> None:
         """Concurrent, not sequential: the derived id is what settles the race.
 
-        Every send derives the same project id, so exactly one create wins
-        and the losers read the winner's row.
+        Every send derives the same project id, so exactly one create wins.
+        The losers cannot have read the winner's row before they tried, which
+        is what separates a burst from a re-send: the duplicate insert is
+        their first evidence the project exists, and only re-reading it there
+        joins them rather than forking a project each.
         """
         store = _LiveProjects()
         dispatcher = _dedupe_dispatcher(store)

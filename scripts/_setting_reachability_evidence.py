@@ -332,8 +332,13 @@ def _scan_module(path: Path, rel: str, scan: _Scan) -> None:
         sink.update(found.cold_start)
         sink.update(found.warm_only)
         # A declaration says what it reaches wherever it is written, so sitting
-        # in an assembly module does not weaken it.
-        scan.cold_start.update(found.cold_start)
+        # in an assembly module does not weaken it. A READ in one is not the
+        # same claim: it runs while the runtime is being assembled, which is
+        # not liveness, so it stays in the construction sink where the caller
+        # already treats it as such.
+        if not is_construction:
+            scan.cold_start.update(found.cold_start)
+        scan.cold_start.update(found.declarations)
         if not isinstance(node, ast.Call):
             continue
         if scope:
@@ -415,10 +420,18 @@ class _NodeEvidence:
     declaration, or a read with nowhere to fall back to. ``warm_only`` is a
     read that supplies a build-time fallback, which proves an operator can
     retarget a live component but not that a first write brings one up.
+
+    ``declarations`` is the subset of ``cold_start`` the reconciler acts on
+    wherever it is written, and it is tracked apart because only it may be
+    promoted out of a construction module. A read there runs while the
+    runtime is being assembled, so crediting it globally would let a
+    blank-default setting whose only other read carries a fallback report
+    LIVE off two reads that both need the component already up.
     """
 
     cold_start: set[tuple[str, str]] = field(default_factory=set)
     warm_only: set[tuple[str, str]] = field(default_factory=set)
+    declarations: set[tuple[str, str]] = field(default_factory=set)
 
 
 def _node_evidence(
@@ -452,7 +465,9 @@ def _node_evidence(
     if isinstance(node, ast.Call):
         keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg}
         if _is_spec_call(node):
-            found.cold_start.update(_declared_settings(keywords, names, pairs))
+            declared = _declared_settings(keywords, names, pairs)
+            found.cold_start.update(declared)
+            found.declarations.update(declared)
         else:
             sink.update(_call_evidence(node, names, pairs))
             # A bulk read names the namespace, not the key: it sweeps up every

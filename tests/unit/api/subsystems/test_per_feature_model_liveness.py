@@ -311,13 +311,23 @@ class TestEveryPerFeatureModelCanBeReplaced:
         # activations reads the cached SelfImprovementConfig, so a declared
         # key that nothing invalidates rebuilds the component from the value
         # the operator has just replaced, and reports it ACTIVE.
+        #
+        # Read through the subscriber's own public surface: that property is
+        # what the dispatcher registers against, so a subscriber that stopped
+        # returning the module constant would leave this passing against a set
+        # nothing subscribes to.
         from synthorg.settings.subscribers.meta_self_improvement_subscriber import (
-            _WATCHED,
+            MetaSelfImprovementSettingsSubscriber,
         )
+
+        watched = MetaSelfImprovementSettingsSubscriber(
+            make_app_state(),
+            mock_of[SettingsServiceProtocol](),
+        ).watched_keys
 
         for key in spec.settings:
             namespace, _, name = key.partition(".")
-            assert (namespace, name) in _WATCHED, (
+            assert (namespace, name) in watched, (
                 f"{spec.name} declares {key} but nothing invalidates the cached "
                 "config the rebuild reads, so the rebuild would use the old value"
             )

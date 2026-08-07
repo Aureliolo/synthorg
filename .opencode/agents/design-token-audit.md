@@ -1,6 +1,7 @@
 ---
 description: Audits web dashboard files for design token violations in animation (Motion transitions) and density/spacing (card padding, section gaps, grid gaps, banner padding)
 mode: subagent
+model: glm-4.7:cloud
 permission:
   Read: allow
   Grep: allow

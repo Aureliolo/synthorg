@@ -553,3 +553,18 @@ async def wire_plan_item_reply_service(
         raise SubsystemDeclinedError(msg)
     app_state.wire(EngineStateSlice, plan_item_reply_service=service)
     logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+
+
+async def unwire_plan_item_reply_service(app_state: AppState) -> None:
+    """Drop the reply service so the next pass rebuilds it.
+
+    The service bakes its provider driver in at construction, so replacing
+    the instance is what makes ``plan_review_reply_model`` live in both
+    directions: renaming or clearing the pair retargets a service that is
+    already answering, which the per-call live re-read cannot do because its
+    fallback is the build-time pair it is trying to leave.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    app_state.wire(EngineStateSlice, plan_item_reply_service=None)
+    logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="unwired")

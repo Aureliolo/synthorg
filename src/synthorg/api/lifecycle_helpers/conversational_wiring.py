@@ -459,6 +459,7 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     dispatcher = ConversationalPlanDispatcher(
         project_repo=backend.projects,
         work_pipeline=work_pipeline,
+        task_repo=backend.tasks,
         clock=app_state.clock,
         dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
         config_resolver=app_state.slice(SettingsStateSlice).config_resolver,

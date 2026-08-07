@@ -480,12 +480,12 @@ async def apply_delete(
         ``internal`` failure, which would lose the plan id the operator
         needs.
     """
-    plan_id = await plan_blocking_delete(persistence.plans, mutation.task_id)
-    if plan_id is not None:
+    blocking = await plan_blocking_delete(persistence.plans, mutation.task_id)
+    if blocking is not None:
         return TaskMutationResult(
             request_id=mutation.request_id,
             success=False,
-            error=delete_refusal_message(mutation.task_id, plan_id),
+            error=delete_refusal_message(mutation.task_id, blocking),
             error_code="parent_of_plan",
         )
     deleted = await persistence.tasks.delete(mutation.task_id)

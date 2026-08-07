@@ -34,6 +34,7 @@ plan, so approval and re-approval share one path.
 
 import asyncio
 from collections import Counter
+from collections.abc import Sequence
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,9 +44,11 @@ from synthorg.api.services._plan_revision import require_replannable
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -54,9 +57,11 @@ from synthorg.core.task_enums import (
     TaskStructure,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition.models import roster_from_agents
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PLAN_REPLANNED
 from synthorg.persistence.state import persistence_of
@@ -87,6 +92,45 @@ class RevisionInputs(BaseModel):
     )
 
 
+async def reject_unroutable_owners(
+    app_state: AppState, items: Sequence[PlanItem]
+) -> None:
+    """Refuse a revision that owns an item to a role the org does not staff.
+
+    Every path that hands the plan service new items runs this, because the
+    payload validator is a pure model and cannot see who the org employs: an
+    invented owner otherwise reaches review as an item nothing can be
+    dispatched to.
+
+    Args:
+        app_state: Application state carrying the HR slice.
+        items: The revised items.
+
+    Raises:
+        ServiceUnavailableError: The agent registry is not wired, so no
+            roster exists to check against. Refused rather than passed:
+            accepting the revision would assert that its owners route,
+            which is exactly what could not be established, and the empty
+            roster an unwired registry stands in for would equally reject
+            every owner. The error names the wiring gap so an operator is
+            not sent looking at their own input for the cause.
+        ValidationError: An item names a role no agent holds.
+    """
+    registry = app_state.slice(HrStateSlice).agent_registry
+    if registry is None:
+        msg = "Owner validation is unavailable: the agent registry is not wired."
+        raise ServiceUnavailableError(msg)
+    roster = roster_from_agents(await registry.list_active())
+    for item in items:
+        detail = describe_unroutable_role(
+            entity_id=item.id,
+            required_role=item.owner,
+            available_roles=roster,
+        )
+        if detail is not None:
+            raise ValidationError(detail)
+
+
 async def replan_initiative(
     app_state: AppState,
     existing: Plan,
@@ -113,11 +157,18 @@ async def replan_initiative(
     Raises:
         ConflictError: *existing* is not dispatched, so it is edited in place
             rather than replanned.
-        ValidationError: The revised items violate a plan invariant.
+        ServiceUnavailableError: No roster exists to validate the owners
+            against.
+        ValidationError: The revised items violate a plan invariant, or own
+            an item to a role the org does not staff.
     """
     # Reject before any write: an ineligible plan must fail with nothing
-    # persisted and nothing retired.
+    # persisted and nothing retired. The owners are checked in the same
+    # breath and for the same reason, and here rather than in the
+    # controller because the automatic replan trigger enters through this
+    # function too, with items no human reviewed.
     require_replannable(existing)
+    await reject_unroutable_owners(app_state, revision.items)
     service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
     # Persist the successor before retiring anything. A failed insert here
     # leaves *existing* EXECUTING and its work running, so the operator retries
