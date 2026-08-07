@@ -7,15 +7,17 @@ setting changes. Reuses ``config_apply._apply_notification_dispatcher_config``
 takes effect without a restart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -61,17 +63,16 @@ class NotificationsBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "notifications-bridge-config"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Rebuild the dispatcher with the operator-tuned timeouts / URLs."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Rebuild the dispatcher with the operator-tuned timeouts / URLs.
+
+        One rebuild per batch: the dispatcher is rebuilt from every watched
+        key, so repeating it per key would rebuild the same dispatcher
+        several times.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+        """
         from synthorg.api.lifecycle_helpers.config_apply import (  # noqa: PLC0415
             _apply_notification_dispatcher_config,
         )
@@ -83,8 +84,7 @@ class NotificationsBridgeSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="notifications_dispatcher",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

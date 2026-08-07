@@ -8,6 +8,8 @@ the hot-reload counterpart, and shares its fail-safe-to-enabled discipline (a
 resolver outage must never silently disable timeout enforcement).
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -52,7 +54,16 @@ class EngineTimeoutEnforcementSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "engine-timeout-enforcement"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Push each changed flag into the timeout-enforcement cache.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the flag and push it into the timeout-enforcement cache."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

@@ -109,7 +109,7 @@ class TestObservabilitySubscriberRebuild:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", key)
+            await sub.on_settings_changed([("observability", key)])
             mock_configure.assert_called_once()
 
     async def test_passes_correct_root_level(self) -> None:
@@ -117,7 +117,7 @@ class TestObservabilitySubscriberRebuild:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "root_log_level")
+            await sub.on_settings_changed([("observability", "root_log_level")])
             call_kwargs = mock_configure.call_args
             config = call_kwargs[0][0]
             assert config.root_level.value == "WARNING"
@@ -128,8 +128,7 @@ class TestObservabilitySubscriberRebuild:
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
             await sub.on_settings_changed(
-                "observability",
-                "enable_correlation",
+                [("observability", "enable_correlation")],
             )
             config = mock_configure.call_args[0][0]
             assert config.enable_correlation is False
@@ -142,7 +141,7 @@ class TestObservabilitySubscriberRebuild:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "custom_sinks")
+            await sub.on_settings_changed([("observability", "custom_sinks")])
             call_kwargs = mock_configure.call_args
             routing = call_kwargs[1]["routing_overrides"]
             assert "custom.log" in routing
@@ -165,7 +164,7 @@ class TestObservabilitySubscriberErrorHandling:
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
             # Should not raise -- error is caught internally
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
             mock_configure.assert_not_called()
 
     async def test_validation_failure_preserves_config(self) -> None:
@@ -173,7 +172,7 @@ class TestObservabilitySubscriberErrorHandling:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
             mock_configure.assert_not_called()
 
     async def test_configure_logging_failure_does_not_raise(self) -> None:
@@ -183,14 +182,14 @@ class TestObservabilitySubscriberErrorHandling:
             side_effect=RuntimeError("Critical sink failed"),
         ):
             # Should not raise -- error is caught internally
-            await sub.on_settings_changed("observability", "root_log_level")
+            await sub.on_settings_changed([("observability", "root_log_level")])
 
     async def test_invalid_root_level_preserves_config(self) -> None:
         sub, _ = _make_subscriber(root_log_level="verbose")
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "root_log_level")
+            await sub.on_settings_changed([("observability", "root_log_level")])
             mock_configure.assert_not_called()
 
 
@@ -199,17 +198,17 @@ class TestObservabilitySubscriberErrorHandling:
 
 @pytest.mark.unit
 class TestObservabilitySubscriberNamespaceGuard:
-    """Ignores unexpected namespaces."""
+    """Declares only the namespace it rebuilds from.
 
-    async def test_ignores_unexpected_namespace(self) -> None:
-        sub, settings_service = _make_subscriber()
-        with patch(
-            "synthorg.settings.subscribers.observability_subscriber.configure_logging",
-        ) as mock_configure:
-            await sub.on_settings_changed("budget", "total_monthly")
-            mock_configure.assert_not_called()
-            # Should not have read any settings
-            settings_service.get.assert_not_awaited()
+    Filtering a batch to a subscriber's watched pairs is the dispatcher's job
+    and is asserted there; what is left here is that the declared set names no
+    other namespace, since a rebuild reads the observability namespace whole.
+    """
+
+    def test_declares_no_other_namespace(self) -> None:
+        sub, _ = _make_subscriber()
+
+        assert {namespace for namespace, _ in sub.watched_keys} == {"observability"}
 
 
 # ── Idempotency ──────────────────────────────────────────────────
@@ -224,8 +223,8 @@ class TestObservabilitySubscriberIdempotency:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "sink_overrides")
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
+            await sub.on_settings_changed([("observability", "sink_overrides")])
             assert mock_configure.call_count == 2
 
 
@@ -248,7 +247,7 @@ class TestObservabilitySubscriberCorrelationValidation:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "enable_correlation")
+            await sub.on_settings_changed([("observability", "enable_correlation")])
             mock_configure.assert_not_called()
 
     async def test_true_string_accepted(self) -> None:
@@ -256,7 +255,7 @@ class TestObservabilitySubscriberCorrelationValidation:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "enable_correlation")
+            await sub.on_settings_changed([("observability", "enable_correlation")])
             config = mock_configure.call_args[0][0]
             assert config.enable_correlation is True
 
@@ -265,7 +264,7 @@ class TestObservabilitySubscriberCorrelationValidation:
         with patch(
             "synthorg.settings.subscribers.observability_subscriber.configure_logging",
         ) as mock_configure:
-            await sub.on_settings_changed("observability", "enable_correlation")
+            await sub.on_settings_changed([("observability", "enable_correlation")])
             config = mock_configure.call_args[0][0]
             assert config.enable_correlation is False
 
@@ -281,7 +280,7 @@ class TestObservabilitySubscriberFatalErrors:
         sub, settings_service = _make_subscriber()
         settings_service.get = AsyncMock(side_effect=MemoryError)
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
 
     async def test_recursion_error_from_build_propagates(self) -> None:
         sub, _ = _make_subscriber()
@@ -293,7 +292,7 @@ class TestObservabilitySubscriberFatalErrors:
             ),
             pytest.raises(RecursionError),
         ):
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
 
     async def test_memory_error_from_configure_propagates(self) -> None:
         sub, _ = _make_subscriber()
@@ -305,7 +304,7 @@ class TestObservabilitySubscriberFatalErrors:
             ),
             pytest.raises(MemoryError),
         ):
-            await sub.on_settings_changed("observability", "sink_overrides")
+            await sub.on_settings_changed([("observability", "sink_overrides")])
 
 
 # -- Rebuild lock --------------------------------------------------

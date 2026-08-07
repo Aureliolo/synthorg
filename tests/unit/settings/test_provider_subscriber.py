@@ -87,7 +87,7 @@ class TestProviderSubscriberRebuild:
     async def test_routing_strategy_change_swaps_router(self) -> None:
         sub, state = _make_subscriber()
         old_router = state.slice(ProvidersStateSlice).model_router
-        await sub.on_settings_changed("providers", "routing_strategy")
+        await sub.on_settings_changed([("providers", "routing_strategy")])
         assert state.slice(ProvidersStateSlice).model_router is not old_router
 
     async def test_rebuild_failure_propagates(self) -> None:
@@ -98,7 +98,7 @@ class TestProviderSubscriberRebuild:
         old_router = state.slice(ProvidersStateSlice).model_router
         # Error propagates (dispatcher catches it for logging)
         with pytest.raises(UnknownRoutingStrategyError):
-            await sub.on_settings_changed("providers", "routing_strategy")
+            await sub.on_settings_changed([("providers", "routing_strategy")])
         # Old router is still in place (swap never called)
         assert state.slice(ProvidersStateSlice).model_router is old_router
 
@@ -128,7 +128,7 @@ class TestProviderSubscriberRebuild:
             app_state=state,
             settings_service=mock_of[SettingsService](),
         )
-        await sub.on_settings_changed("providers", "retry_max_attempts")
+        await sub.on_settings_changed([("providers", "retry_max_attempts")])
         assert state.slice(ProvidersStateSlice).registry is not old_registry
         resolver.get_int.assert_awaited_once_with("providers", "retry_max_attempts")
         # The running engine captured the old registry; the runtime rebuild is
@@ -160,7 +160,7 @@ class TestProviderSubscriberRebuild:
             app_state=state,
             settings_service=mock_of[SettingsService](),
         )
-        await sub.on_settings_changed("providers", "retry_max_attempts")
+        await sub.on_settings_changed([("providers", "retry_max_attempts")])
         assert state.slice(ProvidersStateSlice).registry is cassette_registry
         resolver.get_int.assert_not_awaited()
 
@@ -185,7 +185,7 @@ class TestProviderSubscriberRebuild:
             settings_service=mock_of[SettingsService](),
         )
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("providers", "retry_max_attempts")
+            await sub.on_settings_changed([("providers", "retry_max_attempts")])
         assert state.slice(ProvidersStateSlice).registry is old_registry
 
     async def test_runtime_reload_failure_rolls_back_registry(
@@ -228,7 +228,7 @@ class TestProviderSubscriberRebuild:
             settings_service=mock_of[SettingsService](),
         )
         with pytest.raises(RuntimeError, match="reload boom"):
-            await sub.on_settings_changed("providers", "retry_max_attempts")
+            await sub.on_settings_changed([("providers", "retry_max_attempts")])
         # Swap rolled back to the original registry, and the runtime was
         # re-healed (a second reload) so engine + slice stay consistent.
         assert state.slice(ProvidersStateSlice).registry is old_registry
@@ -277,7 +277,7 @@ class TestProviderSubscriberRebuild:
             settings_service=mock_of[SettingsService](),
         )
         with pytest.raises(RuntimeError, match="reload boom"):
-            await sub.on_settings_changed("providers", "retry_max_attempts")
+            await sub.on_settings_changed([("providers", "retry_max_attempts")])
         # Rolled back to the unset state, not left on the swapped registry.
         assert state.slice(ProvidersStateSlice).registry is None
         # The two reloads are distinguishable in the logs: the rollback names
@@ -294,5 +294,5 @@ class TestProviderSubscriberRebuild:
         sub, state = _make_subscriber(settings_service=svc)
         old_router = state.slice(ProvidersStateSlice).model_router
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("providers", "routing_strategy")
+            await sub.on_settings_changed([("providers", "routing_strategy")])
         assert state.slice(ProvidersStateSlice).model_router is old_router

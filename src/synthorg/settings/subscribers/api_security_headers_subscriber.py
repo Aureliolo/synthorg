@@ -10,6 +10,8 @@ this subscriber re-invokes the same idempotent resolver so a change takes
 effect within the eventual-consistency window of one in-flight response.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -62,7 +64,16 @@ class ApiSecurityHeadersSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "api-security-headers"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-apply the header configuration for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Re-resolve and re-apply the CSP origins + error-docs base URL."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

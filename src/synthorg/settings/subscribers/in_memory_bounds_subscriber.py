@@ -13,6 +13,8 @@ what is accepted next, so lowering it lets the backlog drain rather than
 dropping accepted mutations.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
@@ -78,7 +80,17 @@ class InMemoryBoundsSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "in-memory-bounds"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed bound to its matching buffer.
+
+        Args:
+            changes: The watched writes to apply. Each names a different
+                buffer, so the batch is applied one key at a time.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Resolve the new bound and apply it to the matching buffer.
 
         Raises:

@@ -74,12 +74,12 @@ class TestApply:
     async def test_delay_applies_to_subscriber(self) -> None:
         notify = mock_of[EscalationNotifySubscriber]()
         sub = _make_subscriber(notify_subscriber=notify, float_return=4.0)
-        await sub.on_settings_changed("communication", _KEY)
+        await sub.on_settings_changed([("communication", _KEY)])
         notify.set_reconnect_delay_seconds.assert_called_once_with(4.0)
 
     async def test_absent_subscriber_is_silent_noop(self) -> None:
         sub = _make_subscriber(notify_subscriber=None)
-        await sub.on_settings_changed("communication", _KEY)
+        await sub.on_settings_changed([("communication", _KEY)])
 
     async def test_resolver_failure_reraises(self) -> None:
         notify = mock_of[EscalationNotifySubscriber]()
@@ -88,11 +88,11 @@ class TestApply:
             float_side_effect=RuntimeError("resolver outage"),
         )
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("communication", _KEY)
+            await sub.on_settings_changed([("communication", _KEY)])
         notify.set_reconnect_delay_seconds.assert_not_called()
 
     async def test_unknown_key_is_noop(self) -> None:
         notify = mock_of[EscalationNotifySubscriber]()
         sub = _make_subscriber(notify_subscriber=notify)
-        await sub.on_settings_changed("communication", "unrelated")
+        await sub.on_settings_changed([("communication", "unrelated")])
         notify.set_reconnect_delay_seconds.assert_not_called()

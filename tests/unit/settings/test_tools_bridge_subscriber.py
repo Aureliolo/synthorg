@@ -77,7 +77,7 @@ class TestApply:
         snapshot = ToolsBridgeConfig(docker_sidecar_cpu_limit=1.5)
         sub, app_state = _make_subscriber(snapshot=snapshot)
 
-        await sub.on_settings_changed("tools", _WATCHED_KEY)
+        await sub.on_settings_changed([("tools", _WATCHED_KEY)])
 
         assert app_state.bridge_config.tools is snapshot
         cache_spy.assert_called_once_with(snapshot)
@@ -91,16 +91,15 @@ class TestApply:
         prior = app_state.bridge_config.tools
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("tools", _WATCHED_KEY)
+            await sub.on_settings_changed([("tools", _WATCHED_KEY)])
 
         assert app_state.bridge_config.tools is prior
         cache_spy.assert_not_called()
 
-    async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        cache_spy = MagicMock()
-        monkeypatch.setattr(tools_sub_mod, "set_resolved_sidecar_limits", cache_spy)
-        sub, app_state = _make_subscriber()
-        prior = app_state.bridge_config.tools
-        await sub.on_settings_changed("tools", "unrelated")
-        assert app_state.bridge_config.tools is prior
-        cache_spy.assert_not_called()
+    def test_an_unwatched_key_is_not_declared(self) -> None:
+        # Filtering a batch to a subscriber's watched pairs is the
+        # dispatcher's job and is asserted there; what is left here is that
+        # the declared set does not reach beyond what the swap needs.
+        sub, _ = _make_subscriber()
+
+        assert ("tools", "unrelated") not in sub.watched_keys

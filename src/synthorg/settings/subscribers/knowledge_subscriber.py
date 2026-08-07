@@ -21,6 +21,8 @@ The master switch ``knowledge.enabled`` and the ``/ask`` gate
 request at the knowledge MCP handlers, so they need no rebuild.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -28,6 +30,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -77,27 +80,28 @@ class KnowledgeSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
         """Rebuild the knowledge service from current settings and swap it in.
 
+        One rebuild per batch: the service is rebuilt from every watched key,
+        so repeating it per key would rebuild the same service several times.
+
         Args:
-            namespace: Changed setting namespace.
-            key: Changed setting key.
+            changes: The watched writes this rebuild carries.
         """
         from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
             _build_and_wire_knowledge,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
+        trigger = describe_changes(changes)
         registry = self._app_state.slice(ProvidersStateSlice).registry
         if registry is None:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=trigger,
                 note="no provider registry wired; rebuild deferred to boot wiring",
             )
             return
@@ -112,8 +116,7 @@ class KnowledgeSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="knowledge_service",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=trigger,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -121,7 +124,6 @@ class KnowledgeSettingsSubscriber:
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
-            namespace=namespace,
-            key=key,
+            trigger=trigger,
             note="knowledge service rebuilt and swapped",
         )

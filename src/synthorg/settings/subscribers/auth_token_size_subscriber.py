@@ -6,6 +6,8 @@ working: the width governs how the next one is minted, not how an
 existing one is read.
 """
 
+from collections.abc import Sequence
+
 from synthorg.core.auth.token_size import set_auth_token_bytes
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -42,7 +44,16 @@ class AuthTokenSizeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "auth-token-size-settings"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed width to subsequently minted tokens.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Apply the new width to subsequently minted tokens.
 
         A rejected value leaves the previous width in force rather than

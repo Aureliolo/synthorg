@@ -79,7 +79,7 @@ class TestRebuild:
             build,
         )
         sub = ResearchSettingsSubscriber(app_state=state, settings_service=settings)
-        await sub.on_settings_changed("research", "model")
+        await sub.on_settings_changed([("research", "model")])
         build.assert_awaited_once()
         call = build.await_args
         assert call is not None
@@ -98,7 +98,7 @@ class TestRebuild:
             build,
         )
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("research", "synthesizer")
+        await sub.on_settings_changed([("research", "synthesizer")])
         build.assert_not_awaited()
 
     async def test_rebuild_failure_propagates(
@@ -112,7 +112,7 @@ class TestRebuild:
         )
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("research", "model")
+            await sub.on_settings_changed([("research", "model")])
 
     async def test_memory_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
@@ -125,4 +125,4 @@ class TestRebuild:
         )
         sub = _make_subscriber(state)
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("research", "model")
+            await sub.on_settings_changed([("research", "model")])

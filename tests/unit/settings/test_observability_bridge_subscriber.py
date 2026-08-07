@@ -99,7 +99,7 @@ class TestApply:
         snapshot = ObservabilityBridgeConfig(http_batch_size=250)
         sub, app_state = _make_subscriber(snapshot=snapshot)
 
-        await sub.on_settings_changed("observability", _HTTP_KEY)
+        await sub.on_settings_changed([("observability", _HTTP_KEY)])
 
         assert app_state.bridge_config.observability is snapshot
         http_spy.assert_called_once_with(snapshot)
@@ -112,7 +112,7 @@ class TestApply:
         snapshot = ObservabilityBridgeConfig(audit_chain_signing_timeout_seconds=7.5)
         sub, app_state = _make_subscriber(snapshot=snapshot)
 
-        await sub.on_settings_changed("observability", _SIGNING_KEY)
+        await sub.on_settings_changed([("observability", _SIGNING_KEY)])
 
         assert app_state.bridge_config.observability is snapshot
         http_spy.assert_called_once_with(snapshot)
@@ -126,19 +126,16 @@ class TestApply:
         prior = app_state.bridge_config.observability
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("observability", _SIGNING_KEY)
+            await sub.on_settings_changed([("observability", _SIGNING_KEY)])
 
         assert app_state.bridge_config.observability is prior
         http_spy.assert_not_called()
         signing_spy.assert_not_awaited()
 
-    async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        http_spy, signing_spy = _patch_apply(monkeypatch)
-        sub, app_state = _make_subscriber()
-        prior = app_state.bridge_config.observability
+    def test_an_unwatched_key_is_not_declared(self) -> None:
+        # Filtering a batch to a subscriber's watched pairs is the
+        # dispatcher's job and is asserted there; what is left here is that
+        # the declared set does not reach beyond what the swap needs.
+        sub, _ = _make_subscriber()
 
-        await sub.on_settings_changed("observability", "unrelated")
-
-        assert app_state.bridge_config.observability is prior
-        http_spy.assert_not_called()
-        signing_spy.assert_not_awaited()
+        assert ("observability", "unrelated") not in sub.watched_keys

@@ -74,7 +74,7 @@ class TestRebuild:
         reload = AsyncMock()
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("simulations", "intake_strategy")
+        await sub.on_settings_changed([("simulations", "intake_strategy")])
         reload.assert_awaited_once_with(
             state, trigger="setting:simulations.intake_strategy"
         )
@@ -86,7 +86,7 @@ class TestRebuild:
         reload = AsyncMock()
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
-        await sub.on_settings_changed("simulations", "intake_strategy")
+        await sub.on_settings_changed([("simulations", "intake_strategy")])
         reload.assert_not_awaited()
 
     async def test_reload_failure_propagates(
@@ -97,7 +97,7 @@ class TestRebuild:
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="reload boom"):
-            await sub.on_settings_changed("simulations", "review_pipeline_strategy")
+            await sub.on_settings_changed([("simulations", "review_pipeline_strategy")])
 
     async def test_memory_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
@@ -107,4 +107,4 @@ class TestRebuild:
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("simulations", "intake_model")
+            await sub.on_settings_changed([("simulations", "intake_model")])

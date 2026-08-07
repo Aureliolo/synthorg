@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+from collections.abc import Sequence
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -11,7 +12,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_OBSERVABILITY_PIPELINE_REBUILT,
     SETTINGS_OBSERVABILITY_REBUILD_FAILED,
     SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.observability.setup import configure_logging
 from synthorg.observability.sink_config_builder import (
@@ -20,6 +20,7 @@ from synthorg.observability.sink_config_builder import (
 )
 from synthorg.settings.models import SettingValue
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -77,30 +78,19 @@ class ObservabilitySettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
-        """Handle an observability setting change.
+        """Handle a batch of observability setting changes.
 
-        Acquires the rebuild lock to serialize concurrent rebuilds,
-        then delegates to :meth:`_rebuild_pipeline`.
+        Acquires the rebuild lock to serialize concurrent rebuilds, then
+        delegates to :meth:`_rebuild_pipeline`. One rebuild per batch: the
+        rebuild re-reads all four settings regardless of which changed.
 
         Args:
-            namespace: Changed setting namespace.
-            key: Changed setting key.
+            changes: The watched writes this rebuild carries.
         """
-        if namespace != "observability":
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected namespace",
-            )
-            return
-
         async with self._rebuild_lock:
-            await self._rebuild_pipeline(key)
+            await self._rebuild_pipeline(describe_changes(changes))
 
     async def _read_all_settings(self) -> tuple[SettingValue, ...]:
         """Read all 4 observability settings in parallel.
@@ -124,7 +114,7 @@ class ObservabilitySettingsSubscriber:
     def _parse_and_build(
         self,
         results: tuple[SettingValue, ...],
-        key: str,
+        trigger: str,
     ) -> SinkBuildResult | None:
         """Parse settings and build log config.
 
@@ -141,7 +131,7 @@ class ObservabilitySettingsSubscriber:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
-                key=key,
+                trigger=trigger,
                 note=f"invalid root_log_level: {root_result.value!r}",
             )
             return None
@@ -151,7 +141,7 @@ class ObservabilitySettingsSubscriber:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
-                key=key,
+                trigger=trigger,
                 note=f"invalid enable_correlation: {corr_result.value!r}",
             )
             return None
@@ -170,7 +160,7 @@ class ObservabilitySettingsSubscriber:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
-                key=key,
+                trigger=trigger,
                 note="invalid sink configuration -- keeping existing config",
             )
             return None
@@ -178,7 +168,7 @@ class ObservabilitySettingsSubscriber:
     def _apply_config(
         self,
         build_result: SinkBuildResult,
-        key: str,
+        trigger: str,
     ) -> None:
         """Call ``configure_logging`` with stderr fallback on failure."""
         routing = build_result.routing_overrides or None
@@ -192,13 +182,13 @@ class ObservabilitySettingsSubscriber:
             # Pipeline may be degraded -- stderr as fallback.
             sys.stderr.write(
                 f"WARNING: configure_logging failed during hot reload "
-                f"for key={key!r}; logging may be degraded\n",
+                f"after {trigger!r}; logging may be degraded\n",
             )
             sys.stderr.flush()
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,
-                key=key,
+                trigger=trigger,
                 note=(
                     "configure_logging failed -- old pipeline was already "
                     "torn down; logging may be degraded"
@@ -209,13 +199,17 @@ class ObservabilitySettingsSubscriber:
         logger.info(
             SETTINGS_OBSERVABILITY_PIPELINE_REBUILT,
             subscriber=self.subscriber_name,
-            key=key,
+            trigger=trigger,
             sink_count=len(build_result.config.sinks),
             custom_routing_count=len(build_result.routing_overrides),
         )
 
-    async def _rebuild_pipeline(self, key: str) -> None:
-        """Full pipeline rebuild: read, parse, build, apply."""
+    async def _rebuild_pipeline(self, trigger: str) -> None:
+        """Full pipeline rebuild: read, parse, build, apply.
+
+        Args:
+            trigger: The batch that prompted the rebuild, for the logs.
+        """
         try:
             results = await self._read_all_settings()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -223,13 +217,13 @@ class ObservabilitySettingsSubscriber:
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,
-                key=key,
+                trigger=trigger,
                 note="failed to read settings",
             )
             return
 
-        build_result = self._parse_and_build(results, key)
+        build_result = self._parse_and_build(results, trigger)
         if build_result is None:
             return
 
-        self._apply_config(build_result, key)
+        self._apply_config(build_result, trigger)

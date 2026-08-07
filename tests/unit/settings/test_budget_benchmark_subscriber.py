@@ -75,7 +75,7 @@ class TestRebuild:
         rebuild.side_effect = _record_rebuild
         reload.side_effect = _record_reload
         sub, app_state = _make_subscriber()
-        await sub.on_settings_changed("budget", "benchmark_provider")
+        await sub.on_settings_changed([("budget", "benchmark_provider")])
         rebuild.assert_awaited_once_with(app_state)
         reload.assert_awaited_once_with(
             app_state, trigger="setting:budget.benchmark_provider"
@@ -85,12 +85,13 @@ class TestRebuild:
         # just that both fired.
         assert calls == ["rebuild", "reload"]
 
-    async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rebuild, reload = _patch_calls(monkeypatch)
+    def test_an_unwatched_key_is_not_declared(self) -> None:
+        # Filtering a batch to a subscriber's watched pairs is the
+        # dispatcher's job and is asserted there; what is left here is that
+        # the declared set does not reach beyond what the rebuild needs.
         sub, _ = _make_subscriber()
-        await sub.on_settings_changed("budget", "unrelated")
-        rebuild.assert_not_awaited()
-        reload.assert_not_awaited()
+
+        assert ("budget", "unrelated") not in sub.watched_keys
 
     async def test_rebuild_failure_reraises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -99,4 +100,4 @@ class TestRebuild:
         rebuild.side_effect = RuntimeError("provider boom")
         sub, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="provider boom"):
-            await sub.on_settings_changed("budget", "model_tier_overrides")
+            await sub.on_settings_changed([("budget", "model_tier_overrides")])

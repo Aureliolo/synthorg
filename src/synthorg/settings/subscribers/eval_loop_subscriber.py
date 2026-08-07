@@ -12,6 +12,8 @@ enable / interval / window knobs are re-read live per tick by the scheduler and
 need no subscriber.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -19,6 +21,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -58,8 +61,15 @@ class EvalLoopSettingsSubscriber:
         """Human-readable subscriber name for logging."""
         return "eval-loop-settings"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-resolve + swap the eval-loop pattern strategies."""
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve + swap the eval-loop pattern strategies.
+
+        One swap per batch: the reload re-reads every watched key, so
+        repeating it per key would swap in the same strategies several times.
+
+        Args:
+            changes: The watched writes this swap carries.
+        """
         from synthorg.api.lifecycle_helpers.eval_loop_wiring import (  # noqa: PLC0415
             reload_eval_loop_pattern_strategies,
         )
@@ -75,8 +85,7 @@ class EvalLoopSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="eval_loop_pattern_strategies",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

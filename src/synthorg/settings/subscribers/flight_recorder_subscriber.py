@@ -6,6 +6,8 @@ engine holds. The sink picks its delegate per batch, so enabling recording or
 switching strategy applies to the next agent run with nothing rebuilt.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice
@@ -55,7 +57,16 @@ class FlightRecorderSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "flight-recorder"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve the recorder configuration for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Re-resolve the recorder configuration onto the live sink.
 
         Raises:

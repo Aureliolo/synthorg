@@ -99,6 +99,43 @@ _CHARTER_SCALAR_FIELDS: tuple[str, ...] = (
 )
 
 
+# ``code_modification_enabled`` is overlaid but deliberately not published as
+# watchable. Nothing should make it take effect faster than the load path,
+# which re-reads the credentials on every parse and forces the flag back off
+# when they are absent.
+_UNWATCHABLE: frozenset[tuple[str, str]] = frozenset(
+    {(SettingNamespace.SELF_IMPROVEMENT.value, "code_modification_enabled")}
+)
+
+
+def overlaid_setting_keys() -> frozenset[tuple[str, str]]:
+    """Return every ``(namespace, key)`` whose value this overlay reads.
+
+    The cache of the config this overlay builds is only as live as the set of
+    settings that invalidate it, so that set is derived from the field tuples
+    the overlay itself iterates rather than restated by each consumer. A key
+    added to one of those tuples becomes watched by construction.
+
+    Returns:
+        The watchable ``(namespace, key)`` pairs the overlay consumes.
+    """
+    si = SettingNamespace.SELF_IMPROVEMENT.value
+    cos = SettingNamespace.CHIEF_OF_STAFF.value
+    charter = SettingNamespace.CHARTER.value
+    return (
+        frozenset(
+            {(si, key) for key in _SI_BOOL_FIELDS}
+            | {(si, "tool_creation_allowed_capabilities")}
+            | {(cos, key) for key in _COS_BOOL_FIELDS}
+            | {(cos, key) for key in _COS_MODEL_FIELDS}
+            | {(cos, key) for key in _COS_SCALAR_FIELDS}
+            | {(charter, key) for key in _CHARTER_MODEL_FIELDS}
+            | {(charter, key) for key in _CHARTER_SCALAR_FIELDS}
+        )
+        - _UNWATCHABLE
+    )
+
+
 def _as_bool(value: str) -> bool:
     """Coerce a stored setting string to a boolean.
 

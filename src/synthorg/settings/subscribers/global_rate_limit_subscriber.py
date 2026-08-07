@@ -5,6 +5,7 @@ Rebuilds ``RateLimitConfig`` from current values and swaps it into
 stores are untouched, so windows already in flight keep counting.
 """
 
+from collections.abc import Sequence
 from typing import cast
 
 from synthorg.api.state import AppState
@@ -21,6 +22,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -67,13 +69,17 @@ class GlobalRateLimitSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "global-rate-limit-settings"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
         """Rebuild the whole tier config and swap it in.
 
         Rebuilding every field rather than patching the changed one keeps
         the cross-tier invariant intact: the floor must stay at or above
         both user-gated caps, and validating a whole config is the only
-        way to catch a change that breaks it.
+        way to catch a change that breaks it. That also makes the batch one
+        rebuild: every key in it is already re-read by the one below.
+
+        Args:
+            changes: The watched writes this rebuild carries.
 
         Raises:
             Exception: Re-raised after logging so the dispatcher records
@@ -100,7 +106,7 @@ class GlobalRateLimitSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="global_rate_limit_config",
-                trigger_key=f"{namespace}.{key}",
+                trigger_key=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -109,7 +115,7 @@ class GlobalRateLimitSettingsSubscriber:
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
-            trigger_key=f"{namespace}.{key}",
+            trigger_key=describe_changes(changes),
             note="global rate-limit tiers rebuilt and swapped",
         )
 

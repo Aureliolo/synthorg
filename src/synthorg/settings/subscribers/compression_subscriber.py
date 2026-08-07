@@ -7,6 +7,8 @@ same object, so mutating it is what the threshold takes to change without
 rebuilding the app.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -51,7 +53,16 @@ class CompressionSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "compression-threshold"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed threshold to the live config.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Resolve the new threshold and apply it to the live config.
 
         Raises:

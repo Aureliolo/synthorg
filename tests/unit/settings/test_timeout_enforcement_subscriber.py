@@ -64,7 +64,7 @@ class TestApply:
         spy = MagicMock()
         monkeypatch.setattr(timeout_mod, "set_timeout_enforcement_enabled", spy)
         sub = _make_subscriber(bool_return=False)
-        await sub.on_settings_changed("engine", "timeout_enforcement_enabled")
+        await sub.on_settings_changed([("engine", "timeout_enforcement_enabled")])
         spy.assert_called_once_with(value=False)
 
     async def test_resolver_failure_forces_enabled_and_raises(
@@ -74,7 +74,7 @@ class TestApply:
         monkeypatch.setattr(timeout_mod, "set_timeout_enforcement_enabled", spy)
         sub = _make_subscriber(bool_side_effect=RuntimeError("resolver outage"))
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("engine", "timeout_enforcement_enabled")
+            await sub.on_settings_changed([("engine", "timeout_enforcement_enabled")])
         # Fail-safe: enforcement is forced back ON, never left disabled.
         spy.assert_called_once_with(value=True)
 
@@ -82,5 +82,5 @@ class TestApply:
         spy = MagicMock()
         monkeypatch.setattr(timeout_mod, "set_timeout_enforcement_enabled", spy)
         sub = _make_subscriber()
-        await sub.on_settings_changed("engine", "unrelated")
+        await sub.on_settings_changed([("engine", "unrelated")])
         spy.assert_not_called()

@@ -11,6 +11,8 @@ Additional ``ApiBridgeConfig`` fields can be appended to ``_WATCHED`` when
 their consumers read the snapshot rather than a boot value.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -93,9 +95,17 @@ class ApiBridgeSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
+        """Swap the bridge-config snapshot for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the new value and swap the bridge-config snapshot."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

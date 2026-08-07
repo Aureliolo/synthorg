@@ -63,14 +63,14 @@ class TestReapply:
         spy = create_autospec(startup_steps.resolve_runtime_security_settings)
         monkeypatch.setattr(startup_steps, "resolve_runtime_security_settings", spy)
         sub, app_state = _make_subscriber()
-        await sub.on_settings_changed("api", key)
+        await sub.on_settings_changed([("api", key)])
         spy.assert_awaited_once_with(app_state)
 
     async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         spy = create_autospec(startup_steps.resolve_runtime_security_settings)
         monkeypatch.setattr(startup_steps, "resolve_runtime_security_settings", spy)
         sub, _ = _make_subscriber()
-        await sub.on_settings_changed("api", "unrelated")
+        await sub.on_settings_changed([("api", "unrelated")])
         spy.assert_not_awaited()
 
     async def test_resolve_failure_reraises(
@@ -81,4 +81,4 @@ class TestReapply:
         monkeypatch.setattr(startup_steps, "resolve_runtime_security_settings", spy)
         sub, _ = _make_subscriber()
         with pytest.raises(RuntimeError, match="resolve boom"):
-            await sub.on_settings_changed("api", "error_docs_base_url")
+            await sub.on_settings_changed([("api", "error_docs_base_url")])

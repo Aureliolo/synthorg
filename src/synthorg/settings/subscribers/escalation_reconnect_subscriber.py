@@ -5,6 +5,8 @@ onto the live Postgres LISTEN/NOTIFY escalation subscriber, whose reconnect
 loop reads the back-off per attempt, so a change applies without a restart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
@@ -51,7 +53,16 @@ class EscalationReconnectSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "escalation-reconnect"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Push each changed delay onto the escalation subscriber.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Resolve the new delay and push it onto the escalation subscriber."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

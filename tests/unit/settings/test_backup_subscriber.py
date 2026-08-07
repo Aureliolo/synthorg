@@ -105,7 +105,7 @@ class TestBackupSubscriberEnabled:
             enabled=True,
         )
 
-        await sub.on_settings_changed("backup", "enabled")
+        await sub.on_settings_changed([("backup", "enabled")])
 
         # ``assert_awaited_once`` (vs ``assert_called_once``) catches a
         # regression where the start coroutine is created but never
@@ -123,7 +123,7 @@ class TestBackupSubscriberEnabled:
             enabled=False,
         )
 
-        await sub.on_settings_changed("backup", "enabled")
+        await sub.on_settings_changed([("backup", "enabled")])
 
         service.scheduler.stop.assert_awaited_once()
         service.scheduler.start.assert_not_called()
@@ -134,8 +134,8 @@ class TestBackupSubscriberEnabled:
             scheduler_running=False,
             enabled=True,
         )
-        await sub.on_settings_changed("backup", "enabled")
-        await sub.on_settings_changed("backup", "enabled")
+        await sub.on_settings_changed([("backup", "enabled")])
+        await sub.on_settings_changed([("backup", "enabled")])
         # Two start() calls -- no crash, idempotent
         assert service.scheduler.start.await_count == 2
 
@@ -145,7 +145,7 @@ class TestBackupSubscriberPath:
 
     async def test_path_change_calls_set_backup_path(self) -> None:
         sub, service = _make_subscriber(path="/var/lib/synthorg/backups")
-        await sub.on_settings_changed("backup", "path")
+        await sub.on_settings_changed([("backup", "path")])
         service.set_backup_path.assert_awaited_once_with("/var/lib/synthorg/backups")
         # A path change updates the live root only -- never the scheduler.
         service.scheduler.start.assert_not_called()
@@ -154,7 +154,7 @@ class TestBackupSubscriberPath:
 
     async def test_blank_path_is_ignored(self) -> None:
         sub, service = _make_subscriber(path="")
-        await sub.on_settings_changed("backup", "path")
+        await sub.on_settings_changed([("backup", "path")])
         service.set_backup_path.assert_not_called()
 
 
@@ -175,7 +175,7 @@ class TestBackupSubscriberFlags:
     ) -> None:
         sub, service = _make_subscriber(scheduler_running=False, flag_value=False)
 
-        await sub.on_settings_changed("backup", key)
+        await sub.on_settings_changed([("backup", key)])
 
         # The flag is hot-replaced on the service; the scheduler is untouched.
         service.apply_config_flag.assert_awaited_once_with(key, value=False)
@@ -185,7 +185,7 @@ class TestBackupSubscriberFlags:
     async def test_flag_change_pushes_true_value(self) -> None:
         sub, service = _make_subscriber(flag_value=True)
 
-        await sub.on_settings_changed("backup", "compression")
+        await sub.on_settings_changed([("backup", "compression")])
 
         service.apply_config_flag.assert_awaited_once_with("compression", value=True)
 
@@ -193,7 +193,7 @@ class TestBackupSubscriberFlags:
         """schedule_hours calls reschedule but does not stop/start scheduler."""
         sub, service = _make_subscriber(scheduler_running=True)
 
-        await sub.on_settings_changed("backup", "schedule_hours")
+        await sub.on_settings_changed([("backup", "schedule_hours")])
 
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_called()

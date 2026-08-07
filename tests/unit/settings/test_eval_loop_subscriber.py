@@ -72,7 +72,7 @@ class TestRebuild:
         monkeypatch.setattr(_RELOAD_TARGET, reload)
         sub = _make_subscriber(state)
 
-        await sub.on_settings_changed("hr", "eval_loop_llm_model")
+        await sub.on_settings_changed([("hr", "eval_loop_llm_model")])
 
         reload.assert_awaited_once_with(state, provider_registry=registry)
 
@@ -85,7 +85,7 @@ class TestRebuild:
         sub = _make_subscriber(state)
 
         with pytest.raises(RuntimeError, match="db down"):
-            await sub.on_settings_changed("hr", "eval_loop_fix_proposer_mode")
+            await sub.on_settings_changed([("hr", "eval_loop_fix_proposer_mode")])
 
 
 class TestReloadHelper:

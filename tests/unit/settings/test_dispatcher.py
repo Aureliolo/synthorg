@@ -58,6 +58,9 @@ def _fake_resolver(
     stop_drain_timeout_seconds: float | None = None,
     poll_timeout_seconds: float = _FAKE_RESOLVER_DEFAULT_POLL_TIMEOUT_SECONDS,
     error_backoff_seconds: float = _FAKE_RESOLVER_DEFAULT_ERROR_BACKOFF_SECONDS,
+    # Off by default so every pre-existing test still sees one dispatch per
+    # message; the drain tests opt in by naming a window.
+    coalesce_window_seconds: float = 0.0,
     enabled: bool = True,
 ) -> ConfigResolver:
     """Build a ``ConfigResolver`` autospec double with deterministic tunables.
@@ -93,6 +96,8 @@ def _fake_resolver(
                 return poll_timeout_seconds
             if key == "dispatcher_error_backoff_seconds":
                 return error_backoff_seconds
+            if key == "dispatcher_coalesce_window_seconds":
+                return coalesce_window_seconds
         msg = f"unexpected get_float({namespace!r}, {key!r})"
         raise KeyError(msg)
 
@@ -119,6 +124,7 @@ class _FakeSubscriber:
         self._name = name
         self._keys = keys
         self.calls: list[tuple[str, str]] = []
+        self.batches: list[tuple[tuple[str, str], ...]] = []
         self.notified: asyncio.Event = asyncio.Event()
 
     @property
@@ -129,8 +135,12 @@ class _FakeSubscriber:
     def subscriber_name(self) -> str:
         return self._name
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        self.calls.append((namespace, key))
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        # Both shapes are recorded: ``calls`` for the pairs a test cares about,
+        # ``batches`` for how many deliveries it took to carry them, which is
+        # the whole point of the drain.
+        self.calls.extend(changes)
+        self.batches.append(tuple(changes))
         self.notified.set()
 
 
@@ -138,7 +148,8 @@ class _ErrorSubscriber(_FakeSubscriber):
     """Subscriber that raises on every call."""
 
     @override
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        del changes
         msg = f"boom from {self._name}"
         raise RuntimeError(msg)
 
@@ -361,6 +372,119 @@ class TestDispatcherLifecycle:
 
 
 # ── Dispatch Tests ───────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCoalescing:
+    """A form save is one delivery, not one per field.
+
+    This loop is the only place the writes are ever simultaneously in hand: it
+    receives, dispatches and acks strictly in sequence, so a subscriber can
+    never see two at once no matter what it does internally. Coalescing here is
+    therefore what turns a form save from one subsystem rebuild per field into
+    one rebuild.
+    """
+
+    async def test_a_burst_is_delivered_as_one_batch(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        sub = _FakeSubscriber(
+            "sub",
+            frozenset({("ns", "a"), ("ns", "b"), ("ns", "c")}),
+        )
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+            config_resolver_getter=lambda: _fake_resolver(coalesce_window_seconds=0.05),
+        )
+        await d.start()
+        try:
+            for key in ("a", "b", "c"):
+                bus.enqueue(_envelope(_settings_message("ns", key)))
+            await _wait_for_subscriber(sub)
+            assert sub.batches == [(("ns", "a"), ("ns", "b"), ("ns", "c"))]
+        finally:
+            await d.stop()
+
+    async def test_a_key_written_twice_is_delivered_once(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        # Two writes to one key need one reaction: the subscriber re-reads the
+        # value, and the later write is the one it will see.
+        sub = _FakeSubscriber("sub", frozenset({("ns", "a")}))
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+            config_resolver_getter=lambda: _fake_resolver(coalesce_window_seconds=0.05),
+        )
+        await d.start()
+        try:
+            bus.enqueue(_envelope(_settings_message("ns", "a")))
+            bus.enqueue(_envelope(_settings_message("ns", "a")))
+            await _wait_for_subscriber(sub)
+            assert sub.batches == [(("ns", "a"),)]
+        finally:
+            await d.stop()
+
+    async def test_a_subscriber_only_sees_the_keys_it_watches(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        # The batch is filtered per subscriber, so a burst spanning several
+        # subscribers does not hand any of them a key it never asked for.
+        watcher = _FakeSubscriber("watcher", frozenset({("ns", "a")}))
+        other = _FakeSubscriber("other", frozenset({("ns", "b")}))
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(watcher, other),
+            config_resolver_getter=lambda: _fake_resolver(coalesce_window_seconds=0.05),
+        )
+        await d.start()
+        try:
+            bus.enqueue(_envelope(_settings_message("ns", "a")))
+            bus.enqueue(_envelope(_settings_message("ns", "b")))
+            await _wait_for_subscriber(other)
+            assert watcher.batches == [(("ns", "a"),)]
+            assert other.batches == [(("ns", "b"),)]
+        finally:
+            await d.stop()
+
+    async def test_every_message_in_a_batch_is_acked(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        # A drained message that is never acked is one the backend may
+        # redeliver, so the batch would repeat forever. Acking only the
+        # envelope that opened the batch is the shape that would do it.
+        acked: list[str] = []
+
+        def _tracking_envelope(key: str) -> DeliveryEnvelope:
+            async def _ack() -> None:
+                acked.append(key)
+
+            return DeliveryEnvelope(
+                message=_settings_message("ns", key),
+                channel_name="#settings",
+                delivered_at=datetime.now(UTC),
+                ack=_ack,
+            )
+
+        sub = _FakeSubscriber("sub", frozenset({("ns", "a"), ("ns", "b")}))
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+            config_resolver_getter=lambda: _fake_resolver(coalesce_window_seconds=0.05),
+        )
+        await d.start()
+        try:
+            bus.enqueue(_tracking_envelope("a"))
+            bus.enqueue(_tracking_envelope("b"))
+            await _wait_for_subscriber(sub)
+            assert acked == ["a", "b"]
+        finally:
+            await d.stop()
 
 
 @pytest.mark.unit

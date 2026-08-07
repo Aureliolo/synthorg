@@ -12,16 +12,18 @@ path by the deliberate confirm+reason guardrail; this subscriber is purely
 mechanical and applies whatever value passed that gate.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -63,17 +65,16 @@ class SecurityBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "security-bridge-config"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
-        """Re-resolve the four toggles, rebuild the config, and swap it in."""
-        if (namespace, key) not in _WATCHED:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected pair",
-            )
-            return
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-resolve the four toggles, rebuild the config, and swap it in.
+
+        One rebuild per batch: all four toggles are re-read below whichever
+        of them changed, so repeating it per key would swap in the same
+        config several times.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+        """
         base = self._app_state.config.security
         resolver = config_resolver_of(self._app_state)
         try:
@@ -94,8 +95,7 @@ class SecurityBridgeSettingsSubscriber:
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="security_runtime_config",
-                trigger_namespace=namespace,
-                trigger_key=key,
+                trigger=describe_changes(changes),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

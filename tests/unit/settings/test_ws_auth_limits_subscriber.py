@@ -76,7 +76,7 @@ class TestProtocol:
 class TestApply:
     async def test_auth_timeout_applies_live(self) -> None:
         sub, app_state = _make_subscriber(float_return=27.0)
-        await sub.on_settings_changed("api", "ws_auth_timeout_seconds")
+        await sub.on_settings_changed([("api", "ws_auth_timeout_seconds")])
         assert app_state.ws_auth_limits.auth_timeout_seconds == 27.0
 
     @pytest.mark.parametrize(
@@ -89,7 +89,7 @@ class TestApply:
     )
     async def test_int_keys_apply_live(self, key: str, getter: str) -> None:
         sub, app_state = _make_subscriber(int_return=42)
-        await sub.on_settings_changed("api", key)
+        await sub.on_settings_changed([("api", key)])
         assert getattr(app_state.ws_auth_limits, getter) == 42
 
     async def test_resolver_failure_retains_prior_and_raises(self) -> None:
@@ -98,11 +98,11 @@ class TestApply:
         )
         prior = app_state.ws_auth_limits.auth_timeout_seconds
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("api", "ws_auth_timeout_seconds")
+            await sub.on_settings_changed([("api", "ws_auth_timeout_seconds")])
         assert app_state.ws_auth_limits.auth_timeout_seconds == prior
 
     async def test_unknown_key_is_noop(self) -> None:
         sub, app_state = _make_subscriber()
         prior = app_state.ws_auth_limits.auth_timeout_seconds
-        await sub.on_settings_changed("api", "unrelated")
+        await sub.on_settings_changed([("api", "unrelated")])
         assert app_state.ws_auth_limits.auth_timeout_seconds == prior

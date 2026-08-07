@@ -96,7 +96,7 @@ class TestRebuild:
             resolver_int_return=50_000,
         )
 
-        await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
+        await sub.on_settings_changed([("api", "max_lifecycle_events_per_query")])
 
         swapped = app_state.bridge_config.api
         assert swapped.max_lifecycle_events_per_query == 50_000
@@ -113,7 +113,7 @@ class TestRebuild:
             resolver_int_return=600,
         )
 
-        await sub.on_settings_changed("api", "max_rpm_default")
+        await sub.on_settings_changed([("api", "max_rpm_default")])
 
         swapped = app_state.bridge_config.api
         assert swapped.max_rpm_default == 600
@@ -128,7 +128,7 @@ class TestRebuild:
         )
 
         with pytest.raises(RuntimeError, match="resolver outage"):
-            await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
+            await sub.on_settings_changed([("api", "max_lifecycle_events_per_query")])
 
         # Snapshot retained from before the change.
         assert app_state.bridge_config.api is original
@@ -141,7 +141,7 @@ class TestRebuild:
         before = app_state.bridge_config.api
 
         with pytest.raises(MemoryError):
-            await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
+            await sub.on_settings_changed([("api", "max_lifecycle_events_per_query")])
 
         assert app_state.bridge_config.api is before
 
@@ -158,7 +158,7 @@ class TestRebuild:
         )
 
         with pytest.raises(ValidationError):
-            await sub.on_settings_changed("api", "max_lifecycle_events_per_query")
+            await sub.on_settings_changed([("api", "max_lifecycle_events_per_query")])
 
         # Prior snapshot retained because the swap never happens when
         # validation fails.
@@ -176,7 +176,7 @@ class TestUnexpectedRouting:
             resolver_int_return=99_999,
         )
 
-        await sub.on_settings_changed("other", "max_lifecycle_events_per_query")
+        await sub.on_settings_changed([("other", "max_lifecycle_events_per_query")])
 
         assert app_state.bridge_config.api is original
 
@@ -187,6 +187,6 @@ class TestUnexpectedRouting:
             resolver_int_return=99_999,
         )
 
-        await sub.on_settings_changed("api", "some_unrelated_key")
+        await sub.on_settings_changed([("api", "some_unrelated_key")])
 
         assert app_state.bridge_config.api is original

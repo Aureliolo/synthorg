@@ -10,6 +10,7 @@ without a process restart.
 
 import json
 import re
+from collections.abc import Sequence
 from typing import Final
 
 from synthorg.api.state import AppState
@@ -25,6 +26,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -118,32 +120,25 @@ class PerOpRateLimitSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
-        """Route the change to the matching rebuild path."""
-        if namespace != _NAMESPACE:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected namespace",
-            )
-            return
+        """Route the batch to each matching rebuild path.
 
-        if key in (_RATE_LIMIT_ENABLED, _RATE_LIMIT_OVERRIDES):
-            await self._rebuild_rate_limit_config(key)
-        elif key in (_CONCURRENCY_ENABLED, _CONCURRENCY_OVERRIDES):
-            await self._rebuild_concurrency_config(key)
-        else:
-            logger.warning(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
-                note="ignored unexpected key",
-            )
+        The two configs are rebuilt at most once each, however many keys the
+        batch carries: each rebuild re-reads both of its own keys, so running
+        it twice would swap in the same config twice.
+
+        Args:
+            changes: The watched writes this rebuild carries.
+        """
+        # Matched as whole pairs: the key alone would route a same-named key
+        # from another namespace into a rebuild it has nothing to do with.
+        pairs = {pair for pair in changes if pair[0] == _NAMESPACE}
+        keys = {key for _, key in pairs}
+        if keys & {_RATE_LIMIT_ENABLED, _RATE_LIMIT_OVERRIDES}:
+            await self._rebuild_rate_limit_config(describe_changes(changes))
+        if keys & {_CONCURRENCY_ENABLED, _CONCURRENCY_OVERRIDES}:
+            await self._rebuild_concurrency_config(describe_changes(changes))
 
     async def _rebuild_rate_limit_config(self, trigger_key: str) -> None:
         """Rebuild ``PerOpRateLimitConfig`` and swap into AppState."""

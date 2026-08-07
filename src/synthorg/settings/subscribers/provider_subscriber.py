@@ -1,6 +1,6 @@
 """Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 
 from synthorg.api.state import AppState
@@ -14,6 +14,7 @@ from synthorg.observability.events.settings import (
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscriber import describe_changes
 
 logger = get_logger(__name__)
 
@@ -115,30 +116,32 @@ class ProviderSettingsSubscriber:
 
     async def on_settings_changed(
         self,
-        namespace: str,
-        key: str,
+        changes: Sequence[tuple[str, str]],
     ) -> None:
-        """Handle a provider setting change.
+        """Handle a batch of provider setting changes.
 
         ``routing_strategy`` triggers a :class:`ModelRouter` rebuild;
         ``retry_max_attempts`` triggers a :class:`ProviderRegistry` rebuild so
-        the new retry cap goes live. Other keys are advisory and logged at
-        INFO level.
+        the new retry cap goes live. Each rebuild runs at most once for the
+        batch, since each re-reads its own setting. Other keys are advisory
+        and logged at INFO level.
 
         Args:
-            namespace: Changed setting namespace.
-            key: Changed setting key.
+            changes: The watched writes this rebuild carries.
         """
-        if namespace == "providers" and key == "routing_strategy":
+        pairs = set(changes)
+        rebuilt = False
+        if ("providers", "routing_strategy") in pairs:
             await self._rebuild_router()
-        elif namespace == "providers" and key == "retry_max_attempts":
-            await self._rebuild_registry(key)
-        else:
+            rebuilt = True
+        if ("providers", "retry_max_attempts") in pairs:
+            await self._rebuild_registry("retry_max_attempts")
+            rebuilt = True
+        if not rebuilt:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
-                namespace=namespace,
-                key=key,
+                trigger=describe_changes(changes),
                 note="advisory -- no service rebuild required",
             )
 

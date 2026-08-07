@@ -509,28 +509,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="runtime_reload_coalesce_window_seconds",
-        type=SettingType.FLOAT,
-        default="0.75",
-        description=(
-            "How long a runtime rebuild waits for further settings writes"
-            " before it runs. Every write inside the window is served by"
-            " that one rebuild, so saving a settings form costs one rebuild"
-            " rather than one per field; each write still returns only once"
-            " the runtime reflects it, so the window is added latency on a"
-            " single write. 0 disables the wait, coalescing only writes that"
-            " land in the same event-loop tick."
-        ),
-        group="Runtime",
-        level=SettingLevel.ADVANCED,
-        min_value=0.0,
-        max_value=30.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
         key="shutdown_tool_timeout_seconds",
         type=SettingType.FLOAT,
         default="60.0",

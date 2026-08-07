@@ -8,6 +8,8 @@ per connection-open. The startup application of the same settings lives in
 ``_apply_ws_dos_settings``; this subscriber is the hot-reload counterpart.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -85,7 +87,16 @@ class WsAuthLimitsSettingsSubscriber:
         else:
             limits.set_auth_revalidate_max_failures(value)
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Apply each changed value to ``WsAuthLimits``.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the new value and apply it to ``WsAuthLimits``."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

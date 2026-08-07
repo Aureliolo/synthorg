@@ -7,6 +7,8 @@ dispatcher retry knobs are read from the snapshot per attempt, so an edit
 applies on the next one.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -80,7 +82,16 @@ class WorkersBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "workers-bridge-config"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Mutate the bridge-config snapshot for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply_change(namespace, key)
+
+    async def _apply_change(self, namespace: str, key: str) -> None:
         """Resolve the new value and mutate the bridge-config snapshot."""
         if (namespace, key) not in _WATCHED:
             logger.warning(

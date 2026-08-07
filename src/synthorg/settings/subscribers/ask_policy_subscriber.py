@@ -10,6 +10,8 @@ rebuild can install, so they stay owned by ``RuntimeReloadSettingsSubscriber``.
 The directive text names no tool, so nothing here depends on them.
 """
 
+from collections.abc import Sequence
+
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
@@ -52,7 +54,16 @@ class AskPolicySettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "ask-policy"
 
-    async def on_settings_changed(self, namespace: str, key: str) -> None:
+    async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
+        """Re-bind the ask-policy provider for each changed key.
+
+        Args:
+            changes: The watched writes to apply.
+        """
+        for namespace, key in changes:
+            await self._apply(namespace, key)
+
+    async def _apply(self, namespace: str, key: str) -> None:
         """Re-bind the ask-policy provider so the new value goes live."""
         if (namespace, key) not in _WATCHED:
             logger.warning(
