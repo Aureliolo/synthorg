@@ -10,8 +10,6 @@ and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
 
-from typing import Final
-
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.services._plan_revision import (
@@ -26,7 +24,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     PlanNotDeletableError,
-    ServiceUnavailableError,
     ValidationError,
     VersionConflictError,
 )
@@ -57,72 +54,38 @@ from synthorg.observability.events.api import (
     API_PLAN_UPDATE_FAILED,
     API_PLAN_UPDATED,
 )
-from synthorg.persistence.evaluation_report_protocol import (
-    EvaluationReportFilterSpec,
-    EvaluationReportRecord,
-    EvaluationReportRepository,
-)
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
 
 
-#: Judgement history a single read returns. The evaluate stage caps its own
-#: attempts well below this, so the page holds every verdict a plan can have
-#: while still refusing to stream an unbounded history to a caller.
-MAX_EVALUATION_ATTEMPTS: Final[int] = 20
-
-
 class PlanService:
     """Wraps :class:`PlanRepository` with uniform audit logging.
+
+    Every plan write funnels through here, so the audit line, the terminal
+    guard and the version-conflict translation have one definition. Reading
+    the evaluate stage's verdicts is a different store and a different
+    responsibility, and lives in
+    :class:`~synthorg.api.services.plan_evaluation_service.PlanEvaluationService`.
 
     Args:
         repo: Plan repository implementation.
         clock: Time seam; edits/transitions stamp ``updated_at`` from it.
-        evaluation_reports: Judgement store backing
-            :meth:`evaluation_history`. Optional because most callers build
-            this service purely as the audited plan-status writer and never
-            read a verdict.
     """
 
-    __slots__ = ("_clock", "_evaluation_reports", "_repo")
+    __slots__ = ("_clock", "_repo")
 
     _repo: PlanRepository
     _clock: Clock
-    _evaluation_reports: EvaluationReportRepository | None
 
     def __init__(
         self,
         *,
         repo: PlanRepository,
         clock: Clock,
-        evaluation_reports: EvaluationReportRepository | None = None,
     ) -> None:
         self._repo = repo
         self._clock = clock
-        self._evaluation_reports = evaluation_reports
-
-    async def evaluation_history(
-        self, plan_id: NotBlankStr
-    ) -> tuple[EvaluationReportRecord, ...]:
-        """Return the evaluate stage's judgements for *plan_id*, newest first.
-
-        Returns:
-            The recorded judgements, bounded by
-            :data:`MAX_EVALUATION_ATTEMPTS`.
-
-        Raises:
-            ServiceUnavailableError: When this service was built without a
-                judgement store, so an empty history cannot be told apart
-                from a plan that has never been judged.
-        """
-        if self._evaluation_reports is None:
-            msg = "Plan evaluation history is unavailable: no judgement store wired"
-            raise ServiceUnavailableError(msg)
-        return await self._evaluation_reports.query(
-            EvaluationReportFilterSpec(plan_id=plan_id),
-            limit=MAX_EVALUATION_ATTEMPTS,
-        )
 
     async def get(self, plan_id: NotBlankStr) -> Plan | None:
         """Fetch a plan by id.

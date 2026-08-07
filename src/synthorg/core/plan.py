@@ -17,6 +17,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_validation import (
+    validate_decision_options,
+    validate_expected_artifacts,
+)
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -47,7 +51,6 @@ class PlanOption(BaseModel):
     )
 
 
-_MIN_DECISION_OPTIONS: Final[int] = 2
 _MAX_DECISION_OPTIONS: Final[int] = 50
 MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 
@@ -57,125 +60,6 @@ MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 #: to produce a submission the coverage check must reject. Refusing it at
 #: write time says so once, at the point an operator can fix it.
 MAX_OBJECTIVE_CRITERIA: Final[int] = 100
-
-
-def validate_decision_options(
-    *,
-    entity_id: str,
-    kind: PlanItemKind,
-    options: tuple[PlanOption, ...],
-    chosen_option_id: str | None = None,
-) -> None:
-    """Enforce the WORK-vs-DECISION option invariants shared by items/subtasks.
-
-    A ``WORK`` unit carries no options; a ``DECISION`` offers at least two
-    options with unique ids and exactly one recommended, and any recorded
-    ``chosen_option_id`` must name one of them.
-
-    Raises:
-        ValueError: When a work unit carries options, a decision has fewer than
-            two options / not exactly one recommended / duplicate option ids, or
-            the chosen option is unknown.
-    """
-    if kind is PlanItemKind.WORK:
-        if options or chosen_option_id is not None:
-            msg = f"{entity_id!r} is WORK but carries decision options"
-            raise ValueError(msg)
-        return
-    if len(options) < _MIN_DECISION_OPTIONS:
-        msg = f"Decision {entity_id!r} must offer at least two options"
-        raise ValueError(msg)
-    option_ids = [option.id for option in options]
-    if len(option_ids) != len(set(option_ids)):
-        msg = f"Decision {entity_id!r} has duplicate option ids"
-        raise ValueError(msg)
-    if sum(option.recommended for option in options) != 1:
-        msg = f"Decision {entity_id!r} needs exactly one recommended option"
-        raise ValueError(msg)
-    if chosen_option_id is not None and chosen_option_id not in option_ids:
-        msg = f"Decision {entity_id!r} chose an unknown option"
-        raise ValueError(msg)
-
-
-def describe_unroutable_role(
-    *,
-    entity_id: str,
-    required_role: str | None,
-    available_roles: tuple[NotBlankStr, ...],
-) -> str | None:
-    """Describe why an owning role cannot be routed, or ``None`` when it can.
-
-    A plan item's owner is the role a dispatch looks up, so an invented one
-    (the near-miss "Backend Engineer" for an org staffing "Backend Developer")
-    produces an item with nobody behind it, discovered at dispatch if at all.
-
-    Returns a message rather than raising, because the same judgement is made
-    at two boundaries that report differently: decomposition turns it into a
-    correctable ``DecompositionError`` the planning session can resubmit
-    against, and the operator edit path into a validation failure. One
-    wording, two reports.
-
-    An empty roster means "no roster known" and passes: an org with no agents
-    has nothing to check against, and failing there would block a greenlight
-    for a reason unrelated to the plan.
-
-    Args:
-        entity_id: Identifier of the plan item / subtask, for the message.
-        required_role: The declared owner, or ``None`` when unowned.
-        available_roles: The roles the org actually staffs.
-
-    Returns:
-        A message naming the offending role and the valid set, or ``None``.
-    """
-    if not available_roles or required_role is None:
-        return None
-    if required_role in available_roles:
-        return None
-    valid = ", ".join(sorted(available_roles))
-    return (
-        f"{entity_id!r} names required_role {required_role!r}, which no agent "
-        f"holds, so the item cannot be routed. Available roles: {valid}"
-    )
-
-
-def validate_expected_artifacts(
-    *,
-    entity_id: str,
-    kind: PlanItemKind,
-    expected_artifacts: tuple[NotBlankStr, ...],
-) -> None:
-    """Enforce that a WORK unit declares a deliverable and a DECISION does not.
-
-    The two fail-loud zero-artifact guards (the loop's ``NO_OP``
-    reclassification and the post-execution transition) both key off the
-    dispatched task's ``artifacts_expected``, so a WORK unit declaring none
-    disarms both and a chat-text-only run reaches review as a silent success.
-    Requiring one deliverable per WORK unit arms them structurally, mirroring
-    the non-empty ``acceptance_criteria`` invariant beside it.
-
-    A ``DECISION`` never dispatches, so a deliverable on one means the unit was
-    typed wrong: the coverage map would expect an artifact no task will produce.
-
-    Args:
-        entity_id: Identifier of the plan item / subtask, for the message.
-        kind: Whether the unit is executed work or a recorded decision.
-        expected_artifacts: The declared deliverables.
-
-    Raises:
-        ValueError: When a WORK unit declares no deliverable, or a DECISION
-            declares one.
-    """
-    if kind is PlanItemKind.WORK:
-        if not expected_artifacts:
-            msg = (
-                f"{entity_id!r} is WORK and must declare at least one expected "
-                "artifact, so the zero-artifact guard engages when it runs"
-            )
-            raise ValueError(msg)
-        return
-    if expected_artifacts:
-        msg = f"{entity_id!r} is a DECISION and declares expected artifacts"
-        raise ValueError(msg)
 
 
 class PlanItem(BaseModel):

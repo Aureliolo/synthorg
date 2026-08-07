@@ -44,6 +44,9 @@ pytestmark = pytest.mark.unit
 
 _BASE = "/api/v1/meta/chat/turn"
 _HEADERS = make_auth_headers("ceo")
+#: A classified outcome names the model that produced it, so a fixed
+#: classifier has to name one too.
+_CLASSIFIER_MODEL = "example-medium-001"
 
 
 def _empty_snapshot() -> OrgSignalSnapshot:
@@ -293,6 +296,7 @@ class TestMetaTurn:
                 intent=TurnIntent.ACT,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state
@@ -325,6 +329,7 @@ class TestMetaTurn:
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
                 named_targets=(NotBlankStr("CFO"),),
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state
@@ -351,6 +356,7 @@ class TestMetaTurn:
                 intent=TurnIntent.CONFIGURE,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             )
         )
         app_state = async_test_client.app.state.app_state

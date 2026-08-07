@@ -28,8 +28,9 @@ from synthorg.approval.questions import DECISION_ACTION_TYPE
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
-from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan import PlanOption
 from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_validation import validate_decision_options
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (

@@ -42,12 +42,14 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
+from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import ValidationError
-from synthorg.core.plan import Plan, PlanItem, describe_unroutable_role
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import roster_from_agents
 from synthorg.hr.state import HrStateSlice
@@ -66,13 +68,20 @@ def _service(state: State) -> PlanService:
     """Build the per-request :class:`PlanService` instance.
 
     Returns:
-        ``PlanService`` bound to this backend's plan and judgement stores.
+        ``PlanService`` bound to this backend's plan store.
     """
     persistence = persistence_of(state.app_state)
-    return PlanService(
-        repo=persistence.plans,
-        clock=state.app_state.clock,
-        evaluation_reports=persistence.evaluation_reports,
+    return PlanService(repo=persistence.plans, clock=state.app_state.clock)
+
+
+def _evaluation_service(state: State) -> PlanEvaluationService:
+    """Build the per-request judgement reader.
+
+    Returns:
+        ``PlanEvaluationService`` bound to this backend's judgement store.
+    """
+    return PlanEvaluationService(
+        reports=persistence_of(state.app_state).evaluation_reports
     )
 
 
@@ -267,7 +276,7 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
         )
-        records = await service.evaluation_history(plan_id)
+        records = await _evaluation_service(state).history(plan_id)
         payload = PlanEvaluationResponse(
             plan_id=plan_id,
             attempts=tuple(

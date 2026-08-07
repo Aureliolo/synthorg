@@ -52,11 +52,16 @@ async def _collect(gen: AsyncIterator[dict[str, str]]) -> list[dict[str, str]]:
     return [frame async for frame in gen]
 
 
+#: A classified outcome names the model that produced it.
+_CLASSIFIER_MODEL = "example-medium-001"
+
+
 def _explain_outcome() -> IntentOutcome:
     return IntentOutcome(
         intent=TurnIntent.EXPLAIN,
         reason=IntentRoutingReason.CLASSIFIED,
         confidence=0.9,
+        model=NotBlankStr(_CLASSIFIER_MODEL),
     )
 
 
@@ -124,6 +129,7 @@ class TestStreamTurnEvents:
                 intent=TurnIntent.PROPOSE,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.9,
+                model=NotBlankStr(_CLASSIFIER_MODEL),
             ),
         )
         frames = await _collect(_turn_stream.stream_turn_events(_APP, data=_REQUEST))

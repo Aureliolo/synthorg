@@ -13,7 +13,7 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from synthorg.core.plan import describe_unroutable_role
+from synthorg.core.plan_validation import describe_unroutable_role
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse_subtask import (

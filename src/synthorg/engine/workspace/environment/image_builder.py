@@ -7,17 +7,12 @@ other daemon call in the tree uses (the sandbox, the fine-tune runner,
 telemetry), so the backend image ships no Docker CLI and the build
 context is tarred in-process rather than by a subprocess.
 
-Packing the context here rather than shelling out to the CLI moves two
-of the CLI's responsibilities into this module. It applies
-``.dockerignore``, which the daemon knows nothing about, and it bounds
-what it will pack: the context is an agent-writable workspace whose
-declaration an agent also authored, so an unbounded pack is an agent's
-choice of how much of the backend's memory to consume.
+Assembling that context is the sibling :mod:`._context` module's job.
+This one owns the daemon: the connection, the stream, the verdict, and
+the teardown that stops a cancelled provision leaving a build running.
 """
 
 import asyncio
-import io
-import tarfile
 from collections.abc import AsyncIterable, Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -28,11 +23,14 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import EnvironmentConfigError
-from synthorg.engine.workspace.environment._dockerignore import (
-    DockerignoreMatcher,
-    load_dockerignore,
+from synthorg.engine.workspace.environment._context import (
+    CONTEXT_MAX_BYTES_KEY,
+    ContextTooLargeError,
+    ResolvedContext,
+    assert_contained,
+    context_tar,
 )
+from synthorg.engine.workspace.environment._dockerignore import load_dockerignore
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import ENVIRONMENT_IMAGE_BUILD_FAILED
 from synthorg.settings.enums import SettingNamespace
@@ -41,40 +39,11 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
-_CONTEXT_MAX_BYTES_KEY: Final[str] = "devcontainer_context_max_bytes"
-
-#: Never packed, whatever the declaration or the ignore file says.
-#: ``.git`` holds the workspace's remote configuration and its whole
-#: object history, and an agent-authored ``COPY . /app`` would otherwise
-#: bake both into an image layer that is cached by declaration hash and
-#: reused. The ignore file itself is the CLI's own exclusion. Matched on
-#: any segment, not only at the context root, so a nested checkout is
-#: covered too.
-_ALWAYS_EXCLUDED: Final[frozenset[str]] = frozenset({".git", ".dockerignore"})
-
 #: Strong references to in-flight connection closes. A task with no
 #: strong reference can be collected mid-flight, because asyncio holds
 #: only a weak one, and a collected close leaves the daemon streaming a
 #: build nobody is reading.
 _PENDING_CLOSES: Final[set[asyncio.Task[None]]] = set()
-
-
-class ContextTooLargeError(EnvironmentConfigError):
-    """The build context exceeds the operator's ceiling.
-
-    Attributes:
-        packed_bytes: What had been counted when the ceiling was crossed.
-        limit_bytes: The ceiling that was crossed.
-    """
-
-    def __init__(self, packed_bytes: int, limit_bytes: int) -> None:
-        super().__init__(
-            f"build context exceeds {limit_bytes} bytes (reached "
-            f"{packed_bytes}); exclude what the build does not need via "
-            f".dockerignore, or raise coordination.{_CONTEXT_MAX_BYTES_KEY}"
-        )
-        self.packed_bytes = packed_bytes
-        self.limit_bytes = limit_bytes
 
 
 def _chunk_error(chunk: object) -> str | None:
@@ -128,21 +97,6 @@ class _BuildLog(NamedTuple):
 
     lines: tuple[str, ...]
     failed: bool
-
-
-class _ResolvedContext(NamedTuple):
-    """A build's paths, fully resolved and known to be contained.
-
-    Attributes:
-        context: The resolved context root, which is what gets packed.
-            The unresolved path would archive a symlinked context as one
-            symlink entry and recurse into nothing.
-        dockerfile: The Dockerfile's context-relative path, which is
-            what the daemon is given.
-    """
-
-    context: Path
-    dockerfile: Path
 
 
 class BuildFailure(StrEnum):
@@ -222,38 +176,6 @@ class AiodockerImageBuilder:
     def __init__(self, config_resolver: ConfigResolverProtocol | None = None) -> None:
         self._config_resolver = config_resolver
 
-    @staticmethod
-    def _assert_contained(dockerfile: Path, context_dir: Path) -> _ResolvedContext:
-        """Reject a Dockerfile that escapes the build context.
-
-        The daemon requires the Dockerfile to live inside the build
-        context, and a caller-supplied path that resolves (through
-        symlinks) outside ``context_dir`` would let an attacker have a
-        build read arbitrary host files. Both paths are fully resolved
-        before the containment check so a symlink cannot slip the
-        Dockerfile out of the context after validation.
-
-        Returns:
-            The resolved context root and the Dockerfile's path relative
-            to it.
-
-        Raises:
-            EnvironmentConfigError: When ``dockerfile`` does not resolve
-                to a path inside ``context_dir`` (422).
-        """
-        resolved_context = context_dir.resolve()
-        resolved_dockerfile = dockerfile.resolve()
-        if not resolved_dockerfile.is_relative_to(resolved_context):
-            msg = (
-                f"Dockerfile {resolved_dockerfile} is outside the build "
-                f"context {resolved_context}"
-            )
-            raise EnvironmentConfigError(msg)
-        return _ResolvedContext(
-            context=resolved_context,
-            dockerfile=resolved_dockerfile.relative_to(resolved_context),
-        )
-
     async def _context_ceiling(self) -> int:
         """Resolve the maximum context size this build may pack.
 
@@ -262,75 +184,8 @@ class AiodockerImageBuilder:
         """
         namespace = SettingNamespace.COORDINATION.value
         if self._config_resolver is None:
-            return registered_default_int(namespace, _CONTEXT_MAX_BYTES_KEY)
-        return await self._config_resolver.get_int(namespace, _CONTEXT_MAX_BYTES_KEY)
-
-    @staticmethod
-    def _excluded(relative_path: str, ignore: DockerignoreMatcher) -> bool:
-        """Whether *relative_path* stays out of the build context.
-
-        Returns:
-            ``True`` for a path the ignore file excludes or that names an
-            unconditionally excluded segment.
-        """
-        if not _ALWAYS_EXCLUDED.isdisjoint(relative_path.split("/")):
-            return True
-        return ignore.excludes(relative_path)
-
-    @classmethod
-    def _context_tar(
-        cls,
-        resolved: _ResolvedContext,
-        ignore: DockerignoreMatcher,
-        limit_bytes: int,
-    ) -> io.BytesIO:
-        """Pack the build context into an in-memory gzip tar.
-
-        The daemon takes the build context as a tar stream, which the
-        CLI would otherwise assemble, along with the ``.dockerignore``
-        filtering and the exclusions the CLI applies unconditionally.
-        Symlinks are archived as symlinks rather than followed, so a
-        link pointing outside the context arrives as a dangling link
-        inside the build rather than as a copy of whatever it targeted.
-
-        Excluding a directory prunes it rather than emptying it: the
-        walk never descends, so a large ignored tree costs nothing.
-
-        Args:
-            resolved: The resolved context root and relative Dockerfile.
-            ignore: The context's ``.dockerignore`` rules.
-            limit_bytes: Ceiling on the total uncompressed member size.
-
-        Returns:
-            A rewound gzip-tar stream of the build context.
-
-        Raises:
-            ContextTooLargeError: When the members packed so far exceed
-                ``limit_bytes``. Raised while packing, so the heap never
-                holds more than the ceiling's worth.
-        """
-        dockerfile = resolved.dockerfile.as_posix()
-        packed = 0
-
-        def _select(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
-            nonlocal packed
-            relative = info.name.removeprefix("./")
-            if relative == ".":
-                return info
-            if relative != dockerfile and cls._excluded(relative, ignore):
-                return None
-            packed += info.size
-            if packed > limit_bytes:
-                raise ContextTooLargeError(packed, limit_bytes)
-            return info
-
-        buffer = io.BytesIO()
-        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-            archive.add(
-                str(resolved.context), arcname=".", recursive=True, filter=_select
-            )
-        buffer.seek(0)
-        return buffer
+            return registered_default_int(namespace, CONTEXT_MAX_BYTES_KEY)
+        return await self._config_resolver.get_int(namespace, CONTEXT_MAX_BYTES_KEY)
 
     @staticmethod
     async def _connect() -> aiodocker.Docker:
@@ -382,7 +237,7 @@ class AiodockerImageBuilder:
                 drops the build connection so the daemon is not left
                 streaming into nothing.
         """
-        resolved = self._assert_contained(dockerfile, context_dir)
+        resolved = assert_contained(dockerfile, context_dir)
         deadline = asyncio.get_running_loop().time() + timeout
         try:
             async with asyncio.timeout_at(deadline):
@@ -458,7 +313,7 @@ class AiodockerImageBuilder:
         client: aiodocker.Docker,
         *,
         tag: NotBlankStr,
-        resolved: _ResolvedContext,
+        resolved: ResolvedContext,
         deadline: float,
         timeout: float,  # noqa: ASYNC109 -- caller-tuned build ceiling
     ) -> BuildOutcome:
@@ -514,7 +369,7 @@ class AiodockerImageBuilder:
         client: aiodocker.Docker,
         *,
         tag: NotBlankStr,
-        resolved: _ResolvedContext,
+        resolved: ResolvedContext,
     ) -> _BuildLog:
         """Pack the context, hand it to the daemon, and drain the stream.
 
@@ -529,9 +384,7 @@ class AiodockerImageBuilder:
         # Packing runs on a worker thread, which cancellation cannot
         # interrupt: an expired deadline abandons the result rather than
         # stopping the walk, and the ceiling is what bounds that walk.
-        context = await asyncio.to_thread(
-            self._context_tar, resolved, ignore, limit_bytes
-        )
+        context = await asyncio.to_thread(context_tar, resolved, ignore, limit_bytes)
         return await self._consume(
             client.images.build(
                 fileobj=context,
