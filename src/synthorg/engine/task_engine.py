@@ -17,6 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import PlanParentTaskInUseError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import (
@@ -768,6 +769,9 @@ class TaskEngine(TaskEngineLoopsMixin):
                 ``"version_conflict"``.
             TaskInternalError: When ``result.error_code`` is
                 ``"internal"``.
+            PlanParentTaskInUseError: When ``result.error_code`` is
+                ``"parent_of_plan"``, so every caller of ``delete_task``
+                gets the same 409 naming the plan that holds the task.
             TaskMutationError: For every other error code.
         """
         error = result.error or "Mutation failed"
@@ -784,6 +788,8 @@ class TaskEngine(TaskEngineLoopsMixin):
                 raise TaskVersionConflictError(error)
             case "internal":
                 raise TaskInternalError(error)
+            case "parent_of_plan":
+                raise PlanParentTaskInUseError(error)
             case _:
                 raise TaskMutationError(error)
 

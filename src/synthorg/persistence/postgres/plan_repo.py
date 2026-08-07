@@ -34,6 +34,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.persistence.postgres._integrity import raise_constraint_violation
 
 logger = get_logger(__name__)
 
@@ -131,8 +132,13 @@ class PostgresPlanRepository:
 
         Raises:
             DuplicateRecordError: A plan with this id already exists.
+            ConstraintViolationError: An invariant the schema holds was
+                broken, most often a ``parent_task_id`` naming no task.
+                Typed rather than a retryable ``QueryError``: the insert
+                is refused identically on every retry.
             QueryError: If the database operation fails.
         """
+        msg = f"Failed to create plan {plan.id!r}"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -148,10 +154,18 @@ class PostgresPlanRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Plan with id {plan.id!r} already exists"
-            raise DuplicateRecordError(msg) from exc
+            duplicate = f"Plan with id {plan.id!r} already exists"
+            raise DuplicateRecordError(duplicate) from exc
+        except psycopg.errors.IntegrityError as exc:
+            logger.warning(
+                PERSISTENCE_PLAN_SAVE_FAILED,
+                plan_id=str(plan.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                sqlstate=exc.sqlstate,
+            )
+            raise_constraint_violation(exc, msg)
         except psycopg.Error as exc:
-            msg = f"Failed to create plan {plan.id!r}"
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,
                 plan_id=str(plan.id),
@@ -247,8 +261,11 @@ class PostgresPlanRepository:
         """Persist a plan via upsert.
 
         Raises:
+            ConstraintViolationError: An invariant the schema holds was
+                broken, most often a ``parent_task_id`` naming no task.
             QueryError: If the database query fails.
         """
+        msg = f"Failed to save plan {plan.id!r}"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -259,8 +276,16 @@ class PostgresPlanRepository:
                     self._row_params(plan),
                 )
                 await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            logger.warning(
+                PERSISTENCE_PLAN_SAVE_FAILED,
+                plan_id=str(plan.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                sqlstate=exc.sqlstate,
+            )
+            raise_constraint_violation(exc, msg)
         except psycopg.Error as exc:
-            msg = f"Failed to save plan {plan.id!r}"
             logger.warning(
                 PERSISTENCE_PLAN_SAVE_FAILED,
                 plan_id=str(plan.id),
@@ -362,8 +387,8 @@ class PostgresPlanRepository:
         """List plans matching the filter spec, ordered by id ascending.
 
         Args:
-            filter_spec: Optional ``status`` / ``project`` / ``objective_id``
-                filters.
+            filter_spec: Optional ``status`` / ``project`` /
+                ``objective_id`` / ``parent_task_id`` filters.
             limit: Maximum plans to return.
             offset: Rows to skip from the head of the ordering.
 

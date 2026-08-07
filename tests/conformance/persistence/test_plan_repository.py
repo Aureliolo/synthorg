@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
     DuplicateRecordError,
     PersistenceVersionConflictError,
     QueryError,
@@ -26,6 +27,10 @@ _CREATED_AT = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 #: The objective task every plan here decomposes. ``plans.parent_task_id`` is
 #: a foreign key, so the parent has to exist before any plan referencing it.
 _PARENT_TASK_ID = "task-root"
+
+#: Both backends answer a foreign-key refusal with this SQLSTATE, which is
+#: the whole point of mapping SQLite's message onto the standard codes.
+_SQLSTATE_FOREIGN_KEY = "23503"
 
 
 @pytest.fixture(autouse=True)
@@ -234,8 +239,14 @@ class TestPlanRepository:
             update={"parent_task_id": NotBlankStr(sid("task-never-created"))}
         )
 
-        with pytest.raises(QueryError):
+        # ConstraintViolationError, not the QueryError base: a bare
+        # ``QueryError`` is satisfied by any repository failure, so it
+        # would pass with the foreign key removed. It is also retryable
+        # and 500, where this is permanent and a 4xx.
+        with pytest.raises(ConstraintViolationError) as info:
             await backend.plans.save(orphan)
+        assert info.value.sqlstate == _SQLSTATE_FOREIGN_KEY
+        assert info.value.is_retryable is False
 
     async def test_deleting_a_task_a_plan_owns_is_refused(
         self, backend: PersistenceBackend
@@ -243,8 +254,10 @@ class TestPlanRepository:
         """RESTRICT: the plan is a decision record, not task-delete debris."""
         await backend.plans.save(_plan(plan_id="p-holds"))
 
-        with pytest.raises(QueryError):
+        with pytest.raises(ConstraintViolationError) as info:
             await backend.tasks.delete(sid(_PARENT_TASK_ID))
+        assert info.value.sqlstate == _SQLSTATE_FOREIGN_KEY
+        assert info.value.is_retryable is False
 
     async def test_the_task_deletes_once_its_plan_is_gone(
         self, backend: PersistenceBackend

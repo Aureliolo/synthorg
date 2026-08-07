@@ -16,6 +16,10 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskVersionConflictError
+from synthorg.engine.task_delete_guard import (
+    delete_refusal_message,
+    plan_blocking_delete,
+)
 from synthorg.engine.task_engine_apply_helpers import (
     RECORDED_STATUS_OUTCOME,
     TRULY_TERMINAL_STATUSES,
@@ -468,9 +472,22 @@ async def apply_delete(
             per-task span on delete. ``None`` skips span tracking.
 
     Returns:
-        Result with ``success=True`` on deletion, or a failure
-        with ``error_code="not_found"`` if the task does not exist.
+        Result with ``success=True`` on deletion, a failure with
+        ``error_code="parent_of_plan"`` when a plan still names this
+        task as its objective, or ``error_code="not_found"`` if the task
+        does not exist. The refusal is a result rather than a raise
+        because the processing loop converts any raise into a generic
+        ``internal`` failure, which would lose the plan id the operator
+        needs.
     """
+    plan_id = await plan_blocking_delete(persistence.plans, mutation.task_id)
+    if plan_id is not None:
+        return TaskMutationResult(
+            request_id=mutation.request_id,
+            success=False,
+            error=delete_refusal_message(mutation.task_id, plan_id),
+            error_code="parent_of_plan",
+        )
     deleted = await persistence.tasks.delete(mutation.task_id)
     if not deleted:
         return not_found_result("delete", mutation.request_id, mutation.task_id)

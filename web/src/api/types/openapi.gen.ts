@@ -15217,6 +15217,11 @@ export type components = {
              * @default 0
              */
             readonly budget: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
             /** @description Optional deadline (ISO 8601 string) */
             readonly deadline: string | null;
             /**
@@ -15244,6 +15249,11 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
             /**
              * @description Optimistic-concurrency revision, bumped on each edit
              * @default 1

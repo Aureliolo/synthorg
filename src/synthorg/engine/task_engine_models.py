@@ -24,8 +24,20 @@ from synthorg.engine.task_limits import (
 MutationType = Literal["create", "update", "transition", "delete", "cancel"]
 """Discriminator literal for all mutation request types."""
 
-TaskErrorCode = Literal["not_found", "version_conflict", "validation", "internal"]
-"""Machine-readable error classification for mutation results."""
+TaskErrorCode = Literal[
+    "not_found",
+    "version_conflict",
+    "validation",
+    "internal",
+    "parent_of_plan",
+]
+"""Machine-readable error classification for mutation results.
+
+``parent_of_plan`` is its own code rather than a ``validation`` failure
+because it is the only one whose resolution is another resource: the
+caller has to remove the plan that owns the task before the delete can
+succeed, and the message names it.
+"""
 
 _MAX_TITLE_LENGTH: Final[int] = MAX_TASK_TITLE_LENGTH
 _MAX_DESCRIPTION_LENGTH: Final[int] = MAX_TASK_DESCRIPTION_LENGTH

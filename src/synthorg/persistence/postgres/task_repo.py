@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence.task import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared._task_filters import build_task_filter_clauses
+from synthorg.persistence.postgres._integrity import raise_constraint_violation
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 logger = get_logger(__name__)
@@ -405,15 +406,30 @@ class PostgresTaskRepository:
             ``True`` when a row was deleted, ``False`` if no matching row existed.
 
         Raises:
+            ConstraintViolationError: A row still references this task and
+                the reference is RESTRICT (a plan, a decision record).
+                Typed and non-retryable, because retrying is refused
+                identically forever: a retry handler would otherwise burn
+                its whole budget and hand the operator a 500 for what is a
+                409 condition.
             QueryError: If the database query fails.
         """
+        msg = f"Failed to delete task {task_id!r}"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
                 deleted = cur.rowcount > 0
                 await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            logger.warning(
+                PERSISTENCE_TASK_DELETE_FAILED,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                sqlstate=exc.sqlstate,
+            )
+            raise_constraint_violation(exc, msg)
         except psycopg.Error as exc:
-            msg = f"Failed to delete task {task_id!r}"
             logger.warning(
                 PERSISTENCE_TASK_DELETE_FAILED,
                 task_id=task_id,

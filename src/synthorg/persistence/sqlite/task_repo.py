@@ -24,6 +24,7 @@ from synthorg.observability.events.persistence.task import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared._task_filters import build_task_filter_clauses
+from synthorg.persistence.sqlite._integrity import raise_constraint_violation
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -68,6 +69,31 @@ class SQLiteTaskRepository:
     ) -> None:
         self._db = db
         self._write_context = write_context
+
+    async def _safe_rollback(self) -> None:
+        """Best-effort rollback on the shared connection.
+
+        Every repository in this package shares one
+        :class:`aiosqlite.Connection` in WAL mode, so a write that raises
+        and leaves its transaction open holds a RESERVED write lock and
+        mis-frames the next repository's transaction boundary until an
+        unrelated commit fires.
+
+        The rollback itself is wrapped: a secondary failure (the
+        connection is already closed, say) must not mask the original
+        error the caller is propagating. It is still logged, so a tainted
+        shared connection leaves a trail instead of silently degrading
+        later writes.
+        """
+        try:
+            await self._db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.warning(
+                PERSISTENCE_TASK_DELETE_FAILED,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
 
     _UPSERT_SQL = """\
 INSERT INTO tasks (
@@ -395,17 +421,38 @@ id, title, description, type, priority, project, plan_id, plan_item_id,
             ``True`` when a row was deleted, ``False`` if no matching row existed.
 
         Raises:
+            ConstraintViolationError: A row still references this task and
+                the reference is RESTRICT (a plan, a decision record).
+                Typed and non-retryable, because retrying is refused
+                identically forever: a retry handler would otherwise burn
+                its whole budget and hand the operator a 500 for what is a
+                409 condition.
             QueryError: If the database query fails.
         """
         async with self._write_context():
+            msg = f"Failed to delete task {task_id!r}"
             try:
                 async with self._db.execute(
                     "DELETE FROM tasks WHERE id = ?", (task_id,)
                 ) as cursor:
                     await self._db.commit()
                     deleted = cursor.rowcount > 0
+            except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
+                # The shared connection runs in WAL mode, so a refused
+                # delete that leaves its transaction open holds a RESERVED
+                # write lock and mis-frames the next repository's
+                # transaction boundary until an unrelated commit fires.
+                await self._safe_rollback()
+                logger.warning(
+                    PERSISTENCE_TASK_DELETE_FAILED,
+                    task_id=task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    sqlite_errorname=getattr(exc, "sqlite_errorname", None),
+                )
+                raise_constraint_violation(exc, msg)
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                msg = f"Failed to delete task {task_id!r}"
+                await self._safe_rollback()
                 logger.warning(
                     PERSISTENCE_TASK_DELETE_FAILED,
                     task_id=task_id,

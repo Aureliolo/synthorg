@@ -177,6 +177,9 @@ CREATE INDEX idx_tm_agent_id ON task_metrics (agent_id);
 CREATE INDEX idx_tm_completed_at ON task_metrics (completed_at);
 CREATE INDEX idx_tm_agent_completed
 ON task_metrics (agent_id, completed_at);
+-- A referencing column with no index makes every delete of the referenced
+-- row a full scan of this table.
+CREATE INDEX idx_tm_task_id ON task_metrics (task_id);
 
 -- ── Collaboration metrics ─────────────────────────────────────
 CREATE TABLE collaboration_metrics (
@@ -560,11 +563,15 @@ CREATE TABLE projects (
     budget DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
     autonomy_mode TEXT CHECK (autonomy_mode IN ('full', 'semi', 'supervised', 'locked')),
-    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE INDEX idx_projects_status ON projects (status);
 CREATE INDEX idx_projects_lead ON projects (lead);
+-- Intake looks up a live project by age, so the ordering column is indexed.
+CREATE INDEX idx_projects_created_at ON projects (created_at);
 
 -- ── Persistent per-project workspace (1:1 with projects) ─────
 CREATE TABLE project_workspaces (
@@ -2541,7 +2548,10 @@ CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);
 CREATE INDEX idx_plans_objective ON plans (objective_id);
 CREATE INDEX idx_plans_project_status ON plans (project, status, id);
-CREATE INDEX idx_plans_parent_task ON plans (parent_task_id);
+-- The task-delete guard reads `WHERE parent_task_id = ? ORDER BY id LIMIT 1`,
+-- so `id` rides the index: equality first, then the ordering, as
+-- idx_plans_project_status already does.
+CREATE INDEX idx_plans_parent_task ON plans (parent_task_id, id);
 
 -- ── Initiative evaluation reports (the delivery verdict) ─────
 -- The verdict is what decides whether an initiative delivered, so it is
@@ -2582,7 +2592,12 @@ ON initiative_evaluation_report (project_id, evaluated_at DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
-    plan_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(plan_id)) > 0),
+    -- A comment is a remark ON a plan and has no meaning once the plan is
+    -- gone, so it cascades. This is the same orphan class the plans
+    -- parent-task reference closes, one table down.
+    plan_id TEXT NOT NULL
+    REFERENCES plans (id) ON DELETE CASCADE
+    CHECK (CHAR_LENGTH(TRIM(plan_id)) > 0),
     item_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(item_id)) > 0),
     author TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(author)) > 0),
     body TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(body)) > 0),

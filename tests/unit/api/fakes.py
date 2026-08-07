@@ -1408,6 +1408,13 @@ class FakePlanRepository:
             return False
         if filter_spec.project is not None and plan.project != filter_spec.project:
             return False
+        # parent_task_id is the field the task-delete guard filters on, so a
+        # fake that ignored it would report every task as free to delete.
+        if (
+            filter_spec.parent_task_id is not None
+            and plan.parent_task_id != filter_spec.parent_task_id
+        ):
+            return False
         return not (
             filter_spec.objective_id is not None
             and plan.objective_id != filter_spec.objective_id

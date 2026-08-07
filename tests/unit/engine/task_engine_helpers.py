@@ -4,9 +4,11 @@ import copy
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, override
 
+from synthorg.core.plan import Plan
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.plan_protocol import PlanFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.core.task_enums import TaskStatus
@@ -87,15 +89,78 @@ class FakeTaskRepository:
         return self._tasks.pop(entity_id, None) is not None
 
 
+class FakePlanRepository:
+    """In-memory plan repository, for the task-delete guard's lookup.
+
+    Filters on ``parent_task_id`` because that is the one the guard
+    asks: a fake that ignored it would report every task as free to
+    delete and the guard's test would prove nothing.
+    """
+
+    def __init__(self) -> None:
+        self._plans: dict[str, Plan] = {}
+
+    async def create(self, plan: Plan) -> None:
+        self._plans[str(plan.id)] = copy.deepcopy(plan)
+
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
+        self._plans[str(plan.id)] = copy.deepcopy(plan)
+
+    async def save(self, entity: Plan, /) -> None:
+        self._plans[str(entity.id)] = copy.deepcopy(entity)
+
+    async def get(self, entity_id: str, /) -> Plan | None:
+        plan = self._plans.get(entity_id)
+        return copy.deepcopy(plan) if plan is not None else None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        return await self.query(PlanFilterSpec(), limit=limit, offset=offset)
+
+    def _matching(self, filter_spec: PlanFilterSpec) -> list[Plan]:
+        return sorted(
+            (
+                copy.deepcopy(plan)
+                for plan in self._plans.values()
+                if filter_spec.parent_task_id in (None, plan.parent_task_id)
+            ),
+            key=lambda plan: str(plan.id),
+        )
+
+    async def query(
+        self,
+        filter_spec: PlanFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Plan, ...]:
+        return tuple(self._matching(filter_spec)[offset : offset + limit])
+
+    async def count(self, filter_spec: PlanFilterSpec) -> int:
+        return len(self._matching(filter_spec))
+
+    async def delete(self, entity_id: str, /) -> bool:
+        return self._plans.pop(entity_id, None) is not None
+
+
 class FakePersistence:
-    """Minimal fake persistence backend with only a task repository."""
+    """Minimal fake persistence backend: tasks plus the plans the guard reads."""
 
     def __init__(self) -> None:
         self._tasks = FakeTaskRepository()
+        self._plans = FakePlanRepository()
 
     @property
     def tasks(self) -> FakeTaskRepository:
         return self._tasks
+
+    @property
+    def plans(self) -> FakePlanRepository:
+        return self._plans
 
 
 class FakeMessageBus:

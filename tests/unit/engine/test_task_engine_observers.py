@@ -15,6 +15,7 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.task_protocol import TaskFilterSpec
+from tests.unit.engine.task_engine_helpers import FakePlanRepository
 
 
 async def _flush_observers(engine: TaskEngine, *, budget: float = 1.0) -> None:
@@ -88,10 +89,11 @@ class FakeTaskRepo:
 
 
 class FakePersistence:
-    """Wraps FakeTaskRepo to satisfy PersistenceBackend.tasks."""
+    """Wraps the repositories the mutation loop reaches."""
 
     def __init__(self) -> None:
         self.tasks = FakeTaskRepo()
+        self.plans = FakePlanRepository()
 
 
 # ── Fixtures ─────────────────────────────────────────────────────

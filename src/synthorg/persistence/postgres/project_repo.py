@@ -26,6 +26,7 @@ from synthorg.observability.events.persistence.project import (
     PERSISTENCE_PROJECT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 
@@ -43,6 +44,8 @@ def _row_to_project(row: DictRow) -> Project:
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
     data["team"] = tuple(data.get("team") or [])
+    data["created_at"] = coerce_row_timestamp(data["created_at"])
+    data["updated_at"] = coerce_row_timestamp(data["updated_at"])
     return Project.model_validate(data)
 
 
@@ -75,6 +78,8 @@ class PostgresProjectRepository:
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
+            project.created_at,
+            project.updated_at,
         )
 
     async def create(self, project: Project) -> None:
@@ -90,8 +95,9 @@ class PostgresProjectRepository:
                     """
                     INSERT INTO projects (id, name, description, team, lead,
                                           plan_id, deadline, budget, status,
-                                          autonomy_mode, version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          autonomy_mode, version,
+                                          created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     self._row_params(project),
                 )
@@ -142,6 +148,7 @@ class PostgresProjectRepository:
             project.status.value,
             project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
+            project.updated_at,
             str(project.id),
         ]
         guard = ""
@@ -149,10 +156,12 @@ class PostgresProjectRepository:
             guard = " AND version=%s"
             params.append(expected_version)
         # Fixed columns + guard literal; values fully parameterized.
+        # created_at is not in the SET list: an edit does not change when the
+        # project was opened.
         query = (
             "UPDATE projects SET name=%s, description=%s, team=%s, lead=%s, "  # noqa: S608
             "plan_id=%s, deadline=%s, budget=%s, status=%s, autonomy_mode=%s, "
-            "version=%s "
+            "version=%s, updated_at=%s "
             f"WHERE id=%s{guard}"
         )
         try:
@@ -213,8 +222,9 @@ class PostgresProjectRepository:
                     """
                     INSERT INTO projects (id, name, description, team, lead,
                                           plan_id, deadline, budget, status,
-                                          autonomy_mode, version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          autonomy_mode, version,
+                                          created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
                         name=EXCLUDED.name,
                         description=EXCLUDED.description,
@@ -225,7 +235,10 @@ class PostgresProjectRepository:
                         budget=EXCLUDED.budget,
                         status=EXCLUDED.status,
                         autonomy_mode=EXCLUDED.autonomy_mode,
-                        version=EXCLUDED.version
+                        version=EXCLUDED.version,
+                        -- created_at is deliberately absent: an upsert over an
+                        -- existing row must not re-date when it was opened.
+                        updated_at=EXCLUDED.updated_at
                     """,
                     self._row_params(project),
                 )

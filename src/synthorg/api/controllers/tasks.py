@@ -13,9 +13,6 @@ from litestar.status_codes import (
 )
 
 from synthorg.api.controllers._requester import extract_requester
-from synthorg.api.controllers._task_delete_guard import (
-    refuse_if_a_plan_owns_the_task,
-)
 from synthorg.api.dto import (
     ApiResponse,
     CancelTaskRequest,
@@ -428,6 +425,10 @@ class TaskController(Controller):
     ) -> None:
         """Delete a task, unless a plan still names it as its objective.
 
+        The refusal is the engine's, not this route's: three callers
+        reach ``delete_task`` and the guard belongs on the path all
+        three take.
+
         Args:
             state: Application state.
             task_id: Task identifier.
@@ -437,7 +438,6 @@ class TaskController(Controller):
             PlanParentTaskInUseError: If a plan still references this task.
         """
         app_state: AppState = state.app_state
-        await refuse_if_a_plan_owns_the_task(app_state, task_id)
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,
