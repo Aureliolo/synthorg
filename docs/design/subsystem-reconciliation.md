@@ -203,9 +203,9 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 | `active` | Its capability reads as available. |
 | `degraded` | Up, with a requirement it named gone. Only a subsystem with no teardown can rest here; one with a teardown is taken down instead. |
 | `waiting` | A declared dependency is not here yet; `waiting_on` names every one. |
-| `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so no pass will supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
+| `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so waiting alone will not supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
 | `rebuilding` | Torn down and coming back inside the pass currently running. |
-| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` names the declared settings that are blank, which is the shape behind nearly every decline here. |
+| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` always says something: the activation's own reason when it raised `SubsystemDeclinedError`, else the declared settings that are blank, else that it declined on a condition it does not declare. |
 | `disabled` | An operator turned it off via `enabled_by`. |
 | `failed` | Activation raised; `detail` carries the redacted description. |
 
@@ -218,21 +218,28 @@ otherwise on the next sweep.
 `unreachable` exists because level-triggering rests on "a dependency absent at
 boot is not a verdict: the next pass picks it up", and that holds for a
 dependency that is merely late, not for one an operator switched off or that
-declined on its own condition. Reporting those as `waiting` promises a pass
-that will never come, which is what left a kanban board waiting forever on a
-setting-disabled sprint service.
+declined on its own condition. Reporting those as `waiting` promises a pass that
+will change nothing, which leaves a kanban board waiting indefinitely on a
+setting-disabled sprint service. It is re-derived every pass, so the operator
+action that fixes the owner clears it on the next one: what it says is "this
+needs a change, not more time".
 
 `rebuilding` covers the window between a teardown and the re-activation that
 follows it in the same pass. Without it a concurrent read lands mid-rebuild and
-answers `waiting` with an empty `waiting_on`, which is the contract's own shape
-for "these capabilities are missing" used to name none of them.
+answers `waiting` with an empty `waiting_on`, which claims the contract's shape
+for "these capabilities are missing" while naming none of them.
 
-A `blocked` subsystem's `detail` is derived, never hand-written: the reconciler
-resolves the spec's own `settings=` keys and reports the blank ones. It says
-"likely" rather than "certainly" because the declining condition lives inside
-the activation, but a blank required setting is the reason behind nearly every
-decline in this tree, and naming it is the difference between an operator with
-a field to fill in and one reading source.
+A `blocked` subsystem's `detail` is never null and never hand-written at the
+reporting end. An activation that knows why it declined says so by raising
+`SubsystemDeclinedError(reason)`: the reconciler records that reason and treats
+the pass as a decline rather than a failure, and it is believed over anything
+derived. Absent one, the reconciler resolves the spec's own `settings=` keys and
+reports the blank ones, hedged as the likely reason because the declining
+condition lives inside the activation. When a spec declares no settings and the
+activation raised nothing, the detail says exactly that and points at the
+wiring log, which is still a place to look. Only 9 of the 54 shipped specs
+declare settings, so the derived guess alone would have left the majority
+blocked with nothing to read.
 
 ## Why not the alternatives
 

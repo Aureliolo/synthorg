@@ -121,6 +121,7 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3032 | `SPRINT_NOT_FOUND` | Sprint record |
 | 3033 | `OUTPUT_STYLE_PACK_NOT_FOUND` | Output-style rule pack |
 | 3034 | `DELEGATION_TARGET_NOT_FOUND` | Blocking-delegation target agent |
+| 3035 | `PLAN_PARENT_TASK_MISSING` | Plan's parent task was deleted while it was being decomposed |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -165,6 +166,8 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4036 | `SUB_AGENT_DELEGATION_DEPTH_EXCEEDED` | Blocking delegation refused: chain at its depth limit or would form a cycle |
 | 4037 | `DEPLOY_TARGET_NOT_CONFIGURED` | Deploy target is unlisted, absent, or not finished being set up |
 | 4038 | `PUBLISH_TARGET_NOT_CONFIGURED` | Publish target is unlisted, absent, or not finished being set up |
+| 4039 | `PLAN_PARENT_TASK_IN_USE` | Task delete refused: a plan references it as its parent (delete the plan first) |
+| 4040 | `PLAN_NOT_DELETABLE` | Plan delete refused: the plan is dispatched or already decided |
 
 ## Rate Limit (5xxx)
 

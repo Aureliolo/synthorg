@@ -87,6 +87,7 @@ stateDiagram-v2
     DRAFT --> SUPERSEDED: superseded by a re-plan
     PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
     APPROVED --> EXECUTING: dispatched
+    APPROVED --> FAILED: dispatch precondition failed
     APPROVED --> SUPERSEDED: superseded by a re-plan
     EXECUTING --> INTEGRATING: every item done
     EXECUTING --> FAILED: dispatch failed
@@ -117,14 +118,20 @@ decomposition succeeded, if parking the approval fails: it is then FAILED with i
 items intact, so `FAILED` permits (but does not require) an empty item list.
 
 `FAILED` therefore means "could not be delivered", not the narrower "never
-reached a review decision": decomposition, the approval park, and dispatch all
-land here. `EXECUTING -> FAILED` exists because an approved plan is moved to
-`EXECUTING` *before* `coordinate(...)` runs (load-bearing ordering, so the
-rollup never sees a `PLANNING` project with tasks running), and a raise there
-used to mark only the parent task failed and leave the plan `EXECUTING`
-forever, with no children and no way out. It now syncs to `FAILED` with the
-redacted cause, so an operator sees why instead of a plan that never moves. The
-`PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
+reached a review decision". Four routes land here: decomposition, the approval
+park, dispatch, and a project teardown over a plan with no items (superseding an
+itemless plan is what the `items` CHECK forbids, so the cascade fails it with
+"project deleted" instead).
+
+Dispatch reaches `FAILED` from either side of one line. An approved plan is
+moved to `EXECUTING` *before* `coordinate(...)` runs (load-bearing ordering, so
+the rollup never sees a `PLANNING` project with tasks running), so a raise from
+`coordinate` fails an `EXECUTING` plan, while the precondition branches that
+return before it (no coordinator, no parent task, a project that cannot be
+linked) fail an `APPROVED` one. Both carry the redacted cause, so a plan never
+sits dispatched with no children and no explanation.
+
+The `PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
 list (enforced by the model validator and the SQLite / Postgres `items` CHECK);
 every other status requires a non-empty, validated item DAG. A `failure_reason` is
 present iff the status is `FAILED` (a cross-field model validator enforces both
@@ -166,6 +173,23 @@ nullable `failure_reason` (non-blank when present, CHECK-enforced), and
 and a composite `(project, status, id)` index for the combined-filter list query.
 `update()` takes an `expected_version` guard and raises
 `PersistenceVersionConflictError` when the stored version has moved.
+
+`plans.parent_task_id` is a real `REFERENCES tasks (id) ON DELETE RESTRICT`,
+indexed `(parent_task_id, id)` for the equality-then-ordering shape the delete
+guard queries with. RESTRICT rather than CASCADE because a plan is a reviewed
+decision record with its own delivery verdicts hanging off it: destroying that
+as a side effect of removing a task is a decision an operator should make
+deliberately, and `DELETE /plans/{id}` is where they make it. A task delete that
+a plan references is refused with `PLAN_PARENT_TASK_IN_USE` (409) naming the
+plan, in `TaskEngine.delete_task` so every caller inherits it, with the
+constraint as the backstop for a race. `plan_item_comments.plan_id` is the
+mirror-image case: a remark ON a plan means nothing without it, so it CASCADEs.
+
+The reference cannot stop a task deleted mid-decomposition, so the approval gate
+re-reads the parent before it fills the shell and parks the approval, raising
+`PLAN_PARENT_TASK_MISSING`; the pipeline routes that through its compensation,
+so the plan lands `FAILED` with the reason and never reaches `PENDING_REVIEW`
+asking for a decision on work with no owner.
 
 Per-item discussion lives in a separate append-only store,
 `PlanItemCommentRepository` (`persistence/plan_comment_protocol.py`, composing
@@ -283,6 +307,7 @@ so approval stays atomic).
 | `GET` | `/plans/{id}` | Fetch a plan |
 | `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
+| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise) |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |
@@ -293,7 +318,8 @@ translation, and the `sync_status()` used by the approval-resume path so the
 decision transition gets the same audit coverage as an operator edit. On a rework
 it snapshots the pre-edit version into `version_history` (bounded), so a reviewer
 can diff how a revision addressed the panel's concerns. Edits and decisions publish
-`plan.updated` / `plan.changes_requested` events, and a posted comment publishes
+`plan.updated` / `plan.changes_requested` events (a delete publishes
+`plan.updated` too, so an open list drops the row), and a posted comment publishes
 `plan.comment_added`, all on the `plans` WebSocket channel. The event is a refresh
 signal (its payload stays the minimal locator); a subscriber reloads the item's
 thread, so an inline agent reply (broadcast the same way when it lands) surfaces
@@ -303,10 +329,10 @@ without a new channel or payload shape.
 parks a plan, and when it marks one FAILED. Those writes happen on a background
 spine, after the request that started them returned, so the gate is handed a
 narrow publisher (`PlanNotifier`, built from the channels plugin at
-construction) rather than resolving one from a request it does not have.
-Without it a page open during decomposition kept rendering the
-pre-decomposition snapshot beside a fresh approval prompt until it was reloaded
-by hand. The comment endpoints live on
+construction) rather than resolving one from a request it does not have. It is
+what stops a page open during decomposition from rendering the
+pre-decomposition snapshot beside a fresh approval prompt. The comment endpoints
+live on
 `PlanCommentController` (`api/controllers/plan_comments.py`); a human comment's
 author is taken from the authenticated user, never the request body, and an agent
 reply is attributed to the responding role.

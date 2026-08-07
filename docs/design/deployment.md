@@ -13,7 +13,7 @@ SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend
 
 | Image | Purpose | Base |
 |-------|---------|------|
-| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14` resolved via apko lockfile); thin `docker/backend/Dockerfile` layers the uv-built venv on top |
+| `backend` | SynthOrg orchestration engine (Litestar + uvicorn) | apko-composed Wolfi base (`docker/backend/apko.yaml`, `python-3.14` resolved via apko lockfile) with `git` (workspace provisioning is on the critical path of every dispatch) and `postgresql-client` (the backup handlers); thin `docker/backend/Dockerfile` layers the uv-built venv on top. What the backend spawns and cannot supply itself is asserted at boot by the binary preflight (see [API startup lifecycle](../reference/api-startup-lifecycle.md)) |
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |

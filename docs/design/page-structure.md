@@ -82,7 +82,7 @@ Durable-plan review inbox with its own red nav badge (pending plan-review count)
 
 The detail page also carries the **delivery verdict**: once the evaluate stage has judged the initiative, the panel shows each objective criterion with the judge's outcome and evidence, newest judgement first, so a plan parked at `EVALUATING` explains which criteria failed instead of showing a status and nothing else. It is hidden until a judgement exists.
 
-**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, `GET /plans/{id}/evaluation`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
+**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `DELETE /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, `GET /plans/{id}/evaluation`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
 **WS channels**: `plans`
 
 ### Secondary Navigation
