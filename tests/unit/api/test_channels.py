@@ -39,7 +39,7 @@ from synthorg.api.channels import (
     plan_updated_payload,
     user_channel,
 )
-from synthorg.api.ws_models import WsEventType
+from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -192,3 +192,26 @@ class TestPlanNotifier:
             "version": 3,
             "status": PlanStatus.PENDING_REVIEW.value,
         }
+
+    def test_a_supersedes_payload_survives_envelope_validation(self) -> None:
+        """The declared payload and what a replan publishes have to agree.
+
+        ``PAYLOAD_CONFIG`` forbids extras and ``WsEvent`` validates every
+        payload against the union on construction, so a key the model does
+        not declare is not an ignored field: it raises here and the
+        subscriber gets no event at all. Asserting the dict alone would
+        have passed while the replan event never reached the dashboard.
+        """
+        plan = self._plan()
+        retired = self._plan()
+
+        payload = plan_updated_payload(plan, supersedes=retired)
+
+        assert payload["supersedes"] == str(retired.id)
+        event = WsEvent(
+            event_type=WsEventType.PLAN_UPDATED,
+            channel=CHANNEL_PLANS,
+            timestamp=FakeClock().now(),
+            payload=payload,
+        )
+        assert event.payload["supersedes"] == str(retired.id)

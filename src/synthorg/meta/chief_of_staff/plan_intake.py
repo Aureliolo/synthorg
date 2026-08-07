@@ -31,6 +31,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
@@ -72,6 +73,19 @@ _KEY_SEPARATOR: Final[str] = "\n"
 
 #: A window at or below this switches deduping off entirely.
 _NO_WINDOW: Final[timedelta] = timedelta(0)
+
+#: An objective in one of these can no longer produce a plan, so it does not
+#: count as the project's standing run. ``FAILED`` is included even though the
+#: engine treats it as reassignable, because nothing on the conversational path
+#: reassigns one: re-sending the brief IS the retry, and answering it with the
+#: failed id would hand the operator a run that never continues.
+_DEAD_OBJECTIVE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+        TaskStatus.REJECTED,
+    }
+)
 
 
 def _dedupe_key(created_by: str, text: str) -> str:
@@ -363,9 +377,22 @@ class ConversationalPlanDispatcher:
             not a preference between two of them; it is so a repository
             whose row order is unspecified cannot answer differently on two
             calls if that invariant were ever broken.
+
+            A run in :data:`_DEAD_OBJECTIVE_STATUSES` is not standing. The
+            project stays PLANNING when its objective dies, so it stays
+            inside the dedupe window, and pointing the re-send at the dead
+            id would answer with a run that can no longer produce a plan
+            while filing no new one. Treating it as absent files a fresh
+            objective, which is what re-sending a brief after a failed
+            intake is asking for.
         """
         tasks = await self._task_repo.query(TaskFilterSpec(project=project))
-        objectives = [task for task in tasks if task.parent_task_id is None]
+        objectives = [
+            task
+            for task in tasks
+            if task.parent_task_id is None
+            and task.status not in _DEAD_OBJECTIVE_STATUSES
+        ]
         if not objectives:
             return None
         return min(objectives, key=lambda task: str(task.id))

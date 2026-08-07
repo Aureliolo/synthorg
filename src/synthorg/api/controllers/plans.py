@@ -453,6 +453,9 @@ class PlanController(Controller):
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
             PlanNotDeletableError: The plan is dispatched or already decided.
+            ConflictError: The parked review approval was decided while the
+                delete was being prepared, so the plan is still being acted
+                on. Nothing is removed and the operator retries.
         """
         service = _service(state)
         existing = require_resource_or_404(
@@ -462,11 +465,11 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="delete",
         )
-        await service.delete(existing, requested_by=extract_requester(state))
-        # The plan is gone, so the approval parked against it has nothing
-        # left to decide. Left pending, approving it would drive the resume
-        # path at a missing plan and fail the parent task.
+        # Ahead of the delete, and gating it: an approval left pending would
+        # drive the resume path at a missing plan, and retiring it afterwards
+        # has no recovery if the write does not land.
         await retire_review_approval(state.app_state, existing)
+        await service.delete(existing, requested_by=extract_requester(state))
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(

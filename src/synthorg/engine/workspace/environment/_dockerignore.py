@@ -50,7 +50,11 @@ _DOCKERIGNORE: Final[str] = ".dockerignore"
 #: under both), and a line over either is dropped like one that will not
 #: compile.
 _MAX_PATTERN_LENGTH: Final[int] = 512
-_MAX_DOUBLE_STARS: Final[int] = 4
+#: Two, not four: each ``**`` contributes an optional greedy group, so the
+#: backtracking this ceiling exists to bound grows with the count rather than
+#: with the length. Two is what a deliberate pattern reaches (``**/build/**``);
+#: a third is already past anything the format needs to express.
+_MAX_DOUBLE_STARS: Final[int] = 2
 
 
 class _Rule(NamedTuple):

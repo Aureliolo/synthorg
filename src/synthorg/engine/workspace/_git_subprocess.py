@@ -38,11 +38,15 @@ logger = get_logger(__name__)
 GIT_RC_BINARY_NOT_FOUND: Final[int] = -201
 GIT_RC_SPAWN_FAILED: Final[int] = -202
 GIT_RC_TIMED_OUT: Final[int] = -203
+GIT_RC_MISSING_REPO_ROOT: Final[int] = -204
 
 _FAILURE_DESCRIPTIONS: Final[dict[int, str]] = {
     GIT_RC_BINARY_NOT_FOUND: "the 'git' binary is not on PATH",
     GIT_RC_SPAWN_FAILED: "the git subprocess could not be spawned",
     GIT_RC_TIMED_OUT: "the git command timed out",
+    GIT_RC_MISSING_REPO_ROOT: (
+        "the repository directory it was told to run in does not exist"
+    ),
 }
 
 
@@ -196,7 +200,7 @@ async def run_git_subprocess(
             config=config,
         )
     except OSError as exc:
-        return _spawn_failure(exc, args, log_event=log_event)
+        return _spawn_failure(exc, args, repo_root=repo_root, log_event=log_event)
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(),
@@ -236,24 +240,35 @@ def _spawn_failure(
     exc: OSError,
     args: tuple[str, ...],
     *,
+    repo_root: Path,
     log_event: str,
 ) -> tuple[int, str, str]:
     """Classify an ``OSError`` raised before git ever started.
 
-    ``FileNotFoundError`` is the one an operator can act on directly (the
-    image does not ship git), so it earns its own code and a message that
-    names the cause rather than a number.
+    "The image does not ship git" and "the directory we were told to run in
+    is not there" are different operator actions, and the exception type
+    alone does not separate them: a missing *cwd* raises
+    ``FileNotFoundError`` on POSIX exactly as a missing executable does, and
+    ``NotADirectoryError`` on Windows. Reporting the first as the second
+    sends an operator hunting for a binary that is installed, which is the
+    misdiagnosis this classification exists to remove, so the directory is
+    checked before the type is trusted.
 
     Returns:
         The ``(return_code, "", message)`` triple for the failure.
     """
-    missing = isinstance(exc, FileNotFoundError)
-    rc = GIT_RC_BINARY_NOT_FOUND if missing else GIT_RC_SPAWN_FAILED
+    if not repo_root.is_dir():
+        rc = GIT_RC_MISSING_REPO_ROOT
+    elif isinstance(exc, FileNotFoundError):
+        rc = GIT_RC_BINARY_NOT_FOUND
+    else:
+        rc = GIT_RC_SPAWN_FAILED
     msg = f"failed to run git: {_FAILURE_DESCRIPTIONS[rc]}"
     logger.warning(
         log_event,
         error_type=exc.__class__.__name__,
         error=msg,
+        repo_root=str(repo_root),
         args=_redact_args(args),
     )
     return (rc, "", msg)
@@ -310,4 +325,4 @@ async def _run_git_in_thread(
         )
         return (GIT_RC_TIMED_OUT, "", msg)
     except OSError as exc:
-        return _spawn_failure(exc, args, log_event=log_event)
+        return _spawn_failure(exc, args, repo_root=repo_root, log_event=log_event)

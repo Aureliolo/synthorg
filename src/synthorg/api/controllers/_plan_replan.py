@@ -114,21 +114,30 @@ async def reject_unroutable_owners(
             roster an unwired registry stands in for would equally reject
             every owner. The error names the wiring gap so an operator is
             not sent looking at their own input for the cause.
-        ValidationError: An item names a role no agent holds.
+        ValidationError: One or more items name a role no agent holds. Every
+            offending item is reported together: a revision is edited as a
+            whole, so surfacing one owner per attempt would cost the operator
+            a round trip per invented name.
     """
     registry = app_state.slice(HrStateSlice).agent_registry
     if registry is None:
         msg = "Owner validation is unavailable: the agent registry is not wired."
         raise ServiceUnavailableError(msg)
     roster = roster_from_agents(await registry.list_active())
-    for item in items:
-        detail = describe_unroutable_role(
-            entity_id=item.id,
-            required_role=item.owner,
-            available_roles=roster,
+    details = [
+        detail
+        for item in items
+        if (
+            detail := describe_unroutable_role(
+                entity_id=item.id,
+                required_role=item.owner,
+                available_roles=roster,
+            )
         )
-        if detail is not None:
-            raise ValidationError(detail)
+        is not None
+    ]
+    if details:
+        raise ValidationError("; ".join(details))
 
 
 async def replan_initiative(

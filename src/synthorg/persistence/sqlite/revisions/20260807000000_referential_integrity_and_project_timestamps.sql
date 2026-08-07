@@ -277,7 +277,7 @@ SELECT
     p.version,
     COALESCE(
         (
-            SELECT w.created_at FROM project_workspaces AS w
+            SELECT MIN(w.created_at) FROM project_workspaces AS w
             WHERE w.project_id = p.id
         ),
         (
@@ -288,7 +288,7 @@ SELECT
     ) AS created_at,
     COALESCE(
         (
-            SELECT w.created_at FROM project_workspaces AS w
+            SELECT MIN(w.created_at) FROM project_workspaces AS w
             WHERE w.project_id = p.id
         ),
         (

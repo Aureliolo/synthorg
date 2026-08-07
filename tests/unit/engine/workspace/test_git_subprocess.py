@@ -25,6 +25,7 @@ import pytest
 from synthorg.core.git_env import GIT_HARDENING_OVERRIDES, LOCAL_TRANSPORT_GIT_CONFIG
 from synthorg.engine.workspace._git_subprocess import (
     GIT_RC_BINARY_NOT_FOUND,
+    GIT_RC_MISSING_REPO_ROOT,
     GIT_RC_SPAWN_FAILED,
     GIT_RC_TIMED_OUT,
     describe_git_failure,
@@ -268,9 +269,41 @@ async def test_native_path_reports_missing_git() -> None:
     assert "not on PATH" in stderr
 
 
+async def test_a_missing_repo_root_is_not_reported_as_a_missing_binary(
+    tmp_path: Path,
+) -> None:
+    """A cwd that is not there raises the same type as an absent binary.
+
+    On POSIX both are ``FileNotFoundError``, so trusting the exception type
+    would tell an operator to install git that is already installed. The
+    workspace failure this separates is the common one: the project repo
+    was never provisioned.
+    """
+    absent = tmp_path / "projects" / "never-provisioned"
+    with patch(
+        "asyncio.create_subprocess_exec",
+        side_effect=FileNotFoundError("No such file or directory"),
+    ):
+        rc, _stdout, stderr = await run_git_subprocess(
+            absent,
+            "branch",
+            cmd_timeout=5.0,
+            log_event=GIT_BACKEND_PROVISION_START,
+        )
+
+    assert rc == GIT_RC_MISSING_REPO_ROOT
+    assert "not on PATH" not in stderr
+    assert "does not exist" in stderr
+
+
 @pytest.mark.parametrize(
     "code",
-    [GIT_RC_BINARY_NOT_FOUND, GIT_RC_SPAWN_FAILED, GIT_RC_TIMED_OUT],
+    [
+        GIT_RC_BINARY_NOT_FOUND,
+        GIT_RC_SPAWN_FAILED,
+        GIT_RC_TIMED_OUT,
+        GIT_RC_MISSING_REPO_ROOT,
+    ],
 )
 def test_every_failure_code_describes_itself(code: int) -> None:
     """Each sentinel renders a distinct operator-facing cause."""
@@ -291,6 +324,11 @@ def test_failure_codes_are_distinct() -> None:
     The defect this replaces overloaded ``-1`` across all three, so a
     missing binary was indistinguishable from a failing git command.
     """
-    codes = {GIT_RC_BINARY_NOT_FOUND, GIT_RC_SPAWN_FAILED, GIT_RC_TIMED_OUT}
-    assert len(codes) == 3
+    codes = {
+        GIT_RC_BINARY_NOT_FOUND,
+        GIT_RC_SPAWN_FAILED,
+        GIT_RC_TIMED_OUT,
+        GIT_RC_MISSING_REPO_ROOT,
+    }
+    assert len(codes) == 4
     assert all(code < 0 for code in codes)

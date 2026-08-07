@@ -112,10 +112,10 @@ class TestARefusedLineDoesNotFailTheBuild:
 
     def test_a_pattern_repeating_double_stars_is_dropped(self) -> None:
         """``**`` becomes ``(.*/)?``; nesting them backtracks catastrophically."""
-        matcher = parse_dockerignore("*.log\n" + "**/" * 5 + "x\n")
+        matcher = parse_dockerignore("*.log\n" + "**/" * 3 + "x\n")
 
         assert matcher.excludes("app.log") is True
-        assert matcher.excludes("a/b/c/d/e/x") is False
+        assert matcher.excludes("a/b/c/x") is False
 
     def test_the_ceilings_admit_a_pattern_written_on_purpose(self) -> None:
         """The bound has to sit above what an author actually writes."""

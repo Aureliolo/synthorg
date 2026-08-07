@@ -307,7 +307,7 @@ so approval stays atomic).
 | `GET` | `/plans/{id}` | Fetch a plan |
 | `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
-| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise). Expires the plan's parked `PLAN_REVIEW` approval in the same operation: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists |
+| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |

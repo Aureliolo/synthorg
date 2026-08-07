@@ -16,6 +16,7 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalS
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, mock_of, sid
@@ -75,13 +76,17 @@ class _RecordingStore:
     def __init__(self, items: tuple[ApprovalItem, ...]) -> None:
         self._items = items
         self.saved: list[ApprovalItem] = []
+        # ``False`` stands for a decision landing between the read and the
+        # conditional write, which is what the real store reports by
+        # answering ``None``.
+        self.cas_wins = True
 
     async def list_items(self, **_: object) -> tuple[ApprovalItem, ...]:
         return self._items
 
     async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
         self.saved.append(item)
-        return item
+        return item if self.cas_wins else None
 
 
 def _state(store: _RecordingStore | None) -> object:
@@ -121,12 +126,26 @@ class TestRetireReviewApproval:
 
         assert store.saved == []
 
-    async def test_a_store_failure_does_not_fail_the_delete(self) -> None:
-        """The plan is already gone; raising reports a success as an error."""
+    async def test_a_store_failure_stops_the_delete(self) -> None:
+        """Retiring gates the delete, so a store that cannot answer blocks it.
+
+        Swallowing here is what the ordering was inverted to remove: the plan
+        would be deleted next while its approval stayed decidable, and the
+        only remaining move would be to log a window that is already open.
+        """
         store = mock_of[ApprovalStoreProtocol]()
         store.list_items.side_effect = RuntimeError("store down")
 
-        await retire_review_approval(_state(store), _plan())  # type: ignore[arg-type]  # composed AppState
+        with pytest.raises(RuntimeError, match="store down"):
+            await retire_review_approval(_state(store), _plan())  # type: ignore[arg-type]  # composed AppState
+
+    async def test_a_concurrent_decision_refuses_the_delete(self) -> None:
+        """A verdict made while the plan existed outranks the deletion."""
+        store = _RecordingStore((_approval("parked"),))
+        store.cas_wins = False
+
+        with pytest.raises(ConflictError, match="decided while the delete"):
+            await retire_review_approval(_state(store), _plan())  # type: ignore[arg-type]  # composed AppState
 
     async def test_an_unwired_store_is_a_no_op(self) -> None:
         await retire_review_approval(_state(None), _plan())  # type: ignore[arg-type]  # composed AppState

@@ -8,7 +8,7 @@ build context carries is ``test_context.py``.
 
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -72,13 +72,18 @@ class _FakeDocker:
         self.closed = False
         self.close_error: BaseException | None = None
         self.close_hangs = False
+        # Owned by the fake rather than created inside ``close``, so a test
+        # that makes the close hang can also let it finish. An anonymous
+        # event has no such handle, which left the close task pending past
+        # the test that started it.
+        self.close_released = asyncio.Event()
 
     async def version(self) -> dict[str, str]:
         return {"Version": "test"}
 
     async def close(self) -> None:
         if self.close_hangs:
-            await asyncio.Event().wait()
+            await self.close_released.wait()
         self.closed = True
         if self.close_error is not None:
             raise self.close_error
@@ -86,6 +91,19 @@ class _FakeDocker:
 
 def _patch_client(client: object) -> AbstractContextManager[object]:
     return patch.object(aiodocker, "Docker", return_value=client)
+
+
+async def _drain_pending_closes() -> None:
+    """Await every close the builder detached, so none outlives the test.
+
+    The set is the builder's own strong reference and its done-callback
+    discards each entry, so this both waits for completion and leaves the
+    registry empty for the next test.
+    """
+    pending = tuple(image_builder._PENDING_CLOSES)
+    for task in pending:
+        with suppress(Exception):
+            await task
 
 
 class TestContextCeiling:
@@ -338,13 +356,20 @@ class TestBuild:
         client = _FakeDocker([{"stream": "done\n"}])
         client.close_hangs = True
 
-        with _patch_client(client):
-            outcome = await AiodockerImageBuilder().build(
-                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
-            )
+        try:
+            with _patch_client(client):
+                outcome = await AiodockerImageBuilder().build(
+                    tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+                )
 
-        assert outcome.success is True
-        assert client.closed is False
+            assert outcome.success is True
+            assert client.closed is False
+        finally:
+            # The build deliberately leaves the close running, so this test
+            # owns ending it: left blocked, the task outlives the test and
+            # surfaces against whichever one is running at loop shutdown.
+            client.close_released.set()
+            await _drain_pending_closes()
 
     async def test_the_daemon_gets_the_relative_dockerfile_and_a_gzip_context(
         self, tmp_path: Path

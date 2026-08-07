@@ -13,6 +13,8 @@ from uuid import uuid4
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.plan import Plan
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskVersionConflictError
@@ -454,6 +456,23 @@ async def apply_transition(
     )
 
 
+def _parent_of_plan_result(
+    mutation: DeleteTaskMutation, blocking: Plan
+) -> TaskMutationResult:
+    """Refuse a delete because *blocking* still names the task as its objective.
+
+    Returns:
+        The ``parent_of_plan`` failure, carrying the plan id the operator
+        needs to act on.
+    """
+    return TaskMutationResult(
+        request_id=mutation.request_id,
+        success=False,
+        error=delete_refusal_message(mutation.task_id, blocking),
+        error_code="parent_of_plan",
+    )
+
+
 async def apply_delete(
     mutation: DeleteTaskMutation,
     persistence: PersistenceBackend,
@@ -479,16 +498,30 @@ async def apply_delete(
         because the processing loop converts any raise into a generic
         ``internal`` failure, which would lose the plan id the operator
         needs.
+
+    Raises:
+        ConstraintViolationError: The delete breached a constraint that is
+            not a plan still naming this task. Re-raised because the
+            ``parent_of_plan`` contract above describes exactly one refusal,
+            and reporting another cause under it would be a wrong answer
+            rather than a lost one.
     """
     blocking = await plan_blocking_delete(persistence.plans, mutation.task_id)
     if blocking is not None:
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=False,
-            error=delete_refusal_message(mutation.task_id, blocking),
-            error_code="parent_of_plan",
-        )
-    deleted = await persistence.tasks.delete(mutation.task_id)
+        return _parent_of_plan_result(mutation, blocking)
+    try:
+        deleted = await persistence.tasks.delete(mutation.task_id)
+    except ConstraintViolationError:
+        # The preflight above and this delete are two statements, so a plan
+        # can be written against the task in between and the RESTRICT fires
+        # instead. Re-reading turns that into the same answer the preflight
+        # would have given; the raise would otherwise reach the processing
+        # loop as a generic `internal`, losing the plan id this result's
+        # documented contract carries.
+        raced = await plan_blocking_delete(persistence.plans, mutation.task_id)
+        if raced is None:
+            raise
+        return _parent_of_plan_result(mutation, raced)
     if not deleted:
         return not_found_result("delete", mutation.request_id, mutation.task_id)
 

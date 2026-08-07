@@ -93,7 +93,11 @@ ALTER TABLE projects ADD COLUMN updated_at TIMESTAMPTZ;
 UPDATE projects
 SET created_at = COALESCE(
     (
-        SELECT w.created_at FROM project_workspaces AS w
+        -- MIN, matching the plans arm below: a project may hold several
+        -- workspace rows, and an unaggregated scalar subquery aborts the
+        -- whole migration here while SQLite silently takes an arbitrary
+        -- one, so the two backends would disagree on the same input.
+        SELECT MIN(w.created_at) FROM project_workspaces AS w
         WHERE w.project_id = projects.id
     ),
     (

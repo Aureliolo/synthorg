@@ -5,6 +5,7 @@ Pure functions that construct the system/user messages and the
 :mod:`synthorg.engine.decomposition.llm_parse`; both share ``TOOL_NAME``.
 """
 
+from copy import deepcopy
 from typing import Final
 
 from pydantic import JsonValue
@@ -263,6 +264,11 @@ def build_decomposition_tool(
         structure, including subtask definitions with dependencies
         and complexity metadata.
     """
+    # Deep-copied, not spread: ``**`` is shallow, so every built definition
+    # would otherwise share the same nested sub-schemas (and the same
+    # ``required`` list object), and one in-place edit downstream would rewrite
+    # the template every later build starts from. ``Final`` rebinds nothing
+    # here; it only stops the NAME being reassigned.
     subtask_schema: dict[str, JsonValue] = {
         "type": "object",
         # The roster is the only source of role names, and deliberately the
@@ -270,10 +276,10 @@ def build_decomposition_tool(
         # will reach for, and one outside the org's own template is work it
         # assigns to nothing that can be dispatched to.
         "properties": {
-            **_SUBTASK_PROPERTIES,
+            **deepcopy(_SUBTASK_PROPERTIES),
             "required_role": _role_field(available_roles),
         },
-        "required": _SUBTASK_REQUIRED,
+        "required": list(_SUBTASK_REQUIRED),
     }
     schema: dict[str, JsonValue] = {
         "type": "object",
@@ -283,7 +289,7 @@ def build_decomposition_tool(
                 "items": subtask_schema,
                 "description": "Ordered subtask definitions",
             },
-            **_PLAN_PROPERTIES,
+            **deepcopy(_PLAN_PROPERTIES),
         },
         "required": ["subtasks"],
     }
