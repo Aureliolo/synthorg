@@ -205,6 +205,9 @@ class TestBuild:
 
         assert outcome.failure is BuildFailure.CONTEXT_TOO_LARGE
         assert client.closed is True
+        # The packer reports the fact; naming the setting that produced the
+        # ceiling belongs here, because here is what read it.
+        assert "coordination.devcontainer_context_max_bytes" in outcome.log
 
     async def test_unreachable_daemon_is_its_own_failure(self, tmp_path: Path) -> None:
         """An unreachable daemon must not read as a Dockerfile the daemon rejected."""

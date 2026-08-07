@@ -161,7 +161,7 @@ class TestContextTar:
             context_tar(resolved, _EMPTY_IGNORE, 1024)
 
         assert excinfo.value.limit_bytes == 1024
-        assert "devcontainer_context_max_bytes" in str(excinfo.value)
+        assert excinfo.value.packed_bytes > 1024
 
     def test_an_ignored_tree_does_not_count_toward_the_ceiling(
         self, tmp_path: Path

@@ -20,8 +20,6 @@ from typing import Final, NamedTuple
 from synthorg.engine.errors import EnvironmentConfigError
 from synthorg.engine.workspace.environment._dockerignore import DockerignoreMatcher
 
-CONTEXT_MAX_BYTES_KEY: Final[str] = "devcontainer_context_max_bytes"
-
 #: Never packed, whatever the declaration or the ignore file says.
 #: ``.git`` holds the workspace's remote configuration and its whole
 #: object history, and an agent-authored ``COPY . /app`` would otherwise
@@ -33,7 +31,11 @@ _ALWAYS_EXCLUDED: Final[frozenset[str]] = frozenset({".git", ".dockerignore"})
 
 
 class ContextTooLargeError(EnvironmentConfigError):
-    """The build context exceeds the operator's ceiling.
+    """The build context exceeds the ceiling the caller passed.
+
+    Reports the fact, not the remedy: the ceiling arrives as a number and
+    this module does not know which setting produced it. Naming that
+    setting is the caller's job, because the caller is what read it.
 
     Attributes:
         packed_bytes: What had been counted when the ceiling was crossed.
@@ -42,9 +44,7 @@ class ContextTooLargeError(EnvironmentConfigError):
 
     def __init__(self, packed_bytes: int, limit_bytes: int) -> None:
         super().__init__(
-            f"build context exceeds {limit_bytes} bytes (reached "
-            f"{packed_bytes}); exclude what the build does not need via "
-            f".dockerignore, or raise coordination.{CONTEXT_MAX_BYTES_KEY}"
+            f"build context exceeds {limit_bytes} bytes (reached {packed_bytes})"
         )
         self.packed_bytes = packed_bytes
         self.limit_bytes = limit_bytes

@@ -32,8 +32,8 @@ adapters download their vendor CLI on first start
 (`integrations.tunnel.cloudflared_download_enabled` /
 `devtunnel_download_enabled`, both on by default) and each answers
 `availability()` with the live state, including the case where that download is
-switched off. Checking PATH at boot would report a fetchable binary as missing
-and duplicate a better, later report. The same reasoning excludes `nix`, which
+switched off. Checking PATH at boot would report a binary the adapter downloads
+on demand as missing, and duplicate a better, later report. The same reasoning excludes `nix`, which
 provisions inside the sandbox.
 
 Nothing else is listed: there is no `create_subprocess_shell` under

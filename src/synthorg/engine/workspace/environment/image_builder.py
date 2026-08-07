@@ -24,7 +24,6 @@ from pydantic import BaseModel, ConfigDict, computed_field
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment._context import (
-    CONTEXT_MAX_BYTES_KEY,
     ContextTooLargeError,
     ResolvedContext,
     assert_contained,
@@ -38,6 +37,8 @@ from synthorg.settings.registry import registered_default_int
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+_CONTEXT_MAX_BYTES_KEY: Final[str] = "devcontainer_context_max_bytes"
 
 #: Strong references to in-flight connection closes. A task with no
 #: strong reference can be collected mid-flight, because asyncio holds
@@ -184,8 +185,8 @@ class AiodockerImageBuilder:
         """
         namespace = SettingNamespace.COORDINATION.value
         if self._config_resolver is None:
-            return registered_default_int(namespace, CONTEXT_MAX_BYTES_KEY)
-        return await self._config_resolver.get_int(namespace, CONTEXT_MAX_BYTES_KEY)
+            return registered_default_int(namespace, _CONTEXT_MAX_BYTES_KEY)
+        return await self._config_resolver.get_int(namespace, _CONTEXT_MAX_BYTES_KEY)
 
     @staticmethod
     async def _connect() -> aiodocker.Docker:
@@ -344,7 +345,12 @@ class AiodockerImageBuilder:
             return BuildOutcome(
                 tag=tag,
                 failure=BuildFailure.CONTEXT_TOO_LARGE,
-                log=str(exc),
+                log=(
+                    f"{exc}; exclude what the build does not need via "
+                    f".dockerignore, or raise "
+                    f"{SettingNamespace.COORDINATION.value}."
+                    f"{_CONTEXT_MAX_BYTES_KEY}"
+                ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised; a
             # build that dies mid-stream is reported to the caller as a
