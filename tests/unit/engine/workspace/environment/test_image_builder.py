@@ -1,8 +1,9 @@
 """Unit tests for the aiodocker-backed devcontainer image builder.
 
 Real builds belong to the integration tier; these pin the parts that
-decide what an operator is told: the containment guard, the build-context
-tar, and the mapping from what the daemon did to a :class:`BuildFailure`.
+decide what an operator is told and what leaves the host: the
+containment guard, what the build-context tar does and does not carry,
+and the mapping from what the daemon did to a :class:`BuildFailure`.
 """
 
 import asyncio
@@ -17,14 +18,23 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError
+from synthorg.engine.workspace.environment._dockerignore import (
+    DockerignoreMatcher,
+    parse_dockerignore,
+)
 from synthorg.engine.workspace.environment.image_builder import (
     AiodockerImageBuilder,
     BuildFailure,
+    ContextTooLargeError,
 )
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 _TAG = NotBlankStr("synthorg-project-test:abc123")
+_NO_LIMIT = 1 << 30
+_EMPTY_IGNORE = DockerignoreMatcher(())
 
 
 def _context(root: Path) -> tuple[Path, Path]:
@@ -35,6 +45,19 @@ def _context(root: Path) -> tuple[Path, Path]:
     dockerfile.write_text("FROM scratch\n", encoding="utf-8")
     (context / "app.txt").write_text("payload\n", encoding="utf-8")
     return context, dockerfile
+
+
+def _packed_names(
+    context: Path,
+    dockerfile: Path,
+    ignore: DockerignoreMatcher = _EMPTY_IGNORE,
+    limit_bytes: int = _NO_LIMIT,
+) -> list[str]:
+    """Pack *context* and return the member names, sorted."""
+    resolved = AiodockerImageBuilder._assert_contained(dockerfile, context)
+    stream = AiodockerImageBuilder._context_tar(resolved, ignore, limit_bytes)
+    with tarfile.open(fileobj=stream, mode="r:gz") as archive:
+        return sorted(archive.getnames())
 
 
 # One streamed build chunk. Nested because ``errorDetail`` carries a mapping,
@@ -68,12 +91,15 @@ class _FakeDocker:
     def __init__(self, chunks: list[_Chunk] | BaseException) -> None:
         self.images = _FakeImages(chunks)
         self.closed = False
+        self.close_error: BaseException | None = None
 
     async def version(self) -> dict[str, str]:
         return {"Version": "test"}
 
     async def close(self) -> None:
         self.closed = True
+        if self.close_error is not None:
+            raise self.close_error
 
 
 def _patch_client(client: object) -> AbstractContextManager[object]:
@@ -95,23 +121,138 @@ class TestContainmentGuard:
         """The daemon is given the context-relative path, never an absolute one."""
         context, dockerfile = _context(tmp_path)
 
-        relative = AiodockerImageBuilder._assert_contained(dockerfile, context)
+        resolved = AiodockerImageBuilder._assert_contained(dockerfile, context)
 
-        assert relative == Path("Dockerfile")
+        assert resolved.dockerfile == Path("Dockerfile")
+        assert resolved.context == context.resolve()
 
 
 class TestContextTar:
     def test_context_is_packed_with_relative_names(self, tmp_path: Path) -> None:
         """A host-absolute member name would not resolve inside the daemon."""
-        context, _ = _context(tmp_path)
+        context, dockerfile = _context(tmp_path)
 
-        stream = AiodockerImageBuilder._context_tar(context)
+        names = _packed_names(context, dockerfile)
 
-        with tarfile.open(fileobj=stream, mode="r:gz") as archive:
-            names = sorted(archive.getnames())
         assert "./Dockerfile" in names
         assert "./app.txt" in names
         assert not any(name.startswith("/") for name in names)
+
+    def test_a_symlink_is_archived_not_followed(self, tmp_path: Path) -> None:
+        """Following one would copy whatever it targets into the image.
+
+        The security property the docstring asserts, pinned so a future
+        ``dereference=True`` cannot pass silently.
+        """
+        context, dockerfile = _context(tmp_path)
+        secret = tmp_path / "outside.txt"
+        secret.write_text("host secret\n", encoding="utf-8")
+        link = context / "link.txt"
+        try:
+            link.symlink_to(secret)
+        except OSError:  # pragma: no cover -- unprivileged Windows
+            pytest.skip("symlink creation is not permitted here")
+
+        resolved = AiodockerImageBuilder._assert_contained(dockerfile, context)
+        stream = AiodockerImageBuilder._context_tar(resolved, _EMPTY_IGNORE, _NO_LIMIT)
+
+        with tarfile.open(fileobj=stream, mode="r:gz") as archive:
+            member = archive.getmember("./link.txt")
+            assert member.issym()
+            assert archive.extractfile(member) is None
+
+    def test_the_git_directory_never_enters_the_context(self, tmp_path: Path) -> None:
+        """``.git`` holds the forge remote and the whole object history.
+
+        An agent-authored ``COPY . /app`` would otherwise bake both into
+        a layer cached by declaration hash and reused.
+        """
+        context, dockerfile = _context(tmp_path)
+        (context / ".git").mkdir()
+        (context / ".git" / "config").write_text("[remote]\n", encoding="utf-8")
+        nested = context / "vendor" / ".git"
+        nested.mkdir(parents=True)
+        (nested / "config").write_text("[remote]\n", encoding="utf-8")
+
+        names = _packed_names(context, dockerfile)
+
+        assert not any(".git" in name.split("/") for name in names)
+
+    def test_dockerignore_patterns_are_applied(self, tmp_path: Path) -> None:
+        """The daemon knows nothing about the file, so the packer honours it."""
+        context, dockerfile = _context(tmp_path)
+        (context / "secrets.env").write_text("TOKEN=1\n", encoding="utf-8")
+        modules = context / "node_modules" / "pkg"
+        modules.mkdir(parents=True)
+        (modules / "index.js").write_text("x\n", encoding="utf-8")
+
+        names = _packed_names(
+            context,
+            dockerfile,
+            parse_dockerignore("*.env\nnode_modules\n"),
+        )
+
+        assert "./app.txt" in names
+        assert "./secrets.env" not in names
+        assert not any("node_modules" in name for name in names)
+
+    def test_the_dockerfile_survives_an_ignore_rule_that_names_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The daemon is told where the Dockerfile is; it has to be there."""
+        context, dockerfile = _context(tmp_path)
+
+        names = _packed_names(context, dockerfile, parse_dockerignore("*\n"))
+
+        assert "./Dockerfile" in names
+        assert "./app.txt" not in names
+
+    def test_a_context_past_the_ceiling_is_refused(self, tmp_path: Path) -> None:
+        """The context is agent-writable, so packing it all can exhaust the heap."""
+        context, dockerfile = _context(tmp_path)
+        (context / "big.bin").write_bytes(b"x" * 4096)
+        resolved = AiodockerImageBuilder._assert_contained(dockerfile, context)
+
+        with pytest.raises(ContextTooLargeError) as excinfo:
+            AiodockerImageBuilder._context_tar(resolved, _EMPTY_IGNORE, 1024)
+
+        assert excinfo.value.limit_bytes == 1024
+        assert "devcontainer_context_max_bytes" in str(excinfo.value)
+
+    def test_an_ignored_tree_does_not_count_toward_the_ceiling(
+        self, tmp_path: Path
+    ) -> None:
+        """Excluding is pruning: what is never packed never costs anything."""
+        context, dockerfile = _context(tmp_path)
+        (context / "big.bin").write_bytes(b"x" * 4096)
+
+        names = _packed_names(
+            context, dockerfile, parse_dockerignore("big.bin\n"), limit_bytes=1024
+        )
+
+        assert "./big.bin" not in names
+
+
+class TestContextCeiling:
+    async def test_the_ceiling_is_read_live_per_build(self) -> None:
+        """An operator raising it must not need a restart."""
+        resolver = mock_of[ConfigResolverProtocol](
+            get_int=AsyncMock(spec=ConfigResolverProtocol.get_int, return_value=99)
+        )
+
+        ceiling = await AiodockerImageBuilder(resolver)._context_ceiling()
+
+        assert ceiling == 99
+        assert resolver.get_int.await_args.args == (
+            "coordination",
+            "devcontainer_context_max_bytes",
+        )
+
+    async def test_without_a_resolver_the_registered_default_applies(self) -> None:
+        """The same value an unset setting resolves to, not a second opinion."""
+        ceiling = await AiodockerImageBuilder()._context_ceiling()
+
+        assert ceiling > 0
 
 
 class TestBuild:
@@ -145,6 +286,75 @@ class TestBuild:
         assert outcome.failure is BuildFailure.BUILD_FAILED
         assert "invalid instruction" in outcome.log
 
+    async def test_an_error_detail_only_entry_also_fails_the_build(
+        self, tmp_path: Path
+    ) -> None:
+        """The richer shape carries no ``error`` key, and it is still a failure."""
+        context, dockerfile = _context(tmp_path)
+        client = _FakeDocker(
+            [
+                {"stream": "Step 1/2\n"},
+                {"errorDetail": {"code": 1, "message": "returned a non-zero code: 1"}},
+            ]
+        )
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.failure is BuildFailure.BUILD_FAILED
+        assert "non-zero code" in outcome.log
+
+    async def test_a_run_step_printing_error_is_not_a_failed_build(
+        self, tmp_path: Path
+    ) -> None:
+        """A linter's own stdout is not the daemon's verdict on the build."""
+        context, dockerfile = _context(tmp_path)
+        client = _FakeDocker(
+            [{"stream": "ERROR: 1 vulnerability found, continuing\n"}, {"stream": "ok"}]
+        )
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.success is True
+
+    async def test_a_stream_that_dies_mid_build_is_a_failed_build(
+        self, tmp_path: Path
+    ) -> None:
+        """The transport dropping must not escape as a 500 from provisioning."""
+        context, dockerfile = _context(tmp_path)
+        client = _FakeDocker(aiodocker.DockerError(500, "stream closed"))
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.failure is BuildFailure.BUILD_FAILED
+        assert client.closed is True
+
+    async def test_an_oversized_context_is_its_own_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """Its own member because a retry would pack the same workspace."""
+        context, dockerfile = _context(tmp_path)
+        resolver = mock_of[ConfigResolverProtocol](
+            get_int=AsyncMock(spec=ConfigResolverProtocol.get_int, return_value=1)
+        )
+        client = _FakeDocker([])
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder(resolver).build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.failure is BuildFailure.CONTEXT_TOO_LARGE
+        assert client.closed is True
+
     async def test_unreachable_daemon_is_its_own_failure(self, tmp_path: Path) -> None:
         """An unreachable daemon must not read as a Dockerfile the daemon rejected."""
         context, dockerfile = _context(tmp_path)
@@ -161,6 +371,27 @@ class TestBuild:
         assert outcome.failure is BuildFailure.DAEMON_UNAVAILABLE
         # Closed even though the build never started, so the probe's
         # connection is not leaked.
+        assert client.closed is True
+
+    async def test_a_hung_handshake_is_bounded_by_the_callers_timeout(
+        self, tmp_path: Path
+    ) -> None:
+        """A socket that accepts and never answers would otherwise hang the run."""
+        context, dockerfile = _context(tmp_path)
+
+        async def _never_answers() -> dict[str, str]:
+            await asyncio.Event().wait()
+            return {}  # pragma: no cover -- unreachable, the wait never returns
+
+        client = _FakeDocker([])
+        client.version = _never_answers  # type: ignore[method-assign]
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=0.05
+            )
+
+        assert outcome.failure is BuildFailure.DAEMON_UNAVAILABLE
         assert client.closed is True
 
     async def test_timeout_is_distinct_from_a_failed_build(
@@ -182,6 +413,22 @@ class TestBuild:
 
         assert outcome.failure is BuildFailure.TIMED_OUT
         assert client.closed is True
+
+    async def test_a_failing_close_does_not_replace_the_outcome(
+        self, tmp_path: Path
+    ) -> None:
+        """The teardown runs in a ``finally``; raising there would mask the verdict."""
+        context, dockerfile = _context(tmp_path)
+        client = _FakeDocker([{"error": "invalid instruction FRM"}])
+        client.close_error = aiodocker.DockerError(500, "connector already gone")
+
+        with _patch_client(client):
+            outcome = await AiodockerImageBuilder().build(
+                tag=_TAG, dockerfile=dockerfile, context_dir=context, timeout=30.0
+            )
+
+        assert outcome.failure is BuildFailure.BUILD_FAILED
+        assert "invalid instruction" in outcome.log
 
     async def test_client_is_closed_when_the_caller_cancels(
         self, tmp_path: Path

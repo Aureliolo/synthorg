@@ -19,6 +19,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.image_builder import ImageBuilder
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 _DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
 _DEFAULT_PROVISION_TIMEOUT_SECONDS: Final[float] = 900.0
@@ -83,7 +84,11 @@ class EnvironmentDeps:
             wires the default ``AiodockerImageBuilder`` (builds on the
             host daemon over the mounted socket).  Tests inject a fake.
         clock: Clock seam for provisioning timestamps.
+        config_resolver: Live settings reads for the collaborators the
+            factory builds, so an operator's change reaches the next
+            operation rather than the next restart.
     """
 
     image_builder: ImageBuilder | None = None
     clock: Clock | None = None
+    config_resolver: ConfigResolverProtocol | None = None

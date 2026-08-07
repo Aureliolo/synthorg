@@ -11,6 +11,7 @@ high-level worktree coordination logic.
 import asyncio
 import os
 import subprocess
+from collections.abc import Mapping
 
 # ``Path`` is imported at runtime (not under TYPE_CHECKING) because it is used
 # in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
@@ -19,6 +20,7 @@ import subprocess
 from pathlib import Path
 from typing import Final
 
+from synthorg.core.git_env import GIT_HARDENING_OVERRIDES, git_config_env
 from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 
@@ -66,18 +68,31 @@ def git_failure_detail(return_code: int) -> str:
     return describe_git_failure(return_code) or f"rc={return_code}"
 
 
-def _sanitised_env() -> dict[str, str]:
-    """Return ``os.environ`` minus git's discovery-override vars.
+def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return a hardened environment for one git invocation.
 
     When this code runs from inside a git pre-push hook (or any caller
     whose own cwd is a git working tree), git inherits ``GIT_DIR`` /
     ``GIT_WORK_TREE`` / ``GIT_COMMON_DIR`` from the parent process and
     those override ordinary path-based repo discovery. A child ``git
     rev-parse --is-inside-work-tree`` then reports the PARENT repo even
-    though we passed a fresh tmp-dir as ``cwd``. Strip them so our
-    git subprocesses see only the path hierarchy under ``cwd``.
+    though we passed a fresh tmp-dir as ``cwd``. Every inherited ``GIT_``
+    variable is therefore dropped, and the hardening overrides the
+    agent-facing tools spawn under are applied on top of the result, so
+    the two git paths cannot diverge on how much of the host they trust.
+
+    Args:
+        config: Per-invocation git config, for a credential that must
+            reach git without being written anywhere it outlives the
+            command.
+
+    Returns:
+        The child environment.
     """
-    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_HARDENING_OVERRIDES)
+    env.update(git_config_env(config or {}))
+    return env
 
 
 def _redact_arg(arg: str) -> str:
@@ -114,6 +129,7 @@ async def run_git_subprocess(
     *args: str,
     cmd_timeout: float,
     log_event: str,
+    config: Mapping[str, str] | None = None,
 ) -> tuple[int, str, str]:
     """Run ``git *args`` in *repo_root* and decode stdout/stderr.
 
@@ -130,6 +146,10 @@ async def run_git_subprocess(
         *args: Git command arguments (e.g. ``"worktree"``, ``"add"``).
         cmd_timeout: Maximum seconds to wait for completion.
         log_event: Structured-log event constant used on timeout.
+        config: Per-invocation git config, passed through the
+            environment. This is how a forge credential reaches git
+            without landing in the process arguments or in the
+            workspace's own ``.git/config``.
 
     Returns:
         Tuple ``(return_code, stdout_text, stderr_text)``. When git never
@@ -152,13 +172,17 @@ async def run_git_subprocess(
             "git",
             *args,
             cwd=str(repo_root),
-            env=_sanitised_env(),
+            env=_sanitised_env(config),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
     except NotImplementedError:
         return await _run_git_in_thread(
-            repo_root, args, cmd_timeout=cmd_timeout, log_event=log_event
+            repo_root,
+            args,
+            cmd_timeout=cmd_timeout,
+            log_event=log_event,
+            config=config,
         )
     except OSError as exc:
         return _spawn_failure(exc, args, log_event=log_event)
@@ -230,6 +254,7 @@ async def _run_git_in_thread(
     *,
     cmd_timeout: float,
     log_event: str,
+    config: Mapping[str, str] | None = None,
 ) -> tuple[int, str, str]:
     """Loop-agnostic git fallback: blocking ``subprocess.run`` on a thread.
 
@@ -251,7 +276,7 @@ async def _run_git_in_thread(
         completed = subprocess.run(  # noqa: S603 -- list argv, no shell
             ["git", *args],  # noqa: S607 -- git resolved from PATH, as everywhere
             cwd=str(repo_root),
-            env=_sanitised_env(),
+            env=_sanitised_env(config),
             capture_output=True,
             timeout=cmd_timeout,
             check=False,

@@ -6,7 +6,7 @@ creation on a missing remote, and rate-limit / auth classification.
 The git subprocess and forge REST client are mocked (no live forge).
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock
@@ -86,6 +86,10 @@ class _FakeGit:
     ``push_results`` / ``fetch_results`` are queues of ``(rc, stderr)``
     consumed in order by successive ``push`` / ``fetch`` calls; an empty
     ``fetch`` queue succeeds. ``rev-parse`` always returns a SHA.
+
+    Every invocation's args and per-invocation config are recorded, so a
+    test can assert both what git was told and where the credential
+    travelled.
     """
 
     def __init__(
@@ -97,6 +101,7 @@ class _FakeGit:
         self._fetch = list(fetch_results or [])
         self.push_count = 0
         self.fetch_count = 0
+        self.calls: list[tuple[tuple[str, ...], Mapping[str, str]]] = []
 
     async def __call__(
         self,
@@ -104,7 +109,9 @@ class _FakeGit:
         *args: str,
         cmd_timeout: float,
         log_event: str,
+        config: Mapping[str, str] | None = None,
     ) -> tuple[int, str, str]:
+        self.calls.append((args, dict(config or {})))
         sub = args[0] if args else ""
         if sub == "push":
             self.push_count += 1
@@ -198,6 +205,66 @@ class TestExternalRemoteGitBackend:
     def test_backend_type(self) -> None:
         catalog = mock_of[ConnectionCatalog]()
         assert _backend(catalog).get_backend_type().value == "external_remote"
+
+
+class TestTheTokenNeverLandsOnDisk:
+    """The workspace is agent-writable and a devcontainer build can copy it.
+
+    A remote URL carrying the forge token would therefore be readable by
+    every agent tool that reads files, and bakeable into an image layer.
+    So the URL git records has to be credential-free and the credential
+    has to reach git per invocation instead.
+    """
+
+    @staticmethod
+    def _assert_credential_is_out_of_band(
+        args: tuple[str, ...], config: Mapping[str, str]
+    ) -> None:
+        assert not any("secret-token" in arg for arg in args)
+        rewrite = "url.https://x-access-token:secret-token@example-provider.invalid/acme/.insteadOf"
+        assert config == {rewrite: "https://example-provider.invalid/acme/"}
+
+    async def test_clone_records_a_credential_free_remote(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        fake = _FakeGit([])
+        _patch_git(monkeypatch, fake)
+        backend = _backend(_catalog_forge())
+
+        await backend.provision(
+            project_id=NotBlankStr("p1"),
+            workspace_path=tmp_path / "ws",
+            default_branch=NotBlankStr("main"),
+        )
+
+        args, config = next(call for call in fake.calls if call[0][0] == "clone")
+        assert args[1] == "https://example-provider.invalid/acme/p1.git"
+        self._assert_credential_is_out_of_band(args, config)
+
+    async def test_push_and_fetch_authenticate_per_invocation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """``origin`` holds no credential, so each call has to supply one."""
+        fake = _FakeGit([(0, "")])
+        _patch_git(monkeypatch, fake)
+        _patch_forge(monkeypatch, _fake_forge(exists=True))
+        backend = _hardened_backend(_catalog_forge())
+
+        await backend.push(
+            project_id=NotBlankStr("p1"),
+            repo_root=tmp_path,
+            branch=NotBlankStr("main"),
+            base_branch=NotBlankStr("main"),
+        )
+        await backend.fetch(project_id=NotBlankStr("p1"), repo_root=tmp_path)
+
+        for subcommand in ("push", "fetch"):
+            args, config = next(call for call in fake.calls if call[0][0] == subcommand)
+            self._assert_credential_is_out_of_band(args, config)
 
 
 class TestExternalRemotePushHardening:

@@ -51,7 +51,7 @@ def _build_devcontainer(
     image_builder = (
         deps.image_builder
         if deps.image_builder is not None
-        else AiodockerImageBuilder()
+        else AiodockerImageBuilder(deps.config_resolver)
     )
     return DevcontainerEnvironmentStrategy(
         image_builder=image_builder,

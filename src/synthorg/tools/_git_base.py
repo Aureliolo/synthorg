@@ -21,11 +21,11 @@ Without a sandbox, the direct-subprocess path is used.
 import os
 from abc import ABC
 from pathlib import Path
-from types import MappingProxyType
 from typing import Final
 
 from pydantic import JsonValue
 
+from synthorg.core.git_env import GIT_HARDENING_OVERRIDES
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.git import (
     GIT_COMMAND_FAILED,
@@ -50,15 +50,6 @@ from synthorg.tools.sandbox.protocol import SandboxBackend
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
-
-_GIT_HARDENING_OVERRIDES: Final[MappingProxyType[str, str]] = MappingProxyType(
-    {
-        "GIT_TERMINAL_PROMPT": "0",
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "GIT_CONFIG_GLOBAL": os.devnull,
-        "GIT_PROTOCOL_FROM_USER": "0",
-    }
-)
 
 # Substrings that indicate secret env vars (defense-in-depth for direct path).
 _SECRET_SUBSTRINGS: Final[tuple[str, ...]] = (
@@ -251,7 +242,7 @@ class _BaseGitTool(BaseTool, ABC):
         Returns:
             Mapping from ``str`` to ``str``.
         """
-        env = {**os.environ, **_GIT_HARDENING_OVERRIDES}
+        env = {**os.environ, **GIT_HARDENING_OVERRIDES}
         for key in _GIT_DISCOVERY_VARS:
             env.pop(key, None)
         for key in list(env):
@@ -270,7 +261,7 @@ class _BaseGitTool(BaseTool, ABC):
         Returns:
             Mapping from ``str`` to ``str``.
         """
-        return dict(_GIT_HARDENING_OVERRIDES)
+        return dict(GIT_HARDENING_OVERRIDES)
 
     async def _run_git(
         self,
