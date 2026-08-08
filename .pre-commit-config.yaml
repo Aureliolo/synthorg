@@ -580,16 +580,19 @@ repos:
 
       - id: vale-ledger-complete
         name: vale ledger completeness (every shipped rule triaged)
-        # Declared AFTER the vale hook on purpose: it enumerates the
-        # gitignored `.vale/styles/Google/` package, and the vale hook's
-        # wrapper is what materialises that package in a fresh worktree.
-        # pre-commit runs hooks in declaration order, so by the time this
-        # one runs the package exists.
+        # Materialises the style package itself rather than relying on the
+        # vale hook above having run. It cannot: that hook's file filter
+        # selects Markdown, this one's selects the vale config, and the two
+        # sets are disjoint. A push touching only `.vale.ini` therefore
+        # reaches this gate with `.vale/styles/Google/` still absent in a
+        # fresh worktree, and the gate refuses to pass without it. The
+        # `--sync-only` wrapper call is the shared path, so the pinned
+        # binary version is validated here too.
         #
         # Runs on any change to the pin, the ledger, or a project style,
         # since those are the three ways the classified set can drift from
         # the shipped set.
-        entry: uv run python scripts/check_vale_ledger_complete.py
+        entry: bash -c 'bash scripts/vale-prepush.sh --sync-only && uv run python scripts/check_vale_ledger_complete.py'
         language: system
         files: ^\.vale\.ini$|^\.vale/styles/(?!Google/).*\.yml$
         pass_filenames: false

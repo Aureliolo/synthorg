@@ -327,7 +327,7 @@ ignore = [
     "TRY400",
 ]
 extend-select = [
-    "TID255",  # lazy-import-immediately-resolved; pre-emptive gate for PEP 690 lazy imports
+    "TID255",  # lazy-import-immediately-resolved; pre-emptive gate for PEP 810 lazy imports
     # pydoclint extensions (preview). Selected by exact code so
     # ``explicit-preview-rules`` activates exactly these, not every preview
     # rule. Selecting the ``DOC`` prefix in ``select`` is inert under that

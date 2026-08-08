@@ -495,8 +495,11 @@ All five conflict resolution strategies terminate with bounded resource use:
     hands the operator's decision to the processor instead of
     returning the generic ``ESCALATED_TO_HUMAN`` fallback. The
     sweeper and per-resolver timeout still bound stale rows; the
-    re-read ensures that an operator's choice is never masked by a
-    missed notification.
+    re-read recovers an operator's choice that a missed notification
+    would otherwise have masked, provided the decision committed
+    before the re-read. A decision that commits after it still
+    returns the fallback, and the conditional ``mark_expired`` leaves
+    the persisted row ``DECIDED`` for the operator to see.
 
     **Schema-level invariants.** The ``conflict_escalations`` table
     enforces three CHECK constraints that together make impossible

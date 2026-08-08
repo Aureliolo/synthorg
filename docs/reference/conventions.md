@@ -245,7 +245,11 @@ Request DTOs are always strict because the caller-side
 reject-unknown-keys property is what `extra="forbid"` exists for.
 Combined with the framework's `frozen` contract this gives us the
 "create new objects, never mutate existing ones" property the
-immutability covenant relies on.
+immutability covenant relies on. `frozen=True` is shallow: it blocks
+field reassignment, not in-place mutation of a nested list or dict a
+field happens to hold. Where the covenant has to hold all the way
+down, the field type carries it (a tuple, a frozenset, a frozen
+model), not the parent's `frozen` flag.
 
 Canonical example: `src/synthorg/approval/models.py:28`. Gate:
 `scripts/check_frozen_model_extra_forbid.py` (pre-push +
@@ -875,8 +879,11 @@ keys in `[tool.ruff.lint]`:
 Active preview opt-ins:
 
 * `TID255` (`lazy-import-immediately-resolved`): pre-emptive gate for
-  PEP 690 lazy imports. Inert on Python 3.14 (no `lazy`
-  syntax in the language yet); becomes meaningful when 3.15 lands.
+  PEP 810 lazy imports. Inert while ruff targets Python 3.14 (the
+  `lazy` soft keyword does not exist there); it becomes meaningful only
+  once the target rises to 3.15 or newer. (PEP 690, the earlier
+  implicit-lazy-import proposal, was rejected and is not what this rule
+  checks.)
 
 When adding a new preview rule, list it in `extend-select` and keep
 the `explicit-preview-rules = true` flag; never remove that flag.

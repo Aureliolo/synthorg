@@ -114,7 +114,7 @@ All significant design and architecture decisions in force today, organised by d
 
 In parallel, the `nats-io/nats.py` repository is publishing a modular client family that mirrors the `nats.js` v3 split. The protocol layer (`nats-core`), the JetStream layer (`nats-jetstream`), and the KV layer (`nats-key-value`) are separate packages. The original ADR evaluated only the protocol layer in isolation and concluded the new family was missing JetStream/KV/consumers. It is not -- those surfaces live in the companion packages.
 
-**Live package state (verified 2026-05-24 against PyPI JSON API and `nats-io/nats.py` main):**
+**Live package state (verified 2026-08-08 against PyPI JSON API and `nats-io/nats.py` main):**
 
 | Package | Newest version | Released | Requires-Python | Dev status | Depends on |
 |---|---|---|---|---|---|

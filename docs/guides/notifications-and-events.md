@@ -106,20 +106,21 @@ ws.addEventListener('open', () => {
 
 ws.addEventListener('message', (event) => {
   const frame = JSON.parse(event.data)
-  if (frame.version !== 1) {
-    console.warn('Unknown event version', frame)
+  if (frame.action === 'auth_ok') {
+    // 4. Subscribes are only accepted after auth_ok. Handshake frames
+    //    carry no `version`, so this branch precedes the version check.
+    ws.send(JSON.stringify({ action: 'subscribe', channels: ['tasks', 'approvals'] }))
     return
   }
-  if (frame.action === 'auth_ok') {
-    // 4. Subscribes are only accepted after auth_ok
-    ws.send(JSON.stringify({ action: 'subscribe', channels: ['tasks', 'approvals'] }))
+  if (frame.version !== 1) {
+    console.warn('Unknown event version', frame)
     return
   }
   handleEvent(frame)
 })
 ```
 
-The server emits `{"action": "auth_ok"}` once your ticket is validated; only then are subscribes accepted. Every event frame carries a `version` field (`1`). Unknown versions are logged and dropped client-side.
+The server emits `{"action": "auth_ok"}` once your ticket is validated; only then are subscribes accepted. That handshake frame is deliberately unversioned, so a client must dispatch on it before applying the version check. Every *event* frame carries a `version` field (`1`); unknown versions are logged and dropped client-side.
 
 ### Wire Protocol Invariants
 

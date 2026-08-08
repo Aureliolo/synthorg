@@ -12,6 +12,13 @@
 # push in a worktree the check is a single stat() call; subsequent
 # pushes pay no extra cost.
 #
+# `--sync-only` performs the binary, version and package checks and then
+# stops, for a caller that needs the style package materialised but does
+# not lint Markdown itself. `check_vale_ledger_complete.py` is that
+# caller: it enumerates the package, and it runs on changes to the vale
+# config, which are exactly the pushes this wrapper's own Markdown file
+# filter does not match.
+#
 # The vale BINARY itself is still installed once per machine via
 # scripts/install_cli_tools.sh (it has to land on PATH before this
 # wrapper can run); if missing, this script prints a clear pointer
@@ -55,6 +62,10 @@ fi
 if [ ! -s .vale/styles/Google/Acronyms.yml ]; then
   echo "vale: Google style package missing for this worktree, running 'vale sync'..."
   vale --config .vale.ini sync
+fi
+
+if [ "${1:-}" = "--sync-only" ]; then
+  exit 0
 fi
 
 exec vale --config .vale.ini "$@"
