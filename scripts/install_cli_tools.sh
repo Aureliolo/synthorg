@@ -365,7 +365,7 @@ install_lychee() {
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="v3.17.1"
+VALE_VERSION="v3.17.0"
 
 # vale --version prints "vale version 3.14.2" (no leading v); the comparator
 # below reattaches the v for parity with the upstream tag form.

@@ -25,7 +25,7 @@ fi
 
 echo "::warning file=${SPEC_FILE}::This PR changes the branch-protection spec. The live ruleset must be applied at merge, or the post-merge audit will fail on main."
 
-contexts=$(yq -r '[.rulesets[].rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | .[]' "$SPEC_FILE" 2>/dev/null || true)
+contexts=$(yq --security-disable-env-ops --security-disable-file-ops -r '[.rulesets[].rules[]? | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | .[]' "$SPEC_FILE" 2>/dev/null || true)
 
 {
   echo "## Branch-protection spec changed"
