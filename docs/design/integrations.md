@@ -58,7 +58,7 @@ The registry validates every condition at import: it must name another field of 
 
 #### Vendor presets
 
-`ConnectionType` names a protocol and credential *shape*, never a vendor: a bespoke member exists only where there is vendor-specific behaviour to hang off it (an authenticator, a webhook verifier, a tool family). A service that is an API key over HTTPS has none of that, so it lands on `generic_http` and its identity rides in the record's `metadata` as a `vendor` preset, exactly as a deploy platform or registry provider does.
+`ConnectionType` names a protocol and credential *shape*, never a vendor: a bespoke member exists only where there is vendor-specific behaviour to hang off it (an authenticator, a webhook verifier, a tool family). A service that is an API key over HTTPS has none of that, so it lands on `generic_http` and its identity rides in the record's `metadata` as a `vendor` preset; a deploy platform or registry provider works exactly the same way.
 
 The preset (`integrations/connections/http_vendor.py`) owns the endpoint, the auth header and template, and the health probe's path and query. That single registry is what the connection create path, the health probe and the native web-search provider all read, so a search call and its connection's health check can never disagree about where a service is or how it authenticates. Choosing a preset means the operator is never asked for a base URL the platform already knows; `custom` is the escape hatch that asks for one.
 
@@ -74,7 +74,7 @@ Credentials are encrypted at rest via a pluggable `SecretBackend`:
 | `encrypted_postgres` | Fernet-encrypted rows in the Postgres `connection_secrets` table (auto-selected when persistence = Postgres) | Implemented |
 | `env_var` | Read-only, env var passthrough (no at-rest storage, no OAuth persistence) | Implemented |
 
-Both `encrypted_*` backends share the same Fernet key material (AES-128-CBC + HMAC-SHA256, 32 bytes of key, URL-safe base64). The key is read from the environment variable named by `master_key_env` on each backend's config (default `SYNTHORG_MASTER_KEY`). **Per-secret rotation** (via `SecretBackend.rotate`) writes a new Fernet token under a fresh `secret_id` without touching other rows; losing the key loses only the stored secrets, not the rest of the org data. **Master-key rotation is not currently supported**: changing `SYNTHORG_MASTER_KEY` makes every previously stored ciphertext undecryptable, so the master key is treated as permanent for the life of the install (re-init preserves it for the same reason).
+Both `encrypted_*` backends share the same Fernet key material (AES-128-CBC + HMAC-SHA256, 32 bytes of key, URL-safe base64). The key is read from the environment variable named by `master_key_env` on each backend's config (default `SYNTHORG_MASTER_KEY`). **Per-secret rotation** (via `SecretBackend.rotate`) writes a new Fernet token under a fresh `secret_id` without touching other rows; losing the key loses only the stored secrets, not the rest of the org data. **Master-key rotation is not supported**: changing `SYNTHORG_MASTER_KEY` makes every previously stored ciphertext undecryptable, so the master key is treated as permanent for the life of the install (re-init preserves it for the same reason).
 
 `create_app` auto-promotes the default `encrypted_sqlite` config to `encrypted_postgres` when the active persistence backend is Postgres, so operators do not have to keep the secret backend and persistence backend in manual sync. This automatic selection is the normal path; the only cases that require explicit config are operators who want `env_var` (no at-rest storage) or a custom `master_key_env` variable name. When `SYNTHORG_MASTER_KEY` is unset, both encrypted backends log an **error** and downgrade to `env_var` so the integrations subsystem still boots in a degraded-but-functional state; set the key and restart to re-enable at-rest encryption. The selection logic lives in `resolve_secret_backend_config` (`persistence/secret_backends/factory.py`) and is covered by unit tests for each branch.
 
@@ -228,8 +228,7 @@ SynthOrg message bus.
 | `A2APushVerifier` | `a2a_peer` | HMAC-SHA256 (signs its timestamp) | see [A2A](a2a-protocol.md) | none |
 
 A type absent from this table has no verifier, so `get_verifier` fails closed
-rather than applying a generic scheme that would weaken the authenticity
-guarantee.
+rather than applying a generic scheme that would weaken authenticity.
 
 The delivery-id header is what each provider actually sends; it is recorded for
 traceability and is deliberately **not** what dedup keys on (see Replay
@@ -420,7 +419,7 @@ It is deliberately **not** folded into `ConnectionStatus`. A signing secret is
 optional by design (see [The signing secret gates
 ingest](#the-signing-secret-gates-ingest)), so an outbound-only connection would
 otherwise read as degraded for lacking something it never needed. But when the
-secret *is* what stands between a sender and ingest, every delivery 401s and a
+secret *is* what stands between a sender and ingest, every delivery 401s, and a
 rejection writes no receipt, so without this field the only trace is a server
 log. The dashboard's connection card surfaces `unconfigured` as its own line; the
 health badge stays the outbound verdict.
@@ -500,7 +499,7 @@ startup via `merge_installed_servers()` in
 installs out-of-band from the user-owned YAML config and ensures
 they survive restarts without rewriting the config file.
 
-Install and uninstall additionally trigger a best-effort runtime
+Install and uninstall additionally trigger a failure-tolerant runtime
 hot-reload (`reload_runtime_services`) so a bridged (or removed)
 server's tools go live for the next task without a restart; the
 startup merge above is the fallback when the runtime is not yet wired

@@ -1,8 +1,8 @@
 # Agent Hands: First-Party Forge Tools
 
 Agent hands are the first-party, connection-gated tools an agent uses to
-land its own work on a code forge: read a repo, open and comment on issues
-and pull requests, review with inline diff-anchored comments, drive CI, and
+land its own work on a code forge: read a repo; open and comment on issues
+and pull requests; review with inline diff-anchored comments; drive CI; and
 push a branch or file so a pull request can be opened. They are built on the
 native connection catalog and the forge agent-client registry, not a
 third-party MCP server, so credential brokering, the approval gate, and the

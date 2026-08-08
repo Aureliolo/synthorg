@@ -517,7 +517,7 @@ no image means in-process (bare-metal installs with the torch extras installed
 directly), and the effective config is baked into the persisted run for resume and
 audit. Preflight boots the same image with `SYNTHORG_FINE_TUNE_PROBE=1`, which
 prints one `PROBE_OK gpu=<name|none> vram_gb=<x>` / `PROBE_FAIL <reason>` line
-proving the image runs and sees the GPU before a long training run starts (cached
+proving the image runs and detects the GPU before a long training run starts (cached
 briefly so dashboard polls do not spawn probe containers per request). There is no
 standing fine-tune compose service; containers exist only while a stage or probe
 runs.

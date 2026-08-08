@@ -228,7 +228,7 @@ installation token (valid ≤1 hour) via the
    the free Experiment tier). The release-notes Highlights step in
    `release-cut.yml` and the `release-highlights-dryrun.yml` dry-run read it; a
    repository-level secret is visible to the `release` environment
-   job. The step is best-effort, so a missing or invalid key only
+   job. The step is failure-tolerant, so a missing or invalid key only
    skips the Highlights block -- it never fails the release.
 
 **No rotation schedule**. Installation tokens are ephemeral:

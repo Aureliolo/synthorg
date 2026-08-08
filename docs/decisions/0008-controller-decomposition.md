@@ -11,8 +11,8 @@ ADR-0007 landed the feature-manifest substrate (`discover_features()`,
 `FeatureManifest`, topological ordering, slice composition) and the
 per-feature `feature.py` manifests. But the substrate was only
 half-consumed. `api/app.py` still hardcoded controllers in a 62-entry
-`BASE_CONTROLLERS` tuple, the MCP registry and dispatch table merged 20
-hand-listed tuples and dicts, and several controllers had grown into
+`BASE_CONTROLLERS` tuple; the MCP registry and dispatch table merged 20
+hand-listed tuples and dicts; and several controllers had grown into
 god-modules:
 
 | Module | LOC |

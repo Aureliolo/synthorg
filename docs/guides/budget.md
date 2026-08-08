@@ -34,7 +34,7 @@ graph TD
 The budget enforcer checks spending at three boundaries:
 
 1. **Pre-flight**: before a task is assigned, verify sufficient budget remains
-2. **In-flight**: monitor spending during task execution (best-effort under concurrency)
+2. **In-flight**: monitor spending during task execution (approximate under concurrency)
 3. **Task-boundary**: auto-downgrade to cheaper models at task assignment (never mid-execution)
 
 ---

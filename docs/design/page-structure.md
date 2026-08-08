@@ -9,7 +9,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 This document defines the information architecture for the web dashboard. It was validated against the backend API surface (controllers and WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
-**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "under construction" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
 
 ---
 
@@ -39,7 +39,7 @@ One unified conversation with the organisation, Claude-Code-style: a single comp
 
 Living org visualization with real-time agent status. Two view modes toggled via toolbar:
 
-- **Hierarchy view** (default): Dagre-based hierarchical layout with CEO, departments, teams, agents with status dots and health overlays. Supports drag-drop agent reassignment between departments (optimistic update with rollback on API failure, ARIA live announcements, drop zone highlight with accent border).
+- **Hierarchy view** (default): Dagre-based hierarchical layout with CEO, departments, teams, and agents carrying status dots and health overlays. Supports drag-drop agent reassignment between departments (optimistic update with rollback on API failure, ARIA live announcements, drop zone highlight with accent border).
 - **Communication view**: Force-directed layout (d3-force) showing inter-agent communication patterns. Edge thickness encodes message volume, animated dashes encode frequency. Data sourced from `GET /messages` with client-side aggregation. Smooth 400ms animated transition between views.
 
 Click agent nodes to open Agent Detail panel.
@@ -224,7 +224,7 @@ No WebSocket subscription; workflow definitions are persisted via REST and do no
 
 #### Subworkflows (`/subworkflows`)
 
-Registry listing of reusable subworkflow components. Card grid with search, I/O signature summary (input count / output count), version count, and latest version badge. Click opens a detail drawer showing version history, parent references, and delete action (blocked when parents pin the version).
+Registry listing of reusable subworkflow components. Card grid with search, I/O signature summary (input count / output count), version count, and newest version badge. Click opens a detail drawer showing version history, parent references, and delete action (blocked when parents pin the version).
 
 **API endpoints**: `GET /subworkflows`, `GET /subworkflows/search?q=`, `GET /subworkflows/{id}/versions`, `GET /subworkflows/{id}/versions/{version}`, `GET /subworkflows/{id}/versions/{version}/parents`, `POST /subworkflows`, `DELETE /subworkflows/{id}/versions/{version}`
 **WS channels**: (none; refreshes via polling, 30s)
@@ -427,7 +427,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/projects/:projectId/docs/:slug` | Living doc detail | Full doc view with typed-block rendering |
 | `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
 | `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (8 node types incl. subworkflow, 4 edge types, YAML preview, validation, version history with diff/rollback) |
-| `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, detail drawer with parents and delete |
+| `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, and a detail drawer with parents and delete |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/plans` | Plan Review | Durable-plan review inbox with status filter |
@@ -508,7 +508,7 @@ Single WebSocket connection per session, established after login. Each page subs
 
 ## Responsive Scope
 
-Desktop-first with minimal tablet support. Mobile layout is not currently in scope.
+Desktop-first with minimal tablet support. Mobile layout is not in scope.
 
 | Breakpoint | Sidebar | Content | Rationale |
 |------------|---------|---------|-----------|

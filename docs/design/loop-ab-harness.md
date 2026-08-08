@@ -79,7 +79,7 @@ because that is the authoritative figure and an organisation running several
 providers needs to see which one the spend came from.
 
 Cost, latency, and turns are unbounded and lower-is-better, so each is scored
-relative to the best performer in the same `(brief, tier)` cell. That keeps the
+relative to the top performer in the same `(brief, tier)` cell. That keeps the
 composite comparable across briefs of very different sizes.
 
 Repetitions reduce by **median**, not mean, so one pathological run cannot flip
@@ -89,7 +89,7 @@ share a median while differing completely in consistency.
 ## Instrumentation
 
 No loop is modified. Every figure the rubric consumes is already recorded:
-`TurnRecord` carries tokens, tool calls, provider retries and cache hits.
+`TurnRecord` carries tokens, tool calls, provider retries, and cache hits.
 
 **`provider_retries` is a native-leg signal only.** A retry the driver performs
 is counted because the driver reports it; a retry OpenHands performs happens
@@ -102,7 +102,7 @@ So the absence is carried as an absence rather than flattened: `RunMetrics.provi
 is `None` when no turn measured a retry count, `LoopAggregate` keeps it `None` unless every
 repetition measured one, and `score_cell` drops the retry component from the rework
 comparison **for every loop in the cell** the moment one of them cannot report it. Scoring
-an unobservable count as zero would hand the unwatched leg the cell's best rework ratio on
+an unobservable count as zero would hand the unwatched leg the cell's lowest rework ratio on
 the strength of nothing having watched it, which is the promotion decision being made
 backwards; dropping the retry component cell-wide rather than per leg is what keeps the
 remaining comparison like for like. The scoreboard marks such a figure with a trailing `+`, and

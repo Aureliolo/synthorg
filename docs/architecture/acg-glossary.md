@@ -41,7 +41,7 @@ design, and agent pruning recommendations, see
 |---|---|---|---|---|
 | Node cost | `TurnRecord.cost` per turn, `TokenUsage` per completion | `engine/loop_protocol.py`, `providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | Resource constraints | `BudgetEnforcer` (3-layer), quota degradation, context budget | `budget/enforcer.py`, `engine/context_budget.py` | Strong | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| Quality-cost tradeoffs | Model auto-downgrade, quota degradation strategies | `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency guarantee). |
+| Quality-cost tradeoffs | Model auto-downgrade, quota degradation strategies | `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency invariant). |
 
 ---
 

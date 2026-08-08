@@ -17,7 +17,7 @@ All significant design and architecture decisions in force today, organised by d
 | **pgvector + sqlite-vec** (chosen) | The only option meeting every constraint. Licence-clean (PostgreSQL Licence, MIT). No new service: vectors live in the two databases already operated, backed up, and migrated. Tag filtering, expiry, and agent scoping are plain SQL rather than client-side workarounds. No LLM on the write path. Accepted limitation: sqlite-vec has no ANN index (brute-force KNN), so the SQLite path degrades past roughly 100k vectors while Postgres scales |
 | Mem0 + embedded Qdrant | Its value is the LLM extraction and consolidation pipeline, which paraphrases stored content and so cannot be used here: the same store holds brain entries with citations and knowledge chunks with provenance. Without that pipeline it is a thin client over an embedded Qdrant running in a mode its own maintainers document as development-only (~20k points), against one company-wide collection |
 | LanceDB | Strong embedded hybrid search and Apache 2.0, but introduces a third storage technology and file format outside the SQLite/Postgres model, requiring a carve-out from the persistence-boundary rule |
-| Graphiti / Zep | Best temporal-graph capability of any candidate, but no licence-clean self-hosted graph backend exists: Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated, Neptune is cloud-only |
+| Graphiti / Zep | Strongest temporal-graph capability of any candidate, but no licence-clean self-hosted graph backend exists: Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated, Neptune is cloud-only |
 | Chroma | Fails to install on Python 3.14 (open upstream issue) |
 | Letta | An agent framework rather than a memory library; adopting it would mean running a second orchestration system |
 
@@ -114,9 +114,9 @@ All significant design and architecture decisions in force today, organised by d
 
 In parallel, the `nats-io/nats.py` repository is publishing a modular client family that mirrors the `nats.js` v3 split. The protocol layer (`nats-core`), the JetStream layer (`nats-jetstream`), and the KV layer (`nats-key-value`) are separate packages. The original ADR evaluated only the protocol layer in isolation and concluded the new family was missing JetStream/KV/consumers. It is not -- those surfaces live in the companion packages.
 
-**Live package state (verified 2026-05-24 against PyPI JSON API and `nats-io/nats.py` main):**
+**Live package state (verified 2026-08-08 against PyPI JSON API and `nats-io/nats.py` main):**
 
-| Package | Latest version | Released | Requires-Python | Dev status | Depends on |
+| Package | Newest version | Released | Requires-Python | Dev status | Depends on |
 |---|---|---|---|---|---|
 | `nats-py` | 2.15.0 | 2026-06-05 | `>=3.7` | (none) | n/a |
 | `nats-core` | 0.2.0 | 2026-04-14 | `>=3.13` | Beta | `nkeys>=0.1.0; extra=="nkeys"` |
@@ -163,7 +163,7 @@ In parallel, the `nats-io/nats.py` repository is publishing a modular client fam
 
 **Trigger-based revisit** (replaces the prior fixed 2026-06-10 checkpoint):
 
-1. **Trigger A -- `nats-py 2.15+` is released:** bump the pin in `pyproject.toml` to `nats-py==2.15.0`, drop the scoped `filterwarnings` entry, run `uv run python -m pytest tests/ -m integration -k nats` to confirm no deprecation warnings fire, and update this section with the resolution outcome. This closes the Python 3.14 thread without any further migration consideration.
+1. **Trigger A -- the pinned `nats-py` breaks on a supported Python version and upstream has not shipped a fix:** re-evaluate migration urgency rather than carrying a local workaround indefinitely. The Python 3.14 instance of this trigger is closed: 2.14.0's `asyncio.iscoroutinefunction` call failed the `error`-promoted CI, 2.15.0 shipped the `inspect.iscoroutinefunction` swap, and `pyproject.toml` pins that release. The scoped `filterwarnings` entry it motivated stays, because other transitive deps still call the deprecated function.
 2. **Trigger B -- `nats-key-value` is published to PyPI AND the modular family reaches 1.0:** re-evaluate migration. The API delta tables above are the starting scope; re-verify them at the published versions. If migration is decided, file the implementation as a separate issue, expand the scope with the `publish_batch` benchmark plan, and execute against PyPI-published packages only (no git subdirectory pins).
 3. **Trigger C -- `nats-py` releases nothing for six months:** the parallel-maintenance assumption breaks. Re-evaluate migration urgency regardless of family stability.
 

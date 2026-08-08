@@ -4,7 +4,8 @@
 # in each worktree, so new worktrees do not need an explicit sync
 # step. Operators can still pre-warm it by running
 # `bash scripts/install_cli_tools.sh vale` (idempotent: skips when the
-# package is already present). The vocabulary under styles/config/ IS
-# committed (the .gitignore excludes only the synced upstream packages).
+# package is already present). The vocabulary under styles/config/ and
+# the project rules under styles/SynthOrg/ ARE committed (this file
+# excludes only what `vale sync` downloads).
 styles/Google/
 styles/.vale-config/

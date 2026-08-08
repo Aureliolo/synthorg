@@ -13,10 +13,10 @@ Wiring used to be decided once, at boot. Every `_wire_*` entry point asked "is
 my dependency here?" and froze the answer for the life of the process. A
 second, hand-maintained list re-ran fourteen of them after setup; the rest
 stayed frozen, and `wire_memory_backend` was missing from that second list
-entirely, which is the drift two parallel lists guarantee.
+entirely, which is the drift two parallel lists produce.
 
 The visible cost: choosing an embedding model after first boot left memory,
-living docs, the project brain, the knowledge substrate, the toolsmith and the
+living docs, the project brain, the knowledge substrate, the toolsmith, and the
 retro tail all inert until someone restarted the process. Every one of them had
 a dependency that arrived thirty seconds too late.
 
@@ -76,13 +76,13 @@ naming the model a subsystem was waiting for moves the snapshot and is picked up
 on that same write. Measured on a wired app, this is the difference between a
 pass costing 140 ms and one costing single-digit milliseconds.
 
-**A trigger is a hint, never an instruction.** Boot, a settings write and the
+**A trigger is a hint, never an instruction.** Boot, a settings write, and the
 periodic resync all call the same `reconcile()`. A missed trigger costs latency
 and never correctness. The one thing the sweep does differently is ask for
 `retry_declined=True`: what a snapshot cannot see is the undeclared condition
 that made a subsystem `blocked` in the first place, so somebody has to attempt
 unconditionally, and the sweep is the caller that knows time has passed. The
-periodic sweep is the guarantee; everything else is an optimisation.
+periodic sweep is the invariant; everything else is an optimisation.
 
 **One pass at a time, whichever loop asks.** The reconciler is cached on an
 application state that outlives a single event loop, and an `asyncio.Lock`
@@ -204,7 +204,7 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 | `degraded` | Up, with a requirement it named gone. Only a subsystem with no teardown can rest here; one with a teardown is taken down instead. |
 | `waiting` | A declared dependency is not here yet; `waiting_on` names every one. |
 | `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so waiting alone will not supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
-| `rebuilding` | Torn down and coming back inside the pass currently running. |
+| `rebuilding` | Torn down and coming back inside the running pass. |
 | `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` always says something: the activation's own reason when it raised `SubsystemDeclinedError`, else the declared settings that are blank, else that it declined on a condition it does not declare. |
 | `disabled` | An operator turned it off via `enabled_by`. |
 | `failed` | Activation raised; `detail` carries the redacted description. |

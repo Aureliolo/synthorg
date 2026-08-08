@@ -63,7 +63,7 @@ The candidates are the boring permissive options the issue names plus the GitBut
 | Operational weight | Higher (disk per tree, checkout thrash, per-tree services if a dev stack is involved) | Low (refs are cheap; ephemeral sandbox container per agent already exists) | Lowest disk cost (one tree) but new bespoke subsystem to build and maintain |
 | Licence-clean to build in SynthOrg | **Yes** (native git) | **Yes** (native git) | Yes only if clean-room from the concept; never from FSL code |
 | Maturity of the underlying mechanism | **Mature** (git worktree is core git) | **Mature** (git refs + standard merge-queue patterns) | Immature (pre-1.0 upstream; bespoke if reimplemented) |
-| Fit to SynthOrg's ephemeral-sandbox model | Good (a worktree maps to a mounted volume per agent) | **Best** (a branch per agent task; sandbox already ephemeral per call) | Uncertain (a persistent shared tree must be safe under concurrent container mounts) |
+| Fit to SynthOrg's ephemeral-sandbox model | Good (a worktree maps to a mounted volume per agent) | **Strongest** (a branch per agent task; sandbox already ephemeral per call) | Uncertain (a persistent shared tree must be safe under concurrent container mounts) |
 
 Branch-per-agent plus a coordinator-owned merge queue is the only column that solves forge-level collision as a property of the design rather than deferring it. That is the issue's stated default, and the matrix confirms it.
 

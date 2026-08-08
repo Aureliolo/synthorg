@@ -1,0 +1,27 @@
+# Replaces Google.HeadingPunctuation, which is disabled in .vale.ini.
+#
+# Upstream's token is `[a-z0-9][.]\s*$`. Vale segments a heading into
+# sentences before matching, so in a numbered heading (`## 1. Foo`,
+# `## Section 3. Bar`) the enumerator becomes its own segment, "1." reads
+# as a segment ending in a period, and the digit branch of that character
+# class matches. Every numbered heading in this corpus is flagged that
+# way: 99 of them, none actually ending in a period.
+#
+# Dropping the digit branch and keeping everything else keeps the rule the
+# guide describes (a heading should not end in a period) and drops exactly
+# one case with it: a heading whose final character before the period is a
+# digit, such as "## Section 5.". Upstream is case-sensitive, so a lettered
+# enumerator ("## A. Foo") never matched there either and does not here.
+extends: existence
+message: "Don't put a period at the end of a heading."
+link: https://developers.google.com/style/capitalization#capitalization-in-titles-and-headings
+nonword: true
+level: error
+scope: heading
+action:
+  name: edit
+  params:
+    - trim_right
+    - "."
+tokens:
+  - '[a-z][.]\s*$'

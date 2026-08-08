@@ -63,7 +63,7 @@ are split into distinct typed errors so the contract reflects the cause:
   backend fault on the same path stays a `QueryError` (500, retryable) and flows
   to `handle_persistence_error` untouched.
 
-### 3. Intentional uniform-404 security override, made typed and documented
+### 3. Intentional uniform-404 security override: typed and documented
 
 `SecretRetrievalNotFoundError(NotFoundError)` (404, non-retryable,
 `RESOURCE_NOT_FOUND`) is raised by `connections.reveal_secret` for the

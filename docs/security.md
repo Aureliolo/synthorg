@@ -23,7 +23,7 @@ with five built-in detectors:
 | Detector | What It Catches |
 |----------|----------------|
 | **Policy Validator** | Action type policies (soft-allow / hard-deny / escalate) |
-| **Credential Detector** | API keys, passwords, tokens, private keys in arguments or output |
+| **Credential Detector** | API keys, passwords, tokens, and private keys in arguments or output |
 | **Path Traversal Detector** | `../`, absolute paths, symlink escape attempts |
 | **Destructive Operation Detector** | `rm -rf`, `git reset --hard`, destructive shell commands |
 | **Data Leak Detector** | PII patterns: emails, SSNs, credit card numbers, phone numbers |
@@ -268,7 +268,7 @@ All API responses include:
 The two unauthenticated probes are deliberately minimal. `GET /api/v1/healthz` returns
 `status` + `uptime_seconds`; `GET /api/v1/readyz` adds only the binary `ok` / `unavailable`
 outcome. Neither carries the component topology and neither carries the build version: an
-exact version tells an anonymous caller precisely which published advisories apply, and no
+exact version reveals to an anonymous caller precisely which published advisories apply, and no
 supervisor or load-balancer decision depends on it. Both live behind authentication on
 `GET /api/v1/health`, which requires a read-access role.
 

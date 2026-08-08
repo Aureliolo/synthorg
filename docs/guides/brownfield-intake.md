@@ -19,7 +19,7 @@ The implementation lives under `src/synthorg/engine/brownfield/` and `src/syntho
 
 ## Enablement
 
-The controller is mounted unconditionally. The adapter wires at startup and is best-effort: it requires a work pipeline, a connected persistence backend, a project workspace service, and a knowledge service. If any is missing, the controller returns `503` on every request.
+The controller is mounted unconditionally. The adapter wires at startup and is failure-tolerant: it requires a work pipeline, a connected persistence backend, a project workspace service, and a knowledge service. If any is missing, the controller returns `503` on every request.
 
 The relevant tunables are the per-operation rate-limit and concurrency settings in the `api` namespace (`src/synthorg/settings/definitions/api.py`):
 

@@ -55,7 +55,7 @@ because the running process resolves its bootstrap value once and
 holds onto it; a row left over from a pre-rename schema or an ops
 mistake on a peer node would otherwise surface a value the runtime no
 longer honours. The `/settings` UI therefore reflects the actual
-running value, sourced from the env var or registered default at
+running value sourced from the env var or registered default at
 first read.
 
 The DB-bypass branch lives in `src/synthorg/settings/service.py`
@@ -119,12 +119,12 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
 | `chief_of_staff.propose_enabled` | `SYNTHORG_CHIEF_OF_STAFF_PROPOSE_ENABLED` | On-by-default conversational capability; live-gated per request via `ensure_feature_enabled` (no restart). The siblings `explain_chat_enabled` / `group_chat_enabled` / `routing_enabled` behave the same. |
 | `chief_of_staff.alerts_enabled` | `SYNTHORG_CHIEF_OF_STAFF_ALERTS_ENABLED` | Off-by-default autonomous capability (also: `learning_enabled` / `narrative_enabled` / `invite_enabled`). No restart: `alerts_enabled` is started/stopped live by `ChiefOfStaffAlertsSettingsSubscriber`; the others are gated per cycle/turn. Each additionally requires the persona master switch `self_improvement.chief_of_staff_enabled`. |
-| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. The subsystem reconciler rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed guarantee moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
+| `chief_of_staff.direct_mcp_enabled` | `SYNTHORG_CHIEF_OF_STAFF_DIRECT_MCP_ENABLED` | Off-by-default autonomous MCP acting; hot-reloadable, still fail-closed. The subsystem reconciler rebuilds the actor through the same fail-closed builder on toggle, so the actor materialises only when security governance + the MCP self-consumer are wired on the boot engine (else it stays inert and the endpoint 503s). The fail-closed property moved from a restart bind to a per-rebuild governance re-check, so it no longer needs a restart. |
 | `chief_of_staff.chat_model` | `SYNTHORG_CHIEF_OF_STAFF_CHAT_MODEL` | Per-feature model for conversational turns (also `propose_model` / `routing_model` / `narrative_model`); read live per LLM call, no restart. Auto-filled at setup-complete when left blank. |
 | `knowledge.enabled` | `SYNTHORG_KNOWLEDGE_ENABLED` | On-by-default knowledge substrate; ghost-wired at boot and live-gated per request at the knowledge tools (no restart). The `knowledge.synthesis_model` / `knowledge.synthesis_provider` / `knowledge.synthesis_synthesizer` / `knowledge.synthesis_max_chunks` keys rebuild + swap the synthesiser via a subscriber; `knowledge.synthesis_enabled` remains live-gated at the entrypoint. |
 | `research.enabled` | `SYNTHORG_RESEARCH_ENABLED` | On-by-default research pipeline; ghost-wired at boot and live-gated per request at the research tools (no restart). The model lives in `research.model` (auto-filled at setup-complete); model / provider / strategy / threshold keys rebuild + swap the service via a subscriber. |
 | `self_improvement.enabled` | `SYNTHORG_SELF_IMPROVEMENT_ENABLED` | Off-by-default self-modification master switch; read live per cycle by `run_cycle` (with `engine.evolution_enabled`), so toggling it applies with no restart. The strategy toggles (`config_tuning_enabled` / `architecture_proposals_enabled` / `prompt_tuning_enabled`), `tool_creation_enabled` (+ its allowlist), and the analysis / code-mod models are likewise live. |
-| `self_improvement.code_modification_enabled` | `SYNTHORG_SELF_IMPROVEMENT_CODE_MODIFICATION_ENABLED` | Off-by-default self-modifying code; read live per cycle through the feature overlay. It additionally requires GitHub credentials in the `meta.self_improvement` blob: without them the next config load refuses and forces the flag back off, which is the failure an operator sees rather than a silently un-applied switch. |
+| `self_improvement.code_modification_enabled` | `SYNTHORG_SELF_IMPROVEMENT_CODE_MODIFICATION_ENABLED` | Off-by-default self-modifying code; read live per cycle through the feature overlay. It additionally requires GitHub credentials in the `meta.self_improvement` blob: without them the next config load refuses and forces the flag back off, which surfaces the failure to an operator rather than leaving a silently un-applied switch. |
 | `providers.tool_call_feedback_enabled` | `SYNTHORG_PROVIDERS_TOOL_CALL_FEEDBACK_ENABLED` | Master switch for the runtime tool-call failure feedback loop (default `true`). Re-read live per observation by the `ToolCallFeedbackTracker`, so toggling it on/off applies without a restart while the sink stays installed. |
 | `providers.tool_call_failure_threshold` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_THRESHOLD` | Decayed-score threshold (1..20, default 3) at which a model is downgraded (`tool_calls_verified=False`). Re-read on each failure. |
 | `providers.tool_call_failure_decay_half_life_seconds` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_DECAY_HALF_LIFE_SECONDS` | Half-life (60s..86400s, default 3600s) over which a failure's weight halves, so a transient blip decays away rather than permanently downgrading a capable model. Re-read on each failure. |
@@ -166,7 +166,7 @@ The default env var name for a registered setting is auto-derived as
 var name predates this rule (e.g. the Docker-compose template already
 sets `SYNTHORG_LOG_DIR`), the registry definition can set
 `env_var_override="SYNTHORG_LOG_DIR"` and the resolver will look up
-that exact name instead. Settings currently using overrides:
+that exact name instead. Settings using overrides:
 
 | Registry key | Override env var |
 |---|---|

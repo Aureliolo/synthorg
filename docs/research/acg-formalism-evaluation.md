@@ -57,7 +57,7 @@ assessment and source file references.
 |---|---|---|---|---|
 | **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
-| **Quality-cost tradeoffs** | Model auto-downgrade, quota degradation strategies | `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency guarantee). |
+| **Quality-cost tradeoffs** | Model auto-downgrade, quota degradation strategies | `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency invariant). |
 
 ### Concepts SynthOrg Has That ACG Does Not Capture
 
@@ -154,7 +154,7 @@ whether the root cause is:
 4. **Quality gate propagation**: The agent passed quality gates but the downstream consumer
    found a defect
 
-SynthOrg currently attributes all failure information to the executing agent's
+SynthOrg attributes all failure information to the executing agent's
 `TaskExecution`:
 
 - `infer_failure_category()` in `src/synthorg/engine/recovery.py` is keyword-based
@@ -171,8 +171,8 @@ SynthOrg currently attributes all failure information to the executing agent's
 Note: `CoordinationResult` has `model_config = ConfigDict(frozen=True)`. Adding
 `agent_contributions` directly is a breaking change. The recommended approach is a
 separate wrapper: `CoordinationResultWithAttribution(result: CoordinationResult,
-agent_contributions: tuple[AgentContribution, ...])`, stored and returned in place of
-the bare result by `_post_execution_pipeline`. This preserves immutability and avoids
+agent_contributions: tuple[AgentContribution, ...])`. It is stored and returned in
+place of the bare result by `_post_execution_pipeline`. This preserves immutability and avoids
 migrating existing persisted `CoordinationResult` records.
 
 ```python
@@ -223,7 +223,7 @@ The infrastructure for agent removal exists and is production-grade:
   removal (task reassignment, memory archival, team notification, status termination)
 - `src/synthorg/hr/enums.py`: `FiringReason.PERFORMANCE` exists as a reason code
 - `src/synthorg/hr/performance/tracker.py`: `PerformanceTracker` providing rolling windows, trend
-  detection (Theil-Sen), quality and collaboration scoring
+  detection (Theil-Sen), and quality/collaboration scoring
 
 What does not exist: any automated trigger for `OffboardingService.offboard()` based on
 performance data. `FiringReason.PERFORMANCE` is defined but never programmatically invoked.
@@ -236,7 +236,7 @@ Four signal categories that should drive pruning recommendations:
    Available from `AgentPerformanceSnapshot.quality_trend` in `hr/performance/tracker.py`.
 
 2. **Utilisation**: Tasks assigned relative to team size. Low-utilisation agents are
-   redundant overhead. Currently tracked via task records: a task-per-agent-per-window
+   redundant overhead. Tracked via task records: a task-per-agent-per-window
    count would be the metric.
 
 3. **Skill redundancy**: High Jaccard similarity of required skills with another agent on

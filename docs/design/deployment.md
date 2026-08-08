@@ -5,7 +5,7 @@ description: Published container images, apko-composed bases, cosign + SLSA veri
 
 # Deployment & Container Runtime
 
-SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,openhands,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, **openhands**, and **fine-tune-{gpu,cpu}** images are not Compose services; the CLI pre-pulls the sandbox family when requested, and the backend spawns sandbox/sidecar/openhands/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for every enabled **published** image (both Compose-managed and on-demand) before starting. The unpublished `desktop` image below carries no signature to verify and is therefore outside that guarantee.
+SynthOrg ships as seven container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,openhands,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, **openhands**, and **fine-tune-{gpu,cpu}** images are not Compose services; the CLI pre-pulls the sandbox family when requested, and the backend spawns sandbox/sidecar/openhands/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for every enabled **published** image (both Compose-managed and on-demand) before starting. The unpublished `desktop` image below carries no signature to verify and is therefore outside that verification.
 
 ---
 

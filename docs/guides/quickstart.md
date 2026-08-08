@@ -30,7 +30,7 @@ graph TD
     CEO --> DEV
 ```
 
-By design, the CEO handles strategy and task decomposition while the
+The CEO handles strategy and task decomposition by design, while the
 Full-Stack Developer writes code and builds features. With a configured
 provider the runtime drives that execution (exercised today under
 deterministic e2e harnesses with a scripted provider); the steps below set up
@@ -123,11 +123,11 @@ On a fresh install with no admin user yet, the **setup wizard** first asks you t
 5. **Choose capabilities**: enable or disable the optional platform capabilities for your organisation.
 6. **Pick a theme**: light or dark.
 
-**Quick Setup** is the abbreviated path (provider, company name, done). Use it when you want to land in the dashboard fastest and configure the rest later.
+**Quick Setup** is the abbreviated path (provider, company name, done). Use it when you want to land in the dashboard soonest and configure the rest later.
 
 Once the wizard completes, the dashboard loads and you will see:
 
-- **Agents**: the CEO and Full-Stack Developer, each with their personality and model assignment
+- **Agents**: the CEO and Full-Stack Developer; each has its own personality and model assignment
 - **Organisation status**: health indicators for the platform
 - **Task board**: empty, ready to accept tasks
 
@@ -192,7 +192,7 @@ sequenceDiagram
 ```
 
 1. **Task created**: the engine validates the task and queues it.
-2. **Task routed**: a routing strategy matches the task to the best-suited agent.
+2. **Task routed**: a routing strategy matches the task to the most suitable agent.
 3. **Agent executes**: the assigned agent uses its configured LLM in a ReAct loop.
 4. **Result returned**: the completed task and its artifacts appear in the dashboard and API.
 

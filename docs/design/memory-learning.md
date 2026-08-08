@@ -207,7 +207,7 @@ agent_learnings}`, written by `engine/initiative/retro_writes.py`:
 
 Every entry is redacted at the store boundary, deduped by the write gate, and
 tagged `retro` + `objective:<uuid5(project_id)>`. Writes are per-item
-best-effort: one refused or failed learning never loses the rest.
+failure-tolerant: one refused or failed learning never loses the rest.
 
 ### Idempotency and isolation from the loop
 
@@ -215,7 +215,7 @@ Capture fires on the edge a project first reaches `COMPLETED`
 (`ProjectRollupService._maybe_capture_retro`), and that edge is derived from
 persisted project status, not from in-memory bookkeeping: the project row is
 already `COMPLETED` before the trigger runs, so every later recompute reads
-`before == COMPLETED` and no longer sees an edge. A process that restarts after
+`before == COMPLETED` and no longer detects an edge. A process that restarts after
 (or during) a capture therefore cannot re-run it, and a redelivered completion
 event changes nothing. Two plans of one project completing together are
 collapsed by an in-flight guard keyed on the project id, and an org-memory scan
@@ -227,7 +227,7 @@ The cost of that design is on the recovery side, not the duplication side: a
 hard crash mid-capture loses that objective's retrospective, since nothing
 re-triggers it. Graceful shutdown does not, because the runner drains in-flight
 captures before disconnecting the memory backends. Because the rollup is a
-best-effort, bounded-queue observer, capture runs **detached** on a tracked
+failure-tolerant, bounded-queue observer, capture runs **detached** on a tracked
 background task with the wall-clock ceiling, so it never blocks or fails task
 processing.
 
@@ -486,7 +486,7 @@ The fine-tune pipeline draws its `{query, positive_passage}` contrastive pairs f
   - **Distillation trajectories**: EPISODIC distillation entries (condensed run narratives).
   - **Corrected failures**: PROCEDURAL `failure:*` lessons from the procedural-memory pipeline.
 
-  Pairs are then **curated by benchmark score**: the golden-company scorecard history is the quality filter. A record is kept only when the benchmark run that first observed it (the earliest run at or after the record's timestamp) passed; records newer than the latest run inherit that run's verdict. With no benchmark history every pair is kept.
+  Pairs are then **curated by benchmark score**: the golden-company scorecard history is the quality filter. A record is kept only when the benchmark run that first observed it (the earliest run at or after the record's timestamp) passed; records newer than the most recent run inherit that run's verdict. With no benchmark history every pair is kept.
 
 The trajectory source is a REST opt-in: the MCP `FineTunePlan` keeps `source_dir` required and always runs in directory mode, so trajectory harvesting is an explicit dashboard / REST choice rather than a silent default that would break an empty organisation or an existing directory-mode caller.
 
@@ -496,7 +496,7 @@ A fine-tuned checkpoint replaces the active embedder **only on a measured win**.
 
 ### Startup wiring
 
-The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is best-effort and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
+The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is failure-tolerant and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
 
 ### BackendUnsupportedError routing
 

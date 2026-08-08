@@ -89,6 +89,11 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
     "mypy": "verify-backend.yml :: type-check (full-tree mypy)",
     "pytest-unit": "verify-backend.yml :: test-unit (pytest -m unit)",
     "vale": "verify-backend.yml :: lint (dedicated vale prose-lint step)",
+    "vale-ledger-complete": (
+        "verify-backend.yml :: lint (dedicated vale prose-lint step, which runs "
+        "the gate right after install_cli_tools.sh materialises the gitignored "
+        "Google style package the gate has to enumerate)"
+    ),
     "caddy-validate": "verify-backend.yml :: lint (dedicated caddy validate step)",
     "check-single-migration-per-pr": (
         "verify-backend.yml :: schema-validate (Enforce at most one new revision per PR; "

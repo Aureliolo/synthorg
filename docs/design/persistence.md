@@ -52,7 +52,7 @@ by a caller that reached past the abstraction.
 - A complementary gate, `scripts/check_schema_drift.py` (also pre-push + CI
   Lint), validates structural parity between
   `persistence/sqlite/schema.sql` and `persistence/postgres/schema.sql` and
-  between the two `revisions/` directories. Currently-tolerated drift
+  between the two `revisions/` directories. Tolerated drift
   (TEXT-vs-JSONB, TEXT-vs-TIMESTAMPTZ, GIN-only-on-Postgres indexes, the
   TimescaleDB composite-PK pattern) is frozen in
   `scripts/schema_drift_baseline.txt` with a one-line per-entry
@@ -161,7 +161,7 @@ follows a bounded **compare-and-swap** loop:
    new value and raises `VersionConflictError` if the stored `updated_at`
    has advanced since step 1.
 4. On conflict, the controller re-reads and retries up to
-   `_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS` (currently `3`).  Persistent contention
+   `_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS` (`3`).  Persistent contention
    surfaces as HTTP 409 `VersionConflictError` so the caller can retry with
    fresh state rather than the loop spinning forever.
 
@@ -376,7 +376,7 @@ applies the schema revisions, then a dedicated step calls
 `create_hypertable` on each target table. The conversion is idempotent
 (`if_not_exists => TRUE`) so reruns and restores are safe. If the
 `timescaledb` extension is not installed on the server, the flag is treated as
-a best-effort hint and the backend logs a warning rather than failing the
+an advisory hint and the backend logs a warning rather than failing the
 migration; this lets operators leave the flag true in shared config and have
 it degrade gracefully on clusters that do not support it.
 

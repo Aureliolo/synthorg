@@ -241,7 +241,7 @@ The nine `synthorg_signals_*` tools follow the shared args conventions:
 | Errors | Classification pipeline | Category distribution, severity histogram, trends |
 | Evolution | `EvolutionService` | Proposal outcomes, approval rate, axis distribution |
 | Telemetry | Telemetry pipeline | Event counts, top event types, error events |
-| Benchmark | `ScorecardHistory` (offline, opt-in) | Latest golden-benchmark total, run-over-run delta, regression flag |
+| Benchmark | `ScorecardHistory` (offline, opt-in) | Newest golden-benchmark total, run-over-run delta, regression flag |
 
 ## Built-in Rules
 
@@ -256,7 +256,7 @@ The nine `synthorg_signals_*` tools follow the shared args conventions:
 | `redundancy` | INFO | Work redundancy rate too high |
 | `scaling_failure` | WARNING | Scaling decisions failing too often |
 | `error_spike` | WARNING | Error findings exceed threshold |
-| `benchmark_regression` | CRITICAL | Latest golden-benchmark run dropped below its predecessor |
+| `benchmark_regression` | CRITICAL | Newest golden-benchmark run dropped below its predecessor |
 
 All thresholds are configurable via constructor arguments. `benchmark_regression` is the strongest "something got worse" signal (the golden benchmark is the organisation's ground-truth quality measure), so it fires at CRITICAL and suggests the `PROMPT_TUNING` and `CODE_MODIFICATION` altitudes that can move a benchmark score back up.
 
@@ -325,7 +325,7 @@ The master switch above turns the loop on; it does not decide what any step
 dispatches to. Signal analysis reads `self_improvement.analysis_model` and the
 code-modification applier reads `self_improvement.code_modification_model`, each
 an explicit `(provider, model)` pair with no default, because a provider is a
-registered *connection* carrying its own credentials, endpoint and quota. A step
+registered *connection* carrying its own credentials, endpoint, and quota. A step
 whose pair is unset is off and says so rather than borrowing one nobody chose for
 it, so enabling the loop without choosing them yields a loop that collects
 signals and proposes nothing.
@@ -366,7 +366,7 @@ system's job, not the user's, so there is no mode picker.
   turn (above all `act`) only ever runs on the idempotent buffered path and a
   dropped stream can never re-run its tools.
 
-- **Intent is best-effort with a hard safety floor.** Any uncertainty degrades
+- **Intent detection is approximate, with a hard safety floor.** Any uncertainty degrades
   toward `explain` (a read), never toward `act` (a write) or `charter` (an
   expensive multi-turn interview): those two carry their own higher confidence
   floors (`act_intent_confidence_floor` 0.85, `charter_intent_confidence_floor`
@@ -417,7 +417,7 @@ system's job, not the user's, so there is no mode picker.
   risky write escalates to the approval inbox and parks/resumes exactly like an
   `act` turn (Flow 1, `PARKED_CONTEXT`). The console ships at the **`semi`**
   autonomy tier by default (reads flow; risky writes escalate). The
-  guardrail `reason` is **synthesised** from flow context, so the operator sees
+  guardrail `reason` is **synthesised** from flow context, so the operator answers
   a structured confirm (tool, risk, target), never a mandatory free-text box.
   Integration setup is the first guided flow. It runs as a **governed agent
   loop** (the console reusing `run_chat_action`), not a separate deterministic
@@ -438,7 +438,7 @@ system's job, not the user's, so there is no mode picker.
 
 - **Two levels of routing.** The intent classifier picks *which capability*;
   the existing concern router (`routing.py`) still picks *who answers* one level
-  down, so an `explain`/`propose` turn answers in the best-fit role agent's
+  down, so an `explain`/`propose` turn answers in the closest-fit role agent's
   persona (CFO for budget, CEO for strategy, most senior holder of a tied role),
   falling back to the generic Chief of Staff with a structured `routing_reason`.
   Every `explain` answer is grounded in a per-request **org-state read model**
@@ -450,8 +450,8 @@ system's job, not the user's, so there is no mode picker.
 
 - **Transparent multi-voice (opt-out, default on).** After an `explain` answer,
   0..N specialists above a value floor add a short, attributed chime-in
-  (`chime_ins`), rendered as agent bubbles so the operator sees the
-  *organisation* answering rather than one synthesised voice. Best-effort: a
+  (`chime_ins`), rendered as agent bubbles so what answers the operator is the
+  *organisation* rather than one synthesised voice. Failure-tolerant: a
   chime-in failure never fails the turn, and every chime is fenced with
   `wrap_untrusted`. Gated live per request via `chief_of_staff.multi_voice_enabled`.
 
@@ -467,7 +467,7 @@ system's job, not the user's, so there is no mode picker.
   transcript from the turns, staying a pure API consumer.
 
 - **`GET /agents/active`** (active-agent roster): the stable runtime UUIDs,
-  names, and roles of the currently active agents. Backs the group-convene
+  names, and roles of the active agents. Backs the group-convene
   participant resolution and multi-voice attribution.
 
 ### YAML defaults
@@ -598,7 +598,7 @@ task's per-task AG-UI SSE stream (`GET /events/stream?session_id=<task_id>`,
 owner/CEO-gated) and watches the run execute: run-started, per-turn tool-call
 progress (and per-step progress on the plan/hybrid loops), any approval pause,
 and run-finished/failed. The engine
-projects these frames best-effort through the `EventStreamHub`
+projects these frames failure-tolerantly through the `EventStreamHub`
 (`engine/_stream_progress.py`); a failing projection never breaks execution. The
 dashboard renders them inline in the chat flows via `useTaskProgress` +
 `TaskProgress` (a pure API consumer: the progress is hydrated live from the

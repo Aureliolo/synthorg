@@ -11,7 +11,7 @@ shipped to a centralised system for aggregation, search, and alerting.
 
 Three approaches are available; they can be combined.
 
-| Approach | Mechanism | Best For |
+| Approach | Mechanism | Suits |
 |----------|-----------|----------|
 | **Syslog sink** | App-level `SysLogHandler` shipping JSON to a syslog endpoint | rsyslog, syslog-ng, Graylog |
 | **HTTP sink** | App-level batched HTTP POST of JSON log arrays | Any JSON-accepting endpoint; vendor APIs (Loki, Elasticsearch, etc.) need a collector/proxy |

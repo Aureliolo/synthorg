@@ -140,7 +140,7 @@ Three distinct health endpoints live in this deployment; don't conflate them.
 | `GET /api/v1/health` | Backend (API) | Component detail | Authenticated per-component breakdown (persistence / message bus / providers / telemetry / backup) plus the build version; requires a read-access role. For operator dashboards, not orchestrator probes. |
 | `GET /healthz` | Web (Caddy) | Liveness | Caddy's built-in endpoint, served by the static-asset container. Reports that Caddy is accepting HTTP; distinct from the backend's `/api/v1/healthz`. |
 
-The probe endpoints (`/api/v1/healthz`, `/api/v1/readyz`) are unauthenticated so load-balancers and container orchestrators can probe them without credentials. Because they are, they disclose neither the component topology nor the build version: an exact version tells an anonymous caller precisely which published advisories apply, and no orchestrator decision depends on it. Read the running version from the authenticated `/api/v1/health`, or locally from the deployed image tag (`synthorg status`). All are pinned in the OpenAPI schema.
+The probe endpoints (`/api/v1/healthz`, `/api/v1/readyz`) are unauthenticated so load-balancers and container orchestrators can probe them without credentials. Because they are, they disclose neither the component topology nor the build version: an exact version reveals to an anonymous caller precisely which published advisories apply, and no orchestrator decision depends on it. Read the running version from the authenticated `/api/v1/health`, or locally from the deployed image tag (`synthorg status`). All are pinned in the OpenAPI schema.
 
 ---
 

@@ -159,7 +159,7 @@ When an agent needs context, the retrieval pipeline queries the memory backend, 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `strategy` | string | `"context"` | Injection strategy (currently only `"context"`) |
+| `strategy` | string | `"context"` | Injection strategy (only `"context"`) |
 | `relevance_weight` | float | `0.7` | Weight for backend relevance score (0.0--1.0) |
 | `recency_weight` | float | `0.3` | Weight for recency decay score (0.0--1.0) |
 | `recency_decay_rate` | float | `0.01` | Exponential decay rate per hour |

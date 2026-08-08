@@ -99,7 +99,7 @@ Reference: `PerOpRateLimitConfig._validate_override_tuples` and
 `src/synthorg/config/rate_limits.py` are declared before
 `_apply_mirrors` precisely so the env-populated `overrides` dict is
 shape-checked. Getting the order wrong means the shape validator runs
-against an empty default and never sees the env override.
+against an empty default and never reads the env override.
 
 ### Validator method naming
 
@@ -243,9 +243,13 @@ Two carve-outs (for the `extra="forbid"` check):
 
 Request DTOs are always strict because the caller-side
 reject-unknown-keys property is what `extra="forbid"` exists for.
-Combined with the framework's `frozen` guarantee this gives us the
+Combined with the framework's `frozen` contract this gives us the
 "create new objects, never mutate existing ones" property the
-immutability covenant relies on.
+immutability covenant relies on. `frozen=True` is shallow: it blocks
+field reassignment, not in-place mutation of a nested list or dict a
+field happens to hold. Where the covenant has to hold all the way
+down, the field type carries it (a tuple, a frozenset, a frozen
+model), not the parent's `frozen` flag.
 
 Canonical example: `src/synthorg/approval/models.py:28`. Gate:
 `scripts/check_frozen_model_extra_forbid.py` (pre-push +
@@ -447,7 +451,7 @@ domain-scoped module under `src/synthorg/observability/events/`.
 Import by name from the domain module; never use a string literal in
 a `logger.*(...)` call.
 
-Domains currently exposing constants (the
+Domains exposing constants (the
 `src/synthorg/observability/events/` package tree is the authoritative
 inventory; the names below are an illustrative subset, not the full
 set of top-level and nested domain modules):
@@ -516,7 +520,7 @@ matches the immutability default for collection returns and lets
 callers safely share results without defensive copies.
 
 A handful of older repositories (notably ``OntologyEntityRepository``
-and ``ProjectRepository``) currently raise ``OntologyNotFoundError`` /
+and ``ProjectRepository``) raise ``OntologyNotFoundError`` /
 ``RecordNotFoundError`` directly from ``get()`` instead of returning
 ``None``; this predates the canonical pattern and is tracked as a
 follow-up migration. New repositories follow the
@@ -875,8 +879,11 @@ keys in `[tool.ruff.lint]`:
 Active preview opt-ins:
 
 * `TID255` (`lazy-import-immediately-resolved`): pre-emptive gate for
-  PEP 690 lazy imports. Currently inert on Python 3.14 (no `lazy`
-  syntax in the language yet); becomes meaningful when 3.15 lands.
+  PEP 810 lazy imports. Inert while ruff targets Python 3.14 (the
+  `lazy` soft keyword does not exist there); it becomes meaningful only
+  once the target rises to 3.15 or newer. (PEP 690, the earlier
+  implicit-lazy-import proposal, was rejected and is not what this rule
+  checks.)
 
 When adding a new preview rule, list it in `extend-select` and keep
 the `explicit-preview-rules = true` flag; never remove that flag.
@@ -898,7 +905,7 @@ On-startup wiring helpers follow a two-name contract:
 
 * `_wire_<x>` MUST succeed: a failure is a wiring bug and propagates,
   failing the boot.
-* `_try_wire_<x>` is best-effort and idempotent: it attaches durable
+* `_try_wire_<x>` is failure-tolerant and idempotent: it attaches durable
   collaborators that only exist once a backend is connected (e.g.
   `_try_wire_performance_persistence` attaches metric repos to the
   construction-phase tracker), logs an `API_APP_STARTUP` warning and

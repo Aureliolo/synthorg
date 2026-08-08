@@ -79,7 +79,7 @@ the decision write and `clear_resume_intent` once the resume settles, and
 | --- | --- |
 | Absent, or still `PENDING` | Discard the marker: the decision never landed, so the approval is still decidable and re-dispatching would invent consent |
 | Decided BEFORE the marker was recorded | Discard: the marker was written by a caller that went on to lose `save_if_pending`, so the resume behind it already completed |
-| `APPROVED` / `REJECTED`, decided at or after the marker | Re-dispatch `signal_resume_intent`, then clear |
+| `APPROVED` / `REJECTED` decided at or after the marker | Re-dispatch `signal_resume_intent`, then clear |
 | Re-dispatch raises | **Keep** the marker: the task is still parked, so the next startup retries |
 
 Three properties make that table safe under a race, where one caller wins
@@ -97,7 +97,7 @@ Three properties make that table safe under a race, where one caller wins
   drain reads `status` / `decided_by` / `decision_reason` from there and
   the two can never disagree.
 
-Recording is best-effort (a `None` backend, or an outbox fault, degrades
+Recording is failure-tolerant (a `None` backend, or an outbox fault, degrades
 to a logged no-op) because a run with no database cannot survive a crash
 anyway, and forfeiting recovery for one decision beats 500-ing a
 serviceable approval.

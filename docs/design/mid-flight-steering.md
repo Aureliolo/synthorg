@@ -123,7 +123,7 @@ running agent. So steering pairs the cancel with a cooperative halt:
   version conflict).
 
 The `PROPOSE` window between `issue()` and the operator's confirm is accepted
-and non-corrupting: soon-to-be-superseded agents may briefly adopt and re-plan,
+and non-corrupting: agents about to be superseded may briefly adopt and re-plan,
 which is transient contradictory work, not corruption. `EXPLICIT` mode cancels
 synchronously to shrink that window.
 

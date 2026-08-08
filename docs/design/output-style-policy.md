@@ -44,7 +44,7 @@ scope does (see [Sanctioned exemptions](#sanctioned-exemptions)).
 the agent system prompt, after Personality and before Skills, via
 `adapter.inject_house_style_context`. Directives are scoped org-wide or per
 role or per department, reusing the `ScopeKind` (`ALL` / `ROLE` / `DEPARTMENT`)
-mechanism the strategy module uses for constitutional principles: an agent sees
+mechanism the strategy module uses for constitutional principles: an agent receives
 every `ALL` directive plus the `ROLE` and `DEPARTMENT` directives that match it.
 
 The provider is a process-global ambient snapshot (`provider.py`), set at boot
@@ -55,7 +55,7 @@ a future token-trimming pass were to drop this section under budget pressure,
 enforcement is unaffected, because the hard gate is independent of the prompt.
 
 The prompt states which directives are hard-enforced (the em-dash ban is
-rejected at the boundary) versus expected-and-monitored (the fuzzy tells), so an
+rejected at the boundary) versus expected-and-monitored (the fuzzy signals), so an
 agent does not learn that the section carries no consequence.
 
 ## Hard layer: deterministic guardrail
@@ -135,14 +135,14 @@ The pack (`RulePack`) holds the soft directives, the hard rules, and default
 exemptions. The loader (`pack_loader.py`) reads a built-in pack or a user pack
 from `~/.synthorg/output-style-packs/`, mirroring the strategy principle-pack
 loader. The default pack ships the em-dash hard ban in `reject_rework` mode and
-the fuzzy AI-writing tells (sycophancy, puffery, filler transitions, the word
+the fuzzy AI-writing signals (sycophancy, puffery, filler transitions, the word
 "delve", the "it's not just X, it's Y" contrastive construction, over-hedging)
 in `shadow` mode.
 
 Banned literals never appear verbatim in committed source. The em-dash character
 is expressed by its integer code point and its HTML entities by a convenience
 flag, both expanded to literals in the loader, so the repo `check_no_em_dashes.py`
-gate never sees a literal. Tests build the real character at runtime with
+gate never receives a literal. Tests build the real character at runtime with
 `chr(0x2014)`.
 
 ## Configuration and wiring

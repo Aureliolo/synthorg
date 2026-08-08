@@ -118,7 +118,7 @@ Two paths, both first-class:
 
 Each doc write goes through the existing per-project push queue (#1974)
 to commit on a dedicated `synthorg/docs` branch. History equals
-`git log`. Persistence stores only the latest commit pointer + the SHA
+`git log`. Persistence stores only the newest commit pointer + the SHA
 last seen by the indexer:
 
 ```text

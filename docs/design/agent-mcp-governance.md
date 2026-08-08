@@ -36,7 +36,7 @@ visible tools as:
 ambient(all non-admin tools)  UNION  granted(agent's own mcp_capabilities)  UNION  operator_broadening(elevated_capabilities)
 ```
 
-- `ambient` is always visible (the out-of-the-box surface).
+- `ambient` is always visible (the default surface).
 - `granted` is the agent's own `ToolPermissions.mcp_capabilities` (e.g.
   `("agents:admin",)`): the sensitive families it earned. Empty by
   default, so an unconfigured agent gets exactly the ambient surface.

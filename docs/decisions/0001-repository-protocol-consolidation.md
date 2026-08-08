@@ -12,7 +12,7 @@ own bespoke method signature set, even though almost every protocol
 follows one of a handful of recurring patterns:
 
 * `Task`, `Project`, `User`, `Artifact`, ... use the same five-method
-  CRUD surface: `save`, `get`, `delete`, plus pagination and filtered
+  CRUD surface (`save`, `get`, `delete`) plus pagination and filtered
   enumeration.
 * `Message`, `CostRecord`, `Audit`, `Checkpoint`, `ProviderAudit` are
   append-only event logs with query + retention purge.
@@ -138,7 +138,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 6 | UserRepository | persistence/ | IdKeyed + FilteredQuery | `get_by_username` | Indexed lookup on username column |
 | 7 | AuditRepository | persistence/ | AppendOnly | `purge_before` | Retention sweep (exception to append-only rule) |
 | 8 | WorkflowDefinitionRepository | persistence/ | IdKeyed + FilteredQuery | `create_if_absent`, `update_if_exists` | CAS variants for distinct audit semantics |
-| 9 | CheckpointRepository | persistence/ | AppendOnly | `get_latest`, `delete_by_execution` | Domain: latest by turn_number; cleanup by execution |
+| 9 | CheckpointRepository | persistence/ | AppendOnly | `get_latest`, `delete_by_execution` | Domain: newest by turn_number; cleanup by execution |
 | 10 | HeartbeatRepository | persistence/ | Singleton (per execution) | `get_stale` | Domain: stale-timeout queries for cleanup |
 | 11 | OrgFactRepository | persistence/ | bespoke (D7) | -- | Standalone `Protocol`, not `MVCCRepository`: composite key + author tracking on `retract`, `snapshot_at()` returns an `OperationLogSnapshot` that does not fit the `MVCCRepository[T, ...]` signature, and org-memory domain optimisations (see `persistence/memory_protocol.py`) |
 | 12 | FineTuneRunRepository | persistence/ | Stateful | `get_active_run`, `mark_interrupted` | Domain: active-run singleton per manager |
@@ -257,7 +257,7 @@ passthroughs, no aliases.
 * **Four categories without `StatefulRepository` and
   `MVCCRepository`**. Rejected: CAS transitions and MVCC are
   structurally distinct from CRUD; folding them into IdKeyed loses the
-  atomicity guarantee that callers depend on.
+  atomicity contract that callers depend on.
 * **Five categories merging Singleton into IdKeyed-with-Unit-key**.
   Rejected: the API surface of a singleton (`get()` with no args) is
   meaningfully simpler at the callsite than an id-keyed equivalent

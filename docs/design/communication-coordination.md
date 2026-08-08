@@ -65,7 +65,7 @@ disagreement surfaced during its discussion phase on
 (`communication/meeting/conflict_escalation.py`) builds a `Conflict` from the
 participants' positions and hands it to the `ConflictResolutionService`. The
 bridge is gated by the hot-reloadable `communication.meeting_conflict_escalation_enabled`
-kill switch and is best-effort (a resolution failure never fails the meeting).
+kill switch and is failure-tolerant (a resolution failure never fails the meeting).
 
 === "Strategy 1: Authority + Dissent Log"
 
@@ -403,7 +403,7 @@ logs with avoidable failures during degraded startup.
 
 The communication domain exposes five service facades on `AppState` for
 MCP handler shims. Each is a thin wrapper; audit logging lives in the
-facade, not the handler or the repository.
+facade rather than in the handler or the repository.
 
 | Facade | Module | Tools shimmed |
 |---|---|---|
@@ -433,7 +433,7 @@ and known risks.
 
 ### Meeting Protocol Safety
 
-All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) guarantee
+All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) ensure
 bounded execution via `TokenTracker` phase-boundary checks, hard token budgets with 20%
 synthesis reserve, and turn/round limits. No protocol has unbounded execution paths.
 
@@ -487,7 +487,7 @@ All five conflict resolution strategies terminate with bounded resource use:
     to a single worker).
 
     **Timeout re-read fallback.** Because the NOTIFY publish is
-    app-side and best-effort, a subscriber restart, network blip, or
+    app-side and failure-tolerant, a subscriber restart, network blip, or
     deployment rollover can drop the wake-up for an in-flight
     resolver. To keep the decision path correct under those windows,
     ``HumanEscalationResolver`` re-reads the escalation row on
@@ -495,8 +495,11 @@ All five conflict resolution strategies terminate with bounded resource use:
     hands the operator's decision to the processor instead of
     returning the generic ``ESCALATED_TO_HUMAN`` fallback. The
     sweeper and per-resolver timeout still bound stale rows; the
-    re-read guarantees that an operator's choice is never masked by a
-    missed notification.
+    re-read recovers an operator's choice that a missed notification
+    would otherwise have masked, provided the decision committed
+    before the re-read. A decision that commits after it still
+    returns the fallback, and the conditional ``mark_expired`` leaves
+    the persisted row ``DECIDED`` for the operator to see.
 
     **Schema-level invariants.** The ``conflict_escalations`` table
     enforces three CHECK constraints that together make impossible

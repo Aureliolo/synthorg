@@ -3,7 +3,7 @@
 ## Current status
 
 SynthOrg is **pre-alpha**. The platform, infrastructure, and runtime are built
-and tested (<!--RS:tests-->44,000+<!--/RS--> tests in the latest run) and
+and tested (<!--RS:tests-->44,000+<!--/RS--> tests in the most recent run) and
 integrated through a REST + WebSocket API, a React 19 dashboard,
 and a Go CLI. The agent runtime, multi-agent coordinator, work pipeline spine,
 intake engine, sandbox lifecycle dispatch, and distributed-path consumers are
@@ -58,7 +58,7 @@ provider, zero LLM spend, unless noted):
 - **Conversational org interface**: one unified "talk to your org" chat in
   natural language. A single turn is classified to an intent (answer a question,
   draft a plan, convene a group, act) and dispatched, with per-turn concern
-  routing to the best-fit role agent and transparent multi-voice (specialists
+  routing to the closest-fit role agent and transparent multi-voice (specialists
   chime in with attribution). Human-consented agent-initiated invites and direct
   MCP acting under trust (sensitive actions approval-gated; fail-closed when
   security governance is inactive) round it out. The read/propose/group and

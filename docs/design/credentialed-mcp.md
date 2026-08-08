@@ -10,7 +10,7 @@ the first is the [LLM gateway](llm-gateway.md).
 The design invariant is **credentials never enter the sandbox**. Tool
 execution, credential brokering, the approval gate, the action signature
 and the egress pin all run host-side in the API process; the harness only
-ever sees tool *schemas* and already-fenced tool *results*.
+ever receives tool *schemas* and already-fenced tool *results*.
 
 ## Boundary
 
@@ -54,8 +54,8 @@ Not every write is destructive, and the distinction is load-bearing:
 | deploy | `deploy_run` | `deploy_release` | **yes** |
 | publish | `publish_inspect` | `publish_push` | **yes** |
 
-Opening an issue adds something reversible. A release **replaces what is
-currently serving**, so `deploy_release` alone carries `_DESTRUCTIVE`, the
+Opening an issue adds something reversible. A release **replaces whatever is
+already serving**, so `deploy_release` alone carries `_DESTRUCTIVE`, the
 confirm + reason + actor guardrail, and a `deploy:staging` /
 `deploy:production` action type rather than the shared `comms:external`.
 That last point is a security boundary, not bookkeeping: every family

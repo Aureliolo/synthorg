@@ -95,7 +95,7 @@ for approval flows. No LLM calls; pure API/UI delegation.
 ### HybridClient
 
 Composes `AIClient` + `HumanClient`: AI drafts requirements and evaluates
-deliverables, human confirms or overrides decisions.
+deliverables; the human confirms or overrides decisions.
 
 ---
 
@@ -245,8 +245,8 @@ so a strategy / model / project / review-pipeline / verification
 change applies with no restart. The rebuild swaps only the
 config-driven intake engine + review pipeline (including the
 verification stage) onto the existing `ClientSimulationState` (via
-`dataclasses.replace`), preserving the live client pool and the
-request / simulation / feedback stores so in-flight work is never
+`dataclasses.replace`). The live client pool and the request /
+simulation / feedback stores are preserved, so in-flight work is never
 discarded.
 
 Each of `simulations.intake_model`, `simulations.verification_grader_model`

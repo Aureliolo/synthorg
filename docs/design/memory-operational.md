@@ -169,7 +169,7 @@ Async throughout
 ## Multi-Tenancy
 
 Each company gets its own database. The `PersistenceConfig` embedded in a company's `RootConfig`
-specifies the backend type and connection details (e.g., a unique SQLite file path or PostgreSQL
+specifies the backend type and connection details (e.g. a unique SQLite file path or PostgreSQL
 database URL). The `create_backend(config)` factory returns an isolated `PersistenceBackend`
 instance per company; no shared state, no cross-company data leakage.
 

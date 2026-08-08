@@ -36,7 +36,7 @@ telemetry is in place.
 
 ## Model matcher (`match_model`)
 
-Selects the best provider-model fit for a capability-bound
+Selects the closest provider-model fit for a capability-bound
 `ModelRequirement`. The matcher first hard-filters on declared
 capability requirements (vision / `min_context` / reasoning) against each
 model's persisted `ModelMetadata`, then resolves any family/pattern

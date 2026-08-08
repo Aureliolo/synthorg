@@ -52,7 +52,7 @@ test fails.
    `apiClient.interceptors.request.use(...)` so axios skips the
    `.then(chain[i++], ...)` loop at `Axios.js:196` when no async
    interceptor is registered. The CSRF interceptor is itself
-   synchronous; the annotation tells axios to take the fast path.
+   synchronous; the annotation directs axios to the fast path.
    No behavioural change; pure perf hint.
 
 ## Behavioural audit (axios fetch adapter)

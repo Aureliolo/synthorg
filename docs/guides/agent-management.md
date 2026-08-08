@@ -92,7 +92,7 @@ Current behaviour (`delete_agent` in `src/synthorg/api/services/_org_agent_mutat
 2. The agent record is removed from the active org configuration.
 3. A company snapshot is persisted and an `API_AGENT_DELETED` event is logged and broadcast on the `agents` WebSocket channel.
 
-Not yet wired into the DELETE flow: automated task reassignment via `TaskReassignmentStrategy` (concrete: `QueueReturnStrategy` in `src/synthorg/hr/queue_return_strategy.py`), memory archival via `MemoryArchivalStrategy` (concrete: `FullSnapshotStrategy` in `src/synthorg/hr/full_snapshot_strategy.py`), selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. The strategies exist as part of the offboarding-service shape but the API DELETE handler does not invoke them; fires are best paired with manual task reassignment before the DELETE call.
+Not yet wired into the DELETE flow: automated task reassignment via `TaskReassignmentStrategy` (concrete: `QueueReturnStrategy` in `src/synthorg/hr/queue_return_strategy.py`), memory archival via `MemoryArchivalStrategy` (concrete: `FullSnapshotStrategy` in `src/synthorg/hr/full_snapshot_strategy.py`), selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. The strategies exist as part of the offboarding-service shape but the API DELETE handler does not invoke them; fires should be paired with manual task reassignment before the DELETE call.
 
 ## Rehiring from archive
 

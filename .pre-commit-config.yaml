@@ -26,8 +26,11 @@ ci:
   #     but the gitignored `.vale/styles/Google/` package is populated
   #     lazily by the `scripts/vale-prepush.sh` wrapper on the first
   #     push in each worktree, so new worktrees do not need an explicit
-  #     sync step. vale has no CI workflow yet; pre-push is the only
-  #     gate.
+  #     sync step. vale's CI counterpart is the `Prose lint (vale)` step
+  #     in the `Gates` job of .github/workflows/verify-backend.yml, which
+  #     also runs vale-ledger-complete: that gate enumerates the same
+  #     gitignored style package, so it belongs wherever the package has
+  #     just been materialised.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -50,7 +53,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``verify-backend.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
+  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, vale-ledger-complete, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
@@ -255,7 +258,7 @@ repos:
         stages: [pre-push]
 
       - id: no-synthorg-any-override
-        name: no synthorg.* mypy override may lift disallow_any_explicit (#2056)
+        name: no synthorg.* mypy override may lift disallow_any_explicit
         entry: uv run python scripts/check_no_synthorg_any_override.py
         language: system
         files: ^(pyproject\.toml|scripts/check_no_synthorg_any_override\.py|\.pre-commit-config\.yaml)$
@@ -264,7 +267,7 @@ repos:
         stages: [pre-commit, pre-push]
 
       - id: no-explicit-any-inline-disable
-        name: no inline # mypy: comment may lift explicit-any/unused-ignore (#2121)
+        name: no inline # mypy: comment may lift explicit-any/unused-ignore
         entry: uv run python scripts/check_no_explicit_any_inline_disable.py
         language: system
         files: ^(src/synthorg/.*|tests/.*)\.py$
@@ -342,7 +345,7 @@ repos:
         stages: [pre-push]
 
       - id: workflow-tag-lifecycle
-        name: block tag CREATE+conditional-DELETE in same workflow (#1818)
+        name: block tag CREATE+conditional-DELETE in same workflow
         entry: uv
         args: [run, python, scripts/check_workflow_tag_lifecycle.py, --scan-all]
         language: system
@@ -560,10 +563,11 @@ repos:
         # machine via `bash scripts/install_cli_tools.sh vale`; the
         # wrapper prints a clear pointer if it is missing.
         #
-        # MinAlertLevel = suggestion is set in `.vale.ini` itself
-        # (single source of truth). The corpus is drained to zero
-        # findings against the strictest level, so any future regression
-        # blocks pre-push.
+        # What makes a regression block is the per-rule `= error`
+        # assignment in `.vale.ini`, not MinAlertLevel: vale's exit code
+        # reflects error-severity alerts only, so a corpus drained
+        # against warnings and suggestions reports and still exits 0.
+        # `.vale.ini` is the single source of truth for both.
         entry: bash scripts/vale-prepush.sh
         language: system
         # Same glob as lychee + markdownlint: README, every CLAUDE.md
@@ -572,6 +576,26 @@ repos:
         # right surface for prose-style gates (matches lychee's posture).
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
         pass_filenames: true
+        stages: [pre-push]
+
+      - id: vale-ledger-complete
+        name: vale ledger completeness (every shipped rule triaged)
+        # Materialises the style package itself rather than relying on the
+        # vale hook above having run. It cannot: that hook's file filter
+        # selects Markdown, this one's selects the vale config, and the two
+        # sets are disjoint. A push touching only `.vale.ini` therefore
+        # reaches this gate with `.vale/styles/Google/` still absent in a
+        # fresh worktree, and the gate refuses to pass without it. The
+        # `--sync-only` wrapper call is the shared path, so the pinned
+        # binary version is validated here too.
+        #
+        # Runs on any change to the pin, the ledger, or a project style,
+        # since those are the three ways the classified set can drift from
+        # the shipped set.
+        entry: bash -c 'bash scripts/vale-prepush.sh --sync-only && uv run python scripts/check_vale_ledger_complete.py'
+        language: system
+        files: ^\.vale\.ini$|^\.vale/styles/(?!Google/).*\.yml$
+        pass_filenames: false
         stages: [pre-push]
 
       # ESLint, knip and dpdm are independent read-only passes over the

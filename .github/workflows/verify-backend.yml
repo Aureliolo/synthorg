@@ -112,7 +112,7 @@ jobs:
       # enforces that this SKIP list equals _COVERED_ELSEWHERE u _LOCAL_ONLY
       # exactly. The two all-files steps share this one job-level SKIP so a hook
       # can never be skipped at one stage but silently run at another.
-      SKIP: go-vet,go-test,golangci-lint,web-checks,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
+      SKIP: go-vet,go-test,golangci-lint,web-checks,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,vale-ledger-complete,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -172,6 +172,9 @@ jobs:
         run: |
           bash scripts/install_cli_tools.sh vale
           export PATH="$HOME/.local/bin:$PATH"
+          # Runs here rather than in the all-files job because it enumerates
+          # the gitignored style package, which only the line above materialises.
+          uv run python scripts/check_vale_ledger_complete.py
           vale README.md CLAUDE.md cli/CLAUDE.md web/CLAUDE.md docs/
       - name: Pull caddy image
         uses: ./.github/actions/docker-pull-resilient

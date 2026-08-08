@@ -10,8 +10,8 @@ manifests + enforcement gates landed in issue #2149 (this PR).
 SynthOrg's pre-#2048 composition root was a 2313-line `api/state.py`
 god-object plus a 2152-line `api/app.py` that wired every service. Adding
 a feature required touching both centres; the side-effect was that the
-"locality" the project espoused at the feature level evaporated as soon
-as the wiring met the centre.
+"locality" the project espoused at the feature level evaporated the moment
+the wiring met the centre.
 
 ADR-0006 (the tiered module-size policy) gated NEW central growth but
 could not, by itself, undo the centre. What the codebase needed was an

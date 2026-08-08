@@ -140,7 +140,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
       placeholder messages).
     - **No persistence dependency**: relies on whichever observability sink
       the operator configured (structlog file, OTLP backend, Postgres).
-    - **Best-effort**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
+    - **Partial**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
       how much state was recovered.
     - **Use case**: recovery after brain failure when checkpoint persistence
       is not configured or the checkpoint is stale.
@@ -223,7 +223,7 @@ On shutdown signal:
 ### Strategy 2: Immediate Cancel
 
 All agent tasks are cancelled immediately via `task.cancel()` with no grace
-period. Fastest shutdown but highest data loss; partial tool side effects,
+period. Quickest shutdown but highest data loss; partial tool side effects,
 billed-but-lost LLM responses. Tasks are marked `INTERRUPTED`.
 
 ```yaml
@@ -606,8 +606,8 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    `coordination.decomposition_strategy` setting (`StrategyRegistry` in
    `engine/coordination/factory.py`):
    - **`agent-session`** (default): a bounded agent session runs AS the staffed
-     project owner (`DecompositionContext.owner_identity`, resolved and stamped
-     onto `Project.lead` in the work pipeline). The owner reasons across turns,
+     project owner (`DecompositionContext.owner_identity`, which is resolved and
+     stamped onto `Project.lead` in the work pipeline). The owner reasons across turns,
      may call any read-only tools it is granted (a decomposition tool provider
      supplies them; none are wired by default, and any non-read-only tool is
      dropped before the session runs), self-reviews, and submits the plan

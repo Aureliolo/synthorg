@@ -174,7 +174,7 @@ own frozen `*Args` model (declared as `args_model`, mostly in a sibling
 - Wire shape: the per-tool `args_model` JSON schema (the same model
   whose `model_json_schema()` is advertised to the LLM).
 - The `ToolInvoker` already validates `args_model` before dispatch, so
-  in production `execute` never sees malformed input; the in-body
+  in production `execute` never receives malformed input; the in-body
   `parse_typed` is a defensive typed-access boundary that gives the
   body validated attribute access and keeps the tool plane under the
   same contract as the auth / MCP surfaces.

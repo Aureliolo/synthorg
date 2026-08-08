@@ -40,7 +40,7 @@ Tool access categories map to the `ToolAccessLevel` an agent's identity carries:
 
 | Level | Value | Access |
 |-------|-------|--------|
-| Sandboxed | `sandboxed` | Sandbox-only execution, no filesystem or network |
+| Sandboxed | `sandboxed` | Sandbox-only execution with no filesystem or network |
 | Restricted | `restricted` | Read-only filesystem, limited network |
 | Standard | `standard` | Read-write filesystem, version control, code execution |
 | Elevated | `elevated` | All categories including deployment, database admin |

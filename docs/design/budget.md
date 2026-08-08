@@ -78,7 +78,7 @@ unguarded `sum` / `math.fsum` / `statistics.mean` / `statistics.fmean` calls
 push when an aggregation is not preceded by a guard call in the same
 function-or-module scope. `CostTracker.record()`
 additionally rejects at the ingestion boundary when the incoming record's currency differs
-from the currently-configured `budget.currency`, so new writes cannot introduce drift
+from the configured `budget.currency`, so new writes cannot introduce drift
 against the live setting. Historical rows written before a `budget.currency` change still
 carry their original code, so a rollup that spans the change window will legitimately see
 mixed currencies; the aggregator raises rather than silently combining them. Operators
