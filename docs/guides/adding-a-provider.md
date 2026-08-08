@@ -186,9 +186,9 @@ npm --prefix web run dev
 
 ## Step 10 -- Commit + PR
 
-Use [`/pre-pr-review`](../../.claude/skills/pre-pr-review/SKILL.md) to land the PR. `gh pr create` is blocked by hookify; the skill runs review agents and creates the PR itself.
+Use [`/pre-pr-review`](https://github.com/Aureliolo/synthorg/blob/main/.claude/skills/pre-pr-review/SKILL.md) to land the PR. `gh pr create` is blocked by hookify; the skill runs review agents and creates the PR itself.
 
-Commit message style (per [CLAUDE.md](../../CLAUDE.md) git conventions):
+Commit message style (per [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md) git conventions):
 
 ```text
 feat(providers): add <Provider Name> preset (#<issue>)
