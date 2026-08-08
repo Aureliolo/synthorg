@@ -50,7 +50,7 @@ unquoted_identifiers_policy = aliases
 # Postgres dialect reserves far more of these than SQLite. RF04 stays
 # active for every OTHER keyword, unlike the previous blanket
 # exclude_rules = RF04.
-ignore_words = constraints, content, cost, dependencies, fields, key, model, name, path, provider, role, rowid, sequence, snapshot, stage, text, timestamp, type, value, version
+ignore_words = constraints, content, cost, dependencies, fields, key, model, name, path, provider, role, rowid, sequence, snapshot, source, stage, text, timestamp, type, value, version
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = upper

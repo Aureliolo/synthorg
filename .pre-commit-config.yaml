@@ -204,12 +204,14 @@ repos:
     rev: v1.29.0
     hooks:
       - id: zizmor
-        # Match workflows + composite actions. zizmor v1.25+ recognises both
-        # as inputs. `.github/.zizmor.yml` is intentionally NOT matched: it
-        # is the audit config (passed via --config below) and zizmor v1.25
-        # exits with `no inputs collected` if the only matched path is the
-        # config itself.
-        files: ^(\.github/workflows/.*\.ya?ml|\.github/actions/.+/action\.ya?ml)$
+        # Match workflows + composite actions + this file. zizmor v1.25+
+        # recognises the first two as inputs and v1.29 adds pre-commit
+        # configs, where its insecure-url-scheme audit catches a hook
+        # repo fetched over plaintext. `.github/.zizmor.yml` is
+        # intentionally NOT matched: it is the audit config (passed via
+        # --config below) and zizmor v1.25 exits with `no inputs
+        # collected` if the only matched path is the config itself.
+        files: ^(\.github/workflows/.*\.ya?ml|\.github/actions/.+/action\.ya?ml|\.pre-commit-config\.yaml)$
         args: [--config=.github/.zizmor.yml]
 
   - repo: local

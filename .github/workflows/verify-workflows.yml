@@ -7,12 +7,14 @@ on:
       - ".github/workflows/**"
       - "renovate.json"
       - ".github/.zizmor.yml"
+      - ".pre-commit-config.yaml"
   pull_request:
     branches: [main]
     paths:
       - ".github/workflows/**"
       - "renovate.json"
       - ".github/.zizmor.yml"
+      - ".pre-commit-config.yaml"
   workflow_dispatch:
 
 permissions: {}
