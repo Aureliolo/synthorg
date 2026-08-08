@@ -12,7 +12,7 @@
 # workspace (/workspace/.synthorg/desktop/screenshots).
 # =============================================================================
 
-FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
 
 LABEL org.opencontainers.image.title="synthorg-desktop" \
       org.opencontainers.image.description="SynthOrg agent virtual desktop sandbox" \

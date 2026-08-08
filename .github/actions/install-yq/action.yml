@@ -31,7 +31,7 @@ runs:
         # A release asset can be replaced under an existing tag, so the tag
         # alone is not a pin; the digest is.
         # renovate: datasource=github-releases depName=mikefarah/yq
-        YQ_VERSION: v4.45.1
+        YQ_VERSION: v4.53.3
         YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
         CONNECT_TIMEOUT: ${{ inputs.connect-timeout }}
         RETRY: ${{ inputs.retry }}
