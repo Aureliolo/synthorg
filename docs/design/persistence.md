@@ -59,7 +59,7 @@ by a caller that reached past the abstraction.
   justification; the migration guide explains the baseline-update
   workflow.
 
-The same rule is restated verbatim in [`CLAUDE.md`](../../CLAUDE.md)
+The same rule is restated verbatim in [`CLAUDE.md`](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md)
 (`## Persistence Boundary`) so Claude and human developers see the same contract
 no matter which surface they hit first.
 
