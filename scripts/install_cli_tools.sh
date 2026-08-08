@@ -549,67 +549,35 @@ install_vale() {
 # already-installed path does NOT skip the sync -- a fresh worktree with the
 # binary already on PATH still needs `.vale/styles/Google/` populated.
 #
-# Idempotent: skips the network round-trip when the Google package's
-# Acronyms.yml sentinel is already present. The pre-push wrapper
-# (scripts/vale-prepush.sh) uses the same sentinel and runs `vale sync`
-# lazily on first push in a worktree, so explicitly invoking this
-# function from `install_cli_tools.sh vale` is now only useful for
-# pre-warming a worktree before going offline. Re-running is cheap.
+# The decision this delegates -- whether the materialised package matches
+# the `Packages` pin in .vale.ini, and the sync and retry when it does not
+# -- belongs to the pre-push wrapper, which has to make it on every push
+# anyway. Deciding it a second time here is how one of the two ends up
+# accepting a package the other would replace, and the pin is exactly what
+# a presence check cannot see.
+#
+# PATH carries the install dir because the wrapper resolves vale from PATH,
+# and on a first-run machine ~/.local/bin holds the binary install_vale just
+# placed without being on PATH yet.
 sync_vale_packages() {
-  local repo_root vale_ini vale_bin install_dir binary_name
+  local repo_root vale_ini wrapper install_dir
 
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   vale_ini="${repo_root}/.vale.ini"
+  wrapper="${repo_root}/scripts/vale-prepush.sh"
 
   if [ ! -f "${vale_ini}" ]; then
     echo "vale sync skipped: no .vale.ini at ${vale_ini} (this branch may pre-date the vale wiring)"
     return 0
   fi
 
-  if [ -s "${repo_root}/.vale/styles/Google/Acronyms.yml" ]; then
-    echo "vale sync skipped: Google style package already present at ${repo_root}/.vale/styles/Google/"
+  if [ ! -f "${wrapper}" ]; then
+    echo "vale sync skipped: no ${wrapper} (this branch may pre-date the vale wiring)"
     return 0
   fi
 
-  # Prefer PATH; fall back to the install_dir copy so the "all" target works
-  # on a first-run setup where the binary just landed but ~/.local/bin is not
-  # yet on PATH. install_vale already warned about PATH; we don't need to
-  # repeat that here -- just use the binary we know exists.
-  vale_bin="$(vale_on_path)"
-  if [ -z "${vale_bin}" ]; then
-    install_dir="${VALE_INSTALL_DIR:-${HOME}/.local/bin}"
-    case "$(uname -s)" in
-      MINGW*|MSYS*|CYGWIN*) binary_name="vale.exe" ;;
-      *)                    binary_name="vale" ;;
-    esac
-    if [ -x "${install_dir}/${binary_name}" ]; then
-      vale_bin="${install_dir}/${binary_name}"
-    fi
-  fi
-  if [ -z "${vale_bin}" ]; then
-    echo "error: vale not on PATH; run 'bash scripts/install_cli_tools.sh vale' first" >&2
-    return 1
-  fi
-
-  echo "Running vale sync (populates StylesPath with packages declared in .vale.ini)..."
-  # `vale sync` downloads the Google style package from a CDN (jsdelivr); a
-  # single 5xx there should not fail the whole install/CI step. Retry up to 3
-  # times with a short backoff, mirroring the curl --retry pattern used for the
-  # binary downloads above (vale sync is not curl, so the loop is explicit).
-  local sync_attempt
-  for sync_attempt in 1 2 3; do
-    if ( cd "${repo_root}" && "${vale_bin}" sync ); then
-      return 0
-    fi
-    # Only back off BETWEEN attempts; after the 3rd (final) failure fall
-    # straight through to the error below instead of sleeping pointlessly.
-    if [ "${sync_attempt}" -lt 3 ]; then
-      echo "warning: vale sync failed (attempt ${sync_attempt}/3); retrying in 10s..." >&2
-      sleep 10
-    fi
-  done
-  echo "error: vale sync failed after 3 attempts" >&2
-  return 1
+  install_dir="${VALE_INSTALL_DIR:-${HOME}/.local/bin}"
+  PATH="${install_dir}:${PATH}" bash "${wrapper}" --sync-only
 }
 
 # ---------------------------------------------------------------------------

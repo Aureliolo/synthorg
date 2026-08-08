@@ -163,7 +163,7 @@ In parallel, the `nats-io/nats.py` repository is publishing a modular client fam
 
 **Trigger-based revisit** (replaces the prior fixed 2026-06-10 checkpoint):
 
-1. **Trigger A -- `nats-py 2.15+` is released:** bump the pin in `pyproject.toml` to `nats-py==2.15.0`, drop the scoped `filterwarnings` entry, run `uv run python -m pytest tests/ -m integration -k nats` to confirm no deprecation warnings fire, and update this section with the resolution outcome. This closes the Python 3.14 thread without any further migration consideration.
+1. **Trigger A -- the pinned `nats-py` breaks on a supported Python version and upstream has not shipped a fix:** re-evaluate migration urgency rather than carrying a local workaround indefinitely. The Python 3.14 instance of this trigger is closed: 2.14.0's `asyncio.iscoroutinefunction` call failed the `error`-promoted CI, 2.15.0 shipped the `inspect.iscoroutinefunction` swap, and `pyproject.toml` pins that release. The scoped `filterwarnings` entry it motivated stays, because other transitive deps still call the deprecated function.
 2. **Trigger B -- `nats-key-value` is published to PyPI AND the modular family reaches 1.0:** re-evaluate migration. The API delta tables above are the starting scope; re-verify them at the published versions. If migration is decided, file the implementation as a separate issue, expand the scope with the `publish_batch` benchmark plan, and execute against PyPI-published packages only (no git subdirectory pins).
 3. **Trigger C -- `nats-py` releases nothing for six months:** the parallel-maintenance assumption breaks. Re-evaluate migration urgency regardless of family stability.
 
