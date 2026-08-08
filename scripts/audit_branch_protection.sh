@@ -258,7 +258,7 @@ fi
 #    NORMALISE_FILTER only strips meta fields and sorts the top-level
 #    ``rulesets`` array by name -- nested key order leaks through and
 #    produces false drift every run.
-yq -o=json '.' "$SPEC_FILE" | jq -S "$NORMALISE_FILTER" > "$SPEC_TMP"
+yq --security-disable-env-ops --security-disable-file-ops -o=json '.' "$SPEC_FILE" | jq -S "$NORMALISE_FILTER" > "$SPEC_TMP"
 
 # 3. Diff. diff -u keeps the output compact + anchored.
 if diff -u "$SPEC_TMP" "$LIVE_TMP" >/dev/null; then
@@ -281,7 +281,7 @@ if [ -n "$RECONCILING_SPEC" ]; then
   trap 'rm -f "$LIVE_TMP" "$SPEC_TMP" "$RECONCILING_TMP"; rm -rf "$RULESETS_DIR"' EXIT
   # A malformed reconciling spec must not swallow the drift report, so a yq
   # failure falls through to it rather than aborting or passing.
-  if yq -o=json '.' "$RECONCILING_SPEC" 2>/dev/null \
+  if yq --security-disable-env-ops --security-disable-file-ops -o=json '.' "$RECONCILING_SPEC" 2>/dev/null \
     | jq -S "$NORMALISE_FILTER" > "$RECONCILING_TMP" 2>/dev/null \
     && diff -u "$RECONCILING_TMP" "$LIVE_TMP" >/dev/null; then
     echo "OK: ${SPEC_FILE} differs from the live rulesets, but ${RECONCILING_SPEC} matches them."

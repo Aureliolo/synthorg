@@ -9,8 +9,8 @@ require (
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/gofrs/flock v0.13.0
-	github.com/google/go-containerregistry v0.21.8
-	github.com/klauspost/compress v1.19.1
+	github.com/google/go-containerregistry v0.21.9
+	github.com/klauspost/compress v1.19.2
 	github.com/mattn/go-isatty v0.0.24
 	github.com/mattn/go-runewidth v0.0.27
 	github.com/sigstore/protobuf-specs v0.5.1

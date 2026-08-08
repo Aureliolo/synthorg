@@ -6,6 +6,11 @@ description: >-
   that updated some of them left the rest downloading a new asset against a
   stale hash, failing a job with no visible link to a dependency update.
 
+  Every call site passes --security-disable-env-ops --security-disable-file-ops.
+  No expression in this repository reads an env var or loads a second file, so
+  the flags cost nothing and remove the reach an expression would otherwise
+  have over the runner. The system operator stays off by its own default.
+
 inputs:
   connect-timeout:
     description: curl --connect-timeout, in seconds.
@@ -31,8 +36,8 @@ runs:
         # A release asset can be replaced under an existing tag, so the tag
         # alone is not a pin; the digest is.
         # renovate: datasource=github-releases depName=mikefarah/yq
-        YQ_VERSION: v4.45.1
-        YQ_SHA256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+        YQ_VERSION: v4.53.3
+        YQ_SHA256: fa52a4e758c63d38299163fbdd1edfb4c4963247918bf9c1c5d31d84789eded4
         CONNECT_TIMEOUT: ${{ inputs.connect-timeout }}
         RETRY: ${{ inputs.retry }}
         RETRY_MAX_TIME: ${{ inputs.retry-max-time }}

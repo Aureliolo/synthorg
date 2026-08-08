@@ -109,6 +109,11 @@
       "allowedVersions": "<1.92.0"
     },
     {
+      "description": "Block errata-ai/Google >=0.7.0. The .vale.ini disable ledger was reviewed rule by rule against this corpus and the corpus drained to zero against the rules that survived, so the pinned package IS the gate's definition. v0.7.0 splits WordList into WordList + WordListCase and adds Anthropomorphism, ExcessiveClaims, Jargon and Timeless: 820 findings in prose nobody touched, 565 of them WordListCase alone (the case-variant half of the WordList rule .vale.ini deliberately disables for developer-facing docs). vale has no CI job, so such a bump merges green and then blocks every pre-push in every worktree. Lift only alongside the ledger re-review and corpus drain the .vale.ini header mandates.",
+      "matchDepNames": ["errata-ai/Google"],
+      "allowedVersions": "<0.7.0"
+    },
+    {
       "description": "Block typescript >=7. TypeScript 7.0 (GA 2026-07-08) is the Go-native compiler rewrite that ships no stable programmatic Compiler API until 7.1, so openapi-typescript (which generates web/src/api/types/*.gen.ts) crashes with 'Cannot read properties of undefined (reading createKeywordTypeNode)', and typescript-eslint caps its peer at typescript <6.1.0 and marked TS7 support 'not planned' until the 7.1 API lands. Hold the web toolchain on the 6.x line so the dashboard type-check/build/lint stay green. Lift when openapi-typescript and typescript-eslint both support TS 7 (tracking typescript-eslint#10940); adopting TS7's faster compiler for builds before then would be a separate aliased setup.",
       "matchManagers": ["npm"],
       "matchDepNames": ["typescript"],

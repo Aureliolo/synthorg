@@ -53,7 +53,7 @@ jobs:
       # check for a green tick.
       - name: Run zizmor (attempt 1/3)
         id: zizmor1
-        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         continue-on-error: true
         env:
           # zizmor's ``impostor-commit`` audit shells out to git
@@ -81,7 +81,7 @@ jobs:
       - name: Run zizmor (attempt 2/3)
         id: zizmor2
         if: steps.zizmor1.outcome == 'failure'
-        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,7 +100,7 @@ jobs:
       # the underlying audit error surfaced.
       - name: Run zizmor (attempt 3/3)
         if: steps.zizmor1.outcome == 'failure' && steps.zizmor2.outcome == 'failure'
-        uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         env:
           GH_TOKEN: ${{ github.token }}
         with:

@@ -47,7 +47,8 @@ jobs:
           # upsert: it creates if missing and updates color/description if
           # the label already exists. We never delete labels here -- humans
           # may have added repo-specific ones we shouldn't touch.
-          yq -o=j -I=0 '.[]' .github/labels.yml | while IFS= read -r label_json; do
+          yq --security-disable-env-ops --security-disable-file-ops \
+            -o=j -I=0 '.[]' .github/labels.yml | while IFS= read -r label_json; do
             name=$(printf '%s' "$label_json" | jq -r '.name')
             color=$(printf '%s' "$label_json" | jq -r '.color')
             description=$(printf '%s' "$label_json" | jq -r '.description // ""')
