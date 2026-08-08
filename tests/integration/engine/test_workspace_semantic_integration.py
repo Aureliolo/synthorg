@@ -47,6 +47,18 @@ def _init_test_repo(repo_path: Path) -> None:
         check=True,
         capture_output=True,
     )
+    # Pinned, not inherited: Git for Windows ships ``core.autocrlf=true`` in
+    # its system config, so a repo created here would commit LF and check out
+    # CRLF while these helpers write LF straight to the working tree. Git then
+    # reads every file as modified and refuses the merge under test, which
+    # makes the verdict a property of the developer's machine rather than of
+    # the merge strategy.
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "false"],  # noqa: S607
+        cwd=str(repo_path),
+        check=True,
+        capture_output=True,
+    )
     readme = repo_path / "README.md"
     readme.write_text("# Test Repo\n")
     subprocess.run(

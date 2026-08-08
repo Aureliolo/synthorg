@@ -19,6 +19,8 @@ refused and this writer fails its wave rather than quietly rewriting
 ``assigned_to`` under an agent that is already running.
 """
 
+import asyncio
+import contextlib
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
@@ -92,6 +94,9 @@ class AssignmentWriter:
             CoordinationError: When a subtask could not be assigned. The
                 wave fails rather than dispatching an agent against a row
                 the engine did not move.
+            CancelledError: Re-raised after the rows already assigned are
+                released, so a cancelled wave leaves nothing owned by an
+                agent that will never run.
         """
         engine = self._task_engine
         if engine is None:
@@ -106,10 +111,16 @@ class AssignmentWriter:
                     moved.append(persisted)
         # Any failure, not only a refused assignment: ``get_task`` and
         # ``submit`` also raise engine and persistence errors, and a wave that
-        # dies on one of those leaks the same half-assigned rows. Re-raised
-        # unchanged so the compensation never replaces the diagnosis.
-        except Exception:
-            await self._release(engine, tuple(moved))
+        # dies on one of those leaks the same half-assigned rows. Cancellation
+        # is named alongside them because it is not an ``Exception`` and leaks
+        # exactly the same way. Re-raised unchanged so the compensation never
+        # replaces the diagnosis.
+        except Exception, asyncio.CancelledError:
+            # Shielded: the release is the compensation for a cancellation, so
+            # letting that same cancellation abort it would leave the rows the
+            # handler exists to free still owned by nobody.
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(self._release(engine, tuple(moved)))
             raise
         return group.model_copy(update={"assignments": tuple(assignments)})
 

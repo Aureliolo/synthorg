@@ -114,6 +114,7 @@ class ResearchSettingsSubscriber:
             _build_and_wire_research,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+        from synthorg.research.state import ResearchStateSlice  # noqa: PLC0415
 
         trigger = describe_changes(changes)
         registry = self._app_state.slice(ProvidersStateSlice).registry
@@ -136,6 +137,12 @@ class ResearchSettingsSubscriber:
             # is a legitimate write, and raising would fail the operator's
             # settings change for doing exactly what they asked. The
             # reconciler reports the named condition on GET /subsystems.
+            #
+            # The slice is cleared, not merely left alone: the builder swaps
+            # only on success, so keeping the previous service would go on
+            # answering research requests through the provider and model the
+            # operator has just removed.
+            self._app_state.swap_slice(ResearchStateSlice())
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,

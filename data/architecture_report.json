@@ -1657,7 +1657,7 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 48,
     "synthorg.core.boundary": 70,
-    "synthorg.core.clock": 269,
+    "synthorg.core.clock": 270,
     "synthorg.core.completion_enums": 21,
     "synthorg.core.critical_errors": 733,
     "synthorg.core.domain_errors": 280,
@@ -1736,7 +1736,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 1998,
+    "synthorg.observability": 1999,
     "synthorg.observability.background_tasks": 31,
     "synthorg.observability.events.api": 245,
     "synthorg.observability.events.approval_gate": 29,
@@ -1865,7 +1865,7 @@
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
-      "loc": 785
+      "loc": 781
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,

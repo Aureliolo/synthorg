@@ -1,5 +1,6 @@
 """A wave's assignments are persisted before the wave dispatches."""
 
+import asyncio
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock
@@ -259,6 +260,43 @@ class TestPartialWaveIsReleased:
         # failed. Without this the test would pass even if `_release` never
         # ran, since an unused side effect is silent.
         assert engine.submit.await_count == 3
+
+    async def test_a_cancelled_wave_still_releases(self) -> None:
+        """Cancellation is not an ``Exception`` and leaks the same rows.
+
+        A wave cancelled partway (a shutdown, a coordination timeout) has
+        already moved the subtasks before the cancellation point, and nothing
+        else frees them.
+        """
+        first = _identity("agent-a")
+        one, two = _task("task-a"), _task("task-b")
+        assigned_one = _task(
+            "task-a", status=TaskStatus.ASSIGNED, assigned_to=str(first.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[one, two]),
+            submit=AsyncMock(
+                side_effect=[
+                    TaskMutationResult(
+                        request_id="r", success=True, task=assigned_one, version=2
+                    ),
+                    asyncio.CancelledError(),
+                    TaskMutationResult(request_id="r", success=True, version=3),
+                ]
+            ),
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=first, task=one),
+                    AgentAssignment(identity=_identity("agent-b"), task=two),
+                )
+            )
+
+        release = engine.submit.await_args_list[-1].args[0]
+        assert release.task_id == str(one.id)
+        assert release.target_status is TaskStatus.BLOCKED
 
     async def test_an_engine_error_mid_wave_still_releases(self) -> None:
         """A refused assignment is not the only way a wave dies partway.

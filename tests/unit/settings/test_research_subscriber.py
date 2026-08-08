@@ -6,9 +6,13 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.config.schema import RootConfig
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
+from synthorg.research.service import ResearchService
+from synthorg.research.state import ResearchStateSlice
+from synthorg.research.tool_factory import ResearchToolFactory
 from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.research_subscriber import (
@@ -113,6 +117,34 @@ class TestRebuild:
         sub = _make_subscriber(state)
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed([("research", "model")])
+
+    async def test_a_declined_rebuild_clears_the_previous_service(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Clearing the bound pair must stop the old one answering requests.
+
+        The builder swaps the slice only on success, so a decline that merely
+        returned would leave research serving through the provider and model
+        the operator has just removed.
+        """
+        state = _make_state(with_registry=True)
+        state.swap_slice(
+            ResearchStateSlice(
+                service=mock_of[ResearchService](),
+                tool_factory=mock_of[ResearchToolFactory](),
+            )
+        )
+        build = AsyncMock(side_effect=SubsystemDeclinedError("research.model is unset"))
+        monkeypatch.setattr(
+            "synthorg.api.lifecycle_helpers.feature_wiring._build_and_wire_research",
+            build,
+        )
+
+        await _make_subscriber(state).on_settings_changed([("research", "model")])
+
+        slice_now = state.slice(ResearchStateSlice)
+        assert slice_now.service is None
+        assert slice_now.tool_factory is None
 
     async def test_memory_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch
