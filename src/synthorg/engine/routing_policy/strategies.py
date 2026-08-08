@@ -67,13 +67,20 @@ class StakesAwareStrategy:
     it raises :class:`StakesModelUnavailableError` so the engine escalates or
     fails loudly: consequential work is never silently run on a sub-tier model.
 
-    A model's tier comes from the resolver, never from the roster's
-    ``model_tier``. The roster field is written when an agent is matched and
-    goes stale the moment an operator overrides a tier, so the two disagreed
+    A model's tier comes from the resolver whenever the resolver has an answer.
+    The roster's ``model_tier`` is written when an agent is matched and goes
+    stale the moment an operator overrides a tier, so the two disagreed
     (``medium`` on the roster, ``large`` in the tier registry) and the
     disagreement decided routing. The resolver reads the effective tier map, so
-    it is the one authority; a stale roster value is corrected onto the
-    returned model rather than consulted.
+    it is the authority; a stale roster value is corrected onto the returned
+    model rather than consulted.
+
+    The one place the roster tier is read is the red-team floor, and only when
+    the resolver misses. A floor that vanishes because a model could not be
+    resolved is a floor that stops applying exactly when the routing is least
+    certain, so the roster's own claim about the agent stands in: it may be
+    stale, but it is the agent's declared tier and routing is never floored
+    below it.
 
     Selection gates on the resolved model's tier and tool-capability only. Each
     model's classification ``confidence`` is operator-facing (surfaced in the

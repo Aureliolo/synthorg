@@ -353,12 +353,6 @@ class MultiAgentCoordinator:
             else:
                 decomp_result = await self._phase_decompose(context, phases)
 
-            # Filed here rather than inside the decompose phase, which
-            # ``plan_preview`` also runs: a preview must leave no task rows
-            # behind for work a human has not approved. Both branches above
-            # reach this, so an approved-plan resume files its children too.
-            await self._file_missing_children(decomp_result)
-
             # Middleware hook: after_decompose
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
@@ -371,6 +365,16 @@ class MultiAgentCoordinator:
                 # Propagate middleware-mutated artifacts
                 if mw_ctx.decomposition_result is not None:
                     decomp_result = mw_ctx.decomposition_result
+
+            # Filed here rather than inside the decompose phase, which
+            # ``plan_preview`` also runs: a preview must leave no task rows
+            # behind for work a human has not approved. Both decompose
+            # branches reach this, so an approved-plan resume files its
+            # children too. After the middleware rather than before, because
+            # a replaced result is the tree that actually dispatches, and
+            # filing the superseded one would leave the wave assigning
+            # subtasks with no row.
+            await self._file_missing_children(decomp_result)
 
             # Route
             routing_result = self._phase_route(context, decomp_result, phases)

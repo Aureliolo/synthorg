@@ -97,9 +97,10 @@ def build_provider_credential_catalog(
             db_path=secret_db_path,
             pg_pool=pg_pool_getter,
         )
-        # Inside the guard, not after it: a failure here is as fatal to
-        # provider auth as a failed backend, and escaping untyped would lose
-        # both the declared error identity and the startup error log.
+        # A catalog that cannot be built is as fatal to provider auth as a
+        # secret backend that cannot be built, so it takes the same typed
+        # startup failure: escaping untyped would lose both the declared
+        # error identity and the startup error log.
         stage = "connection catalog"
         catalog = ConnectionCatalog(
             repository=_connections_repository(persistence),

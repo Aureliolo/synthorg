@@ -432,6 +432,38 @@ class TestReplayDecidedQuestions:
         )
         assert repo.update.await_count == 1
 
+    async def test_more_pending_approvals_than_occurrences_replays_nothing(
+        self,
+    ) -> None:
+        """An operator edit can drop an occurrence its approval still awaits.
+
+        Fewer occurrences than approvals means the plan owes nothing, so the
+        surplus is negative and must read as zero: taken as a slice bound it
+        would replay every decided approval but the last.
+        """
+        plan = _plan("Which datastore?")
+        three = build_plan_questions(
+            _plan("Which datastore?", "Which datastore?", "Which datastore?"),
+            task_id=NotBlankStr("task-1"),
+            requested_by=NotBlankStr("planner"),
+            now=_NOW,
+        )
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(
+                return_value=(
+                    _decided(three[0], answer="Postgres"),
+                    three[1],
+                    three[2],
+                )
+            )
+        )
+
+        assert (
+            await replay_decided_questions(repo, store, plan, clock=FakeClock()) is plan
+        )
+        repo.update.assert_not_awaited()
+
     async def test_both_decided_settles_both_occurrences(self) -> None:
         """Two answers owed, two occurrences settled, and the plan is clear."""
         two_open = _plan("Which datastore?", "Which datastore?")

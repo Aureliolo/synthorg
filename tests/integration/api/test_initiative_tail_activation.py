@@ -194,7 +194,12 @@ class TestInitiativeTailActivation:
         _wire_judgement_dependencies(app_state)
         rollup = _rollup(app_state)
 
-        with pytest.raises(SubsystemDeclinedError, match="memory not converged"):
+        # The decline names which layer is missing, not merely that memory is
+        # unconverged: that specific reason is what `GET /subsystems` reports.
+        with pytest.raises(
+            SubsystemDeclinedError,
+            match="agent memory and org memory absent",
+        ):
             await attach_ship_retro_capture(app_state)
         assert not rollup.has_retro_capture()
 

@@ -285,8 +285,13 @@ def _unsettled_decisions(
             by_question[item.description].append(item)
     replayable: list[ApprovalItem] = []
     for question, open_count in still_open.items():
+        # Strictly positive, not merely truthy: an operator edit can leave
+        # fewer occurrences than there are approvals still waiting on them,
+        # and a negative count read as a slice bound would replay every
+        # decided approval but the last. Fewer occurrences than approvals
+        # means nothing is owed.
         surplus = open_count - awaiting[question]
-        if surplus:
+        if surplus > 0:
             replayable.extend(by_question[question][:surplus])
     return tuple(replayable)
 

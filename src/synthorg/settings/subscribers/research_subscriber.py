@@ -22,6 +22,7 @@ per request at the research MCP handlers, so it needs no rebuild.
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -130,6 +131,18 @@ class ResearchSettingsSubscriber:
                 provider_registry=registry,
                 runtime_settings=self._settings_service,
             )
+        except SubsystemDeclinedError as exc:
+            # A decline is an answer, not a failure: clearing the bound pair
+            # is a legitimate write, and raising would fail the operator's
+            # settings change for doing exactly what they asked. The
+            # reconciler reports the named condition on GET /subsystems.
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                trigger=trigger,
+                note=safe_error_description(exc),
+            )
+            return
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

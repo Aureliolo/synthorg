@@ -104,7 +104,11 @@ class AssignmentWriter:
                 assignments.append(persisted)
                 if was_moved:
                     moved.append(persisted)
-        except CoordinationError:
+        # Any failure, not only a refused assignment: ``get_task`` and
+        # ``submit`` also raise engine and persistence errors, and a wave that
+        # dies on one of those leaks the same half-assigned rows. Re-raised
+        # unchanged so the compensation never replaces the diagnosis.
+        except Exception:
             await self._release(engine, tuple(moved))
             raise
         return group.model_copy(update={"assignments": tuple(assignments)})

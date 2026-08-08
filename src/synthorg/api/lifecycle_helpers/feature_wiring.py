@@ -193,9 +193,10 @@ async def _wire_research_engine(
         msg = "no provider registry; every research stage is an LLM call"
         raise SubsystemDeclinedError(msg)
     runtime_settings = settings_service_of(app_state)
-    # Every dependency it declared is present, so a failure here is the build
-    # itself failing, not a decline. Swallowing it made the reconciler report
-    # BLOCKED with no condition to name, hiding the real error one layer down.
+    # Nothing is caught here. An unresolvable bound pair declines with its own
+    # condition, and anything else is the build itself failing: swallowing
+    # either made the reconciler report BLOCKED with no condition to name,
+    # hiding the real cause one layer down.
     await _build_and_wire_research(
         app_state,
         provider_registry=provider_registry,
@@ -240,8 +241,16 @@ async def _build_and_wire_research(
     Ghost-wired: the service is built whenever a model + provider exist,
     regardless of ``research.enabled``. The master switch is enforced live
     per request at the research MCP handlers (``_require_enabled_service``),
-    so toggling ``research.enabled`` takes effect with no restart. No-op
-    (logs + returns) only when no model is set or no provider is configured.
+    so toggling ``research.enabled`` takes effect with no restart.
+
+    Raises:
+        SubsystemDeclinedError: The bound pair cannot be resolved, naming
+            which half is missing. Declined rather than skipped: returning
+            quietly leaves ``ResearchStateSlice.service`` unset while the
+            activation reports success, so ``GET /subsystems`` shows the
+            subsystem up with nothing behind it and the operator has nothing
+            to act on. The reconciler picks it up on the next pass once the
+            pair is set.
     """
     from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
@@ -261,31 +270,32 @@ async def _build_and_wire_research(
     ref = parse_model_ref((await runtime_settings.get("research", "model")).value)
     model = ref.model_id.strip()
     if not model:
-        logger.info(
-            API_APP_STARTUP,
-            service="research_engine",
-            note="research model unset; wiring skipped",
-        )
-        return
+        msg = "research.model is unset; every research stage is an LLM call"
+        logger.info(API_APP_STARTUP, service="research_engine", note=msg)
+        raise SubsystemDeclinedError(msg)
     provider_name = ref.provider.strip()
     if not provider_name:
         # Half a pair names no dispatch target: a provider is a registered
         # connection with its own credentials and endpoint, so the same model
         # id on two of them is two different calls. There is nothing to borrow.
-        logger.warning(
-            API_APP_STARTUP,
-            service="research_engine",
-            note="research model names no provider connection; wiring skipped",
+        msg = (
+            "research.model names no provider connection; a model id alone"
+            " names no dispatch target"
         )
-        return
+        logger.warning(API_APP_STARTUP, service="research_engine", note=msg)
+        raise SubsystemDeclinedError(msg)
     if provider_name not in provider_registry:
+        msg = (
+            f"research.model names provider {provider_name!r}, which is not a"
+            " registered connection"
+        )
         logger.warning(
             API_APP_STARTUP,
             service="research_engine",
-            note="configured research provider not registered; wiring skipped",
+            note=msg,
             provider_name=provider_name,
         )
-        return
+        raise SubsystemDeclinedError(msg)
     provider = provider_registry.get(provider_name)
     service = build_research_service(
         runs_repo=persistence_of(app_state).research_runs,

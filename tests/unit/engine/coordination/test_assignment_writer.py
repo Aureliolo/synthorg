@@ -255,6 +255,47 @@ class TestPartialWaveIsReleased:
                 )
             )
 
+        # Three submits: the assignment, the refusal, and the release that
+        # failed. Without this the test would pass even if `_release` never
+        # ran, since an unused side effect is silent.
+        assert engine.submit.await_count == 3
+
+    async def test_an_engine_error_mid_wave_still_releases(self) -> None:
+        """A refused assignment is not the only way a wave dies partway.
+
+        ``get_task`` and ``submit`` raise engine and persistence errors too,
+        and those leak exactly the same half-assigned rows.
+        """
+        first = _identity("agent-a")
+        one, two = _task("task-a"), _task("task-b")
+        assigned_one = _task(
+            "task-a", status=TaskStatus.ASSIGNED, assigned_to=str(first.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[one, two]),
+            submit=AsyncMock(
+                side_effect=[
+                    TaskMutationResult(
+                        request_id="r", success=True, task=assigned_one, version=2
+                    ),
+                    QueryError("engine down"),
+                    TaskMutationResult(request_id="r", success=True, version=3),
+                ]
+            ),
+        )
+
+        with pytest.raises(QueryError):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=first, task=one),
+                    AgentAssignment(identity=_identity("agent-b"), task=two),
+                )
+            )
+
+        release = engine.submit.await_args_list[-1].args[0]
+        assert release.task_id == str(one.id)
+        assert release.target_status is TaskStatus.BLOCKED
+
 
 class TestRacingWaves:
     """Two waves reaching for one subtask: the loser fails, it does not steal."""
