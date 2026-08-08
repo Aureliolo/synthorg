@@ -1,12 +1,11 @@
 # module-kind: code
 """The plan-level context every task under a plan inherits.
 
-``plan.assumptions`` and ``plan.open_questions`` were written by the planner,
-persisted, and rendered in the dashboard, and no agent ever saw either. That
-made the escalation surface half a mechanism: an operator answering a parked
-question had the answer written onto ``plan.assumptions``, and the agents
-doing the work read their own item description and nothing else, so the
-answer reached the plan and the plan delivered it nowhere.
+``plan.assumptions`` and ``plan.open_questions`` are what the planner settled
+and what it could not, and both belong to every task derived from the plan: an
+agent that reads only its own item description works from less than the plan
+knows, and an operator's answer to a parked question lands on the plan without
+reaching the work it was asked for.
 
 The context is appended to each derived task's description rather than
 carried in a field of its own. The description is the one thing every prompt

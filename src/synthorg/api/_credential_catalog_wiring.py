@@ -77,6 +77,7 @@ def build_provider_credential_catalog(
 
     postgres_mode = bool(db_url)
     pg_pool_getter = postgres_pool_getter(persistence) if postgres_mode else None
+    stage = "secret backend"
     try:
         selection = resolve_secret_backend_config(
             effective_config.integrations.secret_backend,
@@ -96,23 +97,26 @@ def build_provider_credential_catalog(
             db_path=secret_db_path,
             pg_pool=pg_pool_getter,
         )
+        # Inside the guard, not after it: a failure here is as fatal to
+        # provider auth as a failed backend, and escaping untyped would lose
+        # both the declared error identity and the startup error log.
+        stage = "connection catalog"
+        catalog = ConnectionCatalog(
+            repository=_connections_repository(persistence),
+            secret_backend=secret_backend,
+        )
     except Exception as exc:
         reraise_critical(exc)
         logger.error(
             API_APP_STARTUP,
             note="provider credential catalog could not be built",
+            stage=stage,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"secret backend unavailable: {type(exc).__name__}"
+        msg = f"{stage} unavailable: {type(exc).__name__}"
         raise CredentialCatalogUnavailableError(msg) from exc
-    return (
-        ConnectionCatalog(
-            repository=_connections_repository(persistence),
-            secret_backend=secret_backend,
-        ),
-        secret_backend,
-    )
+    return catalog, secret_backend
 
 
 def _connections_repository(persistence: PersistenceBackend) -> ConnectionRepository:

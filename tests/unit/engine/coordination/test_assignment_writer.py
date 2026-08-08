@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.task_transitions import VALID_TRANSITIONS
@@ -151,6 +152,108 @@ class TestAssignmentWriter:
         writer = AssignmentWriter(None)
 
         assert await writer.persist(group) is group
+
+
+class TestPartialWaveIsReleased:
+    """A wave that fails partway must not leave siblings owned by nobody.
+
+    Assignments are written one at a time, so a refusal on the third leaves
+    the first two ASSIGNED to agents the dispatcher has already given up on:
+    rows nothing runs and nothing watches.
+    """
+
+    async def test_a_failed_wave_releases_what_it_already_assigned(self) -> None:
+        first, second = _identity("agent-a"), _identity("agent-b")
+        one, two = _task("task-a"), _task("task-b")
+        assigned_one = _task(
+            "task-a", status=TaskStatus.ASSIGNED, assigned_to=str(first.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[one, two]),
+            submit=AsyncMock(
+                side_effect=[
+                    TaskMutationResult(
+                        request_id="r", success=True, task=assigned_one, version=2
+                    ),
+                    TaskMutationResult(
+                        request_id="r",
+                        success=False,
+                        error="invalid transition",
+                        error_code="validation",
+                    ),
+                    TaskMutationResult(request_id="r", success=True, version=3),
+                ]
+            ),
+        )
+
+        with pytest.raises(CoordinationError):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=first, task=one),
+                    AgentAssignment(identity=second, task=two),
+                )
+            )
+
+        release = engine.submit.await_args_list[-1].args[0]
+        assert release.task_id == str(one.id)
+        # BLOCKED, not CANCELLED: the work is still wanted and a replan wave
+        # reassigns from there.
+        assert release.target_status is TaskStatus.BLOCKED
+
+    async def test_a_subtask_another_wave_owns_is_not_released(self) -> None:
+        """It was returned untouched, so releasing it would block a running run."""
+        identity = _identity("agent-a")
+        running = _task(
+            "task-a", status=TaskStatus.IN_PROGRESS, assigned_to=str(identity.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[running, None]),
+            submit=AsyncMock(),
+        )
+
+        with pytest.raises(CoordinationError, match="no longer exists"):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=identity, task=running),
+                    AgentAssignment(
+                        identity=_identity("agent-b"), task=_task("task-b")
+                    ),
+                )
+            )
+
+        engine.submit.assert_not_awaited()
+
+    async def test_a_failed_release_does_not_replace_the_wave_diagnosis(self) -> None:
+        first = _identity("agent-a")
+        one, two = _task("task-a"), _task("task-b")
+        assigned_one = _task(
+            "task-a", status=TaskStatus.ASSIGNED, assigned_to=str(first.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[one, two]),
+            submit=AsyncMock(
+                side_effect=[
+                    TaskMutationResult(
+                        request_id="r", success=True, task=assigned_one, version=2
+                    ),
+                    TaskMutationResult(
+                        request_id="r",
+                        success=False,
+                        error="invalid transition",
+                        error_code="validation",
+                    ),
+                    QueryError("engine down"),
+                ]
+            ),
+        )
+
+        with pytest.raises(CoordinationError, match="invalid transition"):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=first, task=one),
+                    AgentAssignment(identity=_identity("agent-b"), task=two),
+                )
+            )
 
 
 class TestRacingWaves:

@@ -20,6 +20,9 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionRepository,
+)
 from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
 from tests._shared import FakeClock, as_uuid, mock_of
 
@@ -55,7 +58,11 @@ class TestGuardedDelete:
     async def test_the_guard_and_the_delete_are_one_call(self) -> None:
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=True)
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+        )
         plan = _plan()
 
         await service.delete(plan, requested_by="operator-1")
@@ -69,7 +76,11 @@ class TestGuardedDelete:
         """The lifecycle lives in the domain; the guard runs as SQL."""
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=True)
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+        )
 
         await service.delete(_plan(), requested_by="operator-1")
 
@@ -83,7 +94,11 @@ class TestGuardedDelete:
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(
             deleted=False, live_task_count=3
         )
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+        )
 
         with pytest.raises(PlanNotDeletableError, match="3 of its items"):
             await service.delete(_plan(), requested_by="operator-1")
@@ -92,7 +107,11 @@ class TestGuardedDelete:
         """The audit line may only follow a delete that found something."""
         repo = mock_of[PlanRepository]()
         repo.delete_if_no_live_tasks.return_value = PlanDeleteOutcome(deleted=False)
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+        )
 
         with pytest.raises(RecordNotFoundError):
             await service.delete(_plan(), requested_by="operator-1")
@@ -100,7 +119,11 @@ class TestGuardedDelete:
     async def test_a_terminal_plan_is_refused_before_the_repository(self) -> None:
         """It is the record of what was decided; its verdicts outlive it."""
         repo = mock_of[PlanRepository]()
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
+        service = PlanService(
+            repo=repo,
+            clock=FakeClock(start=_NOW),
+            transitions=mock_of[LifecycleTransitionRepository](),
+        )
 
         with pytest.raises(PlanNotDeletableError, match="already decided"):
             await service.delete(

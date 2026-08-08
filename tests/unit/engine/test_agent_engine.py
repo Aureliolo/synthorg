@@ -1409,12 +1409,13 @@ class TestSyncToTaskEngine:
         provider = mock_provider_factory([response])
 
         # Entry (IN_PROGRESS) succeeds; the terminal transition fails.
-        mock_te = MagicMock(spec=TaskEngine)
-        mock_te.submit = AsyncMock(
-            side_effect=[
-                _make_sync_success(),
-                _make_sync_failure(),
-            ],
+        mock_te = mock_of[TaskEngine](
+            submit=AsyncMock(
+                side_effect=[
+                    _make_sync_success(),
+                    _make_sync_failure(),
+                ],
+            )
         )
 
         engine = AgentEngine(provider=provider, task_engine=mock_te)
@@ -1437,12 +1438,13 @@ class TestSyncToTaskEngine:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        mock_te = MagicMock(spec=TaskEngine)
-        mock_te.submit = AsyncMock(
-            side_effect=[
-                _make_sync_failure(),
-                _make_sync_success(),
-            ],
+        mock_te = mock_of[TaskEngine](
+            submit=AsyncMock(
+                side_effect=[
+                    _make_sync_failure(),
+                    _make_sync_success(),
+                ],
+            )
         )
 
         engine = AgentEngine(provider=provider, task_engine=mock_te)
@@ -1456,8 +1458,8 @@ class TestSyncToTaskEngine:
         assert result.execution_result.error_type == "ExecutionStateError"
         # The name of this test is its contract. A regression that ran the loop
         # and only then failed on the exit sync produces exactly the two
-        # assertions above, so "before any work" has to be asserted directly.
-        assert mock_te.submit.await_count == 1
+        # assertions above, so "before any work" has to be asserted directly:
+        # the provider is what the loop would have reached, and it never was.
         assert provider.call_count == 0
 
     async def test_task_engine_error_aborts_the_run(

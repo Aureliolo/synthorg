@@ -528,12 +528,12 @@ class TestTaskWithTransition:
     def test_a_task_that_failed_before_assignment_can_still_be_cancelled(
         self,
     ) -> None:
-        """The exit that was missing, exercised against the real validator.
+        """A stuck task exits without needing anything it may not have.
 
-        FAILED could only reach a terminal through ASSIGNED, which needs an
-        assignee this task never got. The hop failed the validator, so the row
-        could not be resolved at all, and its plan and project could not be
-        deleted either.
+        Abandonment needs no assignee, so CANCELLED is reachable from FAILED
+        directly. Routing it through ASSIGNED would demand an assignee a task
+        that failed before assignment does not have, leaving the row
+        unresolvable and its plan and project undeletable with it.
         """
         task = _make_task(assigned_to=None, status=TaskStatus.FAILED)
 

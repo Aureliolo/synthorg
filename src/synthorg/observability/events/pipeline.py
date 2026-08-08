@@ -60,7 +60,10 @@ PIPELINE_PLAN_QUESTION_ANSWERED: Final[str] = "pipeline.plan_review.question_ans
 PIPELINE_PLAN_QUESTION_WRITE_FAILED: Final[str] = (
     "pipeline.plan_review.question_write_failed"
 )
-"""A decided plan question could not be written back; the answer is lost."""
+"""A decided plan question could not be written back on the decision path."""
+
+PIPELINE_PLAN_QUESTION_REPLAYED: Final[str] = "pipeline.plan_review.question_replayed"
+"""Answers decided earlier were replayed onto the plan before it dispatched."""
 
 PIPELINE_PLAN_PARENT_MISSING: Final[str] = "pipeline.plan_review.parent_missing"
 """The objective task was deleted mid-decomposition; the plan is not parked."""

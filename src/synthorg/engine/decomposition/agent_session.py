@@ -384,9 +384,13 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         """Plan the task via an owner-run agent session, or fall back.
 
         The fallback covers only the cases where there was no researched
-        plan to lose: no owner staffed, or an unresolvable provider. A
-        session that ran and finished without submitting is not one of
-        them, and neither is a plan that came back too big.
+        plan to lose: no owner staffed, an unresolvable provider, or a
+        session prevented from producing at all (``ERROR`` never reached
+        the model, ``SHUTDOWN`` lost the process under it, ``PARKED`` and
+        ``CANCELLED`` stopped it on a decision taken outside it, and
+        nothing resumes a parked planning session back into this path). A
+        session that ran on its own terms and finished without submitting
+        is not one of them, and neither is a plan that came back too big.
 
         Returns:
             The decomposition plan the owner submitted, or the fallback

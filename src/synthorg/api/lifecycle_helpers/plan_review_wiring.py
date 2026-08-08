@@ -73,6 +73,15 @@ _PLAN_ACTION_TYPE = "plan:approve"
 #: reserves for a reconciler moving something on its own schedule.
 _COMPENSATION_ACTOR: Final[str] = "plan_review_gate"
 
+#: Stamped on the PLANNING shell, which is opened before anything has been
+#: decomposed and so before there is anything to review. Stated rather than
+#: left blank: an empty review section reads the same whether a plan passed
+#: scrutiny or was never looked at, which is the ambiguity the outcome type
+#: exists to remove. Replaced wholesale when the filled plan is parked.
+_SHELL_NOT_YET_REVIEWED: Final[PlanReviewOutcome] = PlanReviewOutcome(
+    absent_reason=NotBlankStr("the plan has not been decomposed yet"),
+)
+
 # Bounded compare-and-swap retries when the plan is reworked concurrently with
 # its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
 # than aborting the one write meant to make a failure visible.
@@ -177,7 +186,7 @@ class PlanReviewApprovalGate:
         now: datetime,
         *,
         status: PlanStatus,
-        review: PlanReviewOutcome | None,
+        review: PlanReviewOutcome,
     ) -> PlanProvenance:
         """Build the plan provenance shared by the shell and the filled plan.
 
@@ -193,8 +202,8 @@ class PlanReviewApprovalGate:
             created_at=now,
             status=status,
             forecast_id=work_item.forecast_id,
-            review=review.review if review is not None else None,
-            review_absent_reason=(review.absent_reason if review is not None else None),
+            review=review.review,
+            review_absent_reason=review.absent_reason,
             objective_criteria=tuple(
                 NotBlankStr(c.description) for c in task.acceptance_criteria
             ),
@@ -236,7 +245,11 @@ class PlanReviewApprovalGate:
         now = self._clock.now()
         shell = plan_shell(
             self._provenance(
-                work_item, task, now, status=PlanStatus.PLANNING, review=None
+                work_item,
+                task,
+                now,
+                status=PlanStatus.PLANNING,
+                review=_SHELL_NOT_YET_REVIEWED,
             )
         )
         await self._plans.create(shell)
@@ -255,7 +268,7 @@ class PlanReviewApprovalGate:
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
-        review: PlanReviewOutcome | None = None,
+        review: PlanReviewOutcome,
     ) -> PlanReviewHandoff:
         """Fill the PLANNING shell with *plan* and park it as an approval item.
 

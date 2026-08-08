@@ -205,18 +205,17 @@ async def attach_ship_retro_capture(app_state: AppState) -> None:
     silently never firing.
 
     Raises:
-        SubsystemDeclinedError: One of the two memory layers the capture
-            writes into is absent.
+        SubsystemDeclinedError: Raised by the builder, naming which cause
+            stopped it: a missing memory layer, or a construction that
+            failed on some other collaborator. The two are reported apart so
+            an operator is not sent to inspect memory over an unwired
+            provider registry.
     """
     resolved = _tail_target(app_state, ProjectRollupService.has_retro_capture)
     if resolved is None:
         return
     _, rollup = resolved
-    capture = _build_ship_retro_capture(app_state)
-    if capture is None:
-        msg = "memory not converged; the retrospective writes into both layers"
-        raise SubsystemDeclinedError(msg)
-    rollup.attach_tail(ship_retro_capture=capture)
+    rollup.attach_tail(ship_retro_capture=_build_ship_retro_capture(app_state))
     _log_attached("ship_retro_capture")
 
 
@@ -284,18 +283,22 @@ def _log_attached(service: str) -> None:
     logger.info(API_APP_STARTUP, service=service, note="attached")
 
 
-def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:
-    """Build the SHIP-time retrospective capture collaborator, or ``None``.
+def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort:
+    """Build the SHIP-time retrospective capture collaborator.
 
     The consuming tail of the loop needs both memory layers to write to; when
     either the agent-memory backend or org memory is unwired (an empty company,
     or memory switched off), the rollup still advances status, it just does not
-    feed a retrospective back. Best-effort: any construction fault degrades to
-    an unwired tail rather than failing the rollup wiring.
+    feed a retrospective back.
 
     Returns:
-        A :class:`ShipRetroCaptureService`, or ``None`` when its dependencies
-        are not all present.
+        A :class:`ShipRetroCaptureService`.
+
+    Raises:
+        SubsystemDeclinedError: A memory layer is absent, naming which. A
+            construction fault raises its own, from
+            :func:`_construct_ship_retro_capture`, so the two causes are
+            never reported as the same condition.
     """
     from synthorg.memory.state import (  # noqa: PLC0415
         memory_backend_or_none,
@@ -305,12 +308,12 @@ def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:
     memory_backend = memory_backend_or_none(app_state)
     org_backend = org_memory_backend_of(app_state)
     if memory_backend is None or org_backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="ship_retro_capture",
-            note="retro tail not wired; memory or org backend absent",
-        )
-        return None
+        missing = "org memory" if memory_backend is not None else "agent memory"
+        if memory_backend is None and org_backend is None:
+            missing = "agent memory and org memory"
+        note = f"{missing} absent; the retrospective writes into both layers"
+        logger.info(API_APP_STARTUP, service="ship_retro_capture", note=note)
+        raise SubsystemDeclinedError(note)
     return _construct_ship_retro_capture(app_state, memory_backend, org_backend)
 
 
@@ -318,17 +321,21 @@ def _construct_ship_retro_capture(
     app_state: AppState,
     memory_backend: MemoryBackend,
     org_backend: OrgMemoryBackend,
-) -> RetroCapturePort | None:
-    """Construct the capture service, degrading to ``None`` on any fault.
+) -> RetroCapturePort:
+    """Construct the capture service, declining by name on any fault.
 
-    Kept off :func:`_build_ship_retro_capture` so the optional retro tail never
-    fails the rollup wiring proper: the dependency accessors (provider / agent
-    registry, cost tracker, resolver) raise if a slice is not yet wired, so a
-    fault here degrades to an unwired tail rather than propagating into the
-    caller's rollup-wiring try/except.
+    Kept off :func:`_build_ship_retro_capture` so the two causes stay apart:
+    the dependency accessors (provider / agent registry, cost tracker,
+    resolver) raise if a slice is not yet wired, and reporting that as the
+    memory-absent decline would send an operator to inspect memory over an
+    unwired provider registry.
 
     Returns:
-        A :class:`ShipRetroCaptureService`, or ``None`` when construction faults.
+        A :class:`ShipRetroCaptureService`.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the service reads through is
+            not wired, naming the failure type.
     """
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
@@ -357,13 +364,19 @@ def _construct_ship_retro_capture(
             config_resolver=config_resolver_of(app_state),
             clock=app_state.clock,
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
+        note = (
+            "retro tail not wired; construction failed "
+            f"({type(exc).__name__}), rollup still advances"
+        )
         logger.warning(
             API_APP_STARTUP,
             service="ship_retro_capture",
-            note="retro tail not wired; construction failed, rollup still advances",
+            note=note,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        # Named separately from the memory-absent decline: an operator whose
+        # provider registry is unwired must not be sent to inspect memory.
+        raise SubsystemDeclinedError(note) from exc

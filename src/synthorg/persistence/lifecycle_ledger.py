@@ -40,6 +40,7 @@ from synthorg.observability.events.persistence.lifecycle_transition import (
     PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_FAILED,
     PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_RECOVERED,
     PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_RETRIED,
+    PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
 )
 from synthorg.persistence.lifecycle_transition_protocol import (
     LifecycleTransitionRepository,
@@ -81,9 +82,10 @@ class LifecycleLedger:
     """Records plan and project status changes in the append-only ledger.
 
     Args:
-        repo: The transition repository, or ``None`` when no persistence
-            backend is wired (a construction-phase service, a test double).
-            With none, the record methods are a no-op.
+        repo: The transition repository. Required rather than optional: a
+            ledger that silently skips its append is indistinguishable from
+            one that recorded, and the audited status writers would then
+            report a move nothing durably witnessed.
         clock: Time seam supplying ``occurred_at`` and the retry backoff.
     """
 
@@ -91,7 +93,7 @@ class LifecycleLedger:
 
     def __init__(
         self,
-        repo: LifecycleTransitionRepository | None,
+        repo: LifecycleTransitionRepository,
         *,
         clock: Clock,
     ) -> None:
@@ -189,14 +191,12 @@ class LifecycleLedger:
         )
 
     async def _append(self, transition: LifecycleTransition) -> None:
-        """Write one row, retrying a transient failure, or do nothing.
+        """Write one row, retrying a transient failure.
 
         Args:
             transition: The row to append.
         """
         repo = self._repo
-        if repo is None:
-            return
         try:
             await self._retry.execute(
                 lambda: repo.append(transition),
@@ -209,6 +209,15 @@ class LifecycleLedger:
             reraise_critical(exc)
             self._note_failure(transition, exc)
             return
+        # Emitted here rather than in either repository: the persistence
+        # boundary keeps successful-mutation logging out of repository
+        # methods, and this is the one layer both backends pass through.
+        logger.debug(
+            PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
+            entity_kind=transition.entity_kind.value,
+            entity_id=transition.entity_id,
+            to_status=transition.to_status,
+        )
         self._note_success()
 
     def _note_failure(self, transition: LifecycleTransition, exc: Exception) -> None:

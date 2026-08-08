@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import JsonValue
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
@@ -124,7 +124,7 @@ async def _seed(
             get=AsyncMock(return_value=_lead())
         ),
         provider_selector=lambda _identity: provider,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         replan_trigger=None if replan_trigger is None else lambda: replan_trigger,
         config_resolver=None,
         clock=clock,

@@ -560,6 +560,9 @@ class CostTracker(CostTrackerSummaryMixin):
         the exact failure this path exists to prevent, so past
         :data:`_PERSIST_FAILURE_ESCALATION_STREAK` it stops being a WARNING
         nobody reads.
+
+        Args:
+            cost_record: The accepted record to append durably.
         """
         repo = self._cost_record_repo
         if repo is None:

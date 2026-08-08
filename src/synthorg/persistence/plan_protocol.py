@@ -203,6 +203,7 @@ class PlanRepository(
     async def delete_if_no_live_tasks(
         self,
         entity_id: NotBlankStr,
+        /,
         *,
         terminal_statuses: frozenset[str],
     ) -> PlanDeleteOutcome:

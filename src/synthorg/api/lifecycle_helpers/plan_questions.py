@@ -14,10 +14,13 @@ every other agent question uses, and the answer is written back onto the plan
 the agents execute.
 """
 
+from collections import Counter, defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.questions import CLARIFY_ACTION_TYPE
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
@@ -30,6 +33,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_QUESTION_ANSWERED,
     PIPELINE_PLAN_QUESTION_PARKED,
+    PIPELINE_PLAN_QUESTION_REPLAYED,
     PIPELINE_PLAN_QUESTION_WRITE_FAILED,
 )
 from synthorg.persistence.plan_protocol import PlanRepository
@@ -55,6 +59,13 @@ _DECLINED_ASSUMPTION: Final[str] = (
 
 #: Recorded on the plan when the operator answered.
 _ANSWERED_ASSUMPTION: Final[str] = "{question} -- answered: {answer}"
+
+#: Approval statuses that carry a decision worth replaying onto a plan.
+#: EXPIRED is absent: it means nobody answered, and replaying it as a decline
+#: would record a decision the operator never took.
+_DECIDED_STATUSES: Final[frozenset[ApprovalStatus]] = frozenset(
+    {ApprovalStatus.APPROVED, ApprovalStatus.REJECTED}
+)
 
 
 def build_plan_questions(
@@ -92,6 +103,8 @@ def build_plan_questions(
             # The question text is the key. A position would go stale the
             # moment any other question is answered, and would then settle
             # a different question than the one the operator was reading.
+            # Two items may therefore share a key; the recovery pass counts
+            # them rather than matching, see :func:`_unsettled_decisions`.
             metadata={PLAN_ID_METADATA_KEY: str(plan.id)},
         )
         for question in plan.open_questions
@@ -234,6 +247,107 @@ async def _settle_once(
     return True
 
 
+def _unsettled_decisions(
+    plan: Plan,
+    parked: Sequence[ApprovalItem],
+) -> tuple[ApprovalItem, ...]:
+    """Pick the decisions *plan* has not caught up with yet.
+
+    Counted per question text, not matched by it. A planner may surface the
+    same question twice (once per item it blocks), and each occurrence has
+    its own approval: replaying every decided approval whose text is still
+    listed would settle an occurrence whose own question is still waiting
+    for an answer, and that second approval would then disappear without
+    ever being decided.
+
+    The approvals are the record, so the arithmetic is exact: a plan should
+    still list one occurrence of a question per approval for it that is
+    still PENDING. Anything above that count is an answer the plan has not
+    heard, and settling exactly the surplus makes a second pass a no-op.
+
+    Args:
+        plan: The plan as it currently stands.
+        parked: Every question approval filed against that plan.
+
+    Returns:
+        The decided approvals to replay, oldest first.
+    """
+    still_open = Counter(plan.open_questions)
+    awaiting = Counter(
+        item.description for item in parked if item.status is ApprovalStatus.PENDING
+    )
+    # EXPIRED is deliberately not a decision: nobody answered it, so there is
+    # nothing to replay and inventing a decline would put words in the
+    # operator's mouth. It leaves its occurrence open, which is honest.
+    by_question: dict[str, list[ApprovalItem]] = defaultdict(list)
+    for item in sorted(parked, key=lambda i: i.created_at):
+        if item.status in _DECIDED_STATUSES:
+            by_question[item.description].append(item)
+    replayable: list[ApprovalItem] = []
+    for question, open_count in still_open.items():
+        surplus = open_count - awaiting[question]
+        if surplus:
+            replayable.extend(by_question[question][:surplus])
+    return tuple(replayable)
+
+
+async def replay_decided_questions(
+    plans: PlanRepository,
+    approvals: ApprovalStoreProtocol | None,
+    plan: Plan,
+    *,
+    clock: Clock,
+) -> Plan:
+    """Bring *plan* back to every answer already decided against it.
+
+    The write-back that follows a decision is a fast path, not the guarantee:
+    it runs after the decision is durable and degrades on a persistence
+    failure, so a plan can reach dispatch still asking something the operator
+    answered. The decided approvals are the record, so they are replayed from
+    that record here rather than from a second copy of the same fact.
+
+    Args:
+        plans: Repository the durable plan is read from and written to.
+        approvals: Store the decisions live in. ``None`` leaves the plan as
+            it stands: there is no record to replay from.
+        plan: The plan about to be executed.
+        clock: Time seam stamping any revision this makes.
+
+    Returns:
+        The plan as it now stands, re-read when anything settled.
+
+    Raises:
+        PersistenceError: A replayed answer could not be written. Propagated:
+            executing a plan that is missing an answer the operator gave is
+            the failure this whole path exists to prevent.
+    """
+    if approvals is None or not plan.open_questions:
+        return plan
+    plan_id = str(plan.id)
+    parked = tuple(
+        item
+        for item in await approvals.list_items(
+            action_type=NotBlankStr(CLARIFY_ACTION_TYPE)
+        )
+        if item.metadata.get(PLAN_ID_METADATA_KEY) == plan_id
+    )
+    decided = _unsettled_decisions(plan, parked)
+    if not decided:
+        return plan
+    for item in decided:
+        answer = (
+            item.decision_reason if item.status is ApprovalStatus.APPROVED else None
+        )
+        await apply_plan_question_answer(plans, item, answer=answer, clock=clock)
+    logger.warning(
+        PIPELINE_PLAN_QUESTION_REPLAYED,
+        plan_id=plan_id,
+        replayed_count=len(decided),
+        note="answers were decided but had not reached the plan",
+    )
+    return await plans.get(NotBlankStr(plan_id)) or plan
+
+
 def log_parked(plan: Plan, count: int) -> None:
     """Record that *count* questions were parked for *plan*.
 
@@ -254,4 +368,5 @@ __all__ = [
     "apply_plan_question_answer",
     "build_plan_questions",
     "log_parked",
+    "replay_decided_questions",
 ]

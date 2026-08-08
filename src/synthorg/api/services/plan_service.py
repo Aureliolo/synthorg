@@ -85,6 +85,13 @@ class PlanService(PlanWriteRecorderMixin):
     Args:
         repo: Plan repository implementation.
         clock: Time seam; edits/transitions stamp ``updated_at`` from it.
+        transitions: Append-only ledger every status write is recorded in.
+            Required, not optional: a service built without it would persist
+            a status and log the transition while the durable record of who
+            moved the plan silently never happened, which is the exact gap
+            the ledger exists to close. Build through
+            :func:`~synthorg.api.services.plan_service_factory.build_plan_service`
+            rather than passing it by hand.
     """
 
     __slots__ = ("_clock", "_ledger", "_repo")
@@ -98,7 +105,7 @@ class PlanService(PlanWriteRecorderMixin):
         *,
         repo: PlanRepository,
         clock: Clock,
-        transitions: LifecycleTransitionRepository | None = None,
+        transitions: LifecycleTransitionRepository,
     ) -> None:
         self._repo = repo
         self._clock = clock

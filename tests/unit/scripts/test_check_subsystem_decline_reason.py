@@ -118,6 +118,40 @@ class TestDeclineDetection:
             )
         )
 
+    def test_a_raise_in_an_uncalled_nested_helper_declares_nothing(self) -> None:
+        # The activation itself backs out silently; the reason lives in a
+        # helper nothing invokes, so the reconciler still has nothing to
+        # report and the gate must not be satisfied by it.
+        activation = _fn(
+            "def activate(state):\n"
+            "    def _explain():\n"
+            "        raise SubsystemDeclinedError('no store')\n"
+            "    if state.store is None:\n"
+            "        return\n"
+            "    state.install()\n"
+        )
+
+        assert _has_early_return(activation)
+        assert not _raises_declined(activation)
+
+    def test_an_absence_guard_in_a_nested_helper_is_not_the_hosts_decline(
+        self,
+    ) -> None:
+        # The enclosing activation installs unconditionally; the guarded
+        # return belongs to a helper, so reading it as the host's own decline
+        # would invent a violation.
+        assert not _has_early_return(
+            _fn(
+                "def activate(state):\n"
+                "    def _maybe(store):\n"
+                "        if store is None:\n"
+                "            return\n"
+                "        store.warm()\n"
+                "    _maybe(state.store)\n"
+                "    state.install()\n"
+            )
+        )
+
 
 class TestScan:
     def _write(self, root: Path, *, registry: str, wiring: str = "") -> None:
@@ -323,6 +357,46 @@ class TestScan:
                 "\n"
                 "def _spin(state):\n"
                 "    _spin(state)\n"
+                "\n"
+                "SPECS = (SubsystemSpec(name='thing', activate=wire_thing),)\n"
+            ),
+        )
+
+        assert scan_repo(tmp_path) == ()
+
+    def test_a_called_nested_helper_still_enters_the_chain(
+        self, tmp_path: Path
+    ) -> None:
+        # Excluding nested bodies from the host's own scan must not lose the
+        # helper it actually invokes: that decline is reachable and real.
+        self._write(
+            tmp_path,
+            registry=(
+                "def wire_thing(state):\n"
+                "    def _install(store):\n"
+                "        if store is None:\n"
+                "            return\n"
+                "        store.install()\n"
+                "    _install(state.store)\n"
+                "\n"
+                "SPECS = (SubsystemSpec(name='thing', activate=wire_thing),)\n"
+            ),
+        )
+
+        assert [v.name for v in scan_repo(tmp_path)] == ["thing"]
+
+    def test_a_reason_in_a_called_nested_helper_satisfies_the_rule(
+        self, tmp_path: Path
+    ) -> None:
+        self._write(
+            tmp_path,
+            registry=(
+                "def wire_thing(state):\n"
+                "    def _install(store):\n"
+                "        if store is None:\n"
+                "            raise SubsystemDeclinedError('no store')\n"
+                "        store.install()\n"
+                "    _install(state.store)\n"
                 "\n"
                 "SPECS = (SubsystemSpec(name='thing', activate=wire_thing),)\n"
             ),

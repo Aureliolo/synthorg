@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -116,7 +116,7 @@ async def _wired(
     )
     rollup = ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         integration=integration,
         evaluation=evaluation,
@@ -194,7 +194,7 @@ class _PassingEvaluation:
         """Write the passing verdict's completion, then reconcile the graph."""
         plan = await backend.plans.get(NotBlankStr(sid(_PLAN)))
         assert plan is not None
-        await PlanService(repo=backend.plans, clock=FakeClock()).sync_status(
+        await build_plan_service(backend, clock=FakeClock()).sync_status(
             plan,
             PlanStatus.COMPLETED,
             requested_by="initiative-evaluate",
@@ -218,7 +218,7 @@ def _rollup(
     clock = FakeClock()
     return ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         integration=integration,
         evaluation=evaluation,

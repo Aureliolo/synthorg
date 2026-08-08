@@ -132,6 +132,7 @@ class StakesAwareStrategy:
         required, nudged = self._adjusted_required_tier(
             task=task,
             current_tier=current.tier if current is not None else None,
+            roster_tier=identity.model.model_tier,
             stakes=stakes,
             red_team_required=red_team_required,
         )
@@ -165,14 +166,19 @@ class StakesAwareStrategy:
         *,
         task: Task,
         current_tier: ModelTier | None,
+        roster_tier: ModelTier | None,
         stakes: Stakes,
         red_team_required: bool,
     ) -> tuple[ModelTier, bool]:
         """Base stakes tier adjusted for coordination health + red-team floor.
 
         *current_tier* is the agent's model's tier as the resolver reports it,
-        not as the roster records it, so a stale roster value cannot lower the
-        red-team floor below what the agent actually runs.
+        which outranks the roster wherever it has an answer, so a stale roster
+        value cannot lower the red-team floor below what the agent actually
+        runs. *roster_tier* is the floor's fallback for the case the resolver
+        has no answer at all (a pair absent from the catalogue): a stale tier
+        is still a floor, and no floor would let red-team-gated work route
+        below the agent's own configured tier.
 
         Returns:
             The (possibly bumped then floored) required tier, and whether a
@@ -193,8 +199,9 @@ class StakesAwareStrategy:
             required = bumped
 
         # Red-team-gated work must never run below the agent's configured tier.
-        if red_team_required and current_tier is not None:
-            floored = higher_tier(required, current_tier)
+        floor_tier = current_tier if current_tier is not None else roster_tier
+        if red_team_required and floor_tier is not None:
+            floored = higher_tier(required, floor_tier)
             if floored != required:
                 logger.info(
                     STAKES_ROUTING_TIER_ADJUSTED,

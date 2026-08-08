@@ -49,6 +49,7 @@ from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import (
@@ -162,7 +163,7 @@ class _EngineHost(AgentEngineErrorsMixin):
     """Host for the engine error mixin under test."""
 
     def __init__(self, *, approval_gate: object | None) -> None:
-        self._approval_gate = approval_gate
+        self._approval_gate = cast("ApprovalGate | None", approval_gate)
         self._cost_tracker = None
 
 

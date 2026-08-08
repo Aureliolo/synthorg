@@ -74,8 +74,8 @@ class CostRecordRepository(
         """Query cost records with optional filters and pagination.
 
         Args:
-            filter_spec: Carries optional agent_id, task_id, and
-                prompt_class_id filters.
+            filter_spec: Carries optional agent_id, task_id,
+                prompt_class_id and since filters.
             limit: Maximum rows to return.
             offset: Rows to skip before applying limit.
 

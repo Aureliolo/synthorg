@@ -45,8 +45,8 @@ def _machine(
 
 class TestDetection:
     def test_only_conditional_exit_is_a_violation(self) -> None:
-        # The exact C6 shape: FAILED reaches a terminal, but only through
-        # ASSIGNED, which needs an assignee the failed task never got.
+        # FAILED reaches a terminal, but only through ASSIGNED, which needs an
+        # assignee a task that failed before assignment does not have.
         machine = _machine(
             {
                 TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED}),

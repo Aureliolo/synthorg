@@ -71,6 +71,20 @@ entry from `plan.open_questions` and appends the answer to `plan.assumptions`
 through `PlanService`, under a compare-and-set retry so two answers landing at
 once cannot lose one of the write-backs; declining keeps the existing
 declined-question note.
+
+That write-back is a fast path, not what makes the answer stick. It runs after
+the decision is already durable on the approval, so a persistence failure there
+would leave the plan asking something the operator answered, and the endpoint
+cannot report the decision as failed when it demonstrably happened. The decided
+approvals are the record, so `replay_decided_questions` reconciles the plan
+against them before dispatch rebuilds anything from it. The reconciliation
+counts rather than matches: a plan should still list one occurrence of a
+question per approval for that text still `PENDING`, so the surplus above that
+count is exactly what the plan has not heard. That keeps a repeat pass a no-op
+and stops one answer settling the occurrence that belongs to a second,
+identically worded question. An `EXPIRED` approval is not a decision and is
+never replayed: nobody answered it, so its occurrence stays open.
+
 Question text is persisted raw and fenced with `wrap_untrusted(TAG_TASK_DATA,
 ...)` only at the LLM prompt boundary, per SEC-1.
 
@@ -118,6 +132,12 @@ approval payload and shown as a blocking banner on the dashboard gate:
 The last row is the load-bearing one. A provider outage during review is an
 outage, and parking the plan for approval turns it into a human rubber-stamp on
 a plan nothing checked.
+
+`request_plan_approval` takes the outcome as a **required** argument, on both
+the port and the gate: an optional one with a `None` default reintroduces the
+blank state the type exists to forbid, one caller at a time. The PLANNING shell
+opened before decomposition says so explicitly rather than leaving the field
+empty, and its provenance is replaced wholesale when the filled plan is parked.
 
 ### Lifecycle (`PlanStatus`)
 

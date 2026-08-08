@@ -13,8 +13,10 @@ from synthorg.api.lifecycle_helpers.plan_questions import (
     PLAN_ID_METADATA_KEY,
     apply_plan_question_answer,
     build_plan_questions,
+    replay_decided_questions,
 )
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.questions import CLARIFY_ACTION_TYPE, is_question
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import VersionConflictError
@@ -245,3 +247,218 @@ class TestApplyPlanQuestionAnswer:
                 answer="Postgres",
                 clock=FakeClock(),
             )
+
+
+def _decided(item: ApprovalItem, *, answer: str | None) -> ApprovalItem:
+    return item.model_copy(
+        update={
+            "status": (ApprovalStatus.APPROVED if answer else ApprovalStatus.REJECTED),
+            "decision_reason": answer or "The operator declined to answer.",
+            "decided_at": _NOW,
+        }
+    )
+
+
+class TestReplayDecidedQuestions:
+    """A decision that did not reach the plan is replayed before dispatch.
+
+    The write-back after a decision runs once the decision is already durable
+    and degrades on a persistence failure, so the plan can reach dispatch
+    still asking something the operator answered. The approvals carry the
+    decisions, so they are the record the plan is brought back to.
+    """
+
+    async def test_a_decided_answer_still_listed_open_is_replayed(self) -> None:
+        plan = _plan("Which datastore?")
+        settled = _plan()
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=[plan, settled]), update=AsyncMock()
+        )
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(
+                return_value=(
+                    _decided(_question(plan, "Which datastore?"), answer="Postgres"),
+                )
+            )
+        )
+
+        result = await replay_decided_questions(repo, store, plan, clock=FakeClock())
+
+        written: Plan = repo.update.await_args.args[0]
+        assert written.open_questions == ()
+        assert any("Postgres" in a for a in written.assumptions)
+        assert result is settled
+
+    async def test_a_decline_is_replayed_as_a_decline(self) -> None:
+        plan = _plan("Which datastore?")
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=[plan, _plan()]), update=AsyncMock()
+        )
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(
+                return_value=(
+                    _decided(_question(plan, "Which datastore?"), answer=None),
+                )
+            )
+        )
+
+        await replay_decided_questions(repo, store, plan, clock=FakeClock())
+
+        written: Plan = repo.update.await_args.args[0]
+        assert any("declined to answer" in a for a in written.assumptions)
+
+    async def test_a_pending_question_is_left_open(self) -> None:
+        """Nobody has decided it, so there is nothing to replay."""
+        plan = _plan("Which datastore?")
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(_question(plan, "Which datastore?"),))
+        )
+
+        assert (
+            await replay_decided_questions(repo, store, plan, clock=FakeClock()) is plan
+        )
+        repo.update.assert_not_awaited()
+
+    async def test_an_expired_question_is_not_replayed_as_a_decline(self) -> None:
+        """Expiry is nobody's decision; inventing one puts words in a mouth."""
+        plan = _plan("Which datastore?")
+        expired = _question(plan, "Which datastore?").model_copy(
+            update={"status": ApprovalStatus.EXPIRED}
+        )
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(expired,))
+        )
+
+        await replay_decided_questions(repo, store, plan, clock=FakeClock())
+
+        repo.update.assert_not_awaited()
+
+    async def test_a_decision_on_another_plan_is_not_replayed(self) -> None:
+        plan = _plan("Which datastore?")
+        other = _decided(
+            _question(plan, "Which datastore?"), answer="Postgres"
+        ).model_copy(update={"metadata": {PLAN_ID_METADATA_KEY: "some-other-plan"}})
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(other,))
+        )
+
+        await replay_decided_questions(repo, store, plan, clock=FakeClock())
+
+        repo.update.assert_not_awaited()
+
+    async def test_a_plan_with_nothing_open_reads_no_approvals(self) -> None:
+        """The scan is skipped entirely when there is nothing left to settle."""
+        plan = _plan()
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](list_items=AsyncMock())
+
+        assert (
+            await replay_decided_questions(repo, store, plan, clock=FakeClock()) is plan
+        )
+        store.list_items.assert_not_awaited()
+
+    async def test_no_store_leaves_the_plan_as_it_stands(self) -> None:
+        plan = _plan("Which datastore?")
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+
+        assert (
+            await replay_decided_questions(repo, None, plan, clock=FakeClock()) is plan
+        )
+        repo.update.assert_not_awaited()
+
+    async def test_an_identical_question_still_pending_holds_its_occurrence(
+        self,
+    ) -> None:
+        """The second approval must not be settled by the first one's answer.
+
+        A planner may raise the same question once per item it blocks, so the
+        text does not identify the occurrence. One decided approval settles
+        one occurrence; the other stays open until its own approval is
+        decided, or it would vanish without ever being answered.
+        """
+        # The first answer already landed, so one occurrence remains open and
+        # one approval is still PENDING: they match, and nothing is owed.
+        plan = _plan("Which datastore?")
+        both = build_plan_questions(
+            _plan("Which datastore?", "Which datastore?"),
+            task_id=NotBlankStr("task-1"),
+            requested_by=NotBlankStr("planner"),
+            now=_NOW,
+        )
+        repo = mock_of[PlanRepository](get=AsyncMock(), update=AsyncMock())
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(
+                return_value=(_decided(both[0], answer="Postgres"), both[1])
+            )
+        )
+
+        assert (
+            await replay_decided_questions(repo, store, plan, clock=FakeClock()) is plan
+        )
+        repo.update.assert_not_awaited()
+
+    async def test_replaying_the_same_decision_twice_settles_one_occurrence(
+        self,
+    ) -> None:
+        """A second pass is a no-op, so a retry cannot eat a second question."""
+        two_open = _plan("Which datastore?", "Which datastore?")
+        one_open = _plan("Which datastore?")
+        both = build_plan_questions(
+            two_open,
+            task_id=NotBlankStr("task-1"),
+            requested_by=NotBlankStr("planner"),
+            now=_NOW,
+        )
+        decided = _decided(both[0], answer="Postgres")
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=[two_open, one_open]), update=AsyncMock()
+        )
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(return_value=(decided, both[1]))
+        )
+
+        first = await replay_decided_questions(repo, store, two_open, clock=FakeClock())
+
+        assert first.open_questions == ("Which datastore?",)
+        assert repo.update.await_count == 1
+
+        # Same store, same decision, the plan as the first pass left it.
+        assert (
+            await replay_decided_questions(repo, store, first, clock=FakeClock())
+            is first
+        )
+        assert repo.update.await_count == 1
+
+    async def test_both_decided_settles_both_occurrences(self) -> None:
+        """Two answers owed, two occurrences settled, and the plan is clear."""
+        two_open = _plan("Which datastore?", "Which datastore?")
+        one_open = _plan("Which datastore?")
+        settled = _plan()
+        both = build_plan_questions(
+            two_open,
+            task_id=NotBlankStr("task-1"),
+            requested_by=NotBlankStr("planner"),
+            now=_NOW,
+        )
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=[two_open, one_open, settled]),
+            update=AsyncMock(),
+        )
+        store = mock_of[ApprovalStoreProtocol](
+            list_items=AsyncMock(
+                return_value=(
+                    _decided(both[0], answer="Postgres"),
+                    _decided(both[1], answer="Postgres"),
+                )
+            )
+        )
+
+        result = await replay_decided_questions(
+            repo, store, two_open, clock=FakeClock()
+        )
+
+        assert repo.update.await_count == 2
+        assert result is settled

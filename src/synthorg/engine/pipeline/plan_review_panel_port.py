@@ -5,7 +5,7 @@ Dependency inversion: the pipeline depends on this port, not on the plan-review
 engine that implements it. Between building a plan and parking it for human
 approval, the spine hands the plan to the panel; the panel seats a bounded set
 of leads, runs each as a review session, and returns a
-:class:`~synthorg.engine.plan_review.outcome.PlanReviewOutcome` the gate
+:class:`~synthorg.core.plan_review.PlanReviewOutcome` the gate
 attaches to the durable plan. An outcome always says something: either the
 consolidated review, or why the plan carries none, so a plan that was never
 reviewed is never indistinguishable from one nobody objected to.

@@ -91,15 +91,12 @@ class TestPlanStatusWrites:
         assert row.reason == "looks right"
         assert row.entity_version == plan.version + 1
 
-    async def test_no_ledger_wired_still_writes_the_plan(self) -> None:
-        """A construction-phase service has no backend; the write must still land."""
-        plan = _plan()
-        repo = mock_of[PlanRepository]()
-        service = PlanService(repo=repo, clock=FakeClock(start=_NOW))
-
-        decided = await service.sync_status(plan, PlanStatus.APPROVED)
-
-        assert decided.status is PlanStatus.APPROVED
+    async def test_a_service_cannot_be_built_without_a_ledger(self) -> None:
+        """A ledger-less service would move plans nothing durably witnessed."""
+        with pytest.raises(TypeError):
+            PlanService(  # type: ignore[call-arg]
+                repo=mock_of[PlanRepository](), clock=FakeClock(start=_NOW)
+            )
 
     async def test_a_ledger_failure_does_not_fail_the_transition(self) -> None:
         """The status write already committed; reporting it as failed would lie."""
@@ -133,6 +130,7 @@ class TestPlanStatusWrites:
         service = PlanService(
             repo=mock_of[PlanRepository](),
             clock=FakeClock(start=_NOW),
+            transitions=FakeLifecycleTransitionRepository(),
         )
 
         with pytest.raises(ValidationError, match="only valid for a FAILED plan"):

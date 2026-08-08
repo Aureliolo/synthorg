@@ -44,6 +44,7 @@ from synthorg.core.role import Skill
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.llm.gateway_token import GatewayTokenClaims
 from synthorg.security.audit import AuditLog
+from synthorg.security.runtime_config import MutableSecurityConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers.execution_service import AgentEngineExecutionService
@@ -149,23 +150,25 @@ async def test_resolve_actor_returns_the_registered_identity() -> None:
     assert actor is identity
 
 
-def _autonomy_state(
-    *,
-    service: object,
-    security_config: object = object(),
-) -> AppState:
-    """An app state whose runtime slice serves *service*.
+def _autonomy_state(*, service: object, with_security: bool = True) -> AppState:
+    """A real app state whose runtime slice serves *service*.
 
-    ``AppState.slice`` is keyed by slice class in production; the double
-    returns one namespace carrying every attribute the autonomy path reads,
-    which is enough because the path reads each by name.
+    Built rather than mocked: ``security_runtime_config`` is assigned in
+    ``AppState.__init__`` rather than declared on the class, so an autospec
+    double has no such attribute and cannot be given one. A real state also
+    resolves the runtime slice by class, which is what the path under test
+    actually does.
+
+    Args:
+        service: What the runtime slice serves as the execution service.
+        with_security: ``False`` replaces the holder with an empty one, which
+            is the only way to reach ``current is None``: ``RootConfig``
+            always carries a ``SecurityConfig``.
     """
-    state = mock_of[AppState]()
-    state.slice.return_value = SimpleNamespace(
-        agent_registry=None, worker_execution_service=service
-    )
-    state.security_runtime_config = SimpleNamespace(current=security_config)
-    return cast("AppState", state)
+    state = make_app_state(worker_execution_service=service)
+    if not with_security:
+        state.security_runtime_config = MutableSecurityConfig(None)
+    return state
 
 
 class TestGatewayAutonomy:
@@ -196,7 +199,7 @@ class TestGatewayAutonomy:
     async def test_no_security_config_resolves_no_autonomy(self) -> None:
         """With no screen installed there is nothing to tier."""
         service = mock_of[AgentEngineExecutionService]()
-        state = _autonomy_state(service=service, security_config=None)
+        state = _autonomy_state(service=service, with_security=False)
 
         assert await _resolve_autonomy(state, _identity(), task_id="task-1") is None
         service.resolve_effective_autonomy.assert_not_awaited()

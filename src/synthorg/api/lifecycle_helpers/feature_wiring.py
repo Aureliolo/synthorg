@@ -193,21 +193,14 @@ async def _wire_research_engine(
         msg = "no provider registry; every research stage is an LLM call"
         raise SubsystemDeclinedError(msg)
     runtime_settings = settings_service_of(app_state)
-    try:
-        await _build_and_wire_research(
-            app_state,
-            provider_registry=provider_registry,
-            runtime_settings=runtime_settings,
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="research_engine",
-            note="research engine wiring unavailable; skipped",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+    # Every dependency it declared is present, so a failure here is the build
+    # itself failing, not a decline. Swallowing it made the reconciler report
+    # BLOCKED with no condition to name, hiding the real error one layer down.
+    await _build_and_wire_research(
+        app_state,
+        provider_registry=provider_registry,
+        runtime_settings=runtime_settings,
+    )
 
 
 async def _build_research_config(runtime_settings: SettingsService) -> ResearchConfig:

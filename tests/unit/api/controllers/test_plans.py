@@ -18,7 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.evaluation_report_protocol import EvaluationReportRecord
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient, as_uuid, sid
+from tests._shared import LoopAsyncClient, as_pk, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 _CREATED_AT = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
@@ -127,7 +127,9 @@ def _plan_task(plan: Plan, item_id: str, status: TaskStatus) -> Task:
         project=NotBlankStr(str(plan.project)),
         created_by="manager",
         plan_id=plan.id,
-        plan_item_id=as_uuid(item_id),
+        # ``item_id`` is already a canonical UUID string, so it passes through
+        # rather than being hashed again into an id no plan item carries.
+        plan_item_id=as_pk(item_id),
         assigned_to=sid("agent-1") if status is not TaskStatus.CREATED else None,
         status=status,
     )

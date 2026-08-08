@@ -31,13 +31,18 @@ from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.agent import (
+    AgentIdentity,
+    ModelConfig,
+    SkillSet,
+    ToolPermissions,
+)
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Complexity, Priority, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (
@@ -275,6 +280,9 @@ def _small_tier_agent(name: str, skill: str) -> AgentIdentity:
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
+        # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
+        # excludes; the scripted turns call it, so it is allowed by name.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
     )
 
 

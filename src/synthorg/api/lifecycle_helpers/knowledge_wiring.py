@@ -47,7 +47,9 @@ async def wire_knowledge_engine(
 
     Raises:
         SubsystemDeclinedError: No persistence backend, so there is no
-            knowledge store or provenance chain to build over.
+            knowledge store or provenance chain to build over; or no memory
+            backend, which ``_build_and_wire_knowledge`` declines on and
+            which propagates through this call unchanged.
     """
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import (  # noqa: PLC0415

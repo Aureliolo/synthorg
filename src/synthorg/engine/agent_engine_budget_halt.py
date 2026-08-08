@@ -31,6 +31,7 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
@@ -40,6 +41,11 @@ logger = get_logger(__name__)
 class AgentEngineBudgetHaltMixin:
     """Mixin turning a budget exhaustion into a parked or stopped run."""
 
+    # Declared, not probed with getattr. A rename on the host would leave a
+    # getattr read silently returning None, which routes a genuine
+    # hard-ceiling park to BUDGET_EXHAUSTED with nothing to notice it.
+    _approval_gate: ApprovalGate | None
+    _cost_tracker: CostTrackerProtocol | None
     _cost_forecast_repo: CostForecastRepository | None
     _clock: Clock
 
@@ -81,7 +87,7 @@ class AgentEngineBudgetHaltMixin:
             error=safe_error_description(exc),
         )
         is_ceiling = isinstance(exc, RunHardCeilingExceededError)
-        has_gate = getattr(self, "_approval_gate", None) is not None
+        has_gate = self._approval_gate is not None
         parked_ok = False
         if isinstance(exc, RunHardCeilingExceededError) and has_gate:
             parked_ok = await self._park_hard_ceiling(
@@ -114,9 +120,7 @@ class AgentEngineBudgetHaltMixin:
                 duration_seconds=duration_seconds,
                 agent_id=agent_id,
                 task_id=task_id,
-                currency=resolve_tracker_currency(
-                    getattr(self, "_cost_tracker", None),
-                ),
+                currency=resolve_tracker_currency(self._cost_tracker),
             )
         except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
@@ -166,7 +170,7 @@ class AgentEngineBudgetHaltMixin:
             EscalationInfo,
         )
 
-        gate: ApprovalGate | None = getattr(self, "_approval_gate", None)
+        gate = self._approval_gate
         if gate is None:
             return False
         try:
@@ -232,7 +236,7 @@ class AgentEngineBudgetHaltMixin:
         """
         from synthorg.budget.forecast_models import HaltContext  # noqa: PLC0415
 
-        repo = getattr(self, "_cost_forecast_repo", None)
+        repo = self._cost_forecast_repo
         if repo is None or exc.forecast_id is None:
             return
         # One instant for both fields, read through the engine's own seam so

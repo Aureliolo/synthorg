@@ -270,6 +270,15 @@ class TestLlmDecompositionStrategy:
             "coordination_topology": "auto",
             "subtasks": [
                 _subtask_args("sub-renderer", "Renderer pipeline", "Draw the frames"),
+                # Carries the plan's other edge, so stripping the integration
+                # item's dependency below leaves the graph ordered and the
+                # unstated reference is the only thing left to fail on.
+                _subtask_args(
+                    "sub-input",
+                    "Input handling",
+                    "Read the controls",
+                    dependencies=["sub-renderer"],
+                ),
                 _subtask_args(
                     "sub-integrate",
                     "Integrate game loop",
@@ -282,7 +291,7 @@ class TestLlmDecompositionStrategy:
         # failure below is the missing edge and not the titles themselves.
         args_to_decomposition_plan(cast("dict[str, JsonValue]", args), "task-parent-1")
 
-        cast("list[dict[str, object]]", args["subtasks"])[1]["dependencies"] = []
+        cast("list[dict[str, object]]", args["subtasks"])[2]["dependencies"] = []
 
         with pytest.raises(DecompositionError, match="Renderer pipeline"):
             args_to_decomposition_plan(

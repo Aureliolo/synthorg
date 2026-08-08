@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
@@ -131,7 +131,7 @@ async def _seed(
     clock = FakeClock()
     service = ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         task_engine=task_engine,
         ship_retro_capture=ship_retro_capture,
@@ -795,8 +795,15 @@ class TestIntegrationStage:
         # A failed integration task counted as an item would regress the plan
         # to EXECUTING; it must not. With no replan trigger to route the failed
         # assembly, the plan fails rather than parking at INTEGRATING forever.
-        plan_status, _ = await _statuses(backend)
-        assert plan_status is PlanStatus.FAILED
+        plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.FAILED
+        # The reason, not merely the status: an item-derived stall also lands
+        # on FAILED here, so asserting the status alone would still pass if
+        # the assembly job started counting as a plan item.
+        assert plan.failure_reason == (
+            "integration failed and no replan trigger is wired"
+        )
 
     async def test_a_failed_assembly_replans_when_a_trigger_is_wired(self) -> None:
         trigger = _RecordingReplanTrigger()

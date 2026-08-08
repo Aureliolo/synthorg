@@ -14,7 +14,6 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.lifecycle_transition import (
     PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_FAILED,
-    PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
     PERSISTENCE_LIFECYCLE_TRANSITION_PURGE_FAILED,
     PERSISTENCE_LIFECYCLE_TRANSITION_QUERIED,
     PERSISTENCE_LIFECYCLE_TRANSITION_QUERY_FAILED,
@@ -82,12 +81,6 @@ class SQLiteLifecycleTransitionRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
-            entity_kind=event.entity_kind.value,
-            entity_id=event.entity_id,
-            to_status=event.to_status,
-        )
 
     async def query(
         self,

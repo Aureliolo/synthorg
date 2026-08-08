@@ -353,6 +353,12 @@ class MultiAgentCoordinator:
             else:
                 decomp_result = await self._phase_decompose(context, phases)
 
+            # Filed here rather than inside the decompose phase, which
+            # ``plan_preview`` also runs: a preview must leave no task rows
+            # behind for work a human has not approved. Both branches above
+            # reach this, so an approved-plan resume files its children too.
+            await self._file_missing_children(decomp_result)
+
             # Middleware hook: after_decompose
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
@@ -752,7 +758,6 @@ class MultiAgentCoordinator:
             result = await self._decomposition_service.decompose_task(
                 context.task, context.decomposition_context
             )
-            await self._file_missing_children(result)
         except Exception as exc:
             reraise_critical(exc)
             elapsed = self._clock.monotonic() - start

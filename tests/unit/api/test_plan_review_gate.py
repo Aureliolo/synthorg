@@ -33,10 +33,21 @@ from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
-from tests.unit.api.fakes import FakePlanRepository, FakeTaskRepository
+from tests.unit.api.fakes import (
+    FakeLifecycleTransitionRepository,
+    FakePlanRepository,
+    FakeTaskRepository,
+)
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
+
+#: The outcome the pipeline supplies when no panel is attached. Stated rather
+#: than omitted: the gate takes it as required, because a parked plan with
+#: neither a review nor a reason is the blank section the type forbids.
+_NO_PANEL = PlanReviewOutcome(
+    absent_reason=NotBlankStr("no stakeholder panel is attached")
+)
 
 
 class _FailingPlanRepository(FakePlanRepository):
@@ -105,7 +116,11 @@ async def _gate(
         # The gate writes plan statuses, so it holds the service that records
         # them, not the repository underneath it. The tests still assert
         # against the repository, which is where the rows land.
-        plans=PlanService(repo=plan_repo, clock=clock),
+        plans=PlanService(
+            repo=plan_repo,
+            clock=clock,
+            transitions=FakeLifecycleTransitionRepository(),
+        ),
         tasks=tasks,
         clock=clock,
         notifier=None if announced is None else announced.append,
@@ -182,6 +197,7 @@ class TestPlanReviewApprovalGate:
             work_item=work_item,
             task=task,
             plan=_decomposition(),
+            review=_NO_PANEL,
         )
 
         assert handoff.subtask_count == 2
@@ -213,7 +229,11 @@ class TestPlanReviewApprovalGate:
 
         plan_id = await gate.open_plan(work_item=work_item, task=task)
         await gate.request_plan_approval(
-            plan_id=plan_id, work_item=work_item, task=task, plan=_decomposition()
+            plan_id=plan_id,
+            work_item=work_item,
+            task=task,
+            plan=_decomposition(),
+            review=_NO_PANEL,
         )
 
         assert [(plan.id, plan.status) for plan in announced] == [
@@ -244,6 +264,7 @@ class TestPlanReviewApprovalGate:
                     NotBlankStr("Do we ship on mobile?"),
                 )
             ),
+            review=_NO_PANEL,
         )
 
         parked = await store.list_items()
@@ -266,7 +287,11 @@ class TestPlanReviewApprovalGate:
         plan_id = await gate.open_plan(work_item=work_item, task=task)
 
         await gate.request_plan_approval(
-            plan_id=plan_id, work_item=work_item, task=task, plan=_decomposition()
+            plan_id=plan_id,
+            work_item=work_item,
+            task=task,
+            plan=_decomposition(),
+            review=_NO_PANEL,
         )
 
         parked = await store.list_items()
@@ -334,7 +359,11 @@ class TestPlanReviewApprovalGate:
 
         plan_id = await gate.open_plan(work_item=work_item, task=task)
         await gate.request_plan_approval(
-            plan_id=plan_id, work_item=work_item, task=task, plan=_decomposition()
+            plan_id=plan_id,
+            work_item=work_item,
+            task=task,
+            plan=_decomposition(),
+            review=_NO_PANEL,
         )
 
         durable = await plans.get(NotBlankStr(str(plan_id)))
@@ -383,6 +412,7 @@ class TestPlanReviewApprovalGate:
                 work_item=work_item,
                 task=task,
                 plan=_decomposition(),
+                review=_NO_PANEL,
             )
 
         # Still the untouched shell: nothing was parked and no items landed.
@@ -407,6 +437,7 @@ class TestPlanReviewApprovalGate:
                 work_item=work_item,
                 task=task,
                 plan=_decomposition(),
+                review=_NO_PANEL,
             )
 
         persisted = await plans.list_items()

@@ -22,12 +22,16 @@ refused and this writer fails its wave rather than quietly rewriting
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.parallel_models import AgentAssignment, ParallelExecutionGroup
 from synthorg.engine.task_engine_models import TransitionTaskMutation
-from synthorg.observability import get_logger
-from synthorg.observability.events.coordination import COORDINATION_WAVE_BUILT
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.coordination import (
+    COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED,
+    COORDINATION_WAVE_BUILT,
+)
 
 if TYPE_CHECKING:
     # Concrete service faked in tests; a runtime import would make typeguard
@@ -48,6 +52,14 @@ _ASSIGNMENT_ACTOR: Final[str] = "coordinator"
 #: the row would be a redundant hop the state machine has no reason to accept.
 _ALREADY_OWNED: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS}
+)
+
+#: Recorded on a subtask released after its wave failed to assign a sibling.
+#: The row says why it is not running rather than sitting ASSIGNED to an agent
+#: that was never dispatched.
+_RELEASE_REASON: Final[str] = (
+    "Released: the wave this subtask belonged to could not assign every "
+    "subtask, so it was never dispatched"
 )
 
 
@@ -84,18 +96,72 @@ class AssignmentWriter:
         engine = self._task_engine
         if engine is None:
             return group
-        assignments = tuple(
-            [await self._persist_one(engine, a) for a in group.assignments]
-        )
-        return group.model_copy(update={"assignments": assignments})
+        assignments: list[AgentAssignment] = []
+        moved: list[AgentAssignment] = []
+        try:
+            for candidate in group.assignments:
+                persisted, was_moved = await self._persist_one(engine, candidate)
+                assignments.append(persisted)
+                if was_moved:
+                    moved.append(persisted)
+        except CoordinationError:
+            await self._release(engine, tuple(moved))
+            raise
+        return group.model_copy(update={"assignments": tuple(assignments)})
+
+    async def _release(
+        self, engine: TaskEngine, moved: tuple[AgentAssignment, ...]
+    ) -> None:
+        """Move a failed wave's already-assigned subtasks out of ASSIGNED.
+
+        A wave assigns one subtask at a time, so a refusal partway through
+        leaves the ones before it owned by an agent that will never run: the
+        dispatcher has already given up, and nothing else watches an ASSIGNED
+        row with no runner. BLOCKED rather than CANCELLED because the work is
+        still wanted and ``BLOCKED -> ASSIGNED`` is how a replan wave picks it
+        back up, which CANCELLED would foreclose.
+
+        Only rows this writer moved are released. A subtask another wave
+        already owns was returned untouched, and rewriting it here would
+        block work that is running.
+
+        Args:
+            engine: The engine that owns task status.
+            moved: The assignments this call had already transitioned.
+        """
+        for assignment in moved:
+            task_id = str(assignment.task.id)
+            try:
+                await engine.submit(
+                    TransitionTaskMutation(
+                        request_id=uuid4().hex,
+                        requested_by=_ASSIGNMENT_ACTOR,
+                        task_id=task_id,
+                        target_status=TaskStatus.BLOCKED,
+                        reason=_RELEASE_REASON,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- the wave failure is already being
+                # raised; a failed release must not replace that diagnosis.
+                reraise_critical(exc)
+                logger.warning(
+                    COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED,
+                    subtask_id=task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def _persist_one(
         self, engine: TaskEngine, assignment: AgentAssignment
-    ) -> AgentAssignment:
+    ) -> tuple[AgentAssignment, bool]:
         """Assign one subtask and return it carrying the engine's row.
 
         Returns:
-            The assignment with ``task`` replaced by the engine's task.
+            ``(assignment, moved)``: the assignment with ``task`` replaced by
+            the engine's task, and whether this call transitioned the row. A
+            subtask already owned by the same agent was not moved, so a later
+            failure in the wave must not release it.
 
         Raises:
             CoordinationError: When the subtask has no row, or the
@@ -112,7 +178,7 @@ class AssignmentWriter:
             raise CoordinationError(msg)
 
         if live.status in _ALREADY_OWNED and live.assigned_to == agent_id:
-            return assignment.model_copy(update={"task": live})
+            return assignment.model_copy(update={"task": live}), False
 
         result = await engine.submit(
             TransitionTaskMutation(
@@ -144,7 +210,7 @@ class AssignmentWriter:
             from_status=live.status.value,
             to_status=TaskStatus.ASSIGNED.value,
         )
-        return assignment.model_copy(update={"task": result.task})
+        return assignment.model_copy(update={"task": result.task}), True
 
 
 __all__ = ["AssignmentWriter"]

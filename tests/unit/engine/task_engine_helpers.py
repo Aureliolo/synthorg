@@ -8,7 +8,7 @@ from synthorg.core.plan import Plan
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.core.task_enums import TaskStatus
@@ -145,6 +145,26 @@ class FakePlanRepository:
 
     async def delete(self, entity_id: str, /) -> bool:
         return self._plans.pop(entity_id, None) is not None
+
+    async def delete_if_no_live_tasks(
+        self,
+        entity_id: str,
+        /,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        """Delete unconditionally: this fake holds no tasks to be live.
+
+        Present so the whole protocol is satisfied (typeguard checks every
+        method on a fake passed at a typed boundary), and honest about what
+        it can answer: the guard's own behaviour is covered by the
+        dual-backend conformance suite, where real task rows exist.
+
+        Returns:
+            The outcome of the delete.
+        """
+        _ = terminal_statuses
+        return PlanDeleteOutcome(deleted=await self.delete(entity_id))
 
 
 class FakePersistence:

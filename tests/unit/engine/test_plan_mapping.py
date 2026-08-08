@@ -480,10 +480,14 @@ class TestPlanContextReachesTheWork:
         result = decomposition_from_plan(plan, parent_task=_parent_task())
 
         assert result.created_tasks
-        for task in result.created_tasks:
-            assert "Q: Which database? A: Postgres only." in task.description
-            # Still its own item's work, not replaced by the plan context.
-            assert task.title in {"Board", "Movement"}
+        # Keyed by title, because a plan context that overwrote an item's
+        # description would still leave every title intact: the descriptions
+        # are what has to survive.
+        by_title = {task.title: task.description for task in result.created_tasks}
+        assert set(by_title) == {"Board", "Movement"}
+        for title, own_work in (("Board", "Grid"), ("Movement", "Drop")):
+            assert "Q: Which database? A: Postgres only." in by_title[title]
+            assert own_work in by_title[title]
 
     def test_an_unanswered_question_is_marked_as_unanswered(self) -> None:
         """An agent must not read an open question as a settled decision."""
@@ -493,9 +497,12 @@ class TestPlanContextReachesTheWork:
 
         result = decomposition_from_plan(plan, parent_task=_parent_task())
 
-        description = result.created_tasks[0].description
-        assert "Do we ship on mobile?" in description
-        assert "Not decided yet" in description
+        # Every task, not just the first: an item whose brief omits the open
+        # question is an agent deciding it alone.
+        assert len(result.created_tasks) == 2
+        for task in result.created_tasks:
+            assert "Do we ship on mobile?" in task.description
+            assert "Not decided yet" in task.description
 
     def test_a_plan_with_neither_leaves_the_description_alone(self) -> None:
         """The common case adds nothing, so no prompt pays for the mechanism."""

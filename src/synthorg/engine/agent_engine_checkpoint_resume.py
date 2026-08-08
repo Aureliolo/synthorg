@@ -25,6 +25,7 @@ from synthorg.engine.checkpoint.resume import (
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
+from synthorg.engine.errors import RecoveryCheckpointMissingError
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
@@ -121,8 +122,9 @@ class AgentEngineCheckpointResumeMixin:
             ``recovery_result``.
 
         Raises:
-            RuntimeError: If ``checkpoint_context_json`` is ``None``
-                despite the strategy reporting ``can_resume`` true.
+            RecoveryCheckpointMissingError: If ``checkpoint_context_json``
+                is ``None`` despite the strategy reporting ``can_resume``
+                true.
         """
         if recovery_result.checkpoint_context_json is None:
             logger.error(
@@ -132,7 +134,7 @@ class AgentEngineCheckpointResumeMixin:
                 error="checkpoint_context_json is None but can_resume was True",
             )
             msg = "checkpoint_context_json is None but can_resume was True"
-            raise RuntimeError(msg)
+            raise RecoveryCheckpointMissingError(msg)
         return recovery_result.checkpoint_context_json
 
     async def _prepare_resume(

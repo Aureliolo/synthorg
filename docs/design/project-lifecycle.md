@@ -149,6 +149,12 @@ line loses. `GET /plans/{id}/transitions` reads it back, which is what makes
 "only the evaluate stage writes COMPLETED" provable from persisted state
 rather than from a container's stdout.
 
+The ledger repository is a **required** collaborator, not an optional one, on
+both `LifecycleLedger` and `PlanService`: a service built without it would
+persist the status and emit the transition log line while the durable row
+silently never happened, which is a ledger that looks complete and is not.
+`build_plan_service` is the single construction site that binds it.
+
 The append runs after the status write commits, so a ledger outage is logged at
 ERROR with every field the row would have carried and never reported to the
 caller as a failed transition: the move already happened.

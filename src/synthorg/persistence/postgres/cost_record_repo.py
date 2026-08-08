@@ -262,11 +262,6 @@ class PostgresCostRecordRepository:
         """
         if threshold.tzinfo is None:
             msg = f"threshold must be timezone-aware, got naive {threshold!r}"
-            logger.warning(
-                PERSISTENCE_COST_RECORD_QUERY_FAILED,
-                error="naive_threshold",
-                error_type="ValueError",
-            )
             raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

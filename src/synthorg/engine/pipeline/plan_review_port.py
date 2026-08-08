@@ -52,7 +52,7 @@ class PlanReviewGate(Protocol):
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
-        review: PlanReviewOutcome | None = None,
+        review: PlanReviewOutcome,
     ) -> PlanReviewHandoff:
         """Fill the shell with *plan* and park it for human approval.
 
@@ -63,9 +63,9 @@ class PlanReviewGate(Protocol):
             plan: The decomposed subtask tree awaiting approval; the gate
                 persists it so the exact approved plan is what later builds.
             review: What the review attempt produced: a consolidated review,
-                or the reason the plan carries none. Both are attached to the
-                durable plan, so an unreviewed plan reaches the operator
-                saying so.
+                or the reason the plan carries none. Required, because a plan
+                reaching the approval gate with neither is the blank review
+                section this outcome type exists to make unrepresentable.
 
         Returns:
             A :class:`PlanReviewHandoff` the caller surfaces so the human

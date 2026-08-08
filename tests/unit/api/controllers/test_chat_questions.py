@@ -121,8 +121,13 @@ def _question(
 _PLAN_QUESTION: Final[str] = "Which database backend should the org target?"
 
 
-def _plan_question(*, approval_id: str, plan_id: str) -> ApprovalItem:
-    """A parked plan question exactly as the review gate creates one."""
+def _plan_question(*, approval_id: str, plan: Plan) -> ApprovalItem:
+    """A parked plan question exactly as the review gate creates one.
+
+    The gate sets ``task_id`` to the plan's objective task so the question
+    inherits the same context enrichment every other parked question gets;
+    omitting it here would exercise a shape production never produces.
+    """
     return ApprovalItem(
         id=as_uuid(approval_id),
         action_type=CLARIFY_ACTION_TYPE,
@@ -132,7 +137,8 @@ def _plan_question(*, approval_id: str, plan_id: str) -> ApprovalItem:
         risk_level=ApprovalRiskLevel.LOW,
         source=ApprovalSource.PLAN_REVIEW,
         created_at=datetime.now(UTC),
-        metadata={PLAN_ID_METADATA_KEY: plan_id},
+        task_id=plan.parent_task_id,
+        metadata={PLAN_ID_METADATA_KEY: str(plan.id)},
     )
 
 
@@ -520,9 +526,11 @@ class TestPlanQuestionWriteBack:
         approval_store: ApprovalStore,
     ) -> None:
         plan = await _seed_plan_with_question(async_test_client)
-        await approval_store.add(
-            _plan_question(approval_id="q-plan", plan_id=str(plan.id))
-        )
+        parked = _plan_question(approval_id="q-plan", plan=plan)
+        # The gate attributes the question to the plan's objective task, which
+        # is what carries it into the same enrichment every question gets.
+        assert parked.task_id == plan.parent_task_id
+        await approval_store.add(parked)
 
         resp = await async_test_client.post(
             f"{_BASE}/{as_uuid('q-plan')}/answer",
@@ -546,7 +554,7 @@ class TestPlanQuestionWriteBack:
         """Declining is an answer too: the plan stops waiting on it."""
         plan = await _seed_plan_with_question(async_test_client)
         await approval_store.add(
-            _plan_question(approval_id="q-plan-declined", plan_id=str(plan.id))
+            _plan_question(approval_id="q-plan-declined", plan=plan)
         )
 
         resp = await async_test_client.post(

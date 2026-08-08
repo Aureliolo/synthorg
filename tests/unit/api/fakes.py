@@ -335,7 +335,11 @@ class FakeLifecycleTransitionRepository:
             rows = [r for r in rows if r.entity_kind == filter_spec.entity_kind]
         if filter_spec.entity_id is not None:
             rows = [r for r in rows if r.entity_id == filter_spec.entity_id]
-        rows = sorted(rows, key=lambda r: r.occurred_at, reverse=True)
+        # Both backends order by ``occurred_at DESC, id DESC``. Tests drive
+        # the ledger with a FakeClock, so many rows share one instant; without
+        # the id tie-break this fake would keep insertion order among them and
+        # a row-order assertion would pass here and fail against a real one.
+        rows = sorted(rows, key=lambda r: (r.occurred_at, str(r.id)), reverse=True)
         return tuple(rows[offset : offset + limit])
 
     async def purge_before(self, threshold: datetime) -> int:
@@ -1498,18 +1502,29 @@ class FakePlanRepository:
 
         Returns:
             The outcome of the guarded delete.
+
+        Raises:
+            RuntimeError: When this fake was built without a task repository.
+                The real backends answer the guard by joining the two tables,
+                so a fake that cannot see tasks would report "no live tasks"
+                from a repository with no way to observe one, and a test
+                written against it would pass through a regressed guard.
         """
+        if self._task_repo is None:
+            msg = (
+                "FakePlanRepository cannot answer the live-task guard without "
+                "a task_repo; construct it with one"
+            )
+            raise RuntimeError(msg)
         if entity_id not in self._plans:
             return PlanDeleteOutcome(deleted=False)
-        live = 0
-        if self._task_repo is not None:
-            live = sum(
-                1
-                for task in self._task_repo.tasks
-                if task.plan_id is not None
-                and str(task.plan_id) == str(entity_id)
-                and task.status.value not in terminal_statuses
-            )
+        live = sum(
+            1
+            for task in self._task_repo.tasks
+            if task.plan_id is not None
+            and str(task.plan_id) == str(entity_id)
+            and task.status.value not in terminal_statuses
+        )
         if live:
             return PlanDeleteOutcome(deleted=False, live_task_count=live)
         del self._plans[entity_id]

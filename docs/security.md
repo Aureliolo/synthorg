@@ -142,8 +142,8 @@ behind a single startup log line. Two changes close it:
 - The credential-catalog construction is **not** inside the
   integrations-feature ``try/except``. A failure there is fatal to provider
   auth, so it is logged at ERROR and re-raised; only the integrations feature
-  surface (health prober, OAuth, webhooks, rate-limit coordinator) stays
-  best-effort.
+  surface (health prober, OAuth, webhooks, rate-limit coordinator) may fail
+  without failing the boot.
 
 ### Notification Security
 

@@ -668,6 +668,13 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    in-memory `ASSIGNED` while the row was still `created`, the engine's
    `ASSIGNED -> IN_PROGRESS` entry sync was refused, and the agent ran work the
    central engine had no record of starting.
+   A wave assigns its subtasks one at a time, so a refusal partway leaves the
+   ones before it owned by an agent the dispatcher has already given up on.
+   Those are released back to `BLOCKED` with the reason before the wave failure
+   propagates: `BLOCKED` and not `CANCELLED` because the work is still wanted
+   and `BLOCKED -> ASSIGNED` is how a replan wave picks it up. Only rows this
+   writer moved are released; a subtask another wave already owns was returned
+   untouched, and rewriting it would block a run that is executing.
 6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
 7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 

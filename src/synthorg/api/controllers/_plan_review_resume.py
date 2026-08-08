@@ -16,10 +16,14 @@ from typing import Final
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
-from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import (
+    PLAN_ID_METADATA_KEY,
+    replay_decided_questions,
+)
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
@@ -231,6 +235,16 @@ async def _dispatch_approved_plan(
         return
     coordinator, task, plan = resolved
     try:
+        # Answers decided against this plan are replayed from the approvals
+        # that carry them before anything is built from it, so a write-back
+        # that failed after its decision was durable costs a retry rather
+        # than the operator's answer.
+        plan = await replay_decided_questions(
+            persistence_of(app_state).plans,
+            app_state.slice(ApprovalStateSlice).store,
+            plan,
+            clock=app_state.clock,
+        )
         # Record the plan's decision-items (chosen or recommended-by-default
         # option) into the brain before dispatch, so the company's shaping
         # choices survive the strip-decisions step in ``decomposition_from_plan``

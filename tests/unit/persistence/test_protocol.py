@@ -73,7 +73,7 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
 )
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
-from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
 )
@@ -915,6 +915,16 @@ class _FakePlanRepository:
     async def delete(self, entity_id: NotBlankStr) -> bool:
         del entity_id
         return False
+
+    async def delete_if_no_live_tasks(
+        self,
+        entity_id: NotBlankStr,
+        /,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        del entity_id, terminal_statuses
+        return PlanDeleteOutcome(deleted=False)
 
 
 class _FakePlanItemCommentRepository:

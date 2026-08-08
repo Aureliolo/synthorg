@@ -35,6 +35,7 @@ Usage::
 import argparse
 import ast
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +92,44 @@ def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctio
     return {
         node.name: node
         for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def _body_nodes(fn: ast.AST) -> Iterator[ast.AST]:
+    """Yield the executable nodes of *fn*, stopping at nested definitions.
+
+    ``ast.walk`` descends into a nested ``def``, which makes the body of a
+    helper that may never be called read as the enclosing activation's own
+    code: an unused nested raise would certify a reason the activation does
+    not declare, and a nested absence guard would invent a decline it cannot
+    take. A nested helper enters the chain the same way any other callee
+    does, through :meth:`_ChainReader._resolve`.
+
+    Yields:
+        Every node reachable from the function body without crossing into a
+        nested function or class.
+    """
+    pending: list[ast.AST] = list(getattr(fn, "body", ()))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        yield node
+        pending.extend(ast.iter_child_nodes(node))
+
+
+def _nested_functions(
+    fn: ast.AST,
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Map every function defined directly in *fn*'s body to its definition.
+
+    Returns:
+        ``{name: definition}``.
+    """
+    return {
+        node.name: node
+        for node in getattr(fn, "body", ())
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
 
@@ -207,7 +246,7 @@ def _has_early_return(fn: ast.AST) -> bool:
         isinstance(node, ast.If)
         and any(_is_bare_return(stmt) for stmt in node.body)
         and _tests_absence(node.test)
-        for node in ast.walk(fn)
+        for node in _body_nodes(fn)
     )
 
 
@@ -241,7 +280,7 @@ def _raises_declined(fn: ast.AST) -> bool:
         isinstance(node, ast.Raise)
         and node.exc is not None
         and _raised_name(node.exc) == _DECLINED_ERROR
-        for node in ast.walk(fn)
+        for node in _body_nodes(fn)
     )
 
 
@@ -253,7 +292,7 @@ def _called_names(fn: ast.AST) -> set[str]:
     """
     return {
         node.func.id
-        for node in ast.walk(fn)
+        for node in _body_nodes(fn)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
 
@@ -290,7 +329,7 @@ class _ChainReader:
         fn: ast.FunctionDef | ast.AsyncFunctionDef,
         module: ast.Module,
         *,
-        visited: set[tuple[int, str]],
+        visited: set[int],
     ) -> tuple[bool, bool]:
         """Answer both questions about *fn* and everything it calls.
 
@@ -303,19 +342,21 @@ class _ChainReader:
         Args:
             fn: The function to inspect.
             module: The module *fn* was defined in, for resolving its calls.
-            visited: ``(module id, function name)`` pairs already walked, so a
-                cycle terminates.
+            visited: Definitions already walked, so a cycle terminates. Keyed
+                by node identity rather than name because a nested helper may
+                share a name with a module-level function.
 
         Returns:
             ``(can_decline, declares_reason)`` over the whole reachable chain.
         """
-        key = (id(module), fn.name)
-        if key in visited:
+        if id(fn) in visited:
             return False, False
-        visited.add(key)
+        visited.add(id(fn))
         can_decline = _has_early_return(fn)
         declares = _raises_declined(fn)
-        local = _functions(module)
+        # A nested helper shadows a module-level name inside its enclosing
+        # function, so it wins the lookup exactly as Python resolves it.
+        local = _functions(module) | _nested_functions(fn)
         imports = _import_sources(module)
         for callee in _called_names(fn):
             target, target_module = self._resolve(callee, local, imports, module)
