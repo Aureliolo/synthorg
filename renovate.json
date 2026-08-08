@@ -115,6 +115,12 @@
       "allowedVersions": "<7"
     },
     {
+      "description": "Block @base-ui/react >=1.7.0. 1.7.0 reworks composite list registration (nested list reorder detection, layout/passive effect timing, lifecycle synchronisation) in a way that loops forever against react-router's Link: a Tabs.Tab rendering a Link through the render prop re-registers on every ref cleanup, so CompositeList setStates until React aborts with 'Maximum update depth exceeded'. It takes the Org Edit page down entirely (10 unit tests plus the agent-creation e2e). Isolated to Link specifically: a plain anchor and a local component both render fine, and the render-callback form and a wrapper component loop the same way, so no in-repo shape avoids it. react-router is already latest and there is no 1.7.1. Lift when upstream fixes the Link interaction; the alternative is dropping SPA navigation from the tabs, which the component was deliberately built to keep.",
+      "matchManagers": ["npm"],
+      "matchDepNames": ["@base-ui/react"],
+      "allowedVersions": "<1.7.0"
+    },
+    {
       "description": "Hold the js-yaml overrides pinned at 4.3.0 (the @lhci/utils and @redocly/openapi-core scoped overrides in web/ and site/ package.json). Those pin a transitive js-yaml for the CVE-affected @lhci and @redocly toolchains; the app-level js-yaml devDependency stays on 5.x and is managed normally. matchCurrentValue targets only the 4.3.0-pinned override instances so Renovate stops re-proposing 4.3.0 -> 5.x every cycle without disturbing the app-level 5.x line. Lift when @lhci/utils and @redocly/openapi-core no longer depend on the vulnerable js-yaml range.",
       "matchManagers": ["npm"],
       "matchDepNames": ["js-yaml"],

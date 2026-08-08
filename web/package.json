@@ -27,7 +27,7 @@
     "postinstall": "node -e \"try{require.resolve('msw/package.json')}catch{process.exit(0)}\" && msw init public --no-save"
   },
   "dependencies": {
-    "@base-ui/react": "1.7.0",
+    "@base-ui/react": "1.6.0",
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "6.10.4",
     "@codemirror/lang-json": "6.0.2",
