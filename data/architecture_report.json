@@ -224,8 +224,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/plan_review_wiring.py": {
       "cap": 600,
-      "loc": 499,
-      "ratio": 0.832,
+      "loc": 530,
+      "ratio": 0.883,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
@@ -278,8 +278,8 @@
     },
     "src/synthorg/api/services/plan_service.py": {
       "cap": 600,
-      "loc": 538,
-      "ratio": 0.897,
+      "loc": 539,
+      "ratio": 0.898,
       "tier": "service"
     },
     "src/synthorg/api/subsystems/reconciler.py": {
@@ -332,8 +332,8 @@
     },
     "src/synthorg/budget/tracker.py": {
       "cap": 1100,
-      "loc": 1056,
-      "ratio": 0.96,
+      "loc": 1060,
+      "ratio": 0.964,
       "tier": "complex_service"
     },
     "src/synthorg/client/factory.py": {
@@ -1160,8 +1160,8 @@
     },
     "src/synthorg/persistence/postgres/plan_repo.py": {
       "cap": 500,
-      "loc": 489,
-      "ratio": 0.978,
+      "loc": 486,
+      "ratio": 0.972,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
@@ -1280,8 +1280,8 @@
     },
     "src/synthorg/persistence/sqlite/plan_repo.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
@@ -1813,7 +1813,7 @@
     },
     "synthorg.api.services.plan_service:PlanService": {
       "lcom4": 1,
-      "loc": 476
+      "loc": 477
     },
     "synthorg.api.subsystems.reconciler:SubsystemReconciler": {
       "lcom4": 1,
@@ -1833,7 +1833,7 @@
     },
     "synthorg.budget.tracker:CostTracker": {
       "lcom4": 3,
-      "loc": 954
+      "loc": 958
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,

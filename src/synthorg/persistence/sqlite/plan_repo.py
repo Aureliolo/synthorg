@@ -525,15 +525,21 @@ class SQLitePlanRepository:
                     f" SELECT 1 FROM tasks WHERE {live_clause})",
                     (plan_id, plan_id, *live_params),
                 ) as cursor:
-                    await self._db.commit()
                     rowcount = cursor.rowcount
                 if rowcount > 0:
+                    await self._db.commit()
                     return PlanDeleteOutcome(deleted=True)
+                # Counted inside the transaction the refused DELETE ran in, so
+                # the number reported is the one the guard actually refused
+                # on. Counting after the commit lets a task terminalise in
+                # between and answer zero, and a refusal with zero live tasks
+                # is indistinguishable from a plan that was never there.
                 async with self._db.execute(
                     f"SELECT COUNT(*) FROM tasks WHERE {live_clause}",  # noqa: S608 -- clauses are fixed literals, values parameterized
                     (plan_id, *live_params),
                 ) as cursor:
                     row = await cursor.fetchone()
+                await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 msg = f"Failed to delete plan {plan_id!r}"

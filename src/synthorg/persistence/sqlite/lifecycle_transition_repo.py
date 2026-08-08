@@ -34,11 +34,17 @@ _COLUMNS = (
     "reason, entity_version, occurred_at"
 )
 
+#: Idempotent on the row's own id, which the caller mints per transition. A
+#: commit that lands while its response is lost is retried by the ledger with
+#: the same object, and a plain INSERT would answer that retry with a
+#: duplicate-key error the ledger then records as a LOST row: a false alarm
+#: about the one thing this table exists to be complete about. The conflict
+#: target is the primary key, so "already there" means this exact row.
 _INSERT_SQL = f"""\
 INSERT INTO lifecycle_transitions ({_COLUMNS}) VALUES (
     :id, :entity_kind, :entity_id, :from_status, :to_status, :requested_by,
     :reason, :entity_version, :occurred_at
-)"""
+) ON CONFLICT (id) DO NOTHING"""
 
 
 class SQLiteLifecycleTransitionRepository:

@@ -7,6 +7,7 @@ ceiling could not survive a restart and every deliverable receipt reported
 zero.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -119,6 +120,29 @@ class TestDurableAppend:
         await tracker.record(_record(0.5))
 
         assert [r.cost for r in repo.records] == [0.25, 0.5]
+
+    async def test_a_cancelled_append_releases_its_claim(self) -> None:
+        """A stranded reservation dedupes every redelivery of that claim away.
+
+        The record is retryable; a claim left in the in-flight set is not,
+        because the next delivery reads it as still running and returns
+        without recording the spend at all.
+        """
+        cancelled = mock_of[CostRecordRepository]()
+        cancelled.append.side_effect = asyncio.CancelledError()
+        tracker = CostTracker(clock=FakeClock(start=_NOW))
+        _attach(tracker, cancelled)
+        record = _record(0.25)
+
+        with pytest.raises(asyncio.CancelledError):
+            await tracker.record(record)
+
+        # The redelivery must be recorded, not deduped as still in flight.
+        landed = _RecordingRepo()
+        _attach(tracker, landed)
+        await tracker.record(record)
+
+        assert [r.cost for r in landed.records] == [0.25]
 
     async def test_a_store_failure_does_not_lose_the_in_memory_window(self) -> None:
         """The run must keep enforcing its ceiling when the store is down."""

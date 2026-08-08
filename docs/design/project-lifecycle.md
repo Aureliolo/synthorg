@@ -139,7 +139,7 @@ tail plan status carries `FAILED`. `check_lifecycle_exit_reachable.py` walks
 those hops alone, breadth-first, so plain terminal reachability cannot
 satisfy it.
 
-### Every status change leaves a record
+### Every status change is recorded
 
 The status says where an initiative is. The append-only
 `lifecycle_transitions` ledger says how it got there and who moved it:
@@ -148,6 +148,17 @@ persisted hop, including the intermediate hops of a multi-hop walk that a log
 line loses. `GET /plans/{id}/transitions` reads it back, which is what makes
 "only the evaluate stage writes COMPLETED" provable from persisted state
 rather than from a container's stdout.
+
+Every write path is covered; the write itself is not guaranteed. The append
+runs after the status write has committed, so it cannot be rolled back into
+it, and a ledger outage that outlasts the retries leaves a status with no row
+behind it. That gap is bounded and loud rather than silent: the append is
+idempotent on the row's own id (a retry after a lost response is the success
+it was, not a duplicate-key failure), a row that still does not land is logged
+at ERROR with every field it would have carried so it can be reconstructed,
+and a run of them says so explicitly instead of reporting each as an isolated
+blip. Read the ledger as complete up to a reported outage, not as complete by
+construction.
 
 The ledger repository is a **required** collaborator, not an optional one, on
 both `LifecycleLedger` and `PlanService`: a service built without it would

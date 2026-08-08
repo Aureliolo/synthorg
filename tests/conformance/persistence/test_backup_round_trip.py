@@ -10,6 +10,7 @@ Postgres arm is skipped when ``pg_dump`` or ``pg_restore`` is not on PATH
 the binaries alongside the testcontainers postgres image.
 """
 
+import os
 import shutil
 from pathlib import Path
 from typing import assert_never
@@ -46,6 +47,17 @@ def _build_handler(
         assert isinstance(config, SQLiteConfig)
         return SQLitePersistenceComponentHandler(db_path=Path(config.path))
     if backend.kind == PersistenceBackendKind.POSTGRES:
+        if os.name == "nt":
+            # Not a gap to close: the two requirements are mutually exclusive
+            # on Windows. psycopg's async path needs a SelectorEventLoop (which
+            # this directory's conftest pins for exactly that reason) and
+            # asyncio subprocesses need a ProactorEventLoop, and this arm does
+            # both: it talks to the database through psycopg and shells out to
+            # pg_dump. CI runs Linux, where one loop serves both.
+            pytest.skip(
+                "the postgres arm needs psycopg (SelectorEventLoop) and "
+                "pg_dump (ProactorEventLoop) in one loop; CI runs it on Linux"
+            )
         if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
             pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
         assert isinstance(config, PostgresConfig)

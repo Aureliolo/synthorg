@@ -321,6 +321,11 @@ class FakeLifecycleTransitionRepository:
         self.transitions: list[LifecycleTransition] = []
 
     async def append(self, event: LifecycleTransition) -> None:
+        # Idempotent on id, as both backends are: the ledger retries the same
+        # object after a lost response, and a fake that doubled the row would
+        # pass a test the real repositories fail.
+        if any(existing.id == event.id for existing in self.transitions):
+            return
         self.transitions.append(event)
 
     async def query(

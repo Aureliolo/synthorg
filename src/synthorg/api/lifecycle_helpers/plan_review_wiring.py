@@ -12,6 +12,7 @@ unless an operator opts in.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Final
 from uuid import UUID
@@ -54,6 +55,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+    PIPELINE_PLAN_APPROVAL_RETIRE_FAILED,
     PIPELINE_PLAN_FAIL_SHELL_MISSING,
     PIPELINE_PLAN_FAIL_WRITE_FAILED,
     PIPELINE_PLAN_MARKED_FAILED,
@@ -323,8 +325,10 @@ class PlanReviewApprovalGate:
                 PROJECT_METADATA_KEY: work_item.project,
             },
         )
+        parked: list[ApprovalItem] = []
         try:
             await self._approval_store.add(approval)
+            parked.append(approval)
             # Parked after the plan approval, and inside the same guard: a
             # question nobody can answer is the state this whole path exists
             # to close, so a failure here fails the plan rather than parking
@@ -337,6 +341,7 @@ class PlanReviewApprovalGate:
             )
             for question in questions:
                 await self._approval_store.add(question)
+                parked.append(question)
             log_parked(durable_plan, len(questions))
         except Exception as exc:
             reraise_critical(exc)
@@ -350,6 +355,10 @@ class PlanReviewApprovalGate:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # Before the plan is failed, not after: an approval that outlives
+            # its plan is actionable, and answering one writes back onto a
+            # plan the operator is being told failed.
+            await self._retire_parked(parked)
             await self.fail_plan(
                 plan_id=durable_plan.id, reason="approval-store write failed"
             )
@@ -361,6 +370,37 @@ class PlanReviewApprovalGate:
             subtask_count=len(plan.plan.subtasks),
             detail=NotBlankStr(detail),
         )
+
+    async def _retire_parked(self, parked: Sequence[ApprovalItem]) -> None:
+        """Remove approvals written before a later park failed.
+
+        Parking is several writes and the store has no batch, so a failure
+        partway leaves PENDING approvals for a plan that is about to be
+        FAILED. Those are not inert: the plan approval still offers approve
+        and reject, and answering a question writes back onto the plan
+        through :func:`apply_plan_question_answer`. Removing them is what
+        makes the failure the whole outcome rather than half of one.
+
+        Best-effort per row, like ``fail_plan``: the caller is already
+        re-raising the write failure that brought it here, and a compensation
+        that raises would replace that diagnosis with its own.
+
+        Args:
+            parked: The approvals this call had already written, in order.
+        """
+        for item in parked:
+            try:
+                await self._approval_store.delete(NotBlankStr(str(item.id)))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- compensation for a failure already
+                # being raised; replacing that diagnosis would hide the cause.
+                reraise_critical(exc)
+                logger.warning(
+                    PIPELINE_PLAN_APPROVAL_RETIRE_FAILED,
+                    approval_id=str(item.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def fail_plan(self, *, plan_id: UUID, reason: str) -> None:
         """Mark a plan FAILED so a failed run leaves a visible plan, best-effort.

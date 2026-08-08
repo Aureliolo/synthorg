@@ -65,6 +65,28 @@ class TestLifecycleTransitionRepository:
         assert row.reason == "approved the plan"
         assert row.entity_version == 2
 
+    async def test_re_appending_the_same_row_is_not_an_error(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A commit whose response is lost is retried with the same object.
+
+        The ledger retries the identical transition, and a plain INSERT would
+        answer with a duplicate-key error it then records as a LOST row: a
+        false alarm about the one thing this table exists to be complete
+        about. The retry has to read as the success it actually was, and it
+        must not double the row either.
+        """
+        row = _transition()
+
+        await backend.lifecycle_transitions.append(row)
+        await backend.lifecycle_transitions.append(row)
+
+        page = await backend.lifecycle_transitions.query(
+            LifecycleTransitionFilterSpec(entity_id=NotBlankStr("plan-001")),
+        )
+        assert len(page) == 1
+        assert page[0].id == row.id
+
     async def test_a_system_move_has_no_actor(
         self, backend: PersistenceBackend
     ) -> None:

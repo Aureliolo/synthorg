@@ -92,6 +92,12 @@ PIPELINE_PLAN_APPROVAL_PARK_FAILED: Final[str] = (
 )
 """Parking the plan's approval item failed; the plan is being marked FAILED."""
 
+PIPELINE_PLAN_APPROVAL_RETIRE_FAILED: Final[str] = (
+    "pipeline.plan_review.approval_retire_failed"
+)
+"""An approval parked before a failed park could not be removed; it outlives
+its plan and is still actionable."""
+
 PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
 """The stakeholder plan-review panel was attached to the work pipeline."""
 

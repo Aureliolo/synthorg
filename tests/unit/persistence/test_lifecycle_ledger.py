@@ -91,6 +91,28 @@ class TestPlanStatusWrites:
         assert row.reason == "looks right"
         assert row.entity_version == plan.version + 1
 
+    async def test_a_successor_records_its_own_first_status(self) -> None:
+        """A successor is a new plan entity, so its birth is a transition too.
+
+        Without it the ledger's account of a replanned initiative starts one
+        revision late, and the row that says who opened the revision that
+        actually completed is missing.
+        """
+        existing = _plan(status=PlanStatus.EXECUTING)
+        transitions = FakeLifecycleTransitionRepository()
+        service = PlanService(
+            repo=mock_of[PlanRepository](),
+            clock=FakeClock(start=_NOW),
+            transitions=transitions,
+        )
+
+        successor = await service.open_successor(existing, items=existing.items)
+
+        rows = [r for r in transitions.transitions if r.entity_id == str(successor.id)]
+        assert len(rows) == 1
+        assert rows[0].from_status is None
+        assert rows[0].to_status == successor.status.value
+
     async def test_a_service_cannot_be_built_without_a_ledger(self) -> None:
         """A ledger-less service would move plans nothing durably witnessed."""
         with pytest.raises(TypeError):

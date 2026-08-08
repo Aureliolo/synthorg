@@ -607,6 +607,11 @@ class PlanService(PlanWriteRecorderMixin):
                 error=safe_error_description(exc),
             )
             raise
+        # A successor is a new plan entity, so its first status is a birth
+        # like any other and needs the same durable row ``create`` writes.
+        # Without it the ledger's account of how a replanned initiative
+        # reached COMPLETED starts one revision too late.
+        await self._log_transition(None, successor)
         logger.info(
             API_PLAN_SUCCESSOR_OPENED,
             plan_id=str(successor.id),

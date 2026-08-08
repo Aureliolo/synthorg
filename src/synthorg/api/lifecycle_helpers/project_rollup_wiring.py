@@ -91,8 +91,13 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         # immediately and does no work of its own.
         task_engine.register_observer(service.on_task_state_changed)
         app_state.wire(EngineStateSlice, project_rollup_service=service)
-    except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log, continue
+    except Exception as exc:
         reraise_critical(exc)
+        # Reported, not returned. Every dependency this activation declared is
+        # present, so a failure here is the build itself failing, and a quiet
+        # return leaves the reconciler with a subsystem that is down for a
+        # reason living only in a container log.
+        msg = f"rollup wiring failed: {safe_error_description(exc)}"
         logger.warning(
             API_APP_STARTUP,
             service="project_rollup_service",
@@ -100,7 +105,7 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        raise SubsystemDeclinedError(msg) from exc
     logger.info(API_APP_STARTUP, service="project_rollup_service", note="wired")
 
 

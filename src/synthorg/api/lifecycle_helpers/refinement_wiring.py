@@ -59,7 +59,11 @@ async def wire_refinement_router(app_state: AppState) -> None:
     except MemoryError, RecursionError:
         # Interpreter-level criticals are never best-effort; let them abort.
         raise
-    except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
+    except Exception as exc:
+        # Reported, not returned: every declared dependency is present, so a
+        # failure here is the build failing, and a quiet return leaves the
+        # pipeline router-less for a reason only a container log carries.
+        msg = f"refinement router wiring failed: {safe_error_description(exc)}"
         logger.warning(
             API_APP_STARTUP,
             service="work_refinement_router",
@@ -67,7 +71,7 @@ async def wire_refinement_router(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        raise SubsystemDeclinedError(msg) from exc
     logger.info(API_APP_STARTUP, service="work_refinement_router", note="wired")
 
 

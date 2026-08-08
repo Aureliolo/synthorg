@@ -72,8 +72,12 @@ async def wire_pruning(app_state: AppState) -> None:
             tracker=hr.performance_tracker,
             approval_store=approval_store,
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
+        # Reported, not returned: every declared dependency is present, so a
+        # failure here is the build failing, and a quiet return leaves the
+        # subsystem down with its reason only in a container log.
+        msg = f"pruning wiring failed: {safe_error_description(exc)}"
         logger.warning(
             API_APP_STARTUP,
             service="pruning",
@@ -81,6 +85,7 @@ async def wire_pruning(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        raise SubsystemDeclinedError(msg) from exc
 
 
 async def _wire(

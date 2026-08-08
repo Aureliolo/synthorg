@@ -623,8 +623,11 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      per-session spend ceiling come from
      `coordination.decomposition_agent_max_turns` /
      `coordination.decomposition_agent_cost_ceiling`. With no owner staffed, or
-     with an owner whose provider will not resolve, or on an `ERROR`
-     termination, it degrades to the single-shot strategy so a greenlight is
+     with an owner pinned to a provider the registry does not know
+     (`DriverNotRegisteredError` only, so an authentication or configuration
+     failure still propagates and stays visible), or on a termination that
+     prevented the session producing at all (`ERROR`, `SHUTDOWN`, `PARKED`,
+     `CANCELLED`), it degrades to the single-shot strategy so a greenlight is
      never blocked, and stamps `Plan.planning_strategy` so the approval gate
      and the dashboard say which planner produced what the operator is being
      asked to approve. A session that **ran and terminated without submitting**

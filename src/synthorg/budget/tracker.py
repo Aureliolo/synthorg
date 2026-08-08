@@ -527,26 +527,40 @@ class CostTracker(CostTrackerSummaryMixin):
             )
             return
 
-        # Durable before in-memory: the record is what a receipt reads and
-        # what a restart rehydrates from, so a record that exists only in
-        # this process's memory is spend nothing else can see.
-        await self._append_durable(cost_record)
+        # Every await from here to the promotion is inside the guard, for the
+        # same reason the reservation above is: a cancellation between the
+        # reservation and the discard strands the claim in
+        # ``_inflight_claims`` for the life of the process, and every later
+        # redelivery of it is then deduped away as still in flight. The record
+        # is retryable; a reservation nothing will ever release is not.
+        try:
+            # Durable before in-memory: the record is what a receipt reads and
+            # what a restart rehydrates from, so a record that exists only in
+            # this process's memory is spend nothing else can see.
+            await self._append_durable(cost_record)
 
-        async with self._get_lock():
-            # Promote the reservation to a finalised LRU entry under
-            # the lock so the membership check above never observes
-            # a gap where the claim is in neither set. Eviction only
-            # affects ``_seen_claims``, so still-running reservations
-            # in ``_inflight_claims`` are untouched.
+            async with self._get_lock():
+                # Promote the reservation to a finalised LRU entry under
+                # the lock so the membership check above never observes
+                # a gap where the claim is in neither set. Eviction only
+                # affects ``_seen_claims``, so still-running reservations
+                # in ``_inflight_claims`` are untouched.
+                self._inflight_claims.discard(cost_record.claim_id)
+                self._records.append(cost_record)
+                self._promote_seen_claim(cost_record.claim_id)
+                logger.info(
+                    BUDGET_RECORD_ADDED,
+                    agent_id=cost_record.agent_id,
+                    model=cost_record.model,
+                    cost=cost_record.cost,
+                )
+        except BaseException:
+            # Lockless and idempotent: ``set.discard`` is atomic on the
+            # single-threaded event loop and no locked region iterates
+            # ``_inflight_claims``, so releasing this call's own reservation
+            # cannot race the promotion that may already have run.
             self._inflight_claims.discard(cost_record.claim_id)
-            self._records.append(cost_record)
-            self._promote_seen_claim(cost_record.claim_id)
-            logger.info(
-                BUDGET_RECORD_ADDED,
-                agent_id=cost_record.agent_id,
-                model=cost_record.model,
-                cost=cost_record.cost,
-            )
+            raise
 
     async def _append_durable(self, cost_record: CostRecord) -> None:
         """Persist the record itself, best-effort but not silently.

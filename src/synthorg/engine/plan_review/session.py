@@ -89,6 +89,41 @@ class _ReviewerResult:
     verdict: PlanReviewerVerdict | None
     provider_failed: bool
 
+    @classmethod
+    def unreachable(cls) -> _ReviewerResult:
+        """The session never reached a provider answer.
+
+        An unresolvable provider, a construction failure, or the call itself
+        raising: in all three nothing was reviewed, which is different from a
+        reviewer that ran and stayed quiet.
+
+        Returns:
+            A verdict-less result whose provider is blamed.
+        """
+        return cls(verdict=None, provider_failed=True)
+
+    @classmethod
+    def from_session(
+        cls,
+        verdict: PlanReviewerVerdict | None,
+        termination: TerminationReason,
+    ) -> _ReviewerResult:
+        """Read one finished session's outcome.
+
+        Args:
+            verdict: What the panellist submitted, if anything.
+            termination: How its loop ended, which is the only thing that
+                separates a reviewer that had nothing to say from one whose
+                provider stopped it saying anything.
+
+        Returns:
+            The panellist's contribution.
+        """
+        return cls(
+            verdict=verdict,
+            provider_failed=verdict is None and termination is TerminationReason.ERROR,
+        )
+
 
 class AgentSessionPlanReviewPanel(PlanReviewPanel):
     """Panel that reviews a plan via one bounded persona session per lead.
@@ -267,24 +302,19 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            # The session never reached a provider answer: an unresolvable
-            # provider, a construction failure, or the call itself raising.
-            return _ReviewerResult(verdict=None, provider_failed=True)
+            return _ReviewerResult.unreachable()
         verdict = capture.verdict
         if verdict is None:
             self._log_no_verdict(task, reviewer, result.termination_reason)
-            return _ReviewerResult(
-                verdict=None,
-                provider_failed=result.termination_reason is TerminationReason.ERROR,
+        else:
+            logger.info(
+                PLAN_REVIEW_REVIEWER_COMPLETED,
+                task_id=str(task.id),
+                reviewer_id=str(reviewer.id),
+                verdict=verdict.verdict.value,
+                finding_count=len(verdict.findings),
             )
-        logger.info(
-            PLAN_REVIEW_REVIEWER_COMPLETED,
-            task_id=str(task.id),
-            reviewer_id=str(reviewer.id),
-            verdict=verdict.verdict.value,
-            finding_count=len(verdict.findings),
-        )
-        return _ReviewerResult(verdict=verdict, provider_failed=False)
+        return _ReviewerResult.from_session(verdict, result.termination_reason)
 
     def _log_no_verdict(
         self,

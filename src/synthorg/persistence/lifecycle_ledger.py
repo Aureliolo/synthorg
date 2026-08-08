@@ -63,6 +63,13 @@ _APPEND_DELAY_CAP_SECONDS: Final[float] = 0.4
 #: Consecutive failed appends after which the log stops calling it a blip.
 _FAILURE_ESCALATION_STREAK: Final[int] = 3
 
+#: Cap on the operator-authored ``reason`` copied into the lost-row log line.
+#: The field is free text with no length bound of its own, and this line fires
+#: once per lost row: a ledger outage would otherwise copy unbounded operator
+#: prose into log retention, once per transition, for as long as it lasts.
+#: Enough to identify the row, not enough to be a transport for its contents.
+_MAX_LOGGED_REASON_CHARS: Final[int] = 200
+
 
 def _is_retryable(exc: Exception) -> bool:
     """Whether *exc* is worth another append attempt.
@@ -225,12 +232,19 @@ class LifecycleLedger:
 
         Every field of the row is logged, ``id`` and ``occurred_at``
         included, so the row can be reconstructed from the log rather than
-        merely mourned in it.
+        merely mourned in it. ``requested_by`` is named for the same reason
+        the success path names it: a transition whose actor is missing is not
+        reconstructible, and it is an identifier rather than content. The
+        free-text ``reason`` is bounded, because it is the one field an
+        operator can make arbitrarily long and this line repeats per lost row.
 
         Args:
             transition: The row that did not land.
             exc: What stopped it.
         """
+        reason = transition.reason
+        if reason is not None and len(reason) > _MAX_LOGGED_REASON_CHARS:
+            reason = NotBlankStr(reason[:_MAX_LOGGED_REASON_CHARS])
         self._consecutive_failures += 1
         logger.error(
             PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_FAILED,
@@ -241,7 +255,8 @@ class LifecycleLedger:
             to_status=transition.to_status,
             entity_version=transition.entity_version,
             requested_by=transition.requested_by,
-            reason=transition.reason,
+            reason=reason,
+            reason_truncated=reason != transition.reason,
             occurred_at=transition.occurred_at.isoformat(),
             consecutive_failures=self._consecutive_failures,
             ledger_recording=self._consecutive_failures < _FAILURE_ESCALATION_STREAK,

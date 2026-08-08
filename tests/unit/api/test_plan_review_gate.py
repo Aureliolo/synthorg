@@ -68,6 +68,28 @@ class _FailingApprovalStore(ApprovalStore):
         raise QueryError(msg)
 
 
+class _NthAddFailingApprovalStore(ApprovalStore):
+    """Approval store whose Nth ``add`` fails, leaving earlier ones written.
+
+    The partial shape is the one that matters: parking is several writes with
+    no batch behind it, so a failure part-way leaves PENDING approvals for a
+    plan that is about to be FAILED.
+    """
+
+    def __init__(self, *, fail_on: int) -> None:
+        super().__init__()
+        self._fail_on = fail_on
+        self._adds = 0
+
+    @override
+    async def add(self, item: ApprovalItem) -> None:
+        self._adds += 1
+        if self._adds == self._fail_on:
+            msg = "approval boom"
+            raise QueryError(msg)
+        await super().add(item)
+
+
 class _UpdateFailingPlanRepository(FakePlanRepository):
     """Plan repo whose ``update`` always fails, to exercise the double-fault."""
 
@@ -444,6 +466,42 @@ class TestPlanReviewApprovalGate:
         assert len(persisted) == 1
         assert persisted[0].status is PlanStatus.FAILED
         assert persisted[0].failure_reason == "approval-store write failed"
+
+    async def test_a_park_that_fails_partway_leaves_no_actionable_approval(
+        self,
+    ) -> None:
+        """An approval outliving its plan is one an operator can still act on.
+
+        Parking is several writes with no batch behind it, so the second
+        question failing used to leave the plan approval and the first
+        question PENDING against a plan being marked FAILED: approve and
+        reject still offered, and answering the question writing back onto
+        the failed plan.
+        """
+        task = _result_task("root")
+        # Fails on the third add: plan approval, first question, then boom.
+        store = _NthAddFailingApprovalStore(fail_on=3)
+        gate, plans, _ = await _gate(approval_store=store, parent=task)
+        work_item = _work_item()
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+
+        with pytest.raises(QueryError):
+            await gate.request_plan_approval(
+                plan_id=plan_id,
+                work_item=work_item,
+                task=task,
+                plan=_decomposition(
+                    open_questions=(
+                        NotBlankStr("Which database?"),
+                        NotBlankStr("Do we ship on mobile?"),
+                    )
+                ),
+                review=_NO_PANEL,
+            )
+
+        assert await store.list_items() == ()
+        persisted = await plans.list_items()
+        assert persisted[0].status is PlanStatus.FAILED
 
     async def test_fail_plan_write_failure_is_swallowed_not_raised(self) -> None:
         # The compensating FAILED write is the one on the failure path; if it

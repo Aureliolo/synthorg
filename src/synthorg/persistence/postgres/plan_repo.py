@@ -513,27 +513,34 @@ class PostgresPlanRepository:
         live_clause, live_params = live_task_predicate(terminal_statuses, "%s")
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                # The plan row is locked first so two deleters serialise and,
-                # with a foreign key absent, so the count below is taken after
-                # any writer holding the row has finished with it.
+                # One conditional DELETE, not a count followed by a delete.
+                # Locking the plan row does not stop a task being inserted
+                # against it, so a separate count leaves a window in which
+                # work is filed under a plan the delete has already decided
+                # to remove. Evaluating the guard inside the statement closes
+                # it: the row goes only if no live task is visible to that
+                # same statement.
                 await cur.execute(
-                    "SELECT 1 FROM plans WHERE id = %s FOR UPDATE", (plan_id,)
+                    "DELETE FROM plans WHERE id = %s AND NOT EXISTS ("  # noqa: S608 -- clauses are fixed literals, values parameterized
+                    f" SELECT 1 FROM tasks WHERE {live_clause})",
+                    (plan_id, plan_id, *live_params),
                 )
-                if await cur.fetchone() is None:
+                if cur.rowcount > 0:
                     await conn.commit()
-                    return PlanDeleteOutcome(deleted=False)
+                    return PlanDeleteOutcome(deleted=True)
+                # Counted in the transaction the refused DELETE ran in, so the
+                # number reported is the one the guard refused on. A count
+                # taken after the commit can see a task terminalise in between
+                # and answer zero, and a refusal with zero live tasks reads as
+                # a plan that was never there.
                 await cur.execute(
                     f"SELECT COUNT(*) FROM tasks WHERE {live_clause}",  # noqa: S608 -- clauses are fixed literals, values parameterized
                     (plan_id, *live_params),
                 )
                 row = await cur.fetchone()
                 live = int(row[0]) if row else 0
-                if live:
-                    await conn.commit()
-                    return PlanDeleteOutcome(deleted=False, live_task_count=live)
-                await cur.execute("DELETE FROM plans WHERE id = %s", (plan_id,))
-                deleted = cur.rowcount > 0
                 await conn.commit()
+                return PlanDeleteOutcome(deleted=False, live_task_count=live)
         except psycopg.Error as exc:
             msg = f"Failed to delete plan {plan_id!r}"
             logger.warning(
@@ -543,4 +550,3 @@ class PostgresPlanRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return PlanDeleteOutcome(deleted=deleted)
