@@ -140,7 +140,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
       placeholder messages).
     - **No persistence dependency**: relies on whichever observability sink
       the operator configured (structlog file, OTLP backend, Postgres).
-    - **Best-effort**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
+    - **Partial**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
       how much state was recovered.
     - **Use case**: recovery after brain failure when checkpoint persistence
       is not configured or the checkpoint is stale.

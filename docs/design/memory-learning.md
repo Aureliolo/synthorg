@@ -207,7 +207,7 @@ agent_learnings}`, written by `engine/initiative/retro_writes.py`:
 
 Every entry is redacted at the store boundary, deduped by the write gate, and
 tagged `retro` + `objective:<uuid5(project_id)>`. Writes are per-item
-best-effort: one refused or failed learning never loses the rest.
+failure-tolerant: one refused or failed learning never loses the rest.
 
 ### Idempotency and isolation from the loop
 
@@ -227,7 +227,7 @@ The cost of that design is on the recovery side, not the duplication side: a
 hard crash mid-capture loses that objective's retrospective, since nothing
 re-triggers it. Graceful shutdown does not, because the runner drains in-flight
 captures before disconnecting the memory backends. Because the rollup is a
-best-effort, bounded-queue observer, capture runs **detached** on a tracked
+failure-tolerant, bounded-queue observer, capture runs **detached** on a tracked
 background task with the wall-clock ceiling, so it never blocks or fails task
 processing.
 
@@ -496,7 +496,7 @@ A fine-tuned checkpoint replaces the active embedder **only on a measured win**.
 
 ### Startup wiring
 
-The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is best-effort and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
+The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is failure-tolerant and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
 
 ### BackendUnsupportedError routing
 

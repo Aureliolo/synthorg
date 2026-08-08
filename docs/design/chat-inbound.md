@@ -97,7 +97,7 @@ Three properties make that table safe under a race, where one caller wins
   drain reads `status` / `decided_by` / `decision_reason` from there and
   the two can never disagree.
 
-Recording is best-effort (a `None` backend, or an outbox fault, degrades
+Recording is failure-tolerant (a `None` backend, or an outbox fault, degrades
 to a logged no-op) because a run with no database cannot survive a crash
 anyway, and forfeiting recovery for one decision beats 500-ing a
 serviceable approval.

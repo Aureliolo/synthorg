@@ -898,7 +898,7 @@ On-startup wiring helpers follow a two-name contract:
 
 * `_wire_<x>` MUST succeed: a failure is a wiring bug and propagates,
   failing the boot.
-* `_try_wire_<x>` is best-effort and idempotent: it attaches durable
+* `_try_wire_<x>` is failure-tolerant and idempotent: it attaches durable
   collaborators that only exist once a backend is connected (e.g.
   `_try_wire_performance_persistence` attaches metric repos to the
   construction-phase tracker), logs an `API_APP_STARTUP` warning and

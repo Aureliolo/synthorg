@@ -69,7 +69,7 @@ be read, and the dashboard would report the whole roster as broken during a sett
 | `unresolved` | The binding matches no configured model: unassigned, or stale after a removed model. |
 | `provider_config_unavailable` | Provider config could not be read, so no binding was resolvable. Says nothing about this agent's binding. |
 
-Reading provider config is best-effort on every endpoint that projects capabilities
+Reading provider config is failure-tolerant on every endpoint that projects capabilities
 (`providers_for_capabilities`). Capabilities are derived display data layered onto an
 operation with its own result: on a mutation the write has already committed by the time
 they resolve, so a settings failure must not report a successful create or reorder as an
@@ -374,7 +374,7 @@ no manual configuration required. When wired:
 - `register()` snapshots the initial identity immediately after storing it.
 - `update_identity()` snapshots the updated identity after applying the change.
 - `evolve_identity()` snapshots the restored identity on rollback.
-- All calls are best-effort: versioning failures are logged at WARNING and do not
+- All calls are failure-tolerant: versioning failures are logged at WARNING and do not
   interrupt the registry mutation.
 
 ### REST API
@@ -421,7 +421,7 @@ metadata = {
 }
 ```
 
-This lookup is best-effort. On ``QueryError`` the decision record is written with
+This lookup is failure-tolerant. On ``QueryError`` the decision record is written with
 ``{"charter_version_lookup_failed": True}`` in its metadata so operators can
 distinguish lookup failures from the no-version-found case (where ``metadata``
 is ``None``). The failure is logged at WARNING. No schema migration is required:

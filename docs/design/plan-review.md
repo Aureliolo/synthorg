@@ -68,7 +68,7 @@ plan and excluding the owner (no self-review). Each panellist runs a bounded
 persona session (`AgentSessionPlanReviewPanel`) and submits a structured verdict
 (`ENDORSED` / `CONCERNS` / `REVISION_REQUESTED`) with categorised findings; a
 deterministic synthesis (`synthesise_review`) consolidates them onto `Plan.review`
-(overall verdict = the most severe). The panel is wired best-effort at startup and
+(overall verdict = the most severe). The panel is wired at startup without failing boot, and
 runs as a distinct pipeline phase between decompose and the human gate; when no
 panel is attached the plan is parked with `review = None`.
 

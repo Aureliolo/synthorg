@@ -212,7 +212,7 @@ status from scratch, then writes under optimistic concurrency.
 Two properties follow, and both are the reason for the design:
 
 - **Idempotent, therefore self-healing.** `TaskEngine` observers are explicitly
-  best-effort: a bounded queue, drained at shutdown, so events can be dropped or
+  lossy: a bounded queue, drained at shutdown, so events can be dropped or
   redelivered. A full recompute means the next event repairs any drift and a
   duplicate event changes nothing. An incremental counter would be corrupted
   permanently by a single dropped event, which is why there is no reconciler
@@ -223,7 +223,7 @@ Writes are version-guarded (`expected_version`) with a bounded retry, and a
 per-plan in-process lock serialises same-process recomputes. A losing write
 re-reads and recomputes rather than clobbering the winner.
 
-The rollup also fires the loop's detached tails, each best-effort and each
+The rollup also fires the loop's detached tails, each failure-tolerant and each
 unable to block or fail it:
 
 - **Integrate and evaluate**, while the plan reads as `INTEGRATING` or

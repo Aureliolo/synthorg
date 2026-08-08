@@ -200,7 +200,7 @@ All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc)
 
 | Constant | Level | When fired |
 |----------|-------|------------|
-| `EVENT_STREAM_HUB_PUBLISH_FAILED` | WARNING | A subscriber queue rejected the event (full); the publisher continues (best-effort fan-out). |
+| `EVENT_STREAM_HUB_PUBLISH_FAILED` | WARNING | A subscriber queue rejected the event (full); the publisher continues (lossy fan-out). |
 | `EVENT_STREAM_HUB_PUBLISH_DEDUPED` | WARNING | An event was rejected as a duplicate within the per-session sliding-window TTL (default 60s). The hub keys dedup on `event.id`; identical ids within the window are dropped so an upstream retry (e.g. webhook handler that catches a transient publish failure and retries) cannot deliver the same event twice. The window is bounded per session (default 1024 entries, evicted on insert) so a noisy session cannot exhaust memory. |
 | `EVENT_STREAM_HUB_STARTED` | INFO | `EventStreamHub.start()` spawned the inactivity-TTL janitor task. Carries the resolved `idle_ttl_seconds` and `janitor_interval_seconds`. Idempotent: a second `start()` call while running is a no-op and does not re-emit. |
 | `EVENT_STREAM_HUB_STOPPED` | INFO | `EventStreamHub.stop()` cancelled the janitor and observed clean shutdown within the per-call deadline. |

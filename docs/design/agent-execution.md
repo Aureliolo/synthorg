@@ -190,7 +190,7 @@ async run(
    allow any agent). When the project has a non-zero budget and `BudgetEnforcer`
    is available, check project-level budget via `check_project_budget()`. Raises
    `ProjectBudgetExhaustedError` when the project's accumulated cost has reached
-   its budget. Pre-flight project budget checks are best-effort under concurrency
+   its budget. Pre-flight project budget checks are approximate under concurrency
    (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
 4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
    task, and resolved model tier. The tier determines a `PromptProfile` that
@@ -289,7 +289,7 @@ async run(
       auditable decisions drop-box (``DecisionRepository``) for every
       completed review, capturing executor, reviewer, outcome,
       approval-ID cross-reference, and an acceptance-criteria snapshot.
-      This append is **best-effort**: known transient persistence
+      This append is **failure-tolerant**: known transient persistence
       failures (``QueryError`` / ``DuplicateRecordError``) are logged
       via ``logger.exception`` and do NOT roll back the state
       transition (the transition is the source of truth; the drop-box
@@ -306,7 +306,7 @@ async run(
       ``VersioningService[T]`` infrastructure. ``ReviewGateService``
       looks up the executing agent's newest identity version and injects
       ``charter_version: {agent_id, version, content_hash}`` into the
-      ``DecisionRecord.metadata`` field (best-effort; lookup failure
+      ``DecisionRecord.metadata`` field (failure-tolerant; lookup failure
       is logged at WARNING and the decision record is still written).
       See [Agents](agents.md) for the full design.
     - `SHUTDOWN` termination: current status -> INTERRUPTED (or SUSPENDED
@@ -448,10 +448,10 @@ publishes a `WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED)` on the
 `task_id`, `before_tokens`, `after_tokens`, `max_tokens`, `trim_tier`, and
 `budget_met`. The dashboard subscribes via the global `useGlobalNotifications`
 hook and renders a live toast so operators see token-budget pressure in
-real time. Publishing is best-effort: failures log
+real time. Publishing is failure-tolerant: failures log
 `prompt.personality.notify_failed` at WARNING and never block task
 execution (`MemoryError`, `RecursionError`, and `asyncio.CancelledError`
-propagate per the standard best-effort publisher contract). Wiring the
+propagate per the standard failure-tolerant publisher contract). Wiring the
 notifier callback is the responsibility of the engine host; API-layer
 integrations use the `synthorg.api.app.make_personality_trim_notifier`
 factory to build a callback bound to the live `ChannelsPlugin`.
@@ -658,7 +658,7 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 The brain can fail (crash, OOM, timeout) without losing session state. Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
 
-`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages. The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
+`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **partial** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages. The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
 
 This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history. Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
 

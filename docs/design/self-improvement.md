@@ -366,7 +366,7 @@ system's job, not the user's, so there is no mode picker.
   turn (above all `act`) only ever runs on the idempotent buffered path and a
   dropped stream can never re-run its tools.
 
-- **Intent is best-effort with a hard safety floor.** Any uncertainty degrades
+- **Intent detection is approximate, with a hard safety floor.** Any uncertainty degrades
   toward `explain` (a read), never toward `act` (a write) or `charter` (an
   expensive multi-turn interview): those two carry their own higher confidence
   floors (`act_intent_confidence_floor` 0.85, `charter_intent_confidence_floor`
@@ -451,7 +451,7 @@ system's job, not the user's, so there is no mode picker.
 - **Transparent multi-voice (opt-out, default on).** After an `explain` answer,
   0..N specialists above a value floor add a short, attributed chime-in
   (`chime_ins`), rendered as agent bubbles so what answers the operator is the
-  *organisation* rather than one synthesised voice. Best-effort: a
+  *organisation* rather than one synthesised voice. Failure-tolerant: a
   chime-in failure never fails the turn, and every chime is fenced with
   `wrap_untrusted`. Gated live per request via `chief_of_staff.multi_voice_enabled`.
 
@@ -598,7 +598,7 @@ task's per-task AG-UI SSE stream (`GET /events/stream?session_id=<task_id>`,
 owner/CEO-gated) and watches the run execute: run-started, per-turn tool-call
 progress (and per-step progress on the plan/hybrid loops), any approval pause,
 and run-finished/failed. The engine
-projects these frames best-effort through the `EventStreamHub`
+projects these frames failure-tolerantly through the `EventStreamHub`
 (`engine/_stream_progress.py`); a failing projection never breaks execution. The
 dashboard renders them inline in the chat flows via `useTaskProgress` +
 `TaskProgress` (a pure API consumer: the progress is hydrated live from the

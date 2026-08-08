@@ -499,7 +499,7 @@ startup via `merge_installed_servers()` in
 installs out-of-band from the user-owned YAML config and ensures
 they survive restarts without rewriting the config file.
 
-Install and uninstall additionally trigger a best-effort runtime
+Install and uninstall additionally trigger a failure-tolerant runtime
 hot-reload (`reload_runtime_services`) so a bridged (or removed)
 server's tools go live for the next task without a restart; the
 startup merge above is the fallback when the runtime is not yet wired

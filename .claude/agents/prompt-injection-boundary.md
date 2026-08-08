@@ -116,7 +116,7 @@ prompt boundary. So:
 
 - The gateway resolves `(provider, model)` from verified token claims, never the
   request's `model` field. Grep the diff for any other read of the request model.
-- The agent MCP self-consumer scopes per agent. An ELEVATED agent sees the ambient
+- The agent MCP self-consumer scopes per agent. An ELEVATED agent receives the ambient
   read/write surface; a `domain:admin` tool needs that agent's own
   `mcp_capabilities`. Check no change widens a per-agent grant into an ambient one.
 - Direct-MCP acting and agent-invite are off by default and fail-closed without

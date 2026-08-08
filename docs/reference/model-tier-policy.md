@@ -113,7 +113,7 @@ through the `ModelPinValidationLedger` (a one-row-per-class
 `ModelPinValidationRepository` record). That `validated_at` is the durable
 "last validated against its tier" timestamp the audit dashboard reads, the
 live counterpart to a prompt class's static
-`ModelPinMetadata.model_version_pinned_at`. The stamp is best-effort: a
+`ModelPinMetadata.model_version_pinned_at`. The stamp is failure-tolerant: a
 persistence failure is logged but never flips a clean drift verdict.
 
 ## Changing a pin

@@ -376,7 +376,7 @@ applies the schema revisions, then a dedicated step calls
 `create_hypertable` on each target table. The conversion is idempotent
 (`if_not_exists => TRUE`) so reruns and restores are safe. If the
 `timescaledb` extension is not installed on the server, the flag is treated as
-a best-effort hint and the backend logs a warning rather than failing the
+an advisory hint and the backend logs a warning rather than failing the
 migration; this lets operators leave the flag true in shared config and have
 it degrade gracefully on clusters that do not support it.
 

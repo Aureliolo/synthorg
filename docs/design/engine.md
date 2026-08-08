@@ -619,7 +619,7 @@ at `ASSIGNED`).
 
 **Semantics:**
 
-- **Best-effort**: sync failures are logged and swallowed; agent execution
+- **Failure-tolerant**: sync failures are logged and swallowed; agent execution
   is never blocked by a TaskEngine issue. Each sync failure is isolated and
   does not prevent subsequent transitions.
 - **Critical IN_PROGRESS**: The initial `ASSIGNED -> IN_PROGRESS` sync is
@@ -628,7 +628,7 @@ at `ASSIGNED`).
 - **Direct `submit()`**: Uses `TaskEngine.submit()` with
   `TransitionTaskMutation` directly (not the convenience `transition_task()`
   method) to inspect `TaskMutationResult` success/failure without exception
-  propagation, keeping sync best-effort.
+  propagation, keeping sync failure-tolerant.
 - **No concurrency concern**: Each task has exactly one executing agent at
   any time. Parallel agents operate on separate tasks.
 
@@ -652,9 +652,9 @@ mutation pipeline via a dedicated `_observer_queue` and background
 loop enqueues a `TaskStateChanged` event with `put_nowait()`. The
 observer dispatch loop dequeues events and invokes all registered
 observers sequentially per event. If the observer queue is full, the
-event is logged at WARNING and dropped (best-effort delivery).
+event is logged at WARNING and dropped (lossy delivery).
 
-**Notification semantics**: best-effort. Observer errors are logged at
+**Notification semantics**: failure-tolerant. Observer errors are logged at
 WARNING and swallowed (`MemoryError` and `RecursionError` propagate);
 a failing observer never blocks the mutation pipeline or prevents
 subsequent observers from running.

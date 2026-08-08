@@ -16,6 +16,13 @@
 # scripts/install_cli_tools.sh (it has to land on PATH before this
 # wrapper can run); if missing, this script prints a clear pointer
 # rather than the opaque shell "command not found".
+#
+# The binary's VERSION is checked too, not just its presence. Vale
+# decides how a rule is scoped, so two versions disagree about what the
+# same style package flags: on one measured corpus 3.17.0 reported 137
+# findings that 3.14.2 did not. A developer who installed vale once and
+# never re-ran the installer would push against a weaker gate than CI
+# runs, which is the failure this whole gate exists to rule out.
 
 set -euo pipefail
 
@@ -25,6 +32,21 @@ cd "${repo_root}"
 if ! command -v vale >/dev/null 2>&1; then
   echo "error: vale binary not found on PATH" >&2
   echo "       run 'bash scripts/install_cli_tools.sh vale' once on this machine" >&2
+  exit 1
+fi
+
+# Single source of truth: the pin in the installer, read rather than copied.
+pinned_version="$(sed -n 's/^VALE_VERSION="\(.*\)"$/\1/p' scripts/install_cli_tools.sh)"
+if [ -z "${pinned_version}" ]; then
+  echo "error: could not read VALE_VERSION from scripts/install_cli_tools.sh" >&2
+  exit 1
+fi
+
+installed_version="v$(vale --version | sed -n 's/^vale version \([0-9][0-9.]*\).*$/\1/p')"
+if [ "${installed_version}" != "${pinned_version}" ]; then
+  echo "error: vale on PATH is ${installed_version}, but this repository pins ${pinned_version}" >&2
+  echo "       a different vale scopes rules differently, so a local pass would not mean CI passes" >&2
+  echo "       run 'bash scripts/install_cli_tools.sh vale' to upgrade in place" >&2
   exit 1
 fi
 

@@ -23,7 +23,7 @@ The canonical helper for transient-I/O backoff is `synthorg.core.resilience.Gene
 
 **Deliberately not retried (fail-open)**: `providers/management/live_discovery_probe.py::LiveDiscoveryProbe.discover_report` reaches the live catalogue through `providers/discovery.py::discover_models`, whose `_await_fetch` already catches `httpx.ConnectError` / `TimeoutException` / `HTTPStatusError` and returns an empty result. A transient blip therefore surfaces as an empty discovered set -- a documented no-op the refresh strategies treat as "nothing changed this cycle" rather than flagging every configured model absent. Wrapping the probe in `GeneralRetryHandler` would be dead code (the call never raises a transient error to retry); the next cycle re-probes, so do not add a retry here.
 
-Also fail-open: `providers/ollama_usage_tier.py::_scrape_tier` makes a single best-effort `GET` against the Ollama cloud model page and, on any exception or non-200, immediately falls back to the parameter-count tier approximation. The page structure is brittle and the fallback is always available, so a transient blip is absorbed as "use the approximation" rather than retried; the next enrichment re-scrapes.
+Also fail-open: `providers/ollama_usage_tier.py::_scrape_tier` makes a single failure-tolerant `GET` against the Ollama cloud model page and, on any exception or non-200, immediately falls back to the parameter-count tier approximation. The page structure is brittle and the fallback is always available, so a transient blip is absorbed as "use the approximation" rather than retried; the next enrichment re-scrapes.
 
 ## Pattern B -- Semantic self-correction
 

@@ -65,7 +65,7 @@ disagreement surfaced during its discussion phase on
 (`communication/meeting/conflict_escalation.py`) builds a `Conflict` from the
 participants' positions and hands it to the `ConflictResolutionService`. The
 bridge is gated by the hot-reloadable `communication.meeting_conflict_escalation_enabled`
-kill switch and is best-effort (a resolution failure never fails the meeting).
+kill switch and is failure-tolerant (a resolution failure never fails the meeting).
 
 === "Strategy 1: Authority + Dissent Log"
 
@@ -487,7 +487,7 @@ All five conflict resolution strategies terminate with bounded resource use:
     to a single worker).
 
     **Timeout re-read fallback.** Because the NOTIFY publish is
-    app-side and best-effort, a subscriber restart, network blip, or
+    app-side and failure-tolerant, a subscriber restart, network blip, or
     deployment rollover can drop the wake-up for an in-flight
     resolver. To keep the decision path correct under those windows,
     ``HumanEscalationResolver`` re-reads the escalation row on

@@ -50,7 +50,7 @@ runtime feature flags. The bundle threads into the company configuration: the
 config-resident knobs (`security.red_team`, `budget.auto_downgrade`) are set on
 the rendered `RootConfig`, and the settings-resident flags (conversational chat
 modes, mid-flight steering) are seeded into the settings service at setup so the
-best-effort boot wiring enables them. Boot wiring degrades cleanly when a
+failure-tolerant boot wiring enables them. Boot wiring degrades cleanly when a
 dependency (provider, persistence, memory backend) is absent.
 
 | Posture | Enables |

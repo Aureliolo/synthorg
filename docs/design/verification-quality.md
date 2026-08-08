@@ -303,7 +303,7 @@ The reviewer-is-distinct invariant is enforced at three layers: a
 `CompletionOracleReport` model validator, the gate's structural resolution,
 and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
 `completion_oracle_reports` archive table (the twin of the `decision_records`
-CHECK). Each verdict is archived (best-effort) in that append-only, dual-backend
+CHECK). Each verdict is archived (failure-tolerant) in that append-only, dual-backend
 table so an operator can answer "why was this deliverable sent back?" long after
 the run; an archive-write failure is logged but never blocks or alters the
 verdict (fail-OPEN, the one fail-open path in an otherwise fail-closed gate).

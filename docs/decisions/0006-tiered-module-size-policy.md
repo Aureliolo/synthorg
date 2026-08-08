@@ -261,8 +261,9 @@ perm/path findings (G301/G302/G304/G306)).
 ### New docs / SQL / YAML tools
 
 Landed: `markdownlint`, `yamllint`, `sqlfluff`, `lychee` (Markdown link
-check). Deferred (see Exemption ledger): `vale` (Google style +
-British dictionary).
+check). `vale` (Google style + British dictionary) was deferred at the
+time and has since landed as a fail-closed pre-push + CI gate; see
+[convention-gates.md](../reference/convention-gates.md) for its ledger.
 
 ## Consequences
 

@@ -225,7 +225,7 @@ branches on the reviewed task's status:
 The state change commits through `TaskEngine.transition_task` (strict), so a
 rejected transition raises rather than being swallowed: the failure is logged
 (`APPROVAL_GATE_REVIEW_TRANSITION_FAILED`, with the `approval_id`) and
-propagates, instead of the best-effort sync path silently leaving the task in
+propagates, instead of the failure-tolerant sync path silently leaving the task in
 its prior state while the approval reads as decided.
 
 ### Auditable Decisions Drop-Box
@@ -244,7 +244,7 @@ ID cross-reference, and a server-assigned monotonic version per task.
   statement, eliminating the TOCTOU race that a read-then-write pattern would
   create under concurrent reviewers. The `UNIQUE(task_id, version)` constraint
   rejects any residual collision as `DuplicateRecordError`.
-- **Best-effort append after transition**: a failed append is logged at WARNING
+- **Failure-tolerant append after transition**: a failed append is logged at WARNING
   (structured `logger.warning` with `error_type` + `safe_error_description`, never
   `logger.exception`) for audit forensics but does not roll back the review
   transition itself. Only known transient persistence errors (`QueryError`,
@@ -399,7 +399,7 @@ shutdown-time mechanism.
     response time (no persistence migration) via `resolve_approval_context`
     (`api/controllers/approvals/_enrichment.py`), which batch-resolves each
     distinct task, project, agent, and produced-artifact set once (no N+1) and
-    is best-effort per field: a failed lookup leaves that sub-object `null`
+    is failure-tolerant per field: a failed lookup leaves that sub-object `null`
     rather than breaking the queue.
 
     - **`task`** (`{ id, title, status } | null`), **`project`** (`{ id, name }`),
@@ -748,8 +748,9 @@ deliverable is not gated. A below-threshold task logs
 `RED_TEAM_GATE_SKIPPED` (reason `below_stakes_threshold`) and proceeds
 on the review pipeline's verdict. The `stakes` value is itself a
 documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)),
-not a security control. It treats every about-to-ship artefact as
-untrusted input and attacks it along four locked surfaces:
+so a below-threshold classification is not evidence that an artefact is safe.
+The gate itself treats every about-to-ship artefact as untrusted input and
+attacks it along four locked surfaces:
 
 - CORRECTNESS: does the deliverable do what was asked.
 - SECURITY: input validation, secret handling, injection sinks, OWASP-style defects.

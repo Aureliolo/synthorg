@@ -128,7 +128,7 @@ The persisted structure-map row is the "already imported" marker:
 `wire_real_brownfield_entry` constructs the import service and the
 `BrownfieldEntryAdapter` once the work pipeline, a connected persistence
 backend, a `ProjectWorkspaceService`, and a `KnowledgeService` are available;
-it is best-effort and idempotent, so a partial boot leaves the
+it is failure-tolerant and idempotent, so a partial boot leaves the
 `/brownfield/import` controller to return `503` rather than poisoning startup.
 The structure-map tool factory is parked on the app state for the per-task
 tool loader, mirroring the knowledge and living-documentation tool factories.

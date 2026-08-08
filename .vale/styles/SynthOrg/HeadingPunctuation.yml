@@ -7,10 +7,11 @@
 # class matches. Every numbered heading in this corpus is flagged that
 # way: 99 of them, none actually ending in a period.
 #
-# Dropping the digit branch and requiring two letters immediately before
-# the period keeps the rule the guide describes (a heading should not end
-# in a period) and drops only one case with it: a heading whose final
-# character before the period is a digit, such as "## Section 5.".
+# Dropping the digit branch and keeping everything else keeps the rule the
+# guide describes (a heading should not end in a period) and drops exactly
+# one case with it: a heading whose final character before the period is a
+# digit, such as "## Section 5.". Upstream is case-sensitive, so a lettered
+# enumerator ("## A. Foo") never matched there either and does not here.
 extends: existence
 message: "Don't put a period at the end of a heading."
 link: https://developers.google.com/style/capitalization#capitalization-in-titles-and-headings
@@ -23,4 +24,4 @@ action:
     - trim_right
     - "."
 tokens:
-  - '[A-Za-z]{2}[.]\s*$'
+  - '[a-z][.]\s*$'
