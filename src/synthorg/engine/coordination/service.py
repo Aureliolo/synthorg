@@ -720,7 +720,7 @@ class MultiAgentCoordinator:
             is_multi_agent=True,
         )
 
-    async def _file_missing_children(self, result: DecompositionResult) -> None:
+    async def _file_missing_children(self, result: DecompositionResult) -> int:
         """File any decomposed child the engine does not already hold.
 
         Decomposition mints child tasks in memory, ids derived from the plan
@@ -731,16 +731,21 @@ class MultiAgentCoordinator:
         Only the absent ones are filed. The ids are derived, so a re-dispatch
         of the same plan finds its rows already there, and saving over one
         would push a subtask that is already running back to ``CREATED``.
+
+        Returns:
+            How many children this call filed, which on a re-dispatch is
+            fewer than the plan has and may be none.
         """
         engine = self._task_engine
         if engine is None:
-            return
+            return 0
         missing = [
             child
             for child in result.created_tasks
             if await engine.get_task(str(child.id)) is None
         ]
         await engine.file_tasks(missing)
+        return len(missing)
 
     async def _phase_file_children(
         self,
@@ -764,7 +769,7 @@ class MultiAgentCoordinator:
         phase_name = "file_children"
         start = begin_phase(phase_name, clock=self._clock)
         try:
-            await self._file_missing_children(result)
+            filed = await self._file_missing_children(result)
         except Exception as exc:
             reraise_critical(exc)
             msg = record_phase_failure(
@@ -782,6 +787,10 @@ class MultiAgentCoordinator:
         logger.info(
             COORDINATION_PHASE_COMPLETED,
             phase=phase_name,
+            # What this phase wrote, not what the plan holds: a re-dispatch
+            # files nothing and a line reporting the plan's size would read
+            # as having written the tree over again.
+            filed_count=filed,
             subtask_count=len(result.created_tasks),
             duration_seconds=elapsed,
         )
