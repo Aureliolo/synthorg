@@ -45,6 +45,14 @@ from synthorg.core.state_machine import HasStateValue, StateMachine
 
 _PACKAGE = "synthorg.core"
 
+#: Stands in for the state in a violation about the machine as a whole, so a
+#: machine that declared nothing is reported once rather than once per state.
+_UNDECLARED = "<no unconditional_targets declared>"
+
+#: Where the package lives relative to a repository root, for the check that
+#: ``--repo-root`` names the checkout the machines were actually imported from.
+_SRC_DIR = "src"
+
 
 @dataclass(frozen=True, slots=True)
 class Violation:
@@ -79,11 +87,11 @@ def scan_machines() -> tuple[Violation, ...]:
     declaration is a live object: a table assembled across several literals,
     or one built from an enum, reads correctly only once constructed.
 
-    A machine declaring no unconditional targets is skipped. That is the
-    honest reading of an absent declaration: nothing has been promised, so
-    there is nothing to check. Adding the declaration is what opts a machine
-    in, and the three lifecycles that can strand a row (task, plan, project)
-    all carry it.
+    A machine declaring no unconditional targets FAILS rather than being
+    skipped. Treating an absent declaration as an opt-out is how a new
+    lifecycle would ship without ever proving it has an exit, which is the
+    defect this gate exists for; every non-terminal state would then be
+    reported at once, so the declaration is demanded first and by name.
 
     Returns:
         The violations, in machine then state order.
@@ -93,11 +101,18 @@ def scan_machines() -> tuple[Violation, ...]:
     for module_name in _core_modules():
         module = importlib.import_module(module_name)
         for value in vars(module).values():
-            if not isinstance(value, StateMachine):
-                continue
-            if value.name in seen or not value.unconditional_targets:
+            if not isinstance(value, StateMachine) or value.name in seen:
                 continue
             seen.add(value.name)
+            if not value.unconditional_targets:
+                violations.append(
+                    Violation(
+                        machine=value.name,
+                        state=_UNDECLARED,
+                        allowed=(),
+                    )
+                )
+                continue
             violations.extend(_machine_violations(value))
     return tuple(sorted(violations, key=lambda v: (v.machine, v.state)))
 
@@ -123,6 +138,27 @@ def _machine_violations[S: HasStateValue](
         )
 
 
+def _describe_root_mismatch(repo_root: Path | None) -> str | None:
+    """Report when the imported package is not the one under *repo_root*.
+
+    Returns:
+        A message naming both paths, or ``None`` when they agree (or when no
+        root was given, which is the pre-push and CI shape).
+    """
+    if repo_root is None:
+        return None
+    package = importlib.import_module(_PACKAGE)
+    imported = Path(next(iter(package.__path__))).resolve()
+    expected = (repo_root / _SRC_DIR / _PACKAGE.replace(".", "/")).resolve()
+    if imported == expected:
+        return None
+    return (
+        f"--repo-root points at {repo_root}, but {_PACKAGE} was imported from"
+        f" {imported}. The machines are read from the imported package, so"
+        " this run would report on a different checkout."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -130,13 +166,26 @@ def main(argv: list[str] | None = None) -> int:
         ``0`` when every declared state can reach a terminal unconditionally.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    # Accepted and ignored: every consolidated gate takes it, and the machines
-    # are read from the installed package rather than from a path.
+    # Every consolidated gate takes it. The machines are live objects, so they
+    # come from the imported package rather than from a path; the option is
+    # honoured by checking that the two are the same checkout, because a run
+    # that silently validated a different tree would report success about
+    # code nobody is pushing.
     parser.add_argument("--repo-root", type=Path, default=None)
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (mismatch := _describe_root_mismatch(args.repo_root)) is not None:
+        print(mismatch, file=sys.stderr)
+        return 2
 
     violations = scan_machines()
     for violation in violations:
+        if violation.state == _UNDECLARED:
+            print(
+                f"{violation.machine}: declares no 'unconditional_targets', so"
+                " nothing proves any of its states can be left. Declare the"
+                " targets a writer can always reach."
+            )
+            continue
         print(
             f"{violation.machine}: {violation.state!r} cannot reach a terminal"
             " state through unconditional hops only; it offers"

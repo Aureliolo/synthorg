@@ -13,6 +13,7 @@ complaint about a missing environment variable on the first dispatch.
 from typing import ClassVar
 
 from synthorg.config.schema import RootConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import PersistenceConnectionError
@@ -96,6 +97,7 @@ def build_provider_credential_catalog(
             pg_pool=pg_pool_getter,
         )
     except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             API_APP_STARTUP,
             note="provider credential catalog could not be built",

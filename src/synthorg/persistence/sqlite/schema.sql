@@ -129,6 +129,11 @@ CREATE TABLE cost_records (
     -- idempotent for a record with no project (the project-aggregate path
     -- skips dedup entirely for those).
     claim_id TEXT,
+    -- No foreign key, matching project_cost_aggregates.project_id, which the
+    -- same record() call writes in the same transaction. A cost row is
+    -- evidence of a call that really happened: refusing the insert because
+    -- the project row is missing would lose the spend rather than protect
+    -- it, and would leave the aggregate counting money this table dropped.
     project_id TEXT
 );
 
@@ -2688,10 +2693,17 @@ CREATE TABLE plans (
     updated_at TEXT NOT NULL,
     -- Which planner produced the items, recorded when a fallback stood in for
     -- the configured strategy so the approval gate shows what is being approved.
-    planning_strategy TEXT,
+    planning_strategy TEXT
+    CHECK (planning_strategy IS NULL OR LENGTH(TRIM(planning_strategy)) > 0),
     -- Why a seated review panel produced no verdict, so an unreviewed plan is
-    -- visibly unreviewed rather than silently blank.
-    review_absent_reason TEXT,
+    -- visibly unreviewed rather than silently blank. Blank is the state both
+    -- columns exist to distinguish from absent, so the model types them
+    -- ``NotBlankStr | None`` and the row mirrors it.
+    review_absent_reason TEXT
+    CHECK (
+        review_absent_reason IS NULL
+        OR LENGTH(TRIM(review_absent_reason)) > 0
+    ),
     -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
     -- a reason (so Plan Review always shows why), and no other status may carry
     -- one. Mirrors the Plan model validator as the persistence-level backstop.
@@ -2722,8 +2734,11 @@ CREATE TABLE lifecycle_transitions (
     entity_version INTEGER NOT NULL CHECK (entity_version >= 0),
     occurred_at TEXT NOT NULL
 );
+-- The read is always "this entity's transitions, newest first", and the
+-- tie-break on id is part of that ordering, so both sort keys ride in the
+-- index and the query never needs a sort step.
 CREATE INDEX idx_lifecycle_transitions_entity
-ON lifecycle_transitions (entity_kind, entity_id, occurred_at);
+ON lifecycle_transitions (entity_kind, entity_id, occurred_at DESC, id DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

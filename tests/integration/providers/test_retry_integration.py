@@ -21,7 +21,7 @@ from synthorg.providers.errors import (
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
-from .conftest import build_model_response
+from .conftest import build_model_response, make_catalog_with_key
 
 _PATCH_ACOMPLETION = "litellm.acompletion"
 
@@ -56,8 +56,22 @@ def _make_config(
     )
 
 
-def _make_driver(config: ProviderConfig | None = None) -> LiteLLMDriver:
-    return LiteLLMDriver("test-provider", config or _make_config())
+async def _make_driver(config: ProviderConfig | None = None) -> LiteLLMDriver:
+    """Build a driver with the connection its config names bound.
+
+    A driver whose config names a ``connection_name`` refuses to dispatch
+    without a catalog to resolve it from rather than calling out
+    unauthenticated, so the retry stack is exercised the way a wired backend
+    reaches it.
+
+    Returns:
+        The configured driver.
+    """
+    driver = LiteLLMDriver("test-provider", config or _make_config())
+    driver.bind_credential_catalog(
+        await make_catalog_with_key("provider-retry-test", "sk-test-key")
+    )
+    return driver
 
 
 def _user_messages() -> list[ChatMessage]:
@@ -69,7 +83,7 @@ class TestRetryIntegration:
     """Retry handler wired into the LiteLLM driver."""
 
     async def test_succeeds_after_transient_failure(self) -> None:
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         transient = _litellm.Timeout(  # type: ignore[attr-defined]
@@ -93,7 +107,7 @@ class TestRetryIntegration:
         assert m.await_count == 2
 
     async def test_exhausts_retries_raises_retry_exhausted(self) -> None:
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         transient = _litellm.Timeout(  # type: ignore[attr-defined]
@@ -114,7 +128,7 @@ class TestRetryIntegration:
         assert m.await_count == 3  # 1 initial + 2 retries
 
     async def test_non_retryable_not_retried(self) -> None:
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         auth_err = _litellm.AuthenticationError(  # type: ignore[attr-defined]
@@ -134,7 +148,7 @@ class TestRetryIntegration:
         m.assert_awaited_once()
 
     async def test_rate_limit_with_retry_after_respected(self) -> None:
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         rate_err = _litellm.RateLimitError(  # type: ignore[attr-defined]
@@ -160,7 +174,7 @@ class TestRetryIntegration:
         assert m.await_count == 2
 
     async def test_stream_retries_connection_setup(self) -> None:
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         transient = _litellm.APIConnectionError(  # type: ignore[attr-defined]
@@ -189,7 +203,7 @@ class TestStreamRetryIntegration:
         """Stream setup is retried on transient failure; success on second attempt."""
         from synthorg.providers.enums import StreamEventType
 
-        driver = _make_driver()
+        driver = await _make_driver()
         import litellm as _litellm
 
         transient = _litellm.APIConnectionError(  # type: ignore[attr-defined]
@@ -224,7 +238,7 @@ class TestRetryDisabledIntegration:
 
     async def test_retryable_error_not_wrapped(self) -> None:
         config = _make_config(max_retries=0)
-        driver = _make_driver(config)
+        driver = await _make_driver(config)
         import litellm as _litellm
 
         timeout = _litellm.Timeout(  # type: ignore[attr-defined]
@@ -245,7 +259,7 @@ class TestRetryDisabledIntegration:
 
     async def test_rate_limit_passes_through(self) -> None:
         config = _make_config(max_retries=0)
-        driver = _make_driver(config)
+        driver = await _make_driver(config)
         import litellm as _litellm
 
         rate_err = _litellm.RateLimitError(  # type: ignore[attr-defined]
@@ -274,7 +288,7 @@ class TestRetryWithRateLimitIntegration:
     async def test_retry_with_concurrent_limit(self) -> None:
         """Retry correctly releases and re-acquires rate limiter slot."""
         config = _make_config(max_retries=1, max_concurrent=1)
-        driver = _make_driver(config)
+        driver = await _make_driver(config)
         import litellm as _litellm
 
         transient = _litellm.Timeout(  # type: ignore[attr-defined]

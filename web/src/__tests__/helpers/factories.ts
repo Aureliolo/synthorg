@@ -369,6 +369,10 @@ export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
     failure_reason: null,
     forecast_id: null,
     review: null,
+    // Null is the ordinary case for both: the configured planner produced the
+    // items, and a real panel reviewed them, so neither has anything to say.
+    planning_strategy: null,
+    review_absent_reason: null,
     open_questions: [],
     assumptions: [],
     objective_criteria: [],

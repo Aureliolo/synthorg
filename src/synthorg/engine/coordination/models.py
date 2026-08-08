@@ -234,5 +234,11 @@ class CoordinationResult(BaseModel):
     )
     @property
     def is_success(self) -> bool:
-        """True when every phase completed successfully."""
-        return all(p.success for p in self.phases)
+        """True when at least one phase ran and every phase succeeded.
+
+        A run with no phases at all is not a success: ``all(())`` is
+        vacuously true, so a coordination that dispatched nothing would
+        read as a clean run and the caller would leave the plan EXECUTING
+        with no work behind it.
+        """
+        return bool(self.phases) and all(p.success for p in self.phases)

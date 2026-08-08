@@ -89,6 +89,7 @@ pytestmark = pytest.mark.e2e
 
 _RESEARCH_SKILL = "research"
 _ANALYSIS_SKILL = "analysis"
+_ROLE = "developer"
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _AMOUNT = 5000.0
 _CURRENCY = "USD"
@@ -146,6 +147,8 @@ class _DecompositionAwareStrategy:
                                     "id": "sub-research",
                                     "title": "Research the recall baseline",
                                     "description": "Investigate the incumbent.",
+                                    "stakes": "normal",
+                                    "required_role": _ROLE,
                                     "required_skills": [_RESEARCH_SKILL],
                                     "acceptance_criteria": [
                                         "The recall baseline is documented.",
@@ -156,6 +159,8 @@ class _DecompositionAwareStrategy:
                                     "id": "sub-analysis",
                                     "title": "Analyse the retrieval design",
                                     "description": "Synthesise the approach.",
+                                    "stakes": "normal",
+                                    "required_role": _ROLE,
                                     "required_skills": [_ANALYSIS_SKILL],
                                     "acceptance_criteria": [
                                         "The retrieval design is chosen.",
@@ -411,7 +416,7 @@ def _make_agent(name: str, skill: str) -> AgentIdentity:
     return AgentIdentity(
         id=as_uuid(name),
         name=name,
-        role="developer",
+        role=_ROLE,
         department="engineering",
         skills=SkillSet(primary=(Skill(id=skill, name=skill),)),
         authority=Authority(budget_limit=10.0),

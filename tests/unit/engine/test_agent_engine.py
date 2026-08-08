@@ -1454,6 +1454,11 @@ class TestSyncToTaskEngine:
 
         assert result.is_success is False
         assert result.execution_result.error_type == "ExecutionStateError"
+        # The name of this test is its contract. A regression that ran the loop
+        # and only then failed on the exit sync produces exactly the two
+        # assertions above, so "before any work" has to be asserted directly.
+        assert mock_te.submit.await_count == 1
+        assert provider.call_count == 0
 
     async def test_task_engine_error_aborts_the_run(
         self,

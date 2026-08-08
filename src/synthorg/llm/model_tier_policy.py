@@ -18,8 +18,8 @@ The taxonomy grounds the judgement in what the prompt asks the model to do:
   generation, authoring, code modification, and planning.
 
 The pin-validation benchmark (:mod:`synthorg.hr.evaluation.pin_validation_benchmark`)
-consumes this policy to validate each prompt class against its pinned tier,
-and the Wave 2 per-class ``ModelPinMetadata`` rollout assigns tiers from it.
+consumes this policy to validate each prompt class against its pinned tier, and
+each prompt class's ``ModelPinMetadata`` takes its tier from here.
 An import-time drift guard rejects any :class:`PromptPurposeId` missing a
 policy entry, mirroring ``_PROMPT_PURPOSE_SPECS`` in
 :mod:`synthorg.llm.prompt_purpose`, so a purpose added without a tier fails

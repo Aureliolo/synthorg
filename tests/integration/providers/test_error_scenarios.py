@@ -27,7 +27,6 @@ from litellm.exceptions import (
 )
 
 from synthorg.providers import errors
-from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -38,6 +37,7 @@ if TYPE_CHECKING:
 
 from .conftest import (
     build_content_chunk,
+    make_example_registry,
     make_provider_config,
 )
 
@@ -45,11 +45,14 @@ pytestmark = pytest.mark.integration
 _PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 
-def _make_driver() -> tuple[BaseCompletionProvider, dict[str, ProviderConfig]]:
-    """Build a provider driver from config."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
-    return registry.get("example-provider"), config
+async def _make_driver() -> tuple[BaseCompletionProvider, dict[str, ProviderConfig]]:
+    """Build a provider driver with its credential connection bound.
+
+    Returns:
+        The ``example-provider`` driver and the config it was built from.
+    """
+    registry = await make_example_registry()
+    return registry.get("example-provider"), make_provider_config()
 
 
 def _make_litellm_rate_limit(
@@ -131,7 +134,7 @@ async def test_rate_limit_maps_to_retryable_error(
     user_messages: list[ChatMessage],
 ) -> None:
     """429 -> RateLimitError with is_retryable=True."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_rate_limit(retry_after="30")
 
     with (
@@ -150,7 +153,7 @@ async def test_rate_limit_without_retry_after(
     user_messages: list[ChatMessage],
 ) -> None:
     """429 without retry-after header still maps correctly."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_rate_limit()
 
     with (
@@ -168,7 +171,7 @@ async def test_rate_limit_during_streaming(
     user_messages: list[ChatMessage],
 ) -> None:
     """Rate limit during streaming raises RateLimitError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_rate_limit(retry_after="5")
 
     async def _failing_stream() -> AsyncIterator[object]:
@@ -194,7 +197,7 @@ async def test_auth_error_maps_to_non_retryable(
     user_messages: list[ChatMessage],
 ) -> None:
     """401 -> AuthenticationError with is_retryable=False."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_auth_error()
 
     with (
@@ -212,7 +215,7 @@ async def test_auth_error_during_stream_setup(
     user_messages: list[ChatMessage],
 ) -> None:
     """Authentication error before streaming starts raises AuthenticationError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_auth_error()
 
     with (
@@ -232,7 +235,7 @@ async def test_timeout_maps_to_retryable(
     user_messages: list[ChatMessage],
 ) -> None:
     """Timeout -> ProviderTimeoutError with is_retryable=True."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_timeout()
 
     with (
@@ -250,7 +253,7 @@ async def test_timeout_during_streaming(
     user_messages: list[ChatMessage],
 ) -> None:
     """Timeout during streaming raises ProviderTimeoutError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_timeout()
 
     async def _failing_stream() -> AsyncIterator[object]:
@@ -272,7 +275,7 @@ async def test_connection_error_maps(
     user_messages: list[ChatMessage],
 ) -> None:
     """Connection error -> ProviderConnectionError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_connection_error()
 
     with (
@@ -290,7 +293,7 @@ async def test_connection_error_during_streaming(
     user_messages: list[ChatMessage],
 ) -> None:
     """Connection error during streaming raises ProviderConnectionError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_connection_error()
 
     async def _failing_stream() -> AsyncIterator[object]:
@@ -315,7 +318,7 @@ async def test_internal_error_maps(
     user_messages: list[ChatMessage],
 ) -> None:
     """500 -> ProviderInternalError."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     exc = _make_litellm_internal_error()
 
     with (
@@ -336,7 +339,7 @@ async def test_unknown_exception_maps_to_internal(
     user_messages: list[ChatMessage],
 ) -> None:
     """Unexpected exception -> ProviderInternalError fallback."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
 
     with (
         patch(
@@ -363,7 +366,7 @@ async def test_unknown_model_raises_model_not_found(
     user_messages: list[ChatMessage],
 ) -> None:
     """Unknown model alias raises ModelNotFoundError before litellm call."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
 
     with pytest.raises(errors.ModelNotFoundError) as exc_info:
         await driver.complete(user_messages, "nonexistent-model")
@@ -379,7 +382,7 @@ async def test_provider_error_passes_through_unmodified(
     user_messages: list[ChatMessage],
 ) -> None:
     """ProviderError raised by litellm is re-raised without re-wrapping."""
-    driver, _ = _make_driver()
+    driver, _ = await _make_driver()
     original = errors.ModelNotFoundError(
         "Custom model error",
         context={"custom_key": "custom_value"},

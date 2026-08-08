@@ -96,7 +96,9 @@ class ProjectRollupService:
             into memory. ``None`` leaves the loop's consuming tail unwired.
         replan_trigger: Optional trigger fired while a plan reads as stalled, so
             an initiative that can no longer advance replans instead of hanging.
-            ``None`` leaves a stalled plan for the operator to notice.
+            ``None`` fails the plan with the stall reason instead: a stall
+            nothing can route is a dead initiative, and parking it silently is
+            the deadlock the visible-park discipline exists to prevent.
         integration: Optional INTEGRATE stage. ``None`` parks a plan that has
             built everything at INTEGRATING rather than completing it: an
             initiative whose pieces were never assembled has not delivered.
@@ -513,9 +515,10 @@ class ProjectRollupService:
 
         A stall means every outstanding item is dead: the initiative cannot
         advance and nothing will move it. With a trigger wired that becomes a
-        replan; without one it used to become nothing at all, and a plan whose
-        every task failed sat in EXECUTING with no work left to execute, which
-        no later event could repair.
+        replan. Without one the plan is driven out of its dispatch status
+        instead of parked, because a plan whose every task failed sitting in
+        EXECUTING with no work left to execute is a state no later event can
+        repair.
 
         Firing the trigger is deliberately not edge-gated. A stall has no
         persisted marker to compare against, and the honest guard is the one

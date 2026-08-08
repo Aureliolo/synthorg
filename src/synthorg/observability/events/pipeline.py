@@ -57,6 +57,11 @@ PIPELINE_PLAN_QUESTION_PARKED: Final[str] = "pipeline.plan_review.question_parke
 PIPELINE_PLAN_QUESTION_ANSWERED: Final[str] = "pipeline.plan_review.question_answered"
 """A decided plan question was written back onto the durable plan."""
 
+PIPELINE_PLAN_QUESTION_WRITE_FAILED: Final[str] = (
+    "pipeline.plan_review.question_write_failed"
+)
+"""A decided plan question could not be written back; the answer is lost."""
+
 PIPELINE_PLAN_PARENT_MISSING: Final[str] = "pipeline.plan_review.parent_missing"
 """The objective task was deleted mid-decomposition; the plan is not parked."""
 

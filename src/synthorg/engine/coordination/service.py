@@ -706,6 +706,28 @@ class MultiAgentCoordinator:
             is_multi_agent=True,
         )
 
+    async def _file_missing_children(self, result: DecompositionResult) -> None:
+        """File any decomposed child the engine does not already hold.
+
+        Decomposition mints child tasks in memory, ids derived from the plan
+        items; until they are rows the engine holds, every later step acts on
+        objects nothing else can see, and the assignment write before each
+        wave has no row to move.
+
+        Only the absent ones are filed. The ids are derived, so a re-dispatch
+        of the same plan finds its rows already there, and saving over one
+        would push a subtask that is already running back to ``CREATED``.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return
+        missing = [
+            child
+            for child in result.created_tasks
+            if await engine.get_task(str(child.id)) is None
+        ]
+        await engine.file_tasks(missing)
+
     async def _phase_decompose(
         self,
         context: CoordinationContext,
@@ -730,6 +752,7 @@ class MultiAgentCoordinator:
             result = await self._decomposition_service.decompose_task(
                 context.task, context.decomposition_context
             )
+            await self._file_missing_children(result)
         except Exception as exc:
             reraise_critical(exc)
             elapsed = self._clock.monotonic() - start

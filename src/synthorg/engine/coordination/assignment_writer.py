@@ -10,6 +10,13 @@ that never left ``created``.
 
 The engine's row is therefore the one owner of a subtask's status, and
 this writer is the only place the coordination path asks it to move.
+
+Two waves racing for one subtask cannot both win. This writer reads before
+it submits, so its read can be stale, but the decision is not made here: the
+engine re-reads the row inside its serialised single-writer loop, and
+``ASSIGNED -> ASSIGNED`` is not a legal hop, so the second wave's mutation is
+refused and this writer fails its wave rather than quietly rewriting
+``assigned_to`` under an agent that is already running.
 """
 
 from typing import TYPE_CHECKING, Final
@@ -33,9 +40,12 @@ logger = get_logger(__name__)
 #: sentinel the parent-task walk uses.
 _ASSIGNMENT_ACTOR: Final[str] = "coordinator"
 
-#: Statuses that already mean "this agent owns this subtask and may run it".
-#: Re-dispatch (a replan wave, a resumed run) lands here, and rewriting the
-#: row would be a redundant hop the state machine has no reason to accept.
+#: Statuses in which a subtask is already owned by whoever ``assigned_to``
+#: names. Half of the ownership test: the call site pairs this with
+#: ``assigned_to == agent_id``, because a row in one of these statuses owned
+#: by a *different* agent is a conflict, not a re-dispatch. Re-dispatch (a
+#: replan wave, a resumed run) lands here for the same agent, and rewriting
+#: the row would be a redundant hop the state machine has no reason to accept.
 _ALREADY_OWNED: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS}
 )
@@ -115,9 +125,14 @@ class AssignmentWriter:
             )
         )
         if not result.success or result.task is None:
+            # ``live.status`` is what this dispatcher read, not necessarily
+            # what the engine refused from: the engine re-reads the row under
+            # its single-writer loop, so a wave racing this one has already
+            # moved it. Both are named because the pair IS the diagnosis.
             msg = (
                 f"Subtask {task_id!r} could not be assigned to agent "
-                f"{agent_id!r} (task is {live.status.value!r}): "
+                f"{agent_id!r} (read as {live.status.value!r} before "
+                f"dispatch): "
                 f"{result.error or 'mutation rejected with no error detail'}"
             )
             raise CoordinationError(msg)

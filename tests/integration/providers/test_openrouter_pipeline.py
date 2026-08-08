@@ -19,6 +19,7 @@ from .conftest import (
     build_model_response,
     make_catalog_with_key,
     make_openrouter_config,
+    make_openrouter_registry,
 )
 
 pytestmark = pytest.mark.integration
@@ -29,8 +30,7 @@ async def test_base_url_forwarded(
     user_messages: list[ChatMessage],
 ) -> None:
     """Custom base_url is forwarded as api_base."""
-    config = make_openrouter_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_openrouter_registry()
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response()
@@ -47,8 +47,7 @@ async def test_model_prefixed(
     user_messages: list[ChatMessage],
 ) -> None:
     """Model ID is prefixed with 'openrouter/'."""
-    config = make_openrouter_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_openrouter_registry()
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response()
@@ -84,8 +83,7 @@ async def test_full_response_mapping(
     user_messages: list[ChatMessage],
 ) -> None:
     """Full response is correctly mapped through the pipeline."""
-    config = make_openrouter_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_openrouter_registry()
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response(
@@ -108,8 +106,7 @@ async def test_multi_model_alias_resolution(
     user_messages: list[ChatMessage],
 ) -> None:
     """Second model (llama-70b) resolves via alias and computes cost."""
-    config = make_openrouter_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_openrouter_registry()
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response(

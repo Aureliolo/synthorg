@@ -7,24 +7,29 @@ and the failure policy that keeps a ledger outage from lying to the caller.
 """
 
 from datetime import UTC, datetime
-from uuid import uuid4
 
 import pytest
 import structlog
 
 from synthorg.api.services.plan_service import PlanService
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.lifecycle_transition import (
     LifecycleEntityKind,
     LifecycleTransition,
 )
-from synthorg.core.persistence_errors import QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
+from synthorg.core.project_transitions import transition_path
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.project_writes import advance_project_status
 from synthorg.persistence.lifecycle_ledger import LifecycleLedger
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
+    LifecycleTransitionRepository,
+)
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.project_protocol import ProjectRepository
 from tests._shared import FakeClock, as_uuid, mock_of
@@ -99,7 +104,10 @@ class TestPlanStatusWrites:
     async def test_a_ledger_failure_does_not_fail_the_transition(self) -> None:
         """The status write already committed; reporting it as failed would lie."""
         plan = _plan()
-        broken = mock_of[FakeLifecycleTransitionRepository]()
+        # Autospecced against the protocol, not the local fake: the protocol
+        # is the typed boundary the service actually holds, so a rename there
+        # has to break this test rather than pass against a stale double.
+        broken = mock_of[LifecycleTransitionRepository]()
         broken.append.side_effect = QueryError("ledger down")
         service = PlanService(
             repo=mock_of[PlanRepository](),
@@ -114,12 +122,135 @@ class TestPlanStatusWrites:
         errors = [e for e in captured if e.get("log_level") == "error"]
         assert any(e.get("to_status") == PlanStatus.APPROVED.value for e in errors)
 
+    async def test_a_reason_on_a_live_status_is_refused(self) -> None:
+        """A live plan cannot carry a failure reason, so it must not be dropped.
+
+        The live branch writes through ``model_copy``, which neither carries
+        the reason nor re-runs the validator that forbids it, so accepting the
+        call would silently discard what the caller asked to record.
+        """
+        plan = _plan()
+        service = PlanService(
+            repo=mock_of[PlanRepository](),
+            clock=FakeClock(start=_NOW),
+        )
+
+        with pytest.raises(ValidationError, match="only valid for a FAILED plan"):
+            await service.sync_status(
+                plan,
+                PlanStatus.APPROVED,
+                failure_reason=NotBlankStr("every reviewer errored"),
+            )
+
+
+class TestLedgerDurability:
+    """A row that fails to land is retried, and losing rows becomes loud."""
+
+    async def test_a_transient_failure_is_retried_before_it_is_lost(self) -> None:
+        """One dropped connection must not cost the ledger a transition."""
+        repo = mock_of[LifecycleTransitionRepository]()
+        landed: list[LifecycleTransition] = []
+        attempts = 0
+
+        async def _flaky(event: LifecycleTransition) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                msg = "connection reset"
+                raise QueryError(msg)
+            landed.append(event)
+
+        repo.append.side_effect = _flaky
+        ledger = LifecycleLedger(repo, clock=FakeClock(start=_NOW))
+
+        await ledger.record_plan(
+            plan_id=as_uuid("plan-retry"),
+            from_status=PlanStatus.PENDING_REVIEW,
+            to_status=PlanStatus.APPROVED,
+            entity_version=2,
+        )
+
+        assert len(landed) == 1
+        assert ledger.consecutive_failures == 0
+
+    async def test_a_permanent_failure_is_not_retried(self) -> None:
+        """A row the storage layer refuses will be refused again."""
+        repo = mock_of[LifecycleTransitionRepository]()
+        repo.append.side_effect = ConstraintViolationError(
+            "bad row", constraint="lifecycle_transitions_pkey"
+        )
+        ledger = LifecycleLedger(repo, clock=FakeClock(start=_NOW))
+
+        with structlog.testing.capture_logs():
+            await ledger.record_plan(
+                plan_id=as_uuid("plan-bad"),
+                from_status=None,
+                to_status=PlanStatus.PLANNING,
+                entity_version=1,
+            )
+
+        assert repo.append.await_count == 1
+
+    async def test_the_lost_row_is_logged_in_full(self) -> None:
+        """Reconstructible from the log, or it is simply gone."""
+        repo = mock_of[LifecycleTransitionRepository]()
+        repo.append.side_effect = ConstraintViolationError(
+            "bad row", constraint="lifecycle_transitions_pkey"
+        )
+        ledger = LifecycleLedger(repo, clock=FakeClock(start=_NOW))
+
+        with structlog.testing.capture_logs() as captured:
+            await ledger.record_plan(
+                plan_id=as_uuid("plan-lost"),
+                from_status=PlanStatus.APPROVED,
+                to_status=PlanStatus.EXECUTING,
+                entity_version=4,
+                requested_by="operator-1",
+                reason="dispatching",
+            )
+
+        lost = next(e for e in captured if e.get("log_level") == "error")
+        # Every column of the row, so it can be replayed by hand. ``id`` and
+        # ``occurred_at`` are the two the first version omitted, which made
+        # "reconstructible from the log" untrue.
+        assert lost["transition_id"]
+        assert lost["occurred_at"] == _NOW.isoformat()
+        assert lost["entity_id"] == str(as_uuid("plan-lost"))
+        assert lost["from_status"] == PlanStatus.APPROVED.value
+        assert lost["to_status"] == PlanStatus.EXECUTING.value
+        assert lost["entity_version"] == 4
+        assert lost["requested_by"] == "operator-1"
+        assert lost["reason"] == "dispatching"
+
+    async def test_a_run_of_failures_says_the_ledger_has_stopped_recording(
+        self,
+    ) -> None:
+        """One gap is a blip; a streak means nothing is being recorded."""
+        repo = mock_of[LifecycleTransitionRepository]()
+        repo.append.side_effect = ConstraintViolationError(
+            "bad row", constraint="lifecycle_transitions_pkey"
+        )
+        ledger = LifecycleLedger(repo, clock=FakeClock(start=_NOW))
+
+        with structlog.testing.capture_logs() as captured:
+            for _ in range(3):
+                await ledger.record_plan(
+                    plan_id=as_uuid("plan-streak"),
+                    from_status=None,
+                    to_status=PlanStatus.PLANNING,
+                    entity_version=1,
+                )
+
+        errors = [e for e in captured if e.get("log_level") == "error"]
+        assert [e["consecutive_failures"] for e in errors] == [1, 2, 3]
+        assert [e["ledger_recording"] for e in errors] == [True, True, False]
+
 
 class TestProjectStatusWrites:
     async def test_every_walked_hop_writes_its_own_row(self) -> None:
         """The intermediate hop is the part a log loses; the ledger keeps it."""
         project = Project(
-            id=uuid4(),
+            id=as_uuid("proj-walked"),
             name=NotBlankStr("proj-1"),
             description=NotBlankStr("The initiative"),
             status=ProjectStatus.PLANNING,
@@ -147,21 +278,25 @@ class TestProjectStatusWrites:
 
         assert advance.project is not None
         assert advance.project.status is ProjectStatus.COMPLETED
-        assert len(transitions.transitions) > 1
+        # The exact hop sequence, not merely "more than one row": the whole
+        # point is that the intermediate state a log drops is recorded, and a
+        # count assertion passes just as happily on the wrong states.
+        expected = transition_path(ProjectStatus.PLANNING, ProjectStatus.COMPLETED)
+        assert expected is not None
+        assert [r.to_status for r in transitions.transitions] == [
+            status.value for status in expected
+        ]
+        assert transitions.transitions[0].from_status == ProjectStatus.PLANNING.value
         assert all(
             r.entity_kind is LifecycleEntityKind.PROJECT
             for r in transitions.transitions
         )
-        assert transitions.transitions[-1].to_status == ProjectStatus.COMPLETED.value
+        assert all(r.entity_id == str(project.id) for r in transitions.transitions)
 
 
 class TestFilter:
     async def test_query_narrows_to_one_entity(self) -> None:
         """``GET /plans/{id}/transitions`` reads one plan, not the whole ledger."""
-        from synthorg.persistence.lifecycle_transition_protocol import (
-            LifecycleTransitionFilterSpec,
-        )
-
         repo = FakeLifecycleTransitionRepository()
         for entity_id, kind in (
             ("plan-a", LifecycleEntityKind.PLAN),

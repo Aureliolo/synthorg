@@ -9,6 +9,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
+from synthorg.core.task_transitions import VALID_TRANSITIONS
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.errors import CoordinationError
@@ -150,3 +151,47 @@ class TestAssignmentWriter:
         writer = AssignmentWriter(None)
 
         assert await writer.persist(group) is group
+
+
+class TestRacingWaves:
+    """Two waves reaching for one subtask: the loser fails, it does not steal."""
+
+    def test_reassigning_an_assigned_subtask_is_not_a_legal_hop(self) -> None:
+        """The invariant the writer's stale read leans on.
+
+        The writer reads, then submits, so its read can go stale. What stops
+        the loser rewriting ``assigned_to`` under a running agent is that the
+        engine re-reads the row under its single-writer loop and finds no
+        ``ASSIGNED -> ASSIGNED`` edge. If that edge is ever added, the writer
+        needs its own guard and this test is where that shows up.
+        """
+        assert TaskStatus.ASSIGNED not in VALID_TRANSITIONS[TaskStatus.ASSIGNED]
+
+    async def test_the_losing_wave_fails_rather_than_stealing_the_subtask(
+        self,
+    ) -> None:
+        """The engine refuses; the writer must not dispatch anyway."""
+        identity = _identity("agent-b")
+        # What this wave read: still unassigned. What the engine holds by the
+        # time the mutation applies: assigned to the wave that got there first.
+        stale = _task("task-a")
+        engine = _engine(
+            live=stale,
+            result=TaskMutationResult(
+                request_id="r",
+                success=False,
+                error="Invalid transition: assigned -> assigned",
+                error_code="validation",
+            ),
+        )
+        writer = AssignmentWriter(engine)
+
+        with pytest.raises(CoordinationError) as info:
+            await writer.persist(_group(AgentAssignment(identity=identity, task=stale)))
+
+        message = str(info.value)
+        # Both halves, because the pair is the diagnosis: what this wave saw
+        # and what the engine refused. Reporting only the stale read sent an
+        # operator looking for a CREATED row that no longer existed.
+        assert "read as 'created' before dispatch" in message
+        assert "assigned -> assigned" in message

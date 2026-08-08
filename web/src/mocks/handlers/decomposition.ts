@@ -57,6 +57,9 @@ export const decompositionHandlers = [
           ],
           open_questions: [],
           assumptions: [],
+          // Null: the configured planner produced these items. A non-null
+          // value means a fallback stood in, which the approval surface says.
+          planning_strategy: null,
           task_structure: 'sequential',
           coordination_topology: 'auto',
         },

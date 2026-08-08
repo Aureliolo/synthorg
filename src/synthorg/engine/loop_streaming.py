@@ -45,6 +45,7 @@ from typing import Final
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import recorded_error_type
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.intervention.loop_hook import resolve_steering_scope
 from synthorg.engine.loop_helpers import build_result, call_provider
@@ -397,11 +398,15 @@ async def stream_provider(  # noqa: PLR0913
             f"Provider error on turn {turn_number}: "
             f"{type(exc).__name__}: {safe_error_description(exc)}"
         )
+        # The message names what was raised; ``error_type`` names what
+        # failed. They differ under the retry handler, which re-raises every
+        # retryable error as a ``RetryExhaustedError``: recording that name
+        # tells the diagnosis we retried, not that the provider timed out.
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error_type=type(exc).__name__,
+            error_type=recorded_error_type(exc),
             error=safe_error_description(exc),
         )
         # Fold any usage the stream surfaced before the exception so a
@@ -411,7 +416,7 @@ async def stream_provider(  # noqa: PLR0913
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
-            error_type=type(exc).__name__,
+            error_type=recorded_error_type(exc),
         )
 
     if early_exit is not None:

@@ -18,8 +18,12 @@ from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.lifecycle_transition import (
+    PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_FAILED,
+    PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
+    PERSISTENCE_LIFECYCLE_TRANSITION_DESERIALIZE_FAILED,
+    PERSISTENCE_LIFECYCLE_TRANSITION_PURGE_FAILED,
+    PERSISTENCE_LIFECYCLE_TRANSITION_QUERIED,
     PERSISTENCE_LIFECYCLE_TRANSITION_QUERY_FAILED,
-    PERSISTENCE_LIFECYCLE_TRANSITION_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
@@ -65,13 +69,19 @@ class PostgresLifecycleTransitionRepository:
         except psycopg.Error as exc:
             msg = f"Failed to record transition for {event.entity_id!r}"
             logger.warning(
-                PERSISTENCE_LIFECYCLE_TRANSITION_SAVE_FAILED,
+                PERSISTENCE_LIFECYCLE_TRANSITION_APPEND_FAILED,
                 entity_kind=event.entity_kind.value,
                 entity_id=event.entity_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        logger.debug(
+            PERSISTENCE_LIFECYCLE_TRANSITION_APPENDED,
+            entity_kind=event.entity_kind.value,
+            entity_id=event.entity_id,
+            to_status=event.to_status,
+        )
 
     async def query(
         self,
@@ -119,7 +129,9 @@ class PostgresLifecycleTransitionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_row_to_model(r) for r in rows)
+        transitions = tuple(_row_to_model(r) for r in rows)
+        logger.debug(PERSISTENCE_LIFECYCLE_TRANSITION_QUERIED, count=len(transitions))
+        return transitions
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete transitions with ``occurred_at < threshold``.
@@ -149,7 +161,7 @@ class PostgresLifecycleTransitionRepository:
         except psycopg.Error as exc:
             msg = "Failed to purge lifecycle transitions by threshold"
             logger.warning(
-                PERSISTENCE_LIFECYCLE_TRANSITION_QUERY_FAILED,
+                PERSISTENCE_LIFECYCLE_TRANSITION_PURGE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -186,7 +198,7 @@ def _row_to_model(row: DictRow) -> LifecycleTransition:
     except ValidationError as exc:
         msg = f"Failed to deserialize transition {row.get('id')!r}"
         logger.warning(
-            PERSISTENCE_LIFECYCLE_TRANSITION_QUERY_FAILED,
+            PERSISTENCE_LIFECYCLE_TRANSITION_DESERIALIZE_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

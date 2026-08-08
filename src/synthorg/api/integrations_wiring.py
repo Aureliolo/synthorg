@@ -237,12 +237,20 @@ def auto_wire_integrations(
 ) -> IntegrationsBundle:
     """Wire the MCP catalog, installations repo, and integration services.
 
-    Best-effort: each stage logs and swallows non-fatal errors so the
-    app still boots with integrations disabled when a dependency is
-    missing.
+    Two halves with different failure contracts. The provider credential
+    catalog is always-on and fatal: provider authentication has no other
+    source, so a failure raises rather than booting an org that cannot
+    make one authenticated model call. The integrations feature surface
+    (health prober, OAuth, webhooks, rate-limit coordinator) stays
+    best-effort, logging and swallowing so the app boots with
+    integrations disabled when one of its dependencies is missing.
 
     Returns:
         ``IntegrationsBundle`` instance.
+
+    Raises:
+        Exception: Whatever :func:`build_provider_credential_catalog`
+            raises, propagated deliberately.
     """
     bundle = IntegrationsBundle(
         mcp_catalog_service=_wire_mcp_catalog(),

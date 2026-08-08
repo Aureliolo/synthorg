@@ -12,9 +12,28 @@
 -- ``timestamp`` rides in the unique key because this table is converted to
 -- a TimescaleDB hypertable at connect time, and a unique index on a
 -- hypertable must include the partitioning column. It still catches the
--- duplicate that actually happens: a redelivery carries the same record, so
--- the same claim AND the same timestamp. The SQLite twin uses the identical
--- key so the two backends enforce the same thing.
+-- duplicate that actually happens: a redelivery re-sends the same immutable
+-- record, so the same claim AND the same timestamp. The SQLite twin uses
+-- the identical key so the two backends enforce the same thing.
+--
+-- ``project_id`` deliberately carries no foreign key, matching
+-- ``project_cost_aggregates.project_id``, which the same ``record()`` call
+-- writes in the same transaction. A cost row is financial evidence of a
+-- call that really happened: refusing the insert because the project row is
+-- missing (or gone) would lose the spend rather than protect it, and would
+-- also split the two stores, leaving the aggregate counting money the
+-- record table dropped.
+--
+-- Runs in yoyo's default transaction, so a failure anywhere leaves the
+-- schema untouched and the revision retryable. The usual reason to give
+-- that up on ``cost_records`` (a blocking backfill and blocking index
+-- builds on a hot table, answered by ``-- transactional: false`` plus
+-- CREATE INDEX CONCURRENTLY, as ``20260704000000_conversations_created_by_
+-- idx.sql`` does) does not apply here: nothing wrote this table before this
+-- revision, so every statement below runs against zero rows. Atomicity is
+-- worth more than concurrency on an empty table; the next author adding an
+-- index to this table, by then the highest-volume one, will not have that
+-- luxury.
 --
 -- ``lifecycle_transitions`` is new: a plan reaching COMPLETED had no durable
 -- actor record, so "only ``evaluate.py`` writes COMPLETED" was provable from
@@ -29,10 +48,12 @@ ALTER TABLE cost_records ADD COLUMN claim_id TEXT;
 
 ALTER TABLE cost_records ADD COLUMN project_id TEXT;
 
--- Rows written before the column existed carry no claim, and the unique
--- index below would collapse every one of them into a single row. A
--- synthetic per-row claim keeps history intact while still refusing a
--- genuine redelivery from here on.
+-- A row written before the column existed carries no claim, and a NULL
+-- never matches under a unique index, so it could never be deduped against
+-- a redelivery of itself. A synthetic per-row claim makes history
+-- dedupable while still refusing a genuine redelivery from here on. A
+-- no-op on every install shipped so far, since nothing wrote this table;
+-- kept because "empty" is a claim about today.
 UPDATE cost_records
 SET claim_id = 'legacy:' || GEN_RANDOM_UUID()::TEXT
 WHERE claim_id IS NULL;
@@ -43,9 +64,17 @@ ON cost_records (claim_id, timestamp);
 CREATE INDEX idx_cost_records_project_timestamp
 ON cost_records (project_id, timestamp DESC);
 
-ALTER TABLE plans ADD COLUMN planning_strategy TEXT;
+-- Blank is the state both columns exist to distinguish from absent (no
+-- fallback stood in; the panel did produce a verdict), so the row rejects it
+-- the way the model's ``NotBlankStr | None`` does.
+ALTER TABLE plans ADD COLUMN planning_strategy TEXT
+CHECK (planning_strategy IS NULL OR CHAR_LENGTH(TRIM(planning_strategy)) > 0);
 
-ALTER TABLE plans ADD COLUMN review_absent_reason TEXT;
+ALTER TABLE plans ADD COLUMN review_absent_reason TEXT
+CHECK (
+    review_absent_reason IS NULL
+    OR CHAR_LENGTH(TRIM(review_absent_reason)) > 0
+);
 
 CREATE TABLE lifecycle_transitions (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -65,7 +94,8 @@ CREATE TABLE lifecycle_transitions (
     occurred_at TIMESTAMPTZ NOT NULL
 );
 
--- The read is always "every transition of this entity, oldest first", so
--- the index carries the whole query.
+-- The read is always "this entity's transitions, newest first", and the
+-- tie-break on id is part of that ordering, so both sort keys ride in the
+-- index and the query never needs a sort step.
 CREATE INDEX idx_lifecycle_transitions_entity
-ON lifecycle_transitions (entity_kind, entity_id, occurred_at);
+ON lifecycle_transitions (entity_kind, entity_id, occurred_at DESC, id DESC);

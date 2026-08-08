@@ -56,6 +56,8 @@ raise before this log fires, so the audit trail only records
 hops that actually landed."""
 TASK_ENGINE_LOOP_ERROR: Final[str] = "task_engine.loop.error"
 TASK_ENGINE_READ_FAILED: Final[str] = "task_engine.read.failed"
+TASK_ENGINE_TASKS_FILED: Final[str] = "task_engine.tasks.filed"
+TASK_ENGINE_FILE_FAILED: Final[str] = "task_engine.file.failed"
 TASK_ENGINE_LIST_CAPPED: Final[str] = "task_engine.list.capped"
 TASK_ENGINE_FUTURES_FAILED: Final[str] = "task_engine.futures.failed"
 TASK_ENGINE_OBSERVER_FAILED: Final[str] = "task_engine.observer.failed"

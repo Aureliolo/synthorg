@@ -11,13 +11,14 @@ import pytest
 
 from synthorg.api.lifecycle_helpers.plan_questions import (
     PLAN_ID_METADATA_KEY,
-    PLAN_QUESTION_INDEX_KEY,
     apply_plan_question_answer,
     build_plan_questions,
 )
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.questions import CLARIFY_ACTION_TYPE, is_question
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -74,7 +75,9 @@ class TestBuildPlanQuestions:
         assert all(is_question(item.action_type) for item in parked)
         assert all(item.status is ApprovalStatus.PENDING for item in parked)
         assert parked[1].metadata[PLAN_ID_METADATA_KEY] == str(plan.id)
-        assert parked[1].metadata[PLAN_QUESTION_INDEX_KEY] == "1"
+        # The plan id and the question text are the whole key: a position
+        # would go stale the moment another question is answered.
+        assert set(parked[1].metadata) == {PLAN_ID_METADATA_KEY}
         assert all(item.task_id == "task-1" for item in parked)
 
     def test_a_plan_with_no_questions_parks_nothing(self) -> None:
@@ -166,3 +169,79 @@ class TestApplyPlanQuestionAnswer:
         )
 
         repo.update.assert_not_awaited()
+
+    async def test_one_answer_settles_one_of_two_identical_questions(self) -> None:
+        """A planner may raise the same question per blocked item.
+
+        Answering one of them settles one. Dropping both would retire a
+        question nobody was asked, and the plan would run on an assumption
+        recorded once for two decisions.
+        """
+        plan = _plan("Which datastore?", "Which datastore?")
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(return_value=plan), update=AsyncMock()
+        )
+
+        await apply_plan_question_answer(
+            repo,
+            _question(plan, "Which datastore?"),
+            answer="Postgres",
+            clock=FakeClock(),
+        )
+
+        written: Plan = repo.update.await_args.args[0]
+        assert written.open_questions == ("Which datastore?",)
+
+    async def test_a_concurrent_answer_is_retried_rather_than_reported_failed(
+        self,
+    ) -> None:
+        """Two answers on one plan contend; the second is not wrong, just second.
+
+        The plan row carries every question, so answering two at once makes
+        one writer lose the version check. Reporting that as a failed decision
+        would tell the operator their answer did not land while the other one
+        did, so the loser re-reads and re-applies.
+        """
+        first = _plan("Which datastore?", "Who owns the runbook?")
+        # The winner's write already removed the other question and bumped
+        # the version, which is exactly the row the loser must re-read.
+        after_other = first.model_copy(
+            update={
+                "open_questions": (NotBlankStr("Which datastore?"),),
+                "version": first.version + 1,
+            }
+        )
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=[first, after_other]),
+            update=AsyncMock(
+                side_effect=[PersistenceVersionConflictError("moved"), None]
+            ),
+        )
+
+        await apply_plan_question_answer(
+            repo,
+            _question(first, "Which datastore?"),
+            answer="Postgres",
+            clock=FakeClock(),
+        )
+
+        assert repo.update.await_count == 2
+        written: Plan = repo.update.await_args.args[0]
+        assert written.open_questions == ()
+        assert written.version == after_other.version + 1
+
+    async def test_an_answer_that_never_lands_is_reported(self) -> None:
+        """Losing every attempt is a decision that did not reach the plan."""
+        plan = _plan("Which datastore?")
+        repo = mock_of[PlanRepository](
+            get=AsyncMock(return_value=plan),
+            update=AsyncMock(side_effect=PersistenceVersionConflictError("moved")),
+        )
+
+        with pytest.raises(VersionConflictError):
+            await apply_plan_question_answer(
+                repo,
+                _question(plan, "Which datastore?"),
+                answer="Postgres",
+                clock=FakeClock(),
+            )

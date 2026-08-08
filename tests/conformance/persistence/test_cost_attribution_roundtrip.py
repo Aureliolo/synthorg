@@ -18,6 +18,7 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.persistence_errors import QueryError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
@@ -132,3 +133,44 @@ class TestCostAttributionRoundTrip:
         # The owner is gone but what the call was for is not: that is the
         # whole reason the synthetic task id was never needed.
         assert unowned[0].prompt_class_id == PromptPurposeId.MEMORY_RERANK
+
+    async def test_a_redelivered_record_is_stored_once(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The claim key is what makes the durable append safe to retry.
+
+        The tracker's in-memory LRU is empty after a restart, so a JetStream
+        redelivery reaches the storage layer as a fresh submission; only the
+        unique index stops it becoming a second billed row. The unit fake
+        enforces no uniqueness, so this is the only place the ``ON CONFLICT``
+        clause is exercised at all.
+        """
+        record = CostRecord(
+            provider="test-provider",
+            model="example-small-001",
+            input_tokens=10,
+            output_tokens=5,
+            cost=0.07,
+            currency="EUR",
+            timestamp=datetime(2026, 5, 1, 12, tzinfo=UTC),
+        )
+
+        await backend.cost_records.append(record)
+        await backend.cost_records.append(record)
+
+        persisted = await backend.cost_records.query(CostRecordFilterSpec())
+        same_claim = [r for r in persisted if r.claim_id == record.claim_id]
+        assert len(same_claim) == 1
+        assert await backend.cost_records.aggregate() == pytest.approx(0.07)
+
+    async def test_purge_before_rejects_a_naive_threshold(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """One protocol call must not delete a different window per backend.
+
+        ``normalize_utc`` tags a naive value as UTC, so a caller in another
+        zone silently purges the wrong retention window on whichever backend
+        does not refuse it.
+        """
+        with pytest.raises(QueryError):
+            await backend.cost_records.purge_before(datetime(2026, 5, 1, 12))  # noqa: DTZ001

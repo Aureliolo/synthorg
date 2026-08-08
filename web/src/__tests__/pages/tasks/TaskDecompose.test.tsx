@@ -172,6 +172,7 @@ describe('TaskDecomposeResult', () => {
         ],
         open_questions: [],
         assumptions: [],
+        planning_strategy: null,
         task_structure: 'sequential',
         coordination_topology: 'auto',
       },

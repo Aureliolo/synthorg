@@ -151,6 +151,7 @@ class CheckpointRecoveryStrategy:
             context=context,
             checkpoint=checkpoint,
             resume_attempt=resume_attempt,
+            error_type=error_type,
         )
 
     async def finalize(self, execution_id: str) -> None:
@@ -272,8 +273,21 @@ class CheckpointRecoveryStrategy:
         context: AgentContext,
         checkpoint: Checkpoint,
         resume_attempt: int,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Build a resumable ``RecoveryResult``.
+
+        Args:
+            task_execution: Current execution state.
+            error_message: Description of the failure.
+            context: Full agent context at the time of failure.
+            checkpoint: The checkpoint the resume will restore from.
+            resume_attempt: Which resume attempt this is.
+            error_type: Class name of the exception that terminated the
+                run. The fallback path already reads it; a resumable
+                result that ignored it would diagnose the same failure
+                differently depending on whether a checkpoint happened to
+                exist.
 
         Returns:
             A :class:`RecoveryResult` carrying the checkpoint
@@ -297,7 +311,9 @@ class CheckpointRecoveryStrategy:
         # acceptance-criteria data, so inferring STAGNATION or
         # QUALITY_GATE_FAILED here would violate RecoveryResult's
         # cross-field invariants.
-        category = infer_failure_category_without_evidence(error_message)
+        category = infer_failure_category_without_evidence(
+            error_message, error_type=error_type
+        )
         return RecoveryResult(
             task_execution=task_execution,
             strategy_type=self.STRATEGY_TYPE,
@@ -309,6 +325,7 @@ class CheckpointRecoveryStrategy:
                 "checkpoint_id": str(checkpoint.id),
                 "turn_number": checkpoint.turn_number,
                 "resume_attempt": resume_attempt,
+                "error_type": error_type,
             },
             checkpoint_context_json=checkpoint.context_json,
             resume_attempt=resume_attempt,

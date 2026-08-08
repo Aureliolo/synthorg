@@ -56,7 +56,7 @@ class ExecutionResult(BaseModel):
             system boundaries per project conventions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     context: AgentContext = Field(description="Final agent context")
     termination_reason: TerminationReason = Field(

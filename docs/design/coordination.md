@@ -38,7 +38,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
-`failure_category` is decided by `synthorg.engine.failure_classification`, and the typed cause outranks the prose. When the run terminated on a `ProviderError`, the exception class IS the classification: `category_for_exception()` reads a live exception and `category_for_error_type()` reads the class name the loop recorded on `ExecutionResult.error_type` (a frozen result cannot carry a live exception across the boundary), both against one table keyed by class so the two entry points cannot disagree. The split is what an operator does next: `PROVIDER_REFUSED` means the provider understood the request and rejected it (a bad parameter, an unknown model, a content filter, a credential, a depleted quota), so retrying reproduces it and the fix is a configuration change; `PROVIDER_UNAVAILABLE` means it could not answer right now (connection, 5xx, rate limit), so the same request may well succeed later.
+`failure_category` is decided by `synthorg.engine.failure_classification`, and the typed cause outranks the prose. When the run terminated on a `ProviderError`, the exception class IS the classification. There is exactly one typed entry point, `category_for_error_type()`, because a frozen `ExecutionResult` cannot carry a live exception and every consumer downstream of it holds a class name and nothing else; a second entry point taking the exception would only be an answer that could disagree. The loop writes that name through `recorded_error_type()`, which unwraps the `RetryExhaustedError` the retry handler re-raises every retryable error as, so a timeout is recorded as a timeout rather than as the fact that we retried. The name resolves back to its class and is matched with `issubclass`, so a subclass is not a stranger: `ProviderImageGenerationUnsupportedError` is an `InvalidRequestError` and diagnoses as one. The split is what an operator does next: `PROVIDER_REFUSED` means the provider understood the request and rejected it (a bad parameter, an unknown model, a content filter, a credential, a depleted quota), so retrying reproduces it and the fix is a configuration change; `PROVIDER_UNAVAILABLE` means it could not answer right now (connection, 5xx, rate limit), so the same request may well succeed later.
 
 Only when there is no typed cause does `infer_failure_category()` sniff keywords from the message. `UNKNOWN` is the deliberate default when no rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts. Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
 
@@ -210,7 +210,10 @@ On shutdown signal:
     (regardless of whether the agent exited cooperatively or was force-cancelled)
     and is eligible for manual or automatic reassignment on restart. Valid
     transitions: `ASSIGNED -> INTERRUPTED`, `IN_PROGRESS -> INTERRUPTED`,
-    `INTERRUPTED -> ASSIGNED`.
+    `INTERRUPTED -> ASSIGNED`, `INTERRUPTED -> CANCELLED`. The direct
+    `CANCELLED` is what gives the status an exit a writer can always take:
+    reassignment needs an assignee the task may never have had, abandonment
+    needs nothing.
 
 !!! tip "Cross-platform compatibility"
     `loop.add_signal_handler()` is not supported on Windows. The implementation
@@ -266,7 +269,8 @@ shutdown) or loaded from the last turn (crash recovery).
     `SUSPENDED` indicates the task was checkpointed before stop and can resume
     from the exact point of interruption.  `INTERRUPTED` indicates the task was
     stopped without a checkpoint and requires full reassignment. Both are
-    non-terminal: `SUSPENDED -> ASSIGNED`, `INTERRUPTED -> ASSIGNED`.
+    non-terminal, and both also carry a direct `CANCELLED`:
+    `SUSPENDED -> ASSIGNED | CANCELLED`, `INTERRUPTED -> ASSIGNED | CANCELLED`.
 
 ```yaml
 graceful_shutdown:

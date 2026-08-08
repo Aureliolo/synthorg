@@ -198,10 +198,7 @@ LOCKED organisation a weaker response than it chose and said nothing.
 **Pipeline steps:**
 
 1. **Validate inputs**: agent must be `ACTIVE`, task must be `ASSIGNED` or
-   `IN_PROGRESS`. Raises `ExecutionStateError` on violation. The entry sync to
-   the central engine is part of this: a refused `ASSIGNED -> IN_PROGRESS`
-   raises rather than proceeding, so the engine never runs work the central
-   engine has no record of starting.
+   `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
 2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
@@ -232,7 +229,12 @@ LOCKED organisation a weaker response than it chose and said nothing.
 6. **Seed conversation**: injects system prompt, optional memory messages, and
    formatted task instruction as initial messages.
 7. **Transition task**: `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
-   `IN_PROGRESS`).
+   `IN_PROGRESS`). This is the entry sync to the central engine, and it is
+   fail-loud: a refused transition raises `ExecutionStateError` rather than
+   proceeding locally, so the engine never runs work the central engine has no
+   record of starting. It runs here rather than at validation time because it
+   applies to the local context: `transition_task_if_needed` takes the seeded
+   context and returns the moved one, so the context has to exist first.
 8. **Prepare tools and budget**: creates `ToolInvoker` from registry and
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
    with pre-computed baselines and alert deduplication) or from task budget limit

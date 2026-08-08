@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Final
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -10,12 +11,13 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers import _approval_review_gate
 from synthorg.api.controllers._chat_questions import DECLINE_REASON
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.approval.enums import (
     ApprovalRiskLevel,
     ApprovalSource,
     ApprovalStatus,
 )
-from synthorg.approval.questions import DECLINED_QUESTION_NOTE
+from synthorg.approval.questions import CLARIFY_ACTION_TYPE, DECLINED_QUESTION_NOTE
 from synthorg.approval.resume_annotations import (
     DEFAULT_RESUME_ANNOTATIONS,
     ResumeAnnotations,
@@ -23,11 +25,13 @@ from synthorg.approval.resume_annotations import (
 )
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
-from synthorg.core.plan import PlanOption
+from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.state import persistence_of
 from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import JsonDict, LoopAsyncClient, as_uuid, mock_of
 from tests.unit.api.conftest import make_approval, make_auth_headers
+from tests.unit.persistence.conftest import make_task
 
 _BASE = "/api/v1/meta/chat/questions"
 _DECIDE_HEADERS = make_auth_headers("ceo")
@@ -110,6 +114,55 @@ def _question(
         task_id=task_id,
         metadata=metadata,
     )
+
+
+#: The one open question the seeded plan carries, so a test can assert it is
+#: still there when the decided question belonged to something else.
+_PLAN_QUESTION: Final[str] = "Which database backend should the org target?"
+
+
+def _plan_question(*, approval_id: str, plan_id: str) -> ApprovalItem:
+    """A parked plan question exactly as the review gate creates one."""
+    return ApprovalItem(
+        id=as_uuid(approval_id),
+        action_type=CLARIFY_ACTION_TYPE,
+        title="Plan question",
+        description=_PLAN_QUESTION,
+        requested_by="agent-dev",
+        risk_level=ApprovalRiskLevel.LOW,
+        source=ApprovalSource.PLAN_REVIEW,
+        created_at=datetime.now(UTC),
+        metadata={PLAN_ID_METADATA_KEY: plan_id},
+    )
+
+
+async def _seed_plan_with_question(client: LoopAsyncClient) -> Plan:
+    """Persist a plan carrying one open question, and return it."""
+    backend = persistence_of(client.app.state.app_state)
+    now = datetime.now(UTC)
+    task = make_task(task_id="plan-parent")
+    await backend.tasks.save(task)
+    plan = Plan(
+        id=as_uuid("plan-with-question"),
+        project=NotBlankStr("beachhead"),
+        objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the loop"),
+        parent_task_id=NotBlankStr(str(task.id)),
+        items=(
+            PlanItem(
+                id=NotBlankStr(str(as_uuid("item-1"))),
+                title=NotBlankStr("Build it"),
+                description=NotBlankStr("Build the thing"),
+                acceptance_criteria=(NotBlankStr("it works"),),
+                expected_artifacts=(NotBlankStr("src/thing.py"),),
+            ),
+        ),
+        open_questions=(NotBlankStr(_PLAN_QUESTION),),
+        created_at=now,
+        updated_at=now,
+    )
+    await backend.plans.save(plan)
+    return plan
 
 
 def _decision(*, approval_id: str) -> ApprovalItem:
@@ -450,6 +503,85 @@ class TestAnswerQuestion:
             headers=_DECIDE_HEADERS,
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.usefixtures("resumes")
+class TestPlanQuestionWriteBack:
+    """C11: an answer that stops at the approval row is an answer to nobody.
+
+    The dispatch tree is rebuilt from the durable plan, so a decided plan
+    question only reaches the agents once the plan itself says so.
+    """
+
+    async def test_an_answer_lands_on_the_plan_the_agents_execute(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        plan = await _seed_plan_with_question(async_test_client)
+        await approval_store.add(
+            _plan_question(approval_id="q-plan", plan_id=str(plan.id))
+        )
+
+        resp = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-plan')}/answer",
+            json={"answer": "Postgres only."},
+            headers=_idem(_DECIDE_HEADERS),
+        )
+
+        assert resp.status_code == 200, resp.text
+        stored = await persistence_of(async_test_client.app.state.app_state).plans.get(
+            NotBlankStr(str(plan.id))
+        )
+        assert stored is not None
+        assert stored.open_questions == ()
+        assert any("Postgres only." in a for a in stored.assumptions)
+
+    async def test_a_declined_question_is_settled_as_declined(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        """Declining is an answer too: the plan stops waiting on it."""
+        plan = await _seed_plan_with_question(async_test_client)
+        await approval_store.add(
+            _plan_question(approval_id="q-plan-declined", plan_id=str(plan.id))
+        )
+
+        resp = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-plan-declined')}/decline",
+            headers=_idem(_DECIDE_HEADERS),
+        )
+
+        assert resp.status_code == 200, resp.text
+        stored = await persistence_of(async_test_client.app.state.app_state).plans.get(
+            NotBlankStr(str(plan.id))
+        )
+        assert stored is not None
+        assert stored.open_questions == ()
+
+    async def test_a_question_off_no_plan_leaves_every_plan_alone(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        """Every other parked question resumes its own agent instead."""
+        plan = await _seed_plan_with_question(async_test_client)
+        await approval_store.add(_question(approval_id="q-not-a-plan"))
+
+        resp = await async_test_client.post(
+            f"{_BASE}/{as_uuid('q-not-a-plan')}/answer",
+            json={"answer": "Something else entirely."},
+            headers=_idem(_DECIDE_HEADERS),
+        )
+
+        assert resp.status_code == 200, resp.text
+        stored = await persistence_of(async_test_client.app.state.app_state).plans.get(
+            NotBlankStr(str(plan.id))
+        )
+        assert stored is not None
+        assert stored.open_questions == (_PLAN_QUESTION,)
 
 
 @pytest.mark.unit

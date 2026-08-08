@@ -15,6 +15,7 @@ from synthorg.budget.quota import DegradationAction
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._task_sync_engine import sync_to_task_engine
 from synthorg.engine.agent_engine_budget_halt import AgentEngineBudgetHaltMixin
@@ -73,6 +74,55 @@ class FatalFailure(BaseModel):
 
 
 _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
+
+
+def _pre_fatal_status(ctx: AgentContext | None, task: Task) -> TaskStatus:
+    """Return the status the task held when the fatal error struck.
+
+    Falls back to the task the caller handed in, because the failures that
+    most need the central row moved are the ones that happen before there is
+    a context to read: the entry sync raises ``ExecutionStateError`` from
+    ``_prepare_context``, so ``ctx`` is still ``None`` there. Treating "no
+    context" as "nothing to sync" left exactly those rows sitting wherever
+    the failure found them, with the engine holding no record that the run
+    ended.
+
+    Returns:
+        The pre-fatal status.
+    """
+    if ctx is not None and ctx.task_execution is not None:
+        return ctx.task_execution.status
+    return task.status
+
+
+def _note_secondary_failure(
+    exc: Exception,
+    build_exc: Exception,
+    *,
+    agent_id: str,
+    task_id: str,
+) -> None:
+    """Annotate the original failure with the one that hit building its result.
+
+    The original exception is what the caller is diagnosing; the failure to
+    build its error result is context on top, so it travels as a note on
+    *exc* rather than replacing the cause. It does not raise: the re-raise
+    belongs at the handler that owns it, where it stays visible.
+    """
+    logger.warning(
+        EXECUTION_ENGINE_ERROR,
+        agent_id=agent_id,
+        task_id=task_id,
+        error_type=type(build_exc).__name__,
+        error=safe_error_description(build_exc),
+        stage="build_error_result",
+        original_error_type=type(exc).__name__,
+    )
+    exc.add_note(
+        f"Secondary failure while building error result: "
+        f"{type(build_exc).__name__}: "
+        f"{safe_error_description(build_exc)}",
+    )
 
 
 class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
@@ -216,6 +266,61 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
         )
         return new_provider, routed
 
+    def _resolve_fallback_provider(
+        self,
+        effective: str,
+        *,
+        original: str,
+    ) -> CompletionProvider:
+        """Return the client for a degradation-selected fallback provider.
+
+        Both failure branches raise rather than keeping the original client:
+        degradation selected the fallback because the original is out of
+        quota, so continuing on it would spend past the ceiling that triggered
+        the swap.
+
+        Returns:
+            The registry client serving *effective*.
+
+        Raises:
+            QuotaExhaustedError: When no ``provider_registry`` is wired, or
+                the registry does not know *effective*.
+        """
+        if self._provider_registry is None:
+            logger.warning(
+                DEGRADATION_PROVIDER_SWAPPED,
+                original_provider=original,
+                fallback_provider=effective,
+                error="no provider_registry available",
+                result="failed",
+            )
+            msg = (
+                f"FALLBACK selected provider {effective!r} "
+                f"but no provider_registry available"
+            )
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=original,
+                degradation_action=DegradationAction.FALLBACK,
+            )
+        try:
+            return self._provider_registry.get(effective)
+        except DriverNotRegisteredError as exc:
+            logger.warning(
+                DEGRADATION_PROVIDER_SWAPPED,
+                original_provider=original,
+                fallback_provider=effective,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                result="failed",
+            )
+            msg = f"Fallback provider {effective!r} not found in registry"
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=original,
+                degradation_action=DegradationAction.FALLBACK,
+            ) from exc
+
     def _apply_degradation(
         self,
         preflight: PreFlightResult,
@@ -239,45 +344,10 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
             return provider, identity
 
         original = identity.model.provider
-        if self._provider_registry is None:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error="no provider_registry available",
-                result="failed",
-            )
-            msg = (
-                f"FALLBACK selected provider {effective!r} "
-                f"but no provider_registry available"
-            )
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            )
-
-        try:
-            new_provider = self._provider_registry.get(effective)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=original,
-                fallback_provider=effective,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                result="failed",
-            )
-            msg = f"Fallback provider {effective!r} not found in registry"
-            raise QuotaExhaustedError(
-                msg,
-                provider_name=original,
-                degradation_action=DegradationAction.FALLBACK,
-            ) from exc
-
+        new_provider = self._resolve_fallback_provider(effective, original=original)
         logger.info(
             DEGRADATION_PROVIDER_SWAPPED,
-            original_provider=identity.model.provider,
+            original_provider=original,
             fallback_provider=effective,
             result="success",
         )
@@ -311,9 +381,12 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
             An :class:`AgentRunResult` whose
             ``execution_result.termination_reason`` is ``ERROR`` and
             whose ``error_message`` is the sanitised description of
-            ``exc``; on a secondary failure during error-result
-            construction the original ``exc`` is re-raised with a
-            ``note`` describing the secondary error.
+            ``exc``.
+
+        Raises:
+            Exception: The original *exc*, when building the error result
+                itself failed; it carries a ``note`` describing the
+                secondary failure.
         """
         # ``error_msg`` propagates back into agent context (the LLM
         # sees it on retry / handoff) and must not carry credential
@@ -323,7 +396,6 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
         # would otherwise leak operator-internal identifiers into the
         # LLM-context payload.
         error_desc = safe_error_description(exc)
-        error_msg = sanitize_message(error_desc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,
@@ -331,12 +403,7 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
             error_type=type(exc).__name__,
             error=error_desc,
         )
-
-        pre_fatal_status = (
-            ctx.task_execution.status
-            if ctx is not None and ctx.task_execution is not None
-            else None
-        )
+        pre_fatal_status = _pre_fatal_status(ctx, task)
         try:
             error_execution = await self._build_error_execution(
                 identity,
@@ -344,7 +411,7 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
                 agent_id=agent_id,
                 task_id=task_id,
                 failure=FatalFailure(
-                    message=error_msg,
+                    message=sanitize_message(error_desc),
                     error_type=NotBlankStr(type(exc).__name__),
                 ),
                 ctx=ctx,
@@ -352,58 +419,82 @@ class AgentEngineErrorsMixin(AgentEngineBudgetHaltMixin):
                 effective_autonomy=effective_autonomy,
                 provider=provider,
             )
-            error_ctx = error_execution.context
-            if (
-                error_ctx.task_execution is not None
-                and pre_fatal_status is not None
-                and error_ctx.task_execution.status != pre_fatal_status
-            ):
-                logger.info(
-                    EXECUTION_ENGINE_TASK_TRANSITION,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    from_status=pre_fatal_status.value,
-                    to_status=error_ctx.task_execution.status.value,
-                )
-                await sync_to_task_engine(
-                    self._task_engine,
-                    target_status=error_ctx.task_execution.status,
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    reason=f"Fatal error recovery: {type(exc).__name__}",
-                )
-            error_prompt = build_error_prompt(
-                identity,
-                agent_id,
-                system_prompt,
-            )
-            return AgentRunResult(
-                execution_result=error_execution,
-                system_prompt=error_prompt,
-                duration_seconds=duration_seconds,
+            await self._sync_fatal_transition(
+                error_execution.context,
+                pre_fatal_status=pre_fatal_status,
                 agent_id=agent_id,
                 task_id=task_id,
-                currency=resolve_tracker_currency(
-                    getattr(self, "_cost_tracker", None),
-                ),
+                error_type=type(exc).__name__,
+            )
+            return self._fatal_run_result(
+                error_execution,
+                identity=identity,
+                agent_id=agent_id,
+                task_id=task_id,
+                system_prompt=system_prompt,
+                duration_seconds=duration_seconds,
             )
         except Exception as build_exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(build_exc)
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
+            _note_secondary_failure(
+                exc,
+                build_exc,
                 agent_id=agent_id,
                 task_id=task_id,
-                error_type=type(build_exc).__name__,
-                error=safe_error_description(build_exc),
-                stage="build_error_result",
-                original_error_type=type(exc).__name__,
-            )
-            exc.add_note(
-                f"Secondary failure while building error result: "
-                f"{type(build_exc).__name__}: "
-                f"{safe_error_description(build_exc)}",
             )
             raise exc from None
+
+    def _fatal_run_result(
+        self,
+        error_execution: ExecutionResult,
+        *,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        system_prompt: SystemPrompt | None,
+        duration_seconds: float,
+    ) -> AgentRunResult:
+        """Wrap a built error execution as the run's result.
+
+        Returns:
+            The :class:`AgentRunResult` the fatal boundary hands back.
+        """
+        return AgentRunResult(
+            execution_result=error_execution,
+            system_prompt=build_error_prompt(identity, agent_id, system_prompt),
+            duration_seconds=duration_seconds,
+            agent_id=agent_id,
+            task_id=task_id,
+            currency=resolve_tracker_currency(getattr(self, "_cost_tracker", None)),
+        )
+
+    async def _sync_fatal_transition(
+        self,
+        error_ctx: AgentContext,
+        *,
+        pre_fatal_status: TaskStatus,
+        agent_id: str,
+        task_id: str,
+        error_type: str,
+    ) -> None:
+        """Move the central row to wherever the error result left the task."""
+        execution = error_ctx.task_execution
+        if execution is None or execution.status == pre_fatal_status:
+            return
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=pre_fatal_status.value,
+            to_status=execution.status.value,
+        )
+        await sync_to_task_engine(
+            self._task_engine,
+            target_status=execution.status,
+            task_id=task_id,
+            agent_id=agent_id,
+            reason=f"Fatal error recovery: {error_type}",
+        )
 
     async def _build_error_execution(  # noqa: PLR0913
         self,

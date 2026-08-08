@@ -55,14 +55,22 @@ it is a loss.
 
 Each open question is now filed as a **parked question** alongside the plan
 approval, inside the same guard, with `action_type=CLARIFY_ACTION_TYPE`, the
-plan's parent task, and metadata carrying the plan id and the question index.
-That puts it on the surface that already exists: it appears in
-`GET /meta/chat/questions` and is answered or declined through the same narrow
-door as every agent-raised question, with no second decision path.
+plan's parent task, and metadata carrying the plan id. That puts it on the
+surface that already exists: it appears in `GET /meta/chat/questions` and is
+answered or declined through the same narrow door as every agent-raised
+question, with no second decision path.
+
+The approval carries no question **index**. An index identifies a position in
+`open_questions`, and the first answer rewrites that tuple, so every remaining
+approval's index would point at a different question than the one its own text
+asks; the question text on the approval is the identity, and settling removes
+one matching entry rather than every duplicate.
 
 The answer goes back onto the plan the agents execute: answering removes the
 entry from `plan.open_questions` and appends the answer to `plan.assumptions`
-through `PlanService`; declining keeps the existing declined-question note.
+through `PlanService`, under a compare-and-set retry so two answers landing at
+once cannot lose one of the write-backs; declining keeps the existing
+declined-question note.
 Question text is persisted raw and fenced with `wrap_untrusted(TAG_TASK_DATA,
 ...)` only at the LLM prompt boundary, per SEC-1.
 
@@ -117,7 +125,9 @@ a plan nothing checked.
 stateDiagram-v2
     [*] --> PLANNING
     PLANNING --> PENDING_REVIEW: decomposition fills the shell
+    PLANNING --> DRAFT: operator edits the shell
     PLANNING --> FAILED: decomposition failed / empty
+    PLANNING --> SUPERSEDED: superseded by a re-plan
     DRAFT --> PENDING_REVIEW
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
@@ -134,9 +144,11 @@ stateDiagram-v2
     INTEGRATING --> EVALUATING: assembly job passed its review gate
     INTEGRATING --> EXECUTING: an item regressed
     INTEGRATING --> SUPERSEDED: superseded by a re-plan
+    INTEGRATING --> FAILED: assembly will not assemble
     EVALUATING --> COMPLETED: every success criterion met
     EVALUATING --> EXECUTING: an item regressed
     EVALUATING --> SUPERSEDED: superseded by a re-plan
+    EVALUATING --> FAILED: the judgement cannot run
     COMPLETED --> [*]
     REJECTED --> [*]
     FAILED --> [*]
@@ -345,8 +357,9 @@ so approval stays atomic).
 | `GET` | `/plans` | List plans (cursor pagination; `status` / `project` / `objective_id` filters) |
 | `GET` | `/plans/{id}` | Fetch a plan |
 | `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
+| `GET` | `/plans/{id}/transitions` | The plan's recorded status transitions, newest first: who asked, why, and from which version (see [Initiative Tail](initiative-tail.md)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
-| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
+| `DELETE` | `/plans/{id}` | Remove a plan that is not a record of work. Always deletable while undispatched (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED`); a plan deletes only when it has **zero live task rows**, because "its items are building" is checked against the tasks rather than inferred from the status: a dispatch that died before writing a single row leaves nothing building. That check and the delete are ONE repository call in one transaction (`delete_if_no_live_tasks`), never a count followed by a delete: a task filed between the two would be stranded on a plan id that no longer resolves, and nothing would report it. A terminal plan is refused outright (its record and its delivery verdicts outlive it), and a genuinely building plan is refused naming the count (409). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |

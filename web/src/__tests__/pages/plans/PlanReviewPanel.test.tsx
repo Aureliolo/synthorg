@@ -30,13 +30,31 @@ function makeReview(overrides?: Partial<PlanReview>): PlanReview {
 }
 
 describe('PlanReviewPanel', () => {
-  it('renders nothing when no panel reviewed the plan', () => {
-    const { container } = render(<PlanReviewPanel review={null} />)
+  it('renders nothing when the backend recorded no review and no reason', () => {
+    const { container } = render(
+      <PlanReviewPanel review={null} absentReason={null} />,
+    )
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('says the plan carries no quality signal when a reason was recorded', () => {
+    // The defect this closes: three different "no review" outcomes rendered
+    // identically as nothing at all, so an operator approved a plan nothing
+    // had checked with no way to know.
+    render(
+      <PlanReviewPanel
+        review={null}
+        absentReason="the panel ran and returned no verdict"
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'the panel ran and returned no verdict',
+    )
+    expect(screen.getByText(/carries no quality signal/)).toBeInTheDocument()
+  })
+
   it('shows the consolidated verdict, each reviewer, and their findings', () => {
-    render(<PlanReviewPanel review={makeReview()} />)
+    render(<PlanReviewPanel review={makeReview()} absentReason={null} />)
     expect(screen.getByText('Stakeholder review')).toBeInTheDocument()
     expect(screen.getByText('CTO')).toBeInTheDocument()
     expect(screen.getByText('CFO')).toBeInTheDocument()
@@ -47,7 +65,7 @@ describe('PlanReviewPanel', () => {
   })
 
   it('renders the panel summary when present', () => {
-    render(<PlanReviewPanel review={makeReview()} />)
+    render(<PlanReviewPanel review={makeReview()} absentReason={null} />)
     expect(screen.getByText(/1 of 2 reviewer/)).toBeInTheDocument()
   })
 })

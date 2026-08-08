@@ -27,6 +27,7 @@ from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )
+from synthorg.providers.registry import ProviderRegistry
 from tests._shared import JsonDict
 from tests._shared.connection_catalog import make_in_memory_catalog
 
@@ -108,6 +109,36 @@ async def make_catalog_with_key(
         credentials={"api_key": api_key},
     )
     return catalog
+
+
+async def make_example_registry(api_key: str = "sk-test-key") -> ProviderRegistry:
+    """Registry for the example provider with its credential connection bound.
+
+    Every provider config here names a ``connection_name``, and a driver whose
+    config names one refuses to dispatch without a catalog to resolve it from
+    rather than calling out unauthenticated. So a test exercising the
+    completion pipeline binds the catalog the same way a wired backend does,
+    even when the credential itself is beside the point.
+
+    Returns:
+        A registry whose ``example-provider`` driver can resolve its key.
+    """
+    catalog = await make_catalog_with_key("provider-example", api_key)
+    return ProviderRegistry.from_config(
+        make_provider_config(), connection_catalog=catalog
+    )
+
+
+async def make_openrouter_registry(api_key: str = "sk-test-key") -> ProviderRegistry:
+    """Registry for the gateway-shaped provider, with its connection bound.
+
+    Returns:
+        A registry whose ``openrouter`` driver can resolve its key.
+    """
+    catalog = await make_catalog_with_key("provider-gateway-test", api_key)
+    return ProviderRegistry.from_config(
+        make_openrouter_config(), connection_catalog=catalog
+    )
 
 
 def make_ollama_config() -> dict[str, ProviderConfig]:

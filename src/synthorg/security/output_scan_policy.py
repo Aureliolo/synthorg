@@ -215,11 +215,12 @@ class AutonomyTieredPolicy:
     """Delegate to sub-policies based on the effective autonomy level.
 
     Uses a configurable mapping from ``AutonomyLevel`` to a concrete policy.
-    With no tier to read (no autonomy resolved, or a level the map does not
-    cover) it responds at the STRICTEST tier, never a middle one: the tier
-    map runs from ``LogOnlyPolicy`` at FULL to ``WithholdPolicy`` at LOCKED,
-    so substituting the middle would hand a LOCKED organisation a weaker
-    response than it chose, and say nothing.
+    Four levels, three distinct responses: ``LogOnlyPolicy`` at FULL,
+    ``RedactPolicy`` for both SEMI and SUPERVISED, ``WithholdPolicy`` at
+    LOCKED. With no tier to read (no autonomy resolved, or a level the map
+    does not cover) it responds at the STRICTEST of the three, never the
+    middle one, because substituting ``RedactPolicy`` would hand a LOCKED
+    organisation a weaker response than it chose, and say nothing.
     """
 
     def __init__(

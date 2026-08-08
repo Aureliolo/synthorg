@@ -7,6 +7,7 @@ export { PLAN_STATUS_VALUES } from './enum-values.gen'
 export type {
   CriterionVerdict,
   EditPlanRequest,
+  LifecycleTransition,
   Plan,
   PlanCommentPayload,
   PlanEvaluationAttempt,

@@ -18,7 +18,6 @@ from synthorg.providers.models import (
     ToolDefinition,
     ToolResult,
 )
-from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from synthorg.providers.base import BaseCompletionProvider
@@ -30,17 +29,20 @@ from .conftest import (
     build_model_response,
     build_tool_call_delta_chunk,
     build_tool_call_dict,
-    make_provider_config,
+    make_example_registry,
 )
 
 pytestmark = pytest.mark.integration
 _PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 
-def _make_driver() -> BaseCompletionProvider:
-    """Build a provider driver from config."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+async def _make_driver() -> BaseCompletionProvider:
+    """Build a provider driver with its credential connection bound.
+
+    Returns:
+        The ``example-provider`` driver.
+    """
+    registry = await make_example_registry()
     return registry.get("example-provider")
 
 
@@ -52,7 +54,7 @@ async def test_single_tool_call(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Single tool call is extracted correctly."""
-    driver = _make_driver()
+    driver = await _make_driver()
     tc = build_tool_call_dict(
         call_id="call_w1",
         name="get_weather",
@@ -81,7 +83,7 @@ async def test_multiple_tool_calls(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Multiple tool calls in a single response."""
-    driver = _make_driver()
+    driver = await _make_driver()
     tc1 = build_tool_call_dict(
         call_id="call_w1",
         name="get_weather",
@@ -112,7 +114,7 @@ async def test_tool_definitions_forwarded(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """ToolDefinitions are converted and forwarded to litellm."""
-    driver = _make_driver()
+    driver = await _make_driver()
     mock_resp = build_model_response()
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
@@ -132,7 +134,7 @@ async def test_tool_use_finish_reason(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Finish reason 'tool_calls' maps to TOOL_USE."""
-    driver = _make_driver()
+    driver = await _make_driver()
     tc = build_tool_call_dict()
     mock_resp = build_model_response(
         content=None,
@@ -155,7 +157,7 @@ async def test_streaming_single_tool_call(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Streaming tool call is accumulated and emitted as TOOL_CALL_DELTA."""
-    driver = _make_driver()
+    driver = await _make_driver()
     chunks = [
         build_tool_call_delta_chunk(
             index=0, call_id="call_s1", name="get_weather", arguments='{"lo'
@@ -185,7 +187,7 @@ async def test_streaming_multiple_concurrent_tool_calls(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Multiple concurrent streaming tool calls on different indices."""
-    driver = _make_driver()
+    driver = await _make_driver()
     chunks = [
         # First tool call start
         build_tool_call_delta_chunk(
@@ -225,7 +227,7 @@ async def test_streaming_mixed_text_and_tool_calls(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Stream with text content followed by tool calls."""
-    driver = _make_driver()
+    driver = await _make_driver()
     chunks = [
         build_content_chunk("I'll check the weather. "),
         build_tool_call_delta_chunk(
@@ -259,7 +261,7 @@ async def test_streaming_malformed_json_tool_call(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Malformed JSON in streamed tool call args causes the tool call to be dropped."""
-    driver = _make_driver()
+    driver = await _make_driver()
     chunks = [
         build_tool_call_delta_chunk(
             index=0,
@@ -284,7 +286,7 @@ async def test_multi_turn_tool_conversation(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
     """Multi-turn: user -> assistant(tool_call) -> tool_result -> assistant."""
-    driver = _make_driver()
+    driver = await _make_driver()
 
     # Turn 1: user asks, model calls tool
     messages_t1 = [

@@ -27,6 +27,7 @@ from collections.abc import (
 from typing import override
 
 from synthorg.config.provider_schema import ProviderModelConfig
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_FORMAT_ERROR,
@@ -113,6 +114,20 @@ class CassetteCompletionProvider(BaseCompletionProvider):
     def _provider_label(self) -> str:
         """Return the stable label used for keying and metrics."""
         return self._provider_name
+
+    @override
+    def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
+        """Forward the credential catalog to the wrapped driver.
+
+        The registry binds the always-on catalog after construction, and a
+        record-mode wrapper dispatches through its inner driver, which now
+        refuses to call out when its config names a connection it cannot
+        resolve. Inheriting the base no-op would leave that driver
+        permanently unbound behind the wrapper. Pure-replay mode has no
+        inner driver and makes no upstream call, so it has nothing to bind.
+        """
+        if self._inner is not None:
+            self._inner.bind_credential_catalog(catalog)
 
     @override
     def serves_model(self, model: str) -> bool:

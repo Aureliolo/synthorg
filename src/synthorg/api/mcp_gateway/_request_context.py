@@ -196,7 +196,10 @@ async def _gather_context_inputs(
     The reads (forge / chat settings, the deploy and publish settings bundles,
     and the actor lookup) do not depend on one another, so they run under one
     ``TaskGroup`` and the group's error flattening is handled here. Autonomy
-    is resolved after the group because it reads the actor the group looked up.
+    depends on the actor, so it is chained behind that one lookup rather than
+    behind the whole group: every governed tool call pays for this context, and
+    serialising a project read after seven settings reads that never needed it
+    is latency on the hot path for nothing.
 
     Args:
         app_state: The live application state.
@@ -227,10 +230,12 @@ async def _gather_context_inputs(
             )
             deploy = tg.create_task(_resolve_deploy_settings(resolver))
             publish = tg.create_task(_resolve_publish_settings(resolver))
-            actor = tg.create_task(_resolve_actor(app_state, agent_id=agent_id))
+            governed = tg.create_task(
+                _resolve_actor_autonomy(app_state, agent_id=agent_id, task_id=task_id)
+            )
     except ExceptionGroup as eg:
         _reraise_first(eg)
-    resolved_actor = actor.result()
+    resolved_actor, effective_autonomy = governed.result()
     return _ResolvedContextInputs(
         forge_connection=forge_conn.result(),
         chat_connection=chat_conn.result(),
@@ -240,10 +245,33 @@ async def _gather_context_inputs(
         deploy_settings=deploy.result(),
         publish_settings=publish.result(),
         actor=resolved_actor,
-        effective_autonomy=await _resolve_autonomy(
-            app_state, resolved_actor, task_id=task_id
-        ),
+        effective_autonomy=effective_autonomy,
     )
+
+
+async def _resolve_actor_autonomy(
+    app_state: AppState,
+    *,
+    agent_id: str,
+    task_id: str | None,
+) -> tuple[AgentIdentity | None, EffectiveAutonomy | None]:
+    """Look the caller up, then resolve the autonomy governing them.
+
+    One task rather than two because the second read needs the first's answer;
+    running the pair inside the context group overlaps it with the settings
+    reads it has nothing to do with.
+
+    Args:
+        app_state: The live application state.
+        agent_id: The caller id from the verified bearer.
+        task_id: The task id from the verified bearer, when there is one.
+
+    Returns:
+        The resolved actor and the autonomy governing this call, either of
+        which may be ``None``.
+    """
+    actor = await _resolve_actor(app_state, agent_id=agent_id)
+    return actor, await _resolve_autonomy(app_state, actor, task_id=task_id)
 
 
 async def _resolve_autonomy(
@@ -260,10 +288,17 @@ async def _resolve_autonomy(
     path, so a tool reached over the gateway is tiered the same way the same
     tool is tiered inside a run.
 
+    Args:
+        app_state: The live application state.
+        actor: The caller, when the HR registry knows them.
+        task_id: The task id from the verified bearer, when there is one.
+
     Returns:
-        The resolved autonomy, or ``None`` when the caller is outside a run
-        (no actor or no task) or no agent-backed execution service is
-        installed, which leaves the screen at its strictest tier.
+        The resolved autonomy, or ``None`` on any of three counts: the caller
+        is outside a run (no actor, or no task), the install has no security
+        runtime config so there is no screen to tier, or no agent-backed
+        execution service is installed. All three leave the screen at its
+        strictest tier.
     """
     from synthorg.workers.execution_service import (  # noqa: PLC0415
         AgentEngineExecutionService,

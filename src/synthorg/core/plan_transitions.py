@@ -8,8 +8,8 @@ Defines the valid state transitions for a durable plan::
     PENDING_REVIEW -> DRAFT | APPROVED | REJECTED | SUPERSEDED | FAILED
     APPROVED -> EXECUTING | SUPERSEDED | FAILED
     EXECUTING -> INTEGRATING | SUPERSEDED | FAILED
-    INTEGRATING -> EVALUATING | EXECUTING | SUPERSEDED
-    EVALUATING -> COMPLETED | EXECUTING | SUPERSEDED
+    INTEGRATING -> EVALUATING | EXECUTING | SUPERSEDED | FAILED
+    EVALUATING -> COMPLETED | EXECUTING | SUPERSEDED | FAILED
 
 COMPLETED, REJECTED, SUPERSEDED, and FAILED are terminal.
 
@@ -36,9 +36,13 @@ last is why APPROVED and EXECUTING reach it. Dispatch moves the plan to
 EXECUTING before it builds the task tree, so that the rollup never observes a
 project still PLANNING with tasks already running; a dispatch that then fails
 leaves a plan EXECUTING with a failed parent and no children, which is a state
-with no exit and nobody watching. The edge is what gets it out. Neither tail
-stage reaches FAILED: by then the work exists, so a failure there is a replan
-(SUPERSEDED) rather than a run that never happened.
+with no exit and nobody watching. The edge is what gets it out.
+
+Both tail stages reach FAILED for the same reason: an assembly that will not
+assemble, or a judgement that cannot run, with no replan routing it anywhere.
+A replan (SUPERSEDED) resolves the tail failures somebody chooses to re-plan;
+the ones nobody re-plans would otherwise sit in the tail with no exit, which
+is the shape that made a whole project undeletable.
 """
 
 from typing import Final

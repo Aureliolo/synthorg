@@ -40,6 +40,27 @@ class PlanFilterSpec(BaseModel):
     )
 
 
+class PlanDeleteOutcome(BaseModel):
+    """What a guarded plan delete did, and what stopped it.
+
+    Attributes:
+        deleted: Whether the plan row was removed.
+        live_task_count: Non-terminal tasks found under the plan. Non-zero
+            means the delete was refused because work is still building.
+            Zero alongside ``deleted=False`` means no plan with that id was
+            there to delete.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    deleted: bool = Field(description="Whether the plan row was removed")
+    live_task_count: int = Field(
+        default=0,
+        ge=0,
+        description="Non-terminal tasks found under the plan",
+    )
+
+
 @runtime_checkable
 class PlanRepository(
     IdKeyedRepository[Plan, NotBlankStr],
@@ -173,6 +194,37 @@ class PlanRepository(
 
         Returns:
             ``True`` if the plan was deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        ...
+
+    async def delete_if_no_live_tasks(
+        self,
+        entity_id: NotBlankStr,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        """Delete a plan only while nothing is still building under it.
+
+        Bespoke under ADR-0001 D7 as a domain invariant callers must not
+        bypass. Counting live tasks in one call and deleting in another
+        leaves a window in which a task filed in between is stranded on a
+        plan id that no longer resolves, so the count and the delete are one
+        conditional statement rather than two decisions that can disagree.
+
+        Args:
+            entity_id: The plan identifier.
+            terminal_statuses: The task status values that count as
+                finished. Supplied by the caller because the task lifecycle
+                belongs to the domain layer, and a status this layer does
+                not recognise must read as live rather than quietly clear
+                the way for a delete.
+
+        Returns:
+            The outcome, distinguishing a delete from a refusal (naming how
+            many tasks are still live) and from a plan that was not there.
 
         Raises:
             QueryError: If the operation fails.

@@ -249,12 +249,25 @@ class PostgresCostRecordRepository:
     async def purge_before(self, threshold: datetime) -> int:
         """Delete cost records with timestamp before threshold (retention).
 
+        ``threshold`` must be timezone-aware. ``normalize_utc`` tags a naive
+        value as UTC, so a caller in another zone would silently delete a
+        different window here than on the SQLite twin, from the same
+        protocol call.
+
         Returns:
             Numeric result of the operation.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the query fails.
         """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            logger.warning(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error="naive_threshold",
+                error_type="ValueError",
+            )
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

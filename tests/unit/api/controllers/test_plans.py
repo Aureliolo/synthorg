@@ -6,6 +6,10 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
+from synthorg.core.lifecycle_transition import (
+    LifecycleEntityKind,
+    LifecycleTransition,
+)
 from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
@@ -195,6 +199,70 @@ class TestPlanController:
         assert attempts[0]["objective_met"] is True
         assert attempts[1]["verdicts"][0]["outcome"] == "unmet"
         assert attempts[1]["verdicts"][0]["evidence"] == "the board never renders"
+
+    async def test_get_transitions_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/plans/nonexistent/transitions")
+        assert resp.status_code == 404
+
+    async def test_get_transitions_returns_the_ledger_newest_first(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """C0: how a plan reached its status, from rows rather than a log.
+
+        The claim that only the evaluate stage writes COMPLETED was provable
+        from a container's stdout and nowhere else; this endpoint is what makes
+        it answerable from persisted state, so it has to actually serve them.
+        """
+        await _seed(async_test_client, _plan(status=PlanStatus.EXECUTING))
+        plan_id = str(as_uuid("plan-001"))
+        backend = persistence_of(async_test_client.app.state.app_state)
+        for index, (previous, current) in enumerate(
+            (("planning", "pending_review"), ("pending_review", "approved"))
+        ):
+            await backend.lifecycle_transitions.append(
+                LifecycleTransition(
+                    entity_kind=LifecycleEntityKind.PLAN,
+                    entity_id=NotBlankStr(plan_id),
+                    from_status=NotBlankStr(previous),
+                    to_status=NotBlankStr(current),
+                    requested_by=NotBlankStr("operator-1"),
+                    entity_version=index + 2,
+                    occurred_at=_CREATED_AT + timedelta(minutes=index),
+                )
+            )
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/transitions")
+
+        assert resp.status_code == 200
+        rows = resp.json()["data"]
+        assert [row["to_status"] for row in rows] == ["approved", "pending_review"]
+        assert rows[0]["requested_by"] == "operator-1"
+        assert rows[0]["entity_kind"] == "plan"
+
+    async def test_get_transitions_reads_only_this_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """One plan's history, not the whole ledger."""
+        await _seed(async_test_client, _plan(status=PlanStatus.EXECUTING))
+        plan_id = str(as_uuid("plan-001"))
+        backend = persistence_of(async_test_client.app.state.app_state)
+        for entity_id in (plan_id, str(as_uuid("other-plan"))):
+            await backend.lifecycle_transitions.append(
+                LifecycleTransition(
+                    entity_kind=LifecycleEntityKind.PLAN,
+                    entity_id=NotBlankStr(entity_id),
+                    to_status=NotBlankStr("approved"),
+                    entity_version=2,
+                    occurred_at=_CREATED_AT,
+                )
+            )
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/transitions")
+
+        assert resp.status_code == 200
+        assert [row["entity_id"] for row in resp.json()["data"]] == [plan_id]
 
     async def test_list_filter_by_status(
         self, async_test_client: LoopAsyncClient

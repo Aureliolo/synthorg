@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,6 +33,7 @@ from synthorg.engine.routing.models import (
     RoutingResult,
 )
 from synthorg.engine.routing.service import TaskRoutingService
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.engine.workspace.models import (
     MergeResult,
@@ -53,11 +54,11 @@ from tests.unit.engine.conftest import (
 # ── Helpers ─────────────────────────────────────────────────────
 
 
-def _status_engine(
+def _status_engine(  # type: ignore[explicit-any]  # mock_of returns Any
     statuses: dict[str, TaskStatus],
     *,
     parent_id: str = "parent-1",
-) -> AsyncMock:
+) -> Any:
     """A task engine resolving each subtask label to its persisted status.
 
     The rollup phase reads persisted status rather than the dispatch outcome,
@@ -112,10 +113,14 @@ def _status_engine(
             version=1,
         )
 
-    engine = AsyncMock()
-    engine.get_task.side_effect = _get
-    engine.submit.side_effect = _submit
-    return engine
+    # Autospecced against ``TaskEngine``, not a bare mock: the two methods
+    # below are the whole contract this double stands in for, and a bare mock
+    # answers to any name, so a rename on either would leave a dozen tests
+    # silently green against a method the engine no longer has.
+    return mock_of[TaskEngine](
+        get_task=AsyncMock(side_effect=_get),
+        submit=AsyncMock(side_effect=_submit),
+    )
 
 
 def _make_coordinator(  # noqa: PLR0913

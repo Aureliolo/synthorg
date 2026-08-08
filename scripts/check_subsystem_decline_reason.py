@@ -17,6 +17,7 @@ satisfies it when ANY of the following holds.
   The activation names its own condition and the reconciler reports it verbatim.
 * Its activation chain cannot decline: no early ``return``, so it either
   installs the capability or raises.
+* It declares no ``activate`` at all, so there is no activation to decline.
 
 The chain is the registry adapter plus the wiring functions it calls, resolved
 through the same imports the adapter uses, so a reason declared one call inward
@@ -94,20 +95,25 @@ def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctio
     }
 
 
-def _import_sources(tree: ast.Module) -> dict[str, str]:
-    """Map each imported symbol to the dotted module it came from.
+def _import_sources(tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """Map each imported symbol to its module and its name in that module.
 
     Function-local imports count: every registry adapter imports its wiring
     function inside the function body to keep the cold-import graph light.
 
+    The original name is kept alongside the module because an aliased import
+    (``from x import wire_y as _wire``) is looked up in the source module by
+    ``wire_y``, and resolving it by the local alias would find nothing and
+    silently drop that leg of the chain.
+
     Returns:
-        ``{local_name: dotted_module}``.
+        ``{local_name: (dotted_module, original_name)}``.
     """
-    sources: dict[str, str] = {}
+    sources: dict[str, tuple[str, str]] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             for alias in node.names:
-                sources[alias.asname or alias.name] = node.module
+                sources[alias.asname or alias.name] = (node.module, alias.name)
     return sources
 
 
@@ -205,16 +211,36 @@ def _has_early_return(fn: ast.AST) -> bool:
     )
 
 
+def _raised_name(exc: ast.expr) -> str | None:
+    """Return the exception type a ``raise`` expression names.
+
+    Structural rather than textual: ``raise RuntimeError("SubsystemDeclined
+    Error")`` contains the name and declares nothing, and the reconciler
+    would report a decline it cannot explain.
+
+    Returns:
+        The bare or dotted-final name, or ``None`` for a re-raise or an
+        expression whose type is not a plain reference.
+    """
+    target = exc.func if isinstance(exc, ast.Call) else exc
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Attribute):
+        return target.attr
+    return None
+
+
 def _raises_declined(fn: ast.AST) -> bool:
     """Report whether a function raises ``SubsystemDeclinedError``.
 
     Returns:
-        ``True`` when a reachable raise names the error.
+        ``True`` when a reachable raise names exactly that error, bare or
+        qualified.
     """
     return any(
         isinstance(node, ast.Raise)
         and node.exc is not None
-        and _DECLINED_ERROR in ast.unparse(node.exc)
+        and _raised_name(node.exc) == _DECLINED_ERROR
         for node in ast.walk(fn)
     )
 
@@ -242,12 +268,11 @@ class _ChainReader:
 
     def __init__(self, repo_root: Path, registry: ast.Module) -> None:
         self._repo_root = repo_root
-        self._registry_functions = _functions(registry)
-        self._registry_imports = _import_sources(registry)
+        self._registry = registry
         self._cache: dict[str, ast.Module | None] = {}
 
     def inspect(self, activate: str) -> tuple[bool, bool]:
-        """Walk the chain from *activate*, one call inward.
+        """Walk the whole chain from *activate*, following every resolved call.
 
         Args:
             activate: Name of the registry activation adapter.
@@ -255,24 +280,77 @@ class _ChainReader:
         Returns:
             ``(can_decline, declares_reason)``.
         """
-        adapter = self._registry_functions.get(activate)
+        adapter = _functions(self._registry).get(activate)
         if adapter is None:
             return True, False
-        can_decline = _has_early_return(adapter)
-        declares = _raises_declined(adapter)
-        for callee in _called_names(adapter):
-            module = self._registry_imports.get(callee)
-            if module is None:
+        return self._walk(adapter, self._registry, visited=set())
+
+    def _walk(
+        self,
+        fn: ast.FunctionDef | ast.AsyncFunctionDef,
+        module: ast.Module,
+        *,
+        visited: set[tuple[int, str]],
+    ) -> tuple[bool, bool]:
+        """Answer both questions about *fn* and everything it calls.
+
+        Recursive rather than one level deep: an adapter that delegates to a
+        wiring function which itself delegates to the builder that decides is
+        the ordinary shape here, and stopping at the first hop would certify
+        a reason declared two calls in as absent (and, worse, miss a decline
+        declared nowhere at all).
+
+        Args:
+            fn: The function to inspect.
+            module: The module *fn* was defined in, for resolving its calls.
+            visited: ``(module id, function name)`` pairs already walked, so a
+                cycle terminates.
+
+        Returns:
+            ``(can_decline, declares_reason)`` over the whole reachable chain.
+        """
+        key = (id(module), fn.name)
+        if key in visited:
+            return False, False
+        visited.add(key)
+        can_decline = _has_early_return(fn)
+        declares = _raises_declined(fn)
+        local = _functions(module)
+        imports = _import_sources(module)
+        for callee in _called_names(fn):
+            target, target_module = self._resolve(callee, local, imports, module)
+            if target is None or target_module is None:
                 continue
-            tree = self._module(module)
-            if tree is None:
-                continue
-            target = _functions(tree).get(callee)
-            if target is None:
-                continue
-            can_decline = can_decline or _has_early_return(target)
-            declares = declares or _raises_declined(target)
+            inner_decline, inner_declares = self._walk(
+                target, target_module, visited=visited
+            )
+            can_decline = can_decline or inner_decline
+            declares = declares or inner_declares
         return can_decline, declares
+
+    def _resolve(
+        self,
+        callee: str,
+        local: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+        imports: dict[str, tuple[str, str]],
+        module: ast.Module,
+    ) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef | None, ast.Module | None]:
+        """Find the definition *callee* names, locally or through an import.
+
+        Returns:
+            ``(definition, defining module)``, or ``(None, None)`` when the
+            call leaves this source tree (a third-party or builtin call).
+        """
+        if (defined := local.get(callee)) is not None:
+            return defined, module
+        source = imports.get(callee)
+        if source is None:
+            return None, None
+        dotted, original = source
+        tree = self._module(dotted)
+        if tree is None:
+            return None, None
+        return _functions(tree).get(original), tree
 
     def _module(self, dotted: str) -> ast.Module | None:
         """Parse a dotted module under ``src``, memoised.

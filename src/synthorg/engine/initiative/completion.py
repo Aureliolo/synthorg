@@ -43,6 +43,7 @@ from synthorg.core.plan_enums import (
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.core.validation import set_field_names
 
 #: Task statuses that count as work needing operator attention. Neither is a
 #: lifecycle state for the plan or project; both surface as derived counts.
@@ -166,14 +167,19 @@ class ItemProgress(BaseModel):
             ValueError: When the fields do not match ``kind``.
         """
         if self.kind is PlanItemKind.DECISION and (
-            self.task_id is not None or self.task_status is not None
+            offending := set_field_names(
+                task_id=self.task_id, task_status=self.task_status
+            )
         ):
-            msg = "A DECISION item carries no task"
+            msg = f"A DECISION item carries no task, but {offending} is set"
             raise ValueError(msg)
         if self.kind is PlanItemKind.WORK and (
-            self.chosen_option_id is not None or self.has_options
+            offending := set_field_names(
+                chosen_option_id=self.chosen_option_id,
+                has_options=self.has_options or None,
+            )
         ):
-            msg = "A WORK item records no chosen option"
+            msg = f"A WORK item records no decision, but {offending} is set"
             raise ValueError(msg)
         return self
 

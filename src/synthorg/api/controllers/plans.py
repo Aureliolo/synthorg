@@ -59,7 +59,6 @@ from synthorg.core.lifecycle_transition import (
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.item_progress import count_live_tasks
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
@@ -514,21 +513,13 @@ class PlanController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="delete",
         )
-        # Counted, not assumed: a dispatched plan whose tasks never reached the
-        # board has nothing building, and refusing it on status alone left the
-        # operator with no exit at all.
-        live_task_count = await count_live_tasks(
-            persistence_of(state.app_state), existing
-        )
         # Ahead of the delete, and gating it: an approval left pending would
         # drive the resume path at a missing plan, and retiring it afterwards
         # has no recovery if the write does not land.
         await retire_review_approval(state.app_state, existing)
-        await service.delete(
-            existing,
-            requested_by=extract_requester(state),
-            live_task_count=live_task_count,
-        )
+        # Live work is counted inside the delete, in the same statement, so a
+        # task filed between the two cannot be stranded on a deleted plan.
+        await service.delete(existing, requested_by=extract_requester(state))
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(

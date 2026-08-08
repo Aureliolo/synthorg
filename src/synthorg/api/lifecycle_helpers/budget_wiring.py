@@ -58,9 +58,16 @@ async def hydrate_cost_window(app_state: AppState) -> None:
 async def wire_quota_poller(app_state: AppState) -> None:
     """Start the proactive quota poller at startup.
 
-    Idempotent for re-entered lifespans: returns early when a poller is
-    already wired, persistence is absent, the quota tracker is unwired,
-    or the feature toggle is off.
+    Returns without doing anything in exactly one case: a poller is
+    already wired, which is the re-entered-lifespan idempotency guard and
+    reads as up. Every other refusal raises with its condition named, so
+    ``GET /subsystems`` answers "why is this not up" without anyone
+    reading the wiring log.
+
+    A poller that fails to *start* is the one silent outcome left, and
+    deliberately so: the failure is logged, the half-started poller is
+    stopped, and the slice stays unwired, so the reconciler reports the
+    subsystem down and the next pass retries a transient start failure.
 
     Args:
         app_state: The application state holding the collaborator slices.

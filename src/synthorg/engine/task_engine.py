@@ -9,7 +9,7 @@ Observer notifications are dispatched via a separate background queue.
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
@@ -54,6 +54,7 @@ from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
     TASK_ENGINE_DRAIN_TIMEOUT,
+    TASK_ENGINE_FILE_FAILED,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_DIED,
     TASK_ENGINE_MAX_QUEUE_SIZE_SET,
@@ -66,6 +67,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOP_REJECTED,
     TASK_ENGINE_STOPPED,
+    TASK_ENGINE_TASKS_FILED,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
@@ -819,6 +821,42 @@ class TaskEngine(TaskEngineLoopsMixin):
                 error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
+
+    async def file_tasks(self, tasks: Sequence[Task]) -> None:
+        """Persist pre-built tasks that carry their own derived ids.
+
+        Decomposition mints child tasks whose ids are derived from the plan
+        items, which is what makes a re-dispatch of the same plan idempotent;
+        asking the engine to *create* them would mint new ids and duplicate
+        the tree on every retry. So they are saved as given.
+
+        This is filing, not a transition: every task must already carry the
+        status it is filed in, and moving one afterwards still goes through
+        the queue, so the single-writer invariant over status is untouched.
+        One transaction, because a plan's children are a tree and half a tree
+        is not a smaller plan.
+
+        Args:
+            tasks: The tasks to file, each carrying its own id and status.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
+        """
+        if not tasks:
+            return
+        try:
+            await self._persistence.tasks.save_many(tuple(tasks))
+        except Exception as exc:
+            reraise_critical(exc)
+            msg = f"Failed to file tasks: {safe_error_description(exc)}"
+            logger.warning(
+                TASK_ENGINE_FILE_FAILED,
+                task_count=len(tasks),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise TaskInternalError(msg) from exc
+        logger.info(TASK_ENGINE_TASKS_FILED, task_count=len(tasks))
 
     @staticmethod
     def _validate_pagination(limit: int | None, offset: int) -> None:

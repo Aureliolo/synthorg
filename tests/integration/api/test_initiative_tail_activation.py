@@ -23,6 +23,7 @@ from synthorg.api.lifecycle_helpers.project_rollup_wiring import (
     wire_project_rollup_service,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus_protocol import MessageBus
@@ -114,19 +115,24 @@ class TestInitiativeTailActivation:
         assert not rollup.has_evaluation()
         assert not rollup.has_replan_trigger()
 
-    async def test_an_activation_without_its_dependency_attaches_nothing(
+    async def test_an_activation_without_its_dependency_names_what_is_missing(
         self,
     ) -> None:
-        """Declining is the honest outcome, and it must not install anything.
+        """Declining is the honest outcome, and it must name its own condition.
 
         A stage that installed a half-built collaborator would read as
-        converged and the reconciler would never revisit it.
+        converged and the reconciler would never revisit it. One that backed
+        out silently left ``GET /subsystems`` with nothing to report but
+        "declined on a condition it does not declare".
         """
         app_state = await _booted()
 
-        await attach_integration_stage(app_state)
-        await attach_evaluation_stage(app_state)
-        await attach_replan_trigger(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="work pipeline"):
+            await attach_integration_stage(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="provider"):
+            await attach_evaluation_stage(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="coordinator"):
+            await attach_replan_trigger(app_state)
 
         rollup = _rollup(app_state)
         assert not rollup.has_integration()
@@ -141,8 +147,10 @@ class TestInitiativeTailActivation:
         app_state.wire(EngineStateSlice, work_pipeline=StubWorkPipeline())
 
         await attach_integration_stage(app_state)
-        await attach_evaluation_stage(app_state)
-        await attach_replan_trigger(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="provider"):
+            await attach_evaluation_stage(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="coordinator"):
+            await attach_replan_trigger(app_state)
 
         rollup = _rollup(app_state)
         assert rollup.has_integration()
@@ -186,7 +194,8 @@ class TestInitiativeTailActivation:
         _wire_judgement_dependencies(app_state)
         rollup = _rollup(app_state)
 
-        await attach_ship_retro_capture(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="memory not converged"):
+            await attach_ship_retro_capture(app_state)
         assert not rollup.has_retro_capture()
 
         _wire_memory_layers(app_state)

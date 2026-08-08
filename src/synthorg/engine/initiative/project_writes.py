@@ -25,7 +25,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -131,11 +130,10 @@ async def link_project_to_plan(
             status=target.value,
         )
         if ledger is not None and target is not project.status:
-            await ledger.record(
-                entity_kind=LifecycleEntityKind.PROJECT,
-                entity_id=project_id,
-                from_status=project.status.value,
-                to_status=NotBlankStr(target.value),
+            await ledger.record_project(
+                project_id=updated.id,
+                from_status=project.status,
+                to_status=target,
                 entity_version=updated.version,
                 reason="plan dispatched",
             )
@@ -258,11 +256,10 @@ async def _walk_hops(
             version=updated.version,
         )
         if ledger is not None:
-            await ledger.record(
-                entity_kind=LifecycleEntityKind.PROJECT,
-                entity_id=NotBlankStr(str(current.id)),
-                from_status=current.status.value,
-                to_status=NotBlankStr(hop.value),
+            await ledger.record_project(
+                project_id=current.id,
+                from_status=current.status,
+                to_status=hop,
                 entity_version=updated.version,
             )
         current = updated

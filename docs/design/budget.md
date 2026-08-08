@@ -125,6 +125,31 @@ models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 Both paths converge on the same `CostTracker.record()` API and the same
 same-currency invariants apply.
 
+### Durability
+
+`CostTracker` holds a rolling in-memory window (`_COST_WINDOW_HOURS`, 168
+hours), and that window is what every spend summary and every ceiling reads.
+The window alone is not the record of spend: a restart emptied it, so a
+restarted backend enforced its ceiling against zero and every deliverable
+receipt reported nothing spent.
+
+So `cost_records` is written, not merely defined. `attach_durable_repos(...)`
+binds the `CostRecordRepository` alongside the project aggregate and its dedup
+store, and `record()` appends every accepted record to it:
+
+- **Idempotent.** Each record carries a `claim_id`, unique per `(claim_id,
+  timestamp)` in the table, so a redelivered record is stored once. A record
+  with no project used to skip dedup entirely (the aggregate increment
+  early-returns without a `project_id`), which is every system call.
+- **Retried, then escalated.** The append runs under a `GeneralRetryHandler`
+  with sub-second backoff (`_DURABLE_APPEND_MAX_ATTEMPTS`); a run of
+  `_PERSIST_FAILURE_ESCALATION_STREAK` consecutive failures stops being a
+  WARNING nobody reads and logs at ERROR, because by then the ceiling is being
+  enforced against an incomplete record of spend.
+- **Rehydrated.** `hydrate_from_durable()` refills the window from the durable
+  table bounded by the same 168-hour constant, oldest record first, skipping
+  claims the process has already seen. A ceiling therefore survives a restart.
+
 Streaming completions (`BaseCompletionProvider.stream()`) route through the
 same chokepoint. Token counts surface only on the terminal
 `StreamEventType.USAGE` chunk, so `stream()` wraps the driver's iterator in a

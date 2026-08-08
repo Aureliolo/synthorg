@@ -17,6 +17,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import as_uuid, mock_of
 
@@ -95,7 +96,7 @@ class TestAutonomySeam:
         """The coordinated path (no autonomy argument) still gets an answer."""
         engine = AgentEngine(provider=mock_of[CompletionProvider]())
         expected = _autonomy()
-        asked: list[str] = []
+        asked: list[tuple[str, str, str | None]] = []
 
         async def _resolution(
             identity: AgentIdentity,
@@ -103,13 +104,18 @@ class TestAutonomySeam:
             task_id: str,
             project_id: NotBlankStr | None = None,
         ) -> EffectiveAutonomy:
-            asked.append(task_id)
+            asked.append((str(identity.id), task_id, project_id))
             return expected
 
         engine.set_autonomy_resolution(_resolution)
         result = await engine.run(identity=_identity(), task=_task())
 
+        # Every input, not only the task: a run that asked with no project
+        # would silently drop the project-mode override, and one that asked
+        # about a different agent would resolve somebody else's autonomy.
         # The run fails at the provider (a bare mock), which is fine: the
-        # question is whether the seam was consulted before dispatch.
-        assert asked == [str(as_uuid("task-a"))]
-        assert result is not None
+        # question is whether the seam was consulted before dispatch, and it
+        # must have been consulted BEFORE that failure rather than skipped by
+        # it, which is what the ERROR outcome alongside the call pins.
+        assert asked == [(str(as_uuid("agent-a")), str(as_uuid("task-a")), "proj-001")]
+        assert result.termination_reason is TerminationReason.ERROR

@@ -188,10 +188,11 @@ _GENERIC_TITLE_TOKENS: Final[frozenset[str]] = frozenset(
 #: is a preposition or an abbreviation shared across unrelated items.
 _MIN_REFERENCE_TOKEN: Final[int] = 4
 
-#: Share of a plan's titles a token may appear in and still name one item. A
-#: word carried by half the plan is that plan's house vocabulary ("Subtask 1"
-#: / "Subtask 2", "Service layer" / "Service tests"), and treating it as a
-#: reference would make every item depend on every other.
+#: Largest share of a plan's titles a token may appear in and still name one
+#: item; the bound is inclusive, so a token in exactly half the titles is kept.
+#: A word carried by MORE than half the plan is that plan's house vocabulary
+#: ("Subtask 1" / "Subtask 2", "Service layer" / "Service tests"), and treating
+#: it as a reference would make every item depend on every other.
 _MAX_DISTINCTIVE_SHARE: Final[float] = 0.5
 
 #: A plan of one item has no graph to contradict.
@@ -266,10 +267,10 @@ def _distinctive_tokens(
 ) -> frozenset[str]:
     """Return the tokens of *other* that name it rather than the whole plan.
 
-    A token carried by half the plan's titles is that plan's house vocabulary,
-    not a reference: matching on it made "Subtask 2" a reference to
-    "Subtask 1", and would make every item in a plan named after one subject
-    depend on every other.
+    A token carried by more than half the plan's titles is that plan's house
+    vocabulary, not a reference: matching on it made "Subtask 2" a reference
+    to "Subtask 1", and would make every item in a plan named after one
+    subject depend on every other.
 
     Returns:
         The subset of *other*'s title tokens rare enough to identify it, empty

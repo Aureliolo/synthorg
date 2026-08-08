@@ -104,6 +104,31 @@ def _valid_plan_args(
     return args
 
 
+def _subtask_args(
+    subtask_id: str,
+    title: str,
+    description: str,
+    *,
+    dependencies: list[str] | None = None,
+) -> dict[str, object]:
+    """One subtask with a title of its own, for the graph-reference checks.
+
+    The shared helper names every item "Subtask N", which is the plan's house
+    vocabulary and deliberately does not read as a reference; a check about
+    one item naming another needs items with distinguishable subjects.
+    """
+    return {
+        "id": subtask_id,
+        "title": title,
+        "description": description,
+        "dependencies": dependencies or [],
+        "estimated_complexity": "medium",
+        "required_skills": ["python"],
+        "acceptance_criteria": [f"{subtask_id} verified"],
+        "expected_artifacts": [f"src/{subtask_id}.py"],
+    }
+
+
 def _make_tool_call_response(
     arguments: dict[str, object],
     *,
@@ -213,6 +238,70 @@ class TestLlmDecompositionStrategy:
             args_to_decomposition_plan(
                 cast("dict[str, JsonValue]", args), "task-parent-1"
             )
+
+    @pytest.mark.unit
+    def test_an_ordered_plan_with_no_edges_is_refused(self) -> None:
+        """C10: the plan the run produced declared an order it never expressed.
+
+        Six items, ``structure=mixed``, ``dependencies: []`` on every one. The
+        graph and the declaration contradict each other, and discovering that
+        at dispatch means an operator already approved an ordering that does
+        not exist. Correctable in-session, like the roster check.
+        """
+        args = _valid_plan_args()
+        for subtask in cast("list[dict[str, object]]", args["subtasks"]):
+            subtask["dependencies"] = []
+
+        with pytest.raises(DecompositionError, match="no dependencies"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
+    def test_an_item_naming_another_it_does_not_depend_on_is_refused(self) -> None:
+        """ "Integrate the renderer" cannot precede the renderer it integrates.
+
+        The live run shipped exactly this: an integration item naming the three
+        items it ties together, declaring no dependency on any of them, and
+        therefore free to be dispatched first, which it was.
+        """
+        args: dict[str, object] = {
+            "task_structure": "mixed",
+            "coordination_topology": "auto",
+            "subtasks": [
+                _subtask_args("sub-renderer", "Renderer pipeline", "Draw the frames"),
+                _subtask_args(
+                    "sub-integrate",
+                    "Integrate game loop",
+                    "Tie the renderer pipeline together",
+                    dependencies=["sub-renderer"],
+                ),
+            ],
+        }
+        # Sanity: with the dependency declared the plan is accepted, so the
+        # failure below is the missing edge and not the titles themselves.
+        args_to_decomposition_plan(cast("dict[str, JsonValue]", args), "task-parent-1")
+
+        cast("list[dict[str, object]]", args["subtasks"])[1]["dependencies"] = []
+
+        with pytest.raises(DecompositionError, match="Renderer pipeline"):
+            args_to_decomposition_plan(
+                cast("dict[str, JsonValue]", args), "task-parent-1"
+            )
+
+    @pytest.mark.unit
+    def test_a_parallel_plan_with_no_edges_is_accepted(self) -> None:
+        """Declaring PARALLEL and shipping no edges is coherent, not a defect."""
+        args = _valid_plan_args(task_structure="parallel")
+        for subtask in cast("list[dict[str, object]]", args["subtasks"]):
+            subtask["dependencies"] = []
+
+        plan = args_to_decomposition_plan(
+            cast("dict[str, JsonValue]", args), "task-parent-1"
+        )
+
+        assert plan.task_structure is TaskStructure.PARALLEL
+        assert all(not s.dependencies for s in plan.subtasks)
 
     @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:

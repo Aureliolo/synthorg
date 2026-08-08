@@ -7,7 +7,6 @@ best-effort so a persistence problem degrades to a plain budget stop rather
 than escalating into an engine failure.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -16,6 +15,7 @@ from synthorg.budget.errors import (
     RunHardCeilingExceededError,
 )
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
@@ -41,6 +41,7 @@ class AgentEngineBudgetHaltMixin:
     """Mixin turning a budget exhaustion into a parked or stopped run."""
 
     _cost_forecast_repo: CostForecastRepository | None
+    _clock: Clock
 
     async def _handle_budget_error(
         self,
@@ -153,9 +154,12 @@ class AgentEngineBudgetHaltMixin:
         engine even if the persistence layer is in a bad state.
 
         Returns:
-            ``True`` when :py:meth:`ApprovalGate.park_context` succeeds
-            and the halt context was stamped on the forecast, ``False``
-            on any failure (no gate, persistence error, missing repo).
+            ``True`` when :py:meth:`ApprovalGate.park_context` succeeds,
+            ``False`` on any failure (no gate, persistence error, missing
+            repo). The forecast halt stamp that follows is a read-side
+            marker only, so its outcome does not change this answer: the
+            run is parked either way, and reporting otherwise would route
+            a genuinely parked run to BUDGET_EXHAUSTED.
         """
         from synthorg.approval.enums import ApprovalRiskLevel  # noqa: PLC0415
         from synthorg.approval.models import (  # noqa: PLC0415
@@ -231,6 +235,9 @@ class AgentEngineBudgetHaltMixin:
         repo = getattr(self, "_cost_forecast_repo", None)
         if repo is None or exc.forecast_id is None:
             return
+        # One instant for both fields, read through the engine's own seam so
+        # a test with a FakeClock sees the halt stamped at the time it set.
+        stamped_at = self._clock.now()
         try:
             forecast = await repo.get(exc.forecast_id)
             if forecast is None:
@@ -241,9 +248,9 @@ class AgentEngineBudgetHaltMixin:
                         accumulated_cost=exc.accumulated_cost,
                         ceiling_amount=exc.ceiling_amount,
                         currency=exc.currency,
-                        halted_at=datetime.now(UTC),
+                        halted_at=stamped_at,
                     ),
-                    "updated_at": datetime.now(UTC),
+                    "updated_at": stamped_at,
                 },
             )
             await repo.save(updated)

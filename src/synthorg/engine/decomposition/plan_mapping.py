@@ -26,6 +26,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
@@ -240,7 +241,7 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     )
 
 
-def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task:
+def _task_from_item(item: PlanItem, *, plan: Plan, parent_task: Task) -> Task:
     """Rebuild the child task for a plan item under *parent_task*.
 
     Uses the same deterministic id mapping as the decomposition service, so a
@@ -249,6 +250,11 @@ def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task
     The plan and item ids are stamped onto the task so the rollup can query a
     plan's tasks directly, rather than re-deriving the id mapping at every
     call site.
+
+    The plan's settled and unsettled context rides on the description, which
+    is where the answer to a parked question finally reaches an agent: the
+    approval writes it onto ``plan.assumptions``, and nothing else on this
+    path carries a plan-level fact down to the work.
 
     Returns:
         A ``CREATED`` child :class:`Task` inheriting the parent's routing
@@ -259,11 +265,17 @@ def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task
     return Task(
         id=subtask_uuid(item.id),
         title=item.title,
-        description=item.description,
+        description=NotBlankStr(
+            with_plan_context(
+                item.description,
+                assumptions=plan.assumptions,
+                open_questions=plan.open_questions,
+            )
+        ),
         type=parent_task.type,
         priority=parent_task.priority,
         project=parent_task.project,
-        plan_id=plan_id,
+        plan_id=plan.id,
         plan_item_id=subtask_uuid(item.id),
         created_by=parent_task.created_by,
         parent_task_id=str(parent_task.id),
@@ -321,7 +333,7 @@ def decomposition_from_plan(
     )
     subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
     created_tasks = tuple(
-        _task_from_item(item, plan_id=plan.id, parent_task=parent_task)
+        _task_from_item(item, plan=plan, parent_task=parent_task)
         for item in dispatchable
     )
     edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)

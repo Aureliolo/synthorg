@@ -1,5 +1,7 @@
 """Factory for creating output scan policy instances from configuration."""
 
+from typing import Final
+
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -19,7 +21,7 @@ logger = get_logger(__name__)
 
 #: Said once, at the point the untiered policy is built, so an operator can
 #: see WHY a screen that belongs to no run responds at the strictest tier.
-_UNTIERED_NOTE = (
+_UNTIERED_NOTE: Final[str] = (
     "output_scan_policy_type=autonomy_tiered has no autonomy to tier by "
     "(this screen belongs to no run); responding at the strictest tier"
 )

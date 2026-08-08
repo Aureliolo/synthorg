@@ -9964,7 +9964,7 @@ export type components = {
              * @enum {string|null}
              */
             readonly call_category: "productive" | "coordination" | "system" | "embedding" | "image_generation" | null;
-            /** @description Idempotency key for this billing event. Generated once at construction (UUID4 by default) so retries / JetStream redelivery / in-process tracker double-submission cannot double-bill: ``CostTracker.record`` keeps a bounded LRU of seen ``claim_id`` values and treats repeats as no-ops. */
+            /** @description Idempotency key for this billing event. Generated once at construction (UUID4 by default) so retries / JetStream redelivery / in-process tracker double-submission cannot double-bill: ``CostTracker.record`` keeps a bounded LRU of seen ``claim_id`` values and treats repeats as no-ops. The durable key is ``(claim_id, timestamp)`` rather than ``claim_id`` alone, because the Postgres table is a TimescaleDB hypertable whose unique index must include the partitioning column. That is equivalent only while ``timestamp`` belongs to the event: a redelivery re-sends this same immutable record, so both halves repeat. A producer that re-stamped ``timestamp`` at send time would be minting a second billing event under one claim, and the index would let it through. */
             readonly claim_id: string;
             /** @description Numeric cost of the call, denominated in ``currency`` */
             readonly cost: number;

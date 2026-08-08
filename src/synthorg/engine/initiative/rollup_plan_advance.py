@@ -7,6 +7,7 @@ race is ordinary contention), and it reads better beside the plan state
 machine than inside the rollup's event handling.
 """
 
+from dataclasses import dataclass
 from typing import Final
 
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
@@ -29,6 +30,80 @@ from synthorg.persistence.protocol import PersistenceBackend
 logger = get_logger(__name__)
 
 ROLLUP_ACTOR: Final[str] = "initiative-rollup"
+
+
+@dataclass(frozen=True, slots=True)
+class _ConflictOutcome:
+    """What a lost write race left behind, and what to do about it.
+
+    Attributes:
+        plan: The plan as the winner left it, or ``None`` when it vanished
+            between the failed write and the re-read.
+        retry_target: Where the next attempt should aim. ``None`` means the
+            winner already settled the question and ``plan`` is the answer,
+            so there is nothing left to write.
+        retry_reason: The failure reason the next attempt carries, dropped
+            whenever the target was re-derived rather than kept.
+    """
+
+    plan: Plan | None
+    retry_target: PlanStatus | None
+    retry_reason: NotBlankStr | None
+
+
+async def _resolve_conflict(
+    persistence: PersistenceBackend,
+    current: Plan,
+    *,
+    attempt: int,
+    explicit_target: PlanStatus,
+    explicit_reason: NotBlankStr | None,
+) -> _ConflictOutcome:
+    """Re-read a contended plan and decide what the next attempt writes.
+
+    Args:
+        persistence: Backend used to re-read the contended plan.
+        current: The plan as this attempt believed it to be.
+        attempt: 1-based attempt number, for the retry log line.
+        explicit_target: The target the caller originally asked for, which
+            distinguishes a caller-driven tail hop from a derived one.
+        explicit_reason: The failure reason the caller supplied.
+
+    Returns:
+        The outcome the retry loop acts on.
+    """
+    logger.info(
+        PROJECT_ROLLUP_CONFLICT_RETRY,
+        plan_id=str(current.id),
+        attempt=attempt,
+        operation="plan_status",
+    )
+    refreshed = await persistence.plans.get(NotBlankStr(str(current.id)))
+    if refreshed is None:
+        return _ConflictOutcome(plan=None, retry_target=None, retry_reason=None)
+    if refreshed.status in TERMINAL_STATUSES:
+        # The winner finished the plan; its state is authoritative and the
+        # caller's project reconcile runs against it.
+        return _ConflictOutcome(plan=refreshed, retry_target=None, retry_reason=None)
+    if (
+        explicit_target is PlanStatus.EVALUATING
+        and refreshed.status is PlanStatus.INTEGRATING
+    ):
+        # ``derive_plan_status`` never emits EVALUATING, so re-deriving here
+        # would collapse an explicit INTEGRATING -> EVALUATING write back to
+        # INTEGRATING and skip the evaluate stage. The winner left the plan at
+        # INTEGRATING, so the caller's tail target is still legal.
+        target = PlanStatus.EVALUATING
+        reason = explicit_reason
+    else:
+        items = await collect_item_progress(persistence, refreshed)
+        target = derive_plan_status(items, current=refreshed.status)
+        # The re-derivation never produces FAILED, so the reason the caller
+        # supplied no longer describes this write.
+        reason = None
+    if target is refreshed.status:
+        return _ConflictOutcome(plan=refreshed, retry_target=None, retry_reason=None)
+    return _ConflictOutcome(plan=refreshed, retry_target=target, retry_reason=reason)
 
 
 async def advance_plan(
@@ -82,38 +157,18 @@ async def advance_plan(
             # subclasses it, so catching the base first would strand every
             # version conflict in the illegal-transition branch and the
             # CAS retry below would never run.
-            logger.info(
-                PROJECT_ROLLUP_CONFLICT_RETRY,
-                plan_id=str(current.id),
+            outcome = await _resolve_conflict(
+                persistence,
+                current,
                 attempt=attempt,
-                operation="plan_status",
+                explicit_target=explicit_target,
+                explicit_reason=explicit_reason,
             )
-            refreshed = await persistence.plans.get(NotBlankStr(str(current.id)))
-            if refreshed is None:
-                return None
-            if refreshed.status in TERMINAL_STATUSES:
-                # The winner finished the plan; its state is authoritative
-                # and the project reconcile below runs against it.
-                return refreshed
-            if (
-                explicit_target is PlanStatus.EVALUATING
-                and refreshed.status is PlanStatus.INTEGRATING
-            ):
-                # ``derive_plan_status`` never emits EVALUATING, so
-                # re-deriving here would collapse an explicit
-                # INTEGRATING -> EVALUATING write back to INTEGRATING and
-                # skip the evaluate stage. The winner left the plan at
-                # INTEGRATING, so the caller's tail target is still legal.
-                target = PlanStatus.EVALUATING
-            else:
-                items = await collect_item_progress(persistence, refreshed)
-                target = derive_plan_status(items, current=refreshed.status)
-                # The re-derivation never produces FAILED, so the reason
-                # the caller supplied no longer describes this write.
-                explicit_reason = None
-            if target is refreshed.status:
-                return refreshed
-            current = refreshed
+            if outcome.plan is None or outcome.retry_target is None:
+                return outcome.plan
+            current = outcome.plan
+            target = outcome.retry_target
+            explicit_reason = outcome.retry_reason
         except ConflictError as exc:
             logger.error(
                 PROJECT_ROLLUP_SKIPPED,

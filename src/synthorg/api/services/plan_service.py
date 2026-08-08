@@ -10,6 +10,8 @@ and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
 
+from typing import Final
+
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.services._plan_revision import (
@@ -19,20 +21,16 @@ from synthorg.api.services._plan_revision import (
     require_replannable,
     require_reworkable,
 )
+from synthorg.api.services.plan_service_writes import PlanWriteRecorderMixin
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     PlanNotDeletableError,
     ValidationError,
-    VersionConflictError,
 )
-from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.persistence_errors import (
-    PersistenceVersionConflictError,
-    RecordNotFoundError,
-)
+from synthorg.core.persistence_errors import RecordNotFoundError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
     DELETABLE_STATUSES,
@@ -43,6 +41,7 @@ from synthorg.core.plan_enums import (
 from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PLAN_CHANGES_REQUEST_FAILED,
@@ -52,7 +51,6 @@ from synthorg.observability.events.api import (
     API_PLAN_FETCH_FAILED,
     API_PLAN_LIST_FAILED,
     API_PLAN_LISTED,
-    API_PLAN_STATUS_TRANSITIONED,
     API_PLAN_SUCCESSOR_OPENED,
     API_PLAN_TRANSITION_REJECTED,
     API_PLAN_UPDATE_FAILED,
@@ -66,8 +64,16 @@ from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
 
+#: Task status values the guarded delete reads as finished, derived from the
+#: engine's terminal set rather than restated, so a new terminal status cannot
+#: be missed here. Rendered to the persisted wire values because the guard runs
+#: as SQL against the status column.
+TERMINAL_TASK_STATUS_VALUES: Final[frozenset[str]] = frozenset(
+    status.value for status in TRULY_TERMINAL_STATUSES
+)
 
-class PlanService:
+
+class PlanService(PlanWriteRecorderMixin):
     """Wraps :class:`PlanRepository` with uniform audit logging.
 
     Every plan write funnels through here, so the audit line, the terminal
@@ -281,75 +287,54 @@ class PlanService:
         return drafted
 
     @staticmethod
-    def _require_deletable(plan: Plan, *, live_task_count: int) -> None:
-        """Refuse a delete that would destroy a record rather than a request.
+    def _require_deletable_status(plan: Plan) -> None:
+        """Refuse a delete on a status that is a record, not a request.
 
-        A dispatched plan is refused because its items are building. That was
-        asserted from the status alone, and the assertion was wrong: an
-        ``EXECUTING`` plan whose dispatch died before it wrote a single task
-        row has nine items and nothing building, and the operator was told to
-        replan work that does not exist while every other exit was closed too.
-        The claim is now checked, so a dispatched plan with no live task is
-        the request it always was and deletes.
-
-        Args:
-            plan: The plan being deleted.
-            live_task_count: How many of its tasks are still non-terminal, as
-                counted against the task rows rather than inferred.
+        A terminal plan is what was decided, and its delivery verdicts hang
+        off the row, so it outlives the decision to stop pursuing it. Every
+        other status may be deleted subject to the live-work guard below,
+        which is the database's answer rather than this one.
 
         Raises:
-            PlanNotDeletableError: When the plan's items are genuinely
-                building, or it is terminal (it is the record of what was
-                decided, and its delivery verdicts cascade off the row).
+            PlanNotDeletableError: The plan is terminal.
         """
-        if plan.status in DELETABLE_STATUSES:
-            return
-        dispatched = plan.status in REPLANNABLE_STATUSES | TAIL_STATUSES
-        if dispatched and live_task_count == 0:
+        if plan.status in DELETABLE_STATUSES | REPLANNABLE_STATUSES | TAIL_STATUSES:
             return
         logger.info(
             API_PLAN_DELETE_REFUSED,
             plan_id=str(plan.id),
             status=plan.status.value,
-            live_task_count=live_task_count,
+            reason="already_decided",
         )
-        detail = (
-            f"{live_task_count} of its items are still building; replan it "
-            "instead of deleting it"
-            if dispatched
-            else "already decided; its record and its verdicts outlive it"
+        msg = (
+            f"plan {plan.id} is {plan.status.value} and already decided; "
+            "its record and its verdicts outlive it"
         )
-        msg = f"plan {plan.id} is {plan.status.value} and {detail}"
         raise PlanNotDeletableError(msg)
 
-    async def delete(
-        self,
-        existing: Plan,
-        *,
-        requested_by: str,
-        live_task_count: int = 0,
-    ) -> None:
+    async def delete(self, existing: Plan, *, requested_by: str) -> None:
         """Remove a request that never became work.
 
         The route exists to clear a plan an operator has decided not to
         pursue: a shell whose decomposition stranded, a draft, one waiting
         on review, one that failed, or a dispatched one whose tasks never
-        made it onto the board. Every other status is refused, and the
-        refusal routes through here rather than the controller so the one
-        irreversible plan operation is audited on the same path as every
-        reversible one.
+        made it onto the board. A terminal plan is refused, and so is any
+        plan with work still building under it. The refusal routes through
+        here rather than the controller so the one irreversible plan
+        operation is audited on the same path as every reversible one.
+
+        Live work is not counted here and then deleted afterwards: the count
+        and the delete are one conditional statement in the repository, so a
+        task filed between the two cannot be stranded on a plan id that no
+        longer resolves.
 
         Args:
             existing: The plan being removed (already fetched by the caller).
             requested_by: Who asked, recorded on the audit event.
-            live_task_count: Non-terminal tasks the caller counted for this
-                plan. Passed in rather than read here because this service
-                owns the plan repository alone; the controller holds the task
-                repository and is the only layer that can answer honestly.
 
         Raises:
-            PlanNotDeletableError: The plan's items are building, or it is
-                terminal.
+            PlanNotDeletableError: The plan is terminal, or work is still
+                building under it.
             RecordNotFoundError: The plan went between the caller's fetch
                 and this write. The audit line is the record that a plan
                 was destroyed, so it may only follow a delete that found
@@ -357,9 +342,25 @@ class PlanService:
                 that did not happen.
             QueryError: Repository write failure.
         """
-        self._require_deletable(existing, live_task_count=live_task_count)
-        deleted = await self._repo.delete(NotBlankStr(str(existing.id)))
-        if not deleted:
+        self._require_deletable_status(existing)
+        outcome = await self._repo.delete_if_no_live_tasks(
+            NotBlankStr(str(existing.id)),
+            terminal_statuses=TERMINAL_TASK_STATUS_VALUES,
+        )
+        if outcome.live_task_count:
+            logger.info(
+                API_PLAN_DELETE_REFUSED,
+                plan_id=str(existing.id),
+                status=existing.status.value,
+                live_task_count=outcome.live_task_count,
+            )
+            msg = (
+                f"plan {existing.id} is {existing.status.value} and "
+                f"{outcome.live_task_count} of its items are still building; "
+                "replan it instead of deleting it"
+            )
+            raise PlanNotDeletableError(msg)
+        if not outcome.deleted:
             msg = f"plan {existing.id} no longer exists"
             raise RecordNotFoundError(msg)
         logger.info(
@@ -402,7 +403,8 @@ class PlanService:
 
         Raises:
             ConflictError: The transition is not legal for the plan lifecycle.
-            ValidationError: FAILED was requested with no ``failure_reason``.
+            ValidationError: FAILED was requested with no ``failure_reason``,
+                or a reason was supplied alongside a live status.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
@@ -411,6 +413,16 @@ class PlanService:
         failing = status is PlanStatus.FAILED
         if failing and failure_reason is None:
             msg = "a plan may only be failed with a reason Plan Review can show"
+            raise ValidationError(msg)
+        # Rejected here rather than left to the entity: the live branch below
+        # writes through ``model_copy``, which neither carries the reason nor
+        # re-runs the validator that forbids it, so a caller pairing a reason
+        # with a live status would otherwise have it silently dropped.
+        if failure_reason is not None and not failing:
+            msg = (
+                "failure_reason is only valid for a FAILED plan, not "
+                f"status={status.value}"
+            )
             raise ValidationError(msg)
         now = self._clock.now()
         # ``Plan.fail`` owns the status/reason pairing, which ``model_copy``
@@ -463,6 +475,58 @@ class PlanService:
                 f"Plan {plan.id} cannot move from {plan.status.value} to {target.value}"
             )
             raise ConflictError(msg) from exc
+
+    async def create(self, plan: Plan) -> None:
+        """Persist a new plan and open its ledger at the status it was born at.
+
+        The ledger answers "how did this plan get here", so the row it starts
+        from is the status the plan first held. Callers that write a plan
+        through the repository directly leave that first row missing, and the
+        ledger then reads as complete while the story starts mid-sentence.
+
+        Args:
+            plan: The plan to create.
+
+        Raises:
+            DuplicateRecordError: A plan with this id already exists.
+            QueryError: Repository write failure.
+        """
+        await self._repo.create(plan)
+        await self._log_transition(None, plan)
+
+    async def record_decomposed(self, decomposed: Plan, *, shell: Plan | None) -> None:
+        """Persist a decomposed plan over its planning shell.
+
+        The decomposition replaces the plan wholesale (items, review,
+        provenance) AND moves its status, which is why it cannot go through
+        :meth:`sync_status`. It still belongs here: the status half is a
+        transition like any other, and the gate writing it straight to the
+        repository is how the ledger came to record everything except the
+        moment a plan actually acquired its items.
+
+        Args:
+            decomposed: The filled plan, already carrying its new version.
+            shell: The planning shell it replaces, or ``None`` when the shell
+                was lost (opened on a prior boot, then pruned) and the filled
+                plan is persisted fresh.
+
+        Raises:
+            ConflictError: The shell's status cannot legally reach the
+                decomposed plan's status.
+            VersionConflictError: A concurrent write bumped the version first.
+            RecordNotFoundError: The shell disappeared between fetch and write.
+            QueryError: Repository write failure.
+        """
+        if shell is None:
+            await self.create(decomposed)
+            return
+        self._require_legal_transition(shell, decomposed.status)
+        await self._persist_update(
+            decomposed,
+            expected_version=shell.version,
+            failure_event=API_PLAN_UPDATE_FAILED,
+        )
+        await self._log_transition(shell.status, decomposed)
 
     async def open_successor(
         self,
@@ -543,83 +607,3 @@ class PlanService:
             item_count=len(successor.items),
         )
         return successor
-
-    async def _log_transition(
-        self,
-        from_status: PlanStatus,
-        plan: Plan,
-        *,
-        requested_by: str | None = None,
-        reason: str | None = None,
-    ) -> None:
-        """Record a plan status transition after the persistence write succeeds.
-
-        The log line answers "what is happening now"; the ledger row answers
-        "how did this plan get here", months later and from a query rather
-        than a container's stdout.
-        """
-        if from_status == plan.status:
-            return
-        context: dict[str, str] = {}
-        if requested_by is not None:
-            context["requested_by"] = requested_by
-        if reason is not None:
-            context["reason"] = reason
-        logger.info(
-            API_PLAN_STATUS_TRANSITIONED,
-            plan_id=str(plan.id),
-            from_status=from_status.value,
-            to_status=plan.status.value,
-            version=plan.version,
-            **context,
-        )
-        await self._ledger.record(
-            entity_kind=LifecycleEntityKind.PLAN,
-            entity_id=NotBlankStr(str(plan.id)),
-            from_status=from_status.value,
-            to_status=NotBlankStr(plan.status.value),
-            entity_version=plan.version,
-            requested_by=requested_by,
-            reason=reason,
-        )
-
-    async def _persist_update(
-        self,
-        plan: Plan,
-        *,
-        expected_version: int,
-        failure_event: str,
-    ) -> None:
-        """Persist an updated plan under optimistic concurrency control.
-
-        Args:
-            plan: The revised plan to write (its ``version`` is the new value).
-            expected_version: The version the caller read; the write only
-                lands if the stored row still carries it.
-            failure_event: Event constant to log a repository failure under.
-
-        Raises:
-            VersionConflictError: The stored version moved (concurrent write).
-            RecordNotFoundError: No plan with this id exists.
-            QueryError: Repository write failure.
-        """
-        try:
-            await self._repo.update(plan, expected_version=expected_version)
-        except PersistenceVersionConflictError as exc:
-            logger.warning(
-                failure_event,
-                plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                reason="version_conflict",
-            )
-            msg = f"Plan {plan.id} was modified concurrently; re-read and retry"
-            raise VersionConflictError(msg) from exc
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                failure_event,
-                plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise

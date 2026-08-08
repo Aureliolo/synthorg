@@ -9,9 +9,9 @@ import type { Connection, HealthReport } from '@/api/types/integrations'
  * The card renders on its own, with no form modal mounted beside it.
  *
  * That is the point of these tests: the receipts cross-link is driven by the
- * connection-type registry, and the registry used to be fetched only by an
- * effect inside the form. Rendering the card alone is what proves the link no
- * longer depends on a sibling component having been mounted first.
+ * connection-type registry, so rendering the card alone is what proves the
+ * link does not depend on a sibling component having fetched that registry
+ * first.
  */
 
 function report(overrides: Partial<HealthReport> = {}): HealthReport {

@@ -64,7 +64,13 @@ from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_PLAN_REPLANNED
+from synthorg.observability.events.api import (
+    API_PLAN_REPLAN_ROLLBACK_DELETE_FAILED,
+    API_PLAN_REPLAN_ROLLBACK_RELINK_FAILED,
+    API_PLAN_REPLAN_ROLLBACK_UNCONFIRMED,
+    API_PLAN_REPLAN_WORK_TERMINATED,
+    API_PLAN_REPLANNED,
+)
 from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -298,11 +304,10 @@ async def _rollback_successor(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort
         reraise_critical(exc)
         logger.warning(
-            API_PLAN_REPLANNED,
+            API_PLAN_REPLAN_ROLLBACK_RELINK_FAILED,
             plan_id=str(successor.id),
             supersedes=str(existing.id),
             project=str(existing.project),
-            note="rollback relink failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -310,11 +315,10 @@ async def _rollback_successor(
         # The project may still name the successor; deleting it would dangle
         # project.plan_id. Keep the orphan for the cascade to supersede.
         logger.warning(
-            API_PLAN_REPLANNED,
+            API_PLAN_REPLAN_ROLLBACK_UNCONFIRMED,
             plan_id=str(successor.id),
             supersedes=str(existing.id),
             project=str(existing.project),
-            note="successor kept: rollback relink unconfirmed",
         )
         return
     try:
@@ -322,11 +326,10 @@ async def _rollback_successor(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort
         reraise_critical(exc)
         logger.warning(
-            API_PLAN_REPLANNED,
+            API_PLAN_REPLAN_ROLLBACK_DELETE_FAILED,
             plan_id=str(successor.id),
             supersedes=str(existing.id),
             project=str(existing.project),
-            note="rollback successor delete failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -380,9 +383,8 @@ async def _cancel_retired_work(
             if reached is not None:
                 terminated[reached] += 1
     logger.info(
-        API_PLAN_REPLANNED,
+        API_PLAN_REPLAN_WORK_TERMINATED,
         plan_id=str(retired.id),
-        note="retired work terminated",
         cancelled=terminated[TaskStatus.CANCELLED],
         rejected=terminated[TaskStatus.REJECTED],
     )

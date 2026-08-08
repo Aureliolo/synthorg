@@ -759,7 +759,8 @@ class FakePersistenceBackend(PersistenceBackend):
     def __init__(self) -> None:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
-        self._plans = FakePlanRepository()
+        self._tasks = FakeTaskRepository()
+        self._plans = FakePlanRepository(task_repo=self._tasks)
         self._plan_comments = FakePlanItemCommentRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()
         self._codebase_structure_maps = FakeCodebaseStructureMapRepository()
@@ -795,7 +796,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
         self._model_tool_call_signals = FakeModelToolCallSignalRepository()
-        self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()

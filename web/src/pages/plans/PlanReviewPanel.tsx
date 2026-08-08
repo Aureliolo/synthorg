@@ -1,4 +1,4 @@
-import { CircleCheck, ShieldQuestion, UsersRound } from 'lucide-react'
+import { CircleCheck, ShieldAlert, ShieldQuestion, UsersRound } from 'lucide-react'
 
 import type {
   PlanReview,
@@ -74,12 +74,51 @@ function ReviewerCard({ reviewer }: { reviewer: PlanReviewerVerdict }) {
 }
 
 /**
+ * Why the plan carries no review, when the backend recorded a reason.
+ *
+ * An absent review meant three different things and looked identical for all
+ * of them: the panel hid itself and the operator approved a plan nothing had
+ * checked, with nothing on screen saying so. This is deliberately loud, and it
+ * appears in the same slot the review would have.
+ */
+function NoReviewBanner({ reason }: { reason: string }) {
+  return (
+    <SectionCard title="Stakeholder review" icon={UsersRound}>
+      <p
+        role="alert"
+        className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground"
+      >
+        <ShieldAlert
+          className="mt-0.5 size-4 shrink-0 text-warning"
+          aria-hidden="true"
+        />
+        <span>
+          <span className="font-medium">
+            This plan carries no quality signal.
+          </span>{' '}
+          {reason}
+        </span>
+      </p>
+    </SectionCard>
+  )
+}
+
+/**
  * The stakeholder panel's review of the plan: the consolidated verdict plus
  * each lead's verdict and the concerns they raised, so the human approver sees
- * who reviewed it and what they flagged. Hidden when no panel reviewed the plan.
+ * who reviewed it and what they flagged. With no review, the recorded reason
+ * is shown instead; only a plan whose backend recorded neither is hidden.
  */
-export function PlanReviewPanel({ review }: { review: PlanReview | null }) {
-  if (review === null) return null
+export function PlanReviewPanel({
+  review,
+  absentReason,
+}: {
+  review: PlanReview | null
+  absentReason: string | null
+}) {
+  if (review === null) {
+    return absentReason === null ? null : <NoReviewBanner reason={absentReason} />
+  }
   return (
     <SectionCard
       title="Stakeholder review"

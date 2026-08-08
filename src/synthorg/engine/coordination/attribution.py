@@ -17,6 +17,7 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.failure_classification import (
     FailureCategory,
+    category_for_error_type,
     infer_failure_category,
 )
 from synthorg.engine.loop_protocol import TerminationReason
@@ -288,6 +289,13 @@ def _score_outcome(
         error_text = ""
         if exec_result is not None:
             error_text = getattr(exec_result, "error_message", "") or ""
+            # The typed cause outranks the termination reason. A provider
+            # that refused the request terminates ERROR like any other
+            # failure, and the termination map reads ERROR as "direct",
+            # which charges the agent for an outage it cannot influence.
+            typed = category_for_error_type(getattr(exec_result, "error_type", None))
+            if typed is not None:
+                failure_attr = _CATEGORY_TO_ATTRIBUTION.get(typed, failure_attr)
 
         return AgentContribution(
             agent_id=NotBlankStr(agent_id),

@@ -459,3 +459,46 @@ class TestDecompositionFromPlan:
         by_path = {a.path: a.type for a in task.artifacts_expected}
         assert by_path["tests/test_board.py"] is ArtifactType.TESTS
         assert by_path["src/board.py"] is ArtifactType.CODE
+
+
+class TestPlanContextReachesTheWork:
+    """C11's second half: an answered question reaches the agent, not the row."""
+
+    def test_a_settled_answer_rides_on_every_dispatched_task(self) -> None:
+        """The approval writes the answer onto ``assumptions`` and stops there.
+
+        Nothing else on the dispatch path carries a plan-level fact down to
+        the work, so an operator answering "Postgres or SQLite?" watched the
+        agents pick for themselves.
+        """
+        plan = _durable_plan().model_copy(
+            update={
+                "assumptions": (NotBlankStr("Q: Which database? A: Postgres only."),)
+            }
+        )
+
+        result = decomposition_from_plan(plan, parent_task=_parent_task())
+
+        assert result.created_tasks
+        for task in result.created_tasks:
+            assert "Q: Which database? A: Postgres only." in task.description
+            # Still its own item's work, not replaced by the plan context.
+            assert task.title in {"Board", "Movement"}
+
+    def test_an_unanswered_question_is_marked_as_unanswered(self) -> None:
+        """An agent must not read an open question as a settled decision."""
+        plan = _durable_plan().model_copy(
+            update={"open_questions": (NotBlankStr("Do we ship on mobile?"),)}
+        )
+
+        result = decomposition_from_plan(plan, parent_task=_parent_task())
+
+        description = result.created_tasks[0].description
+        assert "Do we ship on mobile?" in description
+        assert "Not decided yet" in description
+
+    def test_a_plan_with_neither_leaves_the_description_alone(self) -> None:
+        """The common case adds nothing, so no prompt pays for the mechanism."""
+        result = decomposition_from_plan(_durable_plan(), parent_task=_parent_task())
+
+        assert result.created_tasks[0].description == "Grid"

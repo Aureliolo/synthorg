@@ -39,9 +39,10 @@ class PlanStatusWriter(Protocol):
     ) -> Plan:
         """Persist *status* onto *existing*, validating the transition.
 
-        *failure_reason* is required exactly when *status* is FAILED (the plan
-        model and the column check both enforce it) and rejected otherwise, so
-        Plan Review can always show why a failed initiative failed.
+        *failure_reason* is required exactly when *status* is FAILED and
+        refused for every other status, so Plan Review can always show why a
+        failed initiative failed and never shows a stale reason on a live one.
+        The implementation raises on both halves rather than dropping either.
 
         Returns:
             The persisted plan carrying the new status.

@@ -975,6 +975,7 @@ jobs:
       # because both packages resolve independently.
       - name: Smoke-test sandbox toolchain
         uses: ./.github/actions/smoke-test-sandbox-toolchain
+        timeout-minutes: 5
         with:
           image: ${{ steps.build_scan.outputs.ref }}
 

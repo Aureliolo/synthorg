@@ -9,10 +9,11 @@ question "how did this initiative get to where it is" has an answer that
 outlives the process that produced it.
 """
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -66,6 +67,22 @@ class LifecycleTransition(BaseModel):
         description="The entity's version after the move",
     )
     occurred_at: AwareDatetime = Field(description="When the move landed (UTC)")
+
+    @field_validator("occurred_at")
+    @classmethod
+    def _normalise_occurred_at(cls, value: datetime) -> datetime:
+        """Convert an aware timestamp to UTC.
+
+        ``AwareDatetime`` only rejects a naive value; it keeps whatever
+        offset it was given. Two rows written a second apart from
+        different offsets would then sort by their wall-clock text rather
+        than by when they happened, which is the one thing an ordered
+        ledger is for.
+
+        Returns:
+            The same instant, expressed in UTC.
+        """
+        return value.astimezone(UTC)
 
 
 __all__ = ["LifecycleEntityKind", "LifecycleTransition"]

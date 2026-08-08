@@ -16,6 +16,7 @@ from synthorg.engine.decomposition.agent_session import (
     AgentSessionDecompositionStrategy,
     SubmitDecompositionPlanTool,
     _PlanCapture,
+    _ran_without_submitting,
 )
 from synthorg.engine.decomposition.models import (
     DecompositionContext,
@@ -29,6 +30,7 @@ from synthorg.engine.errors import (
     DecompositionError,
     DecompositionSubtaskLimitError,
 )
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from tests._shared import as_uuid, sid
@@ -536,6 +538,50 @@ class TestAgentSessionGuards:
         at_ceiling = SimpleNamespace(accumulated_cost=SimpleNamespace(cost=1.5))
         assert checker(below) is False  # type: ignore[arg-type]
         assert checker(at_ceiling) is True  # type: ignore[arg-type]
+
+
+class TestTerminationClassification:
+    """The fallback decision is taken for every termination, not most of them.
+
+    An unclassified reason would silently take whichever branch the check
+    happened to default to, which for a membership test was "the fallback
+    stands" for anything nobody thought about.
+    """
+
+    @pytest.mark.parametrize("reason", list(TerminationReason))
+    def test_every_termination_reason_is_classified(
+        self, reason: TerminationReason
+    ) -> None:
+        assert isinstance(_ran_without_submitting(reason), bool)
+
+    @pytest.mark.parametrize(
+        "reason",
+        [
+            TerminationReason.ERROR,
+            TerminationReason.SHUTDOWN,
+            TerminationReason.PARKED,
+            TerminationReason.CANCELLED,
+        ],
+    )
+    def test_a_session_prevented_from_producing_keeps_the_fallback(
+        self, reason: TerminationReason
+    ) -> None:
+        assert _ran_without_submitting(reason) is False
+
+    @pytest.mark.parametrize(
+        "reason",
+        [
+            TerminationReason.COMPLETED,
+            TerminationReason.NO_OP,
+            TerminationReason.MAX_TURNS,
+            TerminationReason.BUDGET_EXHAUSTED,
+            TerminationReason.STAGNATION,
+        ],
+    )
+    def test_a_session_that_ran_and_produced_nothing_is_refused(
+        self, reason: TerminationReason
+    ) -> None:
+        assert _ran_without_submitting(reason) is True
 
 
 class TestAgentSessionConfig:

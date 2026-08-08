@@ -22,6 +22,8 @@ from synthorg.api.lifecycle_helpers.plan_questions import (
     build_plan_questions,
     log_parked,
 )
+from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -35,9 +37,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     PlanParentTaskMissingError,
     ResourceNotFoundError,
-    VersionConflictError,
 )
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReviewOutcome
@@ -60,13 +60,18 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_PARENT_MISSING,
     PIPELINE_PLAN_SHELL_OPENED,
 )
-from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
 _PLAN_ACTION_TYPE = "plan:approve"
+
+#: Recorded as the actor on the compensating FAILED write. No human asked for
+#: it: the pipeline is cleaning up after a failure it already surfaced, and the
+#: ledger row should say so rather than leave "who" blank, which the ledger
+#: reserves for a reconciler moving something on its own schedule.
+_COMPENSATION_ACTOR: Final[str] = "plan_review_gate"
 
 # Bounded compare-and-swap retries when the plan is reworked concurrently with
 # its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
@@ -137,11 +142,14 @@ class PlanReviewApprovalGate:
         self,
         *,
         approval_store: ApprovalStoreProtocol,
-        plans: PlanRepository,
+        plans: PlanService,
         tasks: TaskRepository,
         clock: Clock,
         notifier: PlanNotifier | None = None,
     ) -> None:
+        # A service, not the repository: every status this gate writes is a
+        # transition the lifecycle ledger has to carry, and a gate holding the
+        # repository writes them where nothing records them.
         self._approval_store = approval_store
         self._plans = plans
         self._tasks = tasks
@@ -282,13 +290,10 @@ class PlanReviewApprovalGate:
                 "updated_at": now,
             }
         )
-        if shell is not None:
-            await self._plans.update(durable_plan, expected_version=shell.version)
-        else:
-            # The shell was lost (e.g. opened on a prior boot then pruned);
-            # persist the filled plan fresh so the approval still references a
-            # durable plan rather than dangling.
-            await self._plans.create(durable_plan)
+        # A lost shell (opened on a prior boot, then pruned) persists the
+        # filled plan fresh so the approval still references a durable plan
+        # rather than dangling; the service owns that fork.
+        await self._plans.record_decomposed(durable_plan, shell=shell)
         approval = ApprovalItem(
             id=approval_id,
             action_type=NotBlankStr(_PLAN_ACTION_TYPE),
@@ -368,12 +373,18 @@ class PlanReviewApprovalGate:
         async def write(plan: Plan, _version: int) -> None:
             if plan.status is PlanStatus.FAILED:
                 return  # idempotent: a prior compensation already marked it
-            failed = plan.fail(marked_reason, now=self._clock.now())
-            try:
-                await self._plans.update(failed, expected_version=plan.version)
-            except PersistenceVersionConflictError as exc:
-                # Translate to the domain twin CASRetryHandler retries on.
-                raise VersionConflictError(str(exc)) from exc
+            # Through the service, not the repository: this is the write that
+            # ends a plan, and it is the one an operator asks about months
+            # later. Its sibling on the resume path already routes here, so a
+            # raw write made the ledger look complete while the compensating
+            # failure was the row missing from it.
+            failed = await self._plans.sync_status(
+                plan,
+                PlanStatus.FAILED,
+                requested_by=_COMPENSATION_ACTOR,
+                reason=str(marked_reason),
+                failure_reason=marked_reason,
+            )
             # After the write, never before: a viewer told the plan failed and
             # then refetching a plan that is still PENDING_REVIEW would read as
             # the announcement being wrong rather than early.
@@ -453,7 +464,7 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
 
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
-        plans=backend.plans,
+        plans=build_plan_service(backend, clock=app_state.clock),
         tasks=backend.tasks,
         clock=app_state.clock,
         notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,

@@ -36,6 +36,8 @@ stateDiagram-v2
     EVALUATING --> EXECUTING: an item regressed
     INTEGRATING --> SUPERSEDED: replan
     EVALUATING --> SUPERSEDED: replan
+    INTEGRATING --> FAILED: assembly will not assemble
+    EVALUATING --> FAILED: the judgement cannot run
 ```
 
 **`EXECUTING -> COMPLETED` does not exist.** Neither does the project's
@@ -44,6 +46,12 @@ the tail cannot be skipped by construction rather than by whichever service
 happens to be wired. The back-edges carry a regression: an item that stops being
 done (integration findings routed back as rework) reopens the build without a
 replan.
+
+**Both tail stages reach `FAILED`.** A replan resolves the tail failures
+somebody chooses to re-plan; without the direct edge, the ones nobody re-plans
+sit in the tail with no reachable exit, which is the deadlock shape that made a
+whole project undeletable. See
+[Every state has an exit a writer can always take](project-lifecycle.md#every-state-has-an-exit-a-writer-can-always-take).
 
 ## INTEGRATE
 

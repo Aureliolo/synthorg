@@ -1,11 +1,19 @@
 """Failure classification for recovery results.
 
-Answers one question: given what is known about a terminated run (the typed
-exception, or only the message the loop recorded), which failure category is
-it? The typed cause is the authority; keyword matching is the fallback for
-messages that arrive with no exception attached.
+Answers one question: given what is known about a terminated run, which
+failure category is it? The typed cause is the authority; keyword matching
+over the message is the fallback for failures that arrive with no exception
+type attached.
+
+What is known is a class NAME, not an exception: a frozen ``ExecutionResult``
+cannot carry a live one across the boundary, and every consumer downstream of
+it holds the name. So the loop writes the name down through
+:func:`recorded_error_type` and the diagnosis reads it through
+:func:`category_for_error_type`, and there is deliberately no second entry
+point taking an exception, which could only be an answer that disagrees.
 """
 
+from collections.abc import Iterator
 from enum import StrEnum
 from typing import Final
 
@@ -21,6 +29,7 @@ from synthorg.providers.errors import (
     ProviderTimeoutError,
     RateLimitError,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 
 class FailureCategory(StrEnum):
@@ -81,7 +90,7 @@ _TYPED_FAILURE_CATEGORIES: Final[
 # like "delegation failed: tool unavailable" classify as DELEGATION,
 # not TOOL_FAILURE.  Reordering this tuple changes classification for
 # ambiguous messages.
-_FAILURE_CATEGORY_RULES: tuple[tuple[tuple[str, ...], FailureCategory], ...] = (
+_FAILURE_CATEGORY_RULES: Final[tuple[tuple[tuple[str, ...], FailureCategory], ...]] = (
     (("budget",), FailureCategory.BUDGET_EXCEEDED),
     (("timeout", "timed out"), FailureCategory.TIMEOUT),
     (("stagnation",), FailureCategory.STAGNATION),
@@ -138,36 +147,81 @@ def infer_failure_category(error_message: str) -> FailureCategory:
     return FailureCategory.UNKNOWN
 
 
-def category_for_exception(exc: BaseException) -> FailureCategory | None:
-    """Classify a failure from the exception the provider raised.
+def effective_cause(exc: BaseException) -> BaseException:
+    """Unwrap the retry wrapper to the error that actually failed.
 
-    The typed cause is the authority: a provider that refused a request said
-    so in its own exception class, and the prose it wrapped it in belongs to
-    the provider, not to us. Keyword matching only gets a turn when there is
-    no typed cause to read.
+    ``RetryHandler`` re-raises every retryable ``ProviderError`` as a
+    ``RetryExhaustedError`` carrying the last one in ``original_error``, so
+    in the shipped configuration a timeout or a 5xx never reaches the
+    classifier under its own type. Nesting is not expected but is unwrapped
+    anyway, because a wrapper that wrapped a wrapper would put the cause
+    back out of reach.
 
     Args:
         exc: The exception that terminated the run.
 
     Returns:
-        The category the exception type maps to, or ``None`` when it is not
-        a provider error this table classifies.
+        The innermost non-wrapper cause, or *exc* when it is not a wrapper.
     """
-    for error_type, category in _TYPED_FAILURE_CATEGORIES:
-        if isinstance(exc, error_type):
-            return category
-    return None
+    if isinstance(exc, RetryExhaustedError):
+        return effective_cause(exc.original_error)
+    return exc
+
+
+def recorded_error_type(exc: BaseException) -> str:
+    """The class name to write down for a run that died on *exc*.
+
+    A frozen ``ExecutionResult`` cannot carry a live exception, so the loop
+    records a name and the diagnosis resolves it later. Recording the
+    wrapper's name would be recording the fact that we retried rather than
+    the fact that the provider timed out, which is the question the
+    diagnosis is asking.
+
+    Args:
+        exc: The exception that terminated the run.
+
+    Returns:
+        The class name of the effective cause.
+    """
+    return type(effective_cause(exc)).__name__
+
+
+def _provider_error_classes(
+    root: type[ProviderError] = ProviderError,
+) -> Iterator[type[ProviderError]]:
+    """Yield *root* and every class that inherits from it, depth-first.
+
+    Walked live rather than tabulated, because a table of names would have
+    to be rebuilt whenever a driver adds an error class, and the failure
+    mode of forgetting is a silent ``unknown``.
+
+    Args:
+        root: Where to start the walk.
+
+    Yields:
+        Each provider-error class in the subtree.
+    """
+    yield root
+    for subclass in root.__subclasses__():
+        yield from _provider_error_classes(subclass)
 
 
 def category_for_error_type(error_type: str | None) -> FailureCategory | None:
     """Classify a failure from the recorded exception class name.
 
-    The execution loop records the class name because a frozen
-    ``ExecutionResult`` cannot carry a live exception across the boundary.
-    Resolved against the same table, so the two entry points cannot disagree.
+    The single typed entry point. The execution loop records a class name
+    because a frozen ``ExecutionResult`` cannot carry a live exception
+    across the boundary, and every consumer downstream of it has the name
+    and nothing else, so classifying from anything richer would only create
+    a second answer that could disagree with this one.
+
+    The name is resolved back to its class and classified by ``issubclass``,
+    so a subclass is not a stranger:
+    ``ProviderImageGenerationUnsupportedError`` is an ``InvalidRequestError``
+    and diagnoses as one.
 
     Args:
-        error_type: ``type(exc).__name__`` as the loop recorded it.
+        error_type: The name :func:`recorded_error_type` wrote down.
 
     Returns:
         The category the named type maps to, or ``None`` when it names
@@ -175,8 +229,23 @@ def category_for_error_type(error_type: str | None) -> FailureCategory | None:
     """
     if not error_type:
         return None
-    for known, category in _TYPED_FAILURE_CATEGORIES:
+    for known in _provider_error_classes():
         if known.__name__ == error_type:
+            return _category_for_class(known)
+    return None
+
+
+def _category_for_class(error_class: type[ProviderError]) -> FailureCategory | None:
+    """Map a provider-error class to its category, nearest rule first.
+
+    Args:
+        error_class: The class to classify.
+
+    Returns:
+        The category, or ``None`` when no rule covers the class.
+    """
+    for known, category in _TYPED_FAILURE_CATEGORIES:
+        if issubclass(error_class, known):
             return category
     return None
 

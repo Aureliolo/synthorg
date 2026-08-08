@@ -203,7 +203,12 @@ class TestBuildSystemPrompt:
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """A session without the trio is told to call its tools directly."""
+        """A session lacking them is told to call its tools directly.
+
+        The instruction names ``list_tools`` and ``load_tool``, so those two
+        are what the derivation looks for; the third disclosure tool
+        (``load_tool_resource``) is never mentioned by it.
+        """
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             l1_summaries=(
@@ -220,7 +225,7 @@ class TestBuildSystemPrompt:
         assert "load_tool(" not in result.content
         assert "submit_decomposition_plan" in result.content
 
-    def test_discovery_instruction_kept_when_the_trio_is_granted(
+    def test_discovery_instruction_kept_when_the_discovery_tools_are_granted(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:

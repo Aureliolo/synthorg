@@ -6,15 +6,16 @@ Provides an in-memory store with TTL-based eviction for
 agent and budget monitoring.
 
 Service layer for the cost tracking schema defined in the Operations
-design page.  The current implementation is purely in-memory;
-persistence integration is planned.
+design page. The in-memory window is a cache over the durable
+``cost_records`` table: every accepted record is appended there, and the
+window is rehydrated from it on boot so a ceiling survives a restart.
 """
 
 import asyncio
 import math
 import time
 from collections import OrderedDict, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Final, NamedTuple, override
 
@@ -36,23 +37,33 @@ from synthorg.budget.tracker_summary import CostTrackerSummaryMixin
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.pagination import DEFAULT_LIST_LIMIT, validate_pagination_args
+from synthorg.core.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    paginate,
+    validate_pagination_args,
+)
+from synthorg.core.persistence_errors import PersistenceError
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
-    BUDGET_CLAIM_DEDUP_MARK_FAILED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_HYDRATED,
     BUDGET_HYDRATION_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
     BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
+    BUDGET_PROJECT_COST_AGGREGATED,
+    BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
     BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_RECORD_ADDED,
     BUDGET_RECORD_DEDUPED,
     BUDGET_RECORD_PERSIST_FAILED,
+    BUDGET_RECORD_PERSIST_RECOVERED,
+    BUDGET_RECORD_PERSIST_RETRIED,
     BUDGET_RECORDS_AUTO_PRUNED,
     BUDGET_RECORDS_PRUNED,
     BUDGET_RECORDS_QUERIED,
@@ -76,6 +87,38 @@ logger = get_logger(__name__)
 
 _COST_WINDOW_HOURS: Final[int] = 168  # 7 days
 _AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
+
+#: Attempts (including the first) for one durable cost-record append. The
+#: record is a single-row insert on the tail of a provider call that has
+#: already returned, so the retry is cheap; a storage problem outlasting
+#: three quick tries will not be fixed by a fourth.
+_DURABLE_APPEND_MAX_ATTEMPTS: Final[int] = 3
+
+#: Backoff bounds for that retry. Sub-second on purpose: the append runs on a
+#: background task, but it holds the record the ceiling is enforced from and
+#: must not become a queue.
+_DURABLE_APPEND_BASE_DELAY_SECONDS: Final[float] = 0.05
+_DURABLE_APPEND_DELAY_CAP_SECONDS: Final[float] = 0.4
+
+#: Consecutive dropped records after which the log stops calling it a blip.
+#: One lost receipt under-reports a call; a run of them means spend is not
+#: being recorded, which is the whole failure this path closes.
+_PERSIST_FAILURE_ESCALATION_STREAK: Final[int] = 3
+
+
+def _durable_write_is_retryable(exc: Exception) -> bool:
+    """Whether *exc* is worth another append attempt.
+
+    Args:
+        exc: The exception the append raised.
+
+    Returns:
+        ``True`` for a persistence error the layer marks transient. A
+        constraint violation (the claim key already landed) reproduces on
+        every attempt and is not retried.
+    """
+    return isinstance(exc, PersistenceError) and exc.is_retryable
+
 
 #: Default capacity of the per-tracker LRU set used to dedupe
 #: ``CostRecord.claim_id``.  Sized as 10% of ``_AUTO_PRUNE_THRESHOLD``
@@ -179,6 +222,15 @@ class CostTracker(CostTrackerSummaryMixin):
         self._inflight_claims: set[str] = set()
         self._seen_claims: OrderedDict[str, None] = OrderedDict()
         self._claim_lru_capacity = claim_lru_capacity
+        self._consecutive_persist_failures = 0
+        self._durable_retry = GeneralRetryHandler(
+            retryable=_durable_write_is_retryable,
+            max_attempts=_DURABLE_APPEND_MAX_ATTEMPTS,
+            base=_DURABLE_APPEND_BASE_DELAY_SECONDS,
+            cap=_DURABLE_APPEND_DELAY_CAP_SECONDS,
+            event=BUDGET_RECORD_PERSIST_RETRIED,
+            clock=self._clock,
+        )
         logger.debug(
             BUDGET_TRACKER_CREATED,
             has_budget_config=budget_config is not None,
@@ -249,6 +301,12 @@ class CostTracker(CostTrackerSummaryMixin):
         window the pruner enforces, so hydration restores exactly what a
         long-running process would still be holding.
 
+        The read is paged rather than issued as one large query:
+        repositories clamp ``limit`` to ``MAX_LIST_LIMIT`` inside
+        ``validate_pagination_args`` without telling the caller, so a
+        single whole-window request comes back as its newest page and the
+        ceiling is enforced over a fraction of the spend.
+
         Best-effort: a read failure leaves the tracker empty and logs,
         because a cold window under-reports spend while a failed boot
         reports none at all.
@@ -256,13 +314,25 @@ class CostTracker(CostTrackerSummaryMixin):
         Returns:
             How many records were restored.
         """
-        repo = self._cost_record_repo
-        if repo is None:
+        if self._cost_record_repo is None:
             return 0
+        # Bound to a non-optional local because the closure below outlives
+        # the narrowing of the attribute it reads.
+        durable: CostRecordRepository = self._cost_record_repo
         since = self._clock.now() - timedelta(hours=_COST_WINDOW_HOURS)
+        spec = CostRecordFilterSpec(since=since)
+        pages: list[Sequence[CostRecord]] = []
         try:
-            restored = await repo.query(
-                CostRecordFilterSpec(since=since), limit=self._auto_prune_threshold
+            pages.extend(
+                [
+                    page
+                    async for page in paginate(
+                        lambda limit, offset: durable.query(
+                            spec, limit=limit, offset=offset
+                        ),
+                        page_size=MAX_LIST_LIMIT,
+                    )
+                ]
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- a cold window under-reports spend;
@@ -274,12 +344,47 @@ class CostTracker(CostTrackerSummaryMixin):
                 error=safe_error_description(exc),
             )
             return 0
+        restored = await self._absorb_hydrated_pages(pages)
+        logger.info(BUDGET_HYDRATED, restored=restored)
+        return restored
+
+    async def _absorb_hydrated_pages(
+        self, pages: Sequence[Sequence[CostRecord]]
+    ) -> int:
+        """Merge a paged durable read into the in-memory window.
+
+        Walked oldest-first, which the durable read is not: it orders
+        ``timestamp DESC``. Two things depend on that reversal.
+        ``get_records`` documents insertion order as oldest-first, and the
+        claim LRU evicts from its head, so replaying a newest-first read
+        verbatim would make the newest claim the least-recently-used one
+        and a capacity trim would drop exactly the claims a redelivery
+        repeats.
+
+        A claim already held is skipped rather than appended: ``record()``
+        writes its durable row before its in-memory one, so a hydration
+        overlapping a live record sees the same claim from both sides and
+        counting it twice can trip a hard stop that never happened.
+
+        Args:
+            pages: Durable pages in the read's newest-first order.
+
+        Returns:
+            How many records were newly added to the window.
+        """
+        restored = 0
         async with self._get_lock():
-            self._records.extend(restored)
-            for record in restored:
-                self._promote_seen_claim(record.claim_id)
-        logger.info(BUDGET_HYDRATED, restored=len(restored))
-        return len(restored)
+            for page in reversed(pages):
+                for record in reversed(page):
+                    if (
+                        record.claim_id in self._seen_claims
+                        or record.claim_id in self._inflight_claims
+                    ):
+                        continue
+                    self._records.append(record)
+                    self._promote_seen_claim(record.claim_id)
+                    restored += 1
+        return restored
 
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
@@ -444,29 +549,69 @@ class CostTracker(CostTrackerSummaryMixin):
             )
 
     async def _append_durable(self, cost_record: CostRecord) -> None:
-        """Persist the record itself, best-effort.
+        """Persist the record itself, best-effort but not silently.
 
-        Fail-open for the same reason the aggregate increment is: losing
-        a receipt must not lose the call it describes, and the storage
-        layer's unique claim key makes a retry harmless.
+        Fail-open for the same reason the aggregate increment is: losing a
+        receipt must not lose the call it describes. A transient storage
+        failure is retried first, because the record is what a restart
+        rehydrates the ceiling from and the unique claim key makes the retry
+        harmless. What survives the retry is a dropped record: one is a gap,
+        but a run of them means spend is not being recorded at all, which is
+        the exact failure this path exists to prevent, so past
+        :data:`_PERSIST_FAILURE_ESCALATION_STREAK` it stops being a WARNING
+        nobody reads.
         """
         repo = self._cost_record_repo
         if repo is None:
             return
         try:
-            await repo.append(cost_record)
+            await self._durable_retry.execute(
+                lambda: repo.append(cost_record),
+                claim_id=cost_record.claim_id,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- the record is already accepted; a
             # storage blip must not fail the call it is describing.
             reraise_critical(exc)
-            logger.warning(
-                BUDGET_RECORD_PERSIST_FAILED,
-                claim_id=cost_record.claim_id,
-                agent_id=cost_record.agent_id,
-                task_id=cost_record.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            self._note_persist_failure(cost_record, exc)
+            return
+        self._note_persist_success()
+
+    def _note_persist_failure(self, cost_record: CostRecord, exc: Exception) -> None:
+        """Log one dropped record, escalating once dropping them is a pattern.
+
+        Args:
+            cost_record: The record that did not reach the durable store.
+            exc: What stopped it.
+        """
+        self._consecutive_persist_failures += 1
+        recording = (
+            self._consecutive_persist_failures < _PERSIST_FAILURE_ESCALATION_STREAK
+        )
+        log_fn = logger.warning if recording else logger.error
+        log_fn(
+            BUDGET_RECORD_PERSIST_FAILED,
+            claim_id=cost_record.claim_id,
+            agent_id=cost_record.agent_id,
+            task_id=cost_record.task_id,
+            project_id=cost_record.project_id,
+            cost=cost_record.cost,
+            currency=cost_record.currency,
+            timestamp=cost_record.timestamp.isoformat(),
+            consecutive_failures=self._consecutive_persist_failures,
+            spend_recorded=recording,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+    def _note_persist_success(self) -> None:
+        """Clear the streak, announcing recovery only if there was one."""
+        if self._consecutive_persist_failures >= _PERSIST_FAILURE_ESCALATION_STREAK:
+            logger.info(
+                BUDGET_RECORD_PERSIST_RECOVERED,
+                dropped_records=self._consecutive_persist_failures,
             )
+        self._consecutive_persist_failures = 0
 
     def _promote_seen_claim(self, claim_id: str) -> None:
         """Insert/refresh ``claim_id`` in the bounded in-memory dedup LRU.
@@ -532,8 +677,11 @@ class CostTracker(CostTrackerSummaryMixin):
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # The aggregation failed, which is wider than the dedup mark: this
+            # handler also covers the plain-increment branch above, where no
+            # claim is marked at all.
             logger.warning(
-                BUDGET_CLAIM_DEDUP_MARK_FAILED,
+                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
                 claim_id=cost_record.claim_id,
                 project_id=cost_record.project_id,
                 error_type=type(exc).__name__,
@@ -541,6 +689,13 @@ class CostTracker(CostTrackerSummaryMixin):
             )
             return True
         else:
+            logger.debug(
+                BUDGET_PROJECT_COST_AGGREGATED,
+                project_id=cost_record.project_id,
+                claim_id=cost_record.claim_id,
+                cost=cost_record.cost,
+                was_new=was_new,
+            )
             return was_new
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:

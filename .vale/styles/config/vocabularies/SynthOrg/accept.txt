@@ -433,6 +433,7 @@ deduplicates
 deduplicating
 deduplication
 deepcopy
+deletable
 delegation_chain
 deliverable_receipts
 deliverables
@@ -704,6 +705,8 @@ referenceable
 refetch
 refetches
 regexes
+rehydrated
+rehydrates
 reimplemented
 reimplementing
 reindex
@@ -869,6 +872,7 @@ undeletable
 undercounted
 underperforming
 underspecified
+undispatched
 unencrypted
 ungated
 unheadered

@@ -14,7 +14,7 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import Final, cast, override
+from typing import Final, assert_never, cast, override
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -79,21 +79,47 @@ logger = get_logger(__name__)
 
 _STRATEGY_NAME = "agent-session"
 
-#: Terminations that mean the session ran on its own terms and produced
-#: nothing, so there IS a researched plan and it is missing. Substituting a
-#: single-shot plan here hands the operator a different plan than the one
-#: they asked for, indistinguishable from the real thing at the approval
-#: gate. A run that could not happen at all (ERROR) or was cut short by the
-#: process going down (SHUTDOWN) is not in this set: nothing was lost.
-_RAN_WITHOUT_SUBMITTING: Final[frozenset[TerminationReason]] = frozenset(
-    {
-        TerminationReason.COMPLETED,
-        TerminationReason.NO_OP,
-        TerminationReason.MAX_TURNS,
-        TerminationReason.BUDGET_EXHAUSTED,
-        TerminationReason.STAGNATION,
-    }
-)
+
+def _ran_without_submitting(reason: TerminationReason) -> bool:
+    """Report whether a verdict-less session had a researched plan to lose.
+
+    Substituting a single-shot plan for a session that ran on its own terms
+    hands the operator a different plan than the one they asked for,
+    indistinguishable from the real thing at the approval gate. Where the
+    session could not run at all, nothing was lost and the fallback stands.
+
+    A ``match`` with :func:`assert_never` rather than a membership set: the
+    fallback is a safety decision per termination, so a newly-added
+    :class:`TerminationReason` must be classified deliberately, and this
+    makes omitting it a type error rather than a silent grant of the
+    fallback.
+
+    Returns:
+        ``True`` when the session ran and produced nothing.
+    """
+    match reason:
+        case (
+            TerminationReason.COMPLETED
+            | TerminationReason.NO_OP
+            | TerminationReason.MAX_TURNS
+            | TerminationReason.BUDGET_EXHAUSTED
+            | TerminationReason.STAGNATION
+        ):
+            return True
+        # ERROR never reached the model, SHUTDOWN lost the process under it,
+        # and PARKED / CANCELLED stopped the session by a decision taken
+        # outside it (an approval wait, an operator abort): in all four the
+        # session was prevented from producing rather than producing nothing.
+        case (
+            TerminationReason.ERROR
+            | TerminationReason.SHUTDOWN
+            | TerminationReason.PARKED
+            | TerminationReason.CANCELLED
+        ):
+            return False
+        case _ as unreachable:
+            assert_never(unreachable)
+
 
 # A planning session may only be granted tools that observe state, never ones
 # that mutate it: the objective text is attacker-controllable, so an
@@ -471,7 +497,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             DecompositionError: When the session terminated normally with
                 no plan submitted.
         """
-        if result.termination_reason not in _RAN_WITHOUT_SUBMITTING:
+        if not _ran_without_submitting(result.termination_reason):
             return
         msg = (
             f"Planning session for task {task.id} terminated "
@@ -642,6 +668,19 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             memory digest, and the fenced planning brief.
         """
         ctx = AgentContext.from_identity(owner, max_turns=self._config.max_turns)
+        # Every granted tool starts LOADED. The loop offers the provider only
+        # the loaded tools plus the progressive-disclosure trio, and this
+        # session is deliberately not granted that trio: its whole toolkit is
+        # one terminal submit tool plus a few read tools. Left unloaded, the
+        # session was offered nothing at all and could never call the tool it
+        # exists to call, so it ran a turn, said something, and terminated
+        # 'completed' having submitted no plan, every single time.
+        ctx = ctx.model_copy(
+            update={
+                "loaded_tools": frozenset(granted_tools),
+                "tool_load_order": granted_tools,
+            }
+        )
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.SYSTEM,

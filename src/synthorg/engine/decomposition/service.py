@@ -17,6 +17,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskStatusRollup,
 )
+from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.stakes import build_stakes_assessor
@@ -133,13 +134,22 @@ class DecompositionService:
         )
         plan = plan.model_copy(update={"subtasks": assessed_subtasks})
 
-        # 4. Create Task objects
+        # 4. Create Task objects. The plan's assumptions and unanswered
+        # questions ride on every child description: they are plan-level
+        # facts, and this is the only place a plan-level fact reaches the
+        # agent that does the work.
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
             child_task = Task(
                 id=_subtask_uuid(subtask_def.id),
                 title=subtask_def.title,
-                description=subtask_def.description,
+                description=NotBlankStr(
+                    with_plan_context(
+                        subtask_def.description,
+                        assumptions=plan.assumptions,
+                        open_questions=plan.open_questions,
+                    )
+                ),
                 type=task.type,
                 priority=task.priority,
                 project=task.project,

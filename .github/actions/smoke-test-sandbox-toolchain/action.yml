@@ -28,12 +28,29 @@ runs:
         IMAGE: ${{ inputs.image }}
       run: |
         set -euo pipefail
-        node_version="$(docker run --rm --entrypoint node "${IMAGE}" --version)"
-        # stderr is the assertion target, so it is captured rather than
-        # merged: a banner printed alongside a successful --version is
-        # exactly the failure this step exists to catch.
-        npm_err="$(docker run --rm --entrypoint npm "${IMAGE}" --version 2>&1 >/dev/null || true)"
-        npm_version="$(docker run --rm --entrypoint npm "${IMAGE}" --version 2>/dev/null)"
+        # Every probe is bounded here rather than only by the caller's
+        # step timeout: a composite action's own steps cannot declare
+        # timeout-minutes, so an image whose interpreter hangs on --version
+        # would otherwise burn the whole job budget.
+        node_version="$(timeout 60 docker run --rm --entrypoint node "${IMAGE}" --version)"
+        # One invocation, with stdout and stderr captured separately: stderr
+        # is the assertion target (a banner printed alongside a SUCCESSFUL
+        # --version is exactly the failure this step exists to catch), and
+        # merging them would hide the banner inside the version string.
+        # Running npm twice instead would let the two runs disagree and
+        # would need a `|| true` that swallows a genuine npm crash.
+        out="${RUNNER_TEMP}/npm-version.out"
+        err="${RUNNER_TEMP}/npm-version.err"
+        status=0
+        timeout 60 docker run --rm --entrypoint npm "${IMAGE}" --version \
+          >"${out}" 2>"${err}" || status=$?
+        npm_version="$(cat "${out}")"
+        npm_err="$(cat "${err}")"
+        if [ "${status}" -ne 0 ]; then
+          echo "::error::sandbox npm --version exited ${status}:"
+          cat "${err}"
+          exit 1
+        fi
         echo "node ${node_version} / npm ${npm_version}"
         if [ -n "${npm_err}" ]; then
           echo "::error::sandbox npm printed to stderr on a plain --version:"
@@ -48,4 +65,4 @@ runs:
         IMAGE: ${{ inputs.image }}
       run: |
         set -euo pipefail
-        docker run --rm --entrypoint python "${IMAGE}" --version
+        timeout 60 docker run --rm --entrypoint python "${IMAGE}" --version

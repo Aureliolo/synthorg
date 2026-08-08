@@ -236,10 +236,10 @@ class TestPrivacyScrubber:
 
 @pytest.mark.unit
 class TestTelemetryEventConstructionGuard:
-    """The property contract is enforced at construction (REWORK #11).
+    """The property contract is enforced at construction.
 
-    A telemetry property typo no longer silently drops downstream --
-    it raises ``ValidationError`` where the event is built.
+    A telemetry property typo raises ``ValidationError`` where the event is
+    built, rather than being dropped silently downstream.
     """
 
     def test_unknown_property_raises_at_construction(self) -> None:
