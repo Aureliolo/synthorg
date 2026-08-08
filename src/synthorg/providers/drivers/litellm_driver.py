@@ -588,6 +588,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             config,
             capabilities_provider=self._build_capabilities,
             provider_name=self._provider_name,
+            routing_key=self._routing_key,
         )
 
     # ── Streaming ────────────────────────────────────────────────
