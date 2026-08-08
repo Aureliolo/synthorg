@@ -8,6 +8,8 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
 from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.evaluation_report_protocol import EvaluationReportRecord
@@ -100,9 +102,31 @@ def _evaluation(
     )
 
 
-async def _seed(client: LoopAsyncClient, plan: Plan) -> None:
+async def _seed(client: LoopAsyncClient, plan: Plan, *tasks: Task) -> None:
     backend = persistence_of(client.app.state.app_state)
     await backend.plans.save(plan)
+    for task in tasks:
+        await backend.tasks.save(task)
+
+
+def _plan_task(plan: Plan, item_id: str, status: TaskStatus) -> Task:
+    """A task dispatched from *plan* for one of its items.
+
+    Returns:
+        The task, keyed so the plan's live-task count finds it.
+    """
+    return Task(
+        id=as_uuid(f"task-{item_id}"),
+        title="Child",
+        description="Child work",
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr(str(plan.project)),
+        created_by="manager",
+        plan_id=plan.id,
+        plan_item_id=as_uuid(item_id),
+        assigned_to=sid("agent-1") if status is not TaskStatus.CREATED else None,
+        status=status,
+    )
 
 
 @pytest.mark.unit
@@ -680,11 +704,16 @@ class TestDeletePlan:
         ],
         ids=lambda value: str(value.value),
     )
-    async def test_refuses_a_dispatched_plan(
+    async def test_refuses_a_dispatched_plan_with_live_work(
         self, async_test_client: LoopAsyncClient, status: PlanStatus
     ) -> None:
         """Removing it would orphan every task already building under it."""
-        await _seed(async_test_client, _plan(plan_id="building", status=status))
+        plan = _plan(plan_id="building", status=status)
+        await _seed(
+            async_test_client,
+            plan,
+            _plan_task(plan, _I1, TaskStatus.IN_PROGRESS),
+        )
         plan_id = str(as_uuid("building"))
 
         resp = await async_test_client.delete(
@@ -695,6 +724,55 @@ class TestDeletePlan:
         # Still there: the refusal is not a partial delete.
         survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
         assert survivor.status_code == 200
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PlanStatus.APPROVED,
+            PlanStatus.EXECUTING,
+            PlanStatus.INTEGRATING,
+            PlanStatus.EVALUATING,
+        ],
+        ids=lambda value: str(value.value),
+    )
+    async def test_deletes_a_dispatched_plan_with_nothing_building(
+        self, async_test_client: LoopAsyncClient, status: PlanStatus
+    ) -> None:
+        """Deletability is derived from live work, never from the status alone.
+
+        A dispatch that dies before it writes a task row leaves an EXECUTING
+        plan with items and no work. Refusing on status would tell the operator
+        to replan work that does not exist, and the project and task deletes
+        refuse for the same row: every exit shuts at once.
+        """
+        await _seed(async_test_client, _plan(plan_id="stranded", status=status))
+        plan_id = str(as_uuid("stranded"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+        follow_up = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert follow_up.status_code == 404
+
+    async def test_deletes_a_dispatched_plan_whose_work_all_finished(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Terminal tasks are not building either."""
+        plan = _plan(plan_id="spent", status=PlanStatus.EXECUTING)
+        await _seed(
+            async_test_client,
+            plan,
+            _plan_task(plan, _I1, TaskStatus.CANCELLED),
+            _plan_task(plan, _I2, TaskStatus.COMPLETED),
+        )
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{as_uuid('spent')}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
 
     async def test_missing_plan_404(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.delete(

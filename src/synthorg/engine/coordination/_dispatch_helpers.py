@@ -11,6 +11,7 @@ from uuid import uuid4
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
@@ -299,8 +300,14 @@ async def execute_waves(
     *,
     clock: Clock,
     fail_fast: bool,
+    assignment_writer: AssignmentWriter,
 ) -> tuple[list[CoordinationWave], list[CoordinationPhaseResult]]:
     """Execute wave groups sequentially, returning waves and phases.
+
+    Each wave's assignments are persisted through *assignment_writer*
+    immediately before that wave runs, so the central engine holds the
+    assignment before any agent acts on it, and a wave whose assignment
+    was refused fails visibly instead of running unsynced.
 
     Returns:
         ``(waves, phases)`` where ``waves`` lists every executed
@@ -332,7 +339,8 @@ async def execute_waves(
                 record_exception=False,
                 set_status_on_exception=False,
             ):
-                exec_result = await parallel_executor.execute_group(group)
+                assigned = await assignment_writer.persist(group)
+                exec_result = await parallel_executor.execute_group(assigned)
             elapsed = clock.monotonic() - start
 
             wave = CoordinationWave(

@@ -257,7 +257,19 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         so rotating/OAuth tokens are picked up on a subsequent call
         rather than pinned forever.
         """
-        if self._config.connection_name is None or self._connection_catalog is None:
+        if self._config.connection_name is None:
+            return
+        if self._connection_catalog is None:
+            # Named a connection and has nothing to read it from. Said here
+            # rather than left to the auth layer's refusal because this line
+            # names the wiring fault, while the refusal names only the call
+            # that tripped over it.
+            logger.warning(
+                PROVIDER_AUTH_ERROR,
+                provider=self._provider_name,
+                connection_name=self._config.connection_name,
+                note="no credential catalog bound; dispatch will fail closed",
+            )
             return
         from synthorg.observability.events.integrations import (  # noqa: PLC0415
             PROVIDER_CONNECTION_RESOLVED,

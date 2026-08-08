@@ -44,6 +44,28 @@ carries only the plan's `plan_id`.
   item advances). A validator rejects a non-UUID id, a self-dependency, or duplicate
   dependencies.
 
+### Open questions are asked, not filed
+
+`open_questions` is what the planner could not resolve on its own, and for a
+while it was written to the plan and read by nothing: the org asked two good
+questions, `GET /meta/chat/questions` returned `[]`, and the escalation fired
+into a void. Asking the human is the single most-wanted behaviour on the
+product's own goal list, so a question that reaches no human is not a record,
+it is a loss.
+
+Each open question is now filed as a **parked question** alongside the plan
+approval, inside the same guard, with `action_type=CLARIFY_ACTION_TYPE`, the
+plan's parent task, and metadata carrying the plan id and the question index.
+That puts it on the surface that already exists: it appears in
+`GET /meta/chat/questions` and is answered or declined through the same narrow
+door as every agent-raised question, with no second decision path.
+
+The answer goes back onto the plan the agents execute: answering removes the
+entry from `plan.open_questions` and appends the answer to `plan.assumptions`
+through `PlanService`; declining keeps the existing declined-question note.
+Question text is persisted raw and fenced with `wrap_untrusted(TAG_TASK_DATA,
+...)` only at the LLM prompt boundary, per SEC-1.
+
 ### Decision items
 
 A `PlanItem` with `kind = DECISION` is a real choice the plan hinges on (stack,
@@ -68,9 +90,26 @@ plan and excluding the owner (no self-review). Each panellist runs a bounded
 persona session (`AgentSessionPlanReviewPanel`) and submits a structured verdict
 (`ENDORSED` / `CONCERNS` / `REVISION_REQUESTED`) with categorised findings; a
 deterministic synthesis (`synthesise_review`) consolidates them onto `Plan.review`
-(overall verdict = the most severe). The panel is wired at startup without failing boot, and
-runs as a distinct pipeline phase between decompose and the human gate; when no
-panel is attached the plan is parked with `review = None`.
+(overall verdict = the most severe). The panel is wired at startup without failing
+boot, and runs as a distinct pipeline phase between decompose and the human gate.
+
+**An absent review says why it is absent.** `review = None` used to mean three
+different things at once, and the operator saw the same empty
+`evidence_package` for all of them. The session now returns a
+`PlanReviewOutcome` carrying either a review or the reason there is none, and
+the reason is persisted on `Plan.review_absent_reason`, surfaced in the
+approval payload and shown as a blocking banner on the dashboard gate:
+
+| outcome | what the operator is told |
+| --- | --- |
+| a seated panel produced verdicts | the review, as before |
+| no panel is attached | no panel was seated for this plan; the plan carries zero quality signal |
+| a seated panel produced no verdict | the panel ran and returned nothing; the plan carries zero quality signal |
+| every seated reviewer failed on a provider error | not a review outcome at all: plan preparation FAILS (FAILED plan + FAILED task) rather than presenting an unreviewed plan as merely unreviewed |
+
+The last row is the load-bearing one. A provider outage during review is an
+outage, and parking the plan for approval turns it into a human rubber-stamp on
+a plan nothing checked.
 
 ### Lifecycle (`PlanStatus`)
 

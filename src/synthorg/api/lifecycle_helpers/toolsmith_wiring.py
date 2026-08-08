@@ -9,6 +9,7 @@ stays a thin caller.
 from pathlib import Path
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -264,6 +265,10 @@ async def wire_toolsmith(
     ``apply`` rejects on the live read, the allowlist is re-read per gap, and
     the existing ``meta.toolsmith_cycle_paused`` switch still pauses the
     scheduler. Idempotent for re-entered lifespans (shared-app fixtures).
+
+    Raises:
+        SubsystemDeclinedError: No provider registry or no persistence, so
+            authoring has nothing to call and nowhere to store a blueprint.
     """
     from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
         ToolsmithStateSlice,
@@ -272,13 +277,14 @@ async def wire_toolsmith(
         PersistenceStateSlice,
     )
 
-    if (
-        app_state.slice(ToolsmithStateSlice).service is not None
-        or provider_registry is None
-    ):
+    if app_state.slice(ToolsmithStateSlice).service is not None:
         return
+    if provider_registry is None:
+        msg = "no provider registry; authoring a tool is an LLM call"
+        raise SubsystemDeclinedError(msg)
     if persistence is None or app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; authored blueprints are durable"
+        raise SubsystemDeclinedError(msg)
     from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
 
     si_config = await self_improvement_config_of(app_state)

@@ -19,6 +19,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,
@@ -980,6 +981,7 @@ class MultiAgentCoordinator:
                 topology,
                 clock=self._clock,
                 orchestrator_strategy=orchestrator_strategy,
+                assignment_writer=AssignmentWriter(self._task_engine),
             )
             project_id = context.task.project
             repo_root = await self._resolve_repo_root(project_id)

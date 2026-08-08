@@ -382,6 +382,24 @@ Do not register these in `settings/definitions/`. The precedence
 chain is for values that an operator may legitimately tune; protocol
 constants are part of the algorithm.
 
+## A settings write that swaps a collaborator must swap a complete one
+
+The precedence chain gets the *value* right; the swap has to get the
+*collaborator* right. A boot-time model-refresh sweep found three stale models,
+rewrote `providers.configs`, and swapped in a rebuilt `ProviderRegistry` that
+`_build_registry_and_router` had constructed with no `connection_catalog`. The
+value was correct and the swap was silent, and every dispatch after it went out
+with no credential.
+
+So the swap seam owns the invariant, not each caller:
+`AppState.swap_provider_registry` rebinds the always-on credential catalog onto
+the incoming registry before installing it, and the worker's
+`_select_active_provider` reads the registry once and threads that instance
+through the rest of the build so a mid-build swap cannot split the runtime
+across two registries. The rule generalises: **whatever a settings write
+replaces, it replaces whole**, and the seam that installs it is where that is
+enforced. See [security.md](../security.md) for the fail-closed half.
+
 ## Bridge-config snapshot pattern (hot-reloadable AppState fields)
 
 For controller / service knobs that should be hot-reloadable but cost

@@ -16,6 +16,7 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     JsonbQueryUnsupportedError,
@@ -56,6 +57,9 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameAggregate,
     FlightRecorderFrameFilterSpec,
+)
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
 )
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
@@ -299,6 +303,37 @@ class FakeLifecycleEventRepository:
         if limit is not None:
             result = result[:limit]
         return tuple(result)
+
+
+class FakeLifecycleTransitionRepository:
+    """In-memory lifecycle transition ledger for tests."""
+
+    def __init__(self) -> None:
+        self.transitions: list[LifecycleTransition] = []
+
+    async def append(self, event: LifecycleTransition) -> None:
+        self.transitions.append(event)
+
+    async def query(
+        self,
+        filter_spec: LifecycleTransitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[LifecycleTransition, ...]:
+        rows = self.transitions
+        if filter_spec.entity_kind is not None:
+            rows = [r for r in rows if r.entity_kind == filter_spec.entity_kind]
+        if filter_spec.entity_id is not None:
+            rows = [r for r in rows if r.entity_id == filter_spec.entity_id]
+        rows = sorted(rows, key=lambda r: r.occurred_at, reverse=True)
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        kept = [r for r in self.transitions if r.occurred_at >= threshold]
+        removed = len(self.transitions) - len(kept)
+        self.transitions = kept
+        return removed
 
 
 class FakeTaskMetricRepository:

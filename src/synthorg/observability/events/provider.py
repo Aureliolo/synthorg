@@ -11,6 +11,10 @@ PROVIDER_CREDENTIAL_MIGRATION_FAILED: Final[str] = (
 PROVIDER_CREDENTIAL_MIGRATION_COMPLETED: Final[str] = (
     "provider.credential.migration_completed"
 )
+PROVIDER_CREDENTIAL_CATALOG_BOUND: Final[str] = "provider.credential.catalog_bound"
+PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED: Final[str] = (
+    "provider.credential.catalog_bind_refused"
+)
 
 # ── Provider lifecycle ────────────────────────────────────────────
 

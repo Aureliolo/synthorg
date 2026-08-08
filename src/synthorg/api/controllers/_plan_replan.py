@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services._plan_revision import require_replannable
 from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
@@ -64,6 +65,7 @@ from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PLAN_REPLANNED
+from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -178,7 +180,7 @@ async def replan_initiative(
     # function too, with items no human reviewed.
     require_replannable(existing)
     await reject_unroutable_owners(app_state, revision.items)
-    service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
+    service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
     # Persist the successor before retiring anything. A failed insert here
     # leaves *existing* EXECUTING and its work running, so the operator retries
     # cleanly rather than being stranded with a superseded plan and no
@@ -246,10 +248,12 @@ async def _retire_predecessor(
     requested_by: str,
 ) -> None:
     """Repoint the project at *successor*, then supersede *existing*."""
+    persistence = persistence_of(app_state)
     await link_project_to_plan(
-        persistence_of(app_state).projects,
+        persistence.projects,
         project_id=NotBlankStr(str(existing.project)),
         plan_id=successor.id,
+        ledger=ledger_for(persistence, clock=app_state.clock),
     )
     await service.sync_status(
         existing,
@@ -289,6 +293,7 @@ async def _rollback_successor(
             persistence.projects,
             project_id=NotBlankStr(str(existing.project)),
             plan_id=existing.id,
+            ledger=ledger_for(persistence, clock=app_state.clock),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort
         reraise_critical(exc)

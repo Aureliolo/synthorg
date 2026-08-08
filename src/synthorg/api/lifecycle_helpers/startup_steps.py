@@ -16,6 +16,7 @@ from synthorg.api._app_wiring import (
     _try_wire_performance_persistence,
 )
 from synthorg.api._benchmark_wiring import seed_benchmark_scores
+from synthorg.api.lifecycle_helpers.budget_wiring import hydrate_cost_window
 from synthorg.api.lifecycle_helpers.durability_wiring import (
     _try_wire_audit_chain_persistence,
 )
@@ -197,6 +198,11 @@ async def install_runtime_services(
     # tree per project under the workspace base. Persistence-less
     # boots (test fixtures, dev apps with no DB) skip wiring.
     _try_wire_cost_dial(app_state)
+    # The spend window is in memory and starts empty, so without this a
+    # restart reads as an org that has spent nothing: every summary reports
+    # zero and every ceiling starts over. Runs after the cost dial, which is
+    # what attaches the durable record store it reads from.
+    await hydrate_cost_window(app_state)
     _try_wire_ssrf_violation_recorder(app_state)
     # Attach durable metric repos to the performance tracker now that the
     # backend is connected; a restart otherwise discards all recorded

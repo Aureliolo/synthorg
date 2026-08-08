@@ -7,6 +7,7 @@ startup.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -23,6 +24,10 @@ async def wire_deliverable_receipts(app_state: AppState) -> None:
     wiring (the red_team receipt section degrades to empty without it).
     The built service is parked on its slice and injected into the review
     gate so a completed deliverable emits its provenance receipt.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend or no docs service,
+            the two a receipt cannot be assembled without.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.deliverable_receipts.state_slice import (  # noqa: PLC0415
@@ -36,13 +41,15 @@ async def wire_deliverable_receipts(app_state: AppState) -> None:
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
     from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
-    docs_service = app_state.slice(DocsStateSlice).service
-    if docs_service is None:
-        return
     if app_state.slice(DeliverableReceiptStateSlice).service is not None:
         return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; receipts read durable provenance"
+        raise SubsystemDeclinedError(msg)
+    docs_service = app_state.slice(DocsStateSlice).service
+    if docs_service is None:
+        msg = "no docs service; without deliverables there is nothing to receipt"
+        raise SubsystemDeclinedError(msg)
 
     from synthorg.api.auto_wire_phase1 import resolve_cassette_config  # noqa: PLC0415
     from synthorg.deliverable_receipts.factory import (  # noqa: PLC0415

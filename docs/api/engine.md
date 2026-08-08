@@ -99,7 +99,7 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 
 ## Recovery Failure Category
 
-::: synthorg.engine.recovery.FailureCategory
+::: synthorg.engine.failure_classification.FailureCategory
 
 ## Review Decision Outcome
 

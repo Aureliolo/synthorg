@@ -181,12 +181,23 @@ something:
 | --- | --- |
 | work still moving (`CREATED` through `IN_REVIEW`) | it is simply in flight |
 | a human wait (`AWAITING_INPUT`, `AUTH_REQUIRED`) | the org is waiting on the operator; a replan would discard the question rather than answer it |
-| an item whose task row does not exist yet | dispatch writes the plan's `EXECUTING` status *before* it creates the task rows, so treating this as dead would replan every initiative during its own dispatch window |
+| a WORK item whose task row does not exist yet | dispatch writes the plan's `EXECUTING` status *before* it creates the task rows, so treating this as dead would replan every initiative during its own dispatch window |
+| an undecided DECISION item that carries options | a human wait like the row above: somebody can still answer it, and the parked question is how they are asked |
 
 The two tail stages produce verdicts no derivation over items can see (every
 item is `COMPLETED` when integration fails), so `INTEGRATION_FAILED` and
 `EVALUATION_UNMET` are carried in by the stage and re-confirmed by the plan
 still sitting in the stage that produced them.
+
+A DECISION item has no task row by construction, so the missing-row carve-out
+above is narrowed to WORK items, which is the only case its justification (the
+dispatch window) describes. Read the other way it made every undecided decision
+count as live for ever: a plan whose one outstanding item was a decision could
+never derive a stall, so the replan trigger never fired and the initiative hung
+with nothing watching. An undecided DECISION with **no options** counts as
+dead: nobody can resolve it, so the plan derives `BLOCKED` and replans.
+`plan_validation.validate_decision_options` additionally rejects an optionless
+DECISION at parse time, so the unanswerable shape stops being producible.
 
 ### Loop safety
 
@@ -209,13 +220,22 @@ completion:
 | --- | --- |
 | integrate stage (no work pipeline) | plan parks at `INTEGRATING`, WARNING per recompute |
 | evaluate stage (no provider) | plan parks at `EVALUATING`, WARNING per recompute |
-| replan trigger (no coordinator) | a stalled plan stays stalled and visible |
+| replan trigger (no coordinator) | a derived stall fails the plan with its reason; parking it silently is what left a dead initiative reading `EXECUTING` |
 | retro capture (no memory layer) | finished work does not feed a retrospective back |
 
-Parking is the honest outcome: an initiative whose pieces were never assembled
-has not delivered, and an initiative nobody scored has not been shown to meet
-its objective. The operator's remedy is one the product already has: replan
-(legal from both tail stages) or cancel.
+Parking is the honest outcome **while something can still move it**: an
+initiative whose pieces were never assembled has not delivered, and an
+initiative nobody scored has not been shown to meet its objective. The
+operator's remedy is one the product already has: replan (legal from both tail
+stages) or cancel.
+
+Parking a plan nothing can move is a different thing, and it is a deadlock. A
+derived stall with no replan trigger attached has no remaining actor: the items
+are all dead, the stages cannot fire, and no later event changes either fact. So
+the rollup fails the plan with the stall reason rather than parking it, and an
+unsuccessful `coordinate(...)` fails the plan exactly as a raised one does.
+Both were the same collapse in a live run: five tasks died in 1.85s and the plan
+sat at `EXECUTING` for ever, because only a raise had been treated as failure.
 
 **Independently means one subsystem each**, four of them, all separate from the
 rollup. The rollup activates once persistence and the task engine exist,

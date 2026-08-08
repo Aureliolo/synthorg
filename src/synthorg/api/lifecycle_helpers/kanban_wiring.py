@@ -9,6 +9,7 @@ unwired, and re-running after setup brings it online with no restart.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -27,6 +28,8 @@ async def wire_kanban_board(app_state: AppState) -> None:
         MemoryError: Propagated from construction; interpreter-level
             criticals are never swallowed by the best-effort handler.
         RecursionError: Propagated from construction for the same reason.
+        SubsystemDeclinedError: A collaborator the board reads through is
+            absent, named so the status surface can report which.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -35,13 +38,15 @@ async def wire_kanban_board(app_state: AppState) -> None:
     persistence = app_state.slice(PersistenceStateSlice).backend
     task_engine = app_state.slice(EngineStateSlice).task_engine
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
-    if persistence is None or task_engine is None or config_resolver is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="kanban_board",
-            note="kanban board not wired; dependencies not yet present",
-        )
-        return
+    if persistence is None:
+        msg = "no persistence backend; the board projects durable task rows"
+        raise SubsystemDeclinedError(msg)
+    if task_engine is None:
+        msg = "no task engine; a board move is a task transition"
+        raise SubsystemDeclinedError(msg)
+    if config_resolver is None:
+        msg = "no settings resolver; the WIP limits are settings-driven"
+        raise SubsystemDeclinedError(msg)
     try:
         from synthorg.engine.workflow.kanban_service import (  # noqa: PLC0415
             KanbanBoardService,

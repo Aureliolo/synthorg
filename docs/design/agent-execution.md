@@ -174,10 +174,34 @@ async run(
 ) -> AgentRunResult
 ```
 
+`effective_autonomy` is an override, not a requirement. When a caller supplies
+none the engine resolves it itself, through the `AutonomyResolution` seam the
+worker installs (`set_autonomy_resolution`), so every dispatch path gets the
+same answer from one owner: the solo `execute_once`, the coordinated
+`ParallelAgentExecutor`, and a resume. Only the solo path used to resolve it,
+which is why every coordinated agent silently lost its autonomy-tiered output
+scanning; the team path is the one the general loop actually uses.
+
+The credentialed-MCP screen is the same dispatch under a different transport,
+so it resolves through the same owner: `api/mcp_gateway/_request_context.py`
+reads the agent and task the verified bearer names and asks
+`AgentEngineExecutionService.resolve_effective_autonomy` for the answer, rather
+than screening a credentialed forge write or production deploy at whatever tier
+a missing argument happened to select.
+
+`AutonomyTieredPolicy` closes the remaining gap. With genuinely no tier to read
+(no run behind the screen, or a level the map does not cover) it responds at the
+STRICTEST tier and logs why, never a middle one: the map runs from `LogOnly` at
+FULL to `Withhold` at LOCKED, so substituting the middle `RedactPolicy` handed a
+LOCKED organisation a weaker response than it chose and said nothing.
+
 **Pipeline steps:**
 
 1. **Validate inputs**: agent must be `ACTIVE`, task must be `ASSIGNED` or
-   `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
+   `IN_PROGRESS`. Raises `ExecutionStateError` on violation. The entry sync to
+   the central engine is part of this: a refused `ASSIGNED -> IN_PROGRESS`
+   raises rather than proceeding, so the engine never runs work the central
+   engine has no record of starting.
 2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or

@@ -13,8 +13,16 @@ a cycle.
 """
 
 from datetime import UTC, datetime
+from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdict
 from synthorg.core.types import NotBlankStr
@@ -100,3 +108,47 @@ class PlanReview(BaseModel):
             The same instant expressed in UTC.
         """
         return value.astimezone(UTC)
+
+
+class PlanReviewOutcome(BaseModel):
+    """What a review attempt produced, and why when it produced nothing.
+
+    A bare ``None`` said two different things at once: "no panel was
+    seated" and "a seated panel returned nothing". Neither reached the
+    operator, who saw a plan with an empty review section and no way to
+    tell whether it had been scrutinised and passed or never looked at.
+
+    Attributes:
+        review: The consolidated review, when the panel produced one.
+        absent_reason: Why no review was produced. Always set when
+            ``review`` is ``None``, so an unreviewed plan carries the
+            reason to the approval gate rather than a blank section.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    review: PlanReview | None = Field(
+        default=None,
+        description="The consolidated stakeholder-panel review, if one was made",
+    )
+    absent_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why no review was produced",
+    )
+
+    @model_validator(mode="after")
+    def _validate_exactly_one(self) -> Self:
+        """Reject an outcome that says nothing, or says two things.
+
+        Returns:
+            ``self`` when exactly one of ``review`` / ``absent_reason`` is set.
+
+        Raises:
+            ValueError: When both or neither is set. Both would leave the
+                surface choosing which to believe; neither is the silent
+                blank this type exists to make impossible.
+        """
+        if (self.review is None) == (self.absent_reason is None):
+            msg = "a review outcome carries either a review or a reason, not both"
+            raise ValueError(msg)
+        return self

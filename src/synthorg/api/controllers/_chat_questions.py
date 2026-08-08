@@ -32,6 +32,7 @@ from synthorg.api.controllers.approvals._shared import (
     ApprovalContext,
     ApprovalResponse,
 )
+from synthorg.api.lifecycle_helpers.plan_questions import apply_plan_question_answer
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalStatus, QuestionReversibility
 from synthorg.approval.questions import (
@@ -40,6 +41,7 @@ from synthorg.approval.questions import (
 )
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
@@ -47,9 +49,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_QUESTION_ANSWERED,
     META_CHAT_QUESTION_NOT_FOUND,
+    META_CHAT_QUESTION_PLAN_WRITEBACK_FAILED,
     META_CHAT_QUESTION_REVERSIBILITY_UNDECODABLE,
     META_CHAT_QUESTION_UNPROJECTABLE,
 )
+from synthorg.persistence.state import PersistenceStateSlice
 
 logger = get_logger(__name__)
 
@@ -238,6 +242,42 @@ _QUESTION_DOOR: Final[NarrowDoor] = NarrowDoor(
 )
 
 
+async def _write_back_to_plan(
+    app_state: AppState,
+    item: ApprovalItem,
+    *,
+    answer: str | None,
+) -> None:
+    """Land a decided plan question on the plan the agents execute.
+
+    A question parked off a plan is only answered once the plan says so: the
+    dispatch tree is rebuilt from the durable plan, so an answer that stops at
+    the approval row reaches nobody. Every other parked question is a no-op
+    here (they resume their own agent instead).
+
+    A persistence failure is logged, never raised: the operator's answer is
+    already recorded and the agent already resumed, so failing the response
+    would report a decision that in fact happened.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if persistence is None:
+        return
+    try:
+        await apply_plan_question_answer(
+            persistence.plans, item, answer=answer, clock=app_state.clock
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- the decision is already durable; a failed
+        # write-back leaves the question listed, which is visible and retryable.
+        reraise_critical(exc)
+        logger.warning(
+            META_CHAT_QUESTION_PLAN_WRITEBACK_FAILED,
+            approval_id=str(item.id),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 def _to_result(response: ApprovalResponse) -> QuestionDecisionResult:
     """Project the decided approval onto the chat surface's result shape.
 
@@ -285,6 +325,7 @@ async def answer_question(
         chosen_option_id=data.chosen_option_id,
         door=_QUESTION_DOOR,
     )
+    await _write_back_to_plan(app_state, response, answer=answer)
     logger.info(
         META_CHAT_QUESTION_ANSWERED,
         approval_id=approval_id,
@@ -315,6 +356,7 @@ async def decline_question(
         reason=DECLINE_REASON,
         door=_QUESTION_DOOR,
     )
+    await _write_back_to_plan(app_state, response, answer=None)
     logger.info(
         META_CHAT_QUESTION_ANSWERED,
         approval_id=approval_id,

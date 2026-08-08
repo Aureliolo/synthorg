@@ -16,8 +16,9 @@ from typing import Final
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
@@ -27,7 +28,10 @@ from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination.models import CoordinationContext
+from synthorg.engine.coordination.models import (
+    CoordinationContext,
+    CoordinationResult,
+)
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
 from synthorg.engine.initiative.project_writes import link_project_to_plan
@@ -45,6 +49,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
+from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.state import persistence_of
 from synthorg.workers.state import RuntimeStateSlice
 
@@ -262,10 +267,24 @@ async def _dispatch_approved_plan(
         # needs to see to know anything was attempted at all.
         await _file_child_tasks(app_state, decomposition.created_tasks)
         agents = await agent_registry_of(app_state).list_active()
-        await coordinator.coordinate(
+        result = await coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents),
             precomputed_plan=decomposition,
         )
+        # A coordination that fails every wave returns normally, so reading the
+        # verdict is the only way to see it: the raise-only guard below walked
+        # straight past a run where all five tasks died and left the plan
+        # EXECUTING with nothing left to execute.
+        if not result.result.is_success:
+            await _fail_dispatch(
+                app_state,
+                approval_id,
+                task_id=task_id,
+                plan_id=plan_id,
+                decided_by=decided_by,
+                why=_coordination_failure_detail(result.result),
+            )
+            return
     except MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
@@ -307,15 +326,40 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
         no plan for the life of the initiative and its status would advance
         from PLANNING only by an illegal jump.
     """
+    persistence = persistence_of(app_state)
     linked = await link_project_to_plan(
-        persistence_of(app_state).projects,
+        persistence.projects,
         project_id=NotBlankStr(str(plan.project)),
         plan_id=plan.id,
+        ledger=ledger_for(persistence, clock=app_state.clock),
     )
     if linked is None:
         return False
     await _sync_plan_status(app_state, str(plan.id), PlanStatus.EXECUTING)
     return True
+
+
+def _coordination_failure_detail(result: CoordinationResult) -> str:
+    """Name the phases a coordination run failed, for the plan's reason.
+
+    The reason is persisted on the plan and shown in Plan Review, so it has to
+    say which stage died rather than "dispatch failed". Each phase's ``error``
+    is already the scrubbed description, so it is safe to carry through.
+
+    Returns:
+        A one-line summary of the failed phases.
+    """
+    failed = [phase for phase in result.phases if not phase.success]
+    if not failed:
+        # ``is_success`` is vacuously true over no phases, so reaching here
+        # means the run produced none at all: nothing ran, which is its own
+        # failure and needs saying rather than reporting an empty list.
+        return "coordination produced no phase results"
+    parts = [
+        f"{phase.phase}: {phase.error}" if phase.error else phase.phase
+        for phase in failed
+    ]
+    return f"coordination failed ({'; '.join(parts)})"
 
 
 async def _fail_dispatch(
@@ -490,7 +534,7 @@ async def _sync_plan_status(
     """
     if not plan_id:
         return
-    service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
+    service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
     if not await _plan_exists_for_sync(service, plan_id, status):
         return
 

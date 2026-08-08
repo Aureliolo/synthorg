@@ -11,8 +11,8 @@ from synthorg.engine.checkpoint.resume import (
     deserialize_and_reconcile,
     make_loop_with_callback,
 )
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.react_loop import ReactLoop
-from synthorg.engine.recovery import FailureCategory
 from synthorg.providers.enums import MessageRole
 
 if TYPE_CHECKING:

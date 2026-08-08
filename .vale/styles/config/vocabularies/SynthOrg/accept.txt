@@ -637,6 +637,7 @@ on_startup
 onboarded
 onboarding
 openblas
+optionless
 orgs
 overridable
 parallel_branch
@@ -864,6 +865,7 @@ unclamped
 unconfigured
 undecomposed
 undecryptable
+undeletable
 undercounted
 underperforming
 underspecified
@@ -880,6 +882,7 @@ unparks
 unpresented
 unrepresentable
 unrestartable
+unreviewed
 unroutable
 unscrubbed
 unshipped

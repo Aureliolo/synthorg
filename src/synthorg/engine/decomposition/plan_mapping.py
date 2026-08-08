@@ -54,6 +54,8 @@ class PlanProvenance(BaseModel):
         status: Initial lifecycle status (defaults to pending review).
         forecast_id: Cost forecast released alongside the plan, if any.
         review: The consolidated stakeholder-panel review, if a panel ran.
+        review_absent_reason: Why a seated panel produced no review, so an
+            unreviewed plan says so instead of looking merely un-panelled.
         objective_criteria: The objective's acceptance criteria, denormalised
             onto the plan so the coverage map can flag any uncovered criterion.
     """
@@ -76,6 +78,10 @@ class PlanProvenance(BaseModel):
     review: PlanReview | None = Field(
         default=None,
         description="The consolidated stakeholder-panel review, if a panel ran",
+    )
+    review_absent_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why a seated panel produced no review",
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -164,9 +170,11 @@ def plan_from_decomposition(
         status=provenance.status,
         forecast_id=provenance.forecast_id,
         review=provenance.review,
+        review_absent_reason=provenance.review_absent_reason,
         objective_criteria=provenance.objective_criteria,
         open_questions=result.plan.open_questions,
         assumptions=result.plan.assumptions,
+        planning_strategy=result.plan.planning_strategy,
         created_at=provenance.created_at,
         updated_at=provenance.created_at,
     )

@@ -17,6 +17,13 @@ from synthorg.security.output_scan_policy import (
 
 logger = get_logger(__name__)
 
+#: Said once, at the point the untiered policy is built, so an operator can
+#: see WHY a screen that belongs to no run responds at the strictest tier.
+_UNTIERED_NOTE = (
+    "output_scan_policy_type=autonomy_tiered has no autonomy to tier by "
+    "(this screen belongs to no run); responding at the strictest tier"
+)
+
 
 def build_output_scan_policy(
     policy_type: OutputScanPolicyType,
@@ -27,11 +34,10 @@ def build_output_scan_policy(
 
     Args:
         policy_type: Declarative policy selection from config.
-        effective_autonomy: Resolved autonomy for the current run.
-            Used when ``policy_type`` is ``AUTONOMY_TIERED``. If
-            ``None`` in that case, a warning is logged and the policy
-            will fall back to ``RedactPolicy``. Ignored for other
-            policy types.
+        effective_autonomy: Resolved autonomy for the current run, or
+            ``None`` for a screen that belongs to no run (the
+            credentialed-MCP request path). Read only by
+            ``AUTONOMY_TIERED``.
 
     Returns:
         A configured output scan response policy instance.
@@ -51,10 +57,7 @@ def build_output_scan_policy(
                 logger.warning(
                     SECURITY_CONFIG_LOADED,
                     policy_type=policy_type.value,
-                    note="output_scan_policy_type=autonomy_tiered "
-                    "but no effective_autonomy -- "
-                    "AutonomyTieredPolicy will fall back to "
-                    "RedactPolicy",
+                    note=_UNTIERED_NOTE,
                 )
             return AutonomyTieredPolicy(
                 effective_autonomy=effective_autonomy,

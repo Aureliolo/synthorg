@@ -27,6 +27,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
     VersionConflictError,
 )
+from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
@@ -57,6 +58,10 @@ from synthorg.observability.events.api import (
     API_PLAN_UPDATE_FAILED,
     API_PLAN_UPDATED,
 )
+from synthorg.persistence.lifecycle_ledger import LifecycleLedger
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionRepository,
+)
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
@@ -76,19 +81,22 @@ class PlanService:
         clock: Time seam; edits/transitions stamp ``updated_at`` from it.
     """
 
-    __slots__ = ("_clock", "_repo")
+    __slots__ = ("_clock", "_ledger", "_repo")
 
     _repo: PlanRepository
     _clock: Clock
+    _ledger: LifecycleLedger
 
     def __init__(
         self,
         *,
         repo: PlanRepository,
         clock: Clock,
+        transitions: LifecycleTransitionRepository | None = None,
     ) -> None:
         self._repo = repo
         self._clock = clock
+        self._ledger = LifecycleLedger(transitions, clock=clock)
 
     async def get(self, plan_id: NotBlankStr) -> Plan | None:
         """Fetch a plan by id.
@@ -231,7 +239,7 @@ class PlanService:
             version=revised.version,
             item_count=len(revised.items),
         )
-        self._log_transition(existing.status, revised)
+        await self._log_transition(existing.status, revised)
         return revised
 
     async def request_changes(self, existing: Plan, *, note: str | None = None) -> Plan:
@@ -269,51 +277,79 @@ class PlanService:
             failure_event=API_PLAN_CHANGES_REQUEST_FAILED,
         )
         logger.info(API_PLAN_CHANGES_REQUESTED, plan_id=str(drafted.id), note=note)
-        self._log_transition(existing.status, drafted)
+        await self._log_transition(existing.status, drafted)
         return drafted
 
     @staticmethod
-    def _require_deletable(plan: Plan) -> None:
+    def _require_deletable(plan: Plan, *, live_task_count: int) -> None:
         """Refuse a delete that would destroy a record rather than a request.
 
+        A dispatched plan is refused because its items are building. That was
+        asserted from the status alone, and the assertion was wrong: an
+        ``EXECUTING`` plan whose dispatch died before it wrote a single task
+        row has nine items and nothing building, and the operator was told to
+        replan work that does not exist while every other exit was closed too.
+        The claim is now checked, so a dispatched plan with no live task is
+        the request it always was and deletes.
+
+        Args:
+            plan: The plan being deleted.
+            live_task_count: How many of its tasks are still non-terminal, as
+                counted against the task rows rather than inferred.
+
         Raises:
-            PlanNotDeletableError: When the plan is dispatched (its items are
-                already building, so it is what those tasks were approved
-                against) or terminal (it is the record of what was decided,
-                and its delivery verdicts cascade off the row).
+            PlanNotDeletableError: When the plan's items are genuinely
+                building, or it is terminal (it is the record of what was
+                decided, and its delivery verdicts cascade off the row).
         """
         if plan.status in DELETABLE_STATUSES:
+            return
+        dispatched = plan.status in REPLANNABLE_STATUSES | TAIL_STATUSES
+        if dispatched and live_task_count == 0:
             return
         logger.info(
             API_PLAN_DELETE_REFUSED,
             plan_id=str(plan.id),
             status=plan.status.value,
+            live_task_count=live_task_count,
         )
-        building = plan.status in REPLANNABLE_STATUSES | TAIL_STATUSES
         detail = (
-            "its items are building; replan it instead of deleting it"
-            if building
+            f"{live_task_count} of its items are still building; replan it "
+            "instead of deleting it"
+            if dispatched
             else "already decided; its record and its verdicts outlive it"
         )
-        msg = f"plan {plan.id} is {plan.status.value} and is {detail}"
+        msg = f"plan {plan.id} is {plan.status.value} and {detail}"
         raise PlanNotDeletableError(msg)
 
-    async def delete(self, existing: Plan, *, requested_by: str) -> None:
+    async def delete(
+        self,
+        existing: Plan,
+        *,
+        requested_by: str,
+        live_task_count: int = 0,
+    ) -> None:
         """Remove a request that never became work.
 
         The route exists to clear a plan an operator has decided not to
         pursue: a shell whose decomposition stranded, a draft, one waiting
-        on review, or one that failed. Every other status is refused, and
-        the refusal routes through here rather than the controller so the
-        one irreversible plan operation is audited on the same path as
-        every reversible one.
+        on review, one that failed, or a dispatched one whose tasks never
+        made it onto the board. Every other status is refused, and the
+        refusal routes through here rather than the controller so the one
+        irreversible plan operation is audited on the same path as every
+        reversible one.
 
         Args:
             existing: The plan being removed (already fetched by the caller).
             requested_by: Who asked, recorded on the audit event.
+            live_task_count: Non-terminal tasks the caller counted for this
+                plan. Passed in rather than read here because this service
+                owns the plan repository alone; the controller holds the task
+                repository and is the only layer that can answer honestly.
 
         Raises:
-            PlanNotDeletableError: The plan is dispatched or terminal.
+            PlanNotDeletableError: The plan's items are building, or it is
+                terminal.
             RecordNotFoundError: The plan went between the caller's fetch
                 and this write. The audit line is the record that a plan
                 was destroyed, so it may only follow a delete that found
@@ -321,7 +357,7 @@ class PlanService:
                 that did not happen.
             QueryError: Repository write failure.
         """
-        self._require_deletable(existing)
+        self._require_deletable(existing, live_task_count=live_task_count)
         deleted = await self._repo.delete(NotBlankStr(str(existing.id)))
         if not deleted:
             msg = f"plan {existing.id} no longer exists"
@@ -395,7 +431,7 @@ class PlanService:
             expected_version=existing.version,
             failure_event=API_PLAN_UPDATE_FAILED,
         )
-        self._log_transition(
+        await self._log_transition(
             existing.status, decided, requested_by=requested_by, reason=reason
         )
         return decided
@@ -508,7 +544,7 @@ class PlanService:
         )
         return successor
 
-    def _log_transition(
+    async def _log_transition(
         self,
         from_status: PlanStatus,
         plan: Plan,
@@ -516,7 +552,12 @@ class PlanService:
         requested_by: str | None = None,
         reason: str | None = None,
     ) -> None:
-        """Log a plan status transition after the persistence write succeeds."""
+        """Record a plan status transition after the persistence write succeeds.
+
+        The log line answers "what is happening now"; the ledger row answers
+        "how did this plan get here", months later and from a query rather
+        than a container's stdout.
+        """
         if from_status == plan.status:
             return
         context: dict[str, str] = {}
@@ -531,6 +572,15 @@ class PlanService:
             to_status=plan.status.value,
             version=plan.version,
             **context,
+        )
+        await self._ledger.record(
+            entity_kind=LifecycleEntityKind.PLAN,
+            entity_id=NotBlankStr(str(plan.id)),
+            from_status=from_status.value,
+            to_status=NotBlankStr(plan.status.value),
+            entity_version=plan.version,
+            requested_by=requested_by,
+            reason=reason,
         )
 
     async def _persist_update(

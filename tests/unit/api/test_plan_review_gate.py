@@ -6,12 +6,13 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.lifecycle_helpers.plan_review_wiring import (
-    PLAN_ID_METADATA_KEY,
     PlanReviewApprovalGate,
     wire_plan_review_gate,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import PlanParentTaskMissingError
 from synthorg.core.persistence_errors import QueryError
@@ -387,19 +388,24 @@ class TestWirePlanReviewGate:
         await wire_plan_review_gate(state)
         attach.assert_called_once()
 
-    async def test_noop_when_not_required(self) -> None:
+    async def test_declines_naming_the_disabled_setting(self) -> None:
         state, attach = await self._make_state(required=False, wire_deps=True)
-        await wire_plan_review_gate(state)
+        with pytest.raises(
+            SubsystemDeclinedError, match="plan_approval_required is off"
+        ):
+            await wire_plan_review_gate(state)
         attach.assert_not_called()
 
-    async def test_noop_when_pipeline_absent(self) -> None:
+    async def test_declines_naming_the_absent_pipeline(self) -> None:
         state, attach = await self._make_state(
             required=True, wire_deps=True, wire_pipeline=False
         )
-        await wire_plan_review_gate(state)
+        with pytest.raises(SubsystemDeclinedError, match="no work pipeline"):
+            await wire_plan_review_gate(state)
         attach.assert_not_called()
 
-    async def test_skips_when_required_but_deps_unwired(self) -> None:
+    async def test_declines_naming_the_absent_approval_store(self) -> None:
         state, attach = await self._make_state(required=True, wire_deps=False)
-        await wire_plan_review_gate(state)
+        with pytest.raises(SubsystemDeclinedError, match="no approval store"):
+            await wire_plan_review_gate(state)
         attach.assert_not_called()

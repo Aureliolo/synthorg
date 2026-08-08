@@ -34,14 +34,16 @@ logger = get_logger(__name__)
 
 # Generic bound for StateMachine[S]; structural users: TaskStatus,
 # RequestStatus, KanbanColumn, SprintStatus.
-class _HasValue(Protocol):
+class HasStateValue(Protocol):
     """Structural type for enum-like states (e.g. ``StrEnum`` members)."""
 
     @property
-    def value(self) -> str: ...
+    def value(self) -> str:
+        """The state's wire value, used in logs and error messages."""
+        ...
 
 
-class StateMachine[S: _HasValue]:
+class StateMachine[S: HasStateValue]:
     """Immutable state machine enforcing transition rules.
 
     Pre-validates the transition table at construction: every enum
@@ -84,6 +86,16 @@ class StateMachine[S: _HasValue]:
             messages (e.g. ``"task status"``, ``"Kanban column"``).
             Defaults to ``name`` with underscores replaced by
             spaces when not supplied.
+        unconditional_targets: States a writer can always move an entity
+            into, needing nothing the entity may not have. Everything else
+            is conditional: the task machine's ``ASSIGNED`` needs an
+            assignee, so a task that failed before it was ever assigned
+            cannot take that hop, and if it is the only exit that state has
+            no exit at all. Declared rather than derived because the
+            condition lives in the entity's own validators, not in the
+            transition table. ``check_lifecycle_exit_reachable.py`` walks
+            only these hops when it asserts every state can reach a
+            terminal. Empty (the default) skips the check.
     """
 
     def __init__(
@@ -96,6 +108,7 @@ class StateMachine[S: _HasValue]:
         transition_event: str | None = None,
         all_states: Iterable[S] | None = None,
         display_label: str | None = None,
+        unconditional_targets: Iterable[S] = (),
     ) -> None:
         if all_states is not None:
             missing = set(all_states) - set(transitions)
@@ -115,11 +128,49 @@ class StateMachine[S: _HasValue]:
         self._config_event = config_event
         self._transition_event = transition_event
         self._display_label = display_label or name.replace("_", " ")
+        self._unconditional_targets: frozenset[S] = frozenset(unconditional_targets)
 
     @property
     def name(self) -> str:
         """Return the state-machine name."""
         return self._name
+
+    @property
+    def unconditional_targets(self) -> frozenset[S]:
+        """States a writer can always reach, needing no extra entity data."""
+        return self._unconditional_targets
+
+    @property
+    def states(self) -> frozenset[S]:
+        """Every state the transition table covers."""
+        return frozenset(self._transitions)
+
+    def unconditional_exit_reachable(self, current: S) -> bool:
+        """Whether *current* can reach a terminal using unconditional hops only.
+
+        A state whose every route out passes through a hop the entity may be
+        unable to take is a state with no exit: the row cannot be finished,
+        cancelled, or deleted, and anything that cascades off it is stuck too.
+
+        Returns:
+            ``True`` when *current* is terminal or a terminal state is
+            reachable across declared-unconditional hops; ``False`` otherwise,
+            including for a state absent from the table.
+        """
+        if current not in self._transitions:
+            return False
+        queue: deque[S] = deque((current,))
+        seen: set[S] = {current}
+        while queue:
+            state = queue.popleft()
+            if not self._transitions.get(state, frozenset()):
+                return True
+            for nxt in self._transitions[state]:
+                if nxt in seen or nxt not in self._unconditional_targets:
+                    continue
+                seen.add(nxt)
+                queue.append(nxt)
+        return False
 
     def allowed(self, current: S) -> frozenset[S]:
         """Return the frozenset of states reachable from ``current``.

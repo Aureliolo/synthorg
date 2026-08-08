@@ -79,6 +79,19 @@ class DecompositionError(EngineError):
     """Base exception for task decomposition failures."""
 
 
+class PlanReviewUnavailableError(EngineError):
+    """Raised when a seated review panel could not review at all.
+
+    Distinct from a quiet panel: every seated reviewer's provider failed, so
+    the plan carries no quality signal for a reason that is an outage, not a
+    judgement. Parking it would present an unreviewed plan as an
+    unobjectionable one, so plan preparation fails instead.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_REVIEW_UNAVAILABLE
+    default_message: ClassVar[str] = "Plan review panel could not run"
+
+
 class DecompositionCycleError(DecompositionError):
     """Raised when a dependency cycle is detected in the subtask graph."""
 

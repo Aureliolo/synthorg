@@ -584,6 +584,12 @@ export const LLM_CALL_CATEGORY_VALUES = [
 ] as const
 export type LLMCallCategory = (typeof LLM_CALL_CATEGORY_VALUES)[number]
 
+export const LIFECYCLE_ENTITY_KIND_VALUES = [
+    'plan',
+    'project',
+] as const
+export type LifecycleEntityKind = (typeof LIFECYCLE_ENTITY_KIND_VALUES)[number]
+
 export const LIFECYCLE_EVENT_TYPE_VALUES = [
     'hired',
     'onboarded',

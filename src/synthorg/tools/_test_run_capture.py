@@ -28,8 +28,9 @@ positive, which passes.
 """
 
 import shlex
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath, PureWindowsPath
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock
@@ -110,6 +111,15 @@ _DIRECT_RUNNERS: Final[frozenset[str]] = frozenset(
 #: immediately after the program name.
 _IMMEDIATE_SUBCOMMAND_RUNNERS: Final[frozenset[str]] = frozenset(
     {"go", "cargo", "dotnet", "swift"}
+)
+
+#: Programs whose test runner is selected by a flag rather than a
+#: subcommand. ``node --test`` runs Node's built-in runner and exits with
+#: the suite's own status, but the flag filter every other shape relies on
+#: discards it, so a browser project's suite produced no evidence at all
+#: and its deliverable read UNVERIFIED however green the run was.
+_FLAG_RUNNERS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {"node": frozenset({"--test"})}
 )
 
 #: Build tools that run tests via a ``test`` target anywhere among their
@@ -213,6 +223,13 @@ def is_test_run(command: str, *, _shell_depth: int = 0) -> bool:
         return is_test_run(tokens[2], _shell_depth=1)
     if program in _DIRECT_RUNNERS:
         return True
+    selecting_flags = _FLAG_RUNNERS.get(program)
+    if selecting_flags is not None:
+        return any(
+            token.split("=", 1)[0] in selecting_flags
+            for token in tokens[1:]
+            if token.startswith("-")
+        )
     arguments = tuple(token for token in tokens[1:] if not token.startswith("-"))
     if program in _IMMEDIATE_SUBCOMMAND_RUNNERS:
         return bool(arguments) and arguments[0] == _TEST_TARGET

@@ -83,17 +83,40 @@ VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
     PlanStatus.EXECUTING: frozenset(
         {PlanStatus.INTEGRATING, PlanStatus.SUPERSEDED, PlanStatus.FAILED}
     ),
+    # FAILED here is the tail's own dead end: an assembly that will not
+    # assemble, or a judgement that cannot run, with no replan to route it.
+    # Without it a plan that got as far as the tail and then stopped had no
+    # exit at all, which is the same shape as an EXECUTING plan whose every
+    # task failed.
     PlanStatus.INTEGRATING: frozenset(
-        {PlanStatus.EVALUATING, PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}
+        {
+            PlanStatus.EVALUATING,
+            PlanStatus.EXECUTING,
+            PlanStatus.SUPERSEDED,
+            PlanStatus.FAILED,
+        }
     ),
     PlanStatus.EVALUATING: frozenset(
-        {PlanStatus.COMPLETED, PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}
+        {
+            PlanStatus.COMPLETED,
+            PlanStatus.EXECUTING,
+            PlanStatus.SUPERSEDED,
+            PlanStatus.FAILED,
+        }
     ),
     PlanStatus.COMPLETED: frozenset(),  # terminal
     PlanStatus.REJECTED: frozenset(),  # terminal
     PlanStatus.SUPERSEDED: frozenset(),  # terminal
     PlanStatus.FAILED: frozenset(),  # terminal
 }
+
+#: Statuses any writer can reach with nothing but a reason it authors itself.
+#: SUPERSEDED is absent: it demands a non-empty item DAG, which a plan still
+#: being drafted does not have. COMPLETED is absent because only the evaluate
+#: stage's verdict may write it.
+_UNCONDITIONAL_TARGETS: Final[frozenset[PlanStatus]] = frozenset(
+    {PlanStatus.FAILED, PlanStatus.REJECTED}
+)
 
 # No transition_event: validate() runs before the row is written, so the
 # machine would record a transition that a failed write never made. PlanService
@@ -105,6 +128,7 @@ _MACHINE: Final[StateMachine[PlanStatus]] = StateMachine(
     invalid_event=PLAN_TRANSITION_INVALID,
     config_event=PLAN_TRANSITION_CONFIG_ERROR,
     all_states=PlanStatus,
+    unconditional_targets=_UNCONDITIONAL_TARGETS,
 )
 
 

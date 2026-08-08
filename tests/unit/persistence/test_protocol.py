@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -60,6 +61,9 @@ from synthorg.persistence.knowledge_protocol import (
 )
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageRecordRepository,
+)
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
 )
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.model_tool_call_signal_protocol import (
@@ -274,6 +278,23 @@ class _FakeLifecycleEventRepository:
         limit: int | None = None,
     ) -> tuple[AgentLifecycleEvent, ...]:
         return ()
+
+
+class _FakeLifecycleTransitionRepository:
+    async def append(self, event: LifecycleTransition) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: LifecycleTransitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[LifecycleTransition, ...]:
+        return ()
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        return 0
 
 
 class _FakeTaskMetricRepository:
@@ -1454,6 +1475,10 @@ class _FakeBackend:
     @property
     def lifecycle_events(self) -> _FakeLifecycleEventRepository:
         return _FakeLifecycleEventRepository()
+
+    @property
+    def lifecycle_transitions(self) -> _FakeLifecycleTransitionRepository:
+        return _FakeLifecycleTransitionRepository()
 
     @property
     def task_metrics(self) -> _FakeTaskMetricRepository:

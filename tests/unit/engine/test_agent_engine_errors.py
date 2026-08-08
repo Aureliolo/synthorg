@@ -670,6 +670,7 @@ class TestAgentEngineRecovery:
                 task_execution: TaskExecution,
                 error_message: str,
                 context: AgentContext,
+                error_type: str | None = None,
             ) -> RecoveryResult:
                 custom_results.append("custom_called")
                 real = FailAndReassignStrategy()
@@ -677,6 +678,7 @@ class TestAgentEngineRecovery:
                     task_execution=task_execution,
                     error_message=error_message,
                     context=context,
+                    error_type=error_type,
                 )
 
             async def finalize(self, execution_id: str) -> None:

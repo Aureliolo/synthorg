@@ -214,9 +214,12 @@ del _expected_levels, _mapped_levels
 class AutonomyTieredPolicy:
     """Delegate to sub-policies based on the effective autonomy level.
 
-    Uses a configurable mapping from ``AutonomyLevel`` to a concrete
-    policy.  Falls back to ``RedactPolicy`` when no autonomy is set
-    or when the autonomy level has no entry in the policy map.
+    Uses a configurable mapping from ``AutonomyLevel`` to a concrete policy.
+    With no tier to read (no autonomy resolved, or a level the map does not
+    cover) it responds at the STRICTEST tier, never a middle one: the tier
+    map runs from ``LogOnlyPolicy`` at FULL to ``WithholdPolicy`` at LOCKED,
+    so substituting the middle would hand a LOCKED organisation a weaker
+    response than it chose, and say nothing.
     """
 
     def __init__(
@@ -241,7 +244,7 @@ class AutonomyTieredPolicy:
         self._policy_map: Mapping[AutonomyLevel, OutputScanResponsePolicy] = (
             MappingProxyType(dict(raw))
         )
-        self._fallback: OutputScanResponsePolicy = RedactPolicy()
+        self._untiered: OutputScanResponsePolicy = WithholdPolicy()
 
     @property
     def name(self) -> str:
@@ -263,21 +266,28 @@ class AutonomyTieredPolicy:
             Transformed scan result from the delegated policy.
         """
         if self._effective_autonomy is None:
-            delegate = self._fallback
+            delegate = self._untiered
             autonomy_level = None
+            logger.warning(
+                SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+                policy="autonomy_tiered",
+                autonomy_level=None,
+                fallback_to=self._untiered.name,
+                note="No autonomy resolved -- responding at the strictest tier",
+            )
         else:
             autonomy_level = self._effective_autonomy.level
             mapped = self._policy_map.get(autonomy_level)
             if mapped is not None:
                 delegate = mapped
             else:
-                delegate = self._fallback
+                delegate = self._untiered
                 logger.warning(
                     SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
                     policy="autonomy_tiered",
                     autonomy_level=autonomy_level.value,
-                    fallback_to=self._fallback.name,
-                    note="No policy mapped for autonomy level -- falling back",
+                    fallback_to=self._untiered.name,
+                    note="No policy mapped for autonomy level -- strictest tier",
                 )
 
         logger.debug(

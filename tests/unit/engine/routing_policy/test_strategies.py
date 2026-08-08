@@ -45,6 +45,7 @@ def _model(
     tier: ModelTier,
     *,
     tool_capable: bool = True,
+    reported_tier: ModelTier | None = None,
 ) -> ResolvedModel:
     return ResolvedModel(
         provider_name=_PROVIDER,
@@ -54,7 +55,7 @@ def _model(
         cost_per_1k_output=_TIER_COSTS[tier],
         max_context=128000,
         estimated_latency_ms=100,
-        tier=tier,
+        tier=reported_tier if reported_tier is not None else tier,
         tool_capable=tool_capable,
     )
 
@@ -63,22 +64,50 @@ def _resolver(
     tiers: tuple[ModelTier, ...] = ("small", "medium", "large"),
     *,
     non_tool_capable: frozenset[ModelTier] = frozenset(),
+    tier_overrides: dict[ModelTier, ModelTier] | None = None,
 ) -> ModelResolver:
-    index: dict[str, tuple[ResolvedModel, ...]] = {
-        tier: (_model(tier, tool_capable=tier not in non_tool_capable),)
-        for tier in tiers
-    }
+    """Build a resolver indexed by model id and alias, as ``from_config`` is.
+
+    Indexing both matters: the strategy resolves the agent's own bound pair by
+    ``(provider, model_id)``, so an alias-only index would answer "not in the
+    catalogue" for every agent and route every task as if the operator had
+    chosen nothing.
+
+    Args:
+        tiers: The tiers to stock the catalogue with.
+        non_tool_capable: Tiers whose model cannot execute tool-bearing work.
+        tier_overrides: Tier the resolver reports for a model, when it differs
+            from the tier its id is named for (the registry disagreeing with
+            the roster).
+
+    Returns:
+        A resolver over one model per requested tier.
+    """
+    overrides = tier_overrides or {}
+    index: dict[str, tuple[ResolvedModel, ...]] = {}
+    for tier in tiers:
+        resolved = _model(
+            tier,
+            tool_capable=tier not in non_tool_capable,
+            reported_tier=overrides.get(tier, tier),
+        )
+        index[tier] = (resolved,)
+        index[_TIER_MODEL_IDS[tier]] = (resolved,)
     return ModelResolver(index)
 
 
-def _identity(tier: ModelTier = "large") -> AgentIdentity:
+def _identity(
+    tier: ModelTier = "large",
+    *,
+    roster_tier: ModelTier | None = None,
+) -> AgentIdentity:
     base = make_e2e_identity()
     return base.model_copy(
         update={
             "model": ModelConfig(
                 provider=_PROVIDER,
                 model_id=_TIER_MODEL_IDS[tier],
-                model_tier=tier,
+                model_tier=roster_tier if roster_tier is not None else tier,
             ),
         },
     )
@@ -111,36 +140,35 @@ def _strategy(
 
 @pytest.mark.unit
 class TestStakesTierSelection:
-    """The cheapest tool-capable model meeting the stakes tier is selected."""
+    """The agent's own model is kept unless the stakes outrank it."""
 
     @pytest.mark.parametrize(
-        ("stakes", "expected_tier"),
-        [
-            (Stakes.LOW, "small"),
-            (Stakes.NORMAL, "medium"),
-            (Stakes.HIGH, "large"),
-            (Stakes.CRITICAL, "large"),
-        ],
+        "stakes",
+        [Stakes.LOW, Stakes.NORMAL, Stakes.HIGH, Stakes.CRITICAL],
     )
-    async def test_required_tier_picks_cheapest_qualifying(
+    async def test_adequate_agent_is_kept_at_every_stakes_level(
         self,
         stakes: Stakes,
-        expected_tier: ModelTier,
     ) -> None:
+        # A large agent meets every requirement, so nothing re-points it. The
+        # operator chose that pair for the role; routing may only raise it.
         decision = await _strategy().route(
             task=_task(stakes),
             identity=_identity("large"),
         )
-        assert decision.selected_model.model_tier == expected_tier
-        assert decision.selected_model.model_id == _TIER_MODEL_IDS[expected_tier]
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["large"]
+        assert decision.source == "stakes_aware:kept"
 
-    async def test_low_stakes_downgrades_strong_agent(self) -> None:
+    async def test_low_stakes_never_downgrades_a_strong_agent(self) -> None:
+        # Cheapest-within-tier is what pointed every agent at one model: with a
+        # gateway pricing everything the same it is an arbitrary tie whose
+        # winner takes every task in the org.
         decision = await _strategy().route(
             task=_task(Stakes.LOW),
             identity=_identity("large"),
         )
-        assert decision.selected_model.model_tier == "small"
-        assert decision.source == "stakes_aware:routed"
+        assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:kept"
 
     async def test_high_stakes_upgrades_weak_agent(self) -> None:
         decision = await _strategy().route(
@@ -148,16 +176,67 @@ class TestStakesTierSelection:
             identity=_identity("small"),
         )
         assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:routed"
 
     async def test_already_satisfying_model_is_kept(self) -> None:
-        # A small agent on LOW stakes: the cheapest qualifying model is its own,
-        # so the decision keeps it rather than pointlessly re-pointing.
         decision = await _strategy().route(
             task=_task(Stakes.LOW),
             identity=_identity("small"),
         )
         assert decision.selected_model.model_id == _TIER_MODEL_IDS["small"]
         assert decision.source == "stakes_aware:kept"
+
+    async def test_agent_outside_the_catalogue_routes_by_tier(self) -> None:
+        # Its bound pair resolves to nothing, so there is no tier to trust and
+        # the requirement decides.
+        strategy = _strategy(resolver=_resolver(("small", "medium", "large")))
+        identity = _identity("large").model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=_PROVIDER,
+                    model_id="retired-model-001",
+                    model_tier="large",
+                ),
+            },
+        )
+        decision = await strategy.route(task=_task(Stakes.NORMAL), identity=identity)
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
+        assert decision.source == "stakes_aware:routed"
+
+
+@pytest.mark.unit
+class TestTierRegistryIsAuthoritative:
+    """A stale roster ``model_tier`` never decides routing."""
+
+    async def test_registry_tier_wins_and_is_written_back(self) -> None:
+        # The roster says medium, the tier registry says large. The registry is
+        # recomputed from live capability metadata and carries the operator's
+        # overrides, so it decides; the stale roster value is corrected onto
+        # the returned model so the prompt profile reads the real tier.
+        strategy = _strategy(
+            resolver=_resolver(tier_overrides={"medium": "large"}),
+        )
+        decision = await strategy.route(
+            task=_task(Stakes.HIGH),  # requires large
+            identity=_identity("medium", roster_tier="medium"),
+        )
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
+        assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:kept"
+
+    async def test_optimistic_roster_tier_does_not_hold_a_weak_model(self) -> None:
+        # The roster claims large, the registry says small: the agent is routed
+        # up to the model the registry does rate large, rather than trusted.
+        strategy = _strategy(
+            resolver=_resolver(tier_overrides={"large": "small", "medium": "large"}),
+        )
+        decision = await strategy.route(
+            task=_task(Stakes.HIGH),
+            identity=_identity("large", roster_tier="large"),
+        )
+        assert decision.source == "stakes_aware:routed"
+        assert decision.selected_model.model_tier == "large"
+        assert decision.selected_model.model_id == _TIER_MODEL_IDS["medium"]
 
 
 @pytest.mark.unit
@@ -360,10 +439,11 @@ class TestBuildStakesRouter:
     async def test_default_builds_stakes_aware(self) -> None:
         router = build_stakes_router(resolver=_resolver())
         decision = await router.route(
-            task=_task(Stakes.LOW),
-            identity=_identity("large"),
+            task=_task(Stakes.HIGH),
+            identity=_identity("small"),
         )
-        assert decision.selected_model.model_tier == "small"
+        assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:routed"
 
     async def test_flat_strategy_via_discriminator(self) -> None:
         router = build_stakes_router(StakesRoutingConfig(strategy="flat"))

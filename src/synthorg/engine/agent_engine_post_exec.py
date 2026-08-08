@@ -284,12 +284,16 @@ class AgentEnginePostExecMixin:
             project_id=project_id,
         )
         if recovery_result is not None:
+            # ``error_type`` rides the diagnosis so the line agrees with the
+            # snapshot one line above it: a run that failed on a typed
+            # provider error names the type that classified it.
             logger.info(
                 EXECUTION_RECOVERY_DIAGNOSIS,
                 agent_id=agent_id,
                 task_id=task_id,
                 failure_category=recovery_result.failure_category.value,
                 criteria_failed_count=len(recovery_result.criteria_failed),
+                error_type=execution_result.error_type,
             )
         ctx = execution_result.context
         if (

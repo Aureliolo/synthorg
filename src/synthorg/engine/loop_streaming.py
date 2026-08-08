@@ -411,6 +411,7 @@ async def stream_provider(  # noqa: PLR0913
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
+            error_type=type(exc).__name__,
         )
 
     if early_exit is not None:

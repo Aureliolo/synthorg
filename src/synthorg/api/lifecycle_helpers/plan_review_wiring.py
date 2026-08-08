@@ -17,6 +17,11 @@ from typing import Final
 from uuid import UUID
 
 from synthorg.api.channels import PlanNotifier
+from synthorg.api.lifecycle_helpers.plan_questions import (
+    PLAN_ID_METADATA_KEY,
+    build_plan_questions,
+    log_parked,
+)
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -35,7 +40,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_review import PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -68,10 +73,11 @@ _PLAN_ACTION_TYPE = "plan:approve"
 # than aborting the one write meant to make a failure visible.
 _MAX_FAIL_ATTEMPTS: Final[int] = 3
 
-#: ``ApprovalItem.metadata`` keys carrying resume context. The plan itself is
-#: durable (referenced by ``plan_id``); the approval only points at it.
+#: ``ApprovalItem.metadata`` key carrying resume context. The plan itself is
+#: durable (referenced by ``PLAN_ID_METADATA_KEY``, re-exported here because
+#: the resume and retire paths have always imported it from this module); the
+#: approval only points at it.
 PROJECT_METADATA_KEY = "project"
-PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
@@ -163,7 +169,7 @@ class PlanReviewApprovalGate:
         now: datetime,
         *,
         status: PlanStatus,
-        review: PlanReview | None,
+        review: PlanReviewOutcome | None,
     ) -> PlanProvenance:
         """Build the plan provenance shared by the shell and the filled plan.
 
@@ -179,7 +185,8 @@ class PlanReviewApprovalGate:
             created_at=now,
             status=status,
             forecast_id=work_item.forecast_id,
-            review=review,
+            review=review.review if review is not None else None,
+            review_absent_reason=(review.absent_reason if review is not None else None),
             objective_criteria=tuple(
                 NotBlankStr(c.description) for c in task.acceptance_criteria
             ),
@@ -240,7 +247,7 @@ class PlanReviewApprovalGate:
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
-        review: PlanReview | None = None,
+        review: PlanReviewOutcome | None = None,
     ) -> PlanReviewHandoff:
         """Fill the PLANNING shell with *plan* and park it as an approval item.
 
@@ -300,6 +307,19 @@ class PlanReviewApprovalGate:
         )
         try:
             await self._approval_store.add(approval)
+            # Parked after the plan approval, and inside the same guard: a
+            # question nobody can answer is the state this whole path exists
+            # to close, so a failure here fails the plan rather than parking
+            # an approval whose open questions reach nobody.
+            questions = build_plan_questions(
+                durable_plan,
+                task_id=NotBlankStr(str(task.id)),
+                requested_by=work_item.requested_by,
+                now=now,
+            )
+            for question in questions:
+                await self._approval_store.add(question)
+            log_parked(durable_plan, len(questions))
         except Exception as exc:
             reraise_critical(exc)
             # The plan is filled but the approval did not park: without an
@@ -392,6 +412,10 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     is set and the work pipeline is wired. Default off keeps the historic
     dispatch-straight-to-team behaviour, so wiring this never changes an
     org that has not opted in.
+
+    Raises:
+        SubsystemDeclinedError: The gate is not required, or a collaborator
+            it parks approvals through is absent.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
@@ -402,33 +426,29 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
-        return
+        msg = "no work pipeline; the gate attaches to it"
+        raise SubsystemDeclinedError(msg)
     required = await config_resolver_of(app_state).get_bool(
         "coordination", "plan_approval_required"
     )
     if not required:
-        return
-    # Best-effort: the approval store + persistence backend are normally wired
-    # by the time this hook runs, but an early boot (before persistence
-    # connects) can reach here without them. Skip rather than let an accessor
-    # raise a 503 out of a wiring hook. The operator explicitly opted into a
-    # mandatory gate, so a skip is warn-worthy: without it every splittable
-    # plan builds ungated, and a silent skip would hide that regression.
+        msg = "coordination.plan_approval_required is off"
+        raise SubsystemDeclinedError(msg)
+    # The approval store + persistence backend are normally wired by the time
+    # this hook runs, but an early boot (before persistence connects) can reach
+    # here without them. Declining beats letting an accessor raise a 503 out of
+    # a wiring hook. The operator explicitly opted into a mandatory gate, so
+    # the reason is warn-worthy: without the gate every splittable plan builds
+    # ungated, and a silent skip would hide that regression.
     if app_state.slice(ApprovalStateSlice).store is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="plan_review_gate",
-            note="skipped: plan_approval_required but approval store not wired",
-        )
-        return
+        msg = "plan_approval_required is on but no approval store is wired"
+        logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
+        raise SubsystemDeclinedError(msg)
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="plan_review_gate",
-            note="skipped: plan_approval_required but persistence not wired",
-        )
-        return
+        msg = "plan_approval_required is on but no persistence backend is wired"
+        logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
+        raise SubsystemDeclinedError(msg)
     from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
 
     gate = PlanReviewApprovalGate(
@@ -457,6 +477,10 @@ async def wire_plan_review_panel(
     introducing a second required model setting. An absent provider or a
     disabled setting leaves the pipeline panel-less (a gated plan is parked for
     approval with no panel review), so wiring this never blocks a boot.
+
+    Raises:
+        SubsystemDeclinedError: The panel is switched off, or a collaborator
+            it reviews through is absent.
     """
     from synthorg.engine.plan_review.models import (  # noqa: PLC0415
         PlanReviewPanelConfig,
@@ -471,12 +495,15 @@ async def wire_plan_review_panel(
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
-        return
+        msg = "no work pipeline; the panel runs inside its gated-plan flow"
+        raise SubsystemDeclinedError(msg)
     resolver = config_resolver_of(app_state)
     if not await resolver.get_bool("coordination", "plan_review_panel_enabled"):
-        return
+        msg = "coordination.plan_review_panel_enabled is off"
+        raise SubsystemDeclinedError(msg)
     if provider_registry is None:
-        return
+        msg = "no provider registry; every panellist verdict is an LLM call"
+        raise SubsystemDeclinedError(msg)
     from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
     from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
 

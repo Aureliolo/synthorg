@@ -29,7 +29,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `strategy_type` | `NotBlankStr` | Strategy identifier |
 | `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns; no message contents) |
 | `error_message` | `NotBlankStr` | Error that triggered recovery |
-| `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`, `UNKNOWN`) |
+| `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`, `PROVIDER_REFUSED`, `PROVIDER_UNAVAILABLE`, `UNKNOWN`) |
 | `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction; defaults to `{}`) |
 | `criteria_failed` | `tuple[NotBlankStr, ...]` | Acceptance criteria that were not met (unique; validated on construction) |
 | `stagnation_evidence` | `StagnationResult \| None` | Stagnation detection result when applicable |
@@ -38,7 +38,11 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
-`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts. Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
+`failure_category` is decided by `synthorg.engine.failure_classification`, and the typed cause outranks the prose. When the run terminated on a `ProviderError`, the exception class IS the classification: `category_for_exception()` reads a live exception and `category_for_error_type()` reads the class name the loop recorded on `ExecutionResult.error_type` (a frozen result cannot carry a live exception across the boundary), both against one table keyed by class so the two entry points cannot disagree. The split is what an operator does next: `PROVIDER_REFUSED` means the provider understood the request and rejected it (a bad parameter, an unknown model, a content filter, a credential, a depleted quota), so retrying reproduces it and the fix is a configuration change; `PROVIDER_UNAVAILABLE` means it could not answer right now (connection, 5xx, rate limit), so the same request may well succeed later.
+
+Only when there is no typed cause does `infer_failure_category()` sniff keywords from the message. `UNKNOWN` is the deliberate default when no rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts. Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
+
+Attribution follows the same reasoning: both provider categories score as `coordination_overhead`, never `direct`, because the provider never answered and the agent's work was never scored. Blaming an agent for a credential or an outage would corrupt every downstream contribution metric.
 
 **Cross-field invariants.** `RecoveryResult` enforces two cross-field rules at construction:
 
@@ -615,8 +619,15 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
      per-session spend ceiling come from
      `coordination.decomposition_agent_max_turns` /
      `coordination.decomposition_agent_cost_ceiling`. With no owner staffed, or
-     if the session submits no plan at all, it degrades to the single-shot
-     strategy so a greenlight is never blocked. A plan that came back **over
+     with an owner whose provider will not resolve, or on an `ERROR`
+     termination, it degrades to the single-shot strategy so a greenlight is
+     never blocked, and stamps `Plan.planning_strategy` so the approval gate
+     and the dashboard say which planner produced what the operator is being
+     asked to approve. A session that **ran and terminated without submitting**
+     is not one of those cases: it is the planning counterpart of the
+     zero-artifact guard, so it raises `DecompositionError` and the plan fails
+     visibly with the reason rather than a blind plan silently replacing the
+     researched one. A plan that came back **over
      `max_subtasks`** is not one of those cases: every strategy refuses it with
      `DecompositionSubtaskLimitError`, which fails the plan visibly with a
      reason naming both counts. Swapping in the thinner plan the single-shot
@@ -645,7 +656,14 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    `CENTRALIZED` if `AUTO` was not resolved upstream
 4. **Validate**: fails the pipeline if all subtasks are unroutable
 5. **Dispatch**: a `TopologyDispatcher` executes waves (workspace setup ->
-   parallel execution -> merge -> teardown)
+   parallel execution -> merge -> teardown). Every dispatcher **persists the
+   assignment before the wave runs**: `AssignmentWriter.persist` moves each
+   subtask to `ASSIGNED` with its `assigned_to` through the `TaskEngine` and
+   rebuilds the group from what the engine returned, so the local context can
+   never lead the central row. Without it the coordinator dispatched on an
+   in-memory `ASSIGNED` while the row was still `created`, the engine's
+   `ASSIGNED -> IN_PROGRESS` entry sync was refused, and the agent ran work the
+   central engine had no record of starting.
 6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
 7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 

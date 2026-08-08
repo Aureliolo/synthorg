@@ -12,6 +12,7 @@ import pytest
 import structlog.testing
 
 from synthorg.api.state import AppState
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_HOT_RELOAD_FAILED,
@@ -22,6 +23,7 @@ from synthorg.providers.errors import (
     ProviderSerializationError,
 )
 from synthorg.providers.management.service import ProviderManagementService
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
@@ -148,6 +150,30 @@ class TestSplitFailureTypes:
         monkeypatch.setattr(settings_service, "set", _set)
         with pytest.raises(ProviderPersistenceError):
             await service.create_provider(make_create_request())
+
+
+class TestHotReloadCredentialCatalog:
+    async def test_installed_registry_carries_the_credential_catalog(
+        self,
+        service: ProviderManagementService,
+        app_state: AppState,
+    ) -> None:
+        """The registry a provider write installs can authenticate.
+
+        This path replaces the live registry through a direct two-field
+        ``wire`` (registry and router must land together), so it never passes
+        the swap seam that attaches credentials. Built without the catalog,
+        every driver in it dispatched with no key, and only the features wired
+        before the write kept working.
+        """
+        await service.create_provider(make_create_request(name="example-provider"))
+
+        registry = app_state.slice(ProvidersStateSlice).registry
+        assert registry is not None
+        assert registry.credential_catalog is (
+            app_state.slice(IntegrationsStateSlice).provider_credential_catalog
+        )
+        assert registry.credential_catalog is not None
 
 
 class TestHotReloadRollback:

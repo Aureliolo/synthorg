@@ -157,7 +157,7 @@ whether the root cause is:
 SynthOrg attributes all failure information to the executing agent's
 `TaskExecution`:
 
-- `infer_failure_category()` in `src/synthorg/engine/recovery.py` is keyword-based
+- `infer_failure_category()` in `src/synthorg/engine/failure_classification.py` is keyword-based
   heuristic classification applied per-execution, not per-agent in a coordination run
 - `RecoveryResult` captures one `failure_category` per execution
 - `CoordinationResult` has `CoordinationPhaseResult` per phase but no per-agent attribution

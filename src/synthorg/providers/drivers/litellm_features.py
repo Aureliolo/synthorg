@@ -8,7 +8,7 @@ their inputs: the driver owns the capability lookup and passes it in.
 """
 
 from collections.abc import Callable
-from typing import Final
+from typing import Final, Literal
 
 import litellm
 
@@ -26,8 +26,9 @@ from synthorg.providers.models import CompletionConfig
 logger = get_logger(__name__)
 
 #: The request parameter carrying reasoning depth, as LiteLLM names it in the
-#: per-route parameter lists this module consults.
-_REASONING_PARAM: Final[str] = "reasoning_effort"
+#: per-route parameter lists this module consults. Typed as the literal so it
+#: stays a valid ``_AcompletionKwargs`` key at the pop sites below.
+_REASONING_PARAM: Final[Literal["reasoning_effort"]] = "reasoning_effort"
 
 
 def route_carries_reasoning_effort(model_id: str, routing_key: str) -> bool:

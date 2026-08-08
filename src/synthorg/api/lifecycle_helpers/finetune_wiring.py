@@ -6,6 +6,7 @@ sees the ``FineTuneOrchestrator`` reachable from the boot path.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -27,6 +28,10 @@ async def wire_fine_tune_orchestrator(app_state: AppState) -> None:
     rather than a static directory; without a memory backend trajectory mode is
     unavailable and directory mode still works. A failure degrades the
     fine-tune controllers to 501 rather than poisoning startup.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, or one that
+            implements no fine-tune repositories.
     """
     from pathlib import Path  # noqa: PLC0415
 
@@ -78,22 +83,19 @@ async def wire_fine_tune_orchestrator(app_state: AppState) -> None:
         config_resolver_of,
     )
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
     memory_slice = app_state.slice(MemoryStateSlice)
     if memory_slice.fine_tune_orchestrator is not None:
         return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; fine-tune runs and checkpoints are durable"
+        raise SubsystemDeclinedError(msg)
     backend = persistence_of(app_state)
     try:
         run_repo = backend.fine_tune_runs
         checkpoint_repo = backend.fine_tune_checkpoints
-    except NotImplementedError:
-        logger.info(
-            API_APP_STARTUP,
-            service="fine_tune_orchestrator",
-            note="backend lacks fine-tune support; wiring skipped",
-        )
-        return
+    except NotImplementedError as exc:
+        msg = "this backend implements no fine-tune repositories"
+        raise SubsystemDeclinedError(msg) from exc
     try:
         resolver = config_resolver_of(app_state)
         training_data_source = None

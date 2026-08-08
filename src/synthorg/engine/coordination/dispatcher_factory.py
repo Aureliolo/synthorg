@@ -2,6 +2,7 @@
 
 from synthorg.core.clock import Clock
 from synthorg.core.task_enums import CoordinationTopology
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,
 )
@@ -23,6 +24,7 @@ def select_dispatcher(
     *,
     clock: Clock | None = None,
     orchestrator_strategy: OrchestratorStrategy | None = None,
+    assignment_writer: AssignmentWriter | None = None,
 ) -> TopologyDispatcher:
     """Select the appropriate dispatcher for a topology.
 
@@ -34,6 +36,10 @@ def select_dispatcher(
         orchestrator_strategy: Subtask-selection strategy injected into
             the centralized ``WaveDispatcher``. ``None`` keeps the
             original dispatch order (the ``naive`` default behaviour).
+        assignment_writer: Persists each wave's assignments through the
+            central engine before that wave runs. Every topology gets
+            one: dispatching on a status the engine has not applied is
+            the same defect whichever dispatcher does it.
 
     Returns:
         A dispatcher instance for the topology.
@@ -44,22 +50,30 @@ def select_dispatcher(
     dispatcher: TopologyDispatcher
     match topology:
         case CoordinationTopology.SAS:
-            dispatcher = SasDispatcher(clock=clock)
+            dispatcher = SasDispatcher(
+                clock=clock,
+                assignment_writer=assignment_writer,
+            )
         case CoordinationTopology.CENTRALIZED:
             dispatcher = WaveDispatcher(
                 clock=clock,
                 isolation_required=False,
                 topology_label="centralized",
                 orchestrator_strategy=orchestrator_strategy,
+                assignment_writer=assignment_writer,
             )
         case CoordinationTopology.DECENTRALIZED:
             dispatcher = WaveDispatcher(
                 clock=clock,
                 isolation_required=True,
                 topology_label="decentralized",
+                assignment_writer=assignment_writer,
             )
         case CoordinationTopology.CONTEXT_DEPENDENT:
-            dispatcher = ContextDependentDispatcher(clock=clock)
+            dispatcher = ContextDependentDispatcher(
+                clock=clock,
+                assignment_writer=assignment_writer,
+            )
         case _:
             msg = (
                 f"Cannot dispatch topology {topology.value!r}: "

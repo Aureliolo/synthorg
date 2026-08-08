@@ -5,12 +5,12 @@ from pydantic import ValidationError
 
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
-from synthorg.engine.recovery import (
+from synthorg.engine.failure_classification import (
     FailureCategory,
-    RecoveryResult,
     infer_failure_category,
     infer_failure_category_without_evidence,
 )
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
 
 

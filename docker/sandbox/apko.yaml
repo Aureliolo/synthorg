@@ -7,6 +7,12 @@
 # terminal tool (docker/openhands) drives a persistent tmux-managed bash
 # session and hard-fails without bash on PATH, and a real bash is a strict
 # upgrade over busybox sh for the native loops too.
+#
+# The node major is pinned to the one the shipped npm declares support for
+# (npm 12 accepts ^22.22.2 || ^24.15.0 || >=26.0.0). An unsupported pairing
+# is not cosmetic: npm prints its unsupported-engine banner on stderr for
+# every invocation, so it lands in every agent's captured stderr and in the
+# evidence a reviewer reads. CI asserts the pair stays honest.
 # Network enforcement is handled by the sidecar proxy (docker/sidecar/),
 # not by the sandbox container.
 #
@@ -25,7 +31,7 @@ contents:
     - bash
     - tmux
     - git
-    - nodejs-25
+    - nodejs-24
     - npm
     - python-3.14
 

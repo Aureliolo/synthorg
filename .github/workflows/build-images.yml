@@ -952,6 +952,7 @@ jobs:
           persist-credentials: false
 
       - name: Build and scan sandbox image
+        id: build_scan
         uses: ./.github/actions/build-scan-image
         with:
           image-name: sandbox
@@ -966,6 +967,16 @@ jobs:
           base-image-tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
           trivy-version: ${{ env.TRIVY_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The sandbox runs every agent's commands, so anything its toolchain
+      # prints on stderr lands in the run evidence a reviewer reads. A node
+      # major the shipped npm does not support prints its unsupported-engine
+      # banner on EVERY npm invocation; the pair drifts apart silently
+      # because both packages resolve independently.
+      - name: Smoke-test sandbox toolchain
+        uses: ./.github/actions/smoke-test-sandbox-toolchain
+        with:
+          image: ${{ steps.build_scan.outputs.ref }}
 
   build-sandbox-publish:
     name: Publish Sandbox

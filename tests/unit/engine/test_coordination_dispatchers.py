@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.task_enums import CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import CoordinationTopology, TaskStatus, TaskStructure
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,
@@ -18,11 +19,14 @@ from synthorg.engine.coordination.dispatcher_types import (
 )
 from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
     WorkspaceGroupResult,
 )
+from tests._shared import mock_of
 from tests.unit.engine.conftest import (
     make_decomposition,
     make_exec_result,
@@ -213,6 +217,88 @@ class TestSasDispatcher:
         # SAS never calls workspace service
         ws_service.setup_group.assert_not_called()
         assert result.workspaces == ()
+
+
+class TestAssignmentPrecedesDispatch:
+    """A wave's assignment reaches the engine before any agent runs."""
+
+    @pytest.mark.unit
+    async def test_engine_holds_assigned_before_the_executor_runs(self) -> None:
+        """The executor receives the engine's row, written before it ran."""
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        created = decomp.created_tasks[0]
+        assigned = created.model_copy(
+            update={"status": TaskStatus.ASSIGNED, "assigned_to": agent_id}
+        )
+
+        calls: list[str] = []
+
+        def record_submit(_mutation: object) -> TaskMutationResult:
+            calls.append("submit")
+            return TaskMutationResult(
+                request_id="r", success=True, task=assigned, version=2
+            )
+
+        def record_execute(_group: object) -> ParallelExecutionResult:
+            calls.append("execute")
+            return make_exec_result("wave-0", [("sub-a", agent_id)])
+
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(return_value=created),
+            submit=AsyncMock(side_effect=record_submit),
+        )
+        executor = AsyncMock()
+        executor.execute_group.side_effect = record_execute
+
+        dispatcher = SasDispatcher(assignment_writer=AssignmentWriter(engine))
+        await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(),
+        )
+
+        assert calls == ["submit", "execute"]
+        dispatched = executor.execute_group.call_args.args[0]
+        assert dispatched.assignments[0].task.status == TaskStatus.ASSIGNED
+        assert dispatched.assignments[0].task.assigned_to == agent_id
+
+    @pytest.mark.unit
+    async def test_refused_assignment_fails_the_wave_without_running_it(self) -> None:
+        """A wave the engine refused to assign never reaches the executor."""
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(return_value=decomp.created_tasks[0]),
+            submit=AsyncMock(
+                return_value=TaskMutationResult(
+                    request_id="r",
+                    success=False,
+                    error="task already completed",
+                    error_code="validation",
+                )
+            ),
+        )
+        executor = AsyncMock()
+
+        dispatcher = SasDispatcher(assignment_writer=AssignmentWriter(engine))
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(),
+        )
+
+        executor.execute_group.assert_not_awaited()
+        assert [p.success for p in result.phases] == [False]
+        assert result.waves[0].execution_result is None
 
 
 class TestCentralizedDispatcher:

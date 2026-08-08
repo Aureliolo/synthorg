@@ -159,6 +159,7 @@ async def call_provider(
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
+            error_type=type(exc).__name__,
         )
 
 
@@ -401,6 +402,7 @@ def build_result(
     turns: list[TurnRecord],
     *,
     error_message: str | None = None,
+    error_type: str | None = None,
     metadata: dict[str, object] | None = None,
     quality_signals: tuple[StepQualitySignal, ...] = (),
 ) -> ExecutionResult:
@@ -417,6 +419,7 @@ def build_result(
         turns=tuple(turns),
         quality_signals=quality_signals,
         error_message=error_message,
+        error_type=error_type,
         metadata=metadata or {},
     )
 

@@ -185,15 +185,19 @@ class TestAutonomyTieredPolicy:
         assert transformed.redacted_content is None
         assert transformed.outcome == ScanOutcome.WITHHELD
 
-    def test_no_autonomy_falls_back_to_redact(self) -> None:
-        """When effective_autonomy is None, falls back to RedactPolicy."""
+    def test_no_autonomy_responds_at_the_strictest_tier(self) -> None:
+        """No tier to read means the ceiling, never the middle.
+
+        Redacting instead handed a LOCKED organisation a weaker response
+        than the one it chose, and nothing said so.
+        """
         policy = AutonomyTieredPolicy(effective_autonomy=None)
         result = _sensitive_result()
 
         transformed = policy.apply(result, _make_context())
 
-        # Fallback is RedactPolicy -- passes through unchanged.
-        assert transformed == result
+        assert transformed.redacted_content is None
+        assert transformed.outcome == ScanOutcome.WITHHELD
 
     def test_supervised_autonomy_uses_redact(self) -> None:
         """SUPERVISED level delegates to RedactPolicy (default map)."""
@@ -222,8 +226,8 @@ class TestAutonomyTieredPolicy:
         assert transformed.has_sensitive_data is True
         assert transformed.redacted_content is None
 
-    def test_custom_map_missing_level_falls_back_to_redact(self) -> None:
-        """Missing level in custom map falls back to RedactPolicy."""
+    def test_custom_map_missing_level_responds_at_the_strictest_tier(self) -> None:
+        """A level the map does not cover is unanswerable, so it is the ceiling."""
         autonomy = self._make_autonomy(AutonomyLevel.SEMI)
         # Custom map only has FULL -- SEMI is missing.
         custom_map = {AutonomyLevel.FULL: WithholdPolicy()}
@@ -235,8 +239,8 @@ class TestAutonomyTieredPolicy:
 
         transformed = policy.apply(result, _make_context())
 
-        # Fallback is RedactPolicy -- passes through unchanged.
-        assert transformed == result
+        assert transformed.redacted_content is None
+        assert transformed.outcome == ScanOutcome.WITHHELD
 
 
 # ── Protocol compliance ──────────────────────────────────────────

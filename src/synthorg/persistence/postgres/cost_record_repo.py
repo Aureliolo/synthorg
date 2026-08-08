@@ -30,6 +30,22 @@ from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 logger = get_logger(__name__)
 
 
+def _row_to_record(row: dict[str, object]) -> dict[str, object]:
+    """Project one row onto the model's field names.
+
+    A row written before ``claim_id`` existed carries ``NULL``, which the
+    model rejects outright (the field is non-optional with a generated
+    default). Dropping the key lets the default fill it, so a legacy row
+    reads back as a record with a fresh key rather than failing the page.
+
+    Returns:
+        The row as keyword arguments for :class:`CostRecord`.
+    """
+    if row.get("claim_id") is None:
+        return {key: value for key, value in row.items() if key != "claim_id"}
+    return row
+
+
 class PostgresCostRecordRepository:
     """Postgres implementation of the CostRecordRepository protocol.
 
@@ -48,22 +64,27 @@ class PostgresCostRecordRepository:
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
+                # The claim id is the tracker's idempotency key, so a
+                # redelivery of the same record is a no-op at the storage
+                # layer rather than a second billed row.
                 await cur.execute(
                     """
                     INSERT INTO cost_records (
-                        agent_id, task_id, provider, model, input_tokens,
-                        output_tokens, cost, currency, timestamp,
-                        call_category, prompt_class_id
+                        agent_id, task_id, project_id, provider, model,
+                        input_tokens, output_tokens, cost, currency, timestamp,
+                        call_category, prompt_class_id, claim_id
                     ) VALUES (
-                        %(agent_id)s, %(task_id)s, %(provider)s, %(model)s,
-                        %(input_tokens)s, %(output_tokens)s, %(cost)s,
-                        %(currency)s, %(timestamp)s, %(call_category)s,
-                        %(prompt_class_id)s
+                        %(agent_id)s, %(task_id)s, %(project_id)s, %(provider)s,
+                        %(model)s, %(input_tokens)s, %(output_tokens)s,
+                        %(cost)s, %(currency)s, %(timestamp)s,
+                        %(call_category)s, %(prompt_class_id)s, %(claim_id)s
                     )
+                    ON CONFLICT (claim_id, timestamp) DO NOTHING
                     """,
                     {
                         "agent_id": event.agent_id,
                         "task_id": event.task_id,
+                        "project_id": event.project_id,
                         "provider": event.provider,
                         "model": event.model,
                         "input_tokens": event.input_tokens,
@@ -73,6 +94,7 @@ class PostgresCostRecordRepository:
                         "timestamp": event.timestamp,
                         "call_category": event.call_category,
                         "prompt_class_id": event.prompt_class_id,
+                        "claim_id": event.claim_id,
                     },
                 )
                 await conn.commit()
@@ -116,11 +138,14 @@ class PostgresCostRecordRepository:
         if filter_spec.prompt_class_id is not None:
             clauses.append("prompt_class_id = %s")
             params.append(filter_spec.prompt_class_id)
+        if filter_spec.since is not None:
+            clauses.append("timestamp >= %s")
+            params.append(normalize_utc(filter_spec.since))
 
         sql = (
-            "SELECT agent_id, task_id, provider, model, input_tokens, "
-            "output_tokens, cost, currency, timestamp, call_category, "
-            "prompt_class_id "
+            "SELECT agent_id, task_id, project_id, provider, model, "
+            "input_tokens, output_tokens, cost, currency, timestamp, "
+            "call_category, prompt_class_id, claim_id "
             "FROM cost_records"
         )
         if clauses:
@@ -150,7 +175,9 @@ class PostgresCostRecordRepository:
             )
             raise QueryError(msg) from exc
         try:
-            records = tuple(CostRecord.model_validate(row) for row in rows)
+            records = tuple(
+                CostRecord.model_validate(_row_to_record(row)) for row in rows
+            )
         except ValidationError as exc:
             msg = "Failed to deserialize cost records"
             logger.warning(

@@ -43,6 +43,8 @@ from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
     BUDGET_CLAIM_DEDUP_MARK_FAILED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
+    BUDGET_HYDRATED,
+    BUDGET_HYDRATION_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
     BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
     BUDGET_PROJECT_COST_QUERIED,
@@ -50,6 +52,7 @@ from synthorg.observability.events.budget import (
     BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_RECORD_ADDED,
     BUDGET_RECORD_DEDUPED,
+    BUDGET_RECORD_PERSIST_FAILED,
     BUDGET_RECORDS_AUTO_PRUNED,
     BUDGET_RECORDS_PRUNED,
     BUDGET_RECORDS_QUERIED,
@@ -58,6 +61,10 @@ from synthorg.observability.events.budget import (
     BUDGET_TRACKER_CREATED,
 )
 from synthorg.observability.metrics_hub import record_budget_query
+from synthorg.persistence.cost_record_protocol import (
+    CostRecordFilterSpec,
+    CostRecordRepository,
+)
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
@@ -150,6 +157,7 @@ class CostTracker(CostTrackerSummaryMixin):
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
+        self._cost_record_repo: CostRecordRepository | None = None
         self._claim_seen_ttl_seconds = claim_seen_ttl_seconds
         self._clock: Clock = clock or SystemClock()
         # Strong references to in-flight background recording tasks
@@ -209,6 +217,7 @@ class CostTracker(CostTrackerSummaryMixin):
         *,
         project_cost_repo: ProjectCostAggregateRepository,
         claim_seen_repo: ProjectCostClaimSeenRepository,
+        cost_record_repo: CostRecordRepository | None = None,
     ) -> None:
         """Attach the durable project-cost write + dedup repos post-connect.
 
@@ -218,9 +227,59 @@ class CostTracker(CostTrackerSummaryMixin):
         app serves traffic, so the plain attribute assignment is safe
         (single-threaded, pre-traffic) without the hot-swap lock the
         provider-registry seams use.
+
+        Args:
+            project_cost_repo: Per-project aggregate the ceiling reads.
+            claim_seen_repo: Durable dedup for the aggregate increment.
+            cost_record_repo: Append-only store for the records
+                themselves. Until it was wired, every record lived only
+                in this process's memory: a restart lost the window a
+                ceiling is enforced over, and every deliverable receipt
+                reported zero spend.
         """
         self._project_cost_repo = project_cost_repo
         self._claim_seen_repo = claim_seen_repo
+        self._cost_record_repo = cost_record_repo
+
+    async def hydrate_from_durable(self) -> int:
+        """Refill the in-memory window from the durable record store.
+
+        The window is what every spend summary and every ceiling reads,
+        and it starts empty on each boot. Bounded by the same 168-hour
+        window the pruner enforces, so hydration restores exactly what a
+        long-running process would still be holding.
+
+        Best-effort: a read failure leaves the tracker empty and logs,
+        because a cold window under-reports spend while a failed boot
+        reports none at all.
+
+        Returns:
+            How many records were restored.
+        """
+        repo = self._cost_record_repo
+        if repo is None:
+            return 0
+        since = self._clock.now() - timedelta(hours=_COST_WINDOW_HOURS)
+        try:
+            restored = await repo.query(
+                CostRecordFilterSpec(since=since), limit=self._auto_prune_threshold
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a cold window under-reports spend;
+            # failing the boot over it reports none at all.
+            reraise_critical(exc)
+            logger.warning(
+                BUDGET_HYDRATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return 0
+        async with self._get_lock():
+            self._records.extend(restored)
+            for record in restored:
+                self._promote_seen_claim(record.claim_id)
+        logger.info(BUDGET_HYDRATED, restored=len(restored))
+        return len(restored)
 
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
@@ -363,6 +422,11 @@ class CostTracker(CostTrackerSummaryMixin):
             )
             return
 
+        # Durable before in-memory: the record is what a receipt reads and
+        # what a restart rehydrates from, so a record that exists only in
+        # this process's memory is spend nothing else can see.
+        await self._append_durable(cost_record)
+
         async with self._get_lock():
             # Promote the reservation to a finalised LRU entry under
             # the lock so the membership check above never observes
@@ -377,6 +441,31 @@ class CostTracker(CostTrackerSummaryMixin):
                 agent_id=cost_record.agent_id,
                 model=cost_record.model,
                 cost=cost_record.cost,
+            )
+
+    async def _append_durable(self, cost_record: CostRecord) -> None:
+        """Persist the record itself, best-effort.
+
+        Fail-open for the same reason the aggregate increment is: losing
+        a receipt must not lose the call it describes, and the storage
+        layer's unique claim key makes a retry harmless.
+        """
+        repo = self._cost_record_repo
+        if repo is None:
+            return
+        try:
+            await repo.append(cost_record)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the record is already accepted; a
+            # storage blip must not fail the call it is describing.
+            reraise_critical(exc)
+            logger.warning(
+                BUDGET_RECORD_PERSIST_FAILED,
+                claim_id=cost_record.claim_id,
+                agent_id=cost_record.agent_id,
+                task_id=cost_record.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _promote_seen_claim(self, claim_id: str) -> None:

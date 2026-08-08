@@ -15,6 +15,7 @@ endpoints degrade rather than poisoning startup.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -30,6 +31,10 @@ async def wire_evolution_outcomes(app_state: AppState) -> None:
 
     Args:
         app_state: The application state to wire onto.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so the durable
+            outcome log has nowhere to write.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -37,12 +42,8 @@ async def wire_evolution_outcomes(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).evolution_outcome_store is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="evolution_outcomes",
-            note="persistence absent; durable outcome log unwired",
-        )
-        return
+        msg = "no persistence backend; the outcome log is durable by definition"
+        raise SubsystemDeclinedError(msg)
     try:
         await _wire(app_state)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

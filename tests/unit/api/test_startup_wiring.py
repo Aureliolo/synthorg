@@ -15,6 +15,9 @@ import structlog
 from structlog.typing import EventDict
 from typeguard import suppress_type_checks
 
+from synthorg.api._credential_catalog_wiring import (
+    CredentialCatalogUnavailableError,
+)
 from synthorg.api._tunnel_wiring import resolve_tunnel_state_dir, wire_tunnel_provider
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.channels import create_channels_plugin
@@ -35,6 +38,7 @@ from synthorg.api.lifecycle_helpers.finetune_wiring import (
 from synthorg.api.lifecycle_helpers.startup_steps import _publish_red_team_runtime
 from synthorg.api.lifecycle_runner_support import _wire_task_activity_observer
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.api.task_activity_observer import TaskActivityObserver
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
@@ -356,6 +360,43 @@ class TestTunnelUnconditionalWiring:
         monkeypatch.setenv("SYNTHORG_TUNNEL_STATE_DIR", "/data/tunnel")
         assert resolve_tunnel_state_dir() == Path("/data/tunnel")
 
+    def test_credential_catalog_failure_refuses_the_boot(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A catalog that cannot be built is fatal, not best-effort.
+
+        Every provider naming a connection reads its key through it, so a boot
+        that continues here serves an org that cannot make one authenticated
+        model call, and says nothing until the first dispatch reports a
+        missing environment variable.
+        """
+
+        def _explode(*_args: object, **_kwargs: object) -> Never:
+            msg = "no secret backend"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api._credential_catalog_wiring.create_secret_backend",
+            _explode,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "synthorg.persistence.secret_backends.factory.create_secret_backend",
+            _explode,
+        )
+        with pytest.raises(CredentialCatalogUnavailableError):
+            auto_wire_integrations(
+                effective_config=RootConfig(company_name="test"),
+                persistence=FakePersistenceBackend(),
+                message_bus=None,
+                ceremony_scheduler=None,
+                db_url="",
+                resolved_db_path=tmp_path / "synthorg.db",
+                boot_db_path="",
+            )
+
     def test_state_dir_unset_yields_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SYNTHORG_TUNNEL_STATE_DIR", raising=False)
         assert resolve_tunnel_state_dir() is None
@@ -573,10 +614,11 @@ def _wire_logs(captured: Sequence[EventDict]) -> list[EventDict]:
 class TestWireFineTuneOrchestrator:
     """The embedding fine-tune orchestrator is wired once persistence connects."""
 
-    async def test_skips_when_persistence_absent(self) -> None:
+    async def test_declines_naming_absent_persistence(self) -> None:
         state = _make_state()
 
-        await wire_fine_tune_orchestrator(state)
+        with pytest.raises(SubsystemDeclinedError, match="no persistence backend"):
+            await wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
 
@@ -693,21 +735,15 @@ class TestWireFineTuneOrchestrator:
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is existing
         fake.fine_tune_runs.mark_interrupted.assert_not_awaited()
 
-    async def test_skips_when_backend_lacks_fine_tune_support(self) -> None:
+    async def test_declines_when_backend_lacks_fine_tune_support(self) -> None:
         state = _make_state(
             slices={PersistenceStateSlice: {"backend": _NoFineTuneBackend()}}
         )
 
-        with structlog.testing.capture_logs() as captured:
+        with pytest.raises(SubsystemDeclinedError, match="no fine-tune repositories"):
             await wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
-        skipped = [
-            e
-            for e in _wire_logs(captured)
-            if "lacks fine-tune support" in e.get("note", "")
-        ]
-        assert len(skipped) == 1
 
     async def test_degrades_when_recovery_raises(self) -> None:
         fake = FakePersistenceBackend()

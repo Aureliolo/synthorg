@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.engine.decisions import DecisionOutcome
-from synthorg.engine.recovery import FailureCategory
+from synthorg.engine.failure_classification import FailureCategory
 
 
 @pytest.mark.unit
@@ -18,11 +18,13 @@ class TestFailureCategory:
         assert FailureCategory.QUALITY_GATE_FAILED.value == "quality_gate_failed"
         assert FailureCategory.TIMEOUT.value == "timeout"
         assert FailureCategory.DELEGATION_FAILED.value == "delegation_failed"
+        assert FailureCategory.PROVIDER_REFUSED.value == "provider_refused"
+        assert FailureCategory.PROVIDER_UNAVAILABLE.value == "provider_unavailable"
         assert FailureCategory.UNKNOWN.value == "unknown"
 
     def test_member_count(self) -> None:
-        """Exactly 7 members."""
-        assert len(FailureCategory) == 7
+        """Exactly 9 members."""
+        assert len(FailureCategory) == 9
 
     @pytest.mark.parametrize(
         "value",
@@ -33,6 +35,8 @@ class TestFailureCategory:
             "quality_gate_failed",
             "timeout",
             "delegation_failed",
+            "provider_refused",
+            "provider_unavailable",
             "unknown",
         ],
     )

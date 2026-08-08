@@ -16,6 +16,7 @@ from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.lifecycle_helpers.model_refresh_wiring import wire_model_refresh
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
@@ -63,7 +64,8 @@ def _cadence_app_state() -> AppState:
     )
 
 
-async def test_off_mode_wires_nothing() -> None:
+async def test_off_mode_declines_naming_the_setting() -> None:
+    """The status surface must say which switch is off, not shrug at it."""
     app_state = make_app_state(
         config_resolver=_resolver("off"),
         slices={
@@ -74,7 +76,8 @@ async def test_off_mode_wires_nothing() -> None:
             },
         },
     )
-    await wire_model_refresh(app_state)
+    with pytest.raises(SubsystemDeclinedError, match=r"model_refresh\.mode is off"):
+        await wire_model_refresh(app_state)
     assert app_state.slice(ModelRefreshStateSlice).service is None
 
 
@@ -94,7 +97,8 @@ async def test_already_wired_is_idempotent() -> None:
     assert app_state.slice(ModelRefreshStateSlice).service is existing
 
 
-async def test_skips_when_management_or_persistence_absent() -> None:
+async def test_declines_naming_the_absent_collaborator() -> None:
+    """Two collaborators are missing; the reason names the one it stopped on."""
     app_state = make_app_state(
         config_resolver=_resolver("detect_only"),
         slices={
@@ -107,7 +111,8 @@ async def test_skips_when_management_or_persistence_absent() -> None:
             PersistenceStateSlice: {"backend": None},
         },
     )
-    await wire_model_refresh(app_state)
+    with pytest.raises(SubsystemDeclinedError, match="no provider management service"):
+        await wire_model_refresh(app_state)
     assert app_state.slice(ModelRefreshStateSlice).service is None
 
 

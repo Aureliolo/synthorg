@@ -117,6 +117,9 @@ from synthorg.persistence.sqlite.knowledge_source_repo import (
 from synthorg.persistence.sqlite.knowledge_usage_repo import (
     SQLiteKnowledgeUsageRecordRepository,
 )
+from synthorg.persistence.sqlite.lifecycle_transition_repo import (
+    SQLiteLifecycleTransitionRepository,
+)
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
 )
@@ -284,6 +287,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._cost_records = None
         self._messages = None
         self._lifecycle_events = None
+        self._lifecycle_transitions = None
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
@@ -412,6 +416,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._lifecycle_events = SQLiteLifecycleEventRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._lifecycle_transitions = SQLiteLifecycleTransitionRepository(
             self._db,
             write_context=self.write_context,
         )

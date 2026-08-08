@@ -419,6 +419,53 @@ class TestTransitionTaskIfNeeded:
         assert result_ctx.task_execution is not None
         assert result_ctx.task_execution.status == TaskStatus.IN_PROGRESS
 
+    async def test_refused_entry_sync_aborts_the_run(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A rejected entry sync stops the run instead of proceeding unsynced.
+
+        The central engine still holds the task at its prior status, so
+        running would produce work against a row the engine has no record
+        of moving.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        mock_te = _make_mock_task_engine(
+            return_value=_make_sync_failure(error="task is still created"),
+        )
+
+        with pytest.raises(ExecutionStateError, match="IN_PROGRESS"):
+            await transition_task_if_needed(
+                ctx,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(sample_task_with_criteria.id),
+                task_engine=mock_te,
+            )
+
+    async def test_unavailable_engine_aborts_the_run(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """An engine that raised is as unsynced as one that refused."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        mock_te = _make_mock_task_engine(side_effect=TaskEngineError("unavailable"))
+
+        with pytest.raises(ExecutionStateError):
+            await transition_task_if_needed(
+                ctx,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=str(sample_task_with_criteria.id),
+                task_engine=mock_te,
+            )
+
 
 # ===================================================================
 # apply_post_execution_transitions

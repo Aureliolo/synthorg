@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.core.types import NotBlankStr
@@ -29,6 +29,12 @@ class CostRecordFilterSpec(BaseModel):
     prompt_class_id: NotBlankStr | None = Field(
         default=None,
         description="Filter by prompt class identifier",
+    )
+    since: AwareDatetime | None = Field(
+        default=None,
+        description="Only records at or after this instant. The tracker's "
+        "restart hydration reads its own window with it, so a ceiling is "
+        "enforced over the same span before and after a restart",
     )
 
 

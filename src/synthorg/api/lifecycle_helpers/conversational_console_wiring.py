@@ -10,6 +10,7 @@ the actor) to keep the module dependency acyclic.
 
 from synthorg.api.conversational_builders import build_operator_console
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.meta.chief_of_staff.console_conversation_store import (
     ConsoleConversationStore,
 )
@@ -50,10 +51,15 @@ async def wire_operator_console(
 
     Reuses the SHARED boot ``AgentEngine`` (held by the
     ``AgentEngineExecutionService``) so a sensitive configure step parks on
-    the same ``ApprovalGate`` the ``/approvals`` controller resumes. Returns
-    ``None`` -- leaving a CONFIGURE turn at 503 -- when the flag is off, no
-    console model is bound, or no provider-backed boot engine was installed
-    (empty company). Idempotent: a second boot pass skips when already wired.
+    the same ``ApprovalGate`` the ``/approvals`` controller resumes. A
+    CONFIGURE turn stays at 503 while the console is not up, and the reason
+    reaches ``GET /subsystems`` rather than only the boot log. Idempotent: a
+    second boot pass skips when already wired.
+
+    Raises:
+        SubsystemDeclinedError: No provider-backed boot engine was installed
+            (an empty company reaches this), or the builder's fail-closed
+            gate refused for a condition it names.
     """
     from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -66,7 +72,11 @@ async def wire_operator_console(
         return
     service = app_state.slice(RuntimeStateSlice).worker_execution_service
     if not isinstance(service, AgentEngineExecutionService):
-        return
+        msg = (
+            "no provider-backed boot engine is installed, so the console has "
+            "nothing to dispatch through (an empty company reaches this)"
+        )
+        raise SubsystemDeclinedError(msg)
     console = build_operator_console(
         si_config.chief_of_staff,
         engine=service.engine,
@@ -75,13 +85,12 @@ async def wire_operator_console(
         secret_capture=app_state.slice(IntegrationsStateSlice).secret_capture_service,
         conversations=_console_conversation_store(app_state),
     )
-    if console is not None:
-        app_state.wire(MetaStateSlice, operator_console=console)
-        logger.info(
-            API_APP_STARTUP,
-            service="operator_console",
-            note="operator console wired",
-        )
+    app_state.wire(MetaStateSlice, operator_console=console)
+    logger.info(
+        API_APP_STARTUP,
+        service="operator_console",
+        note="operator console wired",
+    )
 
 
 async def unwire_operator_console(app_state: AppState) -> None:

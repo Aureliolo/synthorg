@@ -74,6 +74,10 @@ class ExecutionResult(BaseModel):
         default=None,
         description="Error description (when reason is ERROR)",
     )
+    error_type: str | None = Field(
+        default=None,
+        description="Class name of the exception that terminated the run",
+    )
     metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Forward-compatible metadata for future loop types",

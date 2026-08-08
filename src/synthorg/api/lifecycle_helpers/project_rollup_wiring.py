@@ -26,6 +26,7 @@ state slice, so the observer is never registered twice; a re-run of any
 from collections.abc import Callable
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.initiative.ports import RetroCapturePort
 from synthorg.engine.initiative.rollup import ProjectRollupService
@@ -45,6 +46,8 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         MemoryError: Propagated from construction; interpreter-level
             criticals are never swallowed by the best-effort handler.
         RecursionError: Propagated from construction for the same reason.
+        SubsystemDeclinedError: No persistence backend or no task engine,
+            the two the rollup is assembled from.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -59,15 +62,16 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         return
 
     task_engine = app_state.slice(EngineStateSlice).task_engine
-    if persistence is None or task_engine is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="project_rollup_service",
-            note="rollup not wired; dependencies not yet present",
-        )
-        return
+    if persistence is None:
+        msg = "no persistence backend; the rollup reads plan and task rows"
+        raise SubsystemDeclinedError(msg)
+    if task_engine is None:
+        msg = "no task engine; the rollup observes its state changes"
+        raise SubsystemDeclinedError(msg)
     try:
-        from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
+        from synthorg.api.services.plan_service_factory import (  # noqa: PLC0415
+            build_plan_service,
+        )
 
         # Deliberately tailless. Every tail collaborator needs the provider
         # registry, the work pipeline or the coordinator, none of which exist
@@ -75,9 +79,7 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         # result the tail subsystem then has to replace.
         service = ProjectRollupService(
             persistence=persistence,
-            plan_status_writer=PlanService(
-                repo=persistence.plans, clock=app_state.clock
-            ),
+            plan_status_writer=build_plan_service(persistence, clock=app_state.clock),
             clock=app_state.clock,
             task_engine=task_engine,
         )
@@ -108,6 +110,9 @@ async def attach_replan_trigger(app_state: AppState) -> None:
     The activation the ``initiative_replan`` subsystem declares. Its own
     dependency is the coordinator, and a boot without one leaves a stalled
     initiative visible for the operator while integrate and evaluate carry on.
+
+    Raises:
+        SubsystemDeclinedError: No coordinator to run the replan through.
     """
     from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
         build_replan_trigger,
@@ -119,7 +124,8 @@ async def attach_replan_trigger(app_state: AppState) -> None:
     persistence, rollup = resolved
     trigger = build_replan_trigger(app_state, persistence)
     if trigger is None:
-        return
+        msg = "no coordinator; a replan re-dispatches through it"
+        raise SubsystemDeclinedError(msg)
     rollup.attach_tail(replan_trigger=trigger)
     _log_attached("initiative_replan_trigger")
 
@@ -130,6 +136,10 @@ async def attach_integration_stage(app_state: AppState) -> None:
     The activation the ``initiative_integrate`` subsystem declares. Its own
     dependency is the work pipeline, because the assembly job is an ordinary
     task; without it a plan parks at ``INTEGRATING``.
+
+    Raises:
+        SubsystemDeclinedError: No work pipeline to dispatch the assembly
+            task through.
     """
     from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
         build_integration_stage,
@@ -141,7 +151,8 @@ async def attach_integration_stage(app_state: AppState) -> None:
     persistence, rollup = resolved
     stage = build_integration_stage(app_state, persistence)
     if stage is None:
-        return
+        msg = "no work pipeline; the assembly job is an ordinary task"
+        raise SubsystemDeclinedError(msg)
     rollup.attach_tail(integration=stage)
     _log_attached("initiative_integration_stage")
 
@@ -152,11 +163,16 @@ async def attach_evaluation_stage(app_state: AppState) -> None:
     The activation the ``initiative_evaluate`` subsystem declares. Its own
     dependency is a provider to judge with; without one a plan parks at
     ``EVALUATING``, which is the honest outcome for an initiative nobody scored.
+
+    Raises:
+        SubsystemDeclinedError: No provider bound to judge with.
     """
     from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
         build_evaluation_stage,
     )
-    from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
+    from synthorg.api.services.plan_service_factory import (  # noqa: PLC0415
+        build_plan_service,
+    )
 
     resolved = _tail_target(app_state, ProjectRollupService.has_evaluation)
     if resolved is None:
@@ -165,7 +181,7 @@ async def attach_evaluation_stage(app_state: AppState) -> None:
     stage = build_evaluation_stage(
         app_state,
         persistence,
-        plan_status_writer=PlanService(repo=persistence.plans, clock=app_state.clock),
+        plan_status_writer=build_plan_service(persistence, clock=app_state.clock),
         # Read per verdict, not captured: the trigger is its own subsystem and
         # may attach after this stage, and a captured ``None`` would park every
         # unmet initiative for the life of the process.
@@ -173,7 +189,8 @@ async def attach_evaluation_stage(app_state: AppState) -> None:
         reconcile=rollup,
     )
     if stage is None:
-        return
+        msg = "no provider bound for evaluation; a verdict is an LLM call"
+        raise SubsystemDeclinedError(msg)
     rollup.attach_tail(evaluation=stage)
     _log_attached("initiative_evaluation_stage")
 
@@ -186,6 +203,10 @@ async def attach_ship_retro_capture(app_state: AppState) -> None:
     probed separately: counted under a stage's liveness, a tail that came up
     while memory was blocked would read as converged with the retrospective
     silently never firing.
+
+    Raises:
+        SubsystemDeclinedError: One of the two memory layers the capture
+            writes into is absent.
     """
     resolved = _tail_target(app_state, ProjectRollupService.has_retro_capture)
     if resolved is None:
@@ -193,7 +214,8 @@ async def attach_ship_retro_capture(app_state: AppState) -> None:
     _, rollup = resolved
     capture = _build_ship_retro_capture(app_state)
     if capture is None:
-        return
+        msg = "memory not converged; the retrospective writes into both layers"
+        raise SubsystemDeclinedError(msg)
     rollup.attach_tail(ship_retro_capture=capture)
     _log_attached("ship_retro_capture")
 
@@ -224,17 +246,35 @@ def _tail_target(
 ) -> tuple[PersistenceBackend, ProjectRollupService] | None:
     """Return what one tail attach needs, or ``None`` when there is nothing to do.
 
+    ``None`` means one thing only: this collaborator is already attached, so
+    a repeated pass costs nothing. An absent backend or rollup is a decline
+    with a name, because folding all three into one ``None`` is how a blocked
+    tail came to report "see the wiring log".
+
+    Args:
+        app_state: Application state holding the slices.
+        already: Predicate reading whether the rollup carries this
+            collaborator.
+
     Returns:
         The persistence backend and the wired rollup, or ``None`` when the
-        rollup is absent or already carries this collaborator, so a repeated
-        pass costs nothing.
+        collaborator is already attached.
+
+    Raises:
+        SubsystemDeclinedError: The backend or the rollup is absent.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
     persistence = app_state.slice(PersistenceStateSlice).backend
     rollup = app_state.slice(EngineStateSlice).project_rollup_service
-    if persistence is None or rollup is None or already(rollup):
+    if persistence is None:
+        msg = "no persistence backend; every tail stage reads durable rows"
+        raise SubsystemDeclinedError(msg)
+    if rollup is None:
+        msg = "no rollup service; the tail attaches onto it"
+        raise SubsystemDeclinedError(msg)
+    if already(rollup):
         return None
     return persistence, rollup
 

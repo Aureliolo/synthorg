@@ -10,7 +10,6 @@ See the Crash Recovery section of the Engine design page.
 """
 
 import json
-from enum import StrEnum
 from typing import Final, Protocol, Self, runtime_checkable
 
 from pydantic import (
@@ -27,6 +26,11 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_snapshot import AgentContextSnapshot
+from synthorg.engine.failure_classification import (
+    FailureCategory,
+    infer_failure_category,
+    infer_failure_category_without_evidence,
+)
 from synthorg.engine.stagnation.models import (
     StagnationResult,
     StagnationVerdict,
@@ -40,117 +44,6 @@ from synthorg.observability.events.execution import (
 )
 
 logger = get_logger(__name__)
-
-
-class FailureCategory(StrEnum):
-    """Machine-readable failure classification for recovery results.
-
-    Used by ``RecoveryResult`` to provide structured failure diagnosis
-    that enables smarter checkpoint reconciliation and task reassignment
-    routing.  ``UNKNOWN`` is the honest default for error messages that
-    cannot be confidently classified -- it is explicit rather than a
-    silent ``TOOL_FAILURE`` lie.
-    """
-
-    TOOL_FAILURE = "tool_failure"
-    STAGNATION = "stagnation"
-    BUDGET_EXCEEDED = "budget_exceeded"
-    QUALITY_GATE_FAILED = "quality_gate_failed"
-    TIMEOUT = "timeout"
-    DELEGATION_FAILED = "delegation_failed"
-    UNKNOWN = "unknown"
-
-
-# Keyword rules for inferring failure category from error messages.
-# Evaluated in order; first match wins.  Order is load-bearing:
-# BUDGET_EXCEEDED takes precedence over TIMEOUT/STAGNATION/etc. in
-# ambiguous messages because budget exhaustion is the most operationally
-# actionable signal.  DELEGATION comes before TOOL_FAILURE so messages
-# like "delegation failed: tool unavailable" classify as DELEGATION,
-# not TOOL_FAILURE.  Reordering this tuple changes classification for
-# ambiguous messages.
-_FAILURE_CATEGORY_RULES: tuple[tuple[tuple[str, ...], FailureCategory], ...] = (
-    (("budget",), FailureCategory.BUDGET_EXCEEDED),
-    (("timeout", "timed out"), FailureCategory.TIMEOUT),
-    (("stagnation",), FailureCategory.STAGNATION),
-    (("delegation",), FailureCategory.DELEGATION_FAILED),
-    (("quality", "criteria"), FailureCategory.QUALITY_GATE_FAILED),
-    (
-        ("tool invocation", "tool execution", "tool error", "mcp tool"),
-        FailureCategory.TOOL_FAILURE,
-    ),
-)
-
-
-# Categories that require sidecar data on ``RecoveryResult`` (enforced by
-# the cross-field model validator).  Callers that only have an error string
-# cannot satisfy those invariants and must use
-# ``infer_failure_category_without_evidence`` which clamps to ``UNKNOWN``.
-_CATEGORIES_REQUIRING_EVIDENCE: Final[frozenset[FailureCategory]] = frozenset(
-    {
-        FailureCategory.STAGNATION,
-        FailureCategory.QUALITY_GATE_FAILED,
-    }
-)
-
-
-def infer_failure_category(error_message: str) -> FailureCategory:
-    """Infer a failure category from an error message via keyword matching.
-
-    Simple heuristic for v1 -- matches keywords case-insensitively in
-    the declared rule order (first match wins).  Returns
-    ``FailureCategory.UNKNOWN`` when nothing matches: honest failure
-    classification is better than silently defaulting to
-    ``TOOL_FAILURE``, which would masquerade unknown causes as tool
-    failures in dashboards, reports, and reconciliation prompts.
-
-    Future versions may derive categories from typed exceptions
-    (e.g. ``BudgetExhaustedError`` -> ``BUDGET_EXCEEDED``) or from
-    provider-specific error codes instead of string sniffing.
-
-    Note:
-        Callers that build a ``RecoveryResult`` without sidecar data
-        (``stagnation_evidence`` / ``criteria_failed``) must use
-        ``infer_failure_category_without_evidence`` instead; this
-        function can return ``STAGNATION`` or ``QUALITY_GATE_FAILED``
-        which would violate the cross-field invariants at construction
-        time.
-
-    Args:
-        error_message: The error message to classify.
-
-    Returns:
-        The inferred ``FailureCategory`` or ``UNKNOWN`` when no rule
-        matches.
-    """
-    lower = error_message.lower()
-    for keywords, category in _FAILURE_CATEGORY_RULES:
-        if any(kw in lower for kw in keywords):
-            return category
-    return FailureCategory.UNKNOWN
-
-
-def infer_failure_category_without_evidence(error_message: str) -> FailureCategory:
-    """Infer a failure category, clamping evidence-required categories to UNKNOWN.
-
-    Callers that build a ``RecoveryResult`` without ``stagnation_evidence``
-    or ``criteria_failed`` cannot emit ``STAGNATION`` or
-    ``QUALITY_GATE_FAILED`` because the cross-field validator rejects
-    those categories when the required sidecar data is absent.  This
-    helper preserves the honest ``UNKNOWN`` default while keeping the
-    categories that stand on their own (``BUDGET_EXCEEDED``,
-    ``TIMEOUT``, ``DELEGATION_FAILED``).
-
-    Args:
-        error_message: The error message to classify.
-
-    Returns:
-        A ``FailureCategory`` safe to use without accompanying evidence.
-    """
-    category = infer_failure_category(error_message)
-    if category in _CATEGORIES_REQUIRING_EVIDENCE:
-        return FailureCategory.UNKNOWN
-    return category
 
 
 class RecoveryResult(BaseModel):
@@ -363,6 +256,7 @@ class RecoveryStrategy(Protocol):
         task_execution: TaskExecution,
         error_message: str,
         context: AgentContext,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Apply recovery to a failed task execution.
 
@@ -372,6 +266,9 @@ class RecoveryStrategy(Protocol):
                 setup failures).
             error_message: Description of the failure.
             context: Full agent context at the time of failure.
+            error_type: Class name of the exception that terminated the
+                run, when the loop recorded one. The typed cause
+                classifies the failure; the message is the fallback.
 
         Returns:
             ``RecoveryResult`` with the updated execution and diagnostics.
@@ -412,6 +309,7 @@ class FailAndReassignStrategy:
         task_execution: TaskExecution,
         error_message: str,
         context: AgentContext,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Apply fail-and-reassign recovery.
 
@@ -419,6 +317,7 @@ class FailAndReassignStrategy:
             task_execution: Current execution state.
             error_message: Description of the failure.
             context: Full agent context at the time of failure.
+            error_type: Class name of the exception that terminated the run.
 
         Returns:
             ``RecoveryResult`` with FAILED execution and reassignment info.
@@ -450,7 +349,9 @@ class FailAndReassignStrategy:
         # on ``RecoveryResult``.  Clamping to UNKNOWN here is safer than
         # crashing at construction time on error messages containing
         # "stagnation", "quality", or "criteria".
-        category = infer_failure_category_without_evidence(error_message)
+        category = infer_failure_category_without_evidence(
+            error_message, error_type=error_type
+        )
         result = RecoveryResult(
             task_execution=failed_execution,
             strategy_type=self.STRATEGY_TYPE,
@@ -462,6 +363,7 @@ class FailAndReassignStrategy:
                 "inferred_category_raw": infer_failure_category(
                     error_message,
                 ).value,
+                "error_type": error_type,
             },
         )
 

@@ -35,10 +35,8 @@ from uuid import UUID
 from synthorg.core.clock import Clock
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
-from synthorg.core.plan_transitions import transition_path
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
@@ -57,11 +55,9 @@ from synthorg.engine.initiative.ports import (
     ReplanTriggerPort,
     RetroCapturePort,
 )
-from synthorg.engine.initiative.project_writes import (
-    MAX_WRITE_ATTEMPTS,
-    advance_project_status,
-)
+from synthorg.engine.initiative.project_writes import advance_project_status
 from synthorg.engine.initiative.rollup_parent_task import advance_objective_task
+from synthorg.engine.initiative.rollup_plan_advance import advance_plan
 from synthorg.engine.initiative.tail_stages import (
     IntegrationOutcome,
     read_integration_state,
@@ -71,19 +67,14 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.project import (
     PROJECT_ROLLUP_COMPLETED,
-    PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
-    PROJECT_ROLLUP_CONFLICT_RETRY,
     PROJECT_ROLLUP_FAILED,
     PROJECT_ROLLUP_SKIPPED,
     PROJECT_ROLLUP_STARTED,
 )
+from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
-
-#: Identity recorded on rollup-driven status writes, so the audit log
-#: distinguishes a derived transition from an operator decision.
-_ACTOR: Final[str] = "initiative-rollup"
 
 #: Integration outcomes the stage can act on by dispatching: no attempt yet, or
 #: one whose row was persisted and then never handed to the pipeline.
@@ -371,16 +362,17 @@ class ProjectRollupService:
             # This read only picks the target. The edge test below uses the
             # status the winning write itself observed, so a project completed
             # between the two reads cannot swallow the retrospective.
+            plan = await self._resolve_stall(plan, items)
             current = await self._project_status(plan)
             advance = await advance_project_status(
                 self._persistence.projects,
                 project_id=NotBlankStr(str(plan.project)),
                 target=derive_project_status(plan.status, current=current),
+                ledger=ledger_for(self._persistence, clock=self._clock),
             )
             project = advance.project
             before = advance.before if advance.before is not None else current
             await advance_objective_task(self._task_engine, plan, items)
-            self._maybe_trigger_replan(plan, items)
             self._maybe_capture_retro(plan, project, before=before)
             moved = plan.status is not started_as or (
                 project is not None and project.status is not before
@@ -461,16 +453,27 @@ class ProjectRollupService:
             )
             return plan
         if state.outcome is IntegrationOutcome.FAILED:
-            # Same visible-park discipline as the unwired-stage branches: a
-            # failed assembly with no trigger to route it cannot auto-replan,
-            # so say so rather than returning an unchanged plan in silence.
+            # A failed assembly with no trigger to route it cannot auto-replan,
+            # and parking it left a plan that had built everything sitting in
+            # INTEGRATING with nothing that would ever move it. Failing it says
+            # what happened, keeps the reason on the row for Plan Review, and
+            # leaves the initiative replannable by hand.
             logger.warning(
                 PROJECT_ROLLUP_SKIPPED,
                 plan_id=str(plan.id),
                 reason="integration_failed_no_replan_trigger",
-                note="plan parked at integrating; failed assembly cannot auto-replan",
+                note="failing the plan; assembly failed and cannot auto-replan",
             )
-            return plan
+            return (
+                await self._advance_plan(
+                    plan,
+                    PlanStatus.FAILED,
+                    failure_reason=NotBlankStr(
+                        "integration failed and no replan trigger is wired"
+                    ),
+                )
+                or plan
+            )
         if state.outcome is IntegrationOutcome.RUNNING:
             # Logged rather than passed over in silence: an assembly job that
             # is genuinely working and one that died without terminalising its
@@ -501,28 +504,46 @@ class ProjectRollupService:
             return
         self._evaluation.schedule(plan=plan)
 
-    def _maybe_trigger_replan(
+    async def _resolve_stall(
         self,
         plan: Plan,
         items: tuple[ItemProgress, ...],
-    ) -> None:
-        """Fire the replan trigger while *plan* reads as stalled.
+    ) -> Plan:
+        """Route a stalled plan to a replan, or out of its dispatch status.
 
-        Deliberately not edge-gated here. A stall has no persisted marker to
-        compare against, and the honest guard is the one the trigger already
-        needs: it re-reads the plan, refuses anything no longer replannable,
-        and collapses a duplicate while one is in flight. A successful replan
-        supersedes the plan, so the next recompute finds nothing to do.
+        A stall means every outstanding item is dead: the initiative cannot
+        advance and nothing will move it. With a trigger wired that becomes a
+        replan; without one it used to become nothing at all, and a plan whose
+        every task failed sat in EXECUTING with no work left to execute, which
+        no later event could repair.
 
-        The trigger schedules detached work and never raises, so it is safe on
-        this best-effort path.
+        Firing the trigger is deliberately not edge-gated. A stall has no
+        persisted marker to compare against, and the honest guard is the one
+        the trigger already needs: it re-reads the plan, refuses anything no
+        longer replannable, and collapses a duplicate while one is in flight.
+        A successful replan supersedes the plan, so the next recompute finds
+        nothing to do. The trigger schedules detached work and never raises,
+        so it is safe on this best-effort path.
+
+        Returns:
+            The plan, failed when it was stalled with no trigger to route it.
         """
-        if self._replan_trigger is None or plan.status in TERMINAL_STATUSES:
-            return
+        if plan.status in TERMINAL_STATUSES:
+            return plan
         reason = stall_reason(items)
         if reason is None:
-            return
-        self._replan_trigger.schedule(plan=plan, reason=reason)
+            return plan
+        if self._replan_trigger is not None:
+            self._replan_trigger.schedule(plan=plan, reason=reason)
+            return plan
+        return (
+            await self._advance_plan(
+                plan,
+                PlanStatus.FAILED,
+                failure_reason=NotBlankStr(f"initiative stalled: {reason.value}"),
+            )
+            or plan
+        )
 
     def _maybe_capture_retro(
         self,
@@ -547,106 +568,26 @@ class ProjectRollupService:
             return
         self._ship_retro_capture.schedule(plan=plan, project=project)
 
-    async def _advance_plan(self, plan: Plan, target: PlanStatus) -> Plan | None:
+    async def _advance_plan(
+        self,
+        plan: Plan,
+        target: PlanStatus,
+        *,
+        failure_reason: NotBlankStr | None = None,
+    ) -> Plan | None:
         """Persist the plan's derived status through the audited write path.
-
-        The target may be several legal hops away, so it is walked rather than
-        jumped, exactly as ``advance_project_status`` walks the project. A plan
-        that never reached EXECUTING (its dispatch-time sync lost its race)
-        completes through EXECUTING rather than attempting the illegal
-        ``APPROVED -> COMPLETED`` jump, so the initiative recovers instead of
-        stalling one hop short.
-
-        A refused transition and a lost race are different failures and are
-        handled differently. ``ConflictError`` means the derivation produced a
-        target the state machine rejects even hop by hop, which is a bug:
-        retrying reproduces it, so it is surfaced at ERROR and abandoned. A
-        version conflict is ordinary contention, so the plan is re-read, the
-        target re-derived from the winner's state, and the write retried.
 
         Returns:
             The persisted plan, or ``None`` when the transition was refused or
             the write stayed contended for the whole retry budget.
         """
-        current = plan
-        explicit_target = target
-        for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
-            try:
-                return await self._walk_plan_to(current, target)
-            except VersionConflictError:
-                # Must precede the ConflictError handler: VersionConflictError
-                # subclasses it, so catching the base first would strand every
-                # version conflict in the illegal-transition branch and the
-                # CAS retry below would never run.
-                logger.info(
-                    PROJECT_ROLLUP_CONFLICT_RETRY,
-                    plan_id=str(current.id),
-                    attempt=attempt,
-                    operation="plan_status",
-                )
-                refreshed = await self._persistence.plans.get(
-                    NotBlankStr(str(current.id))
-                )
-                if refreshed is None:
-                    return None
-                if refreshed.status in TERMINAL_STATUSES:
-                    # The winner finished the plan; its state is authoritative
-                    # and the project reconcile below runs against it.
-                    return refreshed
-                if (
-                    explicit_target is PlanStatus.EVALUATING
-                    and refreshed.status is PlanStatus.INTEGRATING
-                ):
-                    # ``derive_plan_status`` never emits EVALUATING, so
-                    # re-deriving here would collapse an explicit
-                    # INTEGRATING -> EVALUATING write back to INTEGRATING and
-                    # skip the evaluate stage. The winner left the plan at
-                    # INTEGRATING, so the caller's tail target is still legal.
-                    target = PlanStatus.EVALUATING
-                else:
-                    items = await collect_item_progress(self._persistence, refreshed)
-                    target = derive_plan_status(items, current=refreshed.status)
-                if target is refreshed.status:
-                    return refreshed
-                current = refreshed
-            except ConflictError as exc:
-                logger.error(
-                    PROJECT_ROLLUP_SKIPPED,
-                    plan_id=str(current.id),
-                    current_state=current.status.value,
-                    target_state=target.value,
-                    reason="illegal_transition",
-                    error_type=type(exc).__name__,
-                )
-                return None
-        logger.warning(
-            PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
-            plan_id=str(plan.id),
-            operation="plan_status",
-            attempts=MAX_WRITE_ATTEMPTS,
+        return await advance_plan(
+            self._persistence,
+            self._plan_writer,
+            plan,
+            target,
+            failure_reason=failure_reason,
         )
-        return None
-
-    async def _walk_plan_to(self, plan: Plan, target: PlanStatus) -> Plan:
-        """Move *plan* to *target* one legal hop at a time.
-
-        Returns:
-            The plan after the final hop.
-
-        Raises:
-            ConflictError: *target* is unreachable from the plan's status.
-            VersionConflictError: A concurrent write won a hop.
-        """
-        path = transition_path(plan.status, target)
-        if path is None:
-            msg = f"Plan {plan.id} cannot reach {target.value} from {plan.status.value}"
-            raise ConflictError(msg)
-        current = plan
-        for hop in path:
-            current = await self._plan_writer.sync_status(
-                current, hop, requested_by=_ACTOR
-            )
-        return current
 
     async def _project_status(self, plan: Plan) -> ProjectStatus:
         """Read the current status of the plan's project.

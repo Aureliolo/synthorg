@@ -16,6 +16,7 @@ because ``SelfImprovementService`` is the consumer of ``ab_test_repo``.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.pagination import collect_all
@@ -54,6 +55,10 @@ async def wire_meta_apply(app_state: AppState) -> None:
 
     Args:
         app_state: The application state to wire onto.
+
+    Raises:
+        SubsystemDeclinedError: No persistence, or the company has not been
+            set up far enough for a workflow service to exist.
     """
     from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -62,12 +67,8 @@ async def wire_meta_apply(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).self_improvement_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="self_improvement",
-            note="persistence absent; meta-loop apply paths unwired",
-        )
-        return
+        msg = "no persistence backend; the meta-loop apply paths are durable"
+        raise SubsystemDeclinedError(msg)
     try:
         # Preflight the ONE dependency a not-yet-set-up company lacks before any
         # mutable wiring runs. Catching ServiceUnavailableError around the whole
@@ -77,13 +78,8 @@ async def wire_meta_apply(app_state: AppState) -> None:
         # any deeper ServiceUnavailableError fall to the WARNING branch.
         workflow_service_of(app_state)
     except ServiceUnavailableError as exc:
-        logger.info(
-            API_APP_STARTUP,
-            service="self_improvement",
-            note="workflow service absent (pre-setup); meta-loop apply paths unwired",
-            error=safe_error_description(exc),
-        )
-        return
+        msg = "no workflow service; the company has not been set up yet"
+        raise SubsystemDeclinedError(msg) from exc
     try:
         await _wire(app_state)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

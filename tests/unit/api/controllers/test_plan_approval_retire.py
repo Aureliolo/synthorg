@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.controllers._plan_approval_retire import retire_review_approval
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import ApprovalStateSlice

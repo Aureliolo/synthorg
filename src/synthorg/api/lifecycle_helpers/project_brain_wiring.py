@@ -11,6 +11,7 @@ poisoning startup.
 from typing import Final
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -34,6 +35,10 @@ async def wire_project_brain(app_state: AppState) -> None:
     and the per-task tool factory and parks them on the state slice. A missing
     collaborator leaves the brain controllers + MCP handlers to 503 rather than
     poisoning startup.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the brain is built from is
+            absent, named so the status surface can report which.
     """
     from synthorg.engine.workspace.state import WorkspaceStateSlice  # noqa: PLC0415
     from synthorg.memory.state import (  # noqa: PLC0415
@@ -46,20 +51,18 @@ async def wire_project_brain(app_state: AppState) -> None:
     )
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
-    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
-    if workspace_service is None:
-        return
     if app_state.slice(ProjectBrainStateSlice).service is not None:
         return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; brain entries are durable"
+        raise SubsystemDeclinedError(msg)
+    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
+    if workspace_service is None:
+        msg = "no project workspace service; the brain commits snapshots through it"
+        raise SubsystemDeclinedError(msg)
     if app_state.slice(MemoryStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="project_brain",
-            note="memory backend not wired; project brain wiring skipped",
-        )
-        return
+        msg = "no memory backend; the brain indexes entries for RAG re-entry"
+        raise SubsystemDeclinedError(msg)
     from synthorg.project_brain.factory import (  # noqa: PLC0415
         build_project_brain_service,
     )

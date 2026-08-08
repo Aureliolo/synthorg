@@ -95,6 +95,9 @@ from synthorg.persistence.knowledge_protocol import (
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageRecordRepository,
 )
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionRepository,
+)
 from synthorg.persistence.mcp_protocol import McpInstallationRepository
 from synthorg.persistence.meeting_cooldown_protocol import (
     MeetingCooldownRepository,
@@ -268,6 +271,7 @@ class _PostgresBackendRepositoryAccessors:
     _cost_records: CostRecordRepository | None
     _messages: MessageRepository | None
     _lifecycle_events: LifecycleEventRepository | None
+    _lifecycle_transitions: LifecycleTransitionRepository | None
     _task_metrics: TaskMetricRepository | None
     _collaboration_metrics: CollaborationMetricRepository | None
     _parked_contexts: ParkedContextRepository | None
@@ -377,6 +381,14 @@ class _PostgresBackendRepositoryAccessors:
     def lifecycle_events(self) -> LifecycleEventRepository:
         """Repository for AgentLifecycleEvent persistence."""
         return self._require_connected(self._lifecycle_events, "lifecycle_events")
+
+    @property
+    def lifecycle_transitions(self) -> LifecycleTransitionRepository:
+        """Repository for plan and project status-transition records."""
+        return self._require_connected(
+            self._lifecycle_transitions,
+            "lifecycle_transitions",
+        )
 
     @property
     def task_metrics(self) -> TaskMetricRepository:

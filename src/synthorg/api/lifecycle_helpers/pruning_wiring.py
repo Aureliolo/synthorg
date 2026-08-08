@@ -18,6 +18,7 @@ startup.
 from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -40,6 +41,10 @@ async def wire_pruning(app_state: AppState) -> None:
 
     Args:
         app_state: The application state holding the collaborator slices.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the pruning decision is made
+            from is absent, named so the status surface can report which.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -48,24 +53,18 @@ async def wire_pruning(app_state: AppState) -> None:
     if hr.pruning_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="pruning",
-            note="persistence absent; pruning service unwired",
-        )
-        return
+        msg = "no persistence backend; pruning decisions are durable"
+        raise SubsystemDeclinedError(msg)
     approval_store = app_state.slice(ApprovalStateSlice).store
-    if (
-        hr.agent_registry is None
-        or hr.performance_tracker is None
-        or (approval_store is None)
-    ):
-        logger.info(
-            API_APP_STARTUP,
-            service="pruning",
-            note="registry / tracker / approval store absent; pruning unwired",
-        )
-        return
+    if hr.agent_registry is None:
+        msg = "no agent registry; pruning acts on the roster"
+        raise SubsystemDeclinedError(msg)
+    if hr.performance_tracker is None:
+        msg = "no performance tracker; pruning is decided from its records"
+        raise SubsystemDeclinedError(msg)
+    if approval_store is None:
+        msg = "no approval store; removing an agent is a gated decision"
+        raise SubsystemDeclinedError(msg)
     try:
         await _wire(
             app_state,

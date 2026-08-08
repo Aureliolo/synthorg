@@ -8,7 +8,11 @@ from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.routing_policy.models import StakesRoutingDecision
-from synthorg.engine.routing_policy.tiers import bump_one, higher_tier
+from synthorg.engine.routing_policy.tiers import (
+    bump_one,
+    higher_tier,
+    meets_required,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_COORD_NUDGE,
@@ -47,14 +51,29 @@ class FlatStrategy:
 class StakesAwareStrategy:
     """Route by stakes to a required model tier, escalating when unmet.
 
-    Picks the cheapest configured, tool-capable model whose assigned tier
-    meets the per-stakes tier requirement, bumps the requirement one tier when
-    recent coordination metrics look unhealthy, and never routes red-team-gated
-    work (stakes at or above ``config.red_team_min_stakes``) below the agent's
-    configured tier. When no configured tool-capable model meets the
-    requirement it raises :class:`StakesModelUnavailableError` so the engine
-    escalates or fails loudly: consequential work is never silently run on a
-    sub-tier model.
+    The agent's own model is the decision unless it is too weak. An operator
+    chose that ``(provider, model)`` pair for that role, so stakes routing may
+    only raise it: if the agent's model meets the tier the stakes demand, it
+    keeps it; below the requirement it routes up, to the cheapest tool-capable
+    model that qualifies. There is no cheapest-within-tier step over an
+    already-adequate agent, because with every model in a tier priced the same
+    (a local gateway prices everything zero) that is an arbitrary tie whose
+    winner takes every task in the org, which is how one incompatible model
+    took down five agents at once.
+
+    The requirement itself is bumped one tier when recent coordination metrics
+    look unhealthy, and floored at the agent's own tier for red-team-gated work
+    (stakes at or above ``config.red_team_min_stakes``). When nothing qualifies
+    it raises :class:`StakesModelUnavailableError` so the engine escalates or
+    fails loudly: consequential work is never silently run on a sub-tier model.
+
+    A model's tier comes from the resolver, never from the roster's
+    ``model_tier``. The roster field is written when an agent is matched and
+    goes stale the moment an operator overrides a tier, so the two disagreed
+    (``medium`` on the roster, ``large`` in the tier registry) and the
+    disagreement decided routing. The resolver reads the effective tier map, so
+    it is the one authority; a stale roster value is corrected onto the
+    returned model rather than consulted.
 
     Selection gates on the resolved model's tier and tool-capability only. Each
     model's classification ``confidence`` is operator-facing (surfaced in the
@@ -66,9 +85,9 @@ class StakesAwareStrategy:
     performs no wall-clock reads or live provider calls.
 
     Args:
-        resolver: Resolves the required tier to the cheapest tool-capable
-            configured model. Required: the strategy cannot gate on tier or
-            capability without a catalogue.
+        resolver: Resolves the agent's own pair and the required tier to a
+            tool-capable configured model. Required: the strategy cannot gate
+            on tier or capability without a catalogue.
         config: Per-stakes tier requirements, nudge thresholds, and the
             red-team threshold.
         coordination_store: Recent coordination metrics for the nudge. When
@@ -106,14 +125,18 @@ class StakesAwareStrategy:
         red_team_required = (
             compare_stakes(stakes, self._config.red_team_min_stakes) >= 0
         )
+        current = self._resolver.resolve_for_pair(
+            identity.model.provider,
+            identity.model.model_id,
+        )
         required, nudged = self._adjusted_required_tier(
             task=task,
-            identity=identity,
+            current_tier=current.tier if current is not None else None,
             stakes=stakes,
             red_team_required=red_team_required,
         )
 
-        selected = self._select_model(required)
+        selected = self._select_model(required, current=current)
         if selected is None:
             logger.warning(
                 STAKES_ROUTING_ESCALATED,
@@ -141,11 +164,15 @@ class StakesAwareStrategy:
         self,
         *,
         task: Task,
-        identity: AgentIdentity,
+        current_tier: ModelTier | None,
         stakes: Stakes,
         red_team_required: bool,
     ) -> tuple[ModelTier, bool]:
         """Base stakes tier adjusted for coordination health + red-team floor.
+
+        *current_tier* is the agent's model's tier as the resolver reports it,
+        not as the roster records it, so a stale roster value cannot lower the
+        red-team floor below what the agent actually runs.
 
         Returns:
             The (possibly bumped then floored) required tier, and whether a
@@ -166,7 +193,6 @@ class StakesAwareStrategy:
             required = bumped
 
         # Red-team-gated work must never run below the agent's configured tier.
-        current_tier = identity.model.model_tier
         if red_team_required and current_tier is not None:
             floored = higher_tier(required, current_tier)
             if floored != required:
@@ -180,13 +206,38 @@ class StakesAwareStrategy:
             required = floored
         return required, nudged
 
-    def _select_model(self, required: ModelTier) -> ResolvedModel | None:
-        """Return the cheapest tool-capable model at or above *required*.
+    def _select_model(
+        self,
+        required: ModelTier,
+        *,
+        current: ResolvedModel | None,
+    ) -> ResolvedModel | None:
+        """Return the model this task should run on.
+
+        The agent's own model wins whenever it is adequate. Routing up is for
+        the case the operator's choice cannot carry the stakes, and it is the
+        only case: an agent already at or above the requirement is left alone
+        even when a cheaper qualifying model exists, because "cheapest in tier"
+        over an adequate agent is an arbitrary pick that concentrates the whole
+        org onto one model.
+
+        Args:
+            required: The tier the stakes demand, already bumped and floored.
+            current: The agent's own model as the resolver reports it, or
+                ``None`` when its bound pair is not in the catalogue.
 
         Returns:
-            The cheapest resolved model whose tier meets ``required`` and which
-            can execute tool-bearing work, or ``None`` when none qualifies.
+            The agent's own model when it qualifies; otherwise the cheapest
+            resolved model whose tier meets ``required`` and which can execute
+            tool-bearing work; ``None`` when nothing qualifies.
         """
+        if (
+            current is not None
+            and current.tool_capable
+            and current.tier is not None
+            and meets_required(current.tier, required)
+        ):
+            return current
         for candidate in self._resolver.models_at_or_above_tier(required):
             if candidate.tool_capable:
                 return candidate
@@ -204,18 +255,23 @@ class StakesAwareStrategy:
     ) -> StakesRoutingDecision:
         """Assemble the decision from the selected model.
 
+        A tier that differs while the model does not is the roster disagreeing
+        with the tier registry, not a route: the resolver's value is written
+        onto the returned model so downstream prompt-profile selection reads
+        the tier the model actually has, and the decision still reports
+        ``kept``.
+
         Returns:
             A :class:`StakesRoutingDecision` whose ``selected_model`` is the
             routed model (when it differs from the agent's) or the agent's
             current model (when it already satisfies the requirement).
         """
         current = identity.model
-        changed = (
+        routed = (
             selected.model_id != current.model_id
             or selected.provider_name != current.provider
-            or selected.tier != current.model_tier
         )
-        if changed:
+        if routed:
             selected_model = current.model_copy(
                 update={
                     "provider": selected.provider_name,
@@ -229,6 +285,16 @@ class StakesAwareStrategy:
                 f"{selected.model_id} (>= required {required_tier})"
             )
         else:
+            if selected.tier != current.model_tier:
+                logger.info(
+                    STAKES_ROUTING_TIER_ADJUSTED,
+                    agent_id=str(identity.id),
+                    model_id=current.model_id,
+                    from_tier=current.model_tier,
+                    to_tier=selected.tier,
+                    reason="roster_tier_stale",
+                )
+                current = current.model_copy(update={"model_tier": selected.tier})
             selected_model = current
             source = "stakes_aware:kept"
             reason = (

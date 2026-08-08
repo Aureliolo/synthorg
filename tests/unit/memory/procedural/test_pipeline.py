@@ -15,8 +15,9 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_snapshot import AgentContextSnapshot
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
-from synthorg.engine.recovery import FailureCategory, RecoveryResult
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.models import MemoryStoreRequest

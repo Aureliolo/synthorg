@@ -23,6 +23,8 @@ from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdap
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workspace.state import WorkspaceStateSlice, agent_workspace_root_of
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.providers.registry import ProviderRegistry
@@ -55,6 +57,25 @@ class TestProviderRegistrySwap:
         state.swap_provider_registry(old)
         state.swap_provider_registry(new)
         assert state.slice(ProvidersStateSlice).registry is new
+
+    def test_swap_binds_the_live_credential_catalog(self) -> None:
+        # A replacement registry is built by whoever rewrote the provider
+        # config, and none of those callers holds the catalog. Arriving
+        # unbound, every driver in it dispatched with no key.
+        state = _make_state()
+        catalog = mock_of[ConnectionCatalog]()
+        state.wire(IntegrationsStateSlice, provider_credential_catalog=catalog)
+        registry = ProviderRegistry({})
+        state.swap_provider_registry(registry)
+        assert registry.credential_catalog is catalog
+
+    def test_swap_without_a_catalog_leaves_the_registry_unbound(self) -> None:
+        # Construction-phase boot has no persistence yet, so there is
+        # genuinely no catalog to attach; the later reload swaps one in.
+        state = _make_state()
+        registry = ProviderRegistry({})
+        state.swap_provider_registry(registry)
+        assert registry.credential_catalog is None
 
 
 class TestWorkerExecutionServiceSeam:

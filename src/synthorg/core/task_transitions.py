@@ -13,16 +13,23 @@ AWAITING_INPUT transitions for completeness::
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     AUTH_REQUIRED -> ASSIGNED (approved) | CANCELLED (denied/timeout)
     AWAITING_INPUT -> IN_PROGRESS (answer received) | CANCELLED
-    BLOCKED -> ASSIGNED (unblocked)
-    FAILED -> ASSIGNED (reassignment for retry)
-    INTERRUPTED -> ASSIGNED (reassignment on restart)
-    SUSPENDED -> ASSIGNED (resume from checkpoint)
+    BLOCKED -> ASSIGNED (unblocked) | CANCELLED (abandoned)
+    FAILED -> ASSIGNED (reassignment for retry) | CANCELLED (abandoned)
+    INTERRUPTED -> ASSIGNED (reassignment on restart) | CANCELLED (abandoned)
+    SUSPENDED -> ASSIGNED (resume from checkpoint) | CANCELLED (abandoned)
 
 COMPLETED, CANCELLED, and REJECTED are terminal states with no
 outgoing transitions.  FAILED, INTERRUPTED, and SUSPENDED are
 non-terminal (can be reassigned).  AUTH_REQUIRED (waiting for
 authorization) and AWAITING_INPUT (paused for a human's answer to a
 mid-task clarification) are non-terminal.
+
+Every stuck state carries a direct ``CANCELLED`` exit because
+reassignment is not one: ``ASSIGNED`` requires an assignee, and a task
+that failed before it was ever assigned has none, so routing its
+abandonment through ``ASSIGNED`` failed the ``Task`` validator and left
+the row with no reachable exit at all. Its project then could not be
+deleted by any route, because the cascade could not resolve it.
 """
 
 from typing import Final
@@ -80,14 +87,21 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
         {TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED}
     ),
     TaskStatus.AUTH_REQUIRED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
-    TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED}),
-    TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED}),  # reassignment
-    TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED}),  # reassignment on restart
-    TaskStatus.SUSPENDED: frozenset({TaskStatus.ASSIGNED}),  # resume from checkpoint
+    TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
+    TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
+    TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
+    TaskStatus.SUSPENDED: frozenset({TaskStatus.ASSIGNED, TaskStatus.CANCELLED}),
     TaskStatus.COMPLETED: frozenset(),  # terminal
     TaskStatus.CANCELLED: frozenset(),  # terminal
     TaskStatus.REJECTED: frozenset(),  # terminal
 }
+
+#: Statuses any writer can move a task into with nothing but the task itself.
+#: ``ASSIGNED`` is absent on purpose: it needs an assignee the task may not
+#: have, which is what made abandonment unreachable from the stuck states.
+_UNCONDITIONAL_TARGETS: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.CANCELLED, TaskStatus.REJECTED, TaskStatus.FAILED}
+)
 
 _MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
     VALID_TRANSITIONS,
@@ -97,6 +111,7 @@ _MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
     config_event=TASK_TRANSITION_CONFIG_ERROR,
     transition_event=TASK_TRANSITION,
     all_states=TaskStatus,
+    unconditional_targets=_UNCONDITIONAL_TARGETS,
 )
 
 

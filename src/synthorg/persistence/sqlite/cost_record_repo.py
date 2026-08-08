@@ -32,6 +32,23 @@ from synthorg.persistence.sqlite._shared import WriteContext
 logger = get_logger(__name__)
 
 
+def _row_to_record(row: aiosqlite.Row) -> dict[str, object]:
+    """Project one row onto the model's field names.
+
+    A row written before ``claim_id`` existed carries ``NULL``, which the
+    model rejects outright (the field is non-optional with a generated
+    default). Dropping the key lets the default fill it, so a legacy row
+    reads back as a record with a fresh key rather than failing the page.
+
+    Returns:
+        The row as keyword arguments for :class:`CostRecord`.
+    """
+    data = dict(row)
+    if data.get("claim_id") is None:
+        del data["claim_id"]
+    return data
+
+
 class SQLiteCostRecordRepository:
     """SQLite implementation of the CostRecordRepository protocol.
 
@@ -70,17 +87,21 @@ class SQLiteCostRecordRepository:
                 data["timestamp"] = format_iso_utc(
                     normalize_utc(event.timestamp),
                 )
+                # The claim id is the tracker's idempotency key, so a
+                # redelivery of the same record is a no-op at the storage
+                # layer rather than a second billed row.
                 await self._db.execute(
                     """\
 INSERT INTO cost_records (
-    agent_id, task_id, provider, model, input_tokens,
+    agent_id, task_id, project_id, provider, model, input_tokens,
     output_tokens, cost, currency, timestamp, call_category,
-    prompt_class_id
+    prompt_class_id, claim_id
 ) VALUES (
-    :agent_id, :task_id, :provider, :model, :input_tokens,
+    :agent_id, :task_id, :project_id, :provider, :model, :input_tokens,
     :output_tokens, :cost, :currency, :timestamp, :call_category,
-    :prompt_class_id
-)""",
+    :prompt_class_id, :claim_id
+)
+ON CONFLICT (claim_id, timestamp) DO NOTHING""",
                     data,
                 )
                 await self._db.commit()
@@ -124,11 +145,14 @@ INSERT INTO cost_records (
         if filter_spec.prompt_class_id is not None:
             clauses.append("prompt_class_id = ?")
             params.append(filter_spec.prompt_class_id)
+        if filter_spec.since is not None:
+            clauses.append("timestamp >= ?")
+            params.append(format_iso_utc(normalize_utc(filter_spec.since)))
 
         sql = """\
-SELECT agent_id, task_id, provider, model, input_tokens,
+SELECT agent_id, task_id, project_id, provider, model, input_tokens,
        output_tokens, cost, currency, timestamp, call_category,
-       prompt_class_id
+       prompt_class_id, claim_id
 FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
@@ -145,7 +169,9 @@ FROM cost_records"""
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
-            records = tuple(CostRecord.model_validate(dict(row)) for row in rows)
+            records = tuple(
+                CostRecord.model_validate(_row_to_record(row)) for row in rows
+            )
         except (
             sqlite3.Error,
             aiosqlite.Error,

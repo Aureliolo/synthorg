@@ -5,6 +5,7 @@ from typing import cast
 import pytest
 
 from synthorg.api.lifecycle_helpers.feature_wiring import _wire_signals_service
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -32,18 +33,20 @@ def _signals_of(app_state: object) -> object:
 
 
 class TestWireSignalsService:
-    async def test_skips_without_persistence(self) -> None:
+    async def test_declines_naming_the_missing_persistence(self) -> None:
         app_state = make_app_state(performance_tracker=mock_of[PerformanceTracker]())
-        await _wire_signals_service(
-            app_state, effective_approval_store=_approval_store()
-        )
+        with pytest.raises(SubsystemDeclinedError, match="no persistence backend"):
+            await _wire_signals_service(
+                app_state, effective_approval_store=_approval_store()
+            )
         assert _signals_of(app_state) is None
 
-    async def test_skips_without_tracker(self) -> None:
+    async def test_declines_naming_the_missing_tracker(self) -> None:
         app_state = make_app_state(persistence=mock_of[PersistenceBackend]())
-        await _wire_signals_service(
-            app_state, effective_approval_store=_approval_store()
-        )
+        with pytest.raises(SubsystemDeclinedError, match="no performance tracker"):
+            await _wire_signals_service(
+                app_state, effective_approval_store=_approval_store()
+            )
         assert _signals_of(app_state) is None
 
     async def test_wires_when_deps_present(self) -> None:

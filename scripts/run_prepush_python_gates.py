@@ -128,6 +128,8 @@ _GATES: tuple[str, ...] = (
     "check_setting_compose_backed",
     "check_setting_live_or_compose_set",
     "check_subsystems_single_owner",
+    "check_subsystem_decline_reason",
+    "check_lifecycle_exit_reachable",
     "check_long_running_loops_have_kill_switch",
     "check_domain_error_hierarchy",
     "check_error_code_uniqueness",

@@ -11,12 +11,14 @@ from pydantic import ValidationError
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt import (
     SystemPrompt,
     build_error_prompt,
     build_system_prompt,
 )
+from synthorg.engine.prompt_render import _DISCOVERY_INSTRUCTION_TOOLS
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
@@ -38,6 +40,7 @@ from synthorg.observability.events.prompt import (
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
 from synthorg.providers.models import ChatMessage
+from synthorg.tools.discovery import _DISCOVERY_NAMES
 from tests._shared import as_uuid
 
 if TYPE_CHECKING:
@@ -195,6 +198,57 @@ class TestBuildSystemPrompt:
         for tool in sample_tool_definitions:
             assert tool.name not in result.content
         assert "tools" not in result.sections
+
+    def test_discovery_instruction_omitted_without_the_discovery_tools(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """A session without the trio is told to call its tools directly."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            l1_summaries=(
+                ToolL1Metadata(
+                    name="submit_decomposition_plan",
+                    short_description="Submit the finished plan",
+                    category="workflow",
+                    typical_cost_tier="cheap",
+                ),
+            ),
+        )
+
+        assert "list_tools()" not in result.content
+        assert "load_tool(" not in result.content
+        assert "submit_decomposition_plan" in result.content
+
+    def test_discovery_instruction_kept_when_the_trio_is_granted(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Progressive disclosure is still explained where it is available."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            l1_summaries=(
+                ToolL1Metadata(
+                    name="list_tools",
+                    short_description="List available tools",
+                    category="discovery",
+                    typical_cost_tier="cheap",
+                ),
+                ToolL1Metadata(
+                    name="load_tool",
+                    short_description="Load a tool definition",
+                    category="discovery",
+                    typical_cost_tier="cheap",
+                ),
+            ),
+        )
+
+        assert "list_tools()" in result.content
+        assert "load_tool(tool_name)" in result.content
+
+    def test_discovery_derivation_names_real_discovery_tools(self) -> None:
+        """The names the derivation looks for are the ones that exist."""
+        assert _DISCOVERY_INSTRUCTION_TOOLS <= _DISCOVERY_NAMES
 
     def test_tools_render_in_custom_template(
         self,

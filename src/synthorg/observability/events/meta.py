@@ -231,6 +231,13 @@ META_CHAT_QUESTION_NOT_FOUND: Final[str] = "meta.chat.question_not_found"
 # whole list for every operator, so this is the only signal it happened.
 META_CHAT_QUESTION_UNPROJECTABLE: Final[str] = "meta.chat.question_unprojectable"
 
+# Emitted at WARNING when a decided plan question could not be written back onto
+# its durable plan. The decision itself is already recorded, so the question
+# stays listed until a retry lands rather than the answer being lost silently.
+META_CHAT_QUESTION_PLAN_WRITEBACK_FAILED: Final[str] = (
+    "meta.chat.question_plan_writeback_failed"
+)
+
 # Emitted at WARNING when a parked question carries a reversibility value that
 # is not a known member. Both this and a MISSING value render as unclassified,
 # but only this one means something wrote a value nothing can read, so only

@@ -1,0 +1,51 @@
+name: 'Smoke-test sandbox toolchain'
+description: |
+  Run the sandbox image's own toolchain and fail if it warns about
+  itself. The sandbox executes every agent command, so whatever its
+  interpreters print on stderr is captured into each run's evidence and
+  read as if the agent's own command produced it.
+
+  The pairing this guards is not hypothetical: `nodejs-<major>` and
+  `npm` are separate Wolfi packages resolved independently, so a node
+  major the shipped npm does not declare support for installs cleanly
+  and then prints its unsupported-engine banner on every single npm
+  invocation, in every agent's captured stderr, for as long as nobody
+  notices.
+
+inputs:
+  image:
+    description: |
+      Image reference to run. Must be loadable via `docker run` (already
+      in the local daemon from a preceding build, or pullable).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Node and npm agree on the node major
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        node_version="$(docker run --rm --entrypoint node "${IMAGE}" --version)"
+        # stderr is the assertion target, so it is captured rather than
+        # merged: a banner printed alongside a successful --version is
+        # exactly the failure this step exists to catch.
+        npm_err="$(docker run --rm --entrypoint npm "${IMAGE}" --version 2>&1 >/dev/null || true)"
+        npm_version="$(docker run --rm --entrypoint npm "${IMAGE}" --version 2>/dev/null)"
+        echo "node ${node_version} / npm ${npm_version}"
+        if [ -n "${npm_err}" ]; then
+          echo "::error::sandbox npm printed to stderr on a plain --version:"
+          echo "${npm_err}"
+          echo "Pin docker/sandbox/apko.yaml to a node major this npm supports."
+          exit 1
+        fi
+
+    - name: Python runs
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        docker run --rm --entrypoint python "${IMAGE}" --version

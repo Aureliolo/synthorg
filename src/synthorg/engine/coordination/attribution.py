@@ -15,8 +15,11 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
     CoordinationWave,
 )
+from synthorg.engine.failure_classification import (
+    FailureCategory,
+    infer_failure_category,
+)
 from synthorg.engine.loop_protocol import TerminationReason
-from synthorg.engine.recovery import FailureCategory, infer_failure_category
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
@@ -46,6 +49,11 @@ _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {
     FailureCategory.DELEGATION_FAILED: "direct",
     FailureCategory.BUDGET_EXCEEDED: "coordination_overhead",
     FailureCategory.QUALITY_GATE_FAILED: "quality_gate",
+    # The provider never answered, so the agent's work was never scored:
+    # attributing it "direct" would penalise the agent for a credential or
+    # an outage it has no way to influence.
+    FailureCategory.PROVIDER_REFUSED: "coordination_overhead",
+    FailureCategory.PROVIDER_UNAVAILABLE: "coordination_overhead",
     FailureCategory.UNKNOWN: "direct",
 }
 

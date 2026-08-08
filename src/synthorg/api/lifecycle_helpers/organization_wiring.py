@@ -17,6 +17,7 @@ routine degradation.
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -39,13 +40,17 @@ async def wire_team_service(app_state: AppState) -> None:
 
     Args:
         app_state: Application state holding the organization slice.
+
+    Raises:
+        SubsystemDeclinedError: No settings service is composed, so there is
+            nothing for the team reads and writes to project.
     """
     org = app_state.slice(OrganizationStateSlice)
-    if (
-        org.team_service is not None
-        or app_state.slice(SettingsStateSlice).settings_service is None
-    ):
+    if org.team_service is not None:
         return
+    if app_state.slice(SettingsStateSlice).settings_service is None:
+        msg = "no settings service composed; teams live in the company settings blob"
+        raise SubsystemDeclinedError(msg)
     try:
         from synthorg.organization._team_service import TeamService  # noqa: PLC0415
 
@@ -78,12 +83,21 @@ async def wire_company_read_service(
         connected: Whether that backend is connected. History is left absent
             rather than half-wired when it is not, so the facade still serves
             the reads that need no history.
+
+    Raises:
+        SubsystemDeclinedError: The org surface the facade projects is absent.
     """
     org = app_state.slice(OrganizationStateSlice)
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     org_mutation = app_state.slice(ApiCoreStateSlice).org_mutation_service
-    if org.company_read_service is not None or resolver is None or org_mutation is None:
+    if org.company_read_service is not None:
         return
+    if resolver is None:
+        msg = "no settings resolver; company reads project the composed config"
+        raise SubsystemDeclinedError(msg)
+    if org_mutation is None:
+        msg = "no org mutation service; the facade reads through it"
+        raise SubsystemDeclinedError(msg)
     try:
         from synthorg.organization.services import CompanyReadService  # noqa: PLC0415
 

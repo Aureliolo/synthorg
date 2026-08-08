@@ -6,7 +6,7 @@ estimates tokens, and progressively trims optional sections to fit a
 token budget. Composes the result via :mod:`synthorg.engine.prompt_result`.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
@@ -46,6 +46,13 @@ if TYPE_CHECKING:
     from synthorg.core.company import Company
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.prompt_providers import PromptAmbientProviders
+
+#: The two discovery tools the progressive-disclosure instruction names.
+#: ``load_tool_resource`` is deliberately absent: the instruction never
+#: mentions it, so a session holding the other two can follow it.
+_DISCOVERY_INSTRUCTION_TOOLS: Final[frozenset[str]] = frozenset(
+    {"list_tools", "load_tool"}
+)
 
 
 def build_template_context(  # noqa: PLR0913
@@ -170,8 +177,16 @@ def build_template_context(  # noqa: PLR0913
             }
             for s in l1_summaries
         )
+        # Derived from the same registry view the section lists, never
+        # assumed: a session whose registry holds only its own tools was
+        # still told to call ``list_tools()`` first, and spent its turns
+        # on tool-not-found before producing anything.
+        context["has_tool_discovery"] = {
+            s.name for s in l1_summaries
+        } >= _DISCOVERY_INSTRUCTION_TOOLS
     else:
         context["l1_tools"] = None
+        context["has_tool_discovery"] = False
 
     if company is not None:
         context["company"] = {"name": company.name}

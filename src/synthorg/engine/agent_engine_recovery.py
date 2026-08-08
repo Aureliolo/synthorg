@@ -18,6 +18,7 @@ from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
@@ -25,7 +26,6 @@ from synthorg.engine.loop_protocol import (
     make_budget_checker,
 )
 from synthorg.engine.recovery import (
-    FailureCategory,
     RecoveryResult,
     RecoveryStrategy,
 )
@@ -122,6 +122,7 @@ class AgentEngineRecoveryMixin:
                 task_execution=ctx.task_execution,
                 error_message=error_msg,
                 context=ctx,
+                error_type=execution_result.error_type,
             )
 
             if recovery_result.can_resume:

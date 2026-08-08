@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.api.app_builders import build_chief_of_staff_chat
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -31,7 +32,12 @@ logger = get_logger(__name__)
 
 
 async def _wire_docs_engine(app_state: AppState) -> None:
-    """Wire the living-documentation engine once persistence + workspace exist."""
+    """Wire the living-documentation engine once persistence + workspace exist.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the docs engine is built from
+            is absent, named so the status surface can report which.
+    """
     from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
     from synthorg.engine.workspace.state import (  # noqa: PLC0415
         WorkspaceStateSlice,
@@ -45,23 +51,21 @@ async def _wire_docs_engine(app_state: AppState) -> None:
         persistence_of,
     )
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
-    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
-    if workspace_service is None:
-        return
     if app_state.slice(DocsStateSlice).service is not None:
         return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; project docs are durable"
+        raise SubsystemDeclinedError(msg)
+    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
+    if workspace_service is None:
+        msg = "no project workspace service; docs are committed through it"
+        raise SubsystemDeclinedError(msg)
     from synthorg.docs_engine.factory import build_docs_service  # noqa: PLC0415
     from synthorg.docs_engine.tool_factory import DocsToolFactory  # noqa: PLC0415
 
     if app_state.slice(MemoryStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="docs_engine",
-            note="memory backend not wired; docs engine wiring skipped",
-        )
-        return
+        msg = "no memory backend; docs are indexed into it"
+        raise SubsystemDeclinedError(msg)
     runtime = build_docs_service(
         repo=persistence_of(app_state).project_docs,
         workspace_service=workspace_service,
@@ -104,6 +108,9 @@ async def _wire_custom_rules_service(app_state: AppState) -> None:
     ``custom_rules`` repository; wiring it up front keeps the meta MCP
     ``list_rules`` handler off ``persistence.*`` (it resolves the wired
     service and 503s when absent rather than constructing per call).
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend to read rules from.
     """
     from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -115,7 +122,8 @@ async def _wire_custom_rules_service(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).custom_rules_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; custom rules are durable"
+        raise SubsystemDeclinedError(msg)
     service = CustomRulesService(repo=persistence_of(app_state).custom_rules)
     app_state.wire(MetaStateSlice, custom_rules_service=service)
     logger.info(API_APP_STARTUP, service="custom_rules", note="wired")
@@ -128,6 +136,9 @@ async def _wire_budget_versions_service(app_state: AppState) -> None:
     budget-config version history; wiring it up front keeps the budget
     MCP version handlers off ``persistence.*`` (they resolve the wired
     service and 503 when absent rather than constructing per call).
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend holding the history.
     """
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.budget.version_service import (  # noqa: PLC0415
@@ -141,7 +152,8 @@ async def _wire_budget_versions_service(app_state: AppState) -> None:
     if app_state.slice(BudgetStateSlice).budget_versions_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; the version history is append-only durable"
+        raise SubsystemDeclinedError(msg)
     service = BudgetConfigVersionsService(
         version_repo=persistence_of(app_state).budget_config_versions,
     )
@@ -154,7 +166,12 @@ async def _wire_research_engine(
     *,
     provider_registry: ProviderRegistry | None,
 ) -> None:
-    """Wire the research subsystem behind research.enabled + research.model."""
+    """Wire the research subsystem behind research.enabled + research.model.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator research is assembled from is
+            absent, named so the status surface can report which.
+    """
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
     )
@@ -164,15 +181,17 @@ async def _wire_research_engine(
         settings_service_of,
     )
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
     if app_state.slice(ResearchStateSlice).service is not None:
         return
-    if (
-        app_state.slice(SettingsStateSlice).settings_service is None
-        or provider_registry is None
-    ):
-        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; research runs are durable"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(SettingsStateSlice).settings_service is None:
+        msg = "no settings service; the research strategy set is settings-driven"
+        raise SubsystemDeclinedError(msg)
+    if provider_registry is None:
+        msg = "no provider registry; every research stage is an LLM call"
+        raise SubsystemDeclinedError(msg)
     runtime_settings = settings_service_of(app_state)
     try:
         await _build_and_wire_research(
@@ -303,6 +322,10 @@ async def _wire_signals_service(
     optional and degrade to empty per-domain summaries when absent, so
     the signals MCP handlers and ``/meta/chat`` signal reads come online
     rather than 503-ing.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend or no performance
+            tracker, the two the aggregator cannot degrade without.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -313,15 +336,12 @@ async def _wire_signals_service(
     if app_state.slice(MetaStateSlice).signals_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; every signal domain reads durable rows"
+        raise SubsystemDeclinedError(msg)
     performance_tracker = app_state.slice(HrStateSlice).performance_tracker
     if performance_tracker is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="signals",
-            note="performance tracker absent; signals wiring skipped",
-        )
-        return
+        msg = "no performance tracker; it is the aggregator's one hard dependency"
+        raise SubsystemDeclinedError(msg)
     from datetime import datetime  # noqa: PLC0415
 
     from synthorg.budget.cost_record import CostRecord  # noqa: PLC0415

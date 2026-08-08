@@ -13,6 +13,7 @@ feature-wiring orchestrator stays within its size budget.
 from typing import TYPE_CHECKING, Final
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -43,16 +44,21 @@ async def wire_knowledge_engine(
     already wired. The substrate is ghost-wired: it builds regardless of
     ``knowledge.enabled``, which is enforced live per request at the knowledge
     MCP handlers, so an operator toggling it takes effect with no restart.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so there is no
+            knowledge store or provenance chain to build over.
     """
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
     )
 
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
     if app_state.slice(KnowledgeStateSlice).service is not None:
         return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; knowledge sources and provenance are durable"
+        raise SubsystemDeclinedError(msg)
     await _build_and_wire_knowledge(app_state, provider_registry=provider_registry)
 
 
@@ -65,8 +71,8 @@ async def _build_and_wire_knowledge(
     """Build the knowledge substrate + synthesis arm and swap it onto the slice.
 
     Unconditionally rebuilds and swaps, so a settings subscriber can re-run it
-    to pick up a new synthesis model / provider / strategy. No-op (logs +
-    returns) when the memory backend is absent; RAISES ``ServiceUnavailableError``
+    to pick up a new synthesis model / provider / strategy. Declines when the
+    memory backend is absent; RAISES ``ServiceUnavailableError``
     when persistence is absent (the boot caller pre-gates on persistence; the
     settings subscriber surfaces that as a logged rebuild failure). The
     ``knowledge.enabled`` and ``knowledge.synthesis_enabled`` switches are NOT
@@ -80,6 +86,9 @@ async def _build_and_wire_knowledge(
             passes ``SETTINGS_SERVICE_SWAP_FAILED`` so an operator-triggered
             synthesis-config change that breaks the build surfaces as a settings
             failure rather than a misleading startup log.
+
+    Raises:
+        SubsystemDeclinedError: No memory backend, so retrieval has no index.
     """
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
     from synthorg.memory.state import (  # noqa: PLC0415
@@ -90,12 +99,8 @@ async def _build_and_wire_knowledge(
 
     config = app_state.config.knowledge
     if app_state.slice(MemoryStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="memory backend not wired; knowledge engine wiring skipped",
-        )
-        return
+        msg = "no memory backend; knowledge retrieval indexes into it"
+        raise SubsystemDeclinedError(msg)
     from synthorg.knowledge.factory import build_knowledge_service  # noqa: PLC0415
     from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
         build_knowledge_tool_factory,

@@ -5,6 +5,7 @@ from pathlib import Path
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dispatch_helpers import execute_waves
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -20,10 +21,26 @@ class SasDispatcher:
     Waves from DAG parallel groups. No workspace isolation.
     Designed for single-agent scenarios where the routing layer
     assigns all subtasks to one agent.
+
+    Args:
+        clock: Injectable time source.
+        assignment_writer: Persists each wave's assignments through the
+            central engine before that wave runs. ``None`` builds an
+            engine-less writer, which passes the wave through unchanged.
     """
 
-    def __init__(self, *, clock: Clock | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Clock | None = None,
+        assignment_writer: AssignmentWriter | None = None,
+    ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._assignment_writer = (
+            assignment_writer
+            if assignment_writer is not None
+            else AssignmentWriter(None)
+        )
 
     async def dispatch(
         self,
@@ -54,6 +71,7 @@ class SasDispatcher:
             parallel_executor,
             clock=self._clock,
             fail_fast=config.fail_fast,
+            assignment_writer=self._assignment_writer,
         )
 
         return DispatchResult(

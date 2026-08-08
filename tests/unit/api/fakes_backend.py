@@ -64,6 +64,7 @@ from tests.unit.api.fakes import (
     FakeFlightRecorderFrameRepository,
     FakeHeartbeatRepository,
     FakeLifecycleEventRepository,
+    FakeLifecycleTransitionRepository,
     FakeMessageRepository,
     FakeParkedContextRepository,
     FakePersonalityPresetRepository,
@@ -798,6 +799,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
         self._lifecycle_events = FakeLifecycleEventRepository()
+        self._lifecycle_transitions = FakeLifecycleTransitionRepository()
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
@@ -1042,6 +1044,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def lifecycle_events(self) -> FakeLifecycleEventRepository:
         return self._lifecycle_events
+
+    @property
+    @override
+    def lifecycle_transitions(self) -> FakeLifecycleTransitionRepository:
+        return self._lifecycle_transitions
 
     @property
     @override

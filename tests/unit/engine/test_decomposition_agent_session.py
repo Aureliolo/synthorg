@@ -26,6 +26,7 @@ from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
     DecompositionDepthError,
+    DecompositionError,
     DecompositionSubtaskLimitError,
 )
 from synthorg.security.autonomy.enums import ToolCategory
@@ -153,9 +154,24 @@ class TestAgentSessionDecompose:
         plan = await strategy.decompose(_task(), DecompositionContext())
 
         assert fallback.called
-        assert plan is fallback.plan
+        assert plan.subtasks == fallback.plan.subtasks
         # The session never ran: the provider was not called.
         assert provider.call_count == 0
+
+    async def test_a_fallback_plan_says_which_planner_produced_it(self) -> None:
+        """The substitution has to be visible on the plan the operator approves.
+
+        A fallback plan is a different plan than the one the owner was asked
+        to research; indistinguishable at the approval gate, it is approved as
+        though it were the researched one.
+        """
+        provider = ScriptedProvider([make_text_response("unused")])
+        fallback = _SentinelFallback()
+        strategy = _strategy(provider, fallback)
+
+        plan = await strategy.decompose(_task(), DecompositionContext())
+
+        assert plan.planning_strategy == "sentinel-fallback"
 
     async def test_owner_provider_unresolved_falls_back(self) -> None:
         # The owner is pinned to a provider the registry does not know, so the
@@ -178,20 +194,25 @@ class TestAgentSessionDecompose:
         plan = await strategy.decompose(_task(), context)
 
         assert fallback.called
-        assert plan is fallback.plan
+        assert plan.subtasks == fallback.plan.subtasks
 
-    async def test_session_without_submission_falls_back(self) -> None:
-        # The owner reasons but never submits a plan; the strategy degrades to
-        # the fallback rather than failing the greenlight.
+    async def test_a_session_that_ran_and_submitted_nothing_raises(self) -> None:
+        """A researched plan that went missing is not replaced silently.
+
+        The owner reasoned across turns with read-only tools and finished
+        without calling its one tool. Falling back substitutes a single-shot
+        plan the operator then approves believing it is the researched one, so
+        the failure surfaces on the plan instead.
+        """
         provider = ScriptedProvider([make_text_response("I am still thinking.")])
         fallback = _SentinelFallback()
         strategy = _strategy(provider, fallback)
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
-        plan = await strategy.decompose(_task(), context)
+        with pytest.raises(DecompositionError, match="without submitting a plan"):
+            await strategy.decompose(_task(), context)
 
-        assert fallback.called
-        assert plan is fallback.plan
+        assert not fallback.called
         assert provider.call_count >= 1
 
     def test_strategy_name(self) -> None:
@@ -331,7 +352,11 @@ class TestPlanningBriefMatchesTheGrant:
         resolved = context or DecompositionContext(
             max_subtasks=5, owner_identity=make_e2e_identity()
         )
-        await strategy.decompose(_task(), resolved)
+        # The scripted session runs and submits nothing, which is a planning
+        # failure rather than a fallback; the prompt it was sent is still the
+        # subject here, so the refusal is expected and read past.
+        with pytest.raises(DecompositionError, match="without submitting a plan"):
+            await strategy.decompose(_task(), resolved)
 
         assert provider.received_messages, "the session never reached the provider"
         return "\n".join(
@@ -427,17 +452,23 @@ class TestAgentSessionGuards:
         assert "2 subtasks" in str(excinfo.value)
         assert "max_subtasks of 1" in str(excinfo.value)
 
-    async def test_a_session_submitting_no_plan_still_falls_back(self) -> None:
-        # Nothing was researched, so there is no better plan to lose.
+    async def test_a_session_that_gave_up_raises_rather_than_falling_back(
+        self,
+    ) -> None:
+        """Finishing without submitting is producing nothing, not producing less.
+
+        Same shape as the zero-artifact guard: a run that terminated on its own
+        terms having delivered none of what it was for fails visibly.
+        """
         provider = ScriptedProvider([make_text_response("I give up")])
         fallback = _SentinelFallback()
         strategy = _strategy(provider, fallback)
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
-        plan = await strategy.decompose(_task(), context)
+        with pytest.raises(DecompositionError):
+            await strategy.decompose(_task(), context)
 
-        assert fallback.called
-        assert plan is fallback.plan
+        assert not fallback.called
 
     async def test_a_failed_session_does_not_log_the_raw_failure_text(self) -> None:
         """The termination detail is provider text, so it can carry a secret.
@@ -455,7 +486,8 @@ class TestAgentSessionGuards:
         with structlog.testing.capture_logs() as events:
             plan = await strategy.decompose(_task(), context)
 
-        assert plan is fallback.plan
+        # A session that ERRORed never ran: the fallback stands, and says so.
+        assert plan.planning_strategy == "sentinel-fallback"
         details = [
             event["termination_detail"]
             for event in events

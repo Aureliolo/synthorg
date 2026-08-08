@@ -396,7 +396,12 @@ class SubsystemReconciler:
             )
             return _Outcome.NONE
         self._book.failures.pop(spec.name, None)
-        if declared is not None or not is_active(spec, self._capabilities, app_state):
+        # Liveness is read from ``provides`` and nothing else. A declared
+        # reason supplies the WHY, never the WHETHER: an activation that
+        # declines on its own idempotency guard while the capability is
+        # already installed is up, and letting its claim override the probe
+        # is exactly the drift ``provides`` exists to prevent.
+        if not is_active(spec, self._capabilities, app_state):
             # Activation returned without installing its capability. Its own
             # internal gate declined for a reason the declaration does not
             # model, so leave it alone and let the next pass try again.

@@ -6,9 +6,9 @@ import pytest
 
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
-    FailureCategory,
     RecoveryResult,
 )
 

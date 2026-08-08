@@ -29,6 +29,7 @@ from synthorg.api.lifecycle_helpers._model_pin_wiring import (
     build_pin_validation_registry,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
@@ -226,17 +227,20 @@ async def wire_eval_loop(
         app_state: The application state holding the collaborator slices.
         provider_registry: Registry used to resolve a completion provider when
             an IDENTIFY/PROPOSE step is configured for ``llm`` mode.
+
+    Raises:
+        SubsystemDeclinedError: No performance tracker or no training
+            service, the two the loop scores and remediates through.
     """
     hr = app_state.slice(HrStateSlice)
     if hr.eval_loop_coordinator is not None:
         return
-    if hr.performance_tracker is None or hr.training_service is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="eval_loop",
-            note="tracker or training service absent; eval loop disabled",
-        )
-        return
+    if hr.performance_tracker is None:
+        msg = "no performance tracker; the loop scores from its records"
+        raise SubsystemDeclinedError(msg)
+    if hr.training_service is None:
+        msg = "no training service; remediation is delivered through it"
+        raise SubsystemDeclinedError(msg)
 
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
     # Route proposed remediation actions to operators when a notification

@@ -43,6 +43,7 @@ from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
+from synthorg.engine.autonomy_seam import AutonomyResolution
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
@@ -409,6 +410,10 @@ class AgentEngine(
         self._audit_log = audit_log if audit_log is not None else AuditLog()
         self._project_repo = project_repo
         self._agent_registry = agent_registry
+        # Bound after construction by the boot path (the resolver reads the
+        # per-agent level and the initiative mode, both of which the worker
+        # layer owns); see ``set_autonomy_resolution``.
+        self._autonomy_resolution: AutonomyResolution | None = None
         # Blocking-delegation runner dispatches child runs back through this
         # same engine (``AgentEngine.run`` holds no per-run instance state, so
         # the nested call is re-entrant). Wired only when both the task engine
@@ -439,6 +444,37 @@ class AgentEngine(
             has_openhands_loop_deps=self._openhands_loop_deps is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
+        )
+
+    def set_autonomy_resolution(self, resolution: AutonomyResolution) -> None:
+        """Bind the one resolver every dispatch path asks for autonomy.
+
+        Called by the boot path once the worker execution service exists.
+        Until it is bound, a caller that supplies no autonomy runs
+        degraded, which is what a coordinated wave did permanently.
+
+        Args:
+            resolution: The single owner of "what autonomy governs this
+                run", asked whenever :meth:`run` is called without one.
+        """
+        self._autonomy_resolution = resolution
+
+    async def _effective_autonomy_for(
+        self,
+        identity: AgentIdentity,
+        *,
+        task_id: str,
+        project_id: NotBlankStr | None,
+    ) -> EffectiveAutonomy | None:
+        """Ask the bound resolver what governs this run.
+
+        Returns:
+            The resolved autonomy, or ``None`` when nothing is bound.
+        """
+        if self._autonomy_resolution is None:
+            return None
+        return await self._autonomy_resolution(
+            identity, task_id=task_id, project_id=project_id
         )
 
     @property
@@ -556,6 +592,10 @@ class AgentEngine(
                 # (agent pinned to an unregistered provider) fails the run
                 # here rather than mis-dispatching to the engine default.
                 provider = self._dispatch_client_for(identity, self._provider)
+                if effective_autonomy is None:
+                    effective_autonomy = await self._effective_autonomy_for(
+                        identity, task_id=task_id, project_id=task.project
+                    )
                 loop_mode = (
                     "auto"
                     if self._auto_loop_config is not None

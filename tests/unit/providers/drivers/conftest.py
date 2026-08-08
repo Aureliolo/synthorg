@@ -1,15 +1,33 @@
 """Shared fixtures and mock factories for driver tests."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 # ── Sample ProviderConfig ────────────────────────────────────────
+
+
+def make_credential_catalog(api_key: str = "test-api-key") -> ConnectionCatalog:
+    """Build a catalog that resolves one api_key for the test connection.
+
+    Every ``ProviderConfig`` here names a ``connection_name`` (the model
+    requires one for api-key auth), and a driver naming a connection with no
+    catalog bound fails closed rather than dispatching unauthenticated. So a
+    driver under test needs the catalog a real one has.
+
+    Returns:
+        A catalog whose ``get_credentials`` resolves ``{"api_key": ...}``.
+    """
+    catalog = mock_of[ConnectionCatalog]()
+    catalog.get_credentials.return_value = {"api_key": api_key}
+    return cast("ConnectionCatalog", catalog)
 
 
 def make_provider_config(
