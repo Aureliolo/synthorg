@@ -132,7 +132,7 @@ the configured `transition_threshold` fraction of total tasks.
 
 **Default velocity unit**: points per task (`pts/task`).
 
-**Best for**: fast-moving agents, minimal overhead, solo founders, startups,
+**Suits**: fast-moving agents, minimal overhead, solo founders, startups,
 data pipelines.
 
 ### Calendar
@@ -158,7 +158,7 @@ Task completion does _not_ trigger transition.
 
 **Default velocity unit**: points per day (`pts/day`).
 
-**Best for**: client-facing schedules, fixed reporting cadences, consultancies.
+**Suits**: client-facing schedules, fixed reporting cadences, consultancies.
 
 ### Hybrid (First Wins)
 
@@ -186,7 +186,7 @@ calendar duration boundary.
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
-**Best for**: teams that need predictability with throughput responsiveness,
+**Suits**: teams that need predictability with throughput responsiveness,
 dev shops, product teams, enterprises.
 
 ### Event-Driven
@@ -217,7 +217,7 @@ sprint:
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
-**Best for**: flexible project-based work, agencies, composable with
+**Suits**: flexible project-based work, agencies, composable with
 the MessageBus.
 
 ### Budget-Driven
@@ -240,7 +240,7 @@ when a configured budget threshold is crossed.
 
 **Default velocity unit**: points per currency unit (`pts/<DEFAULT_CURRENCY>`, where `DEFAULT_CURRENCY` is defined in `src/synthorg/budget/currency.py` and can be overridden at runtime by the `budget.currency` setting).
 
-**Best for**: cost-conscious organisations where every agent action has a
+**Suits**: cost-conscious organisations where every agent action has a
 real dollar cost. Ensures ceremonies happen proportionally to spend.
 
 ### Throughput-Adaptive
@@ -266,7 +266,7 @@ task-driven).
 **Default velocity unit**: points per task (`pts/task`), with rate-of-change
 as a secondary metric.
 
-**Best for**: discovery/research work where pace varies wildly. Ceremonies
+**Suits**: discovery/research work where pace varies wildly. Ceremonies
 fire when something changes, not on a fixed schedule.
 
 ### External-Trigger
@@ -300,7 +300,7 @@ sprint:
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
-**Best for**: integration with real-world dev workflows, CI/CD-driven
+**Suits**: integration with real-world dev workflows, CI/CD-driven
 organisations.
 
 ### Milestone-Driven
@@ -327,7 +327,7 @@ sprint:
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
-**Best for**: phased delivery, release-oriented workflows, open-source
+**Suits**: phased delivery, release-oriented workflows, open-source
 projects with async contributors.
 
 ---
@@ -636,7 +636,7 @@ its persona. Users can override via settings.
 | `research_lab` | `throughput_adaptive` | Discovery pace varies wildly |
 | `consultancy` | `calendar` | Client expects fixed reporting schedules |
 | `data_team` | `task_driven` | Pipeline/batch completion oriented |
-| `growth_marketing` | `event_driven` | Campaign-driven, reacts to launches and signals |
+| `growth_marketing` | `event_driven` | Campaign-driven; reacts to launches and signals |
 | `support_desk` | `event_driven` | Ticket-driven, reacts to incoming demand |
 | `security_team` | `calendar` | Fixed review and audit cadences |
 

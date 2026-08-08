@@ -133,7 +133,7 @@ Key design decisions:
 - **Automatic vs human-gated**: `engine.auto_review_on_completion` (default **on**,
   hot-reloadable) controls who acts on a task reaching `IN_REVIEW`. On, the staged
   pipeline runs automatically and applies its verdict so a verified task
-  self-completes without a human; off, a human opens the review and decides. It is
+  self-completes without a human; off, the review is opened and decided by a human. It is
   on by default so the review pipeline (the completion oracle included) runs
   automatically rather than parking every task in `IN_REVIEW` for a human. The
   setting only decides whether the pipeline runs *automatically*: the oracle gate
@@ -245,9 +245,9 @@ Build tools (`mvn`, `gradle`, `make`) keep positional target matching,
 because their arguments are phase names rather than verbs.
 `classify_grounding_requirement` marks a task REQUIRED when it declares (or
 produced) a CODE / TESTS artifact; a docs / plan / decision task is
-NOT_APPLICABLE and the oracle abstains. The verdict uses LATEST-run semantics
+NOT_APPLICABLE and the oracle abstains. The verdict uses NEWEST-run semantics
 (the newest test run decides), so a task that failed, was reworked, and now
-passes is VERIFIED rather than blocked forever. A REQUIRED task whose latest
+passes is VERIFIED rather than blocked forever. A REQUIRED task whose newest
 test run failed (`BUILD_TEST_FAILED`) or that has no passing test evidence
 (`UNVERIFIED`, the stub the oracle exists to catch) is routed back to
 IN_PROGRESS. This gate **fails CLOSED**: absent, failing, or unreadable test
@@ -292,7 +292,7 @@ load-bearing gate in the chain (fail-closed, on by default,
 `min_stakes=low`), so it reads the thing it is approving.
 
 Size is bounded by two live settings, so an operator can tune what the
-reviewer sees without a restart: `engine.review_artifact_max_chars_per_file`
+reviewer receives without a restart: `engine.review_artifact_max_chars_per_file`
 (default 20000) and `engine.review_artifact_max_chars_total` (default 60000).
 Truncation, omission, an absent path, a directory, and an unreadable file
 each produce an explicit note in the assembled text rather than silently
@@ -341,7 +341,7 @@ oracle (build/test then peer review), and the adversarial red-team gate.
 | Phase | Surface | Trigger | Task status during | Exit | Where documented |
 |-------|---------|---------|--------------------|------|------------------|
 | Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
-| Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page, [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
+| Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page; [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
 | Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT / ESCALATE: routes back to `IN_PROGRESS` with the reason. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
 | Completion oracle PASS | Output-style gate | Deterministic (no LLM), always on when the policy is wired and enabled. Scans the deliverable prose for a hard-rule violation (the em-dash ban) before the adversarial gates, a defence-in-depth backstop for a deliverable that reached completion by a path that skipped a guarded tool. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the output-style summary as the rework reason. Clean / shadow / exempt: prior verdict stands. Policy unwired or disabled: pass-through. | [Output-Style Policy](output-style-policy.md) |

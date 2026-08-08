@@ -39,7 +39,7 @@ Stores that expose `fetchMore*` actions keep `nextCursor` + `hasMore` in state (
 The dashboard calls:
 
 - `getLiveness()` (`/api/v1/healthz`): always 200 while the process is alive.
-- `getReadiness()` (`/api/v1/readyz`): 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise. The body is topology-free **and version-free** (binary outcome + uptime): both are unauthenticated, and an exact build version tells an anonymous caller which advisories apply.
+- `getReadiness()` (`/api/v1/readyz`): 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise. The body is topology-free **and version-free** (binary outcome + uptime): both are unauthenticated, and an exact build version reveals to an anonymous caller which advisories apply.
 - `getHealthDetail()` (`/api/v1/health`): authenticated per-component breakdown (persistence / message bus / providers / telemetry / memory / backup) plus the build version, for the health surfaces; requires a read-access role. 200 healthy / 503 unavailable. Takes an optional `AbortSignal` so a caller can release the request rather than only ignore its result.
 
 `ReadinessOutcome` is a binary `'ok' | 'unavailable'` union. Supervisors have no sensible action for a partial-degraded state, so the binary is intentional. Any caller of `getReadiness()` must handle the 503 path explicitly rather than assuming a 200 body.

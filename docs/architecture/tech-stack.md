@@ -72,7 +72,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| **Language** | Python 3.14+ | Best AI/ML ecosystem; all major frameworks use it. LiteLLM, MCP, and memory layer candidates are all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
+| **Language** | Python 3.14+ | Widest AI/ML ecosystem; all major frameworks use it. LiteLLM, MCP, and memory layer candidates are all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | Litestar | Async-native with built-in channels (pub/sub WebSocket), auto OpenAPI 3.1 docs, class-based controllers, native route guards, built-in rate limiting / CSRF / compression middleware, explicit DI, Pydantic v2 support via plugin. See the [design decision](#why-litestar-over-fastapi) below. |
 | **LLM Abstraction** | LiteLLM | <!--RS:providers_via_litellm-->95+<!--/RS--> providers, unified API, built-in cost tracking, retries/fallbacks. |
 | **Agent Memory** | `sqlvector`, `composite`, `inmemory` backends (config-selected) | Three backends are config-selectable behind a pluggable `MemoryBackend` protocol ([Decision Log](decisions.md)): `sqlvector` (the default: dense vectors plus an inverted term index in the operational database, via pgvector on Postgres and sqlite-vec on SQLite), `composite` (per-namespace routing across backends), and `inmemory` (ephemeral and keyword-only, discouraged, reachable only as a deliberate opt-in). Recall is hybrid dense + BM25 sparse fused with RRF, scored in Python so both databases rank identically. |

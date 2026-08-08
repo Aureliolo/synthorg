@@ -342,7 +342,7 @@ Performance data is exposed via three API sub-routes on `/api/v1/agents/{agent_i
 
 | Sub-route | Response model | Description |
 |-----------|---------------|-------------|
-| `GET /performance` | `AgentPerformanceSummary` | Flat summary: tasks completed (total/7d/30d), success rate, cost per task, quality/collaboration scores, trend direction, plus raw window metrics and trend results |
+| `GET /performance` | `AgentPerformanceSummary` | Flat summary: tasks completed (total/7d/30d), success rate, cost per task, quality/collaboration scores, trend direction (plus raw window metrics and trend results) |
 | `GET /activity` | `PaginatedResponse[ActivityEvent]` | Paginated chronological timeline merging lifecycle events, task metrics, cost records, tool invocations, and delegation records (most recent first). Supports typed `ActivityEventType` enum filtering (invalid values return 400). Cost events are redacted for read-only roles. Response includes `degraded_sources` field for partial data detection |
 | `GET /history` | `ApiResponse[tuple[CareerEvent, ...]]` | Career-relevant lifecycle events (hired, fired, promoted, demoted, onboarded) in chronological order |
 

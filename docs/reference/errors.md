@@ -13,7 +13,7 @@ SynthOrg's REST API emits RFC 9457 [`Problem Details`](https://www.rfc-editor.or
 
 Clients should dispatch on `error_code` (most specific) and fall back to `error_category` for generic handling. Messages and titles are human-readable and may change without notice; the code is the contract.
 
-This page is the developer-oriented reference for the problem-type URIs and the `NotFoundError` class hierarchy. For the response surface and content negotiation an API consumer sees, see the [Error Reference](../errors.md).
+This page is the developer-oriented reference for the problem-type URIs and the `NotFoundError` class hierarchy. For the response surface and content negotiation an API consumer receives, see the [Error Reference](../errors.md).
 
 ## Category URIs
 
@@ -43,7 +43,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 1008 | `SESSION_NO_TOKEN` | No session cookie or bearer token on the request |
 | 1009 | `SESSION_EXPIRED` | Session cookie / JWT decoded but past expiry |
 | 1010 | `SECURITY_TOGGLE_CONFIRM_REQUIRED` | Weakening a security setting without explicit confirmation and a reason |
-| 1011 | `GATEWAY_TOKEN_INVALID` | LLM-gateway run token missing, malformed or expired |
+| 1011 | `GATEWAY_TOKEN_INVALID` | LLM-gateway run token missing, malformed, or expired |
 
 ## Validation (2xxx)
 

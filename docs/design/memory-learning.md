@@ -215,7 +215,7 @@ Capture fires on the edge a project first reaches `COMPLETED`
 (`ProjectRollupService._maybe_capture_retro`), and that edge is derived from
 persisted project status, not from in-memory bookkeeping: the project row is
 already `COMPLETED` before the trigger runs, so every later recompute reads
-`before == COMPLETED` and no longer sees an edge. A process that restarts after
+`before == COMPLETED` and no longer detects an edge. A process that restarts after
 (or during) a capture therefore cannot re-run it, and a redelivered completion
 event changes nothing. Two plans of one project completing together are
 collapsed by an in-flight guard keyed on the project id, and an org-memory scan
@@ -486,7 +486,7 @@ The fine-tune pipeline draws its `{query, positive_passage}` contrastive pairs f
   - **Distillation trajectories**: EPISODIC distillation entries (condensed run narratives).
   - **Corrected failures**: PROCEDURAL `failure:*` lessons from the procedural-memory pipeline.
 
-  Pairs are then **curated by benchmark score**: the golden-company scorecard history is the quality filter. A record is kept only when the benchmark run that first observed it (the earliest run at or after the record's timestamp) passed; records newer than the latest run inherit that run's verdict. With no benchmark history every pair is kept.
+  Pairs are then **curated by benchmark score**: the golden-company scorecard history is the quality filter. A record is kept only when the benchmark run that first observed it (the earliest run at or after the record's timestamp) passed; records newer than the most recent run inherit that run's verdict. With no benchmark history every pair is kept.
 
 The trajectory source is a REST opt-in: the MCP `FineTunePlan` keeps `source_dir` required and always runs in directory mode, so trajectory harvesting is an explicit dashboard / REST choice rather than a silent default that would break an empty organisation or an existing directory-mode caller.
 

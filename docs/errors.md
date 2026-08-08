@@ -210,7 +210,7 @@ Agents should use `retryable` and `retry_after` for autonomous retry decisions:
 - **`retry_after`**: when set, wait this many seconds before retrying
 - **`retryable: false`**: do not retry; the request needs to be fixed
 
-Currently retryable error codes:
+Retryable error codes:
 
 | Code | Name | Typical Cause |
 |------|------|---------------|

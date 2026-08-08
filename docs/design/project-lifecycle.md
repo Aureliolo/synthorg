@@ -25,7 +25,7 @@ flowchart LR
 
 | edge | field | notes |
 | --- | --- | --- |
-| Project to Plan | `Project.plan_id` | the plan currently being executed |
+| Project to Plan | `Project.plan_id` | the plan being executed |
 | Plan to Project | `Plan.project` | set at plan creation, immutable |
 | Plan to Task | `Plan.parent_task_id` | the objective task the plan decomposes; a real FK, `ON DELETE RESTRICT` |
 | Task to Plan | `Task.plan_id` | stamped at dispatch |
@@ -51,7 +51,7 @@ row has to be written by every actor that creates a child, in the same
 transaction, forever; a scalar upward key is written once by the actor that
 already owns the write. The dead field was removed rather than filled in.
 
-`Project.plan_id` always names the one plan the project is currently working
+`Project.plan_id` always names the one plan the project is working
 through. Every earlier revision stays reachable through
 `PlanFilterSpec(project=...)`, which returns superseded plans too.
 
@@ -135,7 +135,7 @@ was retried, and it would assert a judgement the system is not entitled to make.
 
 Ending an initiative is a human act, and `CANCELLED` already expresses it.
 Recovery is a human act too: replan. Failed and blocked work surfaces as
-**derived counts** on the progress view, so the operator sees that an initiative
+**derived counts** on the progress view, so the operator can tell that an initiative
 needs attention without the system pretending to have decided its fate.
 
 The general rule: **statuses are what the organisation decides; "something is
@@ -177,7 +177,7 @@ Requiring `COMPLETED` therefore inherits every one of those gates without the
 rollup making a single oracle call.
 
 This used to be a property of which writers were wired rather than a structural
-guarantee, because two paths reached `COMPLETED` without the oracle chain. Both
+invariant, because two paths reached `COMPLETED` without the oracle chain. Both
 are now fenced:
 
 - `LifecycleAdvancingExecutionService`
@@ -201,7 +201,7 @@ item passing its own gate does not deliver the objective, the tail does.
 ## Rollup
 
 `ProjectRollupService` (`engine/initiative/rollup.py`) registers as a
-`TaskEngine` observer, so it sees every task status write regardless of which
+`TaskEngine` observer, so it observes every task status write regardless of which
 path produced it: the review gate's decision, the execution loop's failure
 handling, an operator cancellation.
 

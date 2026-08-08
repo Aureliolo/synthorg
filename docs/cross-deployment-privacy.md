@@ -8,7 +8,7 @@ When enabled, the following anonymised fields are sent to the configured collect
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | String | Wire format version (currently `"1"`) for forward compatibility |
+| `schema_version` | String | Wire format version (`"1"`) for forward compatibility |
 | `deployment_id` | Salted SHA-256 hash | Non-reversible identifier for deployment correlation |
 | `event_type` | Enum | `proposal_decision` or `rollout_result` |
 | `timestamp` | Date (day only) | ISO 8601 date, no time component |
@@ -32,7 +32,7 @@ The following fields are **explicitly dropped** during anonymisation and never l
 - **User names** (`decided_by`): Dropped
 - **Free-text reasons** (`decision_reason`, `details`): Dropped
 - **Proposal titles and descriptions**: Dropped
-- **Config values**: Only categorical altitude names are sent, never actual thresholds or settings
+- **Config values**: Only categorical altitude names are sent; actual thresholds and settings never leave the deployment
 - **Raw UUIDs** (`proposal_id`): Dropped (deployment_id is a salted hash, not a UUID)
 - **Exact timestamps**: Coarsened to day granularity (no time, no timezone)
 - **Custom rule names**: Mapped to generic `"custom"` to prevent logic leakage
@@ -100,4 +100,4 @@ self_improvement:
     collector_enabled: true  # enable collector role
 ```
 
-The collector never sees unanonymized data; it only receives the anonymised events described above.
+The collector never receives unanonymized data; it only receives the anonymised events described above.

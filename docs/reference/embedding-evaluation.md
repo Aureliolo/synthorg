@@ -27,7 +27,7 @@ is that **MTEB performance does not generalise to memory retrieval**:
 Negative or near-zero correlations mean a model that tops MTEB may perform poorly on the memory
 retrieval tasks SynthOrg relies on. Procedural memory shows the strongest (but still weak) transfer,
 while dialogue memory shows **anti-correlation**: the worst MTEB models sometimes outperform the
-best on dialogue retrieval.
+top-ranked ones on dialogue retrieval.
 
 ---
 

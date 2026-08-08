@@ -141,9 +141,9 @@ verifier) is recorded for traceability only.
 the raw body, and `WebhookReceiptService` / `WebhookActivityService` read and
 retry them.
 
-**No code path writes one yet.** The repositories, the services and the retention
+**No code path writes one yet.** The repositories, the services, and the retention
 sweep are all wired, but nothing populates the table, so the activity endpoint
-and the retention setting currently have nothing to act on.
+and the retention setting have nothing to act on.
 
 ## Adding a new provider
 

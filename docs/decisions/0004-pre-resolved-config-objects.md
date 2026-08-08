@@ -8,8 +8,8 @@ Accepted, implemented in WP-4 (issue #1919).
 
 Many services are constructed with a `config_resolver: ConfigResolver`
 and call `await config_resolver.get_bool(ns, key)` /
-`get_int` / `get_float` on the hot path, once per request or per loop
-iteration. This couples every service body to the settings resolution
+`get_int` / `get_float` on the hot path: once per request, or once per
+loop iteration. This couples every service body to the settings resolution
 machinery, repeats the (namespace, key) string pair at each callsite,
 re-resolves values that change rarely, and makes the service's
 configuration surface invisible at construction (a reader must grep

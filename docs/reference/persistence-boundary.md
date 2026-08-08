@@ -94,7 +94,7 @@ async with backend.write_context():
     await project_repo.save(project)
 ```
 
-The mutual-exclusion guarantee, however, is backend-specific:
+The mutual-exclusion property, however, is backend-specific:
 
 - **SQLite** acquires a shared in-process `asyncio.Lock`. The single `aiosqlite.Connection` is shared by every repository on that backend, so concurrent writers must serialise at the statement level. Repositories receive the backend's `write_context` bound method at construction and call `async with self._write_context():` around every multi-statement transaction.
 - **Postgres** yields immediately. Each repository operation checks out an independent connection from the async pool, so writers are isolated at the database level without an in-process lock. The method exists only to keep the cross-backend interface uniform; it does not provide mutual exclusion beyond what the pool already gives.

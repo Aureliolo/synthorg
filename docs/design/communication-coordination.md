@@ -403,7 +403,7 @@ logs with avoidable failures during degraded startup.
 
 The communication domain exposes five service facades on `AppState` for
 MCP handler shims. Each is a thin wrapper; audit logging lives in the
-facade, not the handler or the repository.
+facade rather than in the handler or the repository.
 
 | Facade | Module | Tools shimmed |
 |---|---|---|
@@ -433,7 +433,7 @@ and known risks.
 
 ### Meeting Protocol Safety
 
-All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) guarantee
+All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) ensure
 bounded execution via `TokenTracker` phase-boundary checks, hard token budgets with 20%
 synthesis reserve, and turn/round limits. No protocol has unbounded execution paths.
 
@@ -495,7 +495,7 @@ All five conflict resolution strategies terminate with bounded resource use:
     hands the operator's decision to the processor instead of
     returning the generic ``ESCALATED_TO_HUMAN`` fallback. The
     sweeper and per-resolver timeout still bound stale rows; the
-    re-read guarantees that an operator's choice is never masked by a
+    re-read ensures that an operator's choice is never masked by a
     missed notification.
 
     **Schema-level invariants.** The ``conflict_escalations`` table

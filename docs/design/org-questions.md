@@ -1,6 +1,6 @@
 ---
 title: The Org Asks
-description: A standing prompt directive tells every agent to ask rather than guess when a choice is material and hard to reverse, the two human-input tools park the run, and the resulting question is answerable in the unified conversation.
+description: A standing prompt directive instructs every agent to ask rather than guess when a choice is material and hard to reverse, the two human-input tools park the run, and the resulting question is answerable in the unified conversation.
 ---
 
 # The Org Asks
@@ -27,7 +27,7 @@ The feature has three parts that only work together:
   in the approvals queue.
 
 An organisation with the tools but no directive never asks, because nothing
-tells the agent that asking is expected. An organisation with the directive but
+instructs the agent that asking is expected. An organisation with the directive but
 no surface asks into a queue nobody is watching. All three ship on.
 
 ## The ask: a standing directive at every autonomy level
@@ -83,7 +83,7 @@ whole ask, so it lives in code.
 Operator extension is still first class, through
 `engine.ask_policy_extra_directives`: a JSON array of
 `{id, text, scope, scope_kind}` entries appended below the standing directive.
-Scoping reuses `ScopeKind` (`ALL` / `ROLE` / `DEPARTMENT`), so an agent sees
+Scoping reuses `ScopeKind` (`ALL` / `ROLE` / `DEPARTMENT`), so an agent receives
 every `ALL` directive plus the role and department directives matching it. This
 is where an organisation names the choices it always wants escalated: a schema
 change, a public API break, spend above a threshold. The payload is
@@ -173,7 +173,7 @@ card is a client-side hope. (A `decision:project` is already protected on both
 doors, because resolving the reason from an unset `chosen_option_id` raises.)
 
 Declining is not the same as answering nothing. It records a fixed, server-owned
-resume text telling the agent to proceed on its own best judgement and state the
+resume text telling the agent to proceed on its own judgement and state the
 assumption it made, so the run continues deliberately rather than stalling.
 
 ### Live delivery
@@ -257,7 +257,7 @@ question is not a conversation turn".
 A question arriving with no conversation open renders on its own, with the
 composer beneath it and the example-prompts empty state skipped: the
 organisation has spoken, so inviting the operator to start talking would be
-wrong. An operator who is not on the chat page still sees the question through
+wrong. An operator who is not on the chat page still receives the question through
 the existing notification and the pending-approvals badge.
 
 Nothing is persisted client-side. The list is re-hydrated from the GET on every
@@ -310,7 +310,7 @@ keeps `false`.
 
 The directive governs when an agent should ask, not what it may do: it grants no
 authority and removes none. It is a prompt-level ask, so a model may ignore it;
-the load-bearing guarantee is that when an agent does ask, the question reaches
+the load-bearing invariant is that when an agent does ask, the question reaches
 a human and the run genuinely waits. Vendor-agnostic, British English default,
 no locale privileged.
 

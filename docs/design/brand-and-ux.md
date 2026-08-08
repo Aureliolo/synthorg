@@ -117,7 +117,7 @@ Animation is an **independent user preference**, controlling motion intensity.
 
 Sidebar mode is an **independent user preference**.
 
-| Mode | Behaviour | Width | Best for |
+| Mode | Behaviour | Width | Suits |
 |------|----------|-------|----------|
 | Rail | Icons only, pinned collapsed; labels surface on hover | 56px | Maximum content area while keeping nav reachable |
 | Collapsible (default) | Expanded by default, can collapse to an icon rail. Remembers user preference. | 220px / 56px | Most users (full nav when needed, compact when focused) |

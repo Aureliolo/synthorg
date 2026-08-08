@@ -436,7 +436,7 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 **Client transport**
 
 - `synthorg_client_disconnects_total{transport, reason}`: counter; emitted from SSE / WebSocket / MCP disconnect handlers. `transport` ∈ {`sse`, `websocket`, `mcp_stdio`, `mcp_http`} (the two `mcp_*` values are emitted by `synthorg.tools.mcp.client` for stdio and streamable-HTTP MCP transports respectively); `reason` ∈ {`client_initiated`, `transport_error`, `cancelled`, `timeout`}. Bounded labels keep cardinality at 16 series (4 transports × 4 reasons), matching `VALID_DISCONNECT_TRANSPORTS` / `VALID_DISCONNECT_REASONS` in `prometheus_labels.py`.
-- `synthorg_ws_active_connections`: gauge; currently-open WebSocket connections.
+- `synthorg_ws_active_connections`: gauge; open WebSocket connections.
 - `synthorg_ws_connection_lifetime_seconds{transport}`: histogram; WebSocket connection lifetime by transport (buckets `1s` … `4h`). A collapsing p95 flags clients dropping shortly after auth.
 - `synthorg_ws_revalidation_total{outcome}`: counter; per-frame WS revalidation outcomes. `outcome` ∈ `pass` / `fail` / `budget_exhausted` (bounded via `VALID_WS_REVALIDATION_OUTCOMES`). A sustained `budget_exhausted` rate is the revalidation-saturation signal (saturated peers close with 4011).
 
@@ -495,7 +495,7 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 
 **Database connection pool**
 
-- `synthorg_pg_pool_size{backend}` + `synthorg_pg_pool_active_connections{backend}`: gauges; configured pool size and currently-checked-out connections, pushed from the `psycopg_pool` `get_stats()` snapshot on every scrape. `backend` ∈ `primary` / `replica` (bounded via `VALID_PG_BACKENDS`). Active approaching size is the saturation precursor.
+- `synthorg_pg_pool_size{backend}` + `synthorg_pg_pool_active_connections{backend}`: gauges; configured pool size and checked-out connections, pushed from the `psycopg_pool` `get_stats()` snapshot on every scrape. `backend` ∈ `primary` / `replica` (bounded via `VALID_PG_BACKENDS`). Active approaching size is the saturation precursor.
 - `synthorg_pg_pool_acquire_duration_seconds{backend}`: histogram; wall time waiting for a connection (buckets `1ms` … `5s`). Rising acquire latency precedes exhaustion.
 - `synthorg_pg_pool_exhausted_total{backend}`: counter; pool-acquisition timeouts (no connection available). Any non-zero rate is alertable.
 

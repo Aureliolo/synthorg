@@ -1,6 +1,6 @@
 # Internationalization
 
-SynthOrg's UI text is shipped in **International / British English**. UI text translation and right-to-left (RTL) layout support are not currently planned. Locale-aware **display** of numbers, dates, times, currencies, and units is unaffected by this decision: those still flow through `Intl` and resolve via the operator's user / company / browser / system fallback (see [Regional Defaults in CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md)).
+SynthOrg's UI text is shipped in **International / British English**. UI text translation and right-to-left (RTL) layout support are not planned. Locale-aware **display** of numbers, dates, times, currencies, and units is unaffected by this decision: those still flow through `Intl` and resolve via the operator's user / company / browser / system fallback (see [Regional Defaults in CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md)).
 
 ## Decision
 

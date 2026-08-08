@@ -1,6 +1,6 @@
 ---
 title: API Startup Lifecycle
-description: Construction-phase vs on-startup wiring order, the gated best-effort wiring hooks, and the ordering invariants that keep boot from racing or poisoning startup.
+description: Construction-phase vs on-startup wiring order, the gated wiring hooks whose failure must not stop boot, and the ordering invariants that keep boot from racing or poisoning startup.
 ---
 
 # API Startup Lifecycle

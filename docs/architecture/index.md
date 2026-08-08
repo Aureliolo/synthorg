@@ -57,12 +57,12 @@ Templates -> Config
 | **api** | REST + WebSocket API: Litestar controllers, JWT + API key + WS ticket auth, guards, channels, RFC 9457 structured error responses |
 | **config** | Company configuration: YAML schema, loader, validation, defaults |
 | **templates** | Pre-built company templates: personality presets, template builder |
-| **persistence** | Operational data: pluggable backend protocol, SQLite and Postgres implementations |
+| **persistence** | Operational data: pluggable backend protocol with SQLite and Postgres implementations |
 | **observability** | Structured logging: structlog, event constants, correlation tracking, log sinks |
 | **meta** | Self-extending and self-improving organisation: MCP tool surface, charter, toolsmith, rollout mutators, Chief of Staff |
 | **integrations** | External service connections: OAuth 2.1, webhooks, MCP catalog, rate limiting, tunnel provider |
 | **`organization`** | Company org chart, department records, team management |
-| **coordination** | Multi-agent coordination: ceremony policy, coordination service and state |
+| **coordination** | Multi-agent coordination: ceremony policy plus coordination service and state |
 | **research** | Research mode pipeline: query planning, multi-source retrieval, credibility triage, synthesis |
 | **approval** | Approval workflow protocol, models, and decision routing |
 | **notifications** | Operator alert adapters and notification dispatch |

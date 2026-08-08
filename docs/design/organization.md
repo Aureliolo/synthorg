@@ -204,7 +204,7 @@ Each department defines:
 
 - **head** (optional): the agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments. When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate. In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime, paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
 - **budget_percent**: the share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
-- **teams**: named sub-groups within the department, each with a lead and members
+- **teams**: named sub-groups within the department; each has a lead and members
 - **reporting_lines**: explicit subordinate/supervisor relationships within the department. Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
 - **policies** (optional): department-level operational policies. Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to a single required reviewer and no approval chains when omitted
 
@@ -492,7 +492,7 @@ pack dependencies are detected and raise `TemplateRenderError`.
 **Live application:**
 
 The `POST /api/v1/template-packs/apply` endpoint applies a pack to a running
-org, adding its agents and departments to the existing config. Department
+org by adding its agents and departments to the existing config. Department
 names are deduplicated (case-insensitive); agent names are deduplicated by
 name.
 

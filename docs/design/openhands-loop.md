@@ -3,9 +3,9 @@
 OpenHands is a selectable **second inner execution loop**, alongside the
 native `react` loop behind the
 `ExecutionLoop` protocol. The inner coding loop is commodity; SynthOrg's
-product is the orchestration, routing and control plane around it. So
+product is the orchestration, routing, and control plane around it. So
 rather than treat the native loop as the only option, we bundle a
-best-in-class open coder as a second, selectable inner loop and A/B them
+leading open coder as a second, selectable inner loop and A/B them
 end to end, promoting the winner. This page covers the adapter; its two
 governance boundaries are the [LLM gateway](llm-gateway.md) and the
 [credentialed-tool MCP server](credentialed-mcp.md).

@@ -112,7 +112,7 @@ Each entry answers six dimensions:
 - **OAuth**: None.
 - **API endpoint structure**: `https://api.deepseek.com/v1/chat/completions`. OpenAI-compatible. Header: `Authorization: Bearer <key>`.
 - **LiteLLM routing**: `deepseek/<model>` (e.g. `deepseek/deepseek-chat`, `deepseek/deepseek-reasoner`). Verified.
-- **Notable quirks**: model lineup updates frequently; specific model identifiers are best left to LiteLLM's `model_cost` rather than baked into `default_models`.
+- **Notable quirks**: model lineup updates frequently; specific model identifiers are better left to LiteLLM's `model_cost` rather than baked into `default_models`.
 - **Logo**: `deepseek` (already shipped).
 - **SynthOrg action**: no change to existing `_DEEPSEEK` preset. Model-id refresh is a separate maintenance task tracked outside this issue.
 
@@ -172,7 +172,7 @@ Each entry answers six dimensions:
 - **OAuth**: None.
 - **API endpoint structure**: `https://api.cerebras.ai/v1/chat/completions`. OpenAI-compatible. Header: `Authorization: Bearer <key>`.
 - **LiteLLM routing**: `cerebras/<model>`. Verified.
-- **Notable quirks**: generous free tier (no credit card); fastest open-model inference on the market thanks to wafer-scale silicon.
+- **Notable quirks**: generous free tier (no credit card); advertises the lowest-latency open-model inference on the market, thanks to wafer-scale silicon.
 - **Logo**: `cerebras` (lobe-icons; verify slug at fetch time).
 - **SynthOrg action**: ADD `_CEREBRAS` cloud preset, name `cerebras`, `litellm_provider="cerebras"`, `auth_type=AuthType.API_KEY`, `default_models=()`.
 
@@ -274,7 +274,7 @@ How peer AI-assistant tools authenticate against the same provider universe.
 | Fireworks AI | YES | api_key | fireworks_ai | Reasoning-model focus; first-class fine-tune routing |
 | xAI (Grok) | YES | api_key | xai | Distinct vendor; subscription-vs-API gap explicitly verified |
 | Cohere | YES | api_key | cohere_chat | Enterprise RAG focus; LiteLLM `cohere_chat/` (not `cohere/`) |
-| Cerebras | YES | api_key | cerebras | Generous free tier; fastest open-model serving |
+| Cerebras | YES | api_key | cerebras | Generous free tier; advertised lowest-latency open-model serving |
 | SambaNova | YES | api_key | sambanova | High-throughput Llama serving with free tier |
 | NVIDIA NIM | YES | api_key | nvidia_nim | Enterprise-adopted developer platform; LiteLLM chat namespace cleanly isolates the LLM subset (added per user direction mid-PR) |
 | Perplexity | DEFER | -- | -- | Sonar models need search-augmented UX surface; not a generic chat-completion preset |

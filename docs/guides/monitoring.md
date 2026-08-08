@@ -125,7 +125,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
-| `synthorg_ws_active_connections` | Gauge | (none) | Currently-open WebSocket connections. | `WebSocket Transport` |
+| `synthorg_ws_active_connections` | Gauge | (none) | Open WebSocket connections. | `WebSocket Transport` |
 | `synthorg_ws_connection_lifetime_seconds` | Histogram | `transport` | WebSocket connection lifetime by transport (`transport` bounded to `websocket` / `sse`; buckets 1s-4h). A collapsing p95 flags clients dropping shortly after auth. | `WebSocket Transport` |
 | `synthorg_ws_revalidation_total` | Counter | `outcome` | Per-frame WS revalidation outcomes (`outcome` bounded to `pass` / `fail` / `budget_exhausted`). A sustained `budget_exhausted` rate is the revalidation-saturation signal (saturated peers close with 4011). | `WebSocket Transport` |
 
@@ -134,7 +134,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_pg_pool_size` | Gauge | `backend` | Configured Postgres pool size (`backend` bounded to `primary` / `replica`). | `Database Connection Pool` |
-| `synthorg_pg_pool_active_connections` | Gauge | `backend` | Connections currently checked out of the pool. Approaching `synthorg_pg_pool_size` is the saturation precursor. | `Database Connection Pool` |
+| `synthorg_pg_pool_active_connections` | Gauge | `backend` | Connections checked out of the pool. Approaching `synthorg_pg_pool_size` is the saturation precursor. | `Database Connection Pool` |
 | `synthorg_pg_pool_acquire_duration_seconds` | Histogram | `backend` | Wall time spent waiting for a connection (buckets 1ms-5s). Rising acquire latency precedes exhaustion. | `Database Connection Pool` |
 | `synthorg_pg_pool_exhausted_total` | Counter | `backend` | Pool-acquisition timeouts (no connection available). Any non-zero rate is alertable. | `Database Connection Pool` |
 

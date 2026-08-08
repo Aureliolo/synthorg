@@ -333,7 +333,7 @@ if any(r.metadata.get("compaction_directive") for r in tool_results):
 ```
 
 This preserves the immutable context pattern: the tool signals intent, the loop applies the
-change. The agent sees the compaction result in the next turn's context fill indicator.
+change. The agent receives the compaction result in the next turn's context fill indicator.
 
 This is consistent with the existing architecture where the loop, not tools, manages
 `AgentContext` state transitions.

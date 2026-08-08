@@ -66,7 +66,7 @@ snapshot row:
 Queries against the snapshot fetch active facts: `WHERE retracted_at IS NULL`. No log replay
 needed at read time; reads are fast and consistent.
 
-### Consistency Guarantees
+### Consistency Model
 
 - **Writers see their own writes**: local reads include uncommitted state before append.
 - **Readers see a consistent snapshot**: all writes committed before query time T were

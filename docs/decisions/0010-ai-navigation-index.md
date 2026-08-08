@@ -95,7 +95,7 @@ Tool-count assertions bump from 231 to 232 in both
 - An AI agent reads ONE MCP response (or one JSON file) to learn the
   whole feature surface. The plan-turn cost drops from O(N feature
   files) to O(1).
-- The generator + freshness gate guarantee the JSON artefacts cannot
+- The generator + freshness gate ensure the JSON artefacts cannot
   drift from the manifests. A renamed manifest field, a missing
   feature, or a changed controller fails the gate.
 - The per-module `codebase_map.json` gives architectural feedback

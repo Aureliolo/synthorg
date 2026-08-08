@@ -125,7 +125,7 @@ itemless plan is what the `items` CHECK forbids, so the cascade fails it with
 
 Dispatch reaches `FAILED` from either side of one line. An approved plan is
 moved to `EXECUTING` *before* `coordinate(...)` runs (load-bearing ordering, so
-the rollup never sees a `PLANNING` project with tasks running), so a raise from
+the rollup never encounters a `PLANNING` project with tasks running), so a raise from
 `coordinate` fails an `EXECUTING` plan, while the precondition branches that
 return before it (no coordinator, no parent task, a project that cannot be
 linked) fail an `APPROVED` one. Both carry the redacted cause, so a plan never
@@ -164,7 +164,7 @@ verify gate.
 
 `PlanRepository` (`persistence/plan_protocol.py`) composes the ADR-0001 generics
 `IdKeyedRepository[Plan, NotBlankStr]` + `FilteredQueryRepository[Plan,
-PlanFilterSpec]`, with SQLite and Postgres implementations kept in parity. The
+PlanFilterSpec]`; the SQLite and Postgres implementations are kept in parity. The
 `plans` table stores `items` as JSON (a non-empty array for every status except
 the `PLANNING` / `FAILED` shells, which may carry no items, CHECK-enforced), the
 nullable `failure_reason` (non-blank when present, CHECK-enforced), and
@@ -365,7 +365,7 @@ runtime-services rebuild:
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `coordination.plan_approval_required` | `true` | Master gate: when off, splittable team work dispatches straight to the coordinator and no plan is parked. On by default so every greenlit initiative parks a plan for holistic review. Everything below is inert until this is on. |
-| `coordination.plan_review_panel_enabled` | `true` | Whether the stakeholder panel runs before the human sees the plan. Defaults on, but only takes effect once approval is gated and a provider is wired; otherwise the plan is parked with `review = None`. |
+| `coordination.plan_review_panel_enabled` | `true` | Whether the stakeholder panel runs before the plan reaches the human. Defaults on, but only takes effect once approval is gated and a provider is wired; otherwise the plan is parked with `review = None`. |
 | `coordination.plan_review_panel_size` | `4` (max `8`) | Maximum panellists seated (the relevant leads sized to the plan, not everyone). |
 | `coordination.plan_review_panel_max_turns` | `6` | Hard turn cap per panellist session before it must submit a verdict. |
 | `coordination.plan_review_panel_cost_ceiling` | `1.0` | Per-reviewer spend ceiling (base currency); the session halts once accumulated cost reaches it. |

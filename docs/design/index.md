@@ -240,7 +240,7 @@ Queue: Hiring Queue
 
     ---
 
-    A standing directive tells every agent to ask rather than guess when a choice
+    A standing directive instructs every agent to ask rather than guess when a choice
     is material and hard to reverse; the parked question surfaces in the unified
     conversation and answering it there resumes the run.
 

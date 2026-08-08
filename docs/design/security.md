@@ -545,7 +545,7 @@ producers.
 
 ## OWASP Agentic Top 10 (ASI) Coverage Matrix
 
-The OWASP Agentic Top 10 (ASI) coverage matrix, mapping each risk to its primary mitigating modules, lives in [Security Coverage and Operational Bounds](../reference/security-coverage.md#owasp-agentic-top-10-asi-coverage-matrix). Summary: 5 covered, 5 partial, 0 uncovered.
+[Security Coverage and Operational Bounds](../reference/security-coverage.md#owasp-agentic-top-10-asi-coverage-matrix) holds the OWASP Agentic Top 10 (ASI) coverage matrix, mapping each risk to its primary mitigating modules. Summary: 5 covered, 5 partial, 0 uncovered.
 
 ## A2A Security
 
@@ -731,7 +731,7 @@ overview, Agent Card projection, and concept mapping tables.
 
 ## Session Revalidation and the Revocation Window
 
-Long-lived authenticated streams (WebSocket and SSE) re-load the user record on a shared 10-minute cadence and tear down when the user is deleted, demoted below read access, or has the session JTI revoked, so revocation takes effect within at most one revalidation interval, not instantly. The full mechanism, including the per-connection sliding-window failure model and its tunables, lives in [Security Coverage and Operational Bounds](../reference/security-coverage.md#session-revalidation-and-the-revocation-window).
+Long-lived authenticated streams (WebSocket and SSE) re-load the user record on a shared 10-minute cadence and tear down when the user is deleted, demoted below read access, or has the session JTI revoked, so revocation takes effect within at most one revalidation interval, not instantly. [Security Coverage and Operational Bounds](../reference/security-coverage.md#session-revalidation-and-the-revocation-window) holds the full mechanism, including the per-connection sliding-window failure model and its tunables.
 
 ## Adversarial Red-Team Gate
 
@@ -748,7 +748,7 @@ deliverable is not gated. A below-threshold task logs
 `RED_TEAM_GATE_SKIPPED` (reason `below_stakes_threshold`) and proceeds
 on the review pipeline's verdict. The `stakes` value is itself a
 documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)),
-not a security guarantee. It treats every about-to-ship artefact as
+not a security control. It treats every about-to-ship artefact as
 untrusted input and attacks it along four locked surfaces:
 
 - CORRECTNESS: does the deliverable do what was asked.

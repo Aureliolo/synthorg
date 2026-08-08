@@ -17,7 +17,7 @@ All significant design and architecture decisions in force today, organised by d
 | **pgvector + sqlite-vec** (chosen) | The only option meeting every constraint. Licence-clean (PostgreSQL Licence, MIT). No new service: vectors live in the two databases already operated, backed up, and migrated. Tag filtering, expiry, and agent scoping are plain SQL rather than client-side workarounds. No LLM on the write path. Accepted limitation: sqlite-vec has no ANN index (brute-force KNN), so the SQLite path degrades past roughly 100k vectors while Postgres scales |
 | Mem0 + embedded Qdrant | Its value is the LLM extraction and consolidation pipeline, which paraphrases stored content and so cannot be used here: the same store holds brain entries with citations and knowledge chunks with provenance. Without that pipeline it is a thin client over an embedded Qdrant running in a mode its own maintainers document as development-only (~20k points), against one company-wide collection |
 | LanceDB | Strong embedded hybrid search and Apache 2.0, but introduces a third storage technology and file format outside the SQLite/Postgres model, requiring a carve-out from the persistence-boundary rule |
-| Graphiti / Zep | Best temporal-graph capability of any candidate, but no licence-clean self-hosted graph backend exists: Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated, Neptune is cloud-only |
+| Graphiti / Zep | Strongest temporal-graph capability of any candidate, but no licence-clean self-hosted graph backend exists: Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated, Neptune is cloud-only |
 | Chroma | Fails to install on Python 3.14 (open upstream issue) |
 | Letta | An agent framework rather than a memory library; adopting it would mean running a second orchestration system |
 
@@ -116,7 +116,7 @@ In parallel, the `nats-io/nats.py` repository is publishing a modular client fam
 
 **Live package state (verified 2026-05-24 against PyPI JSON API and `nats-io/nats.py` main):**
 
-| Package | Latest version | Released | Requires-Python | Dev status | Depends on |
+| Package | Newest version | Released | Requires-Python | Dev status | Depends on |
 |---|---|---|---|---|---|
 | `nats-py` | 2.15.0 | 2026-06-05 | `>=3.7` | (none) | n/a |
 | `nats-core` | 0.2.0 | 2026-04-14 | `>=3.13` | Beta | `nkeys>=0.1.0; extra=="nkeys"` |

@@ -219,7 +219,7 @@ or disclosing sensitive information.
 
 **Gap**: No cognitive-bias-specific warnings in the dashboard UI.
 The EvidencePackage structure supports bias mitigation (narrative
-context, multiple recommended actions) but the UI doesn't currently
+context, multiple recommended actions) but the UI does not
 surface bias-specific cues (e.g. "This is the fifth approval in 10
 minutes; consider slowing down").
 

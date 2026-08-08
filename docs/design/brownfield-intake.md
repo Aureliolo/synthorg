@@ -3,7 +3,7 @@
 The "merger / acquisition" entry mode. The operator points the studio at an
 existing codebase; the org imports it into a persistent project workspace,
 builds a navigable structure map, runs an agent analysis pass that produces an
-architecture and health assessment, indexes both the codebase and the
+architecture and health assessment, indexes the codebase alongside that
 assessment into the hybrid-retrieval knowledge store, and then awaits human
 direction. Follow-up directives build on the ingested base.
 

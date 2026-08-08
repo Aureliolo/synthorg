@@ -26,8 +26,8 @@ ci:
   #     but the gitignored `.vale/styles/Google/` package is populated
   #     lazily by the `scripts/vale-prepush.sh` wrapper on the first
   #     push in each worktree, so new worktrees do not need an explicit
-  #     sync step. vale has no CI workflow yet; pre-push is the only
-  #     gate.
+  #     sync step. vale's CI counterpart is the `Prose lint (vale)` step
+  #     in the `Gates` job of .github/workflows/verify-backend.yml.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -560,10 +560,11 @@ repos:
         # machine via `bash scripts/install_cli_tools.sh vale`; the
         # wrapper prints a clear pointer if it is missing.
         #
-        # MinAlertLevel = suggestion is set in `.vale.ini` itself
-        # (single source of truth). The corpus is drained to zero
-        # findings against the strictest level, so any future regression
-        # blocks pre-push.
+        # What makes a regression block is the per-rule `= error`
+        # assignment in `.vale.ini`, not MinAlertLevel: vale's exit code
+        # reflects error-severity alerts only, so a corpus drained
+        # against warnings and suggestions reports and still exits 0.
+        # `.vale.ini` is the single source of truth for both.
         entry: bash scripts/vale-prepush.sh
         language: system
         # Same glob as lychee + markdownlint: README, every CLAUDE.md

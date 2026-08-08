@@ -126,7 +126,7 @@ The default backend is the Hybrid Prompt + Retrieval implementation.
 
 !!! warning "No licence-clean graph backend exists today"
     The graph research directions above would need a graph store, and every
-    currently available option fails the Licence Compatibility rule or the
+    available option fails the Licence Compatibility rule or the
     self-hosting constraint: Neo4j Community is GPLv3, FalkorDB is SSPL, Kuzu
     (the one permissively-licensed embedded option) is deprecated by its
     consumers, and Amazon Neptune is a managed cloud service. A temporal or

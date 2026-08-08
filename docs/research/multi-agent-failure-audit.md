@@ -253,7 +253,7 @@ coupling point for agent execution. The `CoordinationService` can operate indepe
 any specific agent being present.
 
 **Verdict**: Not a current concern. The async pull model and single-writer actor design
-actively prevent synchronous coupling. Future risk if a transport with ordering guarantees
+actively prevent synchronous coupling. Future risk if a transport with ordering semantics
 is introduced across agent groups.
 
 ### Ownership Ambiguity Pattern
@@ -384,7 +384,7 @@ Coordination topology (SAS, centralised, decentralised, context-dependent) is se
 the start of a coordination run and remains fixed throughout. There is no runtime topology
 mutation; agents cannot renegotiate their coordination structure mid-execution.
 
-**Verdict**: Strong guarantee against emergent topology drift. The orchestrator selects
+**Verdict**: Strong protection against emergent topology drift. The orchestrator selects
 topology deterministically; agents cannot change it.
 
 ---

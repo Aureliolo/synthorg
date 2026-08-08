@@ -119,7 +119,7 @@ ws.addEventListener('message', (event) => {
 })
 ```
 
-The server emits `{"action": "auth_ok"}` once your ticket is validated; only then are subscribes accepted. Every event frame carries a `version` field (currently `1`). Unknown versions are logged and dropped client-side.
+The server emits `{"action": "auth_ok"}` once your ticket is validated; only then are subscribes accepted. Every event frame carries a `version` field (`1`). Unknown versions are logged and dropped client-side.
 
 ### Wire Protocol Invariants
 

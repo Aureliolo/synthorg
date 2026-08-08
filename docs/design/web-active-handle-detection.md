@@ -24,7 +24,7 @@ axios's response chain, tough-cookie wrappers); the resulting number
 could not distinguish a real leak from MSW's structural floor, so it
 required a manually-curated buffer and was ratcheted up over time.
 The detector counts resources that actually hold the event loop
-open, attributed per-test, with zero tolerance and no buffer.
+open and attributes them per-test. Tolerance is zero; there is no buffer.
 
 ## What it catches
 
@@ -190,6 +190,6 @@ runs.
 - `web/test-infra/active-handle-reporter.ts`: main-process Vitest
   reporter (aggregation + summary + telemetry).
 - `web/test-infra/active-handle-allowlist.ts`: explicit allowlist
-  (currently empty).
+  (empty).
 - [web-http-adapter.md](./web-http-adapter.md): what the HTTP
   adapter does to keep itself leak-free under this gate.

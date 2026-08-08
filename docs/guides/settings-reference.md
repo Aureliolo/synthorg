@@ -76,7 +76,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `hr` | Training-pipeline kill switch, evaluation metric toggles (quality, cost, latency, task count) |
 | `simulations` | Client-intake benchmark door toggle (`client_intake_enabled`, off by default) and per-run timeouts for synthetic-client task and code-review simulations |
 | `telemetry` | Anonymous product telemetry opt-in (off by default; token embedded at build) |
-| `workers` | Uvicorn worker count, distributed dispatcher publish retry budget and backoff |
+| `workers` | Uvicorn worker count; distributed dispatcher publish retry budget and backoff |
 | `research` | Research-mode provider/model and pipeline strategies (query planning, credibility triage, deduplication, synthesis) |
 | `charter` | Deep CEO-interview charter pacing (model, turns, temperature, token budget) and default currency |
 | `external_api` | Governed external API access: provider, response-size cap, timeout, and per-minute rate limit |

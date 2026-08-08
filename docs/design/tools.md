@@ -5,7 +5,7 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
 # Tools & Capabilities
 
-Agents act on the world through tools. SynthOrg defines a pluggable tool system with 15+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access, virtual desktop), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role and autonomy tier permit.
+Agents act on the world through tools. SynthOrg defines a pluggable tool system with 15+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access, virtual desktop), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface exposed to an agent to what its role and autonomy tier permit.
 
 ## Tool Categories
 
@@ -39,7 +39,7 @@ exception for one, `ExceptionGroup` for multiple).
 **Permission checking** follows a priority-based system:
 
 1. `get_permitted_definitions()` filters tool definitions sent to the LLM; the agent only
-   sees tools it is permitted to use
+   receives tools it is permitted to use
 2. At invocation time, denied tools return `ToolResult(is_error=True)` with a descriptive
    denial reason (defence-in-depth against LLM hallucinating unpresented tools)
 
@@ -382,7 +382,7 @@ invoker validates the raw `arguments` dict against the Pydantic model **before**
 dispatching to the handler; validation failures short-circuit to a typed
 `ArgumentValidationError` envelope without ever invoking the handler. Handlers
 therefore receive a structurally-validated dict and can either access fields
-directly (the model guarantees presence + type) or re-validate locally for
+directly (the model ensures presence + type) or re-validate locally for
 typed access (`args_model.model_validate(arguments)`). Tools without
 `args_model` (legacy / dynamic shapes such as `MCPBridgeTool`) continue using
 the manual `common_args` validators inside the handler body.

@@ -32,7 +32,7 @@ All endpoints are read-only and require read access. Writes happen in-process vi
 |---|---|---|
 | `GET` | `/projects/{project_id}/brain` | Current-state projection, newest-first. Query params: `cursor`, `limit` (default 50), `entry_kind`, `status`. |
 | `GET` | `/projects/{project_id}/brain/search` | Semantic search. Required `q`, optional `limit` (default 8, max 64). |
-| `GET` | `/projects/{project_id}/brain/{entry_id}` | Latest revision of one entry (404 if absent). |
+| `GET` | `/projects/{project_id}/brain/{entry_id}` | Newest revision of one entry (404 if absent). |
 | `GET` | `/projects/{project_id}/brain/{entry_id}/history` | Git-snapshot history, newest-first, optional `limit` (default 50). |
 
 ## Worked example: query project state
@@ -51,7 +51,7 @@ curl -s -H "Authorization: Bearer <token>" \
   "https://<host>/api/v1/projects/proj-abc123/brain/search?q=payment+integration+risk&limit=5"
 ```
 
-Fetch a single entry's latest revision:
+Fetch a single entry's newest revision:
 
 ```bash
 curl -s -H "Authorization: Bearer <token>" \

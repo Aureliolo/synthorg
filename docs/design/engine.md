@@ -6,7 +6,7 @@ description: Task lifecycle, task definition, workflow types (sequential, parall
 # Task & Workflow Engine
 
 The task and workflow engine orchestrates how work flows through a synthetic
-organisation, from task creation and assignment through to review and
+organisation: from task creation and assignment through to review and
 completion. This page covers the task-engine core: lifecycle, workflows,
 routing, and the single-writer state coordinator.
 
@@ -418,7 +418,7 @@ any back-edge with a `SUBWORKFLOW_CYCLE_DETECTED` validation error.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | List unique subworkflows (latest version per id) |
+| GET | `/` | List unique subworkflows (newest version per id) |
 | GET | `/search?q=` | Substring search over name and description |
 | GET | `/{id}/versions` | List semver strings newest first |
 | GET | `/{id}/versions/{version}` | Fetch a specific version |

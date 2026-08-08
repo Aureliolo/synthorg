@@ -21,7 +21,7 @@ If you are running SynthOrg on one machine for one organisation, you can skip th
 
 ## Problem Statement
 
-The in-memory bus hits three hard limits as soon as a deployment wants to move past single-process operation:
+The in-memory bus hits three hard limits once a deployment wants to move past single-process operation:
 
 1. **No durability.** Messages in transit and channel history (`get_channel_history`) live inside Python process memory. A crash or restart vaporizes unread messages, queued task handoffs, and the last N messages per channel used for debugging and replay.
 2. **No multi-process execution.** `asyncio.Queue` cannot cross process boundaries. All agent execution, all tool invocations, and all LLM calls funnel through one Python event loop. Horizontally scaling the execution layer, or isolating expensive agents on a dedicated host, is impossible without a transport that works across processes.
@@ -59,7 +59,7 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 | Fit for pull-model `receive()` | Excellent (pull consumers + FetchBatch) | Good (XREADGROUP BLOCK) | OK (basic_consume + prefetch) | OK (consumer.poll with timeout) | Poor (callback-style, DIY pull) |
 | Per-subscriber queue primitive | Durable pull consumer per subscriber | Consumer group + consumer name | Auto-delete queue bound to exchange | Consumer group + partition assignment | DIY, no built-in primitive |
 | History / replay | `DeliverByStartSequence` / `DeliverAll` | `XRANGE` / `XREAD` from id | Weak (Streams plugin is separate) | Native, offset seek | None, DIY sqlite sidecar |
-| Delivery guarantees | At-least-once, per-subject ordering | At-least-once (PEL + XACK) | At-least-once with acks | At-least-once (committed offsets) | At-most-once by default |
+| Delivery semantics | At-least-once, per-subject ordering | At-least-once (PEL + XACK) | At-least-once with acks | At-least-once (committed offsets) | At-most-once by default |
 | Dead-letter | `max_deliver` + DLQ subject | Manual via XCLAIM + idle | Native DLX | Manual DLQ topic pattern | DIY |
 | Ordering | Per-subject FIFO | Per-stream FIFO | Per-queue FIFO | Per-partition FIFO (partition key) | None guaranteed |
 | Work-queue fit (task queue) | `WorkQueuePolicy` native | Consumer group doubles as work queue | Classic work-queue pattern | Awkward (partitions != dynamic workers) | DIY |
@@ -76,9 +76,9 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 
 **RabbitMQ.** Very mature, battle-tested, and `aio-pika` is a known-good async client. The problems are weight and replay. A RabbitMQ broker is ~200 MB, boots an Erlang VM, and brings a management plugin that expects to be configured. Replay / bounded history is weak unless the Streams plugin is enabled separately, which would require us to manage two RabbitMQ primitives (classic queues for delivery, streams for history). For a first distributed backend whose goal is opt-in-and-forget, the operational surface is too big.
 
-**Kafka (KRaft).** Strongest replay story in the list and genuinely best-in-class for per-partition ordering at scale. Overkill for a first distributed backend in a pre-alpha project: ~400 MB JVM image, ~512 MB RAM idle, partition planning, consumer group rebalancing, and a work-queue story that awkwardly reuses partitions as worker slots. Good fit later if SynthOrg's analytics side ever needs Kafka; not a good first step.
+**Kafka (KRaft).** Strongest replay story in the list and unmatched for per-partition ordering at scale. Overkill for a first distributed backend in a pre-alpha project: ~400 MB JVM image, ~512 MB RAM idle, partition planning, consumer group rebalancing, and a work-queue story that awkwardly reuses partitions as worker slots. Good fit later if SynthOrg's analytics side ever needs Kafka; not a good first step.
 
-**ZeroMQ brokerless.** The ClawTeam research note referenced in Issue #236 uses this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery guarantees are at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
+**ZeroMQ brokerless.** The ClawTeam research note referenced in Issue #236 uses this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery is at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
 
 ### Decision: NATS JetStream
 
@@ -150,7 +150,7 @@ The NATS backend matches that semantic by acking immediately on successful fetch
 - **At-most-once from the caller's point of view.** If a caller crashes between `receive()` returning and the caller processing the envelope, the message is gone. Same as in-memory.
 - **At-least-once is not promised at the bus layer.** The Phase 4 task queue does not rely on bus-layer at-least-once. It speaks to JetStream directly with manual ack and its own `max_deliver` configuration, precisely because worker crash recovery needs different semantics than bus delivery.
 
-This is the right split. The bus layer gives callers a simple pull-and-forget experience matching the existing Protocol. The task queue layer gets the delivery guarantees it needs by talking to JetStream under the bus.
+This is the right split. The bus layer gives callers a simple pull-and-forget experience matching the existing Protocol. The task queue layer gets the delivery semantics it needs by talking to JetStream under the bus.
 
 ### Channel registry
 

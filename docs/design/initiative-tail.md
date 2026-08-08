@@ -8,10 +8,10 @@ opens this tail; [Plan Review](plan-review.md) owns everything before dispatch.
 
 ## The problem
 
-The general loop ran **plan, execute, verify** and then stopped. Every plan item
+The general loop ran **plan, execute, and verify**, then stopped. Every plan item
 passing its own review gate completed the plan, the project, and the objective.
 
-That is a real guarantee about each piece and no guarantee at all about the
+That is a real assurance about each piece and none at all about the
 whole. An initiative could deliver a set of individually-verified parts that
 nobody had ever assembled, run together, or checked against what the objective
 actually asked for, and the board would show it as delivered. Three smaller
@@ -118,9 +118,9 @@ as written.
 The material (`engine/initiative/evaluate_brief.py`) carries the objective and
 its criteria, the plan items and their declared artifacts, and the **recorded**
 test-run evidence for the project: the `CodeExecutionRecord` rows written from
-the commands that actually ran, newest first and bounded. "The test suite
+the commands that actually ran. The list is newest-first and bounded. "The test suite
 passes" is then judged against what ran rather than against a claim, and the
-brief no longer tells the session to run things it has no tool to run.
+brief no longer directs the session to run things it has no tool to run.
 
 ### The verdict is a record
 
@@ -147,7 +147,7 @@ dashboard's `PlanEvaluationPanel` renders each criterion with the judge's
 evidence, so a parked initiative explains itself instead of leaving the
 operator with `unmet_count=2` in a log line and nothing else. Empty attempts
 is the honest answer for a plan nothing has judged; the plan's own status
-tells that apart from one parked at `EVALUATING` because no verdict landed.
+distinguishes that from one parked at `EVALUATING` because no verdict landed.
 
 ### Fail closed
 
@@ -218,7 +218,7 @@ its objective. The operator's remedy is one the product already has: replan
 (legal from both tail stages) or cancel.
 
 **Independently means one subsystem each**, four of them, all separate from the
-rollup. The rollup activates as soon as persistence and the task engine exist,
+rollup. The rollup activates once persistence and the task engine exist,
 which is before setup has configured a provider, so a first boot legitimately
 produces a rollup with no tail; each `initiative_*` spec waits on what that one
 collaborator actually needs and activates on a later reconciler pass, attaching

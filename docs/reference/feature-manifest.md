@@ -192,7 +192,7 @@ artefact on disk).
    manifest's `ghost_wired_symbols` AND to
    `scripts/_ghost_wiring_manifest.txt`.
 
-The three gates plus the ghost-wiring parity check guarantee that any
+The three gates plus the ghost-wiring parity check ensure that any
 missing step fails at pre-push.
 
 ## Troubleshooting

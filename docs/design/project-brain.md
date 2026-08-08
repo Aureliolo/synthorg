@@ -75,7 +75,7 @@ src/synthorg/project_brain/
   chunker.py         - block-aware deterministic chunker for an entry
   indexer.py         - PROJECT_BRAIN entries with project + entry + kind tags
   writer.py          - serialise -> workspace -> commit on docs branch
-  query.py           - current-state projection (latest revision per entry)
+  query.py           - current-state projection (newest revision per entry)
   mutation.py        - build_entry / apply_overrides revision transforms
   service.py         - ProjectBrainService: append, revise, query, history
   replay.py          - boot re-index of never-indexed / stale-revision entries
@@ -270,10 +270,10 @@ domain invariant the generic surface cannot express), exactly as
   `revision = COALESCE(MAX(revision), 0) + 1` partitioned by `entry_id` inside a
   single `INSERT`, eliminating the time-of-check-to-time-of-use race under
   concurrent writers. `UNIQUE(entry_id, revision)` is the backstop.
-- `get_current(project_id, entry_id) -> BrainEntry | None`: the latest revision
+- `get_current(project_id, entry_id) -> BrainEntry | None`: the newest revision
   of one entry.
 - `list_current(filter_spec, *, limit, offset) -> tuple[BrainEntry, ...]`: the
-  **current-state projection**, the latest revision of every entry matching the
+  **current-state projection**, the newest revision of every entry matching the
   filter. This is the correctness heart of the acceptance criterion. The query
   selects the top revision per `entry_id` with
   `ROW_NUMBER() OVER (PARTITION BY entry_id ORDER BY revision DESC) = 1`, then
@@ -299,7 +299,7 @@ class BrainFilterSpec(BaseModel):
 
 `purge_before(threshold)` is guarded so retention can never silently destroy the
 "why". It purges only **non-current historical revisions** older than the
-threshold and always retains the latest revision of every `entry_id`. Current
+threshold and always retains the newest revision of every `entry_id`. Current
 state survives any retention sweep; only superseded history beyond the window is
 collected.
 
@@ -336,9 +336,9 @@ hold no logic; everything routes through the service.
 | `resolve(entry_id, ...)` | Convenience over `revise_entry` that sets a resolved-style status (answers a question, resolves a dependency). |
 | `supersede(entry_id, by_entry_id, ...)` | Mark a decision or plan revision superseded and link the successor. |
 | `clear_blocker(entry_id, ...)` | Convenience over `revise_entry` that sets a blocker to `CLEARED` with a resolution. |
-| `get_entry(project_id, entry_id, revision=None)` | One entry, latest or at an exact revision. |
-| `get_current(project_id, entry_id)` | Latest revision of one entry. |
-| `list_current(project_id, ...)` | Current-state projection, filtered by kind and status. |
+| `get_entry(project_id, entry_id, revision=None)` | One entry: newest or at an exact revision. |
+| `get_current(project_id, entry_id)` | Newest revision of one entry. |
+| `list_current(project_id, ...)` | Current-state projection filtered by kind and status. |
 | `count_current(project_id, ...)` | Count of current-state entries matching the same filters. |
 | `query(project_id, query, ...)` | Semantic search over indexed brain entries. |
 | `history(project_id, entry_id, ...)` | Full SQL revision chain of one entry. |
@@ -411,7 +411,7 @@ receives a new `PLAN_REVISION` entry (tagged `steering`, with the directive as
 its rationale and the operator as author) **before** the directive propagates to
 agents, so a crash between propagation and persistence cannot lose the steering
 history. In-flight agents picking up the directive query `list_current` at safe
-boundaries to read the latest steering state.
+boundaries to read the newest steering state.
 
 ## API and tool surface
 
@@ -438,8 +438,8 @@ lifecycle tools require the admin capability and call
 | `brain:resolve` | admin | Resolve an open question or dependency. |
 | `brain:supersede` | admin | Supersede a decision or plan revision. |
 | `brain:clear_blocker` | admin | Clear a blocker with a resolution. |
-| `brain:get` | read | One entry, latest or at a revision. |
-| `brain:list` | read | Current-state list, filtered by kind and status. |
+| `brain:get` | read | One entry: newest or at a revision. |
+| `brain:list` | read | Current-state list filtered by kind and status. |
 | `brain:query` | read | Semantic search across indexed entries. |
 | `brain:history` | read | Revision chain of one entry. |
 
@@ -451,7 +451,7 @@ in-process via the agent tool or the MCP handler.
 | Method | Path | Returns |
 |---|---|---|
 | `GET` | `/projects/{project_id}/brain` | Current-state `BrainSummary[]`, filter by kind and status, cursor-paginated. |
-| `GET` | `/projects/{project_id}/brain/{entry_id}` | The latest `BrainEntry`. |
+| `GET` | `/projects/{project_id}/brain/{entry_id}` | The newest `BrainEntry`. |
 | `GET` | `/projects/{project_id}/brain/{entry_id}/history` | `BrainEntryVersion[]` from the git snapshot history (`git_history`), distinct from the SQL revision chain. |
 | `GET` | `/projects/{project_id}/brain/search?q=...` | `BrainSearchHit[]` ordered by relevance. |
 
@@ -502,15 +502,15 @@ than re-deriving it. Validated under the simulation harness, plus:
 
 - **Unit** (`tests/unit/project_brain/`): models and the payload union, the
   per-kind status validators, deterministic serialisation round-trip, the
-  chunker, the indexer, the current-state projection, identifier and revision
+  chunker, the indexer, the current-state projection, identifier/revision
   assignment, the `PROJECT_BRAIN` category, and the SEC-1 wrap.
 - **Conformance** (`tests/conformance/persistence/test_project_brain_repository.py`,
   SQLite and Postgres): save and get, current-state and history ordering,
-  revision uniqueness under the CAS, retention that retains the latest revision,
+  revision uniqueness under the CAS, retention that retains the newest revision,
   and foreign-key cascade on project deletion.
 - **Integration** (`tests/integration/project_brain/`): append then read back
   the same entry; an append commits on the `synthorg/docs` branch; a revision
-  appends a new row and current state reflects the latest; a supersede chain;
+  appends a new row and current state reflects the newest; a supersede chain;
   search returns an indexed entry; the facade surfaces brain state for a
   different agent on a later task; re-index replaces prior chunks; and the
   multi-session-gap resume answers decided / open / blocked / why.

@@ -14,7 +14,7 @@ runtime execution state:
 
 | Status | Meaning |
 |--------|---------|
-| `IDLE` | Agent is not currently executing; no active task or execution run. |
+| `IDLE` | Agent is not executing; no active task or execution run. |
 | `EXECUTING` | Agent is actively processing a task within an execution loop. |
 | `PAUSED` | Agent is waiting for an external event (e.g. approval gate). |
 
@@ -254,8 +254,8 @@ async run(
     available), tagged with `project_id` for project-level cost aggregation.
     Cost recording failures are logged but do not affect the result.
 12. **Apply post-execution transitions:**
-    - On the `COMPLETED` and `NO_OP` branches, after the shutdown and park
-      branches and the zero-tool-call proxy, a task that declared
+    - On the `COMPLETED` and `NO_OP` branches (after the shutdown and park
+      branches and the zero-tool-call proxy), a task that declared
       `artifacts_expected` and produced none of them goes IN_PROGRESS ->
       FAILED (see [Declared-artifact check](#declared-artifact-check)); a
       run that delivered nothing never reaches review. A run interrupted by
@@ -276,7 +276,7 @@ async run(
       agent/task identifiers) and no transition occurs. The check
       runs in two phases: the approval controller calls
       ``check_can_decide`` as a **preflight** *before*
-      ``approval_store.save_if_pending``; this guarantees a rejected
+      ``approval_store.save_if_pending``; this ensures a rejected
       self-review attempt never leaves a decided approval row or a
       broadcast WebSocket event behind.  ``complete_review``
       independently re-runs the check as defence-in-depth at the
@@ -304,7 +304,7 @@ async run(
       **Identity versioning:** Agent identities
       are versioned as first-class artifacts via the generic
       ``VersioningService[T]`` infrastructure. ``ReviewGateService``
-      looks up the executing agent's latest identity version and injects
+      looks up the executing agent's newest identity version and injects
       ``charter_version: {agent_id, version, content_hash}`` into the
       ``DecisionRecord.metadata`` field (best-effort; lookup failure
       is logged at WARNING and the decision record is still written).
@@ -697,8 +697,8 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
-**SynthOrg concepts not captured by ACG**: agent personality, episodic and procedural
-memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organisational
+**SynthOrg concepts not captured by ACG**: agent personality, episodic memory,
+procedural memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organisational
 abstractions above the computation graph level.
 
 ## Agent-Controlled Context Compaction

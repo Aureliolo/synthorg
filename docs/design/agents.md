@@ -350,7 +350,7 @@ in issue #1113):
   field-ordering variations in Pydantic serialisation.
 - **`VersioningService[T]`** (`versioning/service.py`): Wraps a `VersionRepository`
   to provide content-addressable snapshot creation. `snapshot_if_changed` skips the
-  write when the content hash matches the latest stored version.
+  write when the content hash matches the newest stored version.
 - **`VersionRepository[T]`** (`persistence/version_protocol.py`): Generic protocol with
   `save_version` (idempotent INSERT OR IGNORE), `get_version`, `get_latest_version`,
   `get_by_content_hash`, `list_versions`, `count_versions`,
@@ -408,7 +408,7 @@ matches the path `agent_id` (cross-agent rows are rejected with 400).
 ### DecisionRecord Integration
 
 When `ReviewGateService._record_decision` runs, it looks up the executing agent's
-latest identity version from `persistence.identity_versions`. If found, it injects a
+newest identity version from `persistence.identity_versions`. If found, it injects a
 `charter_version` entry into the `DecisionRecord.metadata` dict:
 
 ```python

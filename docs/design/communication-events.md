@@ -123,7 +123,7 @@ typing free text. The dashboard renders the writeups and posts the pick as
 writeup, which becomes the decision the parked agent resumes with (and the brain
 `DECISION` entry's answer). An open-ended decision (no options) keeps the
 free-text answer path. `InterruptType.INFO_REQUEST` exists as scaffolding but is
-not currently emitted.
+not emitted.
 
 Non-SSE polling fallback: `GET /api/v1/interrupts` +
 `POST /api/v1/interrupts/{id}/resume`. Used by CLI/integration tests and

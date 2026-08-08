@@ -22,7 +22,7 @@ Use the standard suppression marker on the call-site line. The justification aft
 apiClient.get('/external/api')  // lint-allow: dead-api-endpoints -- third-party REST
 ```
 
-The marker is parsed by a string-literal-aware single-line scanner; bare `// lint-allow: dead-api-endpoints` without `-- <reason>` does NOT suppress, the justification is mandatory and mirrors `# lint-allow: persistence-boundary -- <reason>`. Call-site suppression is only enforced for files under `web/src/**/*.{ts,tsx}` (the scanner's scope); a Python `tokenize`-based marker reader exists in `_dead_api_endpoints_models.py` for parity but no Python files are currently scanned, so a `# lint-allow: dead-api-endpoints --` comment in `.py` is parsed-but-unused today.
+The marker is parsed by a string-literal-aware single-line scanner; bare `// lint-allow: dead-api-endpoints` without `-- <reason>` does NOT suppress, the justification is mandatory and mirrors `# lint-allow: persistence-boundary -- <reason>`. Call-site suppression is only enforced for files under `web/src/**/*.{ts,tsx}` (the scanner's scope); a Python `tokenize`-based marker reader exists in `_dead_api_endpoints_models.py` for parity but no Python files are scanned, so a `# lint-allow: dead-api-endpoints --` comment in `.py` is parsed-but-unused today.
 
 ## Baseline
 
