@@ -147,7 +147,7 @@ class AssignmentWriter:
         for assignment in moved:
             task_id = str(assignment.task.id)
             try:
-                await engine.submit(
+                result = await engine.submit(
                     TransitionTaskMutation(
                         request_id=uuid4().hex,
                         requested_by=_ASSIGNMENT_ACTOR,
@@ -165,6 +165,18 @@ class AssignmentWriter:
                     subtask_id=task_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                )
+                continue
+            if not result.success:
+                # The engine refuses by returning, not by raising, so an
+                # unchecked result reads as a release that happened. The row
+                # is still ASSIGNED to an agent nothing will run, and this
+                # line is the only place that says so.
+                logger.warning(
+                    COORDINATION_WAVE_ASSIGNMENT_RELEASE_FAILED,
+                    subtask_id=task_id,
+                    error_type="TaskMutationRejected",
+                    error=result.error or "release rejected with no error detail",
                 )
 
     async def _persist_one(

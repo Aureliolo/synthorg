@@ -71,9 +71,17 @@ class ResearchSettingsSubscriber:
     a settings change before the registry comes online does not crash; the
     boot-time wiring then builds the service with the up-to-date values.
 
-    Errors during rebuild propagate to the dispatcher, which logs them with full
-    subscriber context and continues; the previously wired service stays in
-    place.
+    A rebuild that DECLINES is a different outcome from one that fails. The
+    write cleared the bound pair or pointed it at a connection that is not
+    registered, which is a legitimate thing for an operator to do, so the
+    research slice is cleared and the write succeeds; the reconciler reports
+    the named condition on ``GET /subsystems``. Leaving the previous service
+    in place there would keep answering research requests through the
+    provider and model that were just removed.
+
+    Every other error during rebuild propagates to the dispatcher, which logs
+    it with full subscriber context and continues; the previously wired
+    service stays in place, because nothing has said it should not.
 
     Args:
         app_state: Application state holding the slices + service swap surface.

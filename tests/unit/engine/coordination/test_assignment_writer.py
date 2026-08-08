@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.persistence_errors import QueryError
@@ -297,6 +298,59 @@ class TestPartialWaveIsReleased:
         release = engine.submit.await_args_list[-1].args[0]
         assert release.task_id == str(one.id)
         assert release.target_status is TaskStatus.BLOCKED
+
+    async def test_a_rejected_release_is_reported(self) -> None:
+        """The engine refuses by returning, so an unchecked result is silence.
+
+        A refused release leaves the row ASSIGNED to an agent nothing will
+        run, which is the state the release exists to prevent, so it has to
+        be as visible as a release that raised.
+        """
+        first = _identity("agent-a")
+        one, two = _task("task-a"), _task("task-b")
+        assigned_one = _task(
+            "task-a", status=TaskStatus.ASSIGNED, assigned_to=str(first.id)
+        )
+        engine = mock_of[TaskEngine](
+            get_task=AsyncMock(side_effect=[one, two]),
+            submit=AsyncMock(
+                side_effect=[
+                    TaskMutationResult(
+                        request_id="r", success=True, task=assigned_one, version=2
+                    ),
+                    TaskMutationResult(
+                        request_id="r",
+                        success=False,
+                        error="invalid transition",
+                        error_code="validation",
+                    ),
+                    TaskMutationResult(
+                        request_id="r",
+                        success=False,
+                        error="assigned -> blocked refused",
+                        error_code="validation",
+                    ),
+                ]
+            ),
+        )
+
+        with (
+            structlog.testing.capture_logs() as captured,
+            pytest.raises(CoordinationError, match="invalid transition"),
+        ):
+            await AssignmentWriter(engine).persist(
+                _group(
+                    AgentAssignment(identity=first, task=one),
+                    AgentAssignment(identity=_identity("agent-b"), task=two),
+                )
+            )
+
+        warnings = [e for e in captured if e.get("log_level") == "warning"]
+        assert any(
+            entry.get("subtask_id") == str(one.id)
+            and entry.get("error_type") == "TaskMutationRejected"
+            for entry in warnings
+        )
 
     async def test_an_engine_error_mid_wave_still_releases(self) -> None:
         """A refused assignment is not the only way a wave dies partway.

@@ -1865,7 +1865,7 @@
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
-      "loc": 781
+      "loc": 786
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,
