@@ -52,7 +52,7 @@ _EXPECTED = [
         "1000",
         (0, 1_000_000),
     ),
-    (SettingNamespace.ENGINE, "max_turns", SettingType.INTEGER, "20", (1, 1000)),
+    (SettingNamespace.ENGINE, "max_turns", SettingType.INTEGER, "300", (1, 1000)),
 ]
 
 

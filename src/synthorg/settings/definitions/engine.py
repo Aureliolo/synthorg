@@ -1001,11 +1001,14 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="max_turns",
         type=SettingType.INTEGER,
-        default="20",
+        default="300",
         description=(
-            "Hard cap on the number of LLM turns per agent execution."
-            " Applied by AgentEngine.run when a caller does not pass an"
-            " explicit max_turns; bounds runaway loops and per-task cost."
+            "Backstop against a pathological loop, not a work budget: a"
+            " run's cost ceiling, stagnation detector and stage timeout are"
+            " what stop it spending without progressing, so this only has to"
+            " sit above what real work takes. Applied by AgentEngine.run when"
+            " a caller does not pass an explicit max_turns. Reaching it parks"
+            " the run for a human rather than discarding it."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
