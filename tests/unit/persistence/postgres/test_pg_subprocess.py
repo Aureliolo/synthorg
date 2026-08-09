@@ -264,7 +264,10 @@ class TestThreadFallback:
 
         # Only now does the worker get to run, which is the whole point.
         release.set()
-        await asyncio.to_thread(settled.wait, _CHILD_EXIT_GRACE)
+        # Asserted, not merely awaited: a worker that never ran leaves no
+        # dump either, so skipping this would let the check below pass
+        # without the delayed start it exists to survive ever happening.
+        assert await asyncio.to_thread(settled.wait, _CHILD_EXIT_GRACE)
 
         assert not target.exists()
 
