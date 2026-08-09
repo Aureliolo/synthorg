@@ -109,7 +109,7 @@ export function applyDagreLayout(
       cardPadding,
       // Reserve exactly the chrome that will be rendered, so turning the
       // budget bar or status dots off leaves no dead whitespace in the card.
-      headerHeight: computeHeaderHeight(options, cardPadding),
+      headerHeight: computeHeaderHeight(options),
       footerHeight: computeFooterHeight(options),
     },
   })

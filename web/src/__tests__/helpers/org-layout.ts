@@ -94,20 +94,41 @@ export function positionsOf(
   return out
 }
 
+/**
+ * The requested ids sorted along one axis, refusing a tie.
+ *
+ * Two nodes sharing a coordinate have no order along that axis, and `sort` is
+ * stable, so ordering a tie hands the ids back exactly as they were passed in.
+ * An assertion comparing that against the expected order would then pass
+ * whatever the layout did, so a tie is reported rather than ordered.
+ */
+function sortedByAxis(
+  nodes: readonly Node[],
+  ids: readonly string[],
+  axis: 'x' | 'y',
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const present = ids.filter((id) => byId.has(id))
+  const owners = new Map<number, string>()
+  for (const id of present) {
+    const at = byId.get(id)!.position[axis]
+    const tied = owners.get(at)
+    if (tied !== undefined) {
+      throw new Error(`${tied} and ${id} share ${axis}=${String(at)}; no order to assert`)
+    }
+    owners.set(at, id)
+  }
+  return present.sort((a, b) => byId.get(a)!.position[axis] - byId.get(b)!.position[axis])
+}
+
 /** The given ids sorted left to right by their laid-out x. */
 export function leftToRight(nodes: readonly Node[], ids: readonly string[]): string[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]))
-  return [...ids]
-    .filter((id) => byId.has(id))
-    .sort((a, b) => byId.get(a)!.position.x - byId.get(b)!.position.x)
+  return sortedByAxis(nodes, ids, 'x')
 }
 
 /** The given ids sorted top to bottom by their laid-out y. */
 export function topToBottom(nodes: readonly Node[], ids: readonly string[]): string[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]))
-  return [...ids]
-    .filter((id) => byId.has(id))
-    .sort((a, b) => byId.get(a)!.position.y - byId.get(b)!.position.y)
+  return sortedByAxis(nodes, ids, 'y')
 }
 
 export function agentIds(names: readonly string[]): string[] {

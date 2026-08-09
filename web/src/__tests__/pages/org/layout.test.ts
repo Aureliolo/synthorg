@@ -220,10 +220,12 @@ describe('applyDagreLayout on degenerate charts', () => {
     for (const [a, b] of pairsOf(order.map((id) => nodeById(nodes, id)))) {
       expect(overlaps(a, b)).toBe(false)
     }
-    // The owner still reads as the top of the chart.
+    // The owner still reads as the top of the chart, clear of every card:
+    // a top edge above another's says nothing about whether the two collide.
     const owner = nodeById(nodes, OWNER_NODE_ID)
     for (const id of order) {
       expect(owner.position.y).toBeLessThan(nodeById(nodes, id).position.y)
+      expect(overlaps(owner, nodeById(nodes, id))).toBe(false)
     }
   })
 

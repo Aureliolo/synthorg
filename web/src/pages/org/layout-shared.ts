@@ -74,7 +74,6 @@ export function cardPaddingFor(density: Density | undefined): number {
 
 // Title row plus the bottom margin under it, which leaves a small breathing
 // gap between the stats (Active / Cost) row and the first agent card below.
-// The card's own top padding is added separately because it varies by density.
 const HEADER_TITLE_ROW = 40
 // Department stats pill row (Active / Cost) rendered on every populated,
 // expanded dept card. One StatPill row is ~22 px plus the header's
@@ -131,8 +130,15 @@ export const DESIRED_INTER_DEPT_GAP = 48
 // overlap their neighbours. A dedicated de-overlap pass uses this.
 export const DESIRED_INTER_DEPT_GAP_X = 56
 
-export function computeHeaderHeight(prefs: LayoutVisualPrefs, cardPadding: number): number {
-  let h = cardPadding + HEADER_TITLE_ROW + HEADER_STATS_BAR
+/**
+ * Height of the department card's header content.
+ *
+ * The card's own padding is not part of it: the sizing pass reserves one band
+ * on every side, so counting the top one here would reserve it twice and leave
+ * a blank strip between the stats row and the first agent card.
+ */
+export function computeHeaderHeight(prefs: LayoutVisualPrefs): number {
+  let h = HEADER_TITLE_ROW + HEADER_STATS_BAR
   if (prefs.showBudgetBar) h += HEADER_BUDGET_BAR
   if (prefs.showStatusDots) h += HEADER_STATUS_DOTS
   return h

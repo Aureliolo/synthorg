@@ -91,14 +91,15 @@ async function refreshAfterWsEvent(get: CompanyGet): Promise<void> {
   }
 }
 
-function updateFromWsEventImpl(get: CompanyGet, event: WsEvent): void {
+function updateFromWsEventImpl(get: CompanyGet, event: WsEvent): boolean {
   // Sanitize the WS-supplied event_type before consulting the
   // allowlist so a malformed frame can't smuggle control or bidi
   // characters into the dispatch path.
   const eventType = sanitizeWsString(event.event_type, 64)
-  if (eventType === undefined) return
-  if (!ORG_MUTATION_EVENTS.has(eventType)) return
+  if (eventType === undefined) return false
+  if (!ORG_MUTATION_EVENTS.has(eventType)) return false
   void refreshAfterWsEvent(get)
+  return true
 }
 
 export function createFetchActions(set: CompanySet, get: CompanyGet) {

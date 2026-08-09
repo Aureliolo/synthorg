@@ -1,11 +1,12 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useCompanyStore } from '@/stores/company'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
+import type { WsEvent } from '@/api/types/websocket'
 import { makeCompanyConfig, makeDepartmentHealth } from '../helpers/factories'
 
 const mockFetchCompanyData = vi.fn().mockResolvedValue(undefined)
 const mockFetchDepartmentHealths = vi.fn().mockResolvedValue(undefined)
-const mockUpdateFromWsEvent = vi.fn()
+const mockUpdateFromWsEvent = vi.fn<(event: WsEvent) => boolean>()
 const mockUpdateCompany = vi.fn().mockResolvedValue(undefined)
 const mockCreateDepartment = vi.fn()
 const mockUpdateDepartment = vi.fn()
@@ -69,7 +70,39 @@ function resetStore() {
 describe('useOrgEditData', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUpdateFromWsEvent.mockReturnValue(false)
     resetStore()
+  })
+
+  describe('freshness gating', () => {
+    function frame(eventType: WsEvent['event_type']): WsEvent {
+      return {
+        event_type: eventType,
+        channel: 'agents',
+        timestamp: '2026-08-09T10:00:00Z',
+        payload: {},
+      }
+    }
+
+    async function deliverAndAskSkip(event: WsEvent): Promise<boolean> {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      const { usePolling } = await import('@/hooks/usePolling')
+      renderHook(() => useOrgEditData())
+      for (const binding of vi.mocked(useWebSocket).mock.calls[0]![0].bindings) {
+        binding.handler(event)
+      }
+      return vi.mocked(usePolling).mock.calls[0]![2]!.skipIfFresh!()
+    }
+
+    it('skips the next poll after a frame that refetched company data', async () => {
+      mockUpdateFromWsEvent.mockReturnValue(true)
+      expect(await deliverAndAskSkip(frame('department.updated'))).toBe(true)
+    })
+
+    it('keeps polling through a frame the store ignored', async () => {
+      // The store refetched nothing, so there is no fresher data to skip on.
+      expect(await deliverAndAskSkip(frame('agent.status_changed'))).toBe(false)
+    })
   })
 
   it('calls fetchCompanyData on mount and starts polling', async () => {

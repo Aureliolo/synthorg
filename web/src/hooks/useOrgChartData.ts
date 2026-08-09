@@ -316,8 +316,11 @@ function useOrgLiveSync(): { wsConnected: boolean; wsSetupError: string | null }
       ORG_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          markFresh()
-          useCompanyStore.getState().updateFromWsEvent(event)
+          // Only an org mutation refetches department health, and that is all
+          // the poll below fetches. A status frame carries its own update over
+          // the socket, so counting it as freshness would let a busy org
+          // suppress the health poll indefinitely.
+          if (useCompanyStore.getState().updateFromWsEvent(event)) markFresh()
           useAgentsStore.getState().updateFromWsEvent(event)
         },
       })),
