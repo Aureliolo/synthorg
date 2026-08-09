@@ -273,6 +273,62 @@ class TestDurableAppend:
         assert counted == [record.claim_id]
         assert [r.cost for r in landed] == [0.25]
 
+    async def test_a_dropped_append_stays_retryable_when_dedup_is_durable(
+        self,
+    ) -> None:
+        """A drop the store recovers from should not need a restart to heal.
+
+        Promoting the claim into the in-memory LRU closes the duplicate
+        branch, which is the only path that can still write the record, so a
+        claim whose append was dropped is withheld until the row is there.
+        """
+        counted: list[str] = []
+        repo = mock_of[CostRecordRepository]()
+        landed: list[CostRecord] = []
+        store_down = True
+
+        async def _append(record: CostRecord) -> None:
+            if store_down:
+                msg = "store down"
+                raise QueryError(msg)
+            landed.append(record)
+
+        repo.append.side_effect = _append
+        tracker = CostTracker(clock=FakeClock(start=_NOW))
+        _attach(tracker, repo, project_cost_repo=_counting_aggregate_repo(counted))
+        record = _record(0.25, project="proj-1")
+
+        await tracker.record(record)
+        assert not landed
+
+        store_down = False
+        await tracker.record(record)
+
+        assert [r.cost for r in landed] == [0.25]
+        # Billed once and held in the window once: only the record was retried.
+        assert counted == [record.claim_id]
+        assert await tracker.get_total_cost() == pytest.approx(0.25)
+
+    async def test_a_dropped_append_without_durable_dedup_is_not_retried(
+        self,
+    ) -> None:
+        """With no dedup row, a redelivery has nothing to recognise it by.
+
+        Withholding the claim there would let the redelivery through as a
+        first delivery and count the same spend twice, so the drop stands as
+        the loud, escalating failure it is logged as.
+        """
+        repo = mock_of[CostRecordRepository]()
+        repo.append.side_effect = QueryError("store down")
+        tracker = CostTracker(clock=FakeClock(start=_NOW))
+        _attach(tracker, repo)
+        record = _record(0.25)
+
+        await tracker.record(record)
+        await tracker.record(record)
+
+        assert await tracker.get_total_cost() == pytest.approx(0.25)
+
     async def test_a_run_of_drops_says_spend_is_not_being_recorded(self) -> None:
         """One dropped receipt is a gap; a streak is an unenforceable ceiling."""
         broken = mock_of[CostRecordRepository]()

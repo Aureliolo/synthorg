@@ -6,6 +6,8 @@ a provider and connected persistence are present, so the composition root
 stays a thin caller.
 """
 
+import asyncio
+import contextlib
 from pathlib import Path
 
 from synthorg.api.state import AppState
@@ -14,6 +16,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.toolsmith.cycle_scheduler import ToolsmithCycleScheduler
 from synthorg.meta.toolsmith.factory import ToolsmithRuntime
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
@@ -314,10 +317,11 @@ async def _start_cycle_scheduler(
     Returns:
         ``True`` once the scheduler runs and the slice is published;
         ``False`` when either failed and the toolsmith stays disabled.
+
+    Raises:
+        CancelledError: Propagated once the half-started scheduler is
+            stopped, so a shutdown mid-start leaves no orphaned task group.
     """
-    from synthorg.meta.toolsmith.cycle_scheduler import (  # noqa: PLC0415
-        ToolsmithCycleScheduler,
-    )
     from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
         ToolsmithStateSlice,
     )
@@ -334,18 +338,36 @@ async def _start_cycle_scheduler(
         app_state.swap_slice(
             ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
         )
+    except asyncio.CancelledError:
+        # Cancellation is a BaseException, so the handler below never sees
+        # it: a shutdown landing inside ``start()`` would leave the
+        # scheduler's task group running with nothing holding a reference
+        # to stop it. Shielded, because that same cancellation would cancel
+        # the stop as well.
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.shield(_stop_quietly(scheduler))
+        raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        try:
-            await scheduler.stop()
-        except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(stop_exc)
-            _toolsmith_disabled(
-                "toolsmith scheduler cleanup failed after wiring error", stop_exc
-            )
+        await _stop_quietly(scheduler)
         _toolsmith_disabled("toolsmith scheduler wiring failed", exc)
         return False
     return True
+
+
+async def _stop_quietly(scheduler: ToolsmithCycleScheduler) -> None:
+    """Stop a scheduler that is being abandoned, reporting a failed stop.
+
+    Args:
+        scheduler: The scheduler to shut down.
+    """
+    try:
+        await scheduler.stop()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        _toolsmith_disabled(
+            "toolsmith scheduler cleanup failed after wiring error", exc
+        )
 
 
 async def wire_toolsmith(

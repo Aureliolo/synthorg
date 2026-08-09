@@ -15,9 +15,11 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from typing import IO
 
 import pytest
 
+from synthorg.persistence.postgres import pg_subprocess, pg_thread_fallback
 from synthorg.persistence.postgres.pg_subprocess import (
     PgToolFailedError,
     minimal_local_env,
@@ -34,6 +36,10 @@ _SLEEP_SCRIPT = "import time; time.sleep(30)"
 #: must not depend on inheriting the parent's, which is what keeps the
 #: parent's secrets out of a tool that never needs them.
 _CHILD_ENV: dict[str, str] = {"PATH": ""}
+
+#: Which open belongs to the fallback. The loop-native attempt creates the
+#: dump before it discovers it cannot spawn, so its open comes first.
+_FALLBACK_OPEN: int = 2
 
 
 @pytest.fixture
@@ -118,6 +124,57 @@ class TestThreadFallback:
         assert "PATH" in env
         # Still minimal: nothing that could carry a credential rides along.
         assert not [key for key in env if key.endswith(("_KEY", "_TOKEN", "_SECRET"))]
+
+    async def test_cancellation_stops_the_child_and_clears_the_dump(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A worker thread cannot be cancelled; the child it started can.
+
+        Without stopping it, a cancelled backup leaves ``pg_dump`` running
+        and streaming into a file the caller believes was removed, and on
+        Windows the removal fails outright because the child still holds it
+        open. Cancellation is timed off the dump's own creation rather than
+        a sleep, so the file provably existed before it provably did not.
+        """
+        target = tmp_path / "dump.pgc"
+        opened = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        real_open = pg_subprocess.open_private_binary
+        opens = 0
+
+        def _announce_open(path: Path) -> IO[bytes]:
+            # The loop-native attempt opens the dump before it discovers it
+            # cannot spawn, so the second open is the fallback's: firing on
+            # the first would cancel a run that never reached the thread.
+            nonlocal opens
+            handle = real_open(path)
+            opens += 1
+            if opens == _FALLBACK_OPEN:
+                loop.call_soon_threadsafe(opened.set)
+            return handle
+
+        # Both modules, because each binds the helper by name: the
+        # loop-native attempt opens through one and the fallback the other.
+        monkeypatch.setattr(pg_subprocess, "open_private_binary", _announce_open)
+        monkeypatch.setattr(pg_thread_fallback, "open_private_binary", _announce_open)
+
+        task = asyncio.create_task(
+            run_pg_tool(
+                sys.executable,
+                ["-c", _SLEEP_SCRIPT],
+                env=_CHILD_ENV,
+                timeout_seconds=30.0,
+                output_path=target,
+            )
+        )
+        await opened.wait()
+        assert target.exists()
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert not target.exists()
 
     async def test_a_timeout_is_reported_as_a_timeout(self, tmp_path: Path) -> None:
         """``subprocess`` raises its own; callers are promised ``TimeoutError``."""

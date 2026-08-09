@@ -12,16 +12,15 @@ Subprocess invocations go through :func:`asyncio.create_subprocess_exec` with an
 explicit argv list (no shell) and ``PGPASSWORD`` injected via the child's
 environment so the secret never appears on argv. That call is unavailable on the
 Windows ``SelectorEventLoop``, which is the loop psycopg's async pool requires,
-so the same argv falls back to a blocking :mod:`subprocess` call on a worker
-thread rather than leaving backup unreachable on the loop the database itself
-forces.
+so :mod:`synthorg.persistence.postgres.pg_thread_fallback` runs the same argv on
+a worker thread rather than leaving backup unreachable on the loop the database
+itself forces. :func:`run_pg_tool` is the one door to both.
 """
 
 import asyncio
 import contextlib
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import IO, Final, NoReturn
 
@@ -145,7 +144,7 @@ def minimal_local_env() -> dict[str, str]:
     }
 
 
-def _open_private_binary(path: Path) -> IO[bytes]:
+def open_private_binary(path: Path) -> IO[bytes]:
     """Open *path* for binary writing, readable only by the owner.
 
     Created through ``os.open`` with the mode supplied up front rather than
@@ -181,7 +180,7 @@ async def _close_and_unlink(output_path: Path, fp: IO[bytes]) -> None:
         await asyncio.to_thread(output_path.unlink)
 
 
-def _raise_pg_tool_failed(
+def raise_pg_tool_failed(
     binary: str, returncode: int | None, stderr: bytes
 ) -> NoReturn:
     """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``.
@@ -203,7 +202,7 @@ def _raise_pg_tool_failed(
     raise PgToolFailedError(msg)
 
 
-def _raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
+def raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
     """Normalise ``create_subprocess_exec`` ``OSError`` to a domain error.
 
     :func:`resolve_binary` is only a precheck; a binary can be deleted or
@@ -247,9 +246,13 @@ async def _run_pg_tool_file(
     Returns:
         Result of type ``bytes``.
     """
-    # ``open()`` can block on slow / network-attached storage, so
-    # offload to a thread to keep the event loop responsive.
-    fp = await asyncio.to_thread(_open_private_binary, output_path)
+    # Opened inline, not through ``to_thread``: a worker thread cannot be
+    # cancelled, so awaiting the open leaves a window where a cancellation
+    # returns nothing while the thread has already created the file, and the
+    # handle then has no owner to close it. On Windows that unclosed handle
+    # is also what stops the stray artefact being removed. Two syscalls
+    # against the backup directory do not need the loop released.
+    fp = open_private_binary(output_path)
     try:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -261,7 +264,7 @@ async def _run_pg_tool_file(
             )
         except OSError as exc:
             await _close_and_unlink(output_path, fp)
-            _raise_pg_tool_spawn_failed(binary, exc)
+            raise_pg_tool_spawn_failed(binary, exc)
         except BaseException:
             await _close_and_unlink(output_path, fp)
             raise
@@ -280,7 +283,7 @@ async def _run_pg_tool_file(
     if proc.returncode != 0:
         with contextlib.suppress(OSError):
             await asyncio.to_thread(output_path.unlink)
-        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
+        raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
     return stderr or b""
 
 
@@ -309,7 +312,7 @@ async def _run_pg_tool_buffered(
             stderr=asyncio.subprocess.PIPE,
         )
     except OSError as exc:
-        _raise_pg_tool_spawn_failed(binary, exc)
+        raise_pg_tool_spawn_failed(binary, exc)
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
@@ -319,121 +322,8 @@ async def _run_pg_tool_buffered(
         await _terminate_proc(proc)
         raise
     if proc.returncode != 0:
-        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
+        raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
     return stdout or b"", stderr or b""
-
-
-def _run_pg_tool_blocking(
-    binary: str,
-    args: list[str],
-    *,
-    env: dict[str, str],
-    timeout_seconds: float,
-    output_path: Path | None,
-) -> tuple[int, bytes, bytes]:
-    """Run the tool with :mod:`subprocess`, blocking the calling thread.
-
-    The file branch opens the dump through :func:`_open_private_binary` for
-    the same reason the loop-native one does: the artefact is a plaintext
-    copy of the database and must never exist world-readable, not even for
-    the window between creation and a ``chmod``.
-
-    Args:
-        binary: Absolute path to the resolved PostgreSQL CLI tool.
-        args: Tool arguments, already assembled by the command layer.
-        env: The minimal child environment carrying the connection settings.
-        timeout_seconds: Maximum seconds to wait; ``subprocess`` kills the
-            child itself when it elapses.
-        output_path: Where stdout is streamed, or ``None`` to buffer it.
-
-    Returns:
-        ``(returncode, stdout, stderr)``.
-    """
-    argv = [binary, *args]
-    if output_path is None:
-        completed = subprocess.run(  # noqa: S603 -- list argv, no shell
-            argv,
-            env=env,
-            capture_output=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-        return completed.returncode, completed.stdout or b"", completed.stderr or b""
-    with _open_private_binary(output_path) as fp:
-        streamed = subprocess.run(  # noqa: S603 -- list argv, no shell
-            argv,
-            env=env,
-            stdout=fp,
-            stderr=subprocess.PIPE,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    return streamed.returncode, b"", streamed.stderr or b""
-
-
-async def _run_pg_tool_threaded(
-    binary: str,
-    args: list[str],
-    *,
-    env: dict[str, str],
-    timeout_seconds: float,
-    output_path: Path | None,
-) -> tuple[bytes, bytes]:
-    """Run a PG tool on a worker thread when the loop cannot spawn one.
-
-    :func:`asyncio.create_subprocess_exec` raises ``NotImplementedError`` on
-    the Windows ``SelectorEventLoop``, which has no IOCP subprocess
-    integration and which psycopg's async pool requires. Without this arm,
-    backup would be unreachable on exactly the loop the database forces, so
-    the blocking API runs on a worker thread instead. The observable
-    contract is unchanged: the same argv, the same private output file, the
-    same three failure shapes.
-
-    Args:
-        binary: Absolute path to the resolved PostgreSQL CLI tool.
-        args: Tool arguments, already assembled by the command layer.
-        env: The minimal child environment carrying the connection settings.
-        timeout_seconds: Maximum seconds to wait for completion.
-        output_path: Where stdout is streamed, or ``None`` to buffer it.
-
-    Returns:
-        ``(stdout, stderr)`` captured from the subprocess.
-
-    Raises:
-        PgToolFailedError: Non-zero exit or a spawn-time ``OSError``.
-        TimeoutError: The tool exceeded ``timeout_seconds``.
-    """
-
-    async def _discard_partial() -> None:
-        """Remove the empty or half-written dump a failed run left behind."""
-        if output_path is None:
-            return
-        with contextlib.suppress(OSError):
-            await asyncio.to_thread(output_path.unlink)
-
-    try:
-        returncode, stdout, stderr = await asyncio.to_thread(
-            _run_pg_tool_blocking,
-            binary,
-            args,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            output_path=output_path,
-        )
-    except subprocess.TimeoutExpired as exc:
-        await _discard_partial()
-        msg = f"{binary} timed out after {timeout_seconds}s"
-        raise TimeoutError(msg) from exc
-    except OSError as exc:
-        await _discard_partial()
-        _raise_pg_tool_spawn_failed(binary, exc)
-    except BaseException:
-        await _discard_partial()
-        raise
-    if returncode != 0:
-        await _discard_partial()
-        _raise_pg_tool_failed(binary, returncode, stderr)
-    return stdout, stderr
 
 
 async def run_pg_tool(
@@ -471,7 +361,14 @@ async def run_pg_tool(
             timeout_seconds=timeout_seconds,
         )
     except NotImplementedError:
-        return await _run_pg_tool_threaded(
+        # Imported here, not at module scope: the fallback imports this
+        # module's shared pieces, so a module-level edge back would be a
+        # cold-import cycle.
+        from synthorg.persistence.postgres.pg_thread_fallback import (  # noqa: PLC0415
+            run_pg_tool_threaded,
+        )
+
+        return await run_pg_tool_threaded(
             binary,
             args,
             env=env,

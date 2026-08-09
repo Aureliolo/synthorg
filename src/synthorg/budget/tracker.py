@@ -550,7 +550,7 @@ class CostTracker(CostTrackerSummaryMixin):
             # Durable before in-memory: the record is what a receipt reads and
             # what a restart rehydrates from, so a record that exists only in
             # this process's memory is spend nothing else can see.
-            await self._append_durable(cost_record)
+            recorded = await self._append_durable(cost_record)
 
             async with self._get_lock():
                 # Promote the reservation to a finalised LRU entry under
@@ -560,7 +560,15 @@ class CostTracker(CostTrackerSummaryMixin):
                 # in ``_inflight_claims`` are untouched.
                 self._inflight_claims.discard(cost_record.claim_id)
                 self._records.append(cost_record)
-                self._promote_seen_claim(cost_record.claim_id)
+                # Withheld only when a redelivery could still finish the job:
+                # the LRU short-circuits ahead of the durable path, so a claim
+                # left out of it comes back through the duplicate branch and
+                # retries the append there. Without durable dedup the LRU is
+                # the only dedup there is, and withholding would double the
+                # window rather than retry anything, so the drop stands as
+                # logged.
+                if recorded or not self._has_durable_dedup(cost_record):
+                    self._promote_seen_claim(cost_record.claim_id)
                 logger.info(
                     BUDGET_RECORD_ADDED,
                     agent_id=cost_record.agent_id,
@@ -574,6 +582,27 @@ class CostTracker(CostTrackerSummaryMixin):
             # cannot race the promotion that may already have run.
             self._inflight_claims.discard(cost_record.claim_id)
             raise
+
+    def _has_durable_dedup(self, cost_record: CostRecord) -> bool:
+        """Whether a redelivery of this record would be recognised durably.
+
+        Only then is it safe to keep a claim out of the in-memory LRU after a
+        dropped append: the duplicate branch recognises it, retries the
+        record, and cannot re-bill the aggregate. Without a durable dedup row
+        the LRU is the whole of the dedup, so a withheld claim would be
+        counted twice instead of retried once.
+
+        Args:
+            cost_record: The record whose redelivery is in question.
+
+        Returns:
+            Whether the durable dedup row exists for this record.
+        """
+        return (
+            self._project_cost_repo is not None
+            and self._claim_seen_repo is not None
+            and cost_record.project_id is not None
+        )
 
     async def _append_durable(self, cost_record: CostRecord) -> bool:
         """Persist the record itself, best-effort but not silently.
