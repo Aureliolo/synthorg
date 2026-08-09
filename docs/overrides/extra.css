@@ -83,3 +83,14 @@ hr,
   background: #0f0f1a;
   border-bottom: 1px solid #1e1e2e;
 }
+
+/* Footer meta bar.
+   The modern theme paints this bar with --md-default-fg-color--lightest and
+   the copyright text with --md-default-fg-color--light. Upstream both are
+   near-transparent tints (#0000000d / #0000008c) layered over the page, but
+   the dark palette above redefines them as opaque slates, which turns a 5%
+   overlay into a solid mid-tone ground and drops the copyright to 2.95:1.
+   Painting the bar explicitly restores the intended dark ground (7.4:1). */
+.md-footer-meta {
+  background-color: #0f0f1a;
+}

@@ -162,6 +162,9 @@ jobs:
       - name: Patch sitemap with static OpenAPI artifacts
         run: uv run python scripts/patch_sitemap.py
 
+      - name: Strip prohibited aria-label from the drawer overlay
+        run: uv run python scripts/patch_docs_a11y.py
+
       - name: Generate old-path redirect stubs
         # zensical builds the docs but does NOT run the mkdocs-redirects plugin,
         # so the redirect_maps in mkdocs.yml never materialise as pages and the
