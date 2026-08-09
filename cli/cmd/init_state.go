@@ -207,16 +207,24 @@ func writeInitFiles(state config.State) (string, error) {
 	return safeDir, nil
 }
 
-// resolveImageTag returns the image tag to use: the override if set,
-// the CLI version, or "latest" for dev builds.
+// resolveImageTag returns the image tag to use: the override if set, the
+// CLI version, or the current-source pointer for a build from source.
+//
+// A released binary pins its own version, so the stack matches the release
+// that published those images. A source build has no such release, and
+// `latest` is the wrong fallback for it: that tag is applied only on a
+// NON-prerelease `v*` tag, and this project publishes prereleases, so
+// `latest` names whatever stable release happened last rather than
+// anything current. `dev` tracks the newest prerelease, which is the
+// closest published match for a tree built from source.
 func resolveImageTag(override string) string {
 	if override != "" {
 		return override
 	}
-	if v := version.Version; v != "" && v != "dev" {
+	if v := version.Version; v != "" && v != config.SourceBuildVersion {
 		return v
 	}
-	return "latest"
+	return config.SourceBuildImageTag
 }
 
 // generateInitSecrets creates the JWT, settings encryption, secret-storage

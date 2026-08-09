@@ -23,16 +23,9 @@ from synthorg.communication.meeting.models import (
     MeetingAgendaItem,
 )
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
-from synthorg.communication.meeting.position_papers import (
-    PositionPapersProtocol,
-)
-from synthorg.communication.meeting.protocol import (
-    AgentCaller,
-    MeetingProtocol,
-)
-from synthorg.communication.meeting.round_robin import RoundRobinProtocol
-from synthorg.communication.meeting.structured_phases import (
-    StructuredPhasesProtocol,
+from synthorg.communication.meeting.protocol import AgentCaller
+from synthorg.communication.meeting.protocol_factory import (
+    build_protocol_factories,
 )
 
 
@@ -72,23 +65,15 @@ def _make_agent_caller(
 
 
 def _make_full_orchestrator(
-    protocol_config: MeetingProtocolConfig | None = None,
     agent_caller: AgentCaller | None = None,
     task_creator: object | None = None,
 ) -> MeetingOrchestrator:
-    """Create an orchestrator with all protocols registered."""
-    cfg = protocol_config or MeetingProtocolConfig()
-    registry: dict[MeetingProtocolType, MeetingProtocol] = {
-        MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
-            config=cfg.round_robin,
-        ),
-        MeetingProtocolType.POSITION_PAPERS: PositionPapersProtocol(
-            config=cfg.position_papers,
-        ),
-        MeetingProtocolType.STRUCTURED_PHASES: StructuredPhasesProtocol(
-            config=cfg.structured_phases,
-        ),
-    }
+    """Create an orchestrator over the production factory registry.
+
+    Every protocol config arrives per meeting through ``run_meeting``,
+    which is the path an operator's YAML travels.
+    """
+    registry = build_protocol_factories()
     caller = agent_caller or _make_agent_caller()
     return MeetingOrchestrator(
         protocol_registry=registry,

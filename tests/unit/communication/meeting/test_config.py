@@ -9,7 +9,10 @@ from synthorg.communication.meeting.config import (
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.enums import (
+    ConflictDetectorType,
+    MeetingProtocolType,
+)
 
 
 @pytest.mark.unit
@@ -98,6 +101,22 @@ class TestStructuredPhasesConfig:
     def test_max_discussion_tokens_gt_0(self) -> None:
         with pytest.raises(ValidationError, match="greater than 0"):
             StructuredPhasesConfig(max_discussion_tokens=0)
+
+    def test_conflict_detector_defaults_to_keyword(self) -> None:
+        assert StructuredPhasesConfig().conflict_detector is (
+            ConflictDetectorType.KEYWORD
+        )
+
+    def test_no_embedder_strategy_to_choose(self) -> None:
+        """There is one embedding binding, and it is not this one.
+
+        A meeting's conflict detectors score positions with the built-in
+        lexical embedder. Offering a local neural alternative here would
+        be a second embedder-choice surface next to
+        ``memory.embedder_model``, and no shipped image can run one.
+        """
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            StructuredPhasesConfig.model_validate({"embedder_strategy": "hashing"})
 
 
 @pytest.mark.unit

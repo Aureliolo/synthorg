@@ -366,12 +366,13 @@ readiness ignores. Truncating automatically would be sound only for a Matryoshka
 model, and knowing which models those are is the shipped-table approach this
 section replaced.
 
-The in-process `sentence_transformer` embedder is a separate component from
-this binding: the meeting conflict detector selects it through
-`embedder_strategy`, and it loads a local model instead of dispatching to a
-provider. Whether it should compile itself under `torch.compile` was measured
-rather than assumed; see
-[Embedding Evaluation](../reference/embedding-evaluation.md#local-embedder-and-torchcompile).
+This binding is the only embedding model the product runs. Nothing else loads
+one in-process: a meeting's conflict detectors score positions with the
+built-in lexical embedder, chosen for that job rather than offered as one
+option among several, and the fine-tuning pipeline trains in its own image.
+A second locally-loaded embedder selected from somewhere else would be a
+second surface for the same decision, and the backend image carries neither
+`torch` nor `sentence-transformers`.
 
 #### Why the rankings were about quality, not selection
 

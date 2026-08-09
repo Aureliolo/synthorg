@@ -194,7 +194,9 @@ Meetings (Pattern 3 of [Communication Patterns](communication.md#communication-p
 agents interact during structured multi-agent conversations. Different meeting
 types naturally suit different protocols. All protocols implement a
 `MeetingProtocol` protocol, making the system extensible; new protocols can be
-registered and selected per meeting type. Cost bounds are enforced by
+registered and selected per meeting type. Each meeting type carries its own
+`protocol_config`, and the sub-config matching the selected protocol is what
+the protocol running that meeting is built from. Cost bounds are enforced by
 `duration_tokens` in the [communication config](communication.md#communication-config).
 
 !!! note "SEC-1: lateral prompt-injection defences"
@@ -245,6 +247,7 @@ registered and selected per meeting type. Cost bounds are enforced by
       max_turns_per_agent: 2
       max_total_turns: 16
       leader_summarizes: true
+      summary_reserve_fraction: 0.20
     ```
 
     - Simple, natural conversation feel, each agent sees full context
@@ -265,6 +268,7 @@ registered and selected per meeting type. Cost bounds are enforced by
     position_papers:
       max_tokens_per_position: 300
       synthesizer: "meeting_leader"    # who synthesizes
+      synthesis_reserve_fraction: 0.20
     ```
 
     - Cheapest: parallel calls, no quadratic growth, no ordering bias, no
@@ -299,7 +303,16 @@ registered and selected per meeting type. Cost bounds are enforced by
     structured_phases:
       skip_discussion_if_no_conflicts: true
       max_discussion_tokens: 1000
+      synthesis_reserve_fraction: 0.20
+      conflict_detector: "keyword"       # keyword | structured | llm_judge | embedding | hybrid | auto
     ```
+
+    The `embedding` and `hybrid` detectors score each agent's position with
+    the built-in lexical embedder, which compares shared vocabulary rather
+    than meaning. That is the whole of the embedding tier: there is one
+    embedding model an operator names, `memory.embedder_model`, it serves
+    durable agent memory, and it dispatches to a provider rather than
+    loading a model into the backend process.
 
     - Cost-efficient: parallel input, discussion only when needed
     - More complex orchestration; conflict detection between inputs adds
@@ -371,8 +384,12 @@ These fields are applied to all meeting endpoints (list, detail, trigger).
 ### Auto-Wiring
 
 The `MeetingOrchestrator` is auto-wired at startup alongside Phase 1
-services (no persistence dependency). All three meeting protocols are
-registered with default configs.
+services (no persistence dependency). The registry it receives holds one
+factory per protocol type rather than one instance, so each meeting is
+run by a protocol built from that meeting type's own `protocol_config`.
+The premortem and consensus-velocity hooks derive from the organisation-wide
+strategy configuration rather than from any one meeting, so they are built
+once at wiring time and shared.
 
 **Fully-wired mode.** When both `agent_registry` and `provider_registry`
 are available, the `agent_caller` dispatches a real LLM call per turn

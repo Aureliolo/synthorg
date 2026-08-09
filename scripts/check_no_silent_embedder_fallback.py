@@ -71,9 +71,9 @@ _CONSTRUCTION_ALLOWLIST: Final[frozenset[str]] = frozenset(
         # Builds it only after resolution returned the built-in binding, which
         # only happens when the operator's setting names it.
         "src/synthorg/api/lifecycle_helpers/memory_backend_wiring.py",
-        # The meeting detector's ``hashing`` strategy, selected by an operator
-        # setting. Not a fallback: the sibling strategy raises rather than
-        # handing over to this one.
+        # The embedder a meeting's conflict detectors score positions with.
+        # Not a fallback: it is the only embedder that path builds, and it
+        # replaces nothing that failed.
         "src/synthorg/communication/meeting/embedder.py",
     },
 )
@@ -84,7 +84,6 @@ _EMBEDDER_BUILDERS: Final[frozenset[str]] = frozenset(
     {
         _BUILTIN_CLASS,
         "ProviderTextEmbedder",
-        "SentenceTransformerEmbedder",
         "build_text_embedder",
     },
 )

@@ -167,7 +167,26 @@ jobs:
               - 'scripts/cis-scan.sh'
             fine-tune:
               - 'docker/fine-tune/**'
-              - 'src/synthorg/memory/embedding/**'
+              # The image copies all of src/ but executes only the
+              # entrypoint's import closure, which is 3% of the tree. These
+              # globs cover it and nothing wider, because a rebuild costs
+              # ~26 min of wall clock across the two variants. The list is
+              # DERIVED, not maintained: an import that escapes it fails
+              # tests/unit/test_fine_tune_image_scope.py.
+              - 'src/synthorg/__init__.py'
+              - 'src/synthorg/constants.py'
+              - 'src/synthorg/budget/**'
+              - 'src/synthorg/core/**'
+              - 'src/synthorg/engine/prompt_safety.py'
+              - 'src/synthorg/hr/**'
+              - 'src/synthorg/llm/**'
+              - 'src/synthorg/memory/**'
+              - 'src/synthorg/observability/**'
+              - 'src/synthorg/ontology/**'
+              - 'src/synthorg/organization/enums.py'
+              - 'src/synthorg/persistence/**'
+              - 'src/synthorg/providers/**'
+              - 'src/synthorg/settings/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.dockerignore'

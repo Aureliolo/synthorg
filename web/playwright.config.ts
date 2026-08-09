@@ -32,7 +32,8 @@ export default defineConfig({
     video: 'retain-on-failure-and-retries',
     // Reduced motion is a context option, not a top-level `use` key: set at
     // the top level it is silently dropped and every spec runs with full
-    // animation, which is what makes visual snapshots race the transition.
+    // animation, so a geometry assertion races the transition it is
+    // measuring mid-flight.
     contextOptions: { reducedMotion: 'reduce' },
     // Bound individual actions / navigations so a wedged click or load
     // fails fast inside the per-test budget instead of consuming it.
@@ -44,9 +45,6 @@ export default defineConfig({
     // Web-first assertions (``toBeVisible`` etc.) retry up to this long;
     // the 5s default races slow first-paint under CI load.
     timeout: 10_000,
-    toHaveScreenshot: {
-      maxDiffPixelRatio: 0.01,
-    },
   },
 
   projects: [

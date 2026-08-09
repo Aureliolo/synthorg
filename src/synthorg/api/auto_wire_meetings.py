@@ -15,7 +15,10 @@ from synthorg.communication.meeting.agent_caller import (
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import ParticipantResolver
-from synthorg.communication.meeting.protocol import AgentCaller, MeetingProtocol
+from synthorg.communication.meeting.protocol import (
+    AgentCaller,
+    MeetingProtocolFactory,
+)
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.lens_assignment import DiversityMaximizingAssigner
@@ -200,74 +203,36 @@ def _missing_meeting_dependencies(
 
 def _build_protocol_registry(
     strategy_config: StrategyConfig,
-) -> Mapping[MeetingProtocolType, MeetingProtocol]:
-    """Create a registry of all meeting protocol implementations.
+) -> Mapping[MeetingProtocolType, MeetingProtocolFactory]:
+    """Create the registry of meeting protocol factories.
 
-    Uses default per-protocol configs from the Pydantic models. The protocol
-    type selected per meeting is determined by ``MeetingProtocolConfig.protocol``,
-    not by the registry. The structured-phases protocol is wired with the
-    premortem and consensus-velocity dispatch hooks derived from
-    ``strategy_config`` so those strategy subsystems run in production.
+    A factory builds its protocol from the meeting's own
+    ``MeetingProtocolConfig``, so a sub-config an operator set on a
+    meeting type reaches the instance that acts on it. The premortem and
+    consensus-velocity dispatch hooks derive from ``strategy_config``
+    rather than from any one meeting, so they are built once here and
+    the structured-phases factory closes over them.
 
     Args:
         strategy_config: Strategy configuration supplying the premortem
             and consensus-velocity sub-configs.
 
     Returns:
-        Mapping from protocol type to implementation.
-
-    Raises:
-        RuntimeError: When the registry size doesn't match the protocol enum.
+        Mapping from protocol type to factory.
     """
     # Deferred imports to avoid heavy transitive deps at module level.
     from synthorg.api._meeting_strategy_dispatch import (  # noqa: PLC0415
         build_consensus_hook,
         build_premortem_hook,
     )
-    from synthorg.communication.meeting.config import (  # noqa: PLC0415
-        PositionPapersConfig,
-        RoundRobinConfig,
-        StructuredPhasesConfig,
-    )
-    from synthorg.communication.meeting.position_papers import (  # noqa: PLC0415
-        PositionPapersProtocol,
-    )
-    from synthorg.communication.meeting.round_robin import (  # noqa: PLC0415
-        RoundRobinProtocol,
-    )
-    from synthorg.communication.meeting.structured_phases import (  # noqa: PLC0415
-        StructuredPhasesProtocol,
+    from synthorg.communication.meeting.protocol_factory import (  # noqa: PLC0415
+        build_protocol_factories,
     )
 
-    registry: dict[MeetingProtocolType, MeetingProtocol] = {
-        MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
-            RoundRobinConfig(),
-        ),
-        MeetingProtocolType.POSITION_PAPERS: PositionPapersProtocol(
-            PositionPapersConfig(),
-        ),
-        MeetingProtocolType.STRUCTURED_PHASES: StructuredPhasesProtocol(
-            StructuredPhasesConfig(),
-            consensus_hook=build_consensus_hook(strategy_config),
-            premortem_hook=build_premortem_hook(strategy_config),
-        ),
-    }
-
-    if len(registry) != len(MeetingProtocolType):
-        msg = (
-            f"Protocol registry has {len(registry)} entries but "
-            f"{len(MeetingProtocolType)} protocol types exist"
-        )
-        logger.error(
-            API_APP_STARTUP,
-            action="meeting_protocol_registry_incomplete",
-            registry_size=len(registry),
-            expected_size=len(MeetingProtocolType),
-            error_type=RuntimeError.__name__,
-        )
-        raise RuntimeError(msg)
-
-    return registry
+    return build_protocol_factories(
+        consensus_hook=build_consensus_hook(strategy_config),
+        premortem_hook=build_premortem_hook(strategy_config),
+    )
 
 
 def _wire_meeting_orchestrator(

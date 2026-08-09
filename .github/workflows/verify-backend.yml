@@ -1825,9 +1825,9 @@ jobs:
       - name: Production build (preview server source)
         run: npm run build
         working-directory: web
-      # Functional flow specs only (the desktop-chromium project). Visual
-      # screenshot specs (e2e/visual) need committed per-platform baselines
-      # and are out of scope for this gate.
+      # The whole e2e suite, on the desktop-chromium project. Rendering is
+      # asserted as laid-out geometry rather than as pixels, so there is no
+      # screenshot suite needing committed per-platform baselines.
       - name: Run Playwright flow specs
         # No --retries here: the count lives in web/playwright.config.ts, which
         # already applies 2 under CI. A CLI flag would silently override it and

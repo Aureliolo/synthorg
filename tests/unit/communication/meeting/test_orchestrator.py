@@ -25,12 +25,13 @@ from synthorg.communication.meeting.models import (
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,
 )
-from synthorg.communication.meeting.position_papers import (
-    PositionPapersProtocol,
-)
 from synthorg.communication.meeting.protocol import MeetingProtocol
+from synthorg.communication.meeting.protocol_factory import (
+    build_protocol_factories,
+)
 from synthorg.communication.meeting.round_robin import RoundRobinProtocol
 from synthorg.core.task_enums import Priority
+from tests._shared import pinned_protocol_registry
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )
@@ -39,18 +40,15 @@ from tests.unit.communication.meeting.conftest import (
 def _make_orchestrator(
     *,
     task_creator: object | None = None,
-    protocol_config: MeetingProtocolConfig | None = None,
 ) -> MeetingOrchestrator:
-    """Create an orchestrator with default protocols registered."""
-    cfg = protocol_config or MeetingProtocolConfig()
-    registry: dict[MeetingProtocolType, MeetingProtocol] = {
-        MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
-            config=cfg.round_robin,
-        ),
-        MeetingProtocolType.POSITION_PAPERS: PositionPapersProtocol(
-            config=cfg.position_papers,
-        ),
-    }
+    """Create an orchestrator over the production factory registry.
+
+    Structured phases is withheld so the not-registered path stays
+    reachable; every protocol config arrives per meeting through
+    ``run_meeting``.
+    """
+    registry = dict(build_protocol_factories())
+    del registry[MeetingProtocolType.STRUCTURED_PHASES]
     caller = make_mock_agent_caller()
     return MeetingOrchestrator(
         protocol_registry=registry,
@@ -360,11 +358,13 @@ class TestMeetingOrchestratorErrorHandling:
             msg = "Agent unreachable"
             raise RuntimeError(msg)
 
-        registry = {
-            MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
-                config=MeetingProtocolConfig().round_robin,
-            ),
-        }
+        registry = pinned_protocol_registry(
+            {
+                MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
+                    config=MeetingProtocolConfig().round_robin,
+                ),
+            },
+        )
         orchestrator = MeetingOrchestrator(
             protocol_registry=registry,
             agent_caller=_failing_caller,  # type: ignore[arg-type]
@@ -501,9 +501,9 @@ class TestMeetingOrchestratorTaskCreation:
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 
-        registry: dict[MeetingProtocolType, MeetingProtocol] = {
-            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
-        }
+        registry = pinned_protocol_registry(
+            {MeetingProtocolType.ROUND_ROBIN: mock_protocol},
+        )
         orchestrator = MeetingOrchestrator(
             protocol_registry=registry,
             agent_caller=make_mock_agent_caller(),
@@ -569,10 +569,7 @@ class TestMeetingOrchestratorTaskCreation:
             created_tasks.append((desc, assignee, priority))
 
         config = MeetingProtocolConfig(auto_create_tasks=False)
-        orchestrator = _make_orchestrator(
-            task_creator=_creator,
-            protocol_config=config,
-        )
+        orchestrator = _make_orchestrator(task_creator=_creator)
 
         await orchestrator.run_meeting(
             meeting_type_name="standup",
@@ -642,9 +639,9 @@ class TestMeetingOrchestratorTaskCreation:
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 
-        registry: dict[MeetingProtocolType, MeetingProtocol] = {
-            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
-        }
+        registry = pinned_protocol_registry(
+            {MeetingProtocolType.ROUND_ROBIN: mock_protocol},
+        )
         orchestrator = MeetingOrchestrator(
             protocol_registry=registry,
             agent_caller=make_mock_agent_caller(),
@@ -693,9 +690,9 @@ class TestMeetingOrchestratorTaskCreation:
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 
-        registry: dict[MeetingProtocolType, MeetingProtocol] = {
-            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
-        }
+        registry = pinned_protocol_registry(
+            {MeetingProtocolType.ROUND_ROBIN: mock_protocol},
+        )
         orchestrator = MeetingOrchestrator(
             protocol_registry=registry,
             agent_caller=make_mock_agent_caller(),
@@ -735,9 +732,9 @@ def _orchestrator_with_hook(
     mock_protocol = MagicMock(spec=MeetingProtocol)
     mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
     mock_protocol.run = AsyncMock(return_value=minutes)
-    registry: dict[MeetingProtocolType, MeetingProtocol] = {
-        MeetingProtocolType.ROUND_ROBIN: mock_protocol,
-    }
+    registry = pinned_protocol_registry(
+        {MeetingProtocolType.ROUND_ROBIN: mock_protocol},
+    )
     return MeetingOrchestrator(
         protocol_registry=registry,
         agent_caller=make_mock_agent_caller(),

@@ -1,30 +1,29 @@
 # module-kind: code
-"""Text-embedding backends for the embedding conflict detector.
+"""Text embedding for the embedding conflict detector.
 
-Defines the :class:`TextEmbedder` protocol plus two implementations
-selected by the ``embedder_strategy`` discriminator:
+Defines the :class:`TextEmbedder` protocol and builds the one
+implementation the detectors use: :class:`HashingTextEmbedder`, a
+dependency-free deterministic feature-hashing embedder (numpy only).
+It is lexical rather than semantic, and it is chosen here rather than
+offered as one option among several.
 
-* ``hashing`` (default): :class:`HashingTextEmbedder`, a dependency-free
-  deterministic feature-hashing embedder (numpy only). Lexical rather
-  than semantic, but always available and reproducible.
-* ``sentence_transformer``: a real neural embedder behind the optional
-  ``sentence-transformers`` extra; the factory translates a missing extra
-  into :class:`MeetingEmbedderUnavailableError` for the detector's contract.
+There is exactly one embedding model an operator names,
+``memory.embedder_model``, and it is not this: that binding dispatches
+to a provider over HTTP and serves durable agent memory. A second,
+locally-loaded embedder selected from meeting configuration would be a
+second choice surface for the same decision, and the backend image
+carries neither torch nor sentence-transformers, so it could only fail
+on a shipped deployment.
 
-Both implementations live in ``memory.embedding``, the canonical home for
-embedder adapters; this module selects between them for the detector.
-
-Here the hashing embedder is a primary strategy for scoring scheduling
-conflicts, not a fallback for a failed model: neither factory substitutes
-one embedder for another, and a missing extra raises.
+The hashing embedder is a primary choice for scoring scheduling
+conflicts, never a fallback for a model that failed: nothing here
+substitutes one embedder for another.
 """
 
 from typing import Final, Protocol, runtime_checkable
 
 import numpy as np
 
-from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableError
-from synthorg.core.registry.strategy import StrategyRegistry
 from synthorg.memory.embedding.hashing import HashingTextEmbedder
 
 #: Bucket count for conflict scoring, narrower than the memory default.
@@ -68,64 +67,10 @@ def cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> floa
     return float(np.dot(vec_left, vec_right) / (norm_left * norm_right))
 
 
-def _build_hashing(**_kwargs: object) -> TextEmbedder:
-    """Build the hashing embedder (the dependency-free default).
+def build_text_embedder() -> TextEmbedder:
+    """Build the embedder the conflict detectors score positions with.
 
     Returns:
         A :class:`HashingTextEmbedder` at the conflict-scoring width.
     """
     return HashingTextEmbedder(dims=_CONFLICT_HASH_DIMS)
-
-
-def _build_sentence_transformer(**_kwargs: object) -> TextEmbedder:
-    """Build the optional sentence-transformers embedder.
-
-    Imports the shared adapter from ``memory.embedding`` so the SDK is
-    bound at that boundary, not here, and translates a missing extra into
-    the meeting-layer error the detector contract documents.
-
-    Returns:
-        The shared sentence-transformers embedder.
-
-    Raises:
-        MeetingEmbedderUnavailableError: When the ``sentence-transformers``
-            extra is not installed.
-    """
-    from synthorg.memory.embedding.sentence_transformer import (  # noqa: PLC0415
-        SentenceTransformerEmbedder,
-    )
-    from synthorg.memory.errors import (  # noqa: PLC0415
-        MemoryEmbedderUnavailableError,
-    )
-
-    try:
-        return SentenceTransformerEmbedder()
-    except MemoryEmbedderUnavailableError as exc:
-        raise MeetingEmbedderUnavailableError(str(exc)) from exc
-
-
-_EMBEDDER_REGISTRY: StrategyRegistry[TextEmbedder] = StrategyRegistry(
-    {
-        "hashing": _build_hashing,
-        "sentence_transformer": _build_sentence_transformer,
-    },
-    kind="text_embedder",
-)
-
-
-def build_text_embedder(strategy: str) -> TextEmbedder:
-    """Build the text embedder for *strategy*.
-
-    Args:
-        strategy: The ``embedder_strategy`` discriminator (``hashing``
-            or ``sentence_transformer``).
-
-    Returns:
-        The selected :class:`TextEmbedder`.
-
-    Raises:
-        StrategyFactoryNotFoundError: When *strategy* is unknown.
-        MeetingEmbedderUnavailableError: When the sentence-transformers
-            extra is required but absent.
-    """
-    return _EMBEDDER_REGISTRY.build(strategy)

@@ -20,8 +20,8 @@ func TestDefaultState(t *testing.T) {
 	if s.WebPort != 3000 {
 		t.Errorf("WebPort = %d, want 3000", s.WebPort)
 	}
-	if s.ImageTag != "latest" {
-		t.Errorf("ImageTag = %q, want latest", s.ImageTag)
+	if s.ImageTag != SourceBuildImageTag {
+		t.Errorf("ImageTag = %q, want %q", s.ImageTag, SourceBuildImageTag)
 	}
 	if s.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want info", s.LogLevel)

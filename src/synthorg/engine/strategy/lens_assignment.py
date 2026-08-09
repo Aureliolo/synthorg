@@ -1,9 +1,9 @@
 """Lens assignment for meeting participants.
 
 Assigns strategic lenses to meeting participants to ensure diverse
-perspectives during group decision-making. The meeting orchestrator
-consumes assigners structurally via its own ``_LensAssigner`` protocol,
-so this module ships the concrete strategy only.
+perspectives during group decision-making. The meeting package consumes
+assigners structurally via its own ``LensAssigner`` protocol, so this
+module ships the concrete strategy only.
 """
 
 from synthorg.observability import get_logger

@@ -220,6 +220,14 @@ func hintAfterInit(out *ui.UI, state config.State) {
 	if state.Channel == "dev" {
 		out.HintTip("Dev channel receives frequent pre-release updates. Run 'synthorg config set channel stable' to switch.")
 	}
+	// A source build has no matching release, so it pins the newest
+	// prerelease. Say which tag was chosen: an operator who assumed a
+	// release build would otherwise not know the images track main.
+	if state.ImageTag == config.SourceBuildImageTag {
+		out.HintTip("Images pinned to the '" + config.SourceBuildImageTag +
+			"' tag (newest pre-release), because this binary was built from source. " +
+			"Run 'synthorg config set image_tag <version>' to pin a release.")
+	}
 	out.HintGuidance("Customize settings later with 'synthorg config set <key> <value>'. Run 'synthorg config list' to see all options.")
 }
 

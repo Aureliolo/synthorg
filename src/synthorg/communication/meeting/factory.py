@@ -1,12 +1,11 @@
-"""Meeting protocol factories.
+"""Conflict-detector construction.
 
 Config-driven conflict-detector dispatch for the structured-phases
 protocol, backed by :class:`StrategyRegistry`. The six concrete
 detector classes live in
 :mod:`synthorg.communication.meeting.conflict_detection`. The embedding
-and hybrid detectors receive a :class:`TextEmbedder` selected by the
-``embedder_strategy`` discriminator; the embedder is built lazily so a
-keyword/structured detector never constructs a (possibly heavy) embedder.
+and hybrid detectors receive a :class:`TextEmbedder`, built lazily so
+the other four detectors never construct one at all.
 """
 
 from collections.abc import Callable
@@ -73,8 +72,7 @@ def build_conflict_detector(config: StructuredPhasesConfig) -> ConflictDetector:
     """Construct a :class:`ConflictDetector` from ``config.conflict_detector``.
 
     The embedding / hybrid detectors are handed a lazy embedder factory
-    bound to ``config.embedder_strategy`` so the embedder (which may load
-    a model) is only built when one of those detectors is selected.
+    so the other four never construct an embedder at all.
 
     Args:
         config: Structured-phases protocol configuration.
@@ -88,5 +86,5 @@ def build_conflict_detector(config: StructuredPhasesConfig) -> ConflictDetector:
     """
     return _CONFLICT_DETECTOR_REGISTRY.build(
         config.conflict_detector.value,
-        embedder_factory=lambda: build_text_embedder(config.embedder_strategy),
+        embedder_factory=build_text_embedder,
     )

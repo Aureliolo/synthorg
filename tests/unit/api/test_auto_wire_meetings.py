@@ -5,13 +5,31 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import structlog.testing
 
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting._lens_assignment import (
+    compute_lens_assignments,
+)
+from synthorg.communication.meeting.config import (
+    MeetingProtocolConfig,
+    MeetingTypeConfig,
+    StructuredPhasesConfig,
+)
+from synthorg.communication.meeting.conflict_detection import (
+    EmbeddingSimilarityDetector,
+)
+from synthorg.communication.meeting.enums import (
+    ConflictDetectorType,
+    MeetingProtocolType,
+)
+from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import (
     PassthroughParticipantResolver,
     RegistryParticipantResolver,
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.communication.meeting.structured_phases import (
+    StructuredPhasesProtocol,
+)
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
@@ -37,18 +55,46 @@ class TestBuildProtocolRegistry:
 
         registry = _build_protocol_registry(StrategyConfig())
 
-        assert MeetingProtocolType.ROUND_ROBIN in registry
-        assert MeetingProtocolType.POSITION_PAPERS in registry
-        assert MeetingProtocolType.STRUCTURED_PHASES in registry
-        assert len(registry) == 3
+        assert set(registry) == set(MeetingProtocolType)
 
     def test_protocol_instances_report_correct_type(self) -> None:
         from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
         registry = _build_protocol_registry(StrategyConfig())
 
-        for proto_type, proto_impl in registry.items():
-            assert proto_impl.get_protocol_type() == proto_type
+        for proto_type, factory in registry.items():
+            built = factory(MeetingProtocolConfig(protocol=proto_type))
+            assert built.get_protocol_type() == proto_type
+
+    def test_meeting_type_sub_config_reaches_the_protocol(self) -> None:
+        """The wiring path an operator's YAML actually travels.
+
+        Asserting against a registry the test built from the config under
+        test proves nothing about production, so this drives the same
+        helper the app boots with.
+        """
+        from synthorg.api.auto_wire_meetings import _build_protocol_registry
+
+        registry = _build_protocol_registry(StrategyConfig())
+        meeting_type = MeetingTypeConfig(
+            name="sprint_planning",
+            frequency=MeetingFrequency.WEEKLY,
+            protocol_config=MeetingProtocolConfig(
+                protocol=MeetingProtocolType.STRUCTURED_PHASES,
+                structured_phases=StructuredPhasesConfig(
+                    conflict_detector=ConflictDetectorType.EMBEDDING,
+                    max_discussion_tokens=4242,
+                ),
+            ),
+        )
+
+        built = registry[MeetingProtocolType.STRUCTURED_PHASES](
+            meeting_type.protocol_config,
+        )
+
+        assert isinstance(built, StructuredPhasesProtocol)
+        assert isinstance(built._conflict_detector, EmbeddingSimilarityDetector)
+        assert built._config.max_discussion_tokens == 4242
 
 
 @pytest.mark.unit
@@ -80,8 +126,10 @@ class TestWireMeetingOrchestrator:
             ),
         )
 
-        assignments = orchestrator._compute_lens_assignments(
+        assignments = compute_lens_assignments(
             ("agent_1", "agent_2", "agent_3"),
+            assigner=orchestrator._lens_assigner,
+            strategy_config=orchestrator._strategy_config,
         )
 
         assert assignments is not None

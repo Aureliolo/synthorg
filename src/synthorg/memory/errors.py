@@ -56,10 +56,10 @@ class MemoryStoreError(MemoryError):
 class MemoryEmbeddingError(MemoryError):
     """Raised when a text-embedding call fails.
 
-    Distinct from :class:`MemoryEmbedderUnavailableError`, which means the
-    embedder could not be constructed at all. This one means a wired,
-    constructed embedder failed on a specific batch, so recall degrades
-    for that call rather than the backend being unusable.
+    Scoped to one batch: a wired, constructed embedder failed on a
+    specific call, so recall degrades for that call rather than the
+    backend being unusable. A binding that cannot be resolved at all
+    raises :class:`MemoryConfigError` instead, and leaves memory off.
 
     Retryable: the common cause is a provider rate limit or timeout.
     """
@@ -117,18 +117,6 @@ class FineTuneDependencyError(MemoryError):
     set fine_tuning true` enables it).  The optional
     ``synthorg[fine-tune-gpu]`` / ``synthorg[fine-tune-cpu]`` extras
     only apply when running fine-tuning in-process (dev / testing).
-    """
-
-
-class MemoryEmbedderUnavailableError(MemoryError):
-    """Raised when a neural text embedder's optional extra is not installed.
-
-    The ``sentence_transformer`` embedder backs the optional
-    ``sentence-transformers`` extra. A caller may translate this into its own
-    layer-specific error, and must otherwise let it propagate: substituting
-    another embedder for the one the operator chose is what
-    ``check_no_silent_embedder_fallback.py`` forbids, and constructing one in
-    response to this error is the exact shape it looks for.
     """
 
 

@@ -170,6 +170,16 @@ const (
 	DefaultRegistryHost    = "ghcr.io"
 	DefaultImageRepoPrefix = "aureliolo/synthorg-"
 	DefaultDHIRegistry     = "dhi.io"
+	// SourceBuildVersion is what version.Version reports when the binary
+	// was not built by a release: `go build` leaves the ldflags unset.
+	SourceBuildVersion = "dev"
+	// SourceBuildImageTag is the image tag a source build pins. The `dev`
+	// tag follows the newest prerelease, so it tracks main. `latest` is
+	// deliberately NOT the fallback: it is applied only on a
+	// non-prerelease `v*` tag, so it names the last stable release rather
+	// than anything current, and a source build pinning it would run a
+	// stack unrelated to the tree it was built from.
+	SourceBuildImageTag = "dev"
 	// The pgvector variant of the hardened Postgres image: agent memory
 	// stores embeddings in this database, so the vector extension must
 	// ship with it. Same DHI family, so the hardened posture is kept.
@@ -287,7 +297,7 @@ const (
 func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
-		ImageTag:           "latest",
+		ImageTag:           SourceBuildImageTag,
 		Channel:            "stable",
 		BackendPort:        3001,
 		WebPort:            3000,

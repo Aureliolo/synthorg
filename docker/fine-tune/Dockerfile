@@ -10,8 +10,18 @@
 #   - fine-tune-gpu   (GPU, default): torch with bundled CUDA runtime, ~4 GB download / ~7 GB on disk
 #   - fine-tune-cpu   (CPU-only, pinned via [tool.uv.sources]):     ~1.7 GB
 #
-# Only rebuilt when docker/fine-tune/** or
-# src/synthorg/memory/embedding/fine_tune*.py changes, or on release tags.
+# Rebuilt when docker/fine-tune/**, pyproject.toml, uv.lock, the image
+# pipeline actions, or any source the ENTRYPOINT's import closure reaches
+# changes; retagged on release tags. The closure is 3% of src/, so the
+# `fine-tune` filter in .github/workflows/build-images.yml lists it
+# rather than watching src/**, and tests/unit/test_fine_tune_image_scope.py
+# fails if an import escapes that list.
+#
+# The runtime stage carries no C++ compiler, so torch Inductor cannot
+# compile here. That is deliberate: the backend spawns this image as a
+# one-shot batch container over the Docker API, and a compiler inside it
+# would be a post-exploitation aid for a capability the pipeline does not
+# use. See docs/reference/embedding-evaluation.md for the measurement.
 # =============================================================================
 
 ARG BASE_IMAGE

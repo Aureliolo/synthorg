@@ -1,22 +1,13 @@
-"""Tests for the text-embedding backends and selection factory."""
+"""Tests for the conflict-scoring text embedder."""
 
-import sys
-import types
-
-import numpy as np
-import numpy.typing as npt
 import pytest
 
 from synthorg.communication.meeting.embedder import (
+    _CONFLICT_HASH_DIMS,
     build_text_embedder,
     cosine_similarity,
 )
-from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableError
-from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.memory.embedding.hashing import HashingTextEmbedder
-from synthorg.memory.embedding.sentence_transformer import (
-    SentenceTransformerEmbedder,
-)
 
 pytestmark = pytest.mark.unit
 
@@ -56,46 +47,18 @@ class TestCosineSimilarity:
         assert cosine_similarity((0.0, 0.0), (1.0, 0.0)) == 0.0
 
 
-def _fake_sentence_transformers() -> types.ModuleType:
-    module = types.ModuleType("sentence_transformers")
-
-    class _FakeModel:
-        def __init__(self, name: str) -> None:
-            self._name = name
-
-        def encode(
-            self, text: str, *, normalize_embeddings: bool = True
-        ) -> npt.NDArray[np.float64]:
-            _ = text, normalize_embeddings
-            return np.array([0.1, 0.2, 0.3], dtype=np.float64)
-
-    module.SentenceTransformer = _FakeModel  # type: ignore[attr-defined]
-    return module
-
-
 class TestBuildTextEmbedder:
-    def test_hashing_is_default_backend(self) -> None:
-        assert isinstance(build_text_embedder("hashing"), HashingTextEmbedder)
+    """The conflict detectors score positions with the built-in embedder.
 
-    def test_sentence_transformer_selection(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(
-            sys.modules, "sentence_transformers", _fake_sentence_transformers()
-        )
-        assert isinstance(
-            build_text_embedder("sentence_transformer"),
-            SentenceTransformerEmbedder,
-        )
+    It is lexical, not semantic, and there is nothing to select: the
+    org's one embedding binding is ``memory.embedder_model``, which
+    dispatches to a provider and loads no local model.
+    """
 
-    def test_sentence_transformer_unavailable_raises_meeting_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The factory translates a missing extra into the meeting error."""
-        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
-        with pytest.raises(MeetingEmbedderUnavailableError):
-            build_text_embedder("sentence_transformer")
+    def test_builds_the_builtin_embedder(self) -> None:
+        assert isinstance(build_text_embedder(), HashingTextEmbedder)
 
-    def test_unknown_strategy_raises(self) -> None:
-        with pytest.raises(StrategyFactoryNotFoundError):
-            build_text_embedder("bogus")
+    def test_scores_at_the_conflict_width(self) -> None:
+        vector = build_text_embedder().embed("ship it")
+
+        assert len(vector) == _CONFLICT_HASH_DIMS

@@ -46,6 +46,30 @@ Reconciliation mechanisms:
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Weekly (Sat 00:00-06:00 UTC) |
 | `apko lock` cron (`.github/workflows/maint-apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune). `docker/web/apko.yaml` is intentionally skipped: it depends on the workflow-build-time `synthorg-web-assets@local` melange package, which has no stable upstream to lock against | Weekly (Mon 06:00 UTC); the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
 
+## Image tags and what each one points at
+
+Every image carries the same tag ladder, applied by
+`.github/actions/publish-image-loaded`. Which tag a deployment pins decides
+how current it is, and two of them move on release events only.
+
+| Tag | Applied on | Points at |
+|-----|-----------|-----------|
+| `sha-<short>` | every push to `main` | that one commit's build |
+| `dev` | a `v*` prerelease tag (`-dev.N`) | the newest prerelease, so it tracks `main` |
+| `X.Y.Z`, `X.Y` | a `v*` tag; the two-part form on non-prerelease only | that release |
+| `latest` | a **non-prerelease** `v*` tag | the last stable release |
+
+`latest` therefore does not mean current. A stretch of prerelease-only
+releases leaves it pointing at whatever stable release came before, however
+long ago, which is correct for a stable channel and misleading if read as
+"the newest build". Probe a specific build by digest or by `sha-<short>`,
+and read `dev` for the newest prerelease.
+
+`synthorg init` pins a tag once, into `image_tag` in the CLI config. A
+released binary pins its own version, so the stack matches the release that
+published it. A binary built from source has no matching release and pins
+`dev`, and `init` says so. `--image-tag` overrides either.
+
 ## GHCR image retention
 
 Published and dev images accumulate in GHCR on every build, so `maint-ghcr.yml` (a standalone workflow that runs weekly on a schedule, and on its own via `workflow_dispatch`) prunes the non-release ones on a fixed policy. Official releases are never touched.

@@ -25,6 +25,10 @@ from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.initiative_doubles import RecordingReplanTrigger
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
+from tests._shared.meeting_protocols import (
+    pin_protocol,
+    pinned_protocol_registry,
+)
 from tests._shared.mock_of import mock_of
 from tests._shared.model_binding import (
     TEST_MODEL_ID,
@@ -74,6 +78,8 @@ __all__ = [
     "mock_of",
     "model_ref_resolver",
     "one_connection",
+    "pin_protocol",
+    "pinned_protocol_registry",
     "recall_request",
     "resolve_bash",
     "sid",
