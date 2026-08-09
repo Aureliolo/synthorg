@@ -201,6 +201,9 @@ jobs:
       - name: Patch sitemap with static OpenAPI artifacts
         run: uv run python scripts/patch_sitemap.py
 
+      - name: Strip prohibited aria-label from the drawer overlay
+        run: uv run python scripts/patch_docs_a11y.py
+
       # --- Astro (landing page at /) ---
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

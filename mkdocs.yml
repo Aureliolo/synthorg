@@ -333,6 +333,9 @@ nav:
 extra_css:
   - overrides/extra.css
 
+extra_javascript:
+  - overrides/a11y-search.js
+
 extra:
   homepage: /
   synthorg_version: !ENV [SYNTHORG_VERSION, "dev"]
