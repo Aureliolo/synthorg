@@ -511,8 +511,12 @@ Identity alone still answers a narrower question than it appears to. It
 establishes that *an* OpenVEX attestation on this digest was signed by a
 workflow allowed to sign one, not that it is the current triage: a digest
 published earlier under an older ledger carries that attestation too, and it
-satisfies the same policy. The document's `@id` is a SHA-256 over its own
-statements, so comparing it is what settles which triage is attached:
+satisfies the same policy.
+
+The document's `@id` is a SHA-256 over its own statements, which is what
+distinguishes the two. Recomputing it establishes that the statements are the
+ones that were signed rather than an edited copy, and it needs nothing but the
+attestation, so a consumer can run it without our repository:
 
 ```bash
 cosign verify-attestation --type openvex \
@@ -520,12 +524,29 @@ cosign verify-attestation --type openvex \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
   --certificate-github-workflow-repository='Aureliolo/synthorg' \
   ghcr.io/aureliolo/synthorg-sandbox@sha256:<digest> \
-  | jq -r '.payload | @base64d | fromjson | .predicate["@id"]'
+  | jq -r '.payload | @base64d' \
+  | python3 -c '
+import hashlib, json, sys
+
+predicate = json.load(sys.stdin)["predicate"]
+canonical = json.dumps(
+    predicate["statements"], sort_keys=True, separators=(",", ":")
+)
+digest = hashlib.sha256(canonical.encode()).hexdigest()
+identifier = predicate["@id"]
+if not identifier.endswith(digest):
+    raise SystemExit("VEX document does not match its own statements")
+print("OpenVEX document intact:", identifier)
+'
 ```
 
-That is the check the publish job runs on itself, in
-`.github/scripts/cosign_verify_attestation_with_retry.sh`, against the
-document it just rendered.
+We hold ourselves to the stronger version of this. The publish job runs
+`.github/scripts/cosign_verify_attestation_with_retry.sh`, which performs the
+same identity check and then compares the attested `@id` against the document
+that run rendered, so publishing fails rather than leaving an older
+attestation standing in for the current triage. That comparison needs the
+rendered document, which a consumer does not have; the recomputation above is
+the part that travels.
 
 **Residual gap.** Trivy does **not** verify the signature of a VEX attestation
 it discovers, so anyone able to push to an image repository can attach one that

@@ -56,9 +56,10 @@ jobs:
     # Fixed rather than a caller input: a configurable budget nobody sets is a
     # knob that only ever drifts from what the jobs need. The value clears the
     # summed retry ladders of `publish-image-loaded` (~39m) plus the two
-    # `download-artifact` ladders this path adds ahead of it, so a transient
-    # blip that trips several is retried rather than cancelled mid-retry.
-    timeout-minutes: 45
+    # `download-artifact` ladders this path adds ahead of it and the uv
+    # installer's own ladder (240s deadline), so a transient blip that trips
+    # several is retried rather than cancelled mid-retry.
+    timeout-minutes: 50
     environment: image-push
     permissions:
       actions: read
@@ -76,6 +77,24 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+
+      # The OpenVEX document this job is about to sign must be the one
+      # `.github/vex/triage.yaml` renders to. The pre-push hook and the PR
+      # gates both establish that, and neither runs here: this job runs on a
+      # push to main, and an administrative merge bypasses required checks.
+      # A signature outlives the review that should have preceded it, so on
+      # this path the ledger is re-checked before anything is signed.
+      #
+      # `--no-project` rather than `uv sync`: the gate needs PyYAML and
+      # nothing else, and syncing the whole dev graph into an image-publish
+      # job would cost minutes to check one file pair.
+      - name: Install uv
+        uses: ./.github/actions/install-uv
+
+      - name: Verify the VEX ledger matches what is committed
+        run: |
+          uv run --no-project --python 3.14 --with pyyaml \
+            python scripts/check_vex_triage_sync.py
 
       # Reclaim headroom before `docker load` doubles the disk usage
       # (archive + daemon copy).
