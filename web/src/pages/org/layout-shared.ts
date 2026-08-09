@@ -106,8 +106,8 @@ export const DESIRED_INTER_DEPT_GAP_X = 56
 // Static minlens used only to keep dagre's ranking correct (so it
 // doesn't compact the graph into a single rank).  Actual spacing
 // comes from the post-shift pass.
-export const OWNER_TO_ROOT_MINLEN = 2
-export const CEO_TO_CHILD_MINLEN = 2
+const OWNER_TO_ROOT_MINLEN = 2
+const CEO_TO_CHILD_MINLEN = 2
 const DEFAULT_MINLEN = 1
 
 /**

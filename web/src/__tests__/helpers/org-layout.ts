@@ -15,7 +15,7 @@ export interface DeptSpec {
   readonly teams?: readonly { readonly name: string; readonly members: readonly string[] }[]
 }
 
-export const OWNERS: readonly OwnerInfo[] = [{ id: 'owner-1', displayName: 'Owner' }]
+const OWNERS: readonly OwnerInfo[] = [{ id: 'owner-1', displayName: 'Owner' }]
 
 export const OWNER_NODE_ID = 'owner-owner-1'
 export const ROOT_DEPT_NODE_ID = 'dept-executive'
