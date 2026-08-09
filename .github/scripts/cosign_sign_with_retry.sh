@@ -5,9 +5,21 @@
 # `cosign sign` against a published digest is idempotent: signing the
 # same digest twice either succeeds again or hits a Rekor
 # `createLogEntryConflict` (already-logged) response, which callers
-# treat as success. `cosign attest` over the same digest and the same
-# predicate produces the same DSSE payload, so it lands on that branch
-# too. `cosign sign-blob` over a local file (the keyless
+# treat as success. `cosign attest` reaches that branch on the same
+# terms.
+#
+# Treating a conflict as success is safe for both because of what Rekor
+# actually keys the conflict on. The leaf hash covers the whole
+# canonicalized entry, signature and Fulcio certificate included, not the
+# payload alone -- so a conflict cannot be raised by some earlier, stale
+# attestation over the same digest: that one carries a different
+# ephemeral cert and therefore a different leaf. A conflict means the
+# exact bytes being submitted right now are already logged, which only a
+# resubmission of this same invocation's envelope can produce (cosign
+# issue 3356). Success is the honest reading, and it cannot mask a
+# document other than the one this run built.
+#
+# `cosign sign-blob` over a local file (the keyless
 # CLI-checksums path) is likewise safe to re-run: a retry overwrites the
 # `--bundle` output file and mints a fresh keyless signature over the
 # same bytes, which verifies identically. Transient GHCR/Rekor/Fulcio

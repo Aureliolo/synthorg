@@ -4,9 +4,15 @@ description: >-
   Docker daemon as `ghcr.io/aureliolo/synthorg-${image-name}:sha-<short>-amd64`
   and (optionally) `-arm64`, then assemble the multi-arch manifest list,
   cosign-sign it keyless via GitHub OIDC, attest SLSA Level 3 build
-  provenance, emit a CycloneDX SBOM, and publish a per-image
+  provenance, emit a CycloneDX SBOM, publish a per-image
   `pushed-tags-<image>.txt` artifact for the workflow-level
-  `verify-signatures` job to aggregate.
+  `verify-signatures` job to aggregate, and finally attach the
+  vulnerability triage as an OpenVEX attestation when it carries one.
+
+  That order is deliberate: every guarantee this action exists to make is
+  in place before the triage is attached, so a Sigstore failure on the
+  courtesy cannot cost the image its signature, its provenance, or its
+  place in the tag inventory.
 
   Callers prep the local tags themselves (e.g. `publish-image` downloads
   per-arch scan tarballs and re-tags; the inline web publish flow loads
@@ -410,90 +416,6 @@ runs:
           exit 1
         fi
 
-    # The vulnerability triage travels with the image. `not_affected`
-    # assessments live in `.github/vex/triage.yaml` and render into this
-    # OpenVEX document, which is attached as an attestation so that
-    # `trivy image --vex oci <image>` shows a consumer the reasoning instead
-    # of making them re-triage a finding we already investigated.
-    #
-    # An empty document claims nothing, so publishing one would spend a
-    # Sigstore round trip per image to say so.
-    - name: Resolve the VEX triage to publish
-      id: vex
-      shell: bash
-      run: |
-        set -euo pipefail
-        DOC="${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
-        if [ ! -f "$DOC" ]; then
-          echo "::error::VEX document not found at ${DOC}"
-          exit 1
-        fi
-        COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8"))["statements"]))' "$DOC")"
-        if [ "$COUNT" -gt 0 ]; then
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "Publishing ${COUNT} VEX statement(s) with this image"
-        else
-          echo "publish=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::VEX document carries no statements; nothing to attest"
-        fi
-
-    - name: Attest VEX triage
-      if: steps.vex.outputs.publish == 'true'
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        DIGEST: ${{ steps.push.outputs.digest }}
-      run: |
-        set -euo pipefail
-        bash "${GITHUB_WORKSPACE}/.github/scripts/cosign_sign_with_retry.sh" attest \
-          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" \
-          --type openvex \
-          --predicate "${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
-
-    # An attestation that failed to land leaves the image claiming a triage
-    # it does not carry, and the consumer's scanner reports findings we
-    # promised were answered. cosign resolves the attestation the same way
-    # that scanner will, which no referrer-index probe can promise.
-    #
-    # The identity is pinned to the two reusable workflows that can reach
-    # this composite. A third caller would fail here, which is the same
-    # thing `check_signing_identity_pins.py` says about a new signing path.
-    #
-    # GHCR is eventually consistent on the referrer it just accepted, so the
-    # same bounded poll the signature check uses applies (5 attempts,
-    # 2s -> 4s -> 8s -> 16s); a genuinely missing attestation still fails.
-    - name: Verify the VEX attestation
-      if: steps.vex.outputs.publish == 'true'
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        DIGEST: ${{ steps.push.outputs.digest }}
-      run: |
-        set -euo pipefail
-        REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}"
-        SAN_RE='^https://github\.com/Aureliolo/synthorg/\.github/workflows/reusable-publish-image(-loaded)?\.yml@refs/heads/main$'
-        ATTEMPTS=5
-        BACKOFF=2
-        verify() {
-          cosign verify-attestation --type openvex \
-            --certificate-identity-regexp "${SAN_RE}" \
-            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            "${REF}" > /dev/null
-        }
-        for ((a = 1; a < ATTEMPTS; a++)); do
-          if verify 2>/dev/null; then
-            echo "✓ OpenVEX attestation present and signed for ${REF}"
-            exit 0
-          fi
-          echo "::warning::OpenVEX attestation for ${REF} not yet verifiable (attempt ${a}/${ATTEMPTS}); GHCR propagation lag, retrying in ${BACKOFF}s"
-          sleep "${BACKOFF}"
-          BACKOFF=$((BACKOFF * 2))
-        done
-        # Final attempt runs with cosign's diagnostics on stderr intact, so a
-        # genuine failure names itself instead of exiting on a swallowed error.
-        verify
-        echo "✓ OpenVEX attestation present and signed for ${REF}"
-
     # Rekor retry ladder (see the cosign-installer ladder above for the
     # full rationale): the attestation writes a Rekor tlog entry against
     # Sigstore's public-good backend, which intermittently times out. Three
@@ -588,6 +510,12 @@ runs:
         path: sbom-${{ inputs.image-name }}.cdx.json
         retention-days: 30
 
+    # The vulnerability triage travels with the image. `not_affected`
+    # assessments live in `.github/vex/triage.yaml` and render into this
+    # OpenVEX document, which is attached as an attestation so that
+    # `trivy image --vex oci <image>` shows a consumer the reasoning instead
+    # of making them re-triage a finding we already investigated.
+    #
     # Emit the canonical (image, tag) inventory as an artifact for the
     # workflow-level `verify-signatures` job to aggregate. Avoids the
     # drift risk of mirroring the metadata-action tag policy in two
@@ -616,3 +544,62 @@ runs:
         # retries / delayed downstream jobs (e.g. update-release on tag
         # pushes). Original 1d cut it close to the workflow lifetime.
         retention-days: 7
+
+    # Last of everything. The signature, the provenance and the tag
+    # inventory are what this composite exists to produce; the triage is a
+    # courtesy laid on top of them. Ordered any earlier, a Sigstore
+    # rejection of the VEX predicate would end the job with the image
+    # published and one of those missing, letting the smaller promise veto
+    # the larger one.
+    #
+    # An empty document claims nothing, so publishing one would spend a
+    # Sigstore round trip per image to say so.
+    - name: Resolve the VEX triage to publish
+      id: vex
+      shell: bash
+      run: |
+        set -euo pipefail
+        DOC="${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
+        if [ ! -f "$DOC" ]; then
+          echo "::error::VEX document not found at ${DOC}"
+          exit 1
+        fi
+        COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8"))["statements"]))' "$DOC")"
+        if [ "$COUNT" -gt 0 ]; then
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${COUNT} VEX statement(s) with this image"
+        else
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::VEX document carries no statements; nothing to attest"
+        fi
+
+    - name: Attest VEX triage
+      if: steps.vex.outputs.publish == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        bash "${GITHUB_WORKSPACE}/.github/scripts/cosign_sign_with_retry.sh" attest \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" \
+          --type openvex \
+          --predicate "${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
+
+    # A composite `action.yml` is invisible to actionlint (it carries no
+    # `jobs:` or `on:` to parse) and no shellcheck hook covers it, so a
+    # `run:` block here gets no static checking and nothing can execute it
+    # in a test. The poll, its fail-closed exit paths and its identity pins
+    # live in a script for that reason, beside the sign helper the same
+    # suite already covers.
+    - name: Verify the VEX attestation
+      if: steps.vex.outputs.publish == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        bash "${GITHUB_WORKSPACE}/.github/scripts/cosign_verify_attestation_with_retry.sh" \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" \
+          "${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"

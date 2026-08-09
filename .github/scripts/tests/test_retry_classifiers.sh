@@ -24,6 +24,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)" # .github/scripts
 COSIGN_HELPER="$SCRIPT_DIR/cosign_sign_with_retry.sh"
+VERIFY_HELPER="$SCRIPT_DIR/cosign_verify_attestation_with_retry.sh"
 PUSH_HELPER="$SCRIPT_DIR/docker_push_with_retry.sh"
 
 FAILED=0
@@ -231,10 +232,10 @@ else
 fi
 
 # --- cosign attest mode: a re-attested digest is success ----------------
-# Re-attesting the same digest with the same predicate produces the same
-# DSSE payload, so a re-run collides on the Rekor entry exactly as a
-# re-sign does. Treating that as failure would red-light every re-run of
-# an already-published image.
+# A Rekor conflict means the exact canonicalized entry being submitted is
+# already logged, which only a resubmission of this invocation's own
+# envelope produces. Treating that as failure would red-light every re-run
+# of an already-published image.
 cat >"$STUB_DIR/cosign" <<'STUB'
 #!/usr/bin/env bash
 echo "error: ... createLogEntryConflict: ... already exists"
@@ -269,6 +270,160 @@ if grep -q "attest --yes --type openvex --predicate ${vex_file} ghcr.io/example/
   pass "cosign attest passes the ref last, after the forwarded flags"
 else
   fail "cosign attest built the wrong argument order"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# The document this run would publish, and a stub that answers with a DSSE
+# envelope carrying a given `@id` (the shape cosign emits per verified
+# attestation: base64 `payload` over an in-toto statement).
+published_doc="$STUB_DIR/published.openvex.json"
+published_id="https://github.com/Aureliolo/synthorg/.github/vex/synthorg-openvex-aaaa"
+printf '{"@id":"%s","statements":[]}\n' "$published_id" >"$published_doc"
+
+write_envelope_stub() {
+  local attested_id="$1"
+  local payload
+  payload="$(printf '{"predicate":{"@id":"%s"}}' "$attested_id" | base64 -w0)"
+  cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+printf '{"payloadType":"application/vnd.in-toto+json","payload":"%s"}\n' "$payload"
+STUB
+  chmod +x "$STUB_DIR/cosign"
+}
+
+# --- verify-attestation: the published document passes ------------------
+write_envelope_stub "$published_id"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=3 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'present, signed, and current' <<<"$out"; then
+  pass "verify-attestation passes when the published document is attached"
+else
+  fail "verify-attestation failed on its own published document (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- verify-attestation: an absent attestation FAILS the job ------------
+# The one property that matters. This step exists so a published image
+# cannot claim a triage it does not carry, and a poll that fell through to
+# exit 0 would assert exactly that, silently, on every image.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "Error: no matching attestations" >&2
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=2 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q 'present, signed, and current' <<<"$out"; then
+  pass "verify-attestation fails closed when nothing resolves"
+else
+  fail "verify-attestation exited 0 with no attestation present (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- verify-attestation: a STALE attestation FAILS the job --------------
+# A digest published earlier under an older ledger still carries that
+# older attestation, and it satisfies the identity policy exactly as a
+# current one does. Identity alone would read that as success and let this
+# run report a triage it never actually attached.
+write_envelope_stub "https://github.com/Aureliolo/synthorg/.github/vex/synthorg-openvex-bbbb"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=2 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'different triage than this run published' <<<"$out"; then
+  pass "verify-attestation fails closed on a stale attestation"
+else
+  fail "verify-attestation accepted an attestation of a different document (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- verify-attestation: a verified envelope with no @id is not a match -
+# cosign verified something and nothing in it looked like an OpenVEX
+# document. Reading an unparsed envelope as agreement is the one way this
+# check could pass while having checked nothing.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+printf '{"payloadType":"application/vnd.in-toto+json","payload":"eyJwcmVkaWNhdGUiOnt9fQ=="}\n'
+STUB
+chmod +x "$STUB_DIR/cosign"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=2 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] && grep -q "carrying no OpenVEX" <<<"$out"; then
+  pass "verify-attestation fails closed on an envelope carrying no OpenVEX id"
+else
+  fail "verify-attestation read an unparsed envelope as a match (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- verify-attestation: GHCR propagation lag is polled through ---------
+# GHCR is eventually consistent on a referrer it just accepted, so a first
+# miss is expected rather than terminal.
+counter="$STUB_DIR/verify_attempts"
+printf '0\n' >"$counter"
+envelope_payload="$(printf '{"predicate":{"@id":"%s"}}' "$published_id" | base64 -w0)"
+cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+n=\$(cat "$counter")
+n=\$((n + 1))
+printf '%s\n' "\$n" >"$counter"
+[ "\$n" -ge 2 ] || exit 1
+printf '{"payloadType":"application/vnd.in-toto+json","payload":"%s"}\n' "$envelope_payload"
+STUB
+chmod +x "$STUB_DIR/cosign"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=4 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'not yet verifiable' <<<"$out"; then
+  pass "verify-attestation polls through GHCR propagation lag"
+else
+  fail "verify-attestation did not retry a first miss (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- verify-attestation: the identity pins actually reach cosign --------
+# The SAN alone is shared by every repository that calls our public
+# reusable workflows, so the repository binding is what makes this a check
+# on our artefact. An anchored SAN matters just as much: cosign matches
+# with a search, not a full match.
+verify_args="$STUB_DIR/verify_args"
+cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >"$verify_args"
+printf '{"payloadType":"application/vnd.in-toto+json","payload":"%s"}\n' "$envelope_payload"
+STUB
+chmod +x "$STUB_DIR/cosign"
+PATH="$STUB_DIR:$PATH" \
+  COSIGN_VERIFY_RETRY_ATTEMPTS=2 COSIGN_VERIFY_RETRY_BACKOFF=0 \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" >/dev/null 2>&1 || true
+args="$(cat "$verify_args" 2>/dev/null || true)"
+if grep -q -- '--certificate-github-workflow-repository Aureliolo/synthorg' <<<"$args" &&
+  grep -q -- '--certificate-oidc-issuer https://token.actions.githubusercontent.com' <<<"$args" &&
+  grep -q -- '--type openvex' <<<"$args" &&
+  grep -qE -- '--certificate-identity-regexp \^[^ ]+\$( |$)' <<<"$args"; then
+  pass "verify-attestation pins an anchored SAN, the issuer and the repository"
+else
+  fail "verify-attestation dropped or loosened an identity pin"
+  printf '%s\n' "$args" >&2 || true
+fi
+
+# --- verify-attestation: a tag-shaped ref is refused --------------------
+# An attestation is attached to a digest. Verifying a tag would check
+# whatever the tag points at now, which a later push can change.
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  bash "$VERIFY_HELPER" "ghcr.io/example/image:latest" "$published_doc" 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'must pin a digest' <<<"$out"; then
+  pass "verify-attestation refuses a ref that does not pin a digest"
+else
+  fail "verify-attestation accepted a tag-shaped ref (rc=${rc})"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
