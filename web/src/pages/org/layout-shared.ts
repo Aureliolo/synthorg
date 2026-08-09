@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { Density } from '@/stores/theme'
+import type { CrossDeptKind } from './build-org-tree-types'
 
 // The direction of the chart AS A WHOLE.  Only 'TB' is used: the
 // post-layout adjustment pass (Steps 4-5) places owner row, root box and
@@ -65,7 +66,7 @@ const CARD_PADDING_BY_DENSITY: Record<Density, number> = {
   balanced: 16,
   sparse: 20,
 }
-export const DEFAULT_GROUP_PADDING = CARD_PADDING_BY_DENSITY.balanced
+const DEFAULT_GROUP_PADDING = CARD_PADDING_BY_DENSITY.balanced
 
 /** Inner padding a department card renders at the given density. */
 export function cardPaddingFor(density: Density | undefined): number {
@@ -131,12 +132,18 @@ export const DESIRED_INTER_DEPT_GAP = 48
 // overlap their neighbours. A dedicated de-overlap pass uses this.
 export const DESIRED_INTER_DEPT_GAP_X = 56
 
-// Static minlens used only to keep dagre's ranking correct (so it
-// doesn't compact the graph into a single rank).  Actual spacing
-// comes from the post-shift pass.
-const OWNER_TO_ROOT_MINLEN = 2
-const CEO_TO_CHILD_MINLEN = 2
+// Rank distance per tagged edge kind, keeping dagre from compacting a
+// department-crossing hop into a single rank.  Only the ranking depends on
+// these; the visible spacing comes from the post-layout shift passes.
+const CROSS_DEPT_MINLEN: Record<CrossDeptKind, number> = {
+  'owner-to-root': 2,
+  'ceo-to-child': 2,
+}
 const DEFAULT_MINLEN = 1
+
+function isCrossDeptKind(value: unknown): value is CrossDeptKind {
+  return typeof value === 'string' && Object.hasOwn(CROSS_DEPT_MINLEN, value)
+}
 
 /**
  * Rank distance dagre must put between an edge's endpoints.
@@ -146,10 +153,8 @@ const DEFAULT_MINLEN = 1
  * the tree's shape without a second layout pass.
  */
 export function dagreEdgeMinlen(edge: Edge): number {
-  const kind = (edge.data as { crossDeptKind?: string } | undefined)?.crossDeptKind
-  if (kind === 'owner-to-root') return OWNER_TO_ROOT_MINLEN
-  if (kind === 'ceo-to-child') return CEO_TO_CHILD_MINLEN
-  return DEFAULT_MINLEN
+  const kind: unknown = edge.data?.['crossDeptKind']
+  return isCrossDeptKind(kind) ? CROSS_DEPT_MINLEN[kind] : DEFAULT_MINLEN
 }
 
 export function computeHeaderHeight(prefs: LayoutVisualPrefs, cardPadding: number): number {

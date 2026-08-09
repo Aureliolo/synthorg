@@ -15,6 +15,7 @@ import {
   pairsOf,
   positionsOf,
 } from '../../helpers/org-layout'
+import { makeDepartmentHealth } from '../../helpers/factories'
 
 /**
  * Re-emit the flat agent array round-robin across departments, keeping each
@@ -93,6 +94,17 @@ describe('org chart layout ordering', () => {
     )
   })
 
+  it('is invariant to live agent status and department health', () => {
+    // The rendered chart memoises its placement on the org's structure alone,
+    // which is only sound while a status or health frame cannot move a node.
+    const config = orgConfig(SMALL_ORG)
+    const live = layoutOf(config, {
+      runtimeStatuses: { 'agent-bob': 'active', 'agent-carol': 'error' },
+      departmentHealths: [makeDepartmentHealth('engineering')],
+    })
+    expect(positionsOf(live)).toEqual(positionsOf(layoutOf(config)))
+  })
+
   it('is invariant to what was laid out before it', () => {
     const small = orgConfig(SMALL_ORG)
     const first = positionsOf(layoutOf(small))
@@ -144,6 +156,27 @@ describe('org chart layout under structural change', () => {
       { name: 'legal', members: ['finn', 'gina'] },
     ]
     expect(leftToRight(layoutOf(orgConfig(grown)), survivors)).toEqual(before)
+  })
+
+  it('renders several executives in the operator\'s order', () => {
+    const wideExec: DeptSpec[] = [
+      { name: 'executive', members: ['zoe', 'cto', 'cfo', 'coo'] },
+      SMALL_ORG[1]!,
+    ]
+    const execs = agentIds(['cto', 'cfo', 'coo'])
+    expect(leftToRight(layoutOf(orgConfig(wideExec)), execs)).toEqual(execs)
+  })
+
+  it('keeps an unstaffed department in its configured slot', () => {
+    const withEmpty: DeptSpec[] = [
+      SMALL_ORG[0]!,
+      SMALL_ORG[1]!,
+      { name: 'legal', members: [] },
+      SMALL_ORG[2]!,
+    ]
+    const nodes = layoutOf(orgConfig(withEmpty))
+    const order = ['dept-engineering', 'dept-legal', 'dept-sales']
+    expect(leftToRight(nodes, order)).toEqual(order)
   })
 
   it('removing a department does not reorder the surviving departments', () => {
@@ -198,6 +231,29 @@ describe('org chart layout spine anchor', () => {
       SMALL_ORG[2]!,
     ]
     expect(spineOf(orgConfig(grown))).toEqual(before)
+  })
+
+  it('holds the spine still when a department is wide enough to flow sideways', () => {
+    const withWide: DeptSpec[] = [
+      ...SMALL_ORG,
+      {
+        name: 'engineering-wide',
+        members: ['w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7'],
+      },
+    ]
+    // The sideways department changes its card's aspect ratio, which feeds the
+    // vertical-gap and anchor passes; the spine must survive that.
+    expect(spineOf(orgConfig(withWide))).toEqual(spineOf(orgConfig(SMALL_ORG)))
+  })
+
+  it('holds the spine still when an agent is removed', () => {
+    const before = spineOf(orgConfig(SMALL_ORG))
+    const shrunk: DeptSpec[] = [
+      SMALL_ORG[0]!,
+      { name: 'engineering', members: ['alice', 'bob'] },
+      SMALL_ORG[2]!,
+    ]
+    expect(spineOf(orgConfig(shrunk))).toEqual(before)
   })
 
   it('holds the spine still with the card chrome toggles on', () => {

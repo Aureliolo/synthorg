@@ -134,6 +134,43 @@ describe('team boxes', () => {
     }
   })
 
+  it('does not reorder the survivors when a team is added', () => {
+    const survivors = agentIds(['carol', 'dave'])
+    const before = leftToRight(layoutOf(orgConfig(TEAMED_ORG)), survivors)
+    const grown: DeptSpec[] = [
+      TEAMED_ORG[0]!,
+      {
+        name: 'engineering',
+        members: ['alice', 'bob', 'carol', 'dave', 'erin'],
+        teams: [
+          { name: 'core', members: ['bob', 'carol', 'dave'] },
+          { name: 'later', members: ['erin'] },
+        ],
+      },
+      TEAMED_ORG[2]!,
+    ]
+    expect(leftToRight(layoutOf(orgConfig(grown)), survivors)).toEqual(before)
+  })
+
+  it('does not reorder the survivors when a member leaves a team', () => {
+    const survivors = agentIds(['carol'])
+    const before = leftToRight(layoutOf(orgConfig(TEAMED_ORG)), survivors)
+    const shrunk: DeptSpec[] = [
+      TEAMED_ORG[0]!,
+      {
+        name: 'engineering',
+        members: ['alice', 'bob', 'carol', 'dave', 'erin'],
+        teams: [{ name: 'core', members: ['bob', 'carol'] }],
+      },
+      TEAMED_ORG[2]!,
+    ]
+    const nodes = layoutOf(orgConfig(shrunk))
+    expect(leftToRight(nodes, survivors)).toEqual(before)
+    // dave left the team, so it now draws him beside his department head.
+    expect(childrenOf(nodes, CORE).map((n) => n.id)).not.toContain('agent-dave')
+    expect(childrenOf(nodes, 'dept-engineering').map((n) => n.id)).toContain('agent-dave')
+  })
+
   it('counts a team box when choosing its department\'s direction', () => {
     // Four teams side by side would overrun the budget, so the department
     // itself must flow left-to-right and stack them instead.

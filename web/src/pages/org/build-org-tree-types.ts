@@ -99,6 +99,23 @@ export interface TeamGroupData {
   [key: string]: unknown
 }
 
+// ── Edge data interfaces ────────────────────────────────────
+
+/**
+ * Which department boundary a hidden layout edge crosses.
+ *
+ * The chart draws a department as one box, so an edge between two departments'
+ * agents is hidden and exists only to give the layout a rank relationship. The
+ * tag names which boundary it crosses, and the layout turns that into the rank
+ * distance the path needs to clear the boxes' chrome.
+ */
+export type CrossDeptKind = 'owner-to-root' | 'ceo-to-child'
+
+export interface CrossDeptEdgeData {
+  crossDeptKind: CrossDeptKind
+  [key: string]: unknown
+}
+
 // ── Dept admin node dimensions ──────────────────────────────
 
 export const DEPT_ADMIN_WIDTH = 200

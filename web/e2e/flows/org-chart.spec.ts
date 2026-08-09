@@ -12,9 +12,9 @@ import { makeCompanyConfig, makeDepartment, makeOrgAgent } from '../factories'
  * operator arranged them, and a department too wide to sit in the row flows
  * its reports into a column beside its lead instead of a strip beneath it.
  *
- * Every box is read through ``boundingBox()``, so all of it is in screen
- * space after React Flow's fit-to-view transform. That transform is a uniform
- * scale plus a translate, which preserves ordering and alignment; only
+ * Every box is read through ``getBoundingClientRect()``, so all of it is in
+ * screen space after React Flow's fit-to-view transform. That transform is a
+ * uniform scale plus a translate, which preserves ordering and alignment; only
  * absolute pixel sizes would be meaningless, and none are asserted.
  */
 
@@ -69,8 +69,8 @@ function node(page: Page, id: string): Locator {
  *
  * React Flow animates its fit-to-view transform, so reading each node with
  * its own ``boundingBox()`` round-trip samples them at different points in
- * that animation and two nodes genuinely sharing an edge come back several
- * pixels apart. One evaluation reads them all against the same transform.
+ * that animation, and two nodes genuinely sharing an edge come back several
+ * pixels apart. One ``page.evaluate`` reads every rect against one transform.
  */
 async function boxesOf(page: Page, ids: readonly string[]): Promise<Record<string, Box>> {
   const boxes = await page.evaluate((nodeIds) => {

@@ -1,12 +1,35 @@
-import { Graph, layout } from '@dagrejs/dagre'
+import {
+  Graph,
+  type EdgeLabel,
+  type GraphLabel,
+  type NodeLabel,
+  type OrderConstraint,
+  type Point,
+  layout,
+} from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
-import { deriveConstraints } from './layout-clusters'
 import { type ClusterDirection, dagreEdgeMinlen, getNodeDim } from './layout-shared'
 
 export interface DagreParams {
   direction: ClusterDirection
   nodeSep: number
   rankSep: number
+}
+
+/**
+ * Centre dagre assigned a node.
+ *
+ * The label types x/y optional because it exists before the run assigns them.
+ * A node the run left unpositioned would have to be placed at a made-up origin
+ * on top of its siblings, so it fails loud into the page's error boundary
+ * instead of silently stacking cards.
+ */
+function centreOf(label: NodeLabel, id: string): Point {
+  const { x, y } = label
+  if (x === undefined || y === undefined) {
+    throw new Error(`dagre left node "${id}" unpositioned`)
+  }
+  return { x, y }
 }
 
 /**
@@ -24,8 +47,9 @@ export function runDagreLayout(
   nodes: readonly Node[],
   edges: readonly Edge[],
   params: DagreParams,
+  constraints: readonly OrderConstraint[],
 ): Map<string, Node> {
-  const g = new Graph()
+  const g = new Graph<GraphLabel, NodeLabel, EdgeLabel>()
   g.setGraph({ rankdir: params.direction, nodesep: params.nodeSep, ranksep: params.rankSep })
   g.setDefaultEdgeLabel(() => ({}))
 
@@ -40,25 +64,27 @@ export function runDagreLayout(
   }
 
   // `useDynamic` is set explicitly rather than left at its default. dagre
-  // keeps the previous graph and its node collection in module-level state
-  // and only clears them on an explicit `false`, so the default silently
-  // couples one layout to whatever ran before it. What that state buys is
-  // narrow -- its comparator ignores every node that is not a long-edge dummy
-  // -- while the ordering that actually matters here is pinned by the
-  // constraints, which make the layout a pure function of the org data.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- @dagrejs/dagre types Graph with `any` generics; g is the valid dagre Graph constructed above
-  layout(g, {
-    useDynamic: false,
-    constraints: deriveConstraints(nodes.map((n) => n.id), edges),
-  })
+  // holds the previous run's graph and node collection in module-level state
+  // and only clears them on an explicit `false`, so the default couples every
+  // layout to whatever ran before it: the retained graph switches
+  // cycle-breaking to a variant that reverses any edge whose endpoints the
+  // PREVIOUS graph ranked the other way round, and the retained nodes reorder
+  // long-edge dummies. Neither buys anything here (every frame is a tree, and
+  // real-node order is pinned by the constraints) while both would make the
+  // result depend on which unit happened to be laid out first.
+  layout(g, { useDynamic: false, constraints: [...constraints] })
 
   // dagre returns centre coords; React Flow uses top-left.
   const positioned = new Map<string, Node>()
   for (const node of nodes) {
-    const laidOut = g.node(node.id) as { x: number; y: number; width: number; height: number }
+    const laidOut = g.node(node.id)
+    const centre = centreOf(laidOut, node.id)
     positioned.set(node.id, {
       ...node,
-      position: { x: laidOut.x - laidOut.width / 2, y: laidOut.y - laidOut.height / 2 },
+      position: {
+        x: centre.x - laidOut.width / 2,
+        y: centre.y - laidOut.height / 2,
+      },
     })
   }
   return positioned

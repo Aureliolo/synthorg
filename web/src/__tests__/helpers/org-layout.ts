@@ -1,5 +1,7 @@
 import type { Node } from '@xyflow/react'
 import type { DashboardAgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { CompanyConfig, DashboardDepartment, TeamConfig } from '@/api/types/org'
 import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
 import type { DeptAdminInfo } from '@/pages/org/build-org-tree-types'
@@ -67,13 +69,15 @@ export interface LayoutFixtureOptions {
   readonly owners?: readonly OwnerInfo[]
   readonly deptAdmins?: readonly DeptAdminInfo[]
   readonly layout?: LayoutOptions
+  readonly runtimeStatuses?: Record<string, AgentRuntimeStatus>
+  readonly departmentHealths?: readonly DepartmentHealth[]
 }
 
 export function layoutOf(config: CompanyConfig, options: LayoutFixtureOptions = {}): Node[] {
   const tree = buildOrgTree({
     config,
-    runtimeStatuses: {},
-    departmentHealths: [],
+    runtimeStatuses: options.runtimeStatuses ?? {},
+    departmentHealths: options.departmentHealths ?? [],
     owners: options.owners ?? DEFAULT_OWNERS,
     deptAdmins: options.deptAdmins,
   })

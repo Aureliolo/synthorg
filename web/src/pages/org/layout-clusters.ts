@@ -68,15 +68,18 @@ function sameRankSets(memberIds: readonly string[], edges: readonly Edge[]): str
   return sets
 }
 
-/** How many cards the widest rank of this unit would put side by side. */
-export function widestRank(memberIds: readonly string[], edges: readonly Edge[]): number {
-  return Math.max(...sameRankSets(memberIds, edges).map((set) => set.length))
+/** What one unit's rank structure tells the layout, from a single traversal. */
+export interface RankPlan {
+  /** How many cards the widest rank would put side by side. */
+  readonly widestRank: number
+  /** Consecutive `{left, right}` pairs over each rank, in the operator's order. */
+  readonly constraints: OrderConstraint[]
 }
 
 /**
- * Sibling-order constraints pinning one unit to the operator's order.
+ * Read a unit's rank structure: how wide it gets, and how to pin its order.
  *
- * `memberIds` must already be in that order. Emission order IS the operator's
+ * `memberIds` must already be in the operator's order. Emission order IS that
  * order: `build-org-tree` walks `config.departments`, and `groupAgentsByDept`
  * keeps each department's slice of the flat `config.agents` array intact. Both
  * arrays are what the `reorder-departments` / `reorder-agents` endpoints
@@ -84,22 +87,21 @@ export function widestRank(memberIds: readonly string[], edges: readonly Edge[])
  * Edit page instead of with whatever left-to-right slots dagre's barycentre
  * pass happened to pick.
  *
- * Only same-rank sets are chained. dagre resolves a constraint against the
- * layer graph for one rank, and a pair whose endpoints sit on different ranks
- * does not simply go unused: it enters the shared constraint graph and drags
- * unrelated pairs out of order with it.
+ * Only same-rank sets are chained. dagre resolves constraints against one
+ * constraint graph shared by every layer of a sweep, which also accumulates
+ * the edges its own subgraph pass writes back into it, so a pair whose
+ * endpoints sit on different ranks is not inert: chaining every member of a
+ * unit in one run reversed sibling pairs that the per-rank chains get right.
  */
-export function deriveConstraints(
-  memberIds: readonly string[],
-  edges: readonly Edge[],
-): OrderConstraint[] {
+export function planRanks(memberIds: readonly string[], edges: readonly Edge[]): RankPlan {
+  const sets = sameRankSets(memberIds, edges)
   const constraints: OrderConstraint[] = []
-  for (const set of sameRankSets(memberIds, edges)) {
+  for (const set of sets) {
     for (let index = 1; index < set.length; index++) {
       constraints.push({ left: set[index - 1]!, right: set[index]! })
     }
   }
-  return constraints
+  return { widestRank: Math.max(...sets.map((set) => set.length)), constraints }
 }
 
 /**

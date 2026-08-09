@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
-import { chooseClusterDirection, widestRank } from './layout-clusters'
+import { chooseClusterDirection, planRanks } from './layout-clusters'
 import { runDagreLayout, type DagreParams } from './layout-graph'
 import {
   type ClusterDirection,
@@ -28,7 +28,7 @@ export interface SizedUnit {
 }
 
 /** Set an explicit rendered size on a group node. */
-function sized(node: Node, width: number, height: number): Node {
+export function sized(node: Node, width: number, height: number): Node {
   return { ...node, width, height, style: { ...node.style, width, height } }
 }
 
@@ -64,7 +64,7 @@ function centerLeadAcrossReports(
   edges: readonly Edge[],
   direction: ClusterDirection,
 ): Node[] {
-  const lead = members.find((m) => (m.data as { isDeptLead?: boolean }).isDeptLead === true)
+  const lead = members.find((m) => m.data['isDeptLead'] === true)
   if (!lead) return members
   const reportIds = new Set(
     edges.filter((e) => e.source === lead.id).map((e) => e.target),
@@ -95,9 +95,11 @@ function layoutUnit(
   edges: readonly Edge[],
   params: DagreParams,
 ): LaidOutUnit {
-  const memberIds = members.map((m) => m.id)
-  const direction = chooseClusterDirection(widestRank(memberIds, edges), params.nodeSep)
-  const positioned = [...runDagreLayout(members, edges, { ...params, direction }).values()]
+  const ranks = planRanks(members.map((m) => m.id), edges)
+  const direction = chooseClusterDirection(ranks.widestRank, params.nodeSep)
+  const positioned = [
+    ...runDagreLayout(members, edges, { ...params, direction }, ranks.constraints).values(),
+  ]
   const centred = centerLeadAcrossReports(positioned, edges, direction)
 
   let minX = Infinity

@@ -13,9 +13,9 @@ import {
   computeFooterHeight,
   computeHeaderHeight,
 } from './layout-shared'
+import { planRanks } from './layout-clusters'
 import { runDagreLayout } from './layout-graph'
-import { collectRootGroupIds, placeEmptyGroups, planHierarchy } from './layout-groups'
-import type { SizedUnit } from './layout-units'
+import { type HierarchyPlan, collectRootGroupIds, planHierarchy } from './layout-groups'
 import {
   anchorLayout,
   centerNonRootUnderRoot,
@@ -48,24 +48,24 @@ function layoutEmptyChart(nodes: Node[]): Node[] {
 /** Separate the placed department boxes from the loose top-level nodes. */
 function splitPositioned(
   positioned: ReadonlyMap<string, Node>,
-  departments: ReadonlyMap<string, SizedUnit>,
-): { populatedResults: GroupResult[]; topLevelLeaves: Map<string, Node> } {
-  const populatedResults: GroupResult[] = []
+  plan: HierarchyPlan,
+): { groupResults: GroupResult[]; topLevelLeaves: Map<string, Node> } {
+  const groupResults: GroupResult[] = []
   const topLevelLeaves = new Map<string, Node>()
   for (const [id, node] of positioned) {
-    const department = departments.get(id)
-    if (!department) {
+    const isDepartment = plan.departments.has(id) || plan.emptyDepartments.has(id)
+    if (!isDepartment) {
       topLevelLeaves.set(id, node)
       continue
     }
-    populatedResults.push({
+    groupResults.push({
       node,
-      childrenRelative: department.childrenRelative,
+      childrenRelative: plan.departments.get(id)?.childrenRelative ?? [],
       groupWidth: node.width ?? 0,
       groupHeight: node.height ?? 0,
     })
   }
-  return { populatedResults, topLevelLeaves }
+  return { groupResults, topLevelLeaves }
 }
 
 /**
@@ -107,20 +107,16 @@ export function applyDagreLayout(
     },
   })
 
-  const { populatedResults, topLevelLeaves } = splitPositioned(
-    runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params),
-    plan.departments,
+  const topLevelRanks = planRanks(
+    plan.topLevelNodes.map((n) => n.id),
+    plan.topLevelEdges,
+  )
+  const { groupResults: allGroupResults, topLevelLeaves } = splitPositioned(
+    runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params, topLevelRanks.constraints),
+    plan,
   )
 
   const rootGroupIds = collectRootGroupIds(nodes.filter((n) => n.type === 'department'))
-  const rootPopulated = populatedResults.find((r) => rootGroupIds.has(r.node.id))
-  const allGroupResults = [
-    ...populatedResults,
-    ...placeEmptyGroups(plan.emptyDepartments, populatedResults, rootGroupIds, rootPopulated),
-  ]
-  // placeEmptyGroups can create the root group when it has no members, so
-  // re-resolve the root from the merged set before the alignment passes;
-  // otherwise a freshly-created empty root is skipped by them.
   const rootResult = allGroupResults.find((r) => rootGroupIds.has(r.node.id))
 
   enforceHorizontalGaps(allGroupResults, rootGroupIds, DESIRED_INTER_DEPT_GAP_X)
