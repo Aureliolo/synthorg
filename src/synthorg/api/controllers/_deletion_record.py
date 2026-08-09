@@ -13,12 +13,14 @@ lives here rather than being repeated at each call site.
 
 from datetime import UTC, datetime
 
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.deleted_entity import DeletedEntity, DeletedEntityKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -26,6 +28,51 @@ logger = get_logger(__name__)
 #: answer "what was this", and refusing to write one because the answer is
 #: thin would lose the fact that it existed at all.
 _UNNAMED: NotBlankStr = NotBlankStr("(unnamed)")
+
+
+async def record_deletion_for(
+    app_state: AppState,
+    *,
+    kind: DeletedEntityKind,
+    entity_id: str,
+    display_name: str | None,
+    deleted_by: str,
+) -> None:
+    """Write the tombstone, resolving the store here rather than at the call.
+
+    The deletion has already happened by the time any caller reaches this,
+    so a backend that cannot be resolved is the same class of miss as a
+    write that fails: worth a warning, never worth turning a completed
+    delete into an error the operator has to interpret.
+
+    Args:
+        app_state: State the tombstone store is resolved from.
+        kind: Whether a task, plan or project was removed.
+        entity_id: The identifier surviving records still name.
+        display_name: What it was called, when it had a name.
+        deleted_by: The person who asked.
+    """
+    try:
+        persistence = persistence_of(app_state)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- the deletion is already decided
+        reraise_critical(exc)
+        logger.warning(
+            API_PROJECT_CASCADE_CONTENDED,
+            entity_kind=kind.value,
+            entity_id=entity_id,
+            note="no tombstone store; deletion not recorded",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    await record_deletion(
+        persistence,
+        kind=kind,
+        entity_id=entity_id,
+        display_name=display_name,
+        deleted_by=deleted_by,
+    )
 
 
 async def record_deletion(
@@ -75,4 +122,4 @@ async def record_deletion(
         )
 
 
-__all__ = ["record_deletion"]
+__all__ = ["record_deletion", "record_deletion_for"]

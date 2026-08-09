@@ -13,6 +13,7 @@ from litestar.status_codes import (
 )
 
 from synthorg.api.controllers._approval_retire import retire_task_approvals
+from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
@@ -38,6 +39,7 @@ from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
 )
@@ -71,6 +73,7 @@ from synthorg.observability.events.api import (
     API_TASK_UPDATED,
 )
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
+from synthorg.persistence.state import persistence_of
 from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
@@ -446,10 +449,25 @@ class TaskController(Controller):
         # offer a decision on a task that no longer exists, and retiring it
         # afterwards has no recovery if the write does not land.
         await retire_task_approvals(app_state, task_id)
+        persistence = persistence_of(app_state)
+        # Read before the delete: the tombstone answers "what was this id",
+        # and after the row is gone there is nothing left to answer it with.
+        existing = await persistence.tasks.get(task_id)
+        requested_by = extract_requester()
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,
-            requested_by=extract_requester(),
+            requested_by=requested_by,
+        )
+        # Deleting one task is the common case, not the cascade, and the rows
+        # that outlive it (a cost record, a metric, a decision) keep naming
+        # this id whichever route removed it.
+        await record_deletion(
+            persistence,
+            kind=DeletedEntityKind.TASK,
+            entity_id=task_id,
+            display_name=existing.title if existing is not None else None,
+            deleted_by=requested_by,
         )
         logger.info(API_TASK_DELETED, task_id=task_id)
 

@@ -21,6 +21,7 @@ from synthorg.api.channels import (
     publish_ws_event,
 )
 from synthorg.api.controllers._approval_retire import retire_plan_approvals
+from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
     reject_unroutable_owners,
@@ -51,6 +52,7 @@ from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.ws_models import WsEventType
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.lifecycle_transition import (
     LifecycleEntityKind,
@@ -517,9 +519,19 @@ class PlanController(Controller):
         # drive the resume path at a missing plan, and retiring it afterwards
         # has no recovery if the write does not land.
         await retire_plan_approvals(state.app_state, str(existing.id))
+        requested_by = extract_requester()
         # Live work is counted inside the delete, in the same statement, so a
         # task filed between the two cannot be stranded on a deleted plan.
-        await service.delete(existing, requested_by=extract_requester())
+        await service.delete(existing, requested_by=requested_by)
+        # Whichever route removed it, the records that outlive a plan keep
+        # naming its id, so the tombstone is what they resolve against.
+        await record_deletion(
+            persistence_of(state.app_state),
+            kind=DeletedEntityKind.PLAN,
+            entity_id=str(existing.id),
+            display_name=existing.objective_title,
+            deleted_by=requested_by,
+        )
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(

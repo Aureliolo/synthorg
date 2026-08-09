@@ -15,10 +15,12 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.api.controllers._approval_retire import retire_task_approvals
+from synthorg.api.controllers._deletion_record import record_deletion_for
 from synthorg.core.agent import (
     AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
@@ -265,9 +267,20 @@ async def _tasks_delete(
         # that no longer exists is still decidable, and a retirement after the
         # row is gone has no recovery if it does not land.
         await retire_task_approvals(app_state, task_id)
-        await task_engine_of(app_state).delete_task(
+        engine = task_engine_of(app_state)
+        # Read before the delete: after the row is gone there is nothing left
+        # to say what the surviving cost and decision rows were naming.
+        existing = await engine.get_task(task_id)
+        await engine.delete_task(
             task_id,
             requested_by=requested_by,
+        )
+        await record_deletion_for(
+            app_state,
+            kind=DeletedEntityKind.TASK,
+            entity_id=task_id,
+            display_name=getattr(existing, "title", None),
+            deleted_by=requested_by,
         )
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
