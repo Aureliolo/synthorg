@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
 
 const stateFileName = "config.json"
@@ -170,16 +172,6 @@ const (
 	DefaultRegistryHost    = "ghcr.io"
 	DefaultImageRepoPrefix = "aureliolo/synthorg-"
 	DefaultDHIRegistry     = "dhi.io"
-	// SourceBuildVersion is what version.Version reports when the binary
-	// was not built by a release: `go build` leaves the ldflags unset.
-	SourceBuildVersion = "dev"
-	// SourceBuildImageTag is the image tag a source build pins. The `dev`
-	// tag follows the newest prerelease, so it tracks main. `latest` is
-	// deliberately NOT the fallback: it is applied only on a
-	// non-prerelease `v*` tag, so it names the last stable release rather
-	// than anything current, and a source build pinning it would run a
-	// stack unrelated to the tree it was built from.
-	SourceBuildImageTag = "dev"
 	// The pgvector variant of the hardened Postgres image: agent memory
 	// stores embeddings in this database, so the vector extension must
 	// ship with it. Same DHI family, so the hardened posture is kept.
@@ -282,9 +274,58 @@ const (
 	MaxBytesCeiling int64 = 1 * 1024 * 1024 * 1024
 )
 
+// Sentinels for the image tag a binary pins when nothing overrides it.
+// These are not tunable defaults: the tag is derived from the running
+// binary's version by ImageTagForVersion, not read from a State field.
+const (
+	// SourceBuildVersion is what version.Version reports when the binary
+	// was not built by a release: `go build` leaves the ldflags unset.
+	SourceBuildVersion = "dev"
+	// SourceBuildImageTag follows the newest prerelease, so it tracks
+	// main.
+	SourceBuildImageTag = "dev"
+	// StableImageTag names the last release that was not a `-dev.`
+	// prerelease, which is what `Channel: "stable"` selects.
+	StableImageTag = "latest"
+)
+
+// ImageTagForVersion reports the image tag a binary at ver pins by default.
+//
+// A released binary pins its own version, so the stack matches the release
+// that published those images.
+//
+// A source build has no such release, and `latest` is the wrong fallback
+// for it: the publish pipeline applies `latest` only on a `v*` tag whose
+// ref does not contain `-dev.`, and this project ships `-dev.N`
+// prereleases, so `latest` names whatever stable release happened last
+// rather than anything current. `dev` is the closest published match for a
+// tree built from source.
+//
+// A version that is neither empty nor the source-build sentinel yet is not
+// a usable tag came from outside this binary (the GitHub Releases API), so
+// it falls back to the stable channel rather than to `dev`: malformed
+// input must not be what moves an operator onto prereleases.
+func ImageTagForVersion(ver string) string {
+	tag := strings.TrimPrefix(ver, "v")
+	if tag == "" || tag == SourceBuildVersion {
+		return SourceBuildImageTag
+	}
+	if !IsValidImageTag(tag) {
+		return StableImageTag
+	}
+	return tag
+}
+
 // DefaultState returns a State with sensible defaults for the interactive init
 // wizard. Note: Load applies a more conservative fallback (sandbox disabled)
 // when no config file exists.
+//
+// ImageTag is derived from the running binary rather than fixed, because
+// every consumer of this default wants the tag THIS binary should pin: a
+// released binary restoring the default belongs on its own release, and
+// only a source build belongs on `dev`. `config unset image_tag` restores
+// this value, so a fixed one there would move a release install onto the
+// prerelease channel.
 //
 // Host port layout (contiguous with existing services):
 //
@@ -297,7 +338,7 @@ const (
 func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
-		ImageTag:           SourceBuildImageTag,
+		ImageTag:           ImageTagForVersion(version.Version),
 		Channel:            "stable",
 		BackendPort:        3001,
 		WebPort:            3000,

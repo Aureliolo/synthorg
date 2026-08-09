@@ -5,8 +5,13 @@ A lens distributes distinct viewpoints across a meeting's participants.
 It is an enhancement rather than a requirement, so every failure mode
 here degrades to "no lenses" and logs why: an assigner that raises, one
 that returns a mapping whose keys do not match the participants, and one
-that returns an empty lens. Injecting a mismatched mapping would put one
-participant's lens in another's prompt.
+that returns a value which is not a non-empty string.
+
+The mapping is rejected whole rather than per entry because a partial one
+is indistinguishable from a deliberate one downstream: consumers look each
+participant up by their own id and skip anyone absent, so a mapping that
+lost or renamed keys silently drops those participants' lenses instead of
+reporting anything. Rejecting it turns that into one logged failure.
 
 Both dependencies are typed structurally rather than imported, which
 keeps the meeting package clear of an import cycle with the
@@ -16,7 +21,7 @@ lens-strategy package.
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_LENS_ASSIGNMENT_FAILED,
 )
@@ -80,23 +85,33 @@ def compute_lens_assignments(
         reraise_critical(exc)
         logger.warning(
             MEETING_LENS_ASSIGNMENT_FAILED,
-            error="Lens assignment failed, proceeding without lenses",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
     expected_ids = set(participant_ids)
     if not isinstance(result, dict) or set(result.keys()) != expected_ids:
+        actual = set(result.keys()) if isinstance(result, dict) else set()
         logger.warning(
             MEETING_LENS_ASSIGNMENT_FAILED,
             error="Lens assigner returned mapping with mismatched keys",
             expected_count=len(expected_ids),
             actual_count=len(result) if isinstance(result, dict) else _NO_MAPPING,
+            missing_participants=sorted(expected_ids - actual),
+            unexpected_participants=sorted(actual - expected_ids),
         )
         return None
-    if not all(isinstance(lens, str) and lens for lens in result.values()):
+    invalid = sorted(
+        participant
+        for participant, lens in result.items()
+        if not (isinstance(lens, str) and lens)
+    )
+    if invalid:
         logger.warning(
             MEETING_LENS_ASSIGNMENT_FAILED,
             error="Lens assigner returned non-string or empty lens value",
+            invalid_participants=invalid,
         )
         return None
 

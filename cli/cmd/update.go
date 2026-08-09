@@ -400,7 +400,7 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Warn on dev builds.
-	if version.Version == "dev" {
+	if version.Version == config.SourceBuildVersion {
 		out.Warn("Running a dev build -- update check will always report an update available.")
 	}
 
@@ -561,18 +561,17 @@ func appendBoolFlags(args []string, flags []boolFlag) []string {
 }
 
 // targetImageTag converts a CLI version string to a Docker image tag.
-// Strips the "v" prefix and maps dev/empty/invalid to "latest".
-// Validates the tag at the trust boundary (version may come from the
-// GitHub Releases API); compose.Generate also validates downstream.
+//
+// This is the same question `init` answers, so it shares the answer: a
+// source build resolving to `latest` here would pull the last stable
+// release over the `dev` images `init` pinned, and persist that tag back,
+// undoing the pin on the first update.
+//
+// ver may come from the GitHub Releases API, so the shared resolver
+// validates it at that trust boundary; compose.Generate validates again
+// downstream.
 func targetImageTag(ver string) string {
-	tag := strings.TrimPrefix(ver, "v")
-	if tag == "" || tag == "dev" {
-		return "latest"
-	}
-	if !config.IsValidImageTag(tag) {
-		return "latest"
-	}
-	return tag
+	return config.ImageTagForVersion(ver)
 }
 
 // updateContainerImages offers to update container images to match the

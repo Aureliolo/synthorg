@@ -14,6 +14,7 @@ from tests._shared.bash import resolve_bash
 from tests._shared.benchmark import FIXTURE_SOURCE, FakeTierBenchmarkScoreProvider
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
+from tests._shared.companies import make_company
 from tests._shared.connection_catalog import (
     InMemorySecretBackend,
     make_in_memory_catalog,
@@ -73,6 +74,7 @@ __all__ = [
     "coerce_id",
     "connections",
     "make_app_state",
+    "make_company",
     "make_in_memory_catalog",
     "make_pipeline_result",
     "mock_of",

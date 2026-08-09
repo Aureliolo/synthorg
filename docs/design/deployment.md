@@ -55,9 +55,14 @@ how current it is, and two of them move on release events only.
 | Tag | Applied on | Points at |
 |-----|-----------|-----------|
 | `sha-<short>` | every push to `main` | that one commit's build |
-| `dev` | a `v*` prerelease tag (`-dev.N`) | the newest prerelease, so it tracks `main` |
-| `X.Y.Z`, `X.Y` | a `v*` tag; the two-part form on non-prerelease only | that release |
-| `latest` | a **non-prerelease** `v*` tag | the last stable release |
+| `dev` | a `v*` tag containing `-dev.` | the newest prerelease, so it tracks `main` |
+| `X.Y.Z`, `X.Y` | a `v*` tag; the two-part form only when the ref has no `-dev.` | that release |
+| `latest` | a `v*` tag whose ref does **not** contain `-dev.` | the last stable release |
+
+The gate is that literal `-dev.` substring, not a general prerelease test:
+an `-rc.` or `-beta.` tag would take `latest` even though this project
+treats each of those as a prerelease elsewhere. Only the `-dev.N` shape is
+minted today, so the distinction has not yet mattered.
 
 `latest` therefore does not mean current. A stretch of prerelease-only
 releases leaves it pointing at whatever stable release came before, however

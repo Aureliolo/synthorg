@@ -162,6 +162,10 @@ class MeetingOrchestrator:
         Raises:
             MeetingProtocolNotFoundError: If the configured protocol
                 is not in the registry.
+            StrategyFactoryNotFoundError: If the protocol's own
+                construction cannot resolve a strategy it needs, such as
+                a conflict detector. The protocol is built per meeting,
+                so this surfaces here rather than at wiring time.
             MeetingParticipantError: If participant list is empty,
                 contains duplicates, or leader is in participants.
             ValueError: If token_budget is not positive.

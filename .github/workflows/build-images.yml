@@ -167,26 +167,21 @@ jobs:
               - 'scripts/cis-scan.sh'
             fine-tune:
               - 'docker/fine-tune/**'
-              # The image copies all of src/ but executes only the
-              # entrypoint's import closure, which is 3% of the tree. These
-              # globs cover it and nothing wider, because a rebuild costs
-              # ~26 min of wall clock across the two variants. The list is
-              # DERIVED, not maintained: an import that escapes it fails
-              # tests/unit/test_fine_tune_image_scope.py.
-              - 'src/synthorg/__init__.py'
-              - 'src/synthorg/constants.py'
-              - 'src/synthorg/budget/**'
-              - 'src/synthorg/core/**'
-              - 'src/synthorg/engine/prompt_safety.py'
-              - 'src/synthorg/hr/**'
-              - 'src/synthorg/llm/**'
-              - 'src/synthorg/memory/**'
-              - 'src/synthorg/observability/**'
-              - 'src/synthorg/ontology/**'
-              - 'src/synthorg/organization/enums.py'
-              - 'src/synthorg/persistence/**'
-              - 'src/synthorg/providers/**'
-              - 'src/synthorg/settings/**'
+              # The Dockerfile does `COPY src/ src/`, so src/** is what
+              # changes the image, and a narrower glob is an approximation
+              # of the entrypoint's import closure rather than a fact about
+              # it. Scoping to a hand-derived closure was tried and is not
+              # safe to derive: Python executes every ancestor package
+              # __init__ on the way to a submodule, and this tree's hubs
+              # import eagerly, so the real closure reaches 20 packages at
+              # import time (557 modules) including tools/, engine/,
+              # security/ and integrations/.
+              #
+              # A miss here costs a PR-time build and scan, never a stale
+              # image: on a push to main `changes` does not run, so the
+              # build job's `changes.result == 'skipped'` arm publishes
+              # unconditionally.
+              - 'src/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.dockerignore'
@@ -1274,8 +1269,9 @@ jobs:
   # then apply the version tags via `docker buildx imagetools create`
   # (registry-side; no image bytes move). cosign signs by digest, so the
   # main-run signature carries forward to every new tag ref by
-  # construction. Halves CI minutes on releases and eliminates the
-  # cross-run race that #1676 surfaced.
+  # construction. Halves CI minutes on releases and eliminates the race
+  # a rebuild would open, where the tag push and the main run could
+  # produce two different manifests for the same commit.
   #
   # Base images (`synthorg-{x}-base`) are intentionally NOT retagged on
   # tag-push: they're internal artifacts consumed only by app

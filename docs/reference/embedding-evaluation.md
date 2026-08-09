@@ -247,27 +247,32 @@ graph LR
 
 **Stage 5: Deploy**
 
-- Save fine-tuned model checkpoint to configured path
-- Point `EmbedderConfig` at the fine-tuned model, via a provider that serves the
-  checkpoint or a local model path
-- The fine-tuned model takes effect on the next backend initialisation
+- Save the fine-tuned checkpoint to the run's configured output path
+- Promote only on a strictly positive NDCG@10 win over the base, decided by
+  `should_promote_checkpoint` (`memory/embedding/promotion.py`); a tie, a
+  regression, or a missing measurement records the checkpoint inactive
+- Snapshot the embedder settings so a rollback has something to restore
 
 ### Integration Design
 
-Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
-(see [Memory Design Spec](../design/memory.md#embedding-model-selection))
-stores the configuration. Initialisation behaviour when the embedder is resolved:
+Fine-tuning is an **offline pipeline**, not a runtime operation. Each run
+freezes its own `FineTuneRunConfig` (`memory/embedding/fine_tune_models.py`)
+so a resume replays what the run started with.
 
-1. If `fine_tune.enabled` and `checkpoint_path` is set: the checkpoint path becomes the
-   model identifier (the embedding provider must serve the fine-tuned model)
-2. If `fine_tune.enabled` is `False` (default): the base model is used, no checkpoint check
+Promotion records a checkpoint; it does not switch the live embedder.
+`deploy_checkpoint` deliberately leaves `memory.embedder_model` alone,
+because that setting is a provider-bound model reference and a filesystem
+path written into it would reach the boot path as a model name to dispatch
+on. Serving a promoted checkpoint means an operator pointing
+`memory.embedder_model` at a provider that serves it, which keeps the
+choice explicit (see
+[Memory Design Spec](../design/memory.md#embedding-model-selection)).
 
 A fine-tuned model whose output width differs from the base model is a width change like
 any other, with the same consequence for previously stored vectors.
 
-The pipeline is triggered via `POST /admin/memory/fine-tune` (see `MemoryAdminController`).
-This follows the project's pattern of disabled-by-default optional features
-(cf. `DualModeConfig` in consolidation).
+The pipeline is triggered via `POST /admin/memory/fine-tune`, served by
+`MemoryFineTuneController` (`api/controllers/memory/fine_tune.py`).
 
 ### Improvement Expectations
 

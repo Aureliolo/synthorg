@@ -10,6 +10,12 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.core.types import NotBlankStr, validate_unique_strings
+from synthorg.observability import get_logger
+from synthorg.observability.events.meeting import (
+    MEETING_PROTOCOL_SUB_CONFIG_INACTIVE,
+)
+
+logger = get_logger(__name__)
 
 
 class RoundRobinConfig(BaseModel):
@@ -125,7 +131,9 @@ class MeetingProtocolConfig(BaseModel):
     ONLY the sub-config matching :attr:`protocol`. Setting fields on a
     sub-config that does not match the active protocol (for example
     ``position_papers.synthesizer = "alice"`` while ``protocol`` is
-    ``ROUND_ROBIN``) is silently ignored. Pydantic discriminated
+    ``ROUND_ROBIN``) changes nothing, and is warned about rather than
+    rejected because carrying settings for several protocols and
+    switching between them is legitimate. Pydantic discriminated
     unions would express this invariant in the type system but were
     deferred so the YAML config can serialise every sub-config slot
     independently without a discriminator wrapper.
@@ -171,6 +179,46 @@ class MeetingProtocolConfig(BaseModel):
         default_factory=StructuredPhasesConfig,
         description="Structured-phases protocol settings",
     )
+
+    @model_validator(mode="after")
+    def _warn_on_customised_inactive_sub_config(self) -> MeetingProtocolConfig:
+        """Report sub-configs that were tuned but will not be read.
+
+        The active sub-config decides how the meeting runs, so a value
+        set on an inactive one changes nothing. That is invisible at the
+        point it is written: the config validates, the meeting runs, and
+        the setting is simply absent from the behaviour. Warning is the
+        right strength rather than rejecting, because carrying settings
+        for several protocols and switching ``protocol`` between them is
+        legitimate.
+
+        Returns:
+            This config, unchanged.
+        """
+        inactive = {
+            name: value
+            for name, active, value in (
+                ("round_robin", MeetingProtocolType.ROUND_ROBIN, self.round_robin),
+                (
+                    "position_papers",
+                    MeetingProtocolType.POSITION_PAPERS,
+                    self.position_papers,
+                ),
+                (
+                    "structured_phases",
+                    MeetingProtocolType.STRUCTURED_PHASES,
+                    self.structured_phases,
+                ),
+            )
+            if active is not self.protocol and len(value.model_fields_set) > 0
+        }
+        if inactive:
+            logger.warning(
+                MEETING_PROTOCOL_SUB_CONFIG_INACTIVE,
+                protocol=self.protocol.value,
+                inactive_sub_configs=sorted(inactive),
+            )
+        return self
 
 
 class MeetingTypeConfig(BaseModel):

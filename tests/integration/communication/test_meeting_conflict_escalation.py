@@ -177,7 +177,7 @@ async def test_meeting_conflict_reaches_human_escalation_queue() -> None:
 
 
 async def test_hybrid_clear_winner_auto_resolves_without_escalation() -> None:
-    from tests.unit.communication.conflict_resolution.conftest import make_company
+    from tests._shared.companies import make_company
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()
@@ -211,7 +211,7 @@ async def test_debate_strategy_uses_the_shared_judge_through_factory() -> None:
     from synthorg.communication.conflict_resolution.config import DebateConfig
     from synthorg.communication.enums import ConflictResolutionStrategy
     from synthorg.core.types import NotBlankStr
-    from tests.unit.communication.conflict_resolution.conftest import make_company
+    from tests._shared.companies import make_company
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()

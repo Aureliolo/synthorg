@@ -25,8 +25,11 @@ func TestTargetImageTag(t *testing.T) {
 	}{
 		{name: "with v prefix", version: "v0.2.7", want: "0.2.7"},
 		{name: "without prefix", version: "0.2.6", want: "0.2.6"},
-		{name: "dev build", version: "dev", want: "latest"},
-		{name: "empty string", version: "", want: "latest"},
+		// A source build pins the prerelease tag, matching what `init`
+		// wrote. Resolving to `latest` here would pull the last stable
+		// release over it and persist that, undoing the pin.
+		{name: "dev build", version: "dev", want: "dev"},
+		{name: "empty string", version: "", want: "dev"},
 		{name: "invalid chars fall back to latest", version: "v1.0.0\n", want: "latest"},
 		{name: "shell injection falls back to latest", version: "v1.0.0;rm -rf", want: "latest"},
 		{name: "valid semver with pre-release", version: "v1.0.0-rc.1", want: "1.0.0-rc.1"},

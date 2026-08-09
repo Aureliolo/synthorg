@@ -43,15 +43,12 @@ def _make_orchestrator(
 ) -> MeetingOrchestrator:
     """Create an orchestrator over the production factory registry.
 
-    Structured phases is withheld so the not-registered path stays
-    reachable; every protocol config arrives per meeting through
-    ``run_meeting``.
+    Every protocol config arrives per meeting through ``run_meeting``,
+    so the registry is the real one rather than a fixture.
     """
-    registry = dict(build_protocol_factories())
-    del registry[MeetingProtocolType.STRUCTURED_PHASES]
     caller = make_mock_agent_caller()
     return MeetingOrchestrator(
-        protocol_registry=registry,
+        protocol_registry=build_protocol_factories(),
         agent_caller=caller,
         task_creator=task_creator,  # type: ignore[arg-type]
     )
@@ -141,7 +138,15 @@ class TestMeetingOrchestratorValidation:
         self,
         simple_agenda: MeetingAgenda,
     ) -> None:
-        orchestrator = _make_orchestrator()
+        # Withheld here rather than in the shared helper: every other
+        # test wants the production registry, and a helper that quietly
+        # returns an incomplete one would mislead them.
+        registry = dict(build_protocol_factories())
+        del registry[MeetingProtocolType.STRUCTURED_PHASES]
+        orchestrator = MeetingOrchestrator(
+            protocol_registry=registry,
+            agent_caller=make_mock_agent_caller(),
+        )
         config = MeetingProtocolConfig(
             protocol=MeetingProtocolType.STRUCTURED_PHASES,
         )
@@ -497,7 +502,7 @@ class TestMeetingOrchestratorTaskCreation:
         )
 
         # Use a mock protocol that returns pre-built minutes
-        mock_protocol = MagicMock()
+        mock_protocol = MagicMock(spec=MeetingProtocol)
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 
@@ -635,7 +640,7 @@ class TestMeetingOrchestratorTaskCreation:
             ended_at=now,
         )
 
-        mock_protocol = MagicMock()
+        mock_protocol = MagicMock(spec=MeetingProtocol)
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 
@@ -686,7 +691,7 @@ class TestMeetingOrchestratorTaskCreation:
             ended_at=now,
         )
 
-        mock_protocol = MagicMock()
+        mock_protocol = MagicMock(spec=MeetingProtocol)
         mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
         mock_protocol.run = AsyncMock(return_value=minutes)
 

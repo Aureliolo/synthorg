@@ -33,8 +33,9 @@ from synthorg.communication.meeting.structured_phases import (
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 
 def _default_config() -> RootConfig:
@@ -458,15 +459,14 @@ class TestAutoWireMeetings:
     async def test_real_caller_end_to_end_with_both_registries(self) -> None:
         """Wiring both registries produces a caller that dispatches real LLM calls.
 
-        Integration test: construct auto_wire_meetings with fake (but
-        shape-correct) agent registry + provider registry, invoke the
-        wired ``agent_caller`` directly, and assert it reaches the
-        provider and returns an ``AgentResponse`` with provider-sourced
-        tokens/cost.  Catches wiring regressions that pure unit tests
-        of each layer miss.
+        Drives the whole wiring path end to end while staying a unit
+        test: every collaborator is a typed double, so nothing here
+        touches a real provider or database. Invokes the wired
+        ``agent_caller`` directly and asserts it reaches the provider and
+        returns an ``AgentResponse`` carrying provider-sourced tokens and
+        cost, which per-layer tests cannot observe.
         """
         from datetime import date
-        from uuid import uuid4
 
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.communication.meeting.models import AgentResponse
@@ -481,7 +481,7 @@ class TestAutoWireMeetings:
         from synthorg.providers.models import CompletionResponse, TokenUsage
 
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("sarah-chen"),
             name=NotBlankStr("Sarah Chen"),
             role=NotBlankStr("engineer"),
             department=NotBlankStr("engineering"),
@@ -495,24 +495,27 @@ class TestAutoWireMeetings:
             hiring_date=date(2026, 1, 1),
             status=AgentStatus.ACTIVE,
         )
-        agent_registry = MagicMock()
-        agent_registry.get = AsyncMock(return_value=identity)
-
-        provider = MagicMock()
-        provider.complete = AsyncMock(
-            return_value=CompletionResponse(
-                content="I recommend a task queue.",
-                finish_reason=FinishReason.STOP,
-                usage=TokenUsage(
-                    input_tokens=12,
-                    output_tokens=7,
-                    cost=0.0005,
-                ),
-                model=NotBlankStr("test-medium-001"),
-            )
+        agent_registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=identity),
         )
-        provider_registry = MagicMock()
-        provider_registry.get = MagicMock(return_value=provider)
+
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(
+                return_value=CompletionResponse(
+                    content="I recommend a task queue.",
+                    finish_reason=FinishReason.STOP,
+                    usage=TokenUsage(
+                        input_tokens=12,
+                        output_tokens=7,
+                        cost=0.0005,
+                    ),
+                    model=NotBlankStr("test-medium-001"),
+                )
+            ),
+        )
+        provider_registry = mock_of[ProviderRegistry](
+            get=MagicMock(return_value=provider),
+        )
 
         result = auto_wire_meetings(
             effective_config=_default_config(),

@@ -82,7 +82,6 @@ web/e2e/
                   # clickAndAwait / selectOption wrappers that always
                   # wait on a selector or network response, never on a
                   # wall-clock timeout.
-  visual/         # Playwright visual-regression specs.
 ```
 
 ## See also

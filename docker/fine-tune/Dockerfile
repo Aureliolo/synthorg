@@ -10,12 +10,10 @@
 #   - fine-tune-gpu   (GPU, default): torch with bundled CUDA runtime, ~4 GB download / ~7 GB on disk
 #   - fine-tune-cpu   (CPU-only, pinned via [tool.uv.sources]):     ~1.7 GB
 #
-# Rebuilt when docker/fine-tune/**, pyproject.toml, uv.lock, the image
-# pipeline actions, or any source the ENTRYPOINT's import closure reaches
-# changes; retagged on release tags. The closure is 3% of src/, so the
-# `fine-tune` filter in .github/workflows/build-images.yml lists it
-# rather than watching src/**, and tests/unit/test_fine_tune_image_scope.py
-# fails if an import escapes that list.
+# A push to main always rebuilds and republishes this image; the
+# `fine-tune` filter in .github/workflows/build-images.yml decides only
+# whether a pull request builds and scans it before merge. That filter
+# watches src/** because the COPY below ships the whole tree.
 #
 # The runtime stage carries no C++ compiler, so torch Inductor cannot
 # compile here. That is deliberate: the backend spawns this image as a

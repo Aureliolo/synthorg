@@ -13,9 +13,10 @@
 # pipeline compiles: the stages train and evaluate through wheels that
 # ship their own kernels. Adding gcc would buy torch Inductor, which
 # `docs/reference/embedding-evaluation.md` measures at roughly 1.2x on CPU
-# against 10.8-25.5 s of one-off compilation. The builder stage
-# (python:3.14.3-slim) has a compiler if a variant ever genuinely needs
-# one.
+# against 10.8-25.5 s of one-off compilation. The builder stage ships no
+# compiler either: `python:3.14.3-slim` is the minimal Debian variant and
+# carries no gcc, so a variant that genuinely needed one would install it
+# there explicitly rather than find it already present.
 
 contents:
   repositories:

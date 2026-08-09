@@ -439,12 +439,18 @@ The pipeline requires no manual annotation and runs on a single GPU.
    [Memory Learning &rarr; Checkpoint promotion gate](memory-learning.md#checkpoint-promotion-gate)
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
-`POST /admin/memory/fine-tune` (served by the memory admin sub-controllers
-under `src/synthorg/api/controllers/memory/`). The optional
-`EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
-`enabled=True` and `checkpoint_path` is set, backend initialisation uses the
-checkpoint path as the model identifier the embedder dispatches on. The embedding
-provider must serve the fine-tuned model under this identifier.
+`POST /admin/memory/fine-tune` (served by the memory sub-controllers under
+`src/synthorg/api/controllers/memory/`). Promotion is decided by
+`should_promote_checkpoint` (`memory/embedding/promotion.py`) from the eval
+stage's NDCG@10 A/B, and a missing measurement counts as no win.
+
+A promoted checkpoint is recorded active, and a snapshot of the embedder
+settings is taken so a rollback has something to restore. `deploy_checkpoint`
+deliberately does **not** repoint `memory.embedder_model` at the checkpoint:
+that setting is a provider-bound model reference, so a filesystem path
+written into it would reach the boot path as a model name to dispatch on.
+Which embedder serves stays the operator's explicit choice, per
+[Embedding model selection](#embedding-model-selection).
 
 !!! warning "A dimension change is a re-index"
     Vectors are only comparable to each other when they came from the same
@@ -530,19 +536,29 @@ briefly so dashboard polls do not spawn probe containers per request). There is 
 standing fine-tune compose service; containers exist only while a stage or probe
 runs.
 
+Each run freezes its own configuration, so a resume replays what the run
+started with rather than whatever the settings say later
+(`memory/embedding/fine_tune_models.py`):
+
 ```python
-class EmbeddingFineTuneConfig(BaseModel):
+class FineTuneRunConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    enabled: bool = False
-    checkpoint_path: NotBlankStr | None = None
-    base_model: NotBlankStr | None = None
-    training_data_dir: NotBlankStr | None = None
+    data_source: FineTuneDataSourceType = FineTuneDataSourceType.DIRECTORY
+    source_dir: NotBlankStr | None = None
+    base_model: NotBlankStr
+    output_dir: NotBlankStr
+    epochs: int = 3
+    learning_rate: float = 1e-5
+    temperature: float = 0.02
+    top_k: int = 4
+    batch_size: int = 128
+    validation_split: float = 0.1
+    execution: FineTuneExecutionConfig | None = None
 ```
 
-When `enabled=True`, both `checkpoint_path` and `base_model` are required
-(enforced by model validation).  Path traversal (`..`) and Windows-style
-paths are rejected to prevent container path escapes.
+Path traversal (`..`) and Windows-style paths are rejected to prevent
+container path escapes.
 
 `run_fine_tune_stages` (`memory/embedding/fine_tune_pipeline.py`) drives the
 `FineTuneStage` lifecycle over the stage functions in `fine_tune.py`, skipping

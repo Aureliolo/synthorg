@@ -398,8 +398,8 @@
     },
     "src/synthorg/communication/meeting/orchestrator.py": {
       "cap": 600,
-      "loc": 549,
-      "ratio": 0.915,
+      "loc": 553,
+      "ratio": 0.922,
       "tier": "orchestrator"
     },
     "src/synthorg/communication/meeting/round_robin.py": {
@@ -1736,7 +1736,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 2000,
+    "synthorg.observability": 2002,
     "synthorg.observability.background_tasks": 31,
     "synthorg.observability.events.api": 245,
     "synthorg.observability.events.approval_gate": 29,
@@ -1841,7 +1841,7 @@
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
-      "loc": 489
+      "loc": 493
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,

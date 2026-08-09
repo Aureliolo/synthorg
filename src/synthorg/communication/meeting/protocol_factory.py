@@ -35,6 +35,12 @@ from synthorg.communication.meeting.round_robin import RoundRobinProtocol
 from synthorg.communication.meeting.structured_phases import (
     StructuredPhasesProtocol,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.meeting import (
+    MEETING_PROTOCOL_REGISTRY_INCOMPLETE,
+)
+
+logger = get_logger(__name__)
 
 
 def build_protocol_factories(
@@ -86,9 +92,16 @@ def build_protocol_factories(
         if protocol_type not in factories
     )
     if missing:
+        missing_values = [protocol_type.value for protocol_type in missing]
+        logger.error(
+            MEETING_PROTOCOL_REGISTRY_INCOMPLETE,
+            missing_protocol_types=missing_values,
+            registered_count=len(factories),
+            declared_count=len(MeetingProtocolType),
+        )
         msg = f"No protocol factory registered for {missing!r}"
         raise MeetingProtocolNotFoundError(
             msg,
-            context={"missing_protocol_types": [pt.value for pt in missing]},
+            context={"missing_protocol_types": missing_values},
         )
     return factories

@@ -7,69 +7,109 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
 
-// A released binary pins the image tag matching its own version, so the
-// stack an operator runs is the one that release published.
-func TestResolveImageTagPinsTheReleasedVersion(t *testing.T) {
+// setVersion pins the compiled-in version for one test and restores it
+// afterwards. Callers must not run in parallel: version.Version is a
+// package-level var, so a parallel sibling would observe the mutation.
+func setVersion(t *testing.T, v string) {
+	t.Helper()
 	restore := version.Version
 	t.Cleanup(func() { version.Version = restore })
-	version.Version = "0.9.4-dev.109"
+	version.Version = v
+}
 
-	if got := resolveImageTag(""); got != "0.9.4-dev.109" {
-		t.Errorf("resolveImageTag() = %q, want the CLI version", got)
+func TestResolveImageTag(t *testing.T) {
+	tests := []struct {
+		name     string
+		override string
+		ver      string
+		want     string
+	}{
+		{
+			name: "released binary pins its own version",
+			ver:  "0.9.4-dev.109", want: "0.9.4-dev.109",
+		},
+		{
+			// `latest` is applied only on a `v*` tag whose ref carries no
+			// `-dev.`, and this project publishes `-dev.N` prereleases, so
+			// it names the last stable release rather than this tree.
+			name: "source build pins dev, never latest",
+			ver:  "dev", want: "dev",
+		},
+		{
+			name: "empty version is a source build too",
+			ver:  "", want: "dev",
+		},
+		{
+			name:     "an override wins",
+			override: "v0.2.0", ver: "dev", want: "v0.2.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setVersion(t, tt.ver)
+
+			if got := resolveImageTag(tt.override); got != tt.want {
+				t.Errorf("resolveImageTag(%q) = %q, want %q", tt.override, got, tt.want)
+			}
+		})
 	}
 }
 
-// A binary built from source reports version "dev" and has no published
-// release to match, so it pins the `dev` tag: the newest prerelease, which
-// tracks main. `latest` is the last NON-prerelease release, and this project
-// publishes prereleases, so falling back to it silently pins whatever stable
-// release happened last -- v0.9.3 from 2026-07-08 at the time of writing,
-// a month behind the source being built.
-func TestResolveImageTagFallsBackToDevNotLatest(t *testing.T) {
-	restore := version.Version
-	t.Cleanup(func() { version.Version = restore })
-	version.Version = "dev"
-
-	got := resolveImageTag("")
-	if got == "latest" {
-		t.Fatal("resolveImageTag() returned \"latest\" for a source build; " +
-			"that tag is the last stable release, not the current source")
-	}
-	if got != "dev" {
-		t.Errorf("resolveImageTag() = %q, want %q", got, "dev")
+// A version that is neither empty nor the source-build sentinel but is not
+// a usable tag came from outside this binary, so it falls back to the
+// stable channel. Malformed input must not be what moves an install onto
+// prereleases.
+func TestImageTagForVersionFallsBackToStableOnGarbage(t *testing.T) {
+	if got := config.ImageTagForVersion("not a tag!"); got != config.StableImageTag {
+		t.Errorf("ImageTagForVersion(garbage) = %q, want %q", got, config.StableImageTag)
 	}
 }
 
-func TestResolveImageTagHonoursTheOverride(t *testing.T) {
-	restore := version.Version
-	t.Cleanup(func() { version.Version = restore })
-	version.Version = "dev"
+// `synthorg config unset image_tag` restores DefaultState().ImageTag. A
+// released binary must land back on its own release, not on the prerelease
+// channel: unsetting an override is not a request to change channel.
+func TestConfigUnsetImageTagKeepsAReleaseBinaryOffPrereleases(t *testing.T) {
+	setVersion(t, "1.2.3")
+	state := config.State{ImageTag: "0.9.0"}
 
-	if got := resolveImageTag("v0.2.0"); got != "v0.2.0" {
-		t.Errorf("resolveImageTag(%q) = %q, want the override", "v0.2.0", got)
+	configResetters["image_tag"](&state, config.DefaultState())
+
+	if state.ImageTag == config.SourceBuildImageTag {
+		t.Fatalf("config unset image_tag put a released binary on %q",
+			config.SourceBuildImageTag)
+	}
+	if state.ImageTag != "1.2.3" {
+		t.Errorf("ImageTag = %q, want the running binary's release %q",
+			state.ImageTag, "1.2.3")
 	}
 }
 
-// An empty version string is the same situation as "dev": no release to
-// match, so the current-source pointer is the honest answer.
-func TestResolveImageTagTreatsEmptyVersionAsASourceBuild(t *testing.T) {
-	restore := version.Version
-	t.Cleanup(func() { version.Version = restore })
-	version.Version = ""
+// A source build has no release to fall back to, so the same reset lands
+// on the prerelease tag.
+func TestConfigUnsetImageTagOnASourceBuildRestoresDev(t *testing.T) {
+	setVersion(t, config.SourceBuildVersion)
+	state := config.State{ImageTag: "0.9.0"}
 
-	if got := resolveImageTag(""); got != "dev" {
-		t.Errorf("resolveImageTag() = %q, want %q", got, "dev")
+	configResetters["image_tag"](&state, config.DefaultState())
+
+	if state.ImageTag != config.SourceBuildImageTag {
+		t.Errorf("ImageTag = %q, want %q", state.ImageTag, config.SourceBuildImageTag)
 	}
 }
 
-// DefaultState is what a config written without going through init falls
-// back to, so it must not disagree with resolveImageTag's fallback.
-func TestDefaultStateImageTagMatchesTheSourceBuildFallback(t *testing.T) {
-	restore := version.Version
-	t.Cleanup(func() { version.Version = restore })
-	version.Version = "dev"
+// init and update must answer "which tag does this binary pin" the same
+// way. When they disagree, update re-pins whatever init chose.
+func TestInitAndUpdateAgreeOnTheTag(t *testing.T) {
+	for _, ver := range []string{"dev", "", "1.2.3", "v1.2.3"} {
+		t.Run(ver, func(t *testing.T) {
+			setVersion(t, ver)
 
-	if got := config.DefaultState().ImageTag; got != resolveImageTag("") {
-		t.Errorf("DefaultState().ImageTag = %q, want %q", got, resolveImageTag(""))
+			initTag := resolveImageTag("")
+
+			if updateTag := targetImageTag(ver); updateTag != initTag {
+				t.Errorf("targetImageTag(%q) = %q, but init pinned %q",
+					ver, updateTag, initTag)
+			}
+		})
 	}
 }

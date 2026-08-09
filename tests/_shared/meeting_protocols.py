@@ -5,10 +5,10 @@ meeting from that meeting's own configuration. A test that needs to
 observe one specific instance (a mock it asserts against, or a protocol
 it configured by hand) pins that instance here.
 
-Deriving the registry from the config under test is what let the
-production wiring gap go unobserved, so a test asserting that a
-sub-config is honoured should drive ``build_protocol_factories``
-instead of pinning.
+A pinned instance ignores the per-meeting configuration, so a test
+asserting that a sub-config is honoured must drive
+``build_protocol_factories`` instead: pinning would make it pass against
+a registry that never reads the config at all.
 """
 
 from collections.abc import Mapping
