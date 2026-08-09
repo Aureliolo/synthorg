@@ -5,6 +5,7 @@ by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 """
 
 import math
+from collections.abc import Sequence
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -105,8 +106,13 @@ def _parse_categories(
     returned in ``rejected_values`` and parsed_categories is ``None``
     so the search does NOT silently broaden to all categories.
 
+    Any sequence of values is accepted, not a ``list`` specifically. An
+    empty tuple means the same thing an empty list does, and rejecting it
+    told a live decomposition session its unfiltered search was malformed,
+    repeatedly, costing a turn each time.
+
     Args:
-        raw: Raw value from tool arguments (expected list[str]).
+        raw: Raw value from tool arguments (expected a sequence of str).
         agent_id: Optional agent identifier for log context.
 
     Returns:
@@ -117,7 +123,9 @@ def _parse_categories(
     """
     if raw is None:
         return None, ()
-    if not isinstance(raw, list):
+    # A string is itself a sequence, and ``"episodic"`` is the documented
+    # malformed shape, so it must not slip through as five categories.
+    if isinstance(raw, str) or not isinstance(raw, Sequence):
         malformed = str(raw)
         logger.warning(
             MEMORY_RETRIEVAL_DEGRADED,

@@ -26,6 +26,7 @@ untrusted-content fence contract. Every LLM message build site under
 import copy
 import hashlib
 import json
+from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.completion_enums import FinishReason
@@ -44,6 +45,7 @@ from synthorg.observability.events.quality import (
     QUALITY_STEP_CLASSIFICATION_FAILED,
 )
 from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
+from synthorg.observability.redaction import scrub_secret_tokens
 from synthorg.observability.tracing import llm_span
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -63,6 +65,11 @@ from .loop_protocol import (
 )
 
 logger = get_logger(__name__)
+
+#: How much of a provider's error response to carry into the failure. Enough
+#: for the sentence that names the cause, bounded because the body is
+#: provider-controlled and lands in a log line and a task's failure reason.
+_ERROR_DETAIL_CHARS: Final[int] = 300
 
 
 async def call_provider(
@@ -178,6 +185,12 @@ def check_response_errors(
 
     When returning an error result, the result's context includes the
     failing turn's token usage so callers see accurate totals.
+
+    A provider that reports its failure in a response rather than by raising
+    still says why in that response, and dropping it left a live run with
+    "LLM returned error on turn 2" and no way to tell an unserved model from
+    a rate limit. The sibling exception path already carries its cause; this
+    one now does too.
     """
     if response.finish_reason not in (
         FinishReason.CONTENT_FILTER,
@@ -185,6 +198,9 @@ def check_response_errors(
     ):
         return None
     error_msg = f"LLM returned {response.finish_reason.value} on turn {turn_number}"
+    detail = (response.content or "").strip()
+    if detail:
+        error_msg = f"{error_msg}: {scrub_secret_tokens(detail)[:_ERROR_DETAIL_CHARS]}"
     logger.error(
         EXECUTION_LOOP_ERROR,
         execution_id=ctx.execution_id,

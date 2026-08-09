@@ -380,6 +380,62 @@ class TestCheckResponseErrors:
         assert result is not None
         assert result.termination_reason == TerminationReason.ERROR
 
+    def test_the_provider_says_why_and_that_reaches_the_failure(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """A live run failed every task on "LLM returned error on turn N".
+
+        The turn number and the finish reason do not distinguish an unserved
+        model from a rate limit from a context overflow; only the body the
+        provider sent back does, and it was being dropped.
+        """
+        response = CompletionResponse(
+            content="context length 131072 exceeded by 4210 tokens",
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        result = check_response_errors(sample_agent_context, response, 4, [])
+
+        assert result is not None
+        assert "context length" in (result.error_message or "")
+
+    def test_a_credential_in_the_body_does_not_reach_the_failure(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """The body is provider-controlled and lands in a persisted reason."""
+        response = CompletionResponse(
+            content="auth failed for https://x:ghp_supersecret@example.test/v1",
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        result = check_response_errors(sample_agent_context, response, 4, [])
+
+        assert result is not None
+        assert "ghp_supersecret" not in (result.error_message or "")
+
+    def test_a_silent_provider_still_reports_the_turn(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """No body is not an excuse to say nothing at all."""
+        response = CompletionResponse(
+            content="   ",
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        result = check_response_errors(sample_agent_context, response, 9, [])
+
+        assert result is not None
+        assert "turn 9" in (result.error_message or "")
+
     def test_cost_included_in_error_context(
         self,
         sample_agent_context: AgentContext,
