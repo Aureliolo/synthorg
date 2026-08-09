@@ -224,8 +224,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/plan_review_wiring.py": {
       "cap": 600,
-      "loc": 530,
-      "ratio": 0.883,
+      "loc": 570,
+      "ratio": 0.95,
       "tier": "orchestrator"
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
@@ -332,8 +332,8 @@
     },
     "src/synthorg/budget/tracker.py": {
       "cap": 1100,
-      "loc": 1060,
-      "ratio": 0.964,
+      "loc": 1066,
+      "ratio": 0.969,
       "tier": "complex_service"
     },
     "src/synthorg/client/factory.py": {
@@ -1833,7 +1833,7 @@
     },
     "synthorg.budget.tracker:CostTracker": {
       "lcom4": 3,
-      "loc": 958
+      "loc": 964
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,

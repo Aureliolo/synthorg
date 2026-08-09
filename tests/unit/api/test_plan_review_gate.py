@@ -1,5 +1,6 @@
 """Unit tests for ``PlanReviewApprovalGate`` durable-plan persistence."""
 
+import asyncio
 from typing import override
 from unittest.mock import AsyncMock, Mock
 
@@ -73,12 +74,20 @@ class _NthAddFailingApprovalStore(ApprovalStore):
 
     The partial shape is the one that matters: parking is several writes with
     no batch behind it, so a failure part-way leaves PENDING approvals for a
-    plan that is about to be FAILED.
+    plan that is about to be FAILED. ``raises`` covers the second shape that
+    partial write takes: a cancellation is a BaseException, so it reaches a
+    different handler than a store error does.
     """
 
-    def __init__(self, *, fail_on: int) -> None:
+    def __init__(
+        self,
+        *,
+        fail_on: int,
+        raises: type[BaseException] = QueryError,
+    ) -> None:
         super().__init__()
         self._fail_on = fail_on
+        self._raises = raises
         self._adds = 0
 
     @override
@@ -86,7 +95,7 @@ class _NthAddFailingApprovalStore(ApprovalStore):
         self._adds += 1
         if self._adds == self._fail_on:
             msg = "approval boom"
-            raise QueryError(msg)
+            raise self._raises(msg)
         await super().add(item)
 
 
@@ -502,6 +511,39 @@ class TestPlanReviewApprovalGate:
         assert await store.list_items() == ()
         persisted = await plans.list_items()
         assert persisted[0].status is PlanStatus.FAILED
+
+    async def test_a_cancelled_park_leaves_no_actionable_approval(self) -> None:
+        """A shutdown mid-park takes the same shape past a different door.
+
+        ``CancelledError`` is a BaseException, so a cancellation between two
+        of these writes skips the handler that compensates for a store error:
+        the approvals written so far stay PENDING against a plan left in
+        PENDING_REVIEW, which is the state a human still acts on.
+        """
+        task = _result_task("root")
+        store = _NthAddFailingApprovalStore(fail_on=3, raises=asyncio.CancelledError)
+        gate, plans, _ = await _gate(approval_store=store, parent=task)
+        work_item = _work_item()
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+
+        with pytest.raises(asyncio.CancelledError):
+            await gate.request_plan_approval(
+                plan_id=plan_id,
+                work_item=work_item,
+                task=task,
+                plan=_decomposition(
+                    open_questions=(
+                        NotBlankStr("Which database?"),
+                        NotBlankStr("Do we ship on mobile?"),
+                    )
+                ),
+                review=_NO_PANEL,
+            )
+
+        assert await store.list_items() == ()
+        persisted = await plans.list_items()
+        assert persisted[0].status is PlanStatus.FAILED
+        assert persisted[0].failure_reason == "approval parking was cancelled"
 
     async def test_fail_plan_write_failure_is_swallowed_not_raised(self) -> None:
         # The compensating FAILED write is the one on the failure path; if it

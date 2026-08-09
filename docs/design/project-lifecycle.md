@@ -160,6 +160,14 @@ and a run of them says so explicitly instead of reporting each as an isolated
 blip. Read the ledger as complete up to a reported outage, not as complete by
 construction.
 
+That reporting covers the persistence failures the append is allowed to
+absorb, which is every one except a critical exception. `MemoryError`,
+`RecursionError` and an exception group carrying either are re-raised the
+moment they surface, ahead of the ERROR line and ahead of the outage streak,
+because a process out of memory is not a ledger outage to report and carrying
+on to format a log record is how the report itself fails. A gap left that way
+is announced by the crash rather than by the ledger.
+
 The ledger repository is a **required** collaborator, not an optional one, on
 both `LifecycleLedger` and `PlanService`: a service built without it would
 persist the status and emit the transition log line while the durable row

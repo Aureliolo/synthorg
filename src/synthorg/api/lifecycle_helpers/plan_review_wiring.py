@@ -11,6 +11,8 @@ approval are exactly what builds. Default off, so behaviour is unchanged
 unless an operator opts in.
 """
 
+import asyncio
+import contextlib
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
@@ -285,6 +287,9 @@ class PlanReviewApprovalGate:
             PlanParentTaskMissingError: When the objective task was deleted
                 while decomposition ran. The caller compensates by failing
                 the plan, so an orphan never reaches the review queue.
+            CancelledError: Propagated once the approvals written so far are
+                retired and the plan is failed, so a shutdown mid-park leaves
+                nothing an operator can still act on.
         """
         await self._require_parent(task, plan_id)
         approval_id = uuid.uuid4()
@@ -343,6 +348,27 @@ class PlanReviewApprovalGate:
                 await self._approval_store.add(question)
                 parked.append(question)
             log_parked(durable_plan, len(questions))
+        except asyncio.CancelledError:
+            # Cancellation reaches here as a BaseException, so the handler
+            # below never sees it: a shutdown between two of these writes
+            # would leave every approval written so far PENDING against a
+            # plan stuck in PENDING_REVIEW. The compensation is shielded
+            # because the cancellation that got us here would cancel it too.
+            logger.warning(
+                PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+                plan_id=str(durable_plan.id),
+                error_type="CancelledError",
+                error="approval parking was cancelled",
+            )
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(
+                    self._abandon_parked(
+                        parked,
+                        plan_id=durable_plan.id,
+                        reason="approval parking was cancelled",
+                    )
+                )
+            raise
         except Exception as exc:
             reraise_critical(exc)
             # The plan is filled but the approval did not park: without an
@@ -355,12 +381,10 @@ class PlanReviewApprovalGate:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            # Before the plan is failed, not after: an approval that outlives
-            # its plan is actionable, and answering one writes back onto a
-            # plan the operator is being told failed.
-            await self._retire_parked(parked)
-            await self.fail_plan(
-                plan_id=durable_plan.id, reason="approval-store write failed"
+            await self._abandon_parked(
+                parked,
+                plan_id=durable_plan.id,
+                reason="approval-store write failed",
             )
             raise
         self._announce(durable_plan)
@@ -370,6 +394,27 @@ class PlanReviewApprovalGate:
             subtask_count=len(plan.plan.subtasks),
             detail=NotBlankStr(detail),
         )
+
+    async def _abandon_parked(
+        self,
+        parked: Sequence[ApprovalItem],
+        *,
+        plan_id: UUID,
+        reason: str,
+    ) -> None:
+        """Retire what parked, then fail the plan, in that order.
+
+        Retiring first is the load-bearing half: an approval that outlives
+        its plan is still actionable, and answering one writes back onto a
+        plan the operator is being told failed.
+
+        Args:
+            parked: The approvals written before the park failed.
+            plan_id: The durable plan the failed park belongs to.
+            reason: What the operator is told failed the plan.
+        """
+        await self._retire_parked(parked)
+        await self.fail_plan(plan_id=plan_id, reason=reason)
 
     async def _retire_parked(self, parked: Sequence[ApprovalItem]) -> None:
         """Remove approvals written before a later park failed.

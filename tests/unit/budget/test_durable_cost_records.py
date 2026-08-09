@@ -88,16 +88,63 @@ class _RecordingRepo:
         return removed
 
 
-def _attach(tracker: CostTracker, repo: CostRecordRepository) -> None:
+def _counting_aggregate_repo(
+    counted: list[str],
+) -> ProjectCostAggregateRepository:
+    """Return an aggregate repo that counts each claim exactly once.
+
+    The real ``increment_if_unseen`` writes the dedup row and the increment in
+    one transaction, so a second delivery of the same claim comes back
+    ``was_new=False`` and can never re-bill. Reproducing that is the whole
+    point: it is the branch a redelivery lands in.
+
+    Args:
+        counted: Collects the claim ids the aggregate billed, in order.
+
+    Returns:
+        An aggregate repository double honouring the dedup contract.
+    """
+
+    async def _increment_if_unseen(
+        _project_id: NotBlankStr,
+        _cost: float,
+        _input_tokens: int,
+        _output_tokens: int,
+        *,
+        claim_id: NotBlankStr,
+        **_rest: object,
+    ) -> tuple[None, bool]:
+        if claim_id in counted:
+            return None, False
+        counted.append(claim_id)
+        return None, True
+
+    repo: ProjectCostAggregateRepository = mock_of[ProjectCostAggregateRepository]()
+    repo.increment_if_unseen.side_effect = _increment_if_unseen  # type: ignore[attr-defined]
+    return repo
+
+
+def _attach(
+    tracker: CostTracker,
+    repo: CostRecordRepository,
+    *,
+    project_cost_repo: ProjectCostAggregateRepository | None = None,
+) -> None:
     """Wire the durable trio the way the boot sequence does."""
     tracker.attach_durable_repos(
-        project_cost_repo=mock_of[ProjectCostAggregateRepository](),
+        project_cost_repo=project_cost_repo
+        or mock_of[ProjectCostAggregateRepository](),
         claim_seen_repo=mock_of[ProjectCostClaimSeenRepository](),
         cost_record_repo=repo,
     )
 
 
-def _record(cost: float, *, at: datetime | None = None) -> CostRecord:
+def _record(
+    cost: float,
+    *,
+    at: datetime | None = None,
+    project: str | None = None,
+) -> CostRecord:
     return CostRecord(
         provider=NotBlankStr("example-provider"),
         model=NotBlankStr("example-medium-001"),
@@ -106,6 +153,7 @@ def _record(cost: float, *, at: datetime | None = None) -> CostRecord:
         cost=cost,
         currency=CurrencyCode("EUR"),
         timestamp=at or _NOW,
+        project_id=NotBlankStr(project) if project else None,
     )
 
 
@@ -185,6 +233,45 @@ class TestDurableAppend:
 
         assert attempts == 2
         assert not [e for e in captured if e["event"] == "budget.record.persist_failed"]
+
+    async def test_a_redelivery_completes_a_record_the_aggregate_already_counts(
+        self,
+    ) -> None:
+        """A cancellation after the dedup row commits leaves an unrecorded claim.
+
+        The dedup row and the increment commit together, so no later delivery
+        can re-bill; what it CAN still be missing is the ``cost_records`` row
+        the cancelled append never wrote. The duplicate branch is the only
+        place that delivery lands, so if it does not retry the append, the
+        record is lost for good while the project total says it happened.
+        """
+        counted: list[str] = []
+        repo = mock_of[CostRecordRepository]()
+        landed: list[CostRecord] = []
+        cancel_append = True
+
+        async def _append(record: CostRecord) -> None:
+            if cancel_append:
+                raise asyncio.CancelledError
+            landed.append(record)
+
+        repo.append.side_effect = _append
+        tracker = CostTracker(clock=FakeClock(start=_NOW))
+        _attach(tracker, repo, project_cost_repo=_counting_aggregate_repo(counted))
+        record = _record(0.25, project="proj-1")
+
+        with pytest.raises(asyncio.CancelledError):
+            await tracker.record(record)
+
+        assert counted == [record.claim_id]
+        assert not landed
+
+        cancel_append = False
+        await tracker.record(record)
+
+        # Counted once, recorded once: the redelivery wrote only the record.
+        assert counted == [record.claim_id]
+        assert [r.cost for r in landed] == [0.25]
 
     async def test_a_run_of_drops_says_spend_is_not_being_recorded(self) -> None:
         """One dropped receipt is a gap; a streak is an unenforceable ceiling."""

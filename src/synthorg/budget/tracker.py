@@ -512,9 +512,22 @@ class CostTracker(CostTrackerSummaryMixin):
             self._inflight_claims.discard(cost_record.claim_id)
             raise
         if not was_new:
+            # The aggregate already counts this claim, and its dedup row
+            # committed in the same transaction, so no redelivery can ever
+            # re-increment it. What a redelivery CAN still be missing is the
+            # record itself: an append cancelled after that commit leaves the
+            # claim counted and unrecorded, and this branch is the only place
+            # a later delivery of it lands. The insert is idempotent on
+            # ``(claim_id, timestamp)``, so completing it costs one no-op
+            # insert when the row is already there.
+            recorded = await self._append_durable(cost_record)
             async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
-                self._promote_seen_claim(cost_record.claim_id)
+                # Promoted only once the record is durably present: the LRU
+                # short-circuits ahead of this branch, so promoting a claim
+                # whose row never landed would close the one door left to it.
+                if recorded:
+                    self._promote_seen_claim(cost_record.claim_id)
             logger.info(
                 BUDGET_RECORD_DEDUPED,
                 claim_id=cost_record.claim_id,
@@ -562,7 +575,7 @@ class CostTracker(CostTrackerSummaryMixin):
             self._inflight_claims.discard(cost_record.claim_id)
             raise
 
-    async def _append_durable(self, cost_record: CostRecord) -> None:
+    async def _append_durable(self, cost_record: CostRecord) -> bool:
         """Persist the record itself, best-effort but not silently.
 
         Fail-open for the same reason the aggregate increment is: losing a
@@ -577,10 +590,14 @@ class CostTracker(CostTrackerSummaryMixin):
 
         Args:
             cost_record: The accepted record to append durably.
+
+        Returns:
+            Whether the record is durably recorded. No durable store is
+            ``True``: there is nowhere for it to be missing from.
         """
         repo = self._cost_record_repo
         if repo is None:
-            return
+            return True
         try:
             await self._durable_retry.execute(
                 lambda: repo.append(cost_record),
@@ -591,8 +608,9 @@ class CostTracker(CostTrackerSummaryMixin):
             # storage blip must not fail the call it is describing.
             reraise_critical(exc)
             self._note_persist_failure(cost_record, exc)
-            return
+            return False
         self._note_persist_success()
+        return True
 
     def _note_persist_failure(self, cost_record: CostRecord, exc: Exception) -> None:
         """Log one dropped record, escalating once dropping them is a pattern.
