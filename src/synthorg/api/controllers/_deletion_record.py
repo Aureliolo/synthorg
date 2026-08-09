@@ -13,6 +13,7 @@ lives here rather than being repeated at each call site.
 
 from datetime import UTC, datetime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.deleted_entity import DeletedEntity, DeletedEntityKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -63,6 +64,7 @@ async def record_deletion(
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- the deletion is already decided
+        reraise_critical(exc)
         logger.warning(
             API_PROJECT_CASCADE_CONTENDED,
             entity_kind=kind.value,

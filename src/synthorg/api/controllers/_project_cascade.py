@@ -242,6 +242,12 @@ async def _delete_retired_plans(
     """
     persistence = persistence_of(app_state)
     deleted = 0
+    # The offset advances past what SURVIVED this page, not past the page:
+    # every row removed falls out of the same filter, so the rows behind it
+    # shift forward into positions a fixed stride would step over, and they
+    # would outlive the project that owned them. Advancing by the survivors
+    # is also what stops a row the teardown legitimately refuses from being
+    # read forever.
     offset = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
@@ -250,6 +256,7 @@ async def _delete_retired_plans(
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
         )
+        removed_here = 0
         for plan in plans:
             # The teardown reaches the plan repository directly rather than
             # through the route that already retires, so without this the
@@ -264,9 +271,10 @@ async def _delete_retired_plans(
                     deleted_by=requested_by,
                 )
                 deleted += 1
+                removed_here += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
-        offset += DEFAULT_PAGE_SIZE
+        offset += len(plans) - removed_here
     return deleted
 
 
@@ -292,6 +300,7 @@ async def _delete_cancelled_tasks(
     """
     persistence = persistence_of(app_state)
     deleted = 0
+    # Advances past the survivors, for the reason given on the plan loop.
     offset = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
     while True:
@@ -300,6 +309,7 @@ async def _delete_cancelled_tasks(
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
         )
+        removed_here = 0
         for task in tasks:
             # A live teardown left four `review:task_failed` approvals pending
             # against tasks it had already removed, each still offering a
@@ -311,6 +321,9 @@ async def _delete_cancelled_tasks(
                     requested_by=requested_by,
                 )
             except TaskNotFoundError:
+                # Already gone, so it has left this filter too and the rows
+                # behind it have shifted forward by one.
+                removed_here += 1
                 continue
             if removed:
                 await record_deletion(
@@ -321,7 +334,8 @@ async def _delete_cancelled_tasks(
                     deleted_by=requested_by,
                 )
                 deleted += 1
+                removed_here += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break
-        offset += DEFAULT_PAGE_SIZE
+        offset += len(tasks) - removed_here
     return deleted

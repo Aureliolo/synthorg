@@ -7,6 +7,7 @@ before the agent had been told what it missed.
 """
 
 from synthorg.engine.context import AgentContext
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
@@ -53,15 +54,21 @@ def _nudge_message(
         return None
     if ctx.max_turns <= 1:
         return None
-    declared = ", ".join(
-        artifact.path for artifact in execution.task.artifacts_expected
+    # Fenced, because a declared path is model-authored: decomposition takes
+    # it from the LLM as a non-blank string with no charset restriction, so a
+    # path spelling its own instructions would otherwise arrive inside a
+    # sentence telling the agent to act on it now. The sibling that renders
+    # the same field for the evaluate brief fences it the same way.
+    declared = wrap_untrusted(
+        TAG_TASK_DATA,
+        ", ".join(artifact.path for artifact in execution.task.artifacts_expected),
     )
     return ChatMessage(
         role=MessageRole.USER,
         content=(
             "You answered without calling a single tool, so this task has "
             "produced nothing. It declares these deliverables: "
-            f"{declared}. Prose is not a deliverable. Use your tools to "
+            f"{declared} Prose is not a deliverable. Use your tools to "
             "create them now, then say you are done."
         ),
     )

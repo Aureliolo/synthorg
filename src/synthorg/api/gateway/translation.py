@@ -20,7 +20,12 @@ from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
-from synthorg.providers.enums import ImageDetail, ImageMediaType, MessageRole
+from synthorg.providers.enums import (
+    ImageDetail,
+    ImageMediaType,
+    MessageRole,
+    StreamEventType,
+)
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -475,9 +480,23 @@ def stream_chunk_to_openai(
 
 
 def _delta_for_chunk(chunk: StreamChunk) -> dict[str, object] | None:
-    """Return the OpenAI ``delta`` for a stream chunk, or ``None``."""
-    if chunk.content is not None:
-        return {"content": chunk.content}
-    if chunk.tool_call_delta is not None:
-        return {"tool_calls": [_tool_call_to_openai(chunk.tool_call_delta)]}
-    return None
+    """Return the OpenAI ``delta`` for a stream chunk, or ``None``.
+
+    Switched on the discriminator, not on which field happens to be set:
+    a reasoning delta carries its text in ``content`` too, and reading the
+    field alone would hand the model's own working to the harness as
+    assistant output. It would then be replayed on the next turn as
+    something the assistant said out loud, which is the one thing the
+    reasoning channel is kept apart from ``content`` to prevent. It rides
+    its own key, which a harness folds into the transcript only if it
+    chooses to.
+    """
+    match chunk.event_type:
+        case StreamEventType.CONTENT_DELTA if chunk.content is not None:
+            return {"content": chunk.content}
+        case StreamEventType.REASONING_DELTA if chunk.content is not None:
+            return {"reasoning_content": chunk.content}
+        case StreamEventType.TOOL_CALL_DELTA if chunk.tool_call_delta is not None:
+            return {"tool_calls": [_tool_call_to_openai(chunk.tool_call_delta)]}
+        case _:
+            return None
