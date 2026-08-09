@@ -2,27 +2,22 @@ import type { Node, Edge } from '@xyflow/react'
 import {
   type GroupResult,
   type LayoutOptions,
-  DEFAULT_GROUP_PADDING,
   DEFAULT_NODE_HEIGHT,
+  DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
+  DEFAULT_RANK_SEP,
   DESIRED_INTER_DEPT_GAP_X,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
+  cardPaddingFor,
   computeFooterHeight,
   computeHeaderHeight,
 } from './layout-shared'
-import { deriveLayoutModel } from './layout-clusters'
 import { runDagreLayout } from './layout-graph'
-import {
-  collectRootGroupIds,
-  computePopulatedGroups,
-  placeEmptyGroups,
-  toGroupRelative,
-} from './layout-groups'
-import { planTeams } from './layout-teams'
+import { collectRootGroupIds, placeEmptyGroups, planHierarchy } from './layout-groups'
+import type { SizedUnit } from './layout-units'
 import {
   anchorLayout,
-  centerLeadsOverReports,
   centerNonRootUnderRoot,
   centerOwnersOverRoot,
   enforceHorizontalGaps,
@@ -50,97 +45,94 @@ function layoutEmptyChart(nodes: Node[]): Node[] {
   })
 }
 
+/** Separate the placed department boxes from the loose top-level nodes. */
+function splitPositioned(
+  positioned: ReadonlyMap<string, Node>,
+  departments: ReadonlyMap<string, SizedUnit>,
+): { populatedResults: GroupResult[]; topLevelLeaves: Map<string, Node> } {
+  const populatedResults: GroupResult[] = []
+  const topLevelLeaves = new Map<string, Node>()
+  for (const [id, node] of positioned) {
+    const department = departments.get(id)
+    if (!department) {
+      topLevelLeaves.set(id, node)
+      continue
+    }
+    populatedResults.push({
+      node,
+      childrenRelative: department.childrenRelative,
+      groupWidth: node.width ?? 0,
+      groupHeight: node.height ?? 0,
+    })
+  }
+  return { populatedResults, topLevelLeaves }
+}
+
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
  *
  * Returns a new array of nodes with `position` set; edges are unchanged.
- * Each populated department is a dagre cluster laid out in its own direction,
- * teams are folded into single sized boxes beforehand, and every card is then
- * sized around its contents and shifted into the constant gaps the chart
- * reads by.
+ * Units are sized from the inside out (teams, then the departments holding
+ * them), each laid out in its own direction and its own separations, and the
+ * top-level frame then arranges the resulting boxes top-to-bottom.
  */
 export function applyDagreLayout(
   nodes: Node[],
   edges: Edge[],
   options: LayoutOptions = {},
 ): Node[] {
-  const { direction = 'TB', rankSep = 50 } = options
-  let { nodeSep = 60 } = options
-
-  // Dynamic header/footer sizes based on what's actually rendered, so
-  // toggling off budget bar / status dots shrinks the reserved space
-  // and leaves no dead whitespace inside the box.
-  const headerHeight = computeHeaderHeight(options)
-  const footerHeight = computeFooterHeight(options)
-
-  const groupNodes = nodes.filter((n) => n.type === 'department')
-
-  if (groupNodes.length > 0) {
-    nodeSep += DEFAULT_GROUP_PADDING * 2
-  }
+  const {
+    direction = 'TB',
+    rankSep = DEFAULT_RANK_SEP,
+    nodeSep = DEFAULT_NODE_SEP,
+    density,
+  } = options
+  const cardPadding = cardPaddingFor(density)
 
   if (!nodes.some((n) => n.type !== 'department' && n.type !== 'owner')) {
     return layoutEmptyChart(nodes)
   }
 
-  const teams = planTeams(nodes, edges, { direction, nodeSep, rankSep })
-  const model = deriveLayoutModel({
-    groupNodes,
-    allNodes: nodes,
-    leafNodes: teams.leafNodes,
-    edges: teams.edges,
-    nodeSep,
+  const params = { direction, nodeSep, rankSep }
+  const plan = planHierarchy({
+    nodes,
+    edges,
+    params,
+    chrome: {
+      cardPadding,
+      // Reserve exactly the chrome that will be rendered, so turning the
+      // budget bar or status dots off leaves no dead whitespace in the card.
+      headerHeight: computeHeaderHeight(options, cardPadding),
+      footerHeight: computeFooterHeight(options),
+    },
   })
-  const positionedLeafMap = runDagreLayout(teams.leafNodes, teams.edges, model, {
-    direction,
-    nodeSep,
-    rankSep,
-  })
-  const rootGroupIds = collectRootGroupIds(groupNodes)
 
-  // Centre each lead across its in-box reports on the raw dagre coords,
-  // BEFORE box bounds are derived, so each dept card wraps the tight
-  // (centred) layout instead of dagre's balanced one.
-  centerLeadsOverReports(model.clusters, positionedLeafMap)
-
-  const { populatedResults, emptyGroups } = computePopulatedGroups(
-    groupNodes,
-    positionedLeafMap,
-    headerHeight,
-    footerHeight,
+  const { populatedResults, topLevelLeaves } = splitPositioned(
+    runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params),
+    plan.departments,
   )
-  toGroupRelative(populatedResults, positionedLeafMap)
 
-  const rootPopulated: GroupResult | undefined = populatedResults.find((r) =>
-    rootGroupIds.has(r.node.id),
-  )
-  const emptyResults = placeEmptyGroups(
-    emptyGroups,
-    populatedResults,
-    rootGroupIds,
-    headerHeight,
-    rootPopulated,
-  )
-  const allGroupResults = [...populatedResults, ...emptyResults]
-
+  const rootGroupIds = collectRootGroupIds(nodes.filter((n) => n.type === 'department'))
+  const rootPopulated = populatedResults.find((r) => rootGroupIds.has(r.node.id))
+  const allGroupResults = [
+    ...populatedResults,
+    ...placeEmptyGroups(plan.emptyDepartments, populatedResults, rootGroupIds, rootPopulated),
+  ]
   // placeEmptyGroups can create the root group when it has no members, so
   // re-resolve the root from the merged set before the alignment passes;
   // otherwise a freshly-created empty root is skipped by them.
-  const rootResult: GroupResult | undefined = allGroupResults.find((r) =>
-    rootGroupIds.has(r.node.id),
-  )
+  const rootResult = allGroupResults.find((r) => rootGroupIds.has(r.node.id))
 
-  // De-overlap sibling dept boxes horizontally before centring the row
-  // under root (dagre separates only the leaf agents, not the boxes).
   enforceHorizontalGaps(allGroupResults, rootGroupIds, DESIRED_INTER_DEPT_GAP_X)
   centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
-  enforceVerticalGaps(allGroupResults, positionedLeafMap, rootGroupIds)
-  centerOwnersOverRoot(positionedLeafMap, rootResult)
-  anchorLayout(allGroupResults, positionedLeafMap, rootResult)
+  enforceVerticalGaps(allGroupResults, topLevelLeaves, rootGroupIds)
+  centerOwnersOverRoot(topLevelLeaves, rootResult)
+  anchorLayout(allGroupResults, topLevelLeaves, rootResult)
 
   return [
     ...allGroupResults.map((r) => r.node),
-    ...positionedLeafMap.values(),
-    ...teams.memberNodes,
+    ...topLevelLeaves.values(),
+    ...allGroupResults.flatMap((r) => r.childrenRelative),
+    ...[...plan.teams.values()].flatMap((t) => t.childrenRelative),
   ]
 }

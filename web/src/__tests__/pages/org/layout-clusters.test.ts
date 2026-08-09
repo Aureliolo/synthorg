@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Node } from '@xyflow/react'
 import { chooseClusterDirection } from '@/pages/org/layout-clusters'
 import {
+  DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
   DEPT_HORIZONTAL_WIDTH_BUDGET,
   getNodeDim,
@@ -10,14 +11,16 @@ import {
   type DeptSpec,
   ROOT_DEPT_NODE_ID,
   agentIds,
+  childrenOf,
+  fitsInside,
   layoutOf,
   leftToRight,
   nodeById,
   orgConfig,
+  overlaps,
+  pairsOf,
   topToBottom,
 } from '../../helpers/org-layout'
-
-const NODE_SEP = 60
 
 /** Widest rank that still fits the budget at the given separation. */
 function largestFittingRank(nodeSep: number): number {
@@ -30,37 +33,27 @@ function largestFittingRank(nodeSep: number): number {
 
 /** Members of one department, in the laid-out order. */
 function membersOf(nodes: readonly Node[], deptName: string): Node[] {
-  return nodes.filter(
-    (n) => n.type === 'agent' && n.parentId === `dept-${deptName}`,
-  )
-}
-
-function overlaps(a: Node, b: Node): boolean {
-  const dimA = getNodeDim(a)
-  const dimB = getNodeDim(b)
-  return (
-    a.position.x < b.position.x + dimB.w
-    && b.position.x < a.position.x + dimA.w
-    && a.position.y < b.position.y + dimB.h
-    && b.position.y < a.position.y + dimA.h
-  )
+  return nodes.filter((n) => n.type === 'agent' && n.parentId === `dept-${deptName}`)
 }
 
 describe('chooseClusterDirection', () => {
   it('keeps a department that fits the width budget top-to-bottom', () => {
-    expect(chooseClusterDirection(largestFittingRank(NODE_SEP), NODE_SEP)).toBe('TB')
+    expect(chooseClusterDirection(largestFittingRank(DEFAULT_NODE_SEP), DEFAULT_NODE_SEP))
+      .toBe('TB')
   })
 
   it('turns a department that overruns the width budget left-to-right', () => {
-    expect(chooseClusterDirection(largestFittingRank(NODE_SEP) + 1, NODE_SEP)).toBe('LR')
+    expect(chooseClusterDirection(largestFittingRank(DEFAULT_NODE_SEP) + 1, DEFAULT_NODE_SEP))
+      .toBe('LR')
   })
 
   it('keeps a single-member department top-to-bottom', () => {
-    expect(chooseClusterDirection(1, NODE_SEP)).toBe('TB')
+    expect(chooseClusterDirection(1, DEFAULT_NODE_SEP)).toBe('TB')
   })
 
   it('turns fewer members left-to-right as the separation grows', () => {
-    expect(largestFittingRank(NODE_SEP * 2)).toBeLessThan(largestFittingRank(NODE_SEP))
+    expect(largestFittingRank(DEFAULT_NODE_SEP * 2))
+      .toBeLessThan(largestFittingRank(DEFAULT_NODE_SEP))
   })
 })
 
@@ -83,8 +76,7 @@ describe('per-cluster direction', () => {
     for (const report of reports) {
       expect(lead!.position.y).toBeLessThan(report.position.y)
     }
-    const ys = new Set(reports.map((r) => r.position.y))
-    expect(ys.size).toBe(1)
+    expect(new Set(reports.map((r) => r.position.y)).size).toBe(1)
   })
 
   it('puts a wide department\'s reports in a column beside its lead', () => {
@@ -93,14 +85,12 @@ describe('per-cluster direction', () => {
     for (const report of reports) {
       expect(lead!.position.x).toBeLessThan(report.position.x)
     }
-    const xs = new Set(reports.map((r) => r.position.x))
-    expect(xs.size).toBe(1)
+    expect(new Set(reports.map((r) => r.position.x)).size).toBe(1)
     expect(new Set(reports.map((r) => r.position.y)).size).toBe(reports.length)
   })
 
   it('keeps a wide department\'s card inside the width budget', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    const dept = nodeById(nodes, 'dept-engineering')
+    const dept = nodeById(layoutOf(orgConfig(MIXED_ORG)), 'dept-engineering')
     expect(dept.width as number).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
   })
 
@@ -110,51 +100,36 @@ describe('per-cluster direction', () => {
     const tops = reports.map((r) => r.position.y)
     const bottoms = reports.map((r) => r.position.y + getNodeDim(r).h)
     const reportsMidpoint = (Math.min(...tops) + Math.max(...bottoms)) / 2
-    const leadMidpoint = lead!.position.y + getNodeDim(lead!).h / 2
-    expect(leadMidpoint).toBeCloseTo(reportsMidpoint, 5)
+    expect(lead!.position.y + getNodeDim(lead!).h / 2).toBeCloseTo(reportsMidpoint, 5)
   })
 
   it('leaves the global top-to-bottom flow unchanged', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    expect(topToBottom(nodes, ['owner-owner-1', ROOT_DEPT_NODE_ID, 'dept-ops'])).toEqual([
-      'owner-owner-1',
-      ROOT_DEPT_NODE_ID,
-      'dept-ops',
-    ])
+    const order = ['owner-owner-1', ROOT_DEPT_NODE_ID, 'dept-ops']
+    expect(topToBottom(layoutOf(orgConfig(MIXED_ORG)), order)).toEqual(order)
   })
 
   it('still renders departments in the operator\'s order', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    expect(leftToRight(nodes, ['dept-ops', 'dept-engineering'])).toEqual([
-      'dept-ops',
-      'dept-engineering',
-    ])
+    const order = ['dept-ops', 'dept-engineering']
+    expect(leftToRight(layoutOf(orgConfig(MIXED_ORG)), order)).toEqual(order)
   })
 
   it('still renders a left-to-right department\'s members in the operator\'s order', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
     const reports = agentIds(['bob', 'carol', 'dave', 'eve', 'frank', 'grace', 'heidi'])
-    expect(topToBottom(nodes, reports)).toEqual(reports)
+    expect(topToBottom(layoutOf(orgConfig(MIXED_ORG)), reports)).toEqual(reports)
   })
 
   it('overlaps no two department cards', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG)).filter((n) => n.type === 'department')
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        expect(overlaps(nodes[i]!, nodes[j]!)).toBe(false)
-      }
+    const departments = layoutOf(orgConfig(MIXED_ORG)).filter((n) => n.type === 'department')
+    for (const [a, b] of pairsOf(departments)) {
+      expect(overlaps(a, b)).toBe(false)
     }
   })
 
   it('keeps every member inside its department card', () => {
     const nodes = layoutOf(orgConfig(MIXED_ORG))
     for (const dept of nodes.filter((n) => n.type === 'department')) {
-      for (const member of nodes.filter((n) => n.parentId === dept.id)) {
-        const { w, h } = getNodeDim(member)
-        expect(member.position.x).toBeGreaterThanOrEqual(0)
-        expect(member.position.y).toBeGreaterThanOrEqual(0)
-        expect(member.position.x + w).toBeLessThanOrEqual(dept.width as number)
-        expect(member.position.y + h).toBeLessThanOrEqual(dept.height as number)
+      for (const member of childrenOf(nodes, dept.id)) {
+        expect(fitsInside(member, dept)).toBe(true)
       }
     }
   })
@@ -170,11 +145,39 @@ describe('per-cluster direction', () => {
       frames.set(frame, [...(frames.get(frame) ?? []), node])
     }
     for (const siblings of frames.values()) {
-      for (let i = 0; i < siblings.length; i++) {
-        for (let j = i + 1; j < siblings.length; j++) {
-          expect(overlaps(siblings[i]!, siblings[j]!)).toBe(false)
-        }
+      for (const [a, b] of pairsOf(siblings)) {
+        expect(overlaps(a, b)).toBe(false)
       }
     }
+  })
+})
+
+describe('separation is the same in every unit', () => {
+  const ORG: readonly DeptSpec[] = [
+    { name: 'executive', members: ['zoe'] },
+    {
+      name: 'engineering',
+      members: ['alice', 'bob', 'carol', 'dave', 'erin'],
+      teams: [{ name: 'core', members: ['bob', 'carol', 'dave'] }],
+    },
+  ]
+
+  /** Smallest horizontal gap between two cards sharing a rank. */
+  function narrowestGap(members: readonly Node[]): number {
+    const sameRank = members.filter((m) => m.position.y === members[0]?.position.y)
+    const sorted = [...sameRank].sort((a, b) => a.position.x - b.position.x)
+    let narrowest = Infinity
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1]!
+      narrowest = Math.min(narrowest, sorted[i]!.position.x - (prev.position.x + getNodeDim(prev).w))
+    }
+    return narrowest
+  }
+
+  it('separates team members by the same gap as loose department members', () => {
+    const nodes = layoutOf(orgConfig(ORG))
+    const teamMembers = childrenOf(nodes, 'team-engineering-core')
+      .filter((n) => n.id !== 'agent-bob')
+    expect(narrowestGap(teamMembers)).toBeCloseTo(DEFAULT_NODE_SEP, 5)
   })
 })

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Node, Edge } from '@xyflow/react'
 import { applyDagreLayout } from '@/pages/org/layout'
-import { getNodeDim } from '@/pages/org/layout-shared'
 import {
   type DeptSpec,
   ROOT_DEPT_NODE_ID,
   layoutOf,
+  leftToRight,
   nodeById,
   orgConfig,
+  overlaps,
 } from '../../helpers/org-layout'
 
 function makeNode(id: string, opts: Partial<Node> = {}): Node {
@@ -168,17 +169,6 @@ describe('applyDagreLayout', () => {
 })
 
 describe('applyDagreLayout on degenerate charts', () => {
-  function overlaps(a: Node, b: Node): boolean {
-    const dimA = getNodeDim(a)
-    const dimB = getNodeDim(b)
-    return (
-      a.position.x < b.position.x + dimB.w
-      && b.position.x < a.position.x + dimA.w
-      && a.position.y < b.position.y + dimB.h
-      && b.position.y < a.position.y + dimA.h
-    )
-  }
-
   it('gives an unstaffed department a card of its own beside the staffed ones', () => {
     const specs: DeptSpec[] = [
       { name: 'executive', members: ['zoe'] },
@@ -214,5 +204,44 @@ describe('applyDagreLayout on degenerate charts', () => {
       expect(Number.isFinite(node.position.y)).toBe(true)
       expect(node.width as number).toBeGreaterThan(0)
     }
+  })
+
+  it('renders departments in the configured order when there is no CEO', () => {
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'sales', members: ['carol'] },
+      { name: 'support', members: ['dave', 'erin'] },
+    ]
+    const order = ['dept-engineering', 'dept-sales', 'dept-support']
+    expect(leftToRight(layoutOf(orgConfig(specs)), order)).toEqual(order)
+  })
+
+  it('terminates on a parentId cycle instead of spinning', () => {
+    // Server data owns parentId; a cycle in it must not hang the canvas.
+    const nodes = [
+      makeNode('dept-eng', { type: 'department' }),
+      makeNode('team-a', { type: 'team', parentId: 'team-b' }),
+      makeNode('team-b', { type: 'team', parentId: 'team-a' }),
+      makeNode('agent-1', { parentId: 'team-a', width: 176, height: 80 }),
+      makeNode('agent-2', { parentId: 'dept-eng', width: 176, height: 80 }),
+    ]
+    const result = applyDagreLayout(nodes, [makeEdge('agent-2', 'agent-1')])
+    for (const node of result) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+    }
+  })
+
+  it('reserves more card chrome at a sparser density', () => {
+    const specs: DeptSpec[] = [
+      { name: 'executive', members: ['zoe'] },
+      { name: 'engineering', members: ['alice', 'bob'] },
+    ]
+    const config = orgConfig(specs)
+    const heightAt = (density: 'dense' | 'balanced' | 'sparse'): number =>
+      nodeById(layoutOf(config, { layout: { density } }), 'dept-engineering')
+        .height as number
+    expect(heightAt('dense')).toBeLessThan(heightAt('balanced'))
+    expect(heightAt('balanced')).toBeLessThan(heightAt('sparse'))
   })
 })

@@ -2,8 +2,19 @@ import type { Node } from '@xyflow/react'
 import type { DashboardAgentConfig } from '@/api/types/agents'
 import type { CompanyConfig, DashboardDepartment, TeamConfig } from '@/api/types/org'
 import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
-import { applyDagreLayout } from '@/pages/org/layout'
+import type { DeptAdminInfo } from '@/pages/org/build-org-tree-types'
+import { applyDagreLayout, type LayoutOptions } from '@/pages/org/layout'
+import { getNodeDim } from '@/pages/org/layout-shared'
 import { makeAgent, makeDepartment } from './factories'
+
+/** One team's worth of org data in the operator's own order. */
+export interface TeamSpec {
+  readonly name: string
+  /** Member names; the first one leads the team. Empty means unstaffed. */
+  readonly members: readonly string[]
+  /** Set to name a lead that is not a member, to exercise an unresolved lead. */
+  readonly lead?: string
+}
 
 /** One department's worth of org data in the operator's own order. */
 export interface DeptSpec {
@@ -12,10 +23,10 @@ export interface DeptSpec {
   /** Member names in the operator's order; the first one heads the department. */
   readonly members: readonly string[]
   /** Teams within the department, in the operator's order. */
-  readonly teams?: readonly { readonly name: string; readonly members: readonly string[] }[]
+  readonly teams?: readonly TeamSpec[]
 }
 
-const OWNERS: readonly OwnerInfo[] = [{ id: 'owner-1', displayName: 'Owner' }]
+const DEFAULT_OWNERS: readonly OwnerInfo[] = [{ id: 'owner-1', displayName: 'Owner' }]
 
 export const OWNER_NODE_ID = 'owner-owner-1'
 export const ROOT_DEPT_NODE_ID = 'dept-executive'
@@ -38,7 +49,7 @@ function departmentOf(spec: DeptSpec): DashboardDepartment {
   // team roster reads in the Org Edit page.
   const teams: TeamConfig[] = (spec.teams ?? []).map((team) => ({
     name: team.name,
-    lead: team.members[0] ?? '',
+    lead: team.lead ?? team.members[0] ?? '',
     members: [...team.members],
   }))
   return makeDepartment(spec.name, { head: headRoleOf(spec.name), teams })
@@ -52,14 +63,21 @@ export function orgConfig(specs: readonly DeptSpec[]): CompanyConfig {
   }
 }
 
-export function layoutOf(config: CompanyConfig): Node[] {
+export interface LayoutFixtureOptions {
+  readonly owners?: readonly OwnerInfo[]
+  readonly deptAdmins?: readonly DeptAdminInfo[]
+  readonly layout?: LayoutOptions
+}
+
+export function layoutOf(config: CompanyConfig, options: LayoutFixtureOptions = {}): Node[] {
   const tree = buildOrgTree({
     config,
     runtimeStatuses: {},
     departmentHealths: [],
-    owners: OWNERS,
+    owners: options.owners ?? DEFAULT_OWNERS,
+    deptAdmins: options.deptAdmins,
   })
-  return applyDagreLayout(tree.nodes, tree.edges)
+  return applyDagreLayout(tree.nodes, tree.edges, options.layout ?? {})
 }
 
 export function positionsOf(
@@ -96,4 +114,40 @@ export function nodeById(nodes: readonly Node[], id: string): Node {
   const found = nodes.find((n) => n.id === id)
   if (!found) throw new Error(`no laid-out node with id ${id}`)
   return found
+}
+
+export function childrenOf(nodes: readonly Node[], parentId: string): Node[] {
+  return nodes.filter((n) => n.parentId === parentId)
+}
+
+/** True when two nodes' boxes intersect, in whatever frame they share. */
+export function overlaps(a: Node, b: Node): boolean {
+  const dimA = getNodeDim(a)
+  const dimB = getNodeDim(b)
+  return (
+    a.position.x < b.position.x + dimB.w
+    && b.position.x < a.position.x + dimA.w
+    && a.position.y < b.position.y + dimB.h
+    && b.position.y < a.position.y + dimA.h
+  )
+}
+
+/** True when a child's box sits wholly inside its parent's, in the parent's frame. */
+export function fitsInside(child: Node, parent: Node): boolean {
+  const { w, h } = getNodeDim(child)
+  return (
+    child.position.x >= 0
+    && child.position.y >= 0
+    && child.position.x + w <= (parent.width as number)
+    && child.position.y + h <= (parent.height as number)
+  )
+}
+
+/** Every pair of the given nodes, for exhaustive overlap assertions. */
+export function pairsOf<T>(items: readonly T[]): [T, T][] {
+  const pairs: [T, T][] = []
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) pairs.push([items[i]!, items[j]!])
+  }
+  return pairs
 }

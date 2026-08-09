@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react'
+import type { Density } from '@/stores/theme'
 
 // The direction of the chart AS A WHOLE.  Only 'TB' is used: the
 // post-layout adjustment pass (Steps 4-5) places owner row, root box and
@@ -26,14 +27,21 @@ export interface LayoutOptions extends LayoutVisualPrefs {
   direction?: LayoutDirection
   nodeSep?: number
   rankSep?: number
+  /**
+   * The density the cards will actually render at. Department cards use the
+   * density-aware `p-card` token, so the space this layout reserves for card
+   * chrome only matches what appears on screen if it tracks the same axis.
+   */
+  density?: Density
 }
 
-/** A department group node plus its post-layout bounds + children. */
+/**
+ * A department group node with its post-layout size and the nodes drawn
+ * inside it, whose positions are relative to the box rather than the canvas.
+ */
 export interface GroupResult {
   node: Node
-  children: Node[]
-  groupX: number
-  groupY: number
+  childrenRelative: Node[]
   groupWidth: number
   groupHeight: number
 }
@@ -42,12 +50,32 @@ export interface GroupResult {
 // layout estimate equals the rendered width and sibling edge centres align.
 export const DEFAULT_NODE_WIDTH = 176
 export const DEFAULT_NODE_HEIGHT = 80
-export const DEFAULT_GROUP_PADDING = 16
 
-// Fixed header pieces on every dept card (inner padding + title row + bottom
-// margin). The bottom margin leaves a small breathing gap between the stats
-// (Active / Cost) row and the first agent card below it.
-const HEADER_BASE = 56
+// Separation between two cards on the same rank, and between two ranks. Every
+// unit is laid out in its own graph, so these are the values that actually
+// apply inside every card as well as between the department boxes.
+export const DEFAULT_NODE_SEP = 60
+export const DEFAULT_RANK_SEP = 50
+// A department card's inner padding comes from the density-aware `p-card`
+// token, so the reserve has to track the same axis; these mirror
+// `--so-density-card-padding` in styles/design-tokens.css.
+const CARD_PADDING_BY_DENSITY: Record<Density, number> = {
+  dense: 12,
+  medium: 14,
+  balanced: 16,
+  sparse: 20,
+}
+export const DEFAULT_GROUP_PADDING = CARD_PADDING_BY_DENSITY.balanced
+
+/** Inner padding a department card renders at the given density. */
+export function cardPaddingFor(density: Density | undefined): number {
+  return density === undefined ? DEFAULT_GROUP_PADDING : CARD_PADDING_BY_DENSITY[density]
+}
+
+// Title row plus the bottom margin under it, which leaves a small breathing
+// gap between the stats (Active / Cost) row and the first agent card below.
+// The card's own top padding is added separately because it varies by density.
+const HEADER_TITLE_ROW = 40
 // Department stats pill row (Active / Cost) rendered on every populated,
 // expanded dept card. One StatPill row is ~22 px plus the header's
 // space-y-1.5 (6 px) gap above it. Not gated by a view toggle, so it is
@@ -124,8 +152,8 @@ export function dagreEdgeMinlen(edge: Edge): number {
   return DEFAULT_MINLEN
 }
 
-export function computeHeaderHeight(prefs: LayoutVisualPrefs): number {
-  let h = HEADER_BASE + HEADER_STATS_BAR
+export function computeHeaderHeight(prefs: LayoutVisualPrefs, cardPadding: number): number {
+  let h = cardPadding + HEADER_TITLE_ROW + HEADER_STATS_BAR
   if (prefs.showBudgetBar) h += HEADER_BUDGET_BAR
   if (prefs.showStatusDots) h += HEADER_STATUS_DOTS
   return h

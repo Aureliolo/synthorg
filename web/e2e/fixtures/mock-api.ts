@@ -22,10 +22,9 @@ const SETUP_STATUS_DEFAULTS: SetupStatusResponse = {
 
 /**
  * Stub ``GET /setup/status`` so the wizard's backend reconcile derives the
- * step-completion map from real backend signals rather than the (removed)
- * client persistence. The wizard is a pure API consumer: it has no
- * localStorage seed, so the only way to land it mid-flow is to mock the
- * backend state it hydrates from. ``has_providers`` / ``has_company`` /
+ * step-completion map from real backend signals. The wizard is a pure API
+ * consumer: it has no localStorage seed, so the only way to land it mid-flow
+ * is to mock the backend state it hydrates from. ``has_providers`` / ``has_company`` /
  * ``has_agents`` drive which steps reconcile to complete (see
  * ``reconcileCompletionFromBackend``); a post-company step (agents, complete)
  * becomes directly reachable, while a pre-company step is reached by driving

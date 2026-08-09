@@ -5,6 +5,7 @@ import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
 import { useAuthStore } from '@/stores/auth'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
+import { useThemeStore, type Density } from '@/stores/theme'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
@@ -107,6 +108,23 @@ interface DagrePrefs {
   readonly showBudgetBar: boolean
   readonly showStatusDots: boolean
   readonly showAddAgentButton: boolean
+  readonly density: Density
+}
+
+/**
+ * Everything the layout needs to reserve exactly the card chrome that will be
+ * rendered: the toggles that add or remove a header row, and the density the
+ * cards' `p-card` padding resolves at.
+ */
+function useDagrePrefs(): DagrePrefs {
+  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
+  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
+  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const density = useThemeStore((s) => s.density)
+  return useMemo(
+    () => ({ showBudgetBar, showStatusDots, showAddAgentButton, density }),
+    [showBudgetBar, showStatusDots, showAddAgentButton, density],
+  )
 }
 
 interface DeriveViewArgs {
@@ -196,14 +214,7 @@ export function useOrgChartData(
   const runtimeStatuses = useAgentsStore((s) => s.runtimeStatuses)
   const currentUser = useAuthStore((s) => s.user)
 
-  // Visual prefs that affect how much space the dept card chrome
-  // takes up.  Passed through to `applyDagreLayout` so the reserved
-  // header/footer space matches whatever the user currently has
-  // toggled on -- no dead whitespace when budget bar / status dots
-  // / add agent are off.
-  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
-  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const dagrePrefs = useDagrePrefs()
 
   // Synthesise owner list from the current session user.  Designed
   // as an array so future multi-user ownership (per-dept admins) can
@@ -262,12 +273,11 @@ export function useOrgChartData(
       viewMode,
       collapsedDeptIds,
       commLinks,
-      prefs: { showBudgetBar, showStatusDots, showAddAgentButton },
+      prefs: dagrePrefs,
     })
   }, [
     config, runtimeStatuses, departmentHealths, viewMode, commLinks, owners,
-    collapsedDeptIds, showBudgetBar, showStatusDots, showAddAgentButton,
-    currentUser?.id,
+    collapsedDeptIds, dagrePrefs, currentUser?.id,
   ])
 
   return {

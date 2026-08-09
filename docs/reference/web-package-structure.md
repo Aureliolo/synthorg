@@ -21,7 +21,7 @@ web/src/
   stores/         # Zustand stores (auth, WebSocket, health, toast, analytics, company, agents, approvals, budget, backups, collaboration, meetings, messages, notifications, tasks, settings, sinks, artifacts, projects, theme, workflows, fine-tuning, ceremony-policy, setup, training, promotion, ssrf-violations, plan-forecast, per-domain stores). See "Store slicing patterns" below.
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth), typed status-colour lookups (status-colors.ts: ROLE_BADGE_COLORS, ESCALATION_STATUS_BADGE_COLORS), and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
-  __tests__/      # Vitest unit + property tests (mirrors src/ structure)
+  __tests__/      # Vitest unit + property tests (mirrors src/ structure), plus helpers/ for shared test utilities that have no src/ counterpart to mirror (factories.ts builds DTOs; org-layout.ts composes an org and reads laid-out geometry)
 ```
 
 ### One barrel per name
@@ -65,12 +65,19 @@ web/e2e/
                   # synthetic server-pushed frames (task transitions,
                   # approval decisions, provider health) through the
                   # same handler the SPA processes for real connections.
-  flows/          # Playwright flow specs. Every Tier-1 spec installs
-                  # the WebSocket harness, builds deterministic API
-                  # responses through the factories, and asserts both
-                  # form interaction AND WS-driven state transitions.
-                  # task-lifecycle.spec.ts walks the full create -> approval
-                  # gate -> reviewer-approves -> status transition path.
+  flows/          # Playwright flow specs, the only e2e directory CI gates
+                  # (verify-backend.yml runs `playwright test e2e/flows`;
+                  # e2e/visual is ungated because *-snapshots/ is gitignored,
+                  # so no baseline is ever committed). Every spec installs the
+                  # WebSocket harness and builds deterministic API responses
+                  # through the factories. Most assert form interaction AND a
+                  # WS-driven state transition: task-lifecycle.spec.ts walks
+                  # the full create -> approval gate -> reviewer-approves ->
+                  # status transition path. A rendering spec asserts laid-out
+                  # geometry instead: org-chart.spec.ts measures real bounding
+                  # boxes to pin department order and per-department flow
+                  # direction, which is what the ungated visual suite would
+                  # otherwise have covered.
   helpers/        # interactions.ts: dragTo / fillForm / clickButton /
                   # clickAndAwait / selectOption wrappers that always
                   # wait on a selector or network response, never on a

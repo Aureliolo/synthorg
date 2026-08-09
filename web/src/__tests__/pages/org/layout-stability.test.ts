@@ -6,9 +6,13 @@ import {
   OWNER_NODE_ID,
   ROOT_DEPT_NODE_ID,
   agentIds,
+  fitsInside,
   layoutOf,
   leftToRight,
+  nodeById,
   orgConfig,
+  overlaps,
+  pairsOf,
   positionsOf,
 } from '../../helpers/org-layout'
 
@@ -194,5 +198,88 @@ describe('org chart layout spine anchor', () => {
       SMALL_ORG[2]!,
     ]
     expect(spineOf(orgConfig(grown))).toEqual(before)
+  })
+
+  it('holds the spine still with the card chrome toggles on', () => {
+    const config = orgConfig(SMALL_ORG)
+    const chrome = {
+      layout: { showBudgetBar: true, showStatusDots: true, showAddAgentButton: true },
+    }
+    const before = positionsOf(
+      layoutOf(config, chrome).filter((n) => SPINE.includes(n.id)),
+    )
+    const grown = orgConfig([...SMALL_ORG, { name: 'legal', members: ['finn', 'gina'] }])
+    expect(
+      positionsOf(layoutOf(grown, chrome).filter((n) => SPINE.includes(n.id))),
+    ).toEqual(before)
+  })
+
+  it('centres the median department under the root for an odd count', () => {
+    const odd = orgConfig([
+      SMALL_ORG[0]!,
+      SMALL_ORG[1]!,
+      SMALL_ORG[2]!,
+      { name: 'legal', members: ['finn', 'gina'] },
+    ])
+    const nodes = layoutOf(odd)
+    const root = nodeById(nodes, ROOT_DEPT_NODE_ID)
+    const nonRoot = nodes.filter(
+      (n) => n.type === 'department' && n.id !== ROOT_DEPT_NODE_ID,
+    )
+    const centres = nonRoot
+      .map((n) => n.position.x + (n.width as number) / 2)
+      .sort((a, b) => a - b)
+    const rootCentre = root.position.x + (root.width as number) / 2
+    expect(centres[(centres.length - 1) / 2]).toBeCloseTo(rootCentre, 5)
+  })
+})
+
+describe('org chart layout with several owners', () => {
+  const TWO_OWNERS = [
+    { id: 'owner-1', displayName: 'First Owner' },
+    { id: 'owner-2', displayName: 'Second Owner' },
+  ]
+
+  it('keeps the owners apart and centres the row over the root', () => {
+    const nodes = layoutOf(orgConfig(SMALL_ORG), { owners: TWO_OWNERS })
+    const owners = ['owner-owner-1', 'owner-owner-2'].map((id) => nodeById(nodes, id))
+    expect(owners[0]!.position.x).not.toBeCloseTo(owners[1]!.position.x, 1)
+    for (const [a, b] of pairsOf(owners)) expect(overlaps(a, b)).toBe(false)
+
+    const root = nodeById(nodes, ROOT_DEPT_NODE_ID)
+    const rowCentre =
+      owners.reduce((sum, o) => sum + o.position.x + (o.width as number) / 2, 0) / owners.length
+    expect(rowCentre).toBeCloseTo(root.position.x + (root.width as number) / 2, 5)
+  })
+
+  it('holds both owners still when a department is added', () => {
+    const before = positionsOf(
+      layoutOf(orgConfig(SMALL_ORG), { owners: TWO_OWNERS }).filter((n) => n.type === 'owner'),
+    )
+    const grown = orgConfig([...SMALL_ORG, { name: 'legal', members: ['finn', 'gina'] }])
+    expect(
+      positionsOf(layoutOf(grown, { owners: TWO_OWNERS }).filter((n) => n.type === 'owner')),
+    ).toEqual(before)
+  })
+})
+
+describe('org chart layout with department admins', () => {
+  const ADMINS = [{ id: 'ada', displayName: 'Ada Admin', department: 'engineering' }]
+
+  it('places a department admin inside its department without overlaps', () => {
+    const nodes = layoutOf(orgConfig(SMALL_ORG), { deptAdmins: ADMINS })
+    const dept = nodeById(nodes, 'dept-engineering')
+    const admin = nodeById(nodes, 'dept-admin-ada')
+    expect(admin.parentId).toBe('dept-engineering')
+    expect(fitsInside(admin, dept)).toBe(true)
+    for (const [a, b] of pairsOf(nodes.filter((n) => n.parentId === dept.id))) {
+      expect(overlaps(a, b)).toBe(false)
+    }
+  })
+
+  it('does not reorder the department\'s agents around the admin', () => {
+    const reports = agentIds(['bob', 'carol'])
+    expect(leftToRight(layoutOf(orgConfig(SMALL_ORG), { deptAdmins: ADMINS }), reports))
+      .toEqual(reports)
   })
 })

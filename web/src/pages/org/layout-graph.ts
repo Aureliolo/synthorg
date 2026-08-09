@@ -1,58 +1,38 @@
 import { Graph, layout } from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
-import type { LayoutModel } from './layout-clusters'
-import {
-  type LayoutDirection,
-  dagreEdgeMinlen,
-  getNodeDim,
-} from './layout-shared'
+import { deriveConstraints } from './layout-clusters'
+import { type ClusterDirection, dagreEdgeMinlen, getNodeDim } from './layout-shared'
 
 export interface DagreParams {
-  direction: LayoutDirection
+  direction: ClusterDirection
   nodeSep: number
   rankSep: number
 }
 
 /**
- * Add one dagre cluster per populated department and parent its members to it.
+ * Lay one frame out with dagre and return its nodes positioned (top-left).
  *
- * A cluster carrying a `rankdir` is laid out in isolation and placed in the
- * parent graph as a single box, which is what lets a department flow in its
- * own direction. Its width and height are recomputed by dagre from whatever
- * ends up inside, so the placeholder size here is never read back.
+ * Every frame is a plain graph. dagre's own compound clusters are deliberately
+ * not used: `recursiveClusterLayout` reads only `rankdir` off a cluster node,
+ * ignoring the `ranksep`, `nodesep` and `align` overrides its types declare,
+ * and it copies only a cluster's direct children into the isolated subgraph,
+ * so a cluster inside a cluster loses its members entirely. Running one graph
+ * per unit and inserting the result as a pre-sized box gives every unit its
+ * own direction AND its own separations, and nests to any depth.
  */
-function addClusters(
-  g: Graph,
-  leafNodes: readonly Node[],
-  model: LayoutModel,
-): void {
-  for (const cluster of model.clusters) {
-    g.setNode(cluster.id, { rankdir: cluster.direction, width: 0, height: 0 })
-  }
-  for (const node of leafNodes) {
-    const { w, h } = getNodeDim(node)
-    g.setNode(node.id, { width: w, height: h })
-    const clusterId = model.clusterOf.get(node.id)
-    if (clusterId !== undefined) g.setParent(node.id, clusterId)
-  }
-}
-
-/** Run dagre over the org tree and return its leaves positioned (top-left). */
 export function runDagreLayout(
-  leafNodes: Node[],
-  edges: Edge[],
-  model: LayoutModel,
+  nodes: readonly Node[],
+  edges: readonly Edge[],
   params: DagreParams,
 ): Map<string, Node> {
-  const g = new Graph({ compound: true })
+  const g = new Graph()
   g.setGraph({ rankdir: params.direction, nodesep: params.nodeSep, ranksep: params.rankSep })
   g.setDefaultEdgeLabel(() => ({}))
 
-  addClusters(g, leafNodes, model)
-
-  // Department-to-department edges now have both endpoints in the graph, and
-  // they carry the hierarchy for a department with no declared head, which has
-  // no agent-level edge to be ranked by.
+  for (const node of nodes) {
+    const { w, h } = getNodeDim(node)
+    g.setNode(node.id, { width: w, height: h })
+  }
   for (const edge of edges) {
     if (g.hasNode(edge.source) && g.hasNode(edge.target)) {
       g.setEdge(edge.source, edge.target, { minlen: dagreEdgeMinlen(edge) })
@@ -67,19 +47,19 @@ export function runDagreLayout(
   // -- while the ordering that actually matters here is pinned by the
   // constraints, which make the layout a pure function of the org data.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- @dagrejs/dagre types Graph with `any` generics; g is the valid dagre Graph constructed above
-  layout(g, { useDynamic: false, constraints: [...model.constraints] })
+  layout(g, {
+    useDynamic: false,
+    constraints: deriveConstraints(nodes.map((n) => n.id), edges),
+  })
 
-  // Map positioned leaf nodes (dagre returns center coords; RF uses top-left).
-  const positionedLeafMap = new Map<string, Node>()
-  for (const node of leafNodes) {
-    const dagreNode = g.node(node.id) as { x: number; y: number; width: number; height: number }
-    positionedLeafMap.set(node.id, {
+  // dagre returns centre coords; React Flow uses top-left.
+  const positioned = new Map<string, Node>()
+  for (const node of nodes) {
+    const laidOut = g.node(node.id) as { x: number; y: number; width: number; height: number }
+    positioned.set(node.id, {
       ...node,
-      position: {
-        x: dagreNode.x - dagreNode.width / 2,
-        y: dagreNode.y - dagreNode.height / 2,
-      },
+      position: { x: laidOut.x - laidOut.width / 2, y: laidOut.y - laidOut.height / 2 },
     })
   }
-  return positionedLeafMap
+  return positioned
 }
