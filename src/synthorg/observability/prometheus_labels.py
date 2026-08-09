@@ -10,6 +10,8 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 import asyncio
 import math
 import re
+import threading
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -375,13 +377,11 @@ class _LabelSnapshot:
     agent_ids: frozenset[str] = frozenset()
     workflow_definition_ids: frozenset[str] = frozenset()
     departments: frozenset[str] = frozenset()
-    tool_names: frozenset[str] = frozenset()
     providers: frozenset[str] = frozenset()
     model_ids: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
-    tool_names_seeded: bool = False
     providers_seeded: bool = False
     model_ids_seeded: bool = False
 
@@ -501,18 +501,57 @@ def validate_department(value: str) -> None:
     require_label_summary("department", value, snapshot.departments)
 
 
+# Published by every ``ToolRegistry`` as it is constructed, not pulled on a
+# scrape like the fields of ``_LabelSnapshot`` above. The registries that
+# decide the valid set are built per task, long after boot and in a process
+# that may have no scraper attached at all, so a scrape-time pull is neither
+# timely nor guaranteed to happen. Pulling it from ``AppState`` (which has no
+# tool registry, and never had one) left this permanently empty: every tool
+# invocation was rejected, no per-tool metric was ever recorded, and a live
+# run logged two warnings per tool call for its whole duration.
+_agent_tool_names: frozenset[str] = frozenset()
+
+# The publisher is synchronous and can run on any thread, so it cannot take
+# the async ``_snapshot_lock``; its own lock keeps the read-modify-write from
+# losing a concurrently-registered name.
+_agent_tool_names_lock: Final[threading.Lock] = threading.Lock()
+
+
+def register_agent_tool_names(names: Iterable[str]) -> None:
+    """Admit *names* as valid ``tool_name`` label values.
+
+    The union grows monotonically and is bounded by the tools this process
+    can actually construct, which is the bound the label needs: a tool that
+    was never built cannot be invoked, so it can never be labelled.
+
+    Args:
+        names: Tool names a freshly-built registry exposes.
+    """
+    global _agent_tool_names  # noqa: PLW0603
+    incoming = frozenset(names)
+    with _agent_tool_names_lock:
+        if incoming <= _agent_tool_names:
+            return
+        _agent_tool_names = _agent_tool_names | incoming
+
+
+def _reset_agent_tool_names_for_tests() -> None:
+    """Reset the agent tool-name allowlist to bootstrap. Test-only."""
+    global _agent_tool_names  # noqa: PLW0603
+    with _agent_tool_names_lock:
+        _agent_tool_names = frozenset()
+
+
 def validate_tool_name(value: str) -> None:
     """Raise ``ValueError`` if *value* is not a registered tool name.
 
-    Bounds the ``tool_name`` Prometheus label against the running
-    ToolRegistry so plugin-loaded tools are accepted but a runaway
-    caller that fabricates names cannot inflate cardinality. Fails
-    closed during bootstrap (no snapshot seeded yet); push-time
-    callers go through ``metrics_hub._safe_record`` so the rejected
-    sample drops cleanly.
+    Bounds the ``tool_name`` Prometheus label against the tool registries
+    this process has built, so plugin- and MCP-loaded tools are accepted but
+    a runaway caller that fabricates names cannot inflate cardinality. Fails
+    closed before the first registry is built; push-time callers go through
+    ``metrics_hub._safe_record`` so the rejected sample drops cleanly.
     """
-    snapshot = _snapshot
-    require_label_summary("tool_name", value, snapshot.tool_names)
+    require_label_summary("tool_name", value, _agent_tool_names)
 
 
 UNKNOWN_LABEL: Final[str] = "__unknown__"

@@ -28,6 +28,7 @@ from synthorg.core.git_env import (
 from synthorg.core.tls_trust import git_tls_config
 from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
+from synthorg.observability.redaction import scrub_secret_tokens
 
 logger = get_logger(__name__)
 
@@ -72,9 +73,36 @@ def git_failure_detail(return_code: int) -> str:
 
     Returns:
         The cause when git never ran, else the bare return code, which is
-        all there is to say about a command git itself rejected.
+        all the code alone can say about a command git itself rejected.
+        Pair it with :func:`git_stderr_summary` for git's own account.
     """
     return describe_git_failure(return_code) or f"rc={return_code}"
+
+
+#: How much of git's stderr to carry into a failure. Git writes its
+#: explanation in the closing line or two and can precede it with a progress
+#: firehose, so the tail is the part that says what went wrong.
+GIT_STDERR_TAIL_CHARS: Final[int] = 400
+
+
+def git_stderr_summary(stderr: str) -> str | None:
+    """Return git's own account of a failure, scrubbed and bounded.
+
+    A return code alone does not identify a git failure: 128 covers a
+    missing upstream, a rejected non-fast-forward, a refused hook and an
+    unreadable repository alike. Discarding this stream left a live
+    ``rc=128`` with nothing to diagnose it by.
+
+    Args:
+        stderr: The raw stderr :func:`run_git_subprocess` captured.
+
+    Returns:
+        The redacted tail of *stderr*, or ``None`` when git said nothing.
+    """
+    scrubbed = scrub_secret_tokens(stderr).strip()
+    if not scrubbed:
+        return None
+    return scrubbed[-GIT_STDERR_TAIL_CHARS:]
 
 
 def _sanitised_env(config: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -135,13 +163,17 @@ def _redact_arg(arg: str) -> str:
 
     Returns:
         The arg with userinfo stripped when it looks like a URL with
-        embedded credentials; the arg unchanged otherwise.
+        embedded credentials, and with any other credential pattern
+        masked.
     """
     # Fast pass-through for plain args / credential-free URLs avoids any
     # reformatting; only a URL carrying ``user:token@`` is reconstructed.
     if "://" not in arg or "@" not in arg:
-        return arg
-    return redact_url(arg, query="keep")
+        # A credential does not have to arrive as a URL: ``-c
+        # http.extraHeader=Authorization: Bearer <token>`` is an ordinary
+        # argument that the URL branch below would pass through verbatim.
+        return scrub_secret_tokens(arg)
+    return scrub_secret_tokens(redact_url(arg, query="keep"))
 
 
 def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:

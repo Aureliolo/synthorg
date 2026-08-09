@@ -28,7 +28,10 @@ from synthorg.engine.workspace._git_subprocess import (
     GIT_RC_MISSING_REPO_ROOT,
     GIT_RC_SPAWN_FAILED,
     GIT_RC_TIMED_OUT,
+    GIT_STDERR_TAIL_CHARS,
+    _redact_arg,
     describe_git_failure,
+    git_stderr_summary,
     run_git_subprocess,
 )
 from synthorg.observability.events.workspace import GIT_BACKEND_PROVISION_START
@@ -332,3 +335,45 @@ def test_failure_codes_are_distinct() -> None:
     }
     assert len(codes) == 4
     assert all(code < 0 for code in codes)
+
+
+class TestGitExplainsItsOwnFailures:
+    """A return code alone does not identify a git failure.
+
+    ``describe_git_failure`` covers only the codes git never produced, so
+    for every code git DOES produce, its stderr is the sole account of
+    what happened. A live provisioning push logged ``rc=128`` with that
+    stream discarded, and the failure could not be diagnosed at all.
+    """
+
+    def test_git_gets_the_last_word(self) -> None:
+        summary = git_stderr_summary(
+            "fatal: The current branch main has no upstream branch\n"
+        )
+        assert summary is not None
+        assert "no upstream branch" in summary
+
+    def test_silence_is_reported_as_silence(self) -> None:
+        """``None``, not an empty string: there is nothing to append."""
+        assert git_stderr_summary("   \n  ") is None
+
+    def test_the_tail_is_kept_because_that_is_where_fatal_lands(self) -> None:
+        """Git precedes its verdict with progress output."""
+        noise = "Enumerating objects: 1\n" * 200
+        summary = git_stderr_summary(f"{noise}fatal: refusing to merge histories")
+        assert summary is not None
+        assert "refusing to merge histories" in summary
+        assert len(summary) <= GIT_STDERR_TAIL_CHARS
+
+    def test_a_credential_in_the_stream_does_not_reach_the_log(self) -> None:
+        summary = git_stderr_summary(
+            "fatal: Authentication failed for "
+            "'https://x-access-token:ghp_supersecret@example.test/o/r.git/'"
+        )
+        assert summary is not None
+        assert "ghp_supersecret" not in summary
+
+    def test_a_credential_outside_a_url_is_masked_too(self) -> None:
+        """An argument does not have to be a URL to carry a token."""
+        redacted = _redact_arg("http.extraHeader=Authorization: Bearer ghp_supersecret")
+        assert "ghp_supersecret" not in redacted

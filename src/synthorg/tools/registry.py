@@ -18,6 +18,7 @@ from synthorg.observability.events.tool import (
     TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
     TOOL_REGISTRY_DUPLICATE,
 )
+from synthorg.observability.prometheus_labels import register_agent_tool_names
 from synthorg.providers.models import ToolDefinition
 
 from .base import BaseTool
@@ -65,6 +66,10 @@ class ToolRegistry:
                 raise ValueError(msg)
             mapping[tool.name] = tool
         self._tools: MappingProxyType[str, BaseTool] = MappingProxyType(mapping)
+        # Here rather than on a metrics scrape: this is the moment the set of
+        # nameable tools changes, and a deployment with no scraper attached
+        # never reaches a scrape at all.
+        register_agent_tool_names(self._tools)
         logger.info(
             TOOL_REGISTRY_BUILT,
             tool_count=len(self._tools),

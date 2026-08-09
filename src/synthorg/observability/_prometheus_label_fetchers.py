@@ -177,38 +177,9 @@ def fetch_model_ids(app_state: AppState) -> frozenset[str] | None:
     return ids or None
 
 
-async def fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
-    """Pull the registered tool-name set from the tool registry.
-
-    Same return contract as :func:`fetch_departments`: empty
-    frozenset when the registry is not wired, real set on success,
-    ``None`` on exception so the merge step preserves the previous
-    allowlist. Synchronous reads from a frozen ``MappingProxyType``
-    cannot raise meaningfully today, but the registry exposure path
-    may grow async I/O later (plugin lazy-load, MCP server discovery)
-    so this is wrapped for symmetry with the other registry fetchers.
-
-    Returns:
-        ``frozenset()`` when the tool registry is not wired, the live
-        frozenset of registered tool-name strings on success, or
-        ``None`` on a fetch exception.
-    """
-    try:
-        registry = getattr(app_state, "tool_registry", None)
-        if registry is None:
-            return frozenset()
-        return frozenset(registry.list_tools())
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        # ``fetch_tool_names`` runs inside a ``TaskGroup`` alongside
-        # the workflow / department fetchers; an uncaught exception
-        # here would cancel its siblings via the structured-concurrency
-        # contract and lose their snapshot updates too. Catch broadly,
-        # emit a redacted structured error (the helper logs WITHOUT
-        # attaching the traceback so frame-locals stay out of the
-        # event), and fall back to ``None`` so the merge step preserves
-        # the prior tool-name allowlist.
-        log_exception_redacted(
-            logger, METRICS_SCRAPE_FAILED, exc, component="tool_registry"
-        )
-        return None
+# There is deliberately no tool-name fetcher here. Tool registries are built
+# per task, on the runtime, and ``AppState`` has never carried one: the
+# fetcher that read ``app_state.tool_registry`` resolved a missing attribute
+# to ``None`` on every scrape and reported an empty allowlist as a success.
+# ``ToolRegistry`` registers its own names at construction instead
+# (``prometheus_labels.register_agent_tool_names``).

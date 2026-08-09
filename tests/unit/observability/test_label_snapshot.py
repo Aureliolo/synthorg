@@ -22,16 +22,21 @@ from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_labels import (
     MCP_UNKNOWN_TOOL_LABEL,
     _LabelSnapshot,
+    _reset_agent_tool_names_for_tests,
     _reset_label_snapshot_for_tests,
     _snapshot_lock_for_collector,
     is_known_agent_id,
     normalize_mcp_tool_label,
+    register_agent_tool_names,
     register_mcp_tool_names,
     update_label_snapshot,
     validate_agent_id,
     validate_department,
+    validate_tool_name,
     validate_workflow_definition_id,
 )
+from synthorg.tools.examples.echo import EchoTool
+from synthorg.tools.registry import ToolRegistry
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +48,10 @@ def _bootstrap_snapshot() -> Iterator[None]:
     that exercise push-time recording paths.
     """
     _reset_label_snapshot_for_tests()
+    _reset_agent_tool_names_for_tests()
     yield
     _reset_label_snapshot_for_tests()
+    _reset_agent_tool_names_for_tests()
 
 
 @pytest.mark.unit
@@ -196,6 +203,55 @@ def test_normalize_mcp_tool_label_passes_registered_name() -> None:
 def test_normalize_mcp_tool_label_folds_unregistered_name() -> None:
     register_mcp_tool_names(frozenset({"synthorg_tasks_get"}))
     assert normalize_mcp_tool_label("synthorg_unknown") == MCP_UNKNOWN_TOOL_LABEL
+
+
+@pytest.mark.unit
+class TestTheAgentToolNameAllowlist:
+    """Published by the registries, not pulled on a scrape.
+
+    The pull read ``app_state.tool_registry``, an attribute ``AppState``
+    does not have, so ``getattr`` resolved it to ``None``, the fetcher
+    reported the empty set as a successful read, and every tool
+    invocation was rejected for the life of the process. A live run
+    logged two warnings per tool call and recorded no per-tool metric at
+    all.
+    """
+
+    def test_bootstrap_rejects_every_name(self) -> None:
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("search_brain")
+
+    def test_a_registered_name_is_accepted(self) -> None:
+        register_agent_tool_names({"search_brain"})
+
+        validate_tool_name("search_brain")
+
+    def test_a_name_no_registry_built_is_still_refused(self) -> None:
+        """The bound is what this process can construct, not what it is asked."""
+        register_agent_tool_names({"search_brain"})
+
+        with pytest.raises(ValueError, match="tool_name"):
+            validate_tool_name("search")
+
+    def test_a_later_registry_does_not_evict_an_earlier_one(self) -> None:
+        """Registries are built per task and each carries a different set.
+
+        Replacing rather than merging would make a tool valid only while
+        the most recently built registry happened to contain it.
+        """
+        register_agent_tool_names({"read_file"})
+        register_agent_tool_names({"write_file"})
+
+        validate_tool_name("read_file")
+        validate_tool_name("write_file")
+
+    def test_a_real_registry_registers_itself(self) -> None:
+        """The wiring, not just the publisher: a registry that never calls
+        it leaves the allowlist as empty as the ghost fetcher did.
+        """
+        ToolRegistry([EchoTool()])
+
+        validate_tool_name(EchoTool().name)
 
 
 @pytest.mark.unit

@@ -14,6 +14,7 @@ from prometheus_client.parser import text_string_to_metric_families
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
+    register_agent_tool_names,
     status_class,
     update_label_snapshot,
 )
@@ -25,22 +26,21 @@ pytestmark = pytest.mark.unit
 def _seed_tool_name_snapshot() -> None:
     """Seed the prometheus label snapshot per test.
 
-    ``record_tool_invocation`` validates ``tool_name`` and
+    ``record_tool_invocation`` validates ``tool_name`` against the set
+    each ``ToolRegistry`` registers as it is built, and
     ``record_provider_usage`` / ``record_provider_error`` fold the
     ``provider`` label against the snapshot maintained by
-    ``PrometheusCollector.refresh()``; these unit tests never invoke
-    ``refresh`` so we seed both sets manually. The
-    top-level ``tests/conftest.py`` autouse fixture resets the
-    snapshot before AND after every test, so seeding here is
-    function-scoped (a session-scoped seed would be wiped
-    immediately) and a per-test teardown reset is redundant -- the
-    top-level fixture already handles cleanup, so this fixture
-    cannot leave a populated snapshot leaking into unrelated files.
+    ``PrometheusCollector.refresh()``; these unit tests build no
+    registry and never invoke ``refresh``, so both are seeded manually.
+    The top-level ``tests/conftest.py`` autouse fixture resets them
+    before AND after every test, so seeding here is function-scoped (a
+    session-scoped seed would be wiped immediately) and a per-test
+    teardown reset is redundant -- the top-level fixture already handles
+    cleanup, so this fixture cannot leak into unrelated files.
     """
+    register_agent_tool_names({"web_search", "calculator", "t"})
     update_label_snapshot(
         _LabelSnapshot(
-            tool_names=frozenset({"web_search", "calculator", "t"}),
-            tool_names_seeded=True,
             providers=frozenset({"example-provider"}),
             providers_seeded=True,
         ),
