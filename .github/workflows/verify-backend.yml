@@ -1421,8 +1421,9 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: pip-audit
-        # Suppressed advisories are tracked for removal in #2202 (one ignore
-        # maps to one removal owner). Only PYSEC-2022-42969 remains suppressed:
+        # Every suppression states the condition that retires it, so the
+        # list shrinks on evidence rather than on someone remembering.
+        # Only PYSEC-2022-42969 remains suppressed:
         # - PYSEC-2022-42969: regex DoS in py.path. py is unmaintained upstream
         #   with no fix version, pulled in only as a transitive of the
         #   modularity-gate dev tooling (interrogate). synthorg never imports py
@@ -1475,6 +1476,26 @@ jobs:
         uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
         with:
           dockerfile: docker/openhands/Dockerfile
+          config: .hadolint.yaml
+
+      # Every Dockerfile under docker/ is linted. A shipped image left out
+      # of this list is one whose build the gate does not actually cover.
+      - name: Lint fine-tune Dockerfile
+        uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
+        with:
+          dockerfile: docker/fine-tune/Dockerfile
+          config: .hadolint.yaml
+
+      - name: Lint sidecar Dockerfile
+        uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
+        with:
+          dockerfile: docker/sidecar/Dockerfile
+          config: .hadolint.yaml
+
+      - name: Lint desktop Dockerfile
+        uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6 # v3.4.0
+        with:
+          dockerfile: docker/desktop/Dockerfile
           config: .hadolint.yaml
 
   # ── OpenAPI: export once, share with dashboard arm ──
@@ -1597,11 +1618,10 @@ jobs:
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-24.04
     # Sharded 4 ways with vitest ``--shard`` so each runner executes a
-    # quarter of the unit suite in parallel. This replaced the earlier
-    # 15 -> 30 minute single-runner re-baseline (the affected vitest
-    # universe outgrew the 15-min wall after the EPIC #2066 controller-hook
-    # decomposition): parallelism, not a longer wall, keeps the
-    # correctness gate inside a 15-minute per-shard budget. ``ci-pass``
+    # quarter of the unit suite in parallel. The affected vitest universe
+    # outgrows a single runner's 15-minute wall as controllers and hooks
+    # decompose, and parallelism rather than a longer wall is what keeps
+    # this correctness gate inside a 15-minute budget. ``ci-pass``
     # aggregates the four shards via ``needs.dashboard-test.result``, so
     # the required check is unchanged.
     timeout-minutes: 15
@@ -1825,9 +1845,9 @@ jobs:
       - name: Production build (preview server source)
         run: npm run build
         working-directory: web
-      # Functional flow specs only (the desktop-chromium project). Visual
-      # screenshot specs (e2e/visual) need committed per-platform baselines
-      # and are out of scope for this gate.
+      # The whole e2e suite, on the desktop-chromium project. Rendering is
+      # asserted as laid-out geometry rather than as pixels, so there is no
+      # screenshot suite needing committed per-platform baselines.
       - name: Run Playwright flow specs
         # No --retries here: the count lives in web/playwright.config.ts, which
         # already applies 2 under CI. A CLI flag would silently override it and

@@ -1,6 +1,6 @@
 """Meeting protocol configuration models (see Communication design page)."""
 
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -10,6 +10,12 @@ from synthorg.communication.meeting.enums import (
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.core.types import NotBlankStr, validate_unique_strings
+from synthorg.observability import get_logger
+from synthorg.observability.events.meeting import (
+    MEETING_PROTOCOL_SUB_CONFIG_INACTIVE,
+)
+
+logger = get_logger(__name__)
 
 
 class RoundRobinConfig(BaseModel):
@@ -114,14 +120,6 @@ class StructuredPhasesConfig(BaseModel):
         default=ConflictDetectorType.KEYWORD,
         description="Conflict-detection strategy discriminator",
     )
-    embedder_strategy: Literal["hashing", "sentence_transformer"] = Field(
-        default="hashing",
-        description=(
-            "Text-embedding backend for the embedding / hybrid conflict"
-            " detectors. 'hashing' (default) is dependency-free;"
-            " 'sentence_transformer' needs the optional extra."
-        ),
-    )
 
 
 class MeetingProtocolConfig(BaseModel):
@@ -133,7 +131,9 @@ class MeetingProtocolConfig(BaseModel):
     ONLY the sub-config matching :attr:`protocol`. Setting fields on a
     sub-config that does not match the active protocol (for example
     ``position_papers.synthesizer = "alice"`` while ``protocol`` is
-    ``ROUND_ROBIN``) is silently ignored. Pydantic discriminated
+    ``ROUND_ROBIN``) changes nothing, and is warned about rather than
+    rejected because carrying settings for several protocols and
+    switching between them is legitimate. Pydantic discriminated
     unions would express this invariant in the type system but were
     deferred so the YAML config can serialise every sub-config slot
     independently without a discriminator wrapper.
@@ -179,6 +179,55 @@ class MeetingProtocolConfig(BaseModel):
         default_factory=StructuredPhasesConfig,
         description="Structured-phases protocol settings",
     )
+
+    @model_validator(mode="after")
+    def _warn_on_customised_inactive_sub_config(self) -> MeetingProtocolConfig:
+        """Report sub-configs that were tuned but will not be read.
+
+        The active sub-config decides how the meeting runs, so a value
+        set on an inactive one changes nothing. That is invisible at the
+        point it is written: the config validates, the meeting runs, and
+        the setting is simply absent from the behaviour. Warning is the
+        right strength rather than rejecting, because carrying settings
+        for several protocols and switching ``protocol`` between them is
+        legitimate.
+
+        A sub-config counts as customised when it differs from its
+        default by value, never by ``model_fields_set``: ``model_dump()``
+        writes every nested default out explicitly and ``model_validate()``
+        marks each one as set, so a config that has been persisted and
+        reloaded reports every field of every sub-config as set even
+        though nothing was ever tuned. Keying off that would fire the
+        warning on the round trip alone, for defaults the operator never
+        touched.
+
+        Returns:
+            This config, unchanged.
+        """
+        inactive = {
+            name: value
+            for name, active, value in (
+                ("round_robin", MeetingProtocolType.ROUND_ROBIN, self.round_robin),
+                (
+                    "position_papers",
+                    MeetingProtocolType.POSITION_PAPERS,
+                    self.position_papers,
+                ),
+                (
+                    "structured_phases",
+                    MeetingProtocolType.STRUCTURED_PHASES,
+                    self.structured_phases,
+                ),
+            )
+            if active is not self.protocol and value != type(value)()
+        }
+        if inactive:
+            logger.warning(
+                MEETING_PROTOCOL_SUB_CONFIG_INACTIVE,
+                protocol=self.protocol.value,
+                inactive_sub_configs=sorted(inactive),
+            )
+        return self
 
 
 class MeetingTypeConfig(BaseModel):

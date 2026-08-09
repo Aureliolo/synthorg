@@ -118,7 +118,7 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 	out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
 	out.Blank()
 	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
-	hintAfterInit(out, state)
+	hintAfterInit(out, state, result.answers.imageTag)
 
 	if result.startNow {
 		// Pre-flight Docker reachability before re-exec'ing start. Without
@@ -171,7 +171,7 @@ func runInitNonInteractive(cmd *cobra.Command, out *ui.UI, answers setupAnswers,
 	out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
 	out.Blank()
 	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
-	hintAfterInit(out, state)
+	hintAfterInit(out, state, answers.imageTag)
 	out.Blank()
 	out.Section("Next: synthorg start")
 	return nil
@@ -216,9 +216,25 @@ func buildSummaryFromState(state config.State) summaryData {
 }
 
 // hintAfterInit emits contextual guidance after a successful init.
-func hintAfterInit(out *ui.UI, state config.State) {
+//
+// imageTagOverride is what --image-tag carried, empty when the operator
+// gave none. The tag's value alone cannot stand in for it: `--image-tag
+// dev` on a released binary produces the same string as the source-build
+// fallback, and only one of those is worth explaining.
+func hintAfterInit(out *ui.UI, state config.State, imageTagOverride string) {
 	if state.Channel == "dev" {
 		out.HintTip("Dev channel receives frequent pre-release updates. Run 'synthorg config set channel stable' to switch.")
+	}
+	// A source build has no matching release, so it pins the newest
+	// prerelease. Say which tag was chosen: an operator who assumed a
+	// release build would otherwise not know the images track main.
+	if imageTagOverride == "" && state.ImageTag == config.SourceBuildImageTag {
+		out.HintTip(fmt.Sprintf(
+			"Images pinned to the %q tag (newest pre-release), because this "+
+				"binary was built from source. Run 'synthorg config set "+
+				"image_tag <version>' to pin a release.",
+			config.SourceBuildImageTag,
+		))
 	}
 	out.HintGuidance("Customize settings later with 'synthorg config set <key> <value>'. Run 'synthorg config list' to see all options.")
 }

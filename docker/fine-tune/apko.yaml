@@ -5,6 +5,18 @@
 # Provides Python 3.14 runtime and math/BLAS libraries for the
 # embedding fine-tuning pipeline (torch, sentence-transformers).
 # UID 10003 must not collide with sandbox (10001) or sidecar (10002).
+#
+# Runtime libraries only, and deliberately no C/C++ toolchain: `libstdc++`
+# is here to RUN pre-built torch and BLAS wheels, not to compile. The
+# backend spawns this image as a one-shot batch container over the Docker
+# API, which is the last place a compiler belongs, and nothing in the
+# pipeline compiles: the stages train and evaluate through wheels that
+# ship their own kernels. Adding gcc would buy torch Inductor, which
+# `docs/reference/embedding-evaluation.md` measures at roughly 1.2x on CPU
+# against 10.8-25.5 s of one-off compilation. The builder stage ships no
+# compiler either: `python:3.14.3-slim` is the minimal Debian variant and
+# carries no gcc, so a variant that genuinely needed one would install it
+# there explicitly rather than find it already present.
 
 contents:
   repositories:

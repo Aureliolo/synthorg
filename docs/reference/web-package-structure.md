@@ -65,24 +65,23 @@ web/e2e/
                   # synthetic server-pushed frames (task transitions,
                   # approval decisions, provider health) through the
                   # same handler the SPA processes for real connections.
-  flows/          # Playwright flow specs, the only e2e directory CI gates
-                  # (verify-backend.yml runs `playwright test e2e/flows`;
-                  # e2e/visual is ungated because *-snapshots/ is gitignored,
-                  # so no baseline is ever committed). Every spec installs the
-                  # WebSocket harness and builds deterministic API responses
-                  # through the factories. Most assert form interaction AND a
-                  # WS-driven state transition: task-lifecycle.spec.ts walks
-                  # the full create -> approval gate -> reviewer-approves ->
-                  # status transition path. A rendering spec asserts laid-out
-                  # geometry instead: org-chart.spec.ts measures real bounding
-                  # boxes to pin department order and per-department flow
-                  # direction, which is what the ungated visual suite would
-                  # otherwise have covered.
+  flows/          # Playwright specs, the whole e2e suite, run by
+                  # verify-backend.yml as `playwright test e2e/flows`. Every
+                  # spec installs the WebSocket harness and builds
+                  # deterministic API responses through the factories. Most
+                  # assert form interaction AND a WS-driven state transition:
+                  # task-lifecycle.spec.ts walks the full create -> approval
+                  # gate -> reviewer-approves -> status transition path.
+                  # Rendering is asserted as laid-out geometry rather than as
+                  # pixels: org-chart.spec.ts measures real bounding boxes to
+                  # pin department order and per-department flow direction.
+                  # Geometry survives a font or theme change and names what
+                  # broke, and it needs no per-platform baseline, which is why
+                  # there is no screenshot suite alongside it.
   helpers/        # interactions.ts: dragTo / fillForm / clickButton /
                   # clickAndAwait / selectOption wrappers that always
                   # wait on a selector or network response, never on a
                   # wall-clock timeout.
-  visual/         # Playwright visual-regression specs.
 ```
 
 ## See also

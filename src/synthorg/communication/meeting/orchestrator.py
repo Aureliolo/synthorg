@@ -8,9 +8,13 @@ from action items, and records audit trail entries.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Protocol
 from uuid import uuid4
 
+from synthorg.communication.meeting._lens_assignment import (
+    LensAssigner,
+    LensStrategyConfig,
+    compute_lens_assignments,
+)
 from synthorg.communication.meeting._meeting_utils import (
     format_exception,
     run_conflict_escalation_hook,
@@ -34,6 +38,7 @@ from synthorg.communication.meeting.protocol import (
     AgentCaller,
     ConflictEscalationHook,
     MeetingProtocol,
+    MeetingProtocolFactory,
     TaskCreator,
 )
 from synthorg.core.critical_errors import reraise_critical
@@ -47,7 +52,6 @@ from synthorg.observability.events.meeting import (
     MEETING_CANCELLED,
     MEETING_COMPLETED,
     MEETING_FAILED,
-    MEETING_LENS_ASSIGNMENT_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
     MEETING_RECORD_MIRROR_DRIFT,
     MEETING_STARTED,
@@ -61,36 +65,6 @@ from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 logger = get_logger(__name__)
 
 
-class _LensStrategyConfig(Protocol):
-    """Minimal view of the lens-strategy config.
-
-    Typed structurally here (rather than importing the concrete config)
-    to avoid an import cycle between the meeting orchestrator and the
-    lens-strategy package.
-    """
-
-    @property
-    def default_lenses(self) -> tuple[str, ...]:
-        """The configured default lens collection."""
-        ...
-
-
-class _LensAssigner(Protocol):
-    """Minimal view of the lens assigner.
-
-    Typed structurally here to avoid the same import cycle as
-    :class:`_LensStrategyConfig`.
-    """
-
-    def assign(
-        self,
-        participant_ids: tuple[str, ...],
-        available_lenses: tuple[str, ...],
-    ) -> dict[str, str]:
-        """Assign a lens to each participant."""
-        ...
-
-
 class MeetingOrchestrator:
     """Lifecycle manager for meeting execution.
 
@@ -100,7 +74,8 @@ class MeetingOrchestrator:
     when available.
 
     Args:
-        protocol_registry: Mapping of protocol types to implementations.
+        protocol_registry: Mapping of protocol types to factories, each
+            building an instance from the meeting's own protocol config.
         agent_caller: Callback to invoke agents during meetings.
         task_creator: Optional callback to create tasks from action items.
     """
@@ -120,16 +95,16 @@ class MeetingOrchestrator:
     def __init__(
         self,
         *,
-        protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
+        protocol_registry: Mapping[MeetingProtocolType, MeetingProtocolFactory],
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
-        strategy_config: _LensStrategyConfig | None = None,
-        lens_assigner: _LensAssigner | None = None,
+        strategy_config: LensStrategyConfig | None = None,
+        lens_assigner: LensAssigner | None = None,
         config_resolver: ConfigResolverProtocol | None = None,
         conflict_escalation_hook: ConflictEscalationHook | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
-            MeetingProtocolType, MeetingProtocol
+            MeetingProtocolType, MeetingProtocolFactory
         ] = MappingProxyType(dict(protocol_registry))
         self._agent_caller = agent_caller
         self._task_creator = task_creator
@@ -187,6 +162,10 @@ class MeetingOrchestrator:
         Raises:
             MeetingProtocolNotFoundError: If the configured protocol
                 is not in the registry.
+            StrategyFactoryNotFoundError: If the protocol's own
+                construction cannot resolve a strategy it needs, such as
+                a conflict detector. The protocol is built per meeting,
+                so this surfaces here rather than at wiring time.
             MeetingParticipantError: If participant list is empty,
                 contains duplicates, or leader is in participants.
             ValueError: If token_budget is not positive.
@@ -292,7 +271,7 @@ class MeetingOrchestrator:
             success, or FAILED / BUDGET_EXHAUSTED on a caught error).
         """
         protocol_type = protocol_config.protocol
-        protocol = self._resolve_protocol(meeting_id, protocol_type)
+        protocol = self._resolve_protocol(meeting_id, protocol_config)
 
         logger.info(
             MEETING_STARTED,
@@ -305,7 +284,11 @@ class MeetingOrchestrator:
         )
 
         # Lens assignment (optional, when strategy config is present)
-        lens_assignments = self._compute_lens_assignments(participant_ids)
+        lens_assignments = compute_lens_assignments(
+            participant_ids,
+            assigner=self._lens_assigner,
+            strategy_config=self._strategy_config,
+        )
 
         result = await self._execute_protocol(
             protocol,
@@ -630,67 +613,23 @@ class MeetingOrchestrator:
                 total_count=total,
             )
 
-    def _compute_lens_assignments(
-        self,
-        participant_ids: tuple[str, ...],
-    ) -> dict[str, str] | None:
-        """Compute lens assignments for participants.
-
-        Returns:
-            A mapping of participant id to lens, or ``None`` when no lens
-            assigner is configured.
-        """
-        if self._lens_assigner is None or self._strategy_config is None:
-            return None
-        try:
-            lenses = self._strategy_config.default_lenses
-            result: dict[str, str] = self._lens_assigner.assign(
-                participant_ids,
-                lenses,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                MEETING_LENS_ASSIGNMENT_FAILED,
-                error="Lens assignment failed, proceeding without lenses",
-            )
-            return None
-
-        # Validate the returned mapping: keys must match participant_ids,
-        # values must be non-empty strings.
-        expected_ids = set(participant_ids)
-        if not isinstance(result, dict) or set(result.keys()) != expected_ids:
-            logger.warning(
-                MEETING_LENS_ASSIGNMENT_FAILED,
-                error="Lens assigner returned mapping with mismatched keys",
-                expected_count=len(expected_ids),
-                actual_count=len(result) if isinstance(result, dict) else -1,
-            )
-            return None
-        if not all(isinstance(v, str) and v for v in result.values()):
-            logger.warning(
-                MEETING_LENS_ASSIGNMENT_FAILED,
-                error="Lens assigner returned non-string or empty lens value",
-            )
-            return None
-
-        return dict(result)
-
     def _resolve_protocol(
         self,
         meeting_id: str,
-        protocol_type: MeetingProtocolType,
+        protocol_config: MeetingProtocolConfig,
     ) -> MeetingProtocol:
-        """Look up the protocol implementation.
+        """Build this meeting's protocol from its own configuration.
 
         Returns:
-            The registered ``MeetingProtocol`` for ``protocol_type``.
+            A ``MeetingProtocol`` carrying ``protocol_config``'s
+            matching sub-config.
 
         Raises:
             MeetingProtocolNotFoundError: If not registered.
         """
-        protocol = self._protocol_registry.get(protocol_type)
-        if protocol is None:
+        protocol_type = protocol_config.protocol
+        factory = self._protocol_registry.get(protocol_type)
+        if factory is None:
             logger.warning(
                 MEETING_PROTOCOL_NOT_FOUND,
                 meeting_id=meeting_id,
@@ -704,4 +643,4 @@ class MeetingOrchestrator:
                     "protocol_type": protocol_type,
                 },
             )
-        return protocol
+        return factory(protocol_config)

@@ -1,13 +1,15 @@
 """Meeting protocol interface (see Communication design page).
 
 Defines the ``MeetingProtocol`` protocol, the ``ConflictDetector``
-protocol, and the ``AgentCaller`` type alias used to invoke agents
-during a meeting without coupling to the engine layer.
+protocol, the ``MeetingProtocolFactory`` alias the registry is keyed
+on, and the ``AgentCaller`` type alias used to invoke agents during a
+meeting without coupling to the engine layer.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol, runtime_checkable
 
+from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.models import (
     AgentResponse,
@@ -116,3 +118,16 @@ class MeetingProtocol(Protocol):
             The meeting protocol type enum value.
         """
         ...
+
+
+MeetingProtocolFactory = Callable[[MeetingProtocolConfig], MeetingProtocol]
+"""Builds one protocol instance from one meeting's protocol configuration.
+
+Signature: ``(protocol_config) -> MeetingProtocol``
+
+The registry holds these rather than instances. A shared instance would
+carry one configuration for the whole process lifetime, so the sub-config
+an operator sets on a meeting type would reach nothing. Each factory
+reads only the sub-config matching the protocol it builds, which is the
+invariant :class:`MeetingProtocolConfig` documents.
+"""

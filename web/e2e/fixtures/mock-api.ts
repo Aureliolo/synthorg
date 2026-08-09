@@ -60,11 +60,10 @@ export async function mockSetupCompany(
 }
 
 /**
- * Mock all API endpoints with deterministic data for screenshot testing.
+ * Mock all API endpoints with deterministic data.
  *
- * Intercepts /api/* requests and returns static JSON responses.
- * This ensures visual regression screenshots are deterministic
- * regardless of backend state.
+ * Intercepts /api/* requests and returns static JSON responses, so a spec
+ * asserts against a fixed page regardless of backend state.
  */
 export async function mockApiRoutes(page: Page) {
   // Catch-all FIRST so the specific stubs below override it. Playwright
@@ -311,11 +310,4 @@ export async function freezeTime(page: Page) {
     const fixedTime = new Date('2026-03-29T12:00:00Z').getTime()
     Date.now = () => fixedTime
   })
-}
-
-/**
- * Wait for fonts to load before taking screenshots.
- */
-export async function waitForFonts(page: Page) {
-  await page.evaluate(() => document.fonts.ready)
 }

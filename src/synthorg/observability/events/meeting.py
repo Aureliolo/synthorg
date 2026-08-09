@@ -59,6 +59,17 @@ MEETING_TASK_CREATION_FAILED: Final[str] = "meeting.task.creation_failed"
 # Validation and resolution
 MEETING_VALIDATION_FAILED: Final[str] = "meeting.validation.failed"
 MEETING_PROTOCOL_NOT_FOUND: Final[str] = "meeting.protocol.not_found"
+#: A declared protocol type has no factory, so meetings of that type
+#: could never run. Distinct from the lookup miss above: this is a
+#: wiring-time invariant breach, not a per-meeting resolution failure.
+MEETING_PROTOCOL_REGISTRY_INCOMPLETE: Final[str] = (
+    "meeting.protocol.registry_incomplete"
+)
+#: A sub-config was tuned for a protocol other than the active one, so
+#: those settings reach nothing.
+MEETING_PROTOCOL_SUB_CONFIG_INACTIVE: Final[str] = (
+    "meeting.protocol.sub_config_inactive"
+)
 
 # Phase skipping
 MEETING_SYNTHESIS_SKIPPED: Final[str] = "meeting.synthesis.skipped"

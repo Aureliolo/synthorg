@@ -61,6 +61,7 @@ from synthorg.core.agent import (
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared.ids import as_uuid
+from tests._shared.meeting_protocols import pinned_protocol_registry
 from tests.unit.communication.meeting.conftest import make_mock_agent_caller
 
 pytestmark = pytest.mark.integration
@@ -150,7 +151,9 @@ async def test_meeting_conflict_reaches_human_escalation_queue() -> None:
     mock_protocol.get_protocol_type.return_value = MeetingProtocolType.STRUCTURED_PHASES
     mock_protocol.run = AsyncMock(return_value=minutes)
     orchestrator = MeetingOrchestrator(
-        protocol_registry={MeetingProtocolType.STRUCTURED_PHASES: mock_protocol},
+        protocol_registry=pinned_protocol_registry(
+            {MeetingProtocolType.STRUCTURED_PHASES: mock_protocol},
+        ),
         agent_caller=make_mock_agent_caller(),
         conflict_escalation_hook=bridge,
     )
@@ -174,7 +177,7 @@ async def test_meeting_conflict_reaches_human_escalation_queue() -> None:
 
 
 async def test_hybrid_clear_winner_auto_resolves_without_escalation() -> None:
-    from tests.unit.communication.conflict_resolution.conftest import make_company
+    from tests._shared.companies import make_company
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()
@@ -208,7 +211,7 @@ async def test_debate_strategy_uses_the_shared_judge_through_factory() -> None:
     from synthorg.communication.conflict_resolution.config import DebateConfig
     from synthorg.communication.enums import ConflictResolutionStrategy
     from synthorg.core.types import NotBlankStr
-    from tests.unit.communication.conflict_resolution.conftest import make_company
+    from tests._shared.companies import make_company
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()

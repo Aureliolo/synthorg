@@ -5,18 +5,37 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import structlog.testing
 
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting._lens_assignment import (
+    compute_lens_assignments,
+)
+from synthorg.communication.meeting.config import (
+    MeetingProtocolConfig,
+    MeetingTypeConfig,
+    StructuredPhasesConfig,
+)
+from synthorg.communication.meeting.conflict_detection import (
+    EmbeddingSimilarityDetector,
+)
+from synthorg.communication.meeting.enums import (
+    ConflictDetectorType,
+    MeetingProtocolType,
+)
+from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import (
     PassthroughParticipantResolver,
     RegistryParticipantResolver,
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.communication.meeting.structured_phases import (
+    StructuredPhasesProtocol,
+)
 from synthorg.config.schema import RootConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 
 def _default_config() -> RootConfig:
@@ -37,18 +56,46 @@ class TestBuildProtocolRegistry:
 
         registry = _build_protocol_registry(StrategyConfig())
 
-        assert MeetingProtocolType.ROUND_ROBIN in registry
-        assert MeetingProtocolType.POSITION_PAPERS in registry
-        assert MeetingProtocolType.STRUCTURED_PHASES in registry
-        assert len(registry) == 3
+        assert set(registry) == set(MeetingProtocolType)
 
     def test_protocol_instances_report_correct_type(self) -> None:
         from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
         registry = _build_protocol_registry(StrategyConfig())
 
-        for proto_type, proto_impl in registry.items():
-            assert proto_impl.get_protocol_type() == proto_type
+        for proto_type, factory in registry.items():
+            built = factory(MeetingProtocolConfig(protocol=proto_type))
+            assert built.get_protocol_type() == proto_type
+
+    def test_meeting_type_sub_config_reaches_the_protocol(self) -> None:
+        """The wiring path an operator's YAML actually travels.
+
+        Asserting against a registry the test built from the config under
+        test proves nothing about production, so this drives the same
+        helper the app boots with.
+        """
+        from synthorg.api.auto_wire_meetings import _build_protocol_registry
+
+        registry = _build_protocol_registry(StrategyConfig())
+        meeting_type = MeetingTypeConfig(
+            name="sprint_planning",
+            frequency=MeetingFrequency.WEEKLY,
+            protocol_config=MeetingProtocolConfig(
+                protocol=MeetingProtocolType.STRUCTURED_PHASES,
+                structured_phases=StructuredPhasesConfig(
+                    conflict_detector=ConflictDetectorType.EMBEDDING,
+                    max_discussion_tokens=4242,
+                ),
+            ),
+        )
+
+        built = registry[MeetingProtocolType.STRUCTURED_PHASES](
+            meeting_type.protocol_config,
+        )
+
+        assert isinstance(built, StructuredPhasesProtocol)
+        assert isinstance(built._conflict_detector, EmbeddingSimilarityDetector)
+        assert built._config.max_discussion_tokens == 4242
 
 
 @pytest.mark.unit
@@ -80,8 +127,10 @@ class TestWireMeetingOrchestrator:
             ),
         )
 
-        assignments = orchestrator._compute_lens_assignments(
+        assignments = compute_lens_assignments(
             ("agent_1", "agent_2", "agent_3"),
+            assigner=orchestrator._lens_assigner,
+            strategy_config=orchestrator._strategy_config,
         )
 
         assert assignments is not None
@@ -410,15 +459,14 @@ class TestAutoWireMeetings:
     async def test_real_caller_end_to_end_with_both_registries(self) -> None:
         """Wiring both registries produces a caller that dispatches real LLM calls.
 
-        Integration test: construct auto_wire_meetings with fake (but
-        shape-correct) agent registry + provider registry, invoke the
-        wired ``agent_caller`` directly, and assert it reaches the
-        provider and returns an ``AgentResponse`` with provider-sourced
-        tokens/cost.  Catches wiring regressions that pure unit tests
-        of each layer miss.
+        Drives the whole wiring path end to end while staying a unit
+        test: every collaborator is a typed double, so nothing here
+        touches a real provider or database. Invokes the wired
+        ``agent_caller`` directly and asserts it reaches the provider and
+        returns an ``AgentResponse`` carrying provider-sourced tokens and
+        cost, which per-layer tests cannot observe.
         """
         from datetime import date
-        from uuid import uuid4
 
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.communication.meeting.models import AgentResponse
@@ -433,7 +481,7 @@ class TestAutoWireMeetings:
         from synthorg.providers.models import CompletionResponse, TokenUsage
 
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("sarah-chen"),
             name=NotBlankStr("Sarah Chen"),
             role=NotBlankStr("engineer"),
             department=NotBlankStr("engineering"),
@@ -447,24 +495,27 @@ class TestAutoWireMeetings:
             hiring_date=date(2026, 1, 1),
             status=AgentStatus.ACTIVE,
         )
-        agent_registry = MagicMock()
-        agent_registry.get = AsyncMock(return_value=identity)
-
-        provider = MagicMock()
-        provider.complete = AsyncMock(
-            return_value=CompletionResponse(
-                content="I recommend a task queue.",
-                finish_reason=FinishReason.STOP,
-                usage=TokenUsage(
-                    input_tokens=12,
-                    output_tokens=7,
-                    cost=0.0005,
-                ),
-                model=NotBlankStr("test-medium-001"),
-            )
+        agent_registry = mock_of[AgentRegistryService](
+            get=AsyncMock(return_value=identity),
         )
-        provider_registry = MagicMock()
-        provider_registry.get = MagicMock(return_value=provider)
+
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(
+                return_value=CompletionResponse(
+                    content="I recommend a task queue.",
+                    finish_reason=FinishReason.STOP,
+                    usage=TokenUsage(
+                        input_tokens=12,
+                        output_tokens=7,
+                        cost=0.0005,
+                    ),
+                    model=NotBlankStr("test-medium-001"),
+                )
+            ),
+        )
+        provider_registry = mock_of[ProviderRegistry](
+            get=MagicMock(return_value=provider),
+        )
 
         result = auto_wire_meetings(
             effective_config=_default_config(),

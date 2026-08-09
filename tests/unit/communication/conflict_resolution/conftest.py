@@ -17,9 +17,8 @@ from synthorg.communication.delegation.hierarchy import HierarchyResolver
 from synthorg.communication.enums import (
     ConflictType,
 )
-from synthorg.core.company import Company, CompanyConfig
-from synthorg.core.company_departments import Department, Team
 from tests._shared import as_uuid, sid
+from tests._shared.companies import make_company
 
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
 
@@ -96,45 +95,6 @@ def make_resolution(
         decided_by=decided_by,
         reasoning=reasoning,
         resolved_at=resolved_at or _NOW,
-    )
-
-
-def make_company() -> Company:
-    """Create a test company with eng + qa departments."""
-    return Company(
-        name="Test Corp",
-        departments=(
-            Department(
-                name="Engineering",
-                head="cto",
-                budget_percent=60.0,
-                teams=(
-                    Team(
-                        name="backend",
-                        lead="backend_lead",
-                        members=("sr_dev", "jr_dev"),
-                    ),
-                    Team(
-                        name="frontend",
-                        lead="frontend_lead",
-                        members=("ui_dev",),
-                    ),
-                ),
-            ),
-            Department(
-                name="QA",
-                head="qa_head",
-                budget_percent=20.0,
-                teams=(
-                    Team(
-                        name="testing",
-                        lead="qa_lead",
-                        members=("qa_eng",),
-                    ),
-                ),
-            ),
-        ),
-        config=CompanyConfig(budget_monthly=100.0),
     )
 
 

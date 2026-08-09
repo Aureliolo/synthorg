@@ -207,16 +207,16 @@ func writeInitFiles(state config.State) (string, error) {
 	return safeDir, nil
 }
 
-// resolveImageTag returns the image tag to use: the override if set,
-// the CLI version, or "latest" for dev builds.
+// resolveImageTag returns the image tag to pin: the override when the
+// operator gave one, otherwise the tag this binary's version implies.
+//
+// `synthorg update` resolves the same question through the same helper,
+// so an install cannot be pinned by one and re-pinned by the other.
 func resolveImageTag(override string) string {
 	if override != "" {
 		return override
 	}
-	if v := version.Version; v != "" && v != "dev" {
-		return v
-	}
-	return "latest"
+	return config.ImageTagForVersion(version.Version)
 }
 
 // generateInitSecrets creates the JWT, settings encryption, secret-storage

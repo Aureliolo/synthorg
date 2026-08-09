@@ -6,8 +6,7 @@ import { clickButton } from '../helpers/interactions'
 /**
  * Critical-flow E2E: functional login.
  *
- * The ``visual/login.spec.ts`` suite only screenshots the login page;
- * this drives the real authentication state machine end-to-end:
+ * Drives the real authentication state machine end-to-end:
  *   1. ``GuestGuard`` calls ``checkSession`` -> ``GET /auth/me`` (401)
  *      so the page renders the login form rather than redirecting.
  *   2. ``LoginPage`` fetches ``GET /setup/status`` to pick login vs

@@ -1,6 +1,7 @@
 """Tests for meeting protocol configuration models."""
 
 import pytest
+import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.communication.meeting.config import (
@@ -9,7 +10,13 @@ from synthorg.communication.meeting.config import (
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
-from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.enums import (
+    ConflictDetectorType,
+    MeetingProtocolType,
+)
+from synthorg.observability.events.meeting import (
+    MEETING_PROTOCOL_SUB_CONFIG_INACTIVE,
+)
 
 
 @pytest.mark.unit
@@ -99,6 +106,22 @@ class TestStructuredPhasesConfig:
         with pytest.raises(ValidationError, match="greater than 0"):
             StructuredPhasesConfig(max_discussion_tokens=0)
 
+    def test_conflict_detector_defaults_to_keyword(self) -> None:
+        assert StructuredPhasesConfig().conflict_detector is (
+            ConflictDetectorType.KEYWORD
+        )
+
+    def test_no_embedder_strategy_to_choose(self) -> None:
+        """There is one embedding binding, and it is not this one.
+
+        A meeting's conflict detectors score positions with the built-in
+        lexical embedder. Offering a local neural alternative here would
+        be a second embedder-choice surface next to
+        ``memory.embedder_model``, and no shipped image can run one.
+        """
+        with pytest.raises(ValidationError, match="extra_forbidden"):
+            StructuredPhasesConfig.model_validate({"embedder_strategy": "hashing"})
+
 
 @pytest.mark.unit
 class TestMeetingProtocolConfig:
@@ -141,3 +164,56 @@ class TestMeetingProtocolConfig:
     def test_auto_create_tasks_disabled(self) -> None:
         cfg = MeetingProtocolConfig(auto_create_tasks=False)
         assert cfg.auto_create_tasks is False
+
+    def test_customised_inactive_sub_config_warns(self) -> None:
+        with structlog.testing.capture_logs() as logs:
+            MeetingProtocolConfig(
+                protocol=MeetingProtocolType.ROUND_ROBIN,
+                position_papers=PositionPapersConfig(max_tokens_per_position=500),
+            )
+
+        warned = [
+            log
+            for log in logs
+            if log.get("event") == MEETING_PROTOCOL_SUB_CONFIG_INACTIVE
+        ]
+        assert len(warned) == 1
+        assert warned[0]["inactive_sub_configs"] == ["position_papers"]
+
+    def test_default_round_trip_does_not_warn(self) -> None:
+        """A persisted-and-reloaded default config is not a customisation.
+
+        ``model_dump`` writes every nested default out explicitly and
+        ``model_validate`` marks each one as set, so the reloaded config
+        reports every sub-config field as set while holding the values it
+        shipped with. Nothing was tuned, so nothing may be reported.
+        """
+        dumped = MeetingProtocolConfig().model_dump()
+
+        with structlog.testing.capture_logs() as logs:
+            reloaded = MeetingProtocolConfig.model_validate(dumped)
+
+        assert reloaded == MeetingProtocolConfig()
+        assert [
+            log
+            for log in logs
+            if log.get("event") == MEETING_PROTOCOL_SUB_CONFIG_INACTIVE
+        ] == []
+
+    def test_round_trip_still_warns_on_a_real_customisation(self) -> None:
+        """The round trip must not mask a customisation either."""
+        dumped = MeetingProtocolConfig(
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            structured_phases=StructuredPhasesConfig(max_discussion_tokens=4096),
+        ).model_dump()
+
+        with structlog.testing.capture_logs() as logs:
+            MeetingProtocolConfig.model_validate(dumped)
+
+        warned = [
+            log
+            for log in logs
+            if log.get("event") == MEETING_PROTOCOL_SUB_CONFIG_INACTIVE
+        ]
+        assert len(warned) == 1
+        assert warned[0]["inactive_sub_configs"] == ["structured_phases"]

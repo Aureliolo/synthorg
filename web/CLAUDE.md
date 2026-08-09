@@ -23,7 +23,7 @@ npm --prefix web run test                  # Vitest unit (coverage scoped to fil
 npm --prefix web run test -- --coverage    # full suite (matches CI; active-handle gate in setupFiles)
 npm --prefix web run bench                 # Vitest perf benchmarks (*.bench.ts under __tests__/benchmarks/)
 npm --prefix web run size                  # size-limit budget (needs `run build` first)
-npm --prefix web run e2e[:update]          # Playwright visual regression [/ baseline update]
+npm --prefix web run e2e                   # Playwright end-to-end flows (the suite CI gates)
 npm --prefix web run lighthouse            # Lighthouse audit (target 90+)
 npm --prefix web run storybook[:build]     # Storybook dev server (http://localhost:6006)
 ```
