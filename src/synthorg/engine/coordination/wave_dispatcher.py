@@ -19,6 +19,7 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -59,6 +60,9 @@ class WaveDispatcher:
             ``select_subtasks`` before execution (so a max-concurrency
             cap dispatches the prioritised subtasks first). ``None`` and
             the ``naive`` strategy both preserve the original order.
+        assignment_writer: Persists each wave's assignments through the
+            central engine before that wave runs. ``None`` builds an
+            engine-less writer, which passes the wave through unchanged.
     """
 
     def __init__(
@@ -68,11 +72,17 @@ class WaveDispatcher:
         isolation_required: bool,
         topology_label: str,
         orchestrator_strategy: OrchestratorStrategy | None = None,
+        assignment_writer: AssignmentWriter | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._isolation_required = isolation_required
         self._topology_label = topology_label
         self._orchestrator_strategy = orchestrator_strategy
+        self._assignment_writer = (
+            assignment_writer
+            if assignment_writer is not None
+            else AssignmentWriter(None)
+        )
 
     async def dispatch(
         self,
@@ -154,6 +164,7 @@ class WaveDispatcher:
                     parallel_executor,
                     clock=self._clock,
                     fail_fast=config.fail_fast,
+                    assignment_writer=self._assignment_writer,
                 )
             all_phases.extend(exec_phases)
 

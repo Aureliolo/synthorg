@@ -9,7 +9,6 @@ get there through real transitions so every task keeps its audit row.
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.core.task_transitions import VALID_TRANSITIONS
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 
@@ -23,11 +22,15 @@ async def terminate_task(
 ) -> TaskStatus | None:
     """Move a live task to a terminal state, returning where it landed.
 
-    The task lifecycle forbids ``CREATED -> CANCELLED`` (a created task is
-    rejected, not cancelled) and lets the stuck states (blocked / failed /
-    interrupted / suspended) reach a terminal only via ``ASSIGNED``. This
-    routes each task to the correct terminal so no live work dangles, and
-    every task keeps its audit row.
+    One hop, always. A created task is rejected (the lifecycle forbids
+    cancelling one); every other live status cancels directly.
+
+    Routing a stuck state through ``ASSIGNED`` first would assume a task
+    keeps its assignee. It does not: one that failed before assignment has
+    none, so the hop fails the ``Task`` validator and the row becomes
+    unresolvable, stranding its plan and its project too. Each stuck state
+    therefore owns a direct ``CANCELLED`` exit, which needs nothing the task
+    may be missing.
 
     The caller's *task* is a snapshot that may predate a concurrent
     completion (a teardown drains every page before terminating any row, so
@@ -55,16 +58,6 @@ async def terminate_task(
         if current.status is TaskStatus.CREATED
         else TaskStatus.CANCELLED
     )
-    if target not in VALID_TRANSITIONS[current.status]:
-        # A stuck state can only reach a terminal through ASSIGNED; hop there
-        # first (the task keeps its assignee), then cancel.
-        await task_engine.transition_task(
-            str(task.id),
-            TaskStatus.ASSIGNED,
-            requested_by=requested_by,
-            reason=reason,
-        )
-        target = TaskStatus.CANCELLED
     await task_engine.transition_task(
         str(task.id),
         target,

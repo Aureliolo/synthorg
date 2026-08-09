@@ -205,7 +205,7 @@ declarations the reconciler uses, so the surface cannot drift from behaviour.
 | `waiting` | A declared dependency is not here yet; `waiting_on` names every one. |
 | `unreachable` | Waiting on a dependency whose owner is switched off or has itself declined, so waiting alone will not supply it. `waiting_on` names the capabilities, `detail` names the owner to go and fix. |
 | `rebuilding` | Torn down and coming back inside the running pass. |
-| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` always says something: the activation's own reason when it raised `SubsystemDeclinedError`, else the declared settings that are blank, else that it declined on a condition it does not declare. |
+| `blocked` | Every declared dependency is present, activation ran, and the subsystem declined on a condition the declaration cannot model (memory with no embedding model chosen). `detail` always says something: the activation's own reason when it raised `SubsystemDeclinedError`, else the declared settings that are blank. The third fallback ("declined on a condition it does not declare") is now unreachable for a shipped subsystem, because `check_subsystem_decline_reason.py` refuses one that can decline without naming its condition. |
 | `disabled` | An operator turned it off via `enabled_by`. |
 | `failed` | Activation raised; `detail` carries the redacted description. |
 
@@ -229,17 +229,41 @@ follows it in the same pass. Without it a concurrent read lands mid-rebuild and
 answers `waiting` with an empty `waiting_on`, which claims the contract's shape
 for "these capabilities are missing" while naming none of them.
 
+### A subsystem that can decline names its own condition
+
 A `blocked` subsystem's `detail` is never null and never hand-written at the
-reporting end. An activation that knows why it declined says so by raising
-`SubsystemDeclinedError(reason)`: the reconciler records that reason and treats
-the pass as a decline rather than a failure, and it is believed over anything
-derived. Absent one, the reconciler resolves the spec's own `settings=` keys and
-reports the blank ones, hedged as the likely reason because the declining
-condition lives inside the activation. When a spec declares no settings and the
-activation raised nothing, the detail says exactly that and points at the
-wiring log, which is still a place to look. Only 9 of the 54 shipped specs
-declare settings, so the derived guess alone would have left the majority
-blocked with nothing to read.
+reporting end. **The code that decided owns the reason.** An activation backing
+out raises `SubsystemDeclinedError(reason)`: the reconciler records that reason
+verbatim and treats the pass as a decline rather than a failure. Absent one, it
+resolves the spec's own `settings=` keys and reports the blank ones, hedged as
+the likely reason because the declining condition lives inside the activation.
+
+Reaching the second branch used to be routine. Only 9 of the 54 shipped specs
+declare settings, so a live run had five of seven blocked subsystems answering
+"declined on a condition it does not declare; see the wiring log": the endpoint
+whose whole job is to say why told the operator to read a container log.
+`check_subsystem_decline_reason.py` closes it. A spec passes three ways:
+
+1. it declares `settings=` (the reconciler reads them live and names a blank one),
+2. its activation chain raises `SubsystemDeclinedError` with the condition, or
+3. it cannot decline at all: no guarded bare `return` on an absence, so it
+   installs the capability or raises.
+
+An idempotency guard (`if already is not None: return`) is not a decline and
+needs nothing; the complement, an absence guard, does. No baseline and no
+per-line opt-out: an activation that cannot name its condition IS the defect.
+
+Because activations now raise on their idempotency-adjacent paths too, liveness
+is read from `provides` **alone**. A declared reason supplies the WHY, never the
+WHETHER: an activation declining while its capability is already installed still
+reads `active`, which is the same "up cannot drift from what activation
+installed" rule stated one layer down.
+
+A caller outside the reconciler that legitimately calls a wiring function (the
+knowledge settings subscriber re-running the build) catches
+`SubsystemDeclinedError` specifically and logs it: a decline is not a failed
+settings write, and failing the operator's write would blame them for a missing
+backend.
 
 ## Why not the alternatives
 

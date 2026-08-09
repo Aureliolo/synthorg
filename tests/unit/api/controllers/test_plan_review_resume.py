@@ -1,5 +1,6 @@
 """Unit tests for the plan-approval resume dispatch branch."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, NotRequired, TypedDict
 from unittest.mock import AsyncMock
@@ -11,7 +12,7 @@ from synthorg.api.controllers._plan_review_resume import (
     _sync_plan_status,
     try_plan_review_resume,
 )
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
@@ -28,6 +29,13 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination.attribution import (
+    CoordinationResultWithAttribution,
+)
+from synthorg.engine.coordination.models import (
+    CoordinationPhaseResult,
+    CoordinationResult,
+)
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -115,12 +123,51 @@ def _approval(
 _UNSET: Any = object()  # type: ignore[explicit-any]
 
 
+@dataclass(frozen=True, slots=True)
+class _Coordination:
+    """How the seeded coordinator behaves, as one knob rather than three."""
+
+    missing: bool = False
+    error: Exception | None = None
+    succeeded: bool = True
+
+
+_HEALTHY_COORDINATION = _Coordination()
+
+
 class _PreconditionBranch(TypedDict):
     """One dispatch precondition, as the ``_seed`` overrides that trip it."""
 
     task: Task | None
-    coordinator_missing: NotRequired[bool]
+    coordination: NotRequired[_Coordination]
     save_project: NotRequired[bool]
+
+
+def _coordination_outcome(*, succeeded: bool) -> CoordinationResultWithAttribution:
+    """Build what a real coordinator hands back.
+
+    A run whose waves all failed returns normally with ``is_success`` false, so
+    a double that returns a bare sentinel cannot express the case that left an
+    approved plan EXECUTING with every task dead.
+
+    Returns:
+        The attributed coordination result.
+    """
+    return CoordinationResultWithAttribution(
+        result=CoordinationResult(
+            parent_task_id=NotBlankStr("parent-1"),
+            topology=CoordinationTopology.CENTRALIZED,
+            phases=(
+                CoordinationPhaseResult(
+                    phase=NotBlankStr("execute_wave_0"),
+                    success=succeeded,
+                    duration_seconds=0.5,
+                    error=None if succeeded else "ProviderError: every task died",
+                ),
+            ),
+            total_duration_seconds=0.5,
+        ),
+    )
 
 
 async def _seed(
@@ -128,8 +175,7 @@ async def _seed(
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
     task: Task | None,
     plan: Plan | None,
-    coordinator_error: Exception | None = None,
-    coordinator_missing: bool = False,
+    coordination: _Coordination = _HEALTHY_COORDINATION,
     approval_task_id: str | None = _UNSET,
     save_plan: bool = True,
     save_project: bool = True,
@@ -157,11 +203,15 @@ async def _seed(
         )
     coordinator = (
         None
-        if coordinator_missing
+        if coordination.missing
         else mock_of[MultiAgentCoordinator](
             coordinate=AsyncMock(
-                side_effect=coordinator_error,
-                return_value=None if coordinator_error else object(),
+                side_effect=coordination.error,
+                return_value=(
+                    None
+                    if coordination.error
+                    else _coordination_outcome(succeeded=coordination.succeeded)
+                ),
             )
         )
     )
@@ -332,7 +382,9 @@ class TestPlanReviewResume:
     async def test_missing_coordinator_marks_task_failed(self) -> None:
         parent = _task("parent-1")
         state, _, engine, _ = await _seed(
-            task=parent, plan=_durable_plan("parent-1"), coordinator_missing=True
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(missing=True),
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -354,7 +406,7 @@ class TestPlanReviewResume:
         state, coordinator, engine, backend = await _seed(
             task=parent,
             plan=_durable_plan("parent-1"),
-            coordinator_error=RuntimeError("boom"),
+            coordination=_Coordination(error=RuntimeError("boom")),
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -370,11 +422,44 @@ class TestPlanReviewResume:
         assert stored.failure_reason is not None
         assert "dispatch failed" in stored.failure_reason
 
+    async def test_a_coordination_that_failed_every_wave_fails_the_plan(
+        self,
+    ) -> None:
+        """The failure that returns rather than raising.
+
+        A run where every task died comes back normally with ``is_success``
+        false. The raise-only guard walked past it and left the plan EXECUTING
+        with nothing left to execute, which no later event could repair.
+        """
+        parent = _task("parent-1")
+        state, coordinator, engine, backend = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=False),
+        )
+
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        assert handled is True
+        coordinator.coordinate.assert_awaited_once()
+        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.FAILED
+        assert stored.failure_reason is not None
+        # The reason names the phase that died, not a bare "dispatch failed".
+        assert "execute_wave_0" in stored.failure_reason
+
     @pytest.mark.parametrize(
         "branch",
         [
             pytest.param(
-                _PreconditionBranch(task=_task("parent-1"), coordinator_missing=True),
+                _PreconditionBranch(
+                    task=_task("parent-1"),
+                    coordination=_Coordination(missing=True),
+                ),
                 id="no_coordinator",
             ),
             pytest.param(_PreconditionBranch(task=None), id="no_parent_task"),

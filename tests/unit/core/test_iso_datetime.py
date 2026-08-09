@@ -1,7 +1,7 @@
 """Tests for the non-persistence ISO 8601 datetime parsers.
 
-Pins the naive/aware/malformed behaviour that the Mem0, OAuth, and
-git-log call sites rely on after the REWORK #10 helper collapse.
+Pins the naive/aware/malformed behaviour the Mem0, OAuth, and git-log
+call sites rely on.
 """
 
 from datetime import UTC, datetime, timedelta, timezone

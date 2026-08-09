@@ -73,17 +73,15 @@ async def collect_item_progress(
     for item in plan.items:
         item_uuid = subtask_uuid(item.id)
         task = by_item.get(item_uuid)
+        is_decision = item.kind is PlanItemKind.DECISION
         progress.append(
             ItemProgress(
                 item_id=item_uuid,
                 kind=item.kind,
                 task_id=task.id if task is not None else None,
                 task_status=task.status if task is not None else None,
-                chosen_option_id=(
-                    item.chosen_option_id
-                    if item.kind is PlanItemKind.DECISION
-                    else None
-                ),
+                chosen_option_id=item.chosen_option_id if is_decision else None,
+                has_options=bool(item.options) if is_decision else False,
             )
         )
     return tuple(progress)

@@ -79,6 +79,19 @@ class DecompositionError(EngineError):
     """Base exception for task decomposition failures."""
 
 
+class PlanReviewUnavailableError(EngineError):
+    """Raised when a seated review panel could not review at all.
+
+    Distinct from a quiet panel: every seated reviewer's provider failed, so
+    the plan carries no quality signal for a reason that is an outage, not a
+    judgement. Parking it would present an unreviewed plan as an
+    unobjectionable one, so plan preparation fails instead.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.PLAN_REVIEW_UNAVAILABLE
+    default_message: ClassVar[str] = "Plan review panel could not run"
+
+
 class DecompositionCycleError(DecompositionError):
     """Raised when a dependency cycle is detected in the subtask graph."""
 
@@ -149,6 +162,17 @@ class RecoveryConfigError(EngineError):
 
     Typical cause: ``EngineRecoveryConfig.strategy == CHECKPOINT`` but
     no :class:`CheckpointRepository` was wired through to the factory.
+    """
+
+
+class RecoveryCheckpointMissingError(EngineError):
+    """A resumable recovery result carries no checkpoint to resume from.
+
+    The strategy answered ``can_resume`` true and then supplied no
+    checkpoint JSON, so the two halves of its own answer disagree. Typed
+    rather than a bare ``RuntimeError`` because the recovery boundary
+    catches broadly: an untyped breach degrades into one warning line
+    indistinguishable from any other failure the resume path hit.
     """
 
 
@@ -491,6 +515,16 @@ class TaskVersionConflictError(TaskMutationError):
     # retrying against the current version is the correct client response.
     retryable: ClassVar[bool] = True
     default_message: ClassVar[str] = "Task version conflict"
+
+
+class TaskOrphanedPlanError(TaskEngineError):
+    """A task names a plan that no longer exists.
+
+    Filing it would leave live work under nothing: its plan id resolves to
+    no row, so the rollup that would notice the work never reaches it. The
+    complement of the plan delete's own guard, which refuses to remove a
+    plan while live tasks exist.
+    """
 
 
 class TaskInternalError(TaskEngineError):

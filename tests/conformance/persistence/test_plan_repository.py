@@ -13,7 +13,12 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.task_enums import Complexity, CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import (
+    Complexity,
+    CoordinationTopology,
+    TaskStatus,
+    TaskStructure,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
@@ -31,6 +36,11 @@ _PARENT_TASK_ID = "task-root"
 #: Both backends answer a foreign-key refusal with this SQLSTATE, which is
 #: the whole point of mapping SQLite's message onto the standard codes.
 _SQLSTATE_FOREIGN_KEY = "23503"
+
+#: Wire status values the guarded delete reads as finished, spelled out here
+#: rather than imported so a change to the production set has to be made
+#: deliberately in both places.
+_TERMINAL_STATUSES = frozenset({"completed", "cancelled", "rejected"})
 
 
 @pytest.fixture(autouse=True)
@@ -140,6 +150,63 @@ class TestPlanRepository:
         assert fetched is not None
         assert fetched.replan_generation == 0
 
+    async def test_planning_provenance_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The two fields the approval gate reads are the operator's warning.
+
+        ``planning_strategy`` says which planner produced the items and
+        ``review_absent_reason`` says why a seated panel returned nothing, so a
+        column missing from the write list turns both into a silent ``None``
+        and the operator approves a plan carrying no quality signal without
+        being told.
+        """
+        await backend.plans.save(
+            _plan().model_copy(
+                update={
+                    "planning_strategy": "single_shot_fallback",
+                    "review_absent_reason": "panel produced no verdicts",
+                }
+            ),
+        )
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.planning_strategy == "single_shot_fallback"
+        assert fetched.review_absent_reason == "panel produced no verdicts"
+
+    async def test_planning_provenance_round_trips_through_update(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``update`` writes its own column list, so it is a separate risk."""
+        original = _plan(plan_id="p-prov")
+        await backend.plans.create(original)
+
+        await backend.plans.update(
+            original.model_copy(
+                update={
+                    "planning_strategy": "researched",
+                    "review_absent_reason": "no panel seated",
+                }
+            ),
+        )
+
+        fetched = await backend.plans.get(NotBlankStr(sid("p-prov")))
+        assert fetched is not None
+        assert fetched.planning_strategy == "researched"
+        assert fetched.review_absent_reason == "no panel seated"
+
+    async def test_planning_provenance_defaults_to_absent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The common case says nothing: configured planner, real review."""
+        await backend.plans.save(_plan())
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.planning_strategy is None
+        assert fetched.review_absent_reason is None
+
     async def test_save_upsert(self, backend: PersistenceBackend) -> None:
         plan = _plan()
         await backend.plans.save(plan)
@@ -225,6 +292,94 @@ class TestPlanRepository:
 
     async def test_delete_missing(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.delete(NotBlankStr("ghost")) is False
+
+    async def test_the_guarded_delete_removes_a_plan_with_no_tasks(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.plans.save(_plan())
+
+        outcome = await backend.plans.delete_if_no_live_tasks(
+            NotBlankStr(sid("plan-001")), terminal_statuses=_TERMINAL_STATUSES
+        )
+
+        assert outcome.deleted is True
+        assert outcome.live_task_count == 0
+        assert await backend.plans.get(NotBlankStr(sid("plan-001"))) is None
+
+    async def test_the_guarded_delete_refuses_a_plan_with_live_work(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Deleting it would strand the task on a plan id that resolves to nothing."""
+        plan = _plan()
+        await backend.plans.save(plan)
+        await backend.tasks.save(
+            make_task(
+                task_id="task-live",
+                plan_id=plan.id,
+                status=TaskStatus.IN_PROGRESS,
+            )
+        )
+
+        outcome = await backend.plans.delete_if_no_live_tasks(
+            NotBlankStr(sid("plan-001")), terminal_statuses=_TERMINAL_STATUSES
+        )
+
+        assert outcome.deleted is False
+        assert outcome.live_task_count == 1
+        assert await backend.plans.get(NotBlankStr(sid("plan-001"))) is not None
+
+    async def test_the_guarded_delete_ignores_finished_work(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A completed task is not building, so it cannot hold the plan open."""
+        plan = _plan()
+        await backend.plans.save(plan)
+        await backend.tasks.save(
+            make_task(
+                task_id="task-done",
+                plan_id=plan.id,
+                status=TaskStatus.COMPLETED,
+            )
+        )
+
+        outcome = await backend.plans.delete_if_no_live_tasks(
+            NotBlankStr(sid("plan-001")), terminal_statuses=_TERMINAL_STATUSES
+        )
+
+        assert outcome.deleted is True
+        assert outcome.live_task_count == 0
+
+    async def test_the_guarded_delete_reports_a_missing_plan(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Nothing deleted and nothing blocking says the row was never there."""
+        outcome = await backend.plans.delete_if_no_live_tasks(
+            NotBlankStr(sid("ghost")), terminal_statuses=_TERMINAL_STATUSES
+        )
+
+        assert outcome.deleted is False
+        assert outcome.live_task_count == 0
+
+    async def test_no_declared_terminal_status_holds_every_task_live(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Nothing declared finished means nothing may be assumed finished."""
+        plan = _plan()
+        await backend.plans.save(plan)
+        await backend.tasks.save(
+            make_task(
+                task_id="task-done",
+                plan_id=plan.id,
+                status=TaskStatus.COMPLETED,
+            )
+        )
+
+        outcome = await backend.plans.delete_if_no_live_tasks(
+            NotBlankStr(sid("plan-001")), terminal_statuses=frozenset()
+        )
+
+        assert outcome.deleted is False
+        assert outcome.live_task_count == 1
 
     async def test_a_plan_cannot_name_a_task_that_does_not_exist(
         self, backend: PersistenceBackend

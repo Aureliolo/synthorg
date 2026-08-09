@@ -24,6 +24,7 @@ def _item(
     kind: PlanItemKind = PlanItemKind.WORK,
     task_status: TaskStatus | None = None,
     chosen_option_id: str | None = None,
+    has_options: bool = False,
 ) -> ItemProgress:
     return ItemProgress(
         item_id=as_uuid("item-1"),
@@ -31,6 +32,7 @@ def _item(
         task_id=as_uuid("task-1") if kind is PlanItemKind.WORK else None,
         task_status=task_status,
         chosen_option_id=chosen_option_id,
+        has_options=has_options if kind is PlanItemKind.DECISION else False,
     )
 
 
@@ -168,11 +170,50 @@ class TestStallReason:
         items = (_item(task_status=TaskStatus.FAILED), _item(task_status=None))
         assert stall_reason(items) is None
 
-    def test_an_unresolved_decision_is_not_a_stall(self) -> None:
+    def test_an_answerable_decision_is_not_a_stall(self) -> None:
         """The operator owes the choice; a replan would throw it away."""
         items = (
             _item(task_status=TaskStatus.FAILED),
+            _item(
+                kind=PlanItemKind.DECISION,
+                chosen_option_id=None,
+                has_options=True,
+            ),
+        )
+        assert stall_reason(items) is None
+
+    def test_a_decision_with_no_options_is_a_stall(self) -> None:
+        """Nobody can resolve it, so hanging on it is not a human wait.
+
+        A DECISION item has no task row by construction, so asking it about
+        ``task_status`` answered ``None`` forever and the plan could never be
+        classified as stalled. With options shipped empty the operator could
+        not resolve it either: both exits were shut and no replan could fire.
+        """
+        items = (
             _item(kind=PlanItemKind.DECISION, chosen_option_id=None),
+            _item(task_status=TaskStatus.COMPLETED),
+        )
+        assert stall_reason(items) is StallReason.BLOCKED
+
+    def test_an_unanswerable_decision_beside_failed_work_is_mixed(self) -> None:
+        items = (
+            _item(task_status=TaskStatus.FAILED),
+            _item(kind=PlanItemKind.DECISION, chosen_option_id=None),
+        )
+        assert stall_reason(items) is StallReason.MIXED_DEAD
+
+    def test_an_answerable_decision_holds_the_whole_plan_open(self) -> None:
+        # Even beside dead work: the question is still worth answering, and a
+        # replan would discard it.
+        items = (
+            _item(task_status=TaskStatus.FAILED),
+            _item(task_status=TaskStatus.BLOCKED),
+            _item(
+                kind=PlanItemKind.DECISION,
+                chosen_option_id=None,
+                has_options=True,
+            ),
         )
         assert stall_reason(items) is None
 

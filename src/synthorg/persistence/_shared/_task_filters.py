@@ -8,7 +8,42 @@ differs. Building the clause list here keeps the four call sites from
 drifting on which columns are filterable.
 """
 
+from typing import LiteralString
+
 from synthorg.persistence.task_protocol import TaskFilterSpec
+
+
+def live_task_predicate(
+    terminal_statuses: frozenset[str],
+    placeholder: LiteralString,
+) -> tuple[LiteralString, tuple[str, ...]]:
+    """Build the predicate selecting a plan's unfinished tasks.
+
+    Shared by both backends' guarded plan delete, which asks the same
+    question twice (once inside the conditional ``DELETE``, once to report
+    how many tasks blocked it) and must ask it identically each time.
+
+    An empty *terminal_statuses* yields a predicate matching every task of
+    the plan: nothing has been declared finished, so nothing may be assumed
+    finished.
+
+    Args:
+        terminal_statuses: Task status values that count as finished.
+        placeholder: The backend bound-parameter token (``"?"`` for SQLite,
+            ``"%s"`` for Postgres).
+
+    Returns:
+        A ``(clause, params)`` pair. The clause expects the plan id as its
+        FIRST bound parameter, ahead of *params*. The clause is a
+        ``LiteralString``: it is assembled from literals and the caller's
+        placeholder token alone, never from a status value, so no caller can
+        interpolate data into SQL through it.
+    """
+    if not terminal_statuses:
+        return f"plan_id = {placeholder}", ()
+    ordered = tuple(sorted(terminal_statuses))
+    holders = ", ".join(placeholder for _ in ordered)
+    return f"plan_id = {placeholder} AND status NOT IN ({holders})", ordered
 
 
 def build_task_filter_clauses(

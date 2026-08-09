@@ -25,7 +25,7 @@ it, and deleting the plan underneath that is the race this module exists to
 prevent.
 """
 
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice

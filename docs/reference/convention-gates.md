@@ -64,6 +64,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | add |
 | `check_image_signatures.py` | CI (`build-images.yml`) | published image digests | n/a | n/a | none | keep |
 | `check_license_compat.py` | push | `pyproject.toml` + `uv.lock` + `cli/go.{mod,sum}` + `web/package-lock.json` + `NOTICE` | full | no | none | add |
+| `check_lifecycle_exit_reachable.py` | push | `core/` state machines | full | no | none | add |
 | `check_list_pagination.py` | commit+push | `persistence/` | full | no | `list_pagination_baseline.txt` | keep |
 | `check_local_ci_parity.py` | commit+push | `.pre-commit-config.yaml` + `verify-backend.yml` | full | no | none | **add** (keystone) |
 | `check_logger_exception_str_exc.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
@@ -125,6 +126,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `.github/scripts/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
+| `check_subsystem_decline_reason.py` | push | `api/subsystems/registry.py` + activation chain | full | no | none | add |
 | `check_subsystems_single_owner.py` | push | `api/subsystems/registry.py` + `src/synthorg/` | full | no | none | add |
 | `check_timeout_interval_default_drift.py` | commit+push | boot-resolver + security defaults | full | no | none | harden |
 | `check_vale_ledger_complete.py` | push (CI: vale step) | `.vale.ini` + `.vale/styles/` | full | no | none (no opt-out) | add |
@@ -136,7 +138,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->112<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->114<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

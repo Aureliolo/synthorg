@@ -215,6 +215,8 @@ export const ErrorCode = {
     SUBSYSTEM_GRAPH_INVALID: 8059,
     SUBSYSTEM_ACTIVATION_FAILED: 8060,
     SUBSYSTEM_DECLINED: 8061,
+    PLAN_REVIEW_UNAVAILABLE: 8062,
+    CREDENTIAL_CATALOG_UNAVAILABLE: 8063,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

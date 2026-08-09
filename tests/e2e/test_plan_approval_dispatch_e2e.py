@@ -36,13 +36,14 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
-from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -62,6 +63,9 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
+)
 from synthorg.persistence.task_protocol import TaskFilterSpec
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
@@ -298,9 +302,24 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     }
     assert all(task.parent_task_id == str(parent.id) for task in children)
 
+    # The plan reached EXECUTING, which is the half that says work was
+    # dispatched. Read from the transition ledger rather than the plan's
+    # final status: the scripted agents produce none of the artifacts their
+    # items declare, so the zero-artifact guard fails every child and the
+    # plan correctly ends FAILED. Asserting the final status instead would
+    # pass only while an all-failed dispatch was being swallowed, which is
+    # the collapse this branch fixes.
+    reached = await persistence.lifecycle_transitions.query(
+        LifecycleTransitionFilterSpec(
+            entity_kind=LifecycleEntityKind.PLAN,
+            entity_id=NotBlankStr(str(plan.id)),
+        )
+    )
+    assert PlanStatus.EXECUTING.value in {row.to_status for row in reached}
     dispatched = await persistence.plans.get(NotBlankStr(str(plan.id)))
     assert dispatched is not None
-    assert dispatched.status is PlanStatus.EXECUTING
+    assert dispatched.status is PlanStatus.FAILED
+    assert dispatched.failure_reason is not None
     project = await persistence.projects.get(sid(_PROJECT))
     assert project is not None
     assert project.plan_id == plan.id

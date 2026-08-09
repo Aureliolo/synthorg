@@ -1,4 +1,4 @@
-"""Workload-adaptive risk-tier classifier (REWORK #9).
+"""Workload-adaptive risk-tier classifier.
 
 Wraps a base classifier and elevates the result one tier when the
 system is under load -- an in-flight request count at or above a

@@ -105,6 +105,16 @@ mandatory_rules:
     header: Subsystem Reconciliation
     gate: scripts/check_subsystems_single_owner.py
 
+  - id: claude-md::subsystem-decline-reason
+    file: CLAUDE.md
+    header: Subsystem Decline Reason
+    gate: scripts/check_subsystem_decline_reason.py
+
+  - id: claude-md::reachable-lifecycle-exit
+    file: CLAUDE.md
+    header: Reachable Lifecycle Exit
+    gate: scripts/check_lifecycle_exit_reachable.py
+
   - id: claude-md::no-hardcoded-values
     file: CLAUDE.md
     header: No Hardcoded Values

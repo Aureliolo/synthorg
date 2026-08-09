@@ -80,6 +80,7 @@ def check_shutdown(
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
+            error_type=type(exc).__name__,
         )
     if not shutting_down:
         return None
@@ -144,6 +145,7 @@ def check_budget(
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
+            error_type=type(exc).__name__,
         )
     if exhausted:
         logger.warning(

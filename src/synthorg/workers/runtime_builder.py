@@ -132,10 +132,10 @@ def _select_active_provider(app_state: AppState) -> ProviderRegistry | None:
         return None
 
     registry = provider_registry_of(app_state)
-    # Bind the always-on credential catalog so ``connection_name`` provider
-    # credentials resolve at call time. Boot can build the registry before the
-    # catalog is wired (the catalog needs a connected persistence backend), so
-    # we (re)bind here in the runtime path where both are guaranteed present.
+    # The construction-phase registry is built before persistence connects, so
+    # it is the one registry that never passes a swap with a catalog to attach.
+    # Every later replacement arrives bound, and this call cannot take a bound
+    # catalog away, so it fills that one gap and is otherwise inert.
     registry.bind_credential_catalog(provider_credential_catalog_of(app_state))
     names = registry.list_providers()
     if not names:
@@ -441,6 +441,10 @@ async def build_runtime_services(
         environment_service=workspace_slice.environment_service,
         environment_runner_backend=environment_runner_backend,
     )
+    # Every dispatch path now asks this one resolver. Without the binding a
+    # coordinated wave calls ``engine.run`` with no autonomy at all, and the
+    # operator's configured output-scan posture silently becomes the weakest.
+    engine.set_autonomy_resolution(worker_execution_service.resolve_effective_autonomy)
     work_pipeline = await _build_runtime_work_pipeline(
         app_state,
         scorer=scorer,

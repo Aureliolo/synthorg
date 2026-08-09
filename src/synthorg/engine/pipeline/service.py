@@ -20,7 +20,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_review import PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -109,6 +109,13 @@ _PHASE_REFINE = "refinement_handoff"
 _PHASE_PLAN_REVIEW = "plan_review_handoff"
 _PHASE_REVIEW_PANEL = "plan_review_panel"
 _PHASE_METRICS = "coordination_metrics"
+
+#: Recorded on the durable plan when no panel is wired at all, so the
+#: operator approving it can tell an unreviewed plan from an unobjectionable
+#: one; an empty review section alone cannot separate them.
+_NO_PANEL_ATTACHED = (
+    "no stakeholder review panel is configured, so this plan carries no review"
+)
 
 #: Bounded compare-and-swap retries when a concurrent process stamps a
 #: project's lead between our read and our version-guarded write; the re-read
@@ -1055,22 +1062,23 @@ class DefaultWorkPipeline:
         plan: DecompositionResult,
         agents: tuple[AgentIdentity, ...],
         owner: AgentIdentity | None,
-    ) -> PlanReview | None:
+    ) -> PlanReviewOutcome:
         """Run the stakeholder panel over *plan* when one is attached.
 
         Returns:
-            The consolidated :class:`PlanReview`, or ``None`` when no panel is
-            attached (the plan is then parked for approval with no panel review).
+            The panel's outcome, or an outcome naming "no panel attached"
+            when the operator wired none. Either way the durable plan can
+            say why it carries no review.
 
         Raises:
             Exception: A panel that errors mid-review propagates so the caller's
                 plan-review guard compensates it (FAILED plan + FAILED task),
                 rather than parking a plan whose holistic review silently never
-                ran. Only the "no panel attached" path returns ``None``.
+                ran.
         """
         panel = self._plan_review_panel
         if panel is None:
-            return None
+            return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_PANEL_ATTACHED))
         try:
             return await panel.review(task=task, plan=plan, agents=agents, owner=owner)
         except Exception as exc:

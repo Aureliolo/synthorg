@@ -110,6 +110,9 @@ from synthorg.persistence.knowledge_protocol import (
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageRecordRepository,
 )
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionRepository,
+)
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,
 )
@@ -234,6 +237,7 @@ class PersistenceBackend(Protocol):
         cost_records: Repository for CostRecord persistence.
         messages: Repository for Message persistence.
         lifecycle_events: Repository for AgentLifecycleEvent persistence.
+        lifecycle_transitions: Repository for plan and project status changes.
         task_metrics: Repository for TaskMetricRecord persistence.
         collaboration_metrics: Repository for CollaborationMetricRecord persistence.
         parked_contexts: Repository for ParkedContext persistence.
@@ -442,6 +446,11 @@ class PersistenceBackend(Protocol):
     @property
     def lifecycle_events(self) -> LifecycleEventRepository:
         """Repository for AgentLifecycleEvent persistence."""
+        ...
+
+    @property
+    def lifecycle_transitions(self) -> LifecycleTransitionRepository:
+        """Repository for plan and project status-transition records."""
         ...
 
     @property

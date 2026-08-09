@@ -176,6 +176,27 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         """
         return self._autonomy_resolver
 
+    async def resolve_effective_autonomy(
+        self,
+        identity: AgentIdentity,
+        *,
+        task_id: str,
+        project_id: NotBlankStr | None = None,
+    ) -> EffectiveAutonomy | None:
+        """Resolve the autonomy governing one run.
+
+        The engine binds this as its :class:`AutonomyResolution` seam, so a
+        coordinated wave that calls ``AgentEngine.run`` directly gets the
+        same answer this service computes for a solo dispatch instead of
+        no answer at all.
+
+        Returns:
+            The resolved effective autonomy, or ``None`` in degraded mode.
+        """
+        return await self._resolve_autonomy(
+            identity, task_id=task_id, project_id=project_id
+        )
+
     def dispatch_conversational_execution(
         self,
         *,

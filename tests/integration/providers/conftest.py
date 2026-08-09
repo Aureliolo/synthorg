@@ -27,6 +27,7 @@ from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )
+from synthorg.providers.registry import ProviderRegistry
 from tests._shared import JsonDict
 from tests._shared.connection_catalog import make_in_memory_catalog
 
@@ -63,24 +64,29 @@ def make_provider_config() -> dict[str, ProviderConfig]:
     }
 
 
-def make_openrouter_config() -> dict[str, ProviderConfig]:
-    """Provider config with custom base_url and two fake models (OpenRouter-shaped)."""
+def make_gateway_config() -> dict[str, ProviderConfig]:
+    """Provider config with a custom base_url and two fake models.
+
+    Gateway-shaped: reached through a custom ``base_url``, serving several
+    models under one connection, with the model id prefixed by the provider
+    name on dispatch.
+    """
     return {
-        "openrouter": ProviderConfig(
+        "gateway-provider": ProviderConfig(
             driver="litellm",
             connection_name="provider-gateway-test",
-            base_url="https://openrouter.ai/api/v1",
+            base_url="https://gateway.example/api/v1",
             models=(
                 ProviderModelConfig(
-                    id="test-model-openrouter-001",
-                    alias="or-medium",
+                    id="test-model-gateway-001",
+                    alias="gateway-medium",
                     cost_per_1k_input=0.003,
                     cost_per_1k_output=0.015,
                     max_context=200_000,
                 ),
                 ProviderModelConfig(
-                    id="test-model-openrouter-002",
-                    alias="llama-70b",
+                    id="test-model-gateway-002",
+                    alias="gateway-small",
                     cost_per_1k_input=0.0008,
                     cost_per_1k_output=0.0008,
                     max_context=128_000,
@@ -110,17 +116,47 @@ async def make_catalog_with_key(
     return catalog
 
 
-def make_ollama_config() -> dict[str, ProviderConfig]:
-    """Provider config -- local, no api_key, zero cost (Ollama-shaped)."""
+async def make_example_registry(api_key: str = "sk-test-key") -> ProviderRegistry:
+    """Registry for the example provider with its credential connection bound.
+
+    Every provider config here names a ``connection_name``, and a driver whose
+    config names one refuses to dispatch without a catalog to resolve it from
+    rather than calling out unauthenticated. So a test exercising the
+    completion pipeline binds the catalog the same way a wired backend does,
+    even when the credential itself is beside the point.
+
+    Returns:
+        A registry whose ``example-provider`` driver can resolve its key.
+    """
+    catalog = await make_catalog_with_key("provider-example", api_key)
+    return ProviderRegistry.from_config(
+        make_provider_config(), connection_catalog=catalog
+    )
+
+
+async def make_gateway_registry(api_key: str = "sk-test-key") -> ProviderRegistry:
+    """Registry for the gateway-shaped provider, with its connection bound.
+
+    Returns:
+        A registry whose ``gateway-provider`` driver can resolve its key.
+    """
+    catalog = await make_catalog_with_key("provider-gateway-test", api_key)
+    return ProviderRegistry.from_config(
+        make_gateway_config(), connection_catalog=catalog
+    )
+
+
+def make_local_config() -> dict[str, ProviderConfig]:
+    """Provider config for a local runtime: no api_key, zero cost."""
     return {
-        "ollama": ProviderConfig(
+        "local-provider": ProviderConfig(
             driver="litellm",
             auth_type=AuthType.NONE,
             base_url="http://localhost:11434",
             models=(
                 ProviderModelConfig(
                     id="test-model-003",
-                    alias="llama",
+                    alias="local-small",
                     cost_per_1k_input=0.0,
                     cost_per_1k_output=0.0,
                     max_context=128_000,

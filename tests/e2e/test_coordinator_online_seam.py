@@ -115,6 +115,8 @@ class _DecompositionAwareStrategy:
                                     "id": "sub-research",
                                     "title": "Research the data sources",
                                     "description": "Investigate inputs.",
+                                    "stakes": "normal",
+                                    "required_role": "developer",
                                     "required_skills": [_RESEARCH_SKILL],
                                     "acceptance_criteria": [
                                         "Data sources are catalogued.",
@@ -125,6 +127,8 @@ class _DecompositionAwareStrategy:
                                     "id": "sub-analysis",
                                     "title": "Analyse the findings",
                                     "description": "Synthesise results.",
+                                    "stakes": "normal",
+                                    "required_role": "developer",
                                     "required_skills": [_ANALYSIS_SKILL],
                                     "acceptance_criteria": [
                                         "Findings are summarised.",

@@ -20,9 +20,12 @@ from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
 )
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared import mock_of
 
 if TYPE_CHECKING:
     from synthorg.engine.task_execution import TaskExecution
@@ -328,6 +331,49 @@ class TestAgentEngineFatalErrorResult:
         # without inverting the exception chain semantics
         assert hasattr(exc_info.value, "__notes__")
         assert any("secondary failure" in note for note in exc_info.value.__notes__)
+
+
+@pytest.mark.unit
+class TestFatalErrorBeforeAContextExists:
+    """A run that dies during preparation still tells the engine it died."""
+
+    async def test_the_engine_is_told_even_with_no_context_built(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The failure that most needs the sync happens before ``ctx`` exists.
+
+        The entry sync raises ``ExecutionStateError`` from inside
+        ``_prepare_context``, so the fatal boundary sees ``ctx=None``.
+        Treating that as "nothing to sync" left the central row wherever the
+        failure found it, with the engine holding no record that the run
+        ended: the task could not be retried and its plan could not roll up.
+        """
+        provider = mock_provider_factory([])
+        task_engine = mock_of[TaskEngine](
+            submit=AsyncMock(
+                return_value=TaskMutationResult(request_id="r", success=True)
+            )
+        )
+        engine = AgentEngine(provider=provider, task_engine=task_engine)
+
+        with patch(
+            "synthorg.engine.agent_engine_context.build_system_prompt",
+            side_effect=RuntimeError("prepared nothing"),
+        ):
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        task_engine.submit.assert_awaited()
+        submitted = [call.args[0] for call in task_engine.submit.await_args_list]
+        assert any(
+            mutation.target_status == TaskStatus.FAILED for mutation in submitted
+        )
 
 
 @pytest.mark.unit
@@ -670,6 +716,7 @@ class TestAgentEngineRecovery:
                 task_execution: TaskExecution,
                 error_message: str,
                 context: AgentContext,
+                error_type: str | None = None,
             ) -> RecoveryResult:
                 custom_results.append("custom_called")
                 real = FailAndReassignStrategy()
@@ -677,6 +724,7 @@ class TestAgentEngineRecovery:
                     task_execution=task_execution,
                     error_message=error_message,
                     context=context,
+                    error_type=error_type,
                 )
 
             async def finalize(self, execution_id: str) -> None:

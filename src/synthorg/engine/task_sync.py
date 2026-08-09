@@ -128,18 +128,25 @@ async def transition_task_if_needed(
 ) -> AgentContext:
     """Transition ASSIGNED -> IN_PROGRESS; pass through IN_PROGRESS.
 
-    Also syncs the transition to TaskEngine (best-effort).
-
     Returns:
         The (possibly updated) :class:`AgentContext` with status
         transitioned to ``IN_PROGRESS`` when the entry status was
         ``ASSIGNED``; otherwise ``ctx`` unchanged.
+
+    Raises:
+        ExecutionStateError: When a wired engine did not apply the entry
+            transition. The run would otherwise proceed against a row the
+            central engine still holds at its previous status: every
+            later sync is validated from that status, so the whole run
+            reports into a lifecycle that never started. The caller's
+            fatal boundary terminates the task FAILED, which is both
+            honest and retryable.
     """
     if (
         ctx.task_execution is not None
         and ctx.task_execution.status == TaskStatus.ASSIGNED
     ):
-        ctx, _ = await transition_and_sync(
+        ctx, synced = await transition_and_sync(
             ctx,
             target_status=TaskStatus.IN_PROGRESS,
             reason="Engine starting execution",
@@ -148,6 +155,13 @@ async def transition_task_if_needed(
             task_engine=task_engine,
             critical=True,
         )
+        if not synced:
+            msg = (
+                f"Task {task_id} could not be moved to IN_PROGRESS in the "
+                "central engine; refusing to run work the engine has no "
+                "record of starting"
+            )
+            raise ExecutionStateError(msg)
     return ctx
 
 

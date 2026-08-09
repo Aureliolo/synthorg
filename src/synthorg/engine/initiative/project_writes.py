@@ -38,6 +38,7 @@ from synthorg.observability.events.project import (
     PROJECT_TRANSITION,
     PROJECT_WRITE_TARGET_MISSING,
 )
+from synthorg.persistence.lifecycle_ledger import LifecycleLedger
 from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
@@ -75,6 +76,7 @@ async def link_project_to_plan(
     *,
     project_id: NotBlankStr,
     plan_id: UUID,
+    ledger: LifecycleLedger | None = None,
 ) -> Project | None:
     """Point *project_id* at the plan it is now executing and activate it.
 
@@ -82,6 +84,13 @@ async def link_project_to_plan(
     before the first rollup event can observe it. Also called by a re-plan, to
     repoint the project at the revision that supersedes the retired one; the
     activation is a no-op there, since the project is already live.
+
+    Args:
+        repository: The project store.
+        project_id: The project to repoint.
+        plan_id: The plan it now executes.
+        ledger: Records the activation hop when the link activates a
+            PLANNING project.
 
     Returns:
         The persisted project, or ``None`` when the project no longer exists
@@ -120,6 +129,14 @@ async def link_project_to_plan(
             plan_id=str(plan_id),
             status=target.value,
         )
+        if ledger is not None and target is not project.status:
+            await ledger.record_project(
+                project_id=updated.id,
+                from_status=project.status,
+                to_status=target,
+                entity_version=updated.version,
+                reason="plan dispatched",
+            )
         return updated
     logger.warning(
         PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
@@ -135,6 +152,7 @@ async def advance_project_status(
     *,
     project_id: NotBlankStr,
     target: ProjectStatus,
+    ledger: LifecycleLedger | None = None,
 ) -> ProjectAdvance:
     """Walk *project_id* to *target*, persisting one legal hop at a time.
 
@@ -152,6 +170,13 @@ async def advance_project_status(
     An unreachable target is a no-op, not an error: it means the project is
     terminal or was moved by an operator, and the rollup defers to that rather
     than forcing a status.
+
+    Args:
+        repository: The project store.
+        project_id: The project to walk.
+        target: The status the walk aims for.
+        ledger: Records every persisted hop, so the intermediate states the
+            walk passes through survive the process that wrote them.
 
     Returns:
         The walk's outcome, carrying the persisted project (``None`` when it
@@ -180,7 +205,7 @@ async def advance_project_status(
                 note="unreachable; leaving the project as the operator set it",
             )
             return ProjectAdvance(project=project, before=before)
-        walked = await _walk_hops(repository, project, path)
+        walked = await _walk_hops(repository, project, path, ledger)
         if walked is not None:
             return ProjectAdvance(project=walked, before=before)
         logger.info(
@@ -202,6 +227,7 @@ async def _walk_hops(
     repository: ProjectRepository,
     project: Project,
     path: tuple[ProjectStatus, ...],
+    ledger: LifecycleLedger | None,
 ) -> Project | None:
     """Persist each hop of *path* in its own version-guarded write.
 
@@ -229,6 +255,13 @@ async def _walk_hops(
             target_state=hop.value,
             version=updated.version,
         )
+        if ledger is not None:
+            await ledger.record_project(
+                project_id=current.id,
+                from_status=current.status,
+                to_status=hop,
+                entity_version=updated.version,
+            )
         current = updated
     return current
 

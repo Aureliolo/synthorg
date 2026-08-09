@@ -266,6 +266,10 @@ class Plan(BaseModel):
         review: The consolidated stakeholder-panel review, once reviewed.
         open_questions: Unresolved questions the owner surfaced for the human.
         assumptions: Assumptions the plan rests on.
+        planning_strategy: Which planner produced the items, when a fallback
+            produced them instead of the strategy the operator configured.
+        review_absent_reason: Why the plan carries no panel review, when a
+            panel was seated and returned no verdict.
         version_history: Snapshots of prior submitted versions, for diffing.
         replan_generation: How many auto-replans deep this plan's lineage is.
         version: Revision number, bumped on each operator edit / re-plan.
@@ -317,6 +321,17 @@ class Plan(BaseModel):
     assumptions: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Assumptions the plan rests on",
+    )
+    planning_strategy: NotBlankStr | None = Field(
+        default=None,
+        description="Which planner produced the items, recorded when a "
+        "fallback stood in for the configured strategy so the approval gate "
+        "shows what the operator is actually approving",
+    )
+    review_absent_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why a seated review panel produced no verdict, so an "
+        "unreviewed plan is visibly unreviewed rather than silently blank",
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),

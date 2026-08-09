@@ -13,6 +13,7 @@ from synthorg.api.lifecycle_helpers.eval_loop_wiring import (
     wire_eval_loop,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.state import HrStateSlice
@@ -71,7 +72,8 @@ def _wired_app_state() -> AppState:
     )
 
 
-async def test_skips_when_tracker_or_training_absent() -> None:
+async def test_declines_naming_the_absent_collaborator() -> None:
+    """A blocked eval loop must say which collaborator it stopped on."""
     app_state = make_app_state(
         slices={
             HrStateSlice: {
@@ -81,7 +83,8 @@ async def test_skips_when_tracker_or_training_absent() -> None:
             },
         },
     )
-    await wire_eval_loop(app_state)
+    with pytest.raises(SubsystemDeclinedError, match="no performance tracker"):
+        await wire_eval_loop(app_state)
     assert app_state.slice(HrStateSlice).eval_loop_coordinator is None
 
 

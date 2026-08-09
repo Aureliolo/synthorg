@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
 from synthorg.core.persistence_errors import QueryError
@@ -153,7 +153,7 @@ async def _seed(
         persistence=backend,
         agent_registry=mock_of[AgentRegistryService](get=AsyncMock(return_value=lead)),
         provider_selector=selector,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         replan_trigger=None if replan_trigger is None else lambda: replan_trigger,
         reconcile=reconcile,
         config_resolver=config_resolver,

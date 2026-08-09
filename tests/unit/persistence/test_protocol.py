@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -61,6 +62,9 @@ from synthorg.persistence.knowledge_protocol import (
 from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageRecordRepository,
 )
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignal,
@@ -69,7 +73,7 @@ from synthorg.persistence.model_tool_call_signal_protocol import (
 )
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
-from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
 )
@@ -274,6 +278,23 @@ class _FakeLifecycleEventRepository:
         limit: int | None = None,
     ) -> tuple[AgentLifecycleEvent, ...]:
         return ()
+
+
+class _FakeLifecycleTransitionRepository:
+    async def append(self, event: LifecycleTransition) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: LifecycleTransitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[LifecycleTransition, ...]:
+        return ()
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        return 0
 
 
 class _FakeTaskMetricRepository:
@@ -895,6 +916,16 @@ class _FakePlanRepository:
         del entity_id
         return False
 
+    async def delete_if_no_live_tasks(
+        self,
+        entity_id: NotBlankStr,
+        /,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        del entity_id, terminal_statuses
+        return PlanDeleteOutcome(deleted=False)
+
 
 class _FakePlanItemCommentRepository:
     async def append(self, event: PlanItemComment) -> None:
@@ -1454,6 +1485,10 @@ class _FakeBackend:
     @property
     def lifecycle_events(self) -> _FakeLifecycleEventRepository:
         return _FakeLifecycleEventRepository()
+
+    @property
+    def lifecycle_transitions(self) -> _FakeLifecycleTransitionRepository:
+        return _FakeLifecycleTransitionRepository()
 
     @property
     def task_metrics(self) -> _FakeTaskMetricRepository:

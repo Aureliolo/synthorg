@@ -12,6 +12,7 @@ function bodies to avoid the budget/observability import cycle.
 
 from typing import TYPE_CHECKING
 
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -168,21 +169,14 @@ def build_conversational_actor(
     engine: AgentEngine,
     agent_registry: AgentRegistryService,
     autonomy_resolver: AutonomyResolver | None,
-) -> ConversationalActor | None:
+) -> ConversationalActor:
     """Resolve a ConversationalActor from config + the boot engine.
 
-    Returns ``None`` -- and ``POST /meta/chat/act`` then surfaces 503 --
-    when:
-
-    - ``chief_of_staff_config.direct_mcp_enabled`` is False (opt-in
-      default), or
-    - the boot ``AgentEngine`` has no MCP self-consumer wired (no MCP
-      tools for an agent to act with, so the feature is inert), or
-    - the boot ``AgentEngine`` has no enabled ``SecurityConfig``
-      (``has_security_governance`` False): without governance the SecOps
-      escalate-and-park step is absent, so a permitted write/admin MCP
-      action would run with no approval gate. The builder fails closed
-      rather than exposing ungated sensitive acting.
+    The gate is fail-closed and each refusal names its own condition, so
+    ``GET /subsystems`` reports the one that actually fired rather than the
+    disjunction of all three: a live run reported "direct MCP acting is off"
+    for an org that had it persisted ``true`` and was missing the MCP
+    self-consumer instead.
 
     The actor reuses the SHARED boot engine so a sensitive action parks
     on the same ``ApprovalGate`` the ``/approvals`` controller resumes,
@@ -190,31 +184,36 @@ def build_conversational_actor(
     and a task resolve identical effective autonomy for an agent.
 
     Returns:
-        The ``ConversationalActor`` value when present, ``None`` otherwise.
+        The ``ConversationalActor``.
+
+    Raises:
+        SubsystemDeclinedError: Direct MCP acting is off, the boot engine
+            has no MCP self-consumer (no tools for an agent to act with),
+            or it has no enabled ``SecurityConfig`` (without governance the
+            SecOps escalate-and-park step is absent, so a permitted
+            write/admin action would run with no approval gate).
     """
     from synthorg.meta.chief_of_staff.actor import (  # noqa: PLC0415
         ConversationalActor,
     )
 
     if not chief_of_staff_config.direct_mcp_enabled:
-        return None
+        msg = "chief_of_staff.direct_mcp_enabled is off"
+        raise SubsystemDeclinedError(msg)
     if not engine.has_mcp_self_consumer:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Direct MCP acting enabled but no MCP self-consumer wired",
+        msg = (
+            "direct MCP acting is on but the boot engine has no MCP "
+            "self-consumer, so there are no tools for an agent to act with"
         )
-        return None
+        raise SubsystemDeclinedError(msg)
     if not engine.has_security_governance:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Direct MCP acting enabled but security governance is "
-            "inactive: refusing to build the actor (POST /meta/chat/act "
-            "503s). Without an enabled SecurityConfig the SecOps "
-            "escalate-and-park step is absent, so a permitted write/admin "
-            "MCP action would run unsupervised. Wire an enabled "
-            "SecurityConfig to expose the endpoint.",
+        msg = (
+            "direct MCP acting is on but security governance is inactive; "
+            "without an enabled SecurityConfig the SecOps escalate-and-park "
+            "step is absent, so a permitted write/admin MCP action would run "
+            "unsupervised"
         )
-        return None
+        raise SubsystemDeclinedError(msg)
     logger.info(API_APP_STARTUP, note="Direct MCP acting configured")
     return ConversationalActor(
         engine=engine,
@@ -232,28 +231,24 @@ def build_operator_console(
     clock: Clock,
     secret_capture: SecretCaptureService | None = None,
     conversations: ConsoleConversationStore | None = None,
-) -> OperatorConsoleService | None:
+) -> OperatorConsoleService:
     """Resolve an OperatorConsoleService from config + the boot engine.
 
-    Returns ``None`` -- and a CONFIGURE turn then surfaces 503 -- when:
-
-    - ``chief_of_staff_config.operator_console_enabled`` is False (opt-in
-      default, independent of ``direct_mcp_enabled``), or
-    - no ``operator_console_model`` is bound (the console cannot dispatch
-      without an explicit ``(provider, model)`` pair), or
-    - the boot ``AgentEngine`` has no MCP self-consumer wired (no
-      control-plane tools for the console to call), or
-    - the boot ``AgentEngine`` has no enabled ``SecurityConfig``
-      (``has_security_governance`` False): without governance the SecOps
-      escalate-and-park step is absent, so a permitted write/admin action
-      would run with no approval gate. The builder fails closed rather than
-      exposing an ungated console.
+    Fail-closed, and each refusal names its own condition so the status
+    surface reports the one that fired rather than the disjunction.
 
     The console reuses the SHARED boot engine so a sensitive configure step
     parks on the same ``ApprovalGate`` the ``/approvals`` controller resumes.
 
     Returns:
-        The ``OperatorConsoleService`` value when present, ``None`` otherwise.
+        The ``OperatorConsoleService``.
+
+    Raises:
+        SubsystemDeclinedError: The console is off (opt-in default,
+            independent of ``direct_mcp_enabled``), no
+            ``operator_console_model`` is bound, the boot ``AgentEngine``
+            has no MCP self-consumer, or it has no enabled
+            ``SecurityConfig``.
     """
     from synthorg.meta.chief_of_staff.console_identity import (  # noqa: PLC0415
         build_console_identity,
@@ -263,36 +258,33 @@ def build_operator_console(
     )
 
     if not chief_of_staff_config.operator_console_enabled:
-        return None
+        msg = "chief_of_staff.operator_console_enabled is off"
+        raise SubsystemDeclinedError(msg)
     if not engine.has_mcp_self_consumer:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Operator console enabled but no MCP self-consumer wired",
+        msg = (
+            "the operator console is on but the boot engine has no MCP "
+            "self-consumer, so there are no control-plane tools to call"
         )
-        return None
+        raise SubsystemDeclinedError(msg)
     if not engine.has_security_governance:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Operator console enabled but security governance is inactive: "
-            "refusing to build the console (a CONFIGURE turn 503s). Without an "
-            "enabled SecurityConfig the SecOps escalate-and-park step is absent, "
-            "so a permitted write/admin action would run unsupervised. Wire an "
-            "enabled SecurityConfig to expose the console.",
+        msg = (
+            "the operator console is on but security governance is inactive; "
+            "without an enabled SecurityConfig the SecOps escalate-and-park "
+            "step is absent, so a permitted write/admin action would run "
+            "unsupervised"
         )
-        return None
+        raise SubsystemDeclinedError(msg)
     identity = build_console_identity(
         model_ref=chief_of_staff_config.operator_console_model or "",
         autonomy_level=chief_of_staff_config.operator_console_autonomy_level,
         clock=clock,
     )
     if identity is None:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Operator console enabled but no operator_console_model is "
-            "bound: refusing to build the console (a CONFIGURE turn 503s). "
-            "Select a provider + model for the console.",
+        msg = (
+            "no chief_of_staff.operator_console_model is bound; the console "
+            "dispatches on an explicit (provider, model) pair"
         )
-        return None
+        raise SubsystemDeclinedError(msg)
     logger.info(API_APP_STARTUP, note="Operator console configured")
     return OperatorConsoleService(
         engine=engine,

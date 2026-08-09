@@ -6,13 +6,17 @@ a provider and connected persistence are present, so the composition root
 stays a thin caller.
 """
 
+import asyncio
+import contextlib
 from pathlib import Path
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.toolsmith.cycle_scheduler import ToolsmithCycleScheduler
 from synthorg.meta.toolsmith.factory import ToolsmithRuntime
 from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
@@ -247,6 +251,125 @@ def _build_golden_scorecard_provider(
     return EvalGoldenScorecardProvider(run_scorecard=_run_golden_suite)
 
 
+def _toolsmith_disabled(note: str, exc: Exception) -> None:
+    """Record that a toolsmith wiring stage failed, leaving it disabled.
+
+    Args:
+        note: What failed, in the terms an operator reads it in.
+        exc: The failure, redacted before it reaches the log.
+    """
+    logger.warning(
+        API_APP_STARTUP,
+        service="toolsmith",
+        note=note,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+
+
+def _install_dynamic_layer(runtime: ToolsmithRuntime) -> bool:
+    """Install the toolsmith's layered MCP surface.
+
+    Installed BEFORE the once-only AppState mutation.
+    ``set_toolsmith_service`` cannot be replayed on retry, so a layer
+    install failing after the mutation leaves the runtime half-wired
+    (service present, layer missing) with no path back. Installing first
+    means a failure here leaves the toolsmith disabled cleanly.
+
+    Args:
+        runtime: The built toolsmith runtime carrying the dynamic registry.
+
+    Returns:
+        ``True`` once the layer is installed; ``False`` when it failed and
+        the toolsmith stays disabled.
+    """
+    from synthorg.meta.mcp.server import (  # noqa: PLC0415
+        install_dynamic_tool_layer,
+    )
+
+    try:
+        install_dynamic_tool_layer(runtime.dynamic_registry)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        _toolsmith_disabled("toolsmith dynamic layer install failed", exc)
+        return False
+    return True
+
+
+async def _start_cycle_scheduler(
+    app_state: AppState,
+    *,
+    runtime: ToolsmithRuntime,
+    si_config: SelfImprovementConfig,
+) -> bool:
+    """Start the periodic detection cycle and publish the toolsmith slice.
+
+    Starting the scheduler is what makes the org propose new tools
+    automatically rather than only on a manual trigger. A start that fails
+    after the scheduler object exists still owns a task group, so it is
+    stopped before the toolsmith is abandoned.
+
+    Args:
+        app_state: The application state the slice is published onto.
+        runtime: The built toolsmith runtime.
+        si_config: The self-improvement config carrying the cycle interval.
+
+    Returns:
+        ``True`` once the scheduler runs and the slice is published;
+        ``False`` when either failed and the toolsmith stays disabled.
+
+    Raises:
+        CancelledError: Propagated once the half-started scheduler is
+            stopped, so a shutdown mid-start leaves no orphaned task group.
+    """
+    from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
+        ToolsmithStateSlice,
+    )
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    scheduler = ToolsmithCycleScheduler(
+        runtime.service,
+        interval_seconds=si_config.toolsmith.cycle_interval_seconds,
+        config_resolver=config_resolver_of(app_state),
+        approval_consumer=runtime.approval_consumer,
+    )
+    try:
+        await scheduler.start()
+        app_state.swap_slice(
+            ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
+        )
+    except asyncio.CancelledError:
+        # Cancellation is a BaseException, so the handler below never sees
+        # it: a shutdown landing inside ``start()`` would leave the
+        # scheduler's task group running with nothing holding a reference
+        # to stop it. Shielded, because that same cancellation would cancel
+        # the stop as well.
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.shield(_stop_quietly(scheduler))
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        await _stop_quietly(scheduler)
+        _toolsmith_disabled("toolsmith scheduler wiring failed", exc)
+        return False
+    return True
+
+
+async def _stop_quietly(scheduler: ToolsmithCycleScheduler) -> None:
+    """Stop a scheduler that is being abandoned, reporting a failed stop.
+
+    Args:
+        scheduler: The scheduler to shut down.
+    """
+    try:
+        await scheduler.stop()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        _toolsmith_disabled(
+            "toolsmith scheduler cleanup failed after wiring error", exc
+        )
+
+
 async def wire_toolsmith(
     app_state: AppState,
     *,
@@ -264,6 +387,10 @@ async def wire_toolsmith(
     ``apply`` rejects on the live read, the allowlist is re-read per gap, and
     the existing ``meta.toolsmith_cycle_paused`` switch still pauses the
     scheduler. Idempotent for re-entered lifespans (shared-app fixtures).
+
+    Raises:
+        SubsystemDeclinedError: No provider registry or no persistence, so
+            authoring has nothing to call and nowhere to store a blueprint.
     """
     from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
         ToolsmithStateSlice,
@@ -272,13 +399,14 @@ async def wire_toolsmith(
         PersistenceStateSlice,
     )
 
-    if (
-        app_state.slice(ToolsmithStateSlice).service is not None
-        or provider_registry is None
-    ):
+    if app_state.slice(ToolsmithStateSlice).service is not None:
         return
+    if provider_registry is None:
+        msg = "no provider registry; authoring a tool is an LLM call"
+        raise SubsystemDeclinedError(msg)
     if persistence is None or app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; authored blueprints are durable"
+        raise SubsystemDeclinedError(msg)
     from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
 
     si_config = await self_improvement_config_of(app_state)
@@ -293,82 +421,22 @@ async def wire_toolsmith(
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="toolsmith",
-            note="toolsmith wiring failed; self-extending toolkit disabled",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        _toolsmith_disabled("toolsmith runtime construction failed", exc)
         return
-    # Install the layered MCP surface BEFORE the once-only AppState
-    # mutation. ``set_toolsmith_service`` cannot be replayed on
-    # retry, so if the layer install fails after the AppState mutation
-    # the runtime is left half-wired (service present, layer missing)
-    # with no path back. Installing first means a failure here leaves
-    # the toolsmith disabled cleanly, mirroring the upstream try/except.
-    from synthorg.meta.mcp.server import (  # noqa: PLC0415
-        install_dynamic_tool_layer,
-    )
-
-    try:
-        install_dynamic_tool_layer(runtime.dynamic_registry)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_APP_STARTUP,
-            service="toolsmith",
-            note="toolsmith dynamic layer install failed; disabled",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+    if not _install_dynamic_layer(runtime):
+        return
+    if not await _start_cycle_scheduler(
+        app_state, runtime=runtime, si_config=si_config
+    ):
         return
     # Route every unfulfilled-capability MCP envelope into the service's gap
-    # store so a recurring gap is observed, then start the periodic detection
-    # cycle so the org proposes new tools automatically rather than only on a
-    # manual trigger.
+    # store so a recurring gap is observed. Installed only after the scheduler
+    # is started and the state slice is published, so a failed start/swap
+    # leaves no dangling sink routing envelopes into a store that nothing
+    # drains (fail-closed).
     from synthorg.meta.mcp.server import (  # noqa: PLC0415
         install_capability_gap_sink,
     )
-    from synthorg.meta.toolsmith.cycle_scheduler import (  # noqa: PLC0415
-        ToolsmithCycleScheduler,
-    )
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
-    scheduler = ToolsmithCycleScheduler(
-        runtime.service,
-        interval_seconds=si_config.toolsmith.cycle_interval_seconds,
-        config_resolver=config_resolver_of(app_state),
-        approval_consumer=runtime.approval_consumer,
-    )
-    try:
-        await scheduler.start()
-        app_state.swap_slice(
-            ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        try:
-            await scheduler.stop()
-        except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(stop_exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="toolsmith",
-                note="toolsmith scheduler cleanup failed after wiring error",
-                error_type=type(stop_exc).__name__,
-                error=safe_error_description(stop_exc),
-            )
-        logger.warning(
-            API_APP_STARTUP,
-            service="toolsmith",
-            note="toolsmith scheduler wiring failed; self-extending toolkit disabled",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return
-    # Install the gap sink only after the scheduler is started and the state
-    # slice is published, so a failed start/swap leaves no dangling sink
-    # routing envelopes into a store that nothing drains (fail-closed).
     install_capability_gap_sink(runtime.service)
     logger.info(API_APP_STARTUP, service="toolsmith", note="wired")

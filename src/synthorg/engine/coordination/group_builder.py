@@ -179,19 +179,17 @@ def build_execution_waves(
             if worktree_path:
                 resource_claims = (worktree_path,)
 
-            # The decomposition service creates every subtask in
-            # CREATED. Routing has now selected an agent, so promote the
-            # subtask to ASSIGNED bound to that agent: the execution
-            # engine only runs ASSIGNED/IN_PROGRESS tasks whose
-            # ``assigned_to`` matches the running agent, and without this
-            # every dispatched sub-agent would be rejected at the engine
-            # seam (the orchestration would run but no agent work would).
-            # The CREATED -> ASSIGNED transition is deliberately not
-            # validated here: this is an in-memory ``model_copy`` for
-            # dispatch, and the task-engine submit seam enforces the
-            # state machine when the subtask actually runs. Validating
-            # eagerly here would reject legitimately re-dispatched
-            # subtasks that are not in CREATED.
+            # The decomposition service creates every subtask in CREATED,
+            # and routing has now selected an agent, so this copy states
+            # the assignment the wave intends: the execution engine only
+            # runs ASSIGNED/IN_PROGRESS tasks whose ``assigned_to``
+            # matches the running agent.
+            #
+            # It is an intent, not a fact. ``AssignmentWriter`` puts it to
+            # the task engine immediately before the wave dispatches and
+            # replaces this copy with the row the engine actually holds,
+            # so validation happens once, in the one place that owns task
+            # status, and the dispatch never leads the persisted row.
             assigned_task = task.model_copy(
                 update={
                     "status": TaskStatus.ASSIGNED,

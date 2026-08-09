@@ -10,10 +10,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.openhands.loop import OpenHandsLoop
 from synthorg.engine.react_loop import ReactLoop
-from synthorg.engine.recovery import FailureCategory
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import (
     get_logger,

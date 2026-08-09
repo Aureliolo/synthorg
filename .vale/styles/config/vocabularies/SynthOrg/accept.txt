@@ -433,6 +433,7 @@ deduplicates
 deduplicating
 deduplication
 deepcopy
+deletable
 delegation_chain
 deliverable_receipts
 deliverables
@@ -637,6 +638,7 @@ on_startup
 onboarded
 onboarding
 openblas
+optionless
 orgs
 overridable
 parallel_branch
@@ -703,6 +705,8 @@ referenceable
 refetch
 refetches
 regexes
+rehydrated
+rehydrates
 reimplemented
 reimplementing
 reindex
@@ -864,9 +868,11 @@ unclamped
 unconfigured
 undecomposed
 undecryptable
+undeletable
 undercounted
 underperforming
 underspecified
+undispatched
 unencrypted
 ungated
 unheadered
@@ -880,6 +886,7 @@ unparks
 unpresented
 unrepresentable
 unrestartable
+unreviewed
 unroutable
 unscrubbed
 unshipped

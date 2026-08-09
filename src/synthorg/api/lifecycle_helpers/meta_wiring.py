@@ -2,13 +2,23 @@
 """On-startup wiring for the meta read-view facades.
 
 ``AnalyticsService`` and ``ReportsService`` are thin read-only projections
-layered on top of the already-wired :class:`SignalsService`. Each hook is
-best-effort + idempotent: an already-set slice field short-circuits, and a
-missing dependency leaves the analytics / reports MCP handlers to 503 rather
-than poisoning startup.
+layered on top of the already-wired :class:`SignalsService`.
+
+Every hook here is idempotent (an already-set slice field short-circuits and
+reads as up) and declines by name: an absent dependency or an off toggle
+raises :class:`SubsystemDeclinedError` carrying the condition, so the
+reconciler reports why the subsystem is down instead of leaving the operator
+to read the boot log. Declining is not fatal to the boot; the reconciler
+retries on the next pass, and until then the affected MCP handlers 503.
+Only a failure to *construct* an otherwise-satisfied dependency is logged and
+swallowed, because there is nothing about it for the status surface to say
+that the next pass will not re-derive.
 """
 
+from typing import Never
+
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -20,10 +30,10 @@ from synthorg.persistence.experiment_protocol import ExperimentRepository
 logger = get_logger(__name__)
 
 
-def _log_persistence_absent(
+def _decline_persistence_absent(
     app_state: AppState, *, service: str, degrades_to: str
-) -> None:
-    """Log the persistence-absent wiring skip at the right severity.
+) -> Never:
+    """Log the persistence-absent wiring skip and decline with that reason.
 
     Mirrors ``health.py``'s ``_probe_persistence`` distinction: a
     deliberately persistence-less run (``persistence_expected`` False)
@@ -31,25 +41,30 @@ def _log_persistence_absent(
     connect (``persistence_expected`` True) logs WARNING -- collapsing
     the two into one INFO would silently hide a real boot-time outage
     behind the same message a benign dev run produces.
+
+    Raises:
+        SubsystemDeclinedError: Always. The same distinction rides the
+            reason, so the status surface carries what the log carries.
     """
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
     expected = app_state.slice(PersistenceStateSlice).persistence_expected
     log = logger.warning if expected else logger.info
     state_note = "expected but absent" if expected else "absent"
-    log(
-        API_APP_STARTUP,
-        service=service,
-        note=f"persistence {state_note}; {degrades_to}",
-    )
+    note = f"persistence {state_note}; {degrades_to}"
+    log(API_APP_STARTUP, service=service, note=note)
+    raise SubsystemDeclinedError(note)
 
 
 async def _wire_analytics_service(app_state: AppState) -> None:
     """Wire the analytics read-view once the signals facade exists.
 
-    Depends only on the wired ``SignalsService``; degrades to skipped (the
-    ``synthorg_analytics_*`` / ``synthorg_metrics_*`` MCP tools 503) when
-    signals is absent rather than raising.
+    Depends only on the wired ``SignalsService``; declines by name when
+    signals is absent, and the ``synthorg_analytics_*`` /
+    ``synthorg_metrics_*`` MCP tools 503 until a later pass wires it.
+
+    Raises:
+        SubsystemDeclinedError: No signals facade to project.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -57,12 +72,8 @@ async def _wire_analytics_service(app_state: AppState) -> None:
         return
     signals_service = app_state.slice(MetaStateSlice).signals_service
     if signals_service is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="analytics",
-            note="signals service absent; analytics wiring skipped",
-        )
-        return
+        msg = "no signals service; analytics is a read-view over it"
+        raise SubsystemDeclinedError(msg)
     from synthorg.meta.analytics.service import AnalyticsService  # noqa: PLC0415
 
     try:
@@ -84,9 +95,12 @@ async def _wire_analytics_service(app_state: AppState) -> None:
 async def _wire_reports_service(app_state: AppState) -> None:
     """Wire the reports facade once the analytics read-view exists.
 
-    Depends on ``AnalyticsService`` (wired just before this hook); degrades
-    to skipped (the ``synthorg_reports_*`` MCP tools 503) when analytics is
-    absent rather than raising.
+    Depends on ``AnalyticsService`` (wired just before this hook); declines
+    by name when analytics is absent, and the ``synthorg_reports_*`` MCP
+    tools 503 until a later pass wires it.
+
+    Raises:
+        SubsystemDeclinedError: No analytics read-view to report over.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -94,12 +108,8 @@ async def _wire_reports_service(app_state: AppState) -> None:
         return
     analytics_service = app_state.slice(MetaStateSlice).analytics_service
     if analytics_service is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="reports",
-            note="analytics service absent; reports wiring skipped",
-        )
-        return
+        msg = "no analytics service; reports are assembled from it"
+        raise SubsystemDeclinedError(msg)
     from synthorg.meta.reports.service import ReportsService  # noqa: PLC0415
 
     try:
@@ -121,12 +131,15 @@ async def _wire_reports_service(app_state: AppState) -> None:
 async def _wire_experiment_service(app_state: AppState) -> None:
     """Wire a durable-backed ``ExperimentService`` at boot.
 
-    Best-effort + idempotent. Builds the per-backend
-    :class:`ExperimentRepository` over the connected persistence layer and
-    installs ``ExperimentService`` on ``MetaStateSlice`` BEFORE any request
-    arrives, so ``experiment_service_of`` finds the pre-wired durable value
-    and never falls back to the in-memory repository. When persistence is
-    absent the hook skips and the lazy in-memory fallback stands in.
+    Idempotent. Builds the per-backend :class:`ExperimentRepository` over
+    the connected persistence layer and installs ``ExperimentService`` on
+    ``MetaStateSlice`` BEFORE any request arrives, so
+    ``experiment_service_of`` finds the pre-wired durable value and never
+    falls back to the in-memory repository.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so there is nothing
+            durable to wire and the lazy in-memory fallback stands in.
     """
     from synthorg.experiments.service import ExperimentService  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -135,12 +148,11 @@ async def _wire_experiment_service(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).experiment_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        _log_persistence_absent(
+        _decline_persistence_absent(
             app_state,
             service="experiment_service",
             degrades_to="in-memory fallback stands in",
         )
-        return
     try:
         repo = _build_experiment_repo(app_state)
         service = ExperimentService(repository=repo, clock=app_state.clock)
@@ -199,12 +211,14 @@ def _build_experiment_repo(app_state: AppState) -> ExperimentRepository:
 async def _wire_ab_test_repo(app_state: AppState) -> None:
     """Wire the durable A/B-test repository at boot.
 
-    Best-effort + idempotent. Builds the per-backend
-    :class:`AbTestRepository` over the connected persistence layer and
-    installs it on ``MetaStateSlice`` so the ``/meta/ab-tests`` endpoints
-    serve real rollout records and the ``ABTestRollout`` strategy has a
-    durable write sink. When persistence is absent the hook skips and the
-    endpoints degrade to an empty page / 404.
+    Idempotent. Builds the per-backend :class:`AbTestRepository` over the
+    connected persistence layer and installs it on ``MetaStateSlice`` so
+    the ``/meta/ab-tests`` endpoints serve real rollout records and the
+    ``ABTestRollout`` strategy has a durable write sink.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so the endpoints
+            degrade to an empty page / 404.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -212,12 +226,11 @@ async def _wire_ab_test_repo(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).ab_test_repo is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        _log_persistence_absent(
+        _decline_persistence_absent(
             app_state,
             service="ab_test_repo",
             degrades_to="A/B-test endpoints degrade to empty",
         )
-        return
     try:
         repo = _build_ab_test_repo(app_state)
         app_state.wire(MetaStateSlice, ab_test_repo=repo)
@@ -275,14 +288,16 @@ def _build_ab_test_repo(app_state: AppState) -> AbTestRepository:
 async def _wire_alert_repo(app_state: AppState) -> None:
     """Wire the durable alert repository at boot.
 
-    Best-effort + idempotent. Builds the per-backend
-    :class:`AlertRepository` over the connected persistence layer and
-    installs it on ``MetaStateSlice`` so the ``/meta/alerts`` endpoint
-    serves real alert records and ``build_org_inflection_monitor`` has a
-    durable sink to fan alerts into. Called before
-    ``_wire_org_inflection_monitor`` so the monitor's persistent sink can
-    be wired in the same pass. When persistence is absent the hook skips
-    and the endpoint degrades to an empty page.
+    Idempotent. Builds the per-backend :class:`AlertRepository` over the
+    connected persistence layer and installs it on ``MetaStateSlice`` so
+    the ``/meta/alerts`` endpoint serves real alert records and
+    ``build_org_inflection_monitor`` has a durable sink to fan alerts
+    into. Called before ``_wire_org_inflection_monitor`` so the monitor's
+    persistent sink can be wired in the same pass.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so the alerts
+            endpoint degrades to an empty page.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -290,12 +305,11 @@ async def _wire_alert_repo(app_state: AppState) -> None:
     if app_state.slice(MetaStateSlice).alert_repo is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        _log_persistence_absent(
+        _decline_persistence_absent(
             app_state,
             service="alert_repo",
             degrades_to="alerts endpoint degrades to empty",
         )
-        return
     try:
         repo = _build_alert_repo(app_state)
         app_state.wire(MetaStateSlice, alert_repo=repo)
@@ -357,13 +371,16 @@ async def _wire_org_inflection_monitor(
 ) -> None:
     """Start the org-inflection monitor daemon behind ``alerts_enabled``.
 
-    Best-effort + idempotent. Gated on the wired signals facade (shares its
-    snapshot builder) and the effective alerts capability (the persona master
+    Idempotent. Gated on the wired signals facade (shares its snapshot
+    builder) and the effective alerts capability (the persona master
     switch ``self_improvement.chief_of_staff_enabled`` AND
     ``chief_of_staff.alerts_enabled``); the daemon emits detected inflections
     to the proactive alert sink. The :class:`ChiefOfStaffAlertsSettingsSubscriber`
     starts/stops it live on a settings change. Stopped by the shutdown runner.
-    A missing signals facade or a disabled flag leaves it unstarted.
+
+    Raises:
+        SubsystemDeclinedError: Alerts are switched off, or the signals
+            facade the monitor shares a snapshot builder with is absent.
     """
     from synthorg.meta.chief_of_staff.monitor_builder import (  # noqa: PLC0415
         build_org_inflection_monitor,
@@ -373,23 +390,18 @@ async def _wire_org_inflection_monitor(
     if app_state.slice(MetaStateSlice).org_inflection_monitor is not None:
         return
 
+    cos_config = si_config.chief_of_staff
+    if not (si_config.chief_of_staff_enabled and cos_config.alerts_enabled):
+        msg = (
+            "alerts off: both self_improvement.chief_of_staff_enabled and "
+            "chief_of_staff.alerts_enabled must be on"
+        )
+        raise SubsystemDeclinedError(msg)
+    monitor = build_org_inflection_monitor(app_state, cos_config=cos_config)
+    if monitor is None:
+        msg = "no signals service; the monitor shares its snapshot builder"
+        raise SubsystemDeclinedError(msg)
     try:
-        cos_config = si_config.chief_of_staff
-        if not (si_config.chief_of_staff_enabled and cos_config.alerts_enabled):
-            logger.info(
-                API_APP_STARTUP,
-                service="org_inflection_monitor",
-                note="alerts disabled; monitor not started",
-            )
-            return
-        monitor = build_org_inflection_monitor(app_state, cos_config=cos_config)
-        if monitor is None:
-            logger.info(
-                API_APP_STARTUP,
-                service="org_inflection_monitor",
-                note="signals service absent; monitor not started",
-            )
-            return
         # Wire BEFORE start so a running daemon is always tracked for
         # shutdown; if start() then fails, it stays tracked and the
         # shutdown runner still stops it (no untracked-daemon leak).
@@ -414,11 +426,14 @@ async def wire_analytics_collector(
 ) -> None:
     """Configure the cross-deployment analytics collector role.
 
-    Best-effort. The collector is the receiver side of cross-deployment
-    telemetry (the emitter is wired in the self-improvement service); it is
-    built only when ``cross_deployment_analytics.collector_enabled`` is set,
-    so the ``/meta/analytics/*`` routes resolve in the collector role and
-    honestly 503 otherwise. Module-global config (no slice).
+    The collector is the receiver side of cross-deployment telemetry (the
+    emitter is wired in the self-improvement service); it is built only
+    when ``cross_deployment_analytics.collector_enabled`` is set, so the
+    ``/meta/analytics/*`` routes resolve in the collector role and honestly
+    503 otherwise. Module-global config (no slice).
+
+    Raises:
+        SubsystemDeclinedError: The collector role is switched off.
     """
     from synthorg.api.controllers.meta_analytics import (  # noqa: PLC0415
         configure_analytics_controller,
@@ -431,15 +446,14 @@ async def wire_analytics_collector(
 
     if is_analytics_collector_configured():
         return
+    collector = build_analytics_collector(si_config)
+    if collector is None:
+        msg = (
+            "cross_deployment_analytics.collector_enabled is off; this "
+            "deployment is not a collector"
+        )
+        raise SubsystemDeclinedError(msg)
     try:
-        collector = build_analytics_collector(si_config)
-        if collector is None:
-            logger.info(
-                API_APP_STARTUP,
-                service="analytics_collector",
-                note="collector role disabled; routes will 503",
-            )
-            return
         analytics_cfg = si_config.cross_deployment_analytics
         configure_analytics_controller(
             collector,

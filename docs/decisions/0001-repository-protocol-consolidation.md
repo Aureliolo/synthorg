@@ -179,6 +179,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 47 | MeetingCooldownRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: hydrate cooldown timestamps on scheduler start; perf bulk read on cold start |
 | 48 | TrackedContainerRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: enumerate sandbox containers for reconciliation on subsystem start |
 | 49 | DocsRepository | persistence/docs_protocol.py | IdKeyed (composite) + FilteredQuery | -- | Living-doc metadata; composite `(project_id, slug)` key, filter by doc_type / tag / updated_since |
+| 50 | PlanRepository | persistence/plan_protocol.py | IdKeyed + FilteredQuery | `create`, `update`, `delete_if_no_live_tasks` | Distinct create-vs-update audit semantics; the guarded delete is a domain invariant callers must not bypass (counting live tasks and deleting as two calls strands a task filed between them on a plan id that no longer resolves) |
 
 ### Bespoke-Only Protocols (No Generic Composition)
 

@@ -24,6 +24,7 @@ from .conftest import (
     build_model_response,
     build_usage_chunk,
     make_catalog_with_key,
+    make_example_registry,
     make_provider_config,
 )
 
@@ -37,8 +38,7 @@ async def test_config_to_registry_to_complete(
     user_messages: list[ChatMessage],
 ) -> None:
     """Full pipeline: config -> ProviderRegistry -> driver.complete()."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response(content="Hi there!")
@@ -56,8 +56,7 @@ async def test_alias_resolution(
     user_messages: list[ChatMessage],
 ) -> None:
     """Model alias 'medium' resolves to full model ID."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response()
@@ -74,8 +73,7 @@ async def test_full_model_id_works(
     user_messages: list[ChatMessage],
 ) -> None:
     """Full model ID also works without alias."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response()
@@ -92,8 +90,7 @@ async def test_completion_config_forwarded(
     user_messages: list[ChatMessage],
 ) -> None:
     """CompletionConfig params are forwarded to litellm."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     comp_config = CompletionConfig(
@@ -140,8 +137,7 @@ async def test_cost_computation(
     user_messages: list[ChatMessage],
 ) -> None:
     """Cost is computed from config rates: medium @ $0.003/$0.015 per 1k."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response(prompt_tokens=1000, completion_tokens=500)
@@ -156,8 +152,7 @@ async def test_finish_reason_max_tokens(
     user_messages: list[ChatMessage],
 ) -> None:
     """Finish reason 'length' maps to MAX_TOKENS."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response(finish_reason="length")
@@ -171,8 +166,7 @@ async def test_small_model(
     user_messages: list[ChatMessage],
 ) -> None:
     """Second model (small) resolves and computes cost correctly."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response(
@@ -198,8 +192,7 @@ async def test_stream_basic_text(
     user_messages: list[ChatMessage],
 ) -> None:
     """Streaming produces CONTENT_DELTA + DONE chunks."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     chunks = [
@@ -225,8 +218,7 @@ async def test_stream_usage_chunk(
     user_messages: list[ChatMessage],
 ) -> None:
     """Streaming usage chunk reports token counts and cost."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     chunks = [
@@ -252,8 +244,7 @@ async def test_stream_multiple_content_deltas(
     user_messages: list[ChatMessage],
 ) -> None:
     """Multiple content deltas are yielded individually."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     chunks = [
@@ -278,8 +269,7 @@ async def test_stream_ends_with_done(
     user_messages: list[ChatMessage],
 ) -> None:
     """Stream always ends with a DONE event."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     chunks = [build_content_chunk("x"), build_finish_chunk("stop")]
@@ -295,8 +285,7 @@ async def test_multi_turn_messages_forwarded(
     multi_turn_messages: list[ChatMessage],
 ) -> None:
     """Multi-turn messages are forwarded to litellm."""
-    config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    registry = await make_example_registry()
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response()

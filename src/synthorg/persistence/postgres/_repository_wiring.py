@@ -106,6 +106,9 @@ from synthorg.persistence.postgres.knowledge_source_repo import (
 from synthorg.persistence.postgres.knowledge_usage_repo import (
     PostgresKnowledgeUsageRecordRepository,
 )
+from synthorg.persistence.postgres.lifecycle_transition_repo import (
+    PostgresLifecycleTransitionRepository,
+)
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
 )
@@ -253,6 +256,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._cost_records = None
         self._messages = None
         self._lifecycle_events = None
+        self._lifecycle_transitions = None
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
@@ -347,6 +351,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
 
         # HR repositories.
         self._lifecycle_events = PostgresLifecycleEventRepository(pool)
+        self._lifecycle_transitions = PostgresLifecycleTransitionRepository(pool)
         self._task_metrics = PostgresTaskMetricRepository(pool)
         self._collaboration_metrics = PostgresCollaborationMetricRepository(pool)
 

@@ -29,21 +29,27 @@ from synthorg.budget.errors import (
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.clock import Clock
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
     CostForecastRepository,
 )
-from tests._shared import as_uuid, sid
+from tests._shared import FakeClock, as_uuid, sid
 
 pytestmark = pytest.mark.unit
+
+#: What the engine's clock reads while a ceiling halt is stamped, so the
+#: assertion names the instant the test set rather than wall-clock now.
+_HALTED_AT = datetime(2026, 5, 20, 13, 0, tzinfo=UTC)
 
 
 class _FakeApprovalGate:
@@ -170,12 +176,16 @@ class _MockEngine(AgentEngineErrorsMixin):
         *,
         approval_gate: object | None,
         cost_forecast_repo: object | None = None,
+        clock: Clock | None = None,
     ) -> None:
-        self._approval_gate = approval_gate
+        self._approval_gate = cast("ApprovalGate | None", approval_gate)
         self._cost_tracker = None
         self._cost_forecast_repo = cast(
             "CostForecastRepository | None", cost_forecast_repo
         )
+        # The halt stamp reads both timestamps through the engine's seam, so
+        # a host without one cannot stamp at all.
+        self._clock = clock or FakeClock(start=_HALTED_AT)
 
 
 def _forecast(forecast_id: UUID) -> Forecast:
@@ -365,6 +375,10 @@ async def test_park_stamps_forecast_halt_context() -> None:
     assert halt.accumulated_cost == 1.8
     assert halt.ceiling_amount == 1.5
     assert halt.currency == "USD"
+    # Read through the engine's seam, so the stamp lands at the instant the
+    # test set rather than at wall-clock now.
+    assert halt.halted_at == _HALTED_AT
+    assert repo.saved[0].updated_at == _HALTED_AT
 
 
 @pytest.mark.asyncio

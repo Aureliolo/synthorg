@@ -20,7 +20,7 @@ from synthorg.providers.errors import (
 )
 from synthorg.providers.image_models import ImageGenerationConfig
 
-from .conftest import make_provider_config
+from .conftest import make_credential_catalog, make_provider_config
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +41,9 @@ def _image_model(cost_per_image: float | None = 0.04) -> ProviderModelConfig:
 
 def _driver(cost_per_image: float | None = 0.04) -> LiteLLMDriver:
     config = make_provider_config(models=(_image_model(cost_per_image),))
-    return LiteLLMDriver("example-provider", config)
+    return LiteLLMDriver(
+        "example-provider", config, connection_catalog=make_credential_catalog()
+    )
 
 
 def _fake_image_response(*b64: str) -> SimpleNamespace:

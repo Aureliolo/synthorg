@@ -142,6 +142,11 @@ class DecompositionPlan(BaseModel):
             the classifier before the plan leaves the service, so every plan
             reaching a :class:`DecompositionResult` names its structure.
         coordination_topology: Selected coordination topology.
+        planning_strategy: Which planner produced this plan. Blank means
+            the strategy did not say; a fallback always says, so the
+            approval gate can show the operator that what they are being
+            asked to approve is a single-shot substitute rather than the
+            researched plan the owner was asked for.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -170,6 +175,11 @@ class DecompositionPlan(BaseModel):
     assumptions: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Assumptions the plan rests on",
+    )
+    planning_strategy: NotBlankStr | None = Field(
+        default=None,
+        description="Which planner produced this plan; set when a fallback "
+        "produced it so the substitution is visible on the durable plan",
     )
 
     @model_validator(mode="after")

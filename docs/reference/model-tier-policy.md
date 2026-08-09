@@ -21,6 +21,27 @@ rejects any purpose missing an entry. The
 the policy to validate each prompt class against its pinned tier, and the
 per-class `ModelPinMetadata` rollout assigns its tiers from it.
 
+## The roster field is a cache; the registry decides
+
+Two things claim to know a model's tier: `AgentIdentity.model.model_tier`,
+written onto the roster when the agent was staffed, and the `ModelResolver` the
+stakes-aware router was built from. They disagree the moment an operator
+re-tiers a model, and only one of them can be right.
+
+The resolver decides. `StakesAwareStrategy` resolves the agent's own
+`(provider, model)` pair through `resolve_for_pair`, treats that tier as
+authoritative, and corrects `model_tier` on the returned `ModelConfig` when the
+roster disagreed. The roster field is therefore a cache the decision never
+consults.
+
+The decision itself is a floor, never a swap. An agent already at or above the
+required tier keeps its own model (`stakes_aware:kept`), even when a cheaper
+qualifying model exists; only an agent below the requirement (or one whose pair
+will not resolve, or whose model is not tool-capable) routes up, and then to
+the cheapest qualifying model. Returning the cheapest qualifying model
+unconditionally made `stakes_aware:kept` reachable only by coincidence and
+quietly replaced every agent's operator-chosen model.
+
 ## Cognitive-load taxonomy
 
 The tier judgement is grounded in what the prompt asks the model to do,

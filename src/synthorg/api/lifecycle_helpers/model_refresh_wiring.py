@@ -16,6 +16,7 @@ from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -48,34 +49,34 @@ async def wire_model_refresh(app_state: AppState) -> None:
 
     Idempotent for re-entered lifespans (shared-app fixtures): returns
     early when a service is already wired.
+
+    Raises:
+        SubsystemDeclinedError: The operator set the refresh mode off, or a
+            collaborator the refresh reads through is absent.
     """
     if app_state.slice(ModelRefreshStateSlice).service is not None:
         return
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        # Settings not yet wired (minimal-app boot); refresh stays off.
-        return
+        msg = "no settings resolver; the refresh mode is read from settings"
+        raise SubsystemDeclinedError(msg)
     config = await load_model_refresh_config(resolver)
     if config.mode is RefreshMode.OFF:
-        return
+        msg = "model_refresh.mode is off"
+        raise SubsystemDeclinedError(msg)
 
     management = app_state.slice(ProvidersStateSlice).management
     backend = app_state.slice(PersistenceStateSlice).backend
-    if management is None or backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="model_refresh",
-            note="management or persistence absent; refresh disabled",
-        )
-        return
+    if management is None:
+        msg = "no provider management service; discovery probes through it"
+        raise SubsystemDeclinedError(msg)
+    if backend is None:
+        msg = "no persistence backend; upgrade recommendations are durable"
+        raise SubsystemDeclinedError(msg)
     repo = build_upgrade_recommendation_repo(backend)
     if repo is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="model_refresh",
-            note="recommendation store unavailable; refresh disabled",
-        )
-        return
+        msg = "the backend exposes no upgrade-recommendation store"
+        raise SubsystemDeclinedError(msg)
 
     service = ModelRefreshService(
         mgmt_service=management,

@@ -32,8 +32,9 @@ from synthorg.observability.events.persistence.plan import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp
+from synthorg.persistence._shared._task_filters import live_task_predicate
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
 from synthorg.persistence.postgres._integrity import raise_constraint_violation
 
 logger = get_logger(__name__)
@@ -44,7 +45,8 @@ _COLUMNS = (
     "id, project, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
-    "replan_generation, version, created_at, updated_at"
+    "replan_generation, version, created_at, updated_at, planning_strategy, "
+    "review_absent_reason"
 )
 _COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
 # Derive placeholders + SET clauses from the single column list so the arity can
@@ -125,6 +127,8 @@ class PostgresPlanRepository:
             plan.version,
             plan.created_at,
             plan.updated_at,
+            plan.planning_strategy,
+            plan.review_absent_reason,
         )
 
     async def create(self, plan: Plan) -> None:
@@ -491,3 +495,58 @@ class PostgresPlanRepository:
             )
             raise QueryError(msg) from exc
         return deleted
+
+    async def delete_if_no_live_tasks(
+        self,
+        plan_id: NotBlankStr,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        """Delete a plan only while nothing is still building under it.
+
+        Returns:
+            The outcome of the guarded delete.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        live_clause, live_params = live_task_predicate(terminal_statuses, "%s")
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                # One conditional DELETE, not a count followed by a delete.
+                # Locking the plan row does not stop a task being inserted
+                # against it, so a separate count leaves a window in which
+                # work is filed under a plan the delete has already decided
+                # to remove. Evaluating the guard inside the statement closes
+                # it: the row goes only if no live task is visible to that
+                # same statement.
+                await cur.execute(
+                    "DELETE FROM plans WHERE id = %s AND NOT EXISTS ("  # noqa: S608 -- clauses are fixed literals, values parameterized
+                    f" SELECT 1 FROM tasks WHERE {live_clause})",
+                    (plan_id, plan_id, *live_params),
+                )
+                if cur.rowcount > 0:
+                    await conn.commit()
+                    return PlanDeleteOutcome(deleted=True)
+                # Counted in the transaction the refused DELETE ran in, so the
+                # number reported is the one the guard refused on. A count
+                # taken after the commit can see a task terminalise in between
+                # and answer zero, and a refusal with zero live tasks reads as
+                # a plan that was never there.
+                await cur.execute(
+                    f"SELECT COUNT(*) FROM tasks WHERE {live_clause}",  # noqa: S608 -- clauses are fixed literals, values parameterized
+                    (plan_id, *live_params),
+                )
+                row = await cur.fetchone()
+                live = int(row[0]) if row else 0
+                await conn.commit()
+                return PlanDeleteOutcome(deleted=False, live_task_count=live)
+        except psycopg.Error as exc:
+            msg = f"Failed to delete plan {plan_id!r}"
+            logger.warning(
+                PERSISTENCE_PLAN_DELETE_FAILED,
+                plan_id=plan_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc

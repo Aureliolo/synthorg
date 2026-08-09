@@ -15,6 +15,7 @@ from synthorg.api.conversational_builders import (
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_invites,
 )
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -147,34 +148,37 @@ class TestBuildChiefOfStaffProposer:
 
 
 class TestBuildConversationalActor:
-    def test_none_when_disabled(self) -> None:
-        result = build_conversational_actor(
-            ChiefOfStaffConfig(direct_mcp_enabled=False),
-            engine=_engine(has_mcp=True, has_governance=True),
-            agent_registry=object(),  # type: ignore[arg-type]
-            autonomy_resolver=None,
-        )
-        assert result is None
+    def test_declines_naming_the_disabled_switch(self) -> None:
+        with pytest.raises(SubsystemDeclinedError, match="direct_mcp_enabled is off"):
+            build_conversational_actor(
+                ChiefOfStaffConfig(direct_mcp_enabled=False),
+                engine=_engine(has_mcp=True, has_governance=True),
+                agent_registry=object(),  # type: ignore[arg-type]
+                autonomy_resolver=None,
+            )
 
-    def test_none_when_no_mcp_self_consumer(self) -> None:
-        result = build_conversational_actor(
-            ChiefOfStaffConfig(direct_mcp_enabled=True),
-            engine=_engine(has_mcp=False, has_governance=True),
-            agent_registry=object(),  # type: ignore[arg-type]
-            autonomy_resolver=None,
-        )
-        assert result is None
+    def test_declines_naming_the_missing_self_consumer(self) -> None:
+        """The live run reported "acting is off" for an org that had it on."""
+        with pytest.raises(SubsystemDeclinedError, match="no MCP self-consumer"):
+            build_conversational_actor(
+                ChiefOfStaffConfig(direct_mcp_enabled=True),
+                engine=_engine(has_mcp=False, has_governance=True),
+                agent_registry=object(),  # type: ignore[arg-type]
+                autonomy_resolver=None,
+            )
 
-    def test_none_when_governance_inactive(self) -> None:
+    def test_declines_naming_inactive_governance(self) -> None:
         # Fail-closed: direct MCP acting without governance would run
         # permitted write/admin actions with no escalate-and-park step.
-        result = build_conversational_actor(
-            ChiefOfStaffConfig(direct_mcp_enabled=True),
-            engine=_engine(has_mcp=True, has_governance=False),
-            agent_registry=object(),  # type: ignore[arg-type]
-            autonomy_resolver=None,
-        )
-        assert result is None
+        with pytest.raises(
+            SubsystemDeclinedError, match="security governance is inactive"
+        ):
+            build_conversational_actor(
+                ChiefOfStaffConfig(direct_mcp_enabled=True),
+                engine=_engine(has_mcp=True, has_governance=False),
+                agent_registry=object(),  # type: ignore[arg-type]
+                autonomy_resolver=None,
+            )
 
     def test_builds_when_governed(self) -> None:
         result = build_conversational_actor(
@@ -192,49 +196,57 @@ _CONSOLE_MODEL = serialize_model_ref(
 
 
 class TestBuildOperatorConsole:
-    def test_none_when_disabled(self) -> None:
-        result = build_operator_console(
-            ChiefOfStaffConfig(operator_console_enabled=False),
-            engine=_engine(has_mcp=True, has_governance=True),
-            autonomy_resolver=None,
-            clock=FakeClock(),
-        )
-        assert result is None
+    def test_declines_naming_the_disabled_switch(self) -> None:
+        with pytest.raises(
+            SubsystemDeclinedError, match="operator_console_enabled is off"
+        ):
+            build_operator_console(
+                ChiefOfStaffConfig(operator_console_enabled=False),
+                engine=_engine(has_mcp=True, has_governance=True),
+                autonomy_resolver=None,
+                clock=FakeClock(),
+            )
 
-    def test_none_when_no_mcp_self_consumer(self) -> None:
-        result = build_operator_console(
-            ChiefOfStaffConfig(
-                operator_console_enabled=True, operator_console_model=_CONSOLE_MODEL
-            ),
-            engine=_engine(has_mcp=False, has_governance=True),
-            autonomy_resolver=None,
-            clock=FakeClock(),
-        )
-        assert result is None
+    def test_declines_naming_the_missing_self_consumer(self) -> None:
+        with pytest.raises(SubsystemDeclinedError, match="no MCP self-consumer"):
+            build_operator_console(
+                ChiefOfStaffConfig(
+                    operator_console_enabled=True,
+                    operator_console_model=_CONSOLE_MODEL,
+                ),
+                engine=_engine(has_mcp=False, has_governance=True),
+                autonomy_resolver=None,
+                clock=FakeClock(),
+            )
 
-    def test_none_when_governance_inactive(self) -> None:
+    def test_declines_naming_inactive_governance(self) -> None:
         # Fail-closed: an ungated console would run permitted write/admin
         # actions with no escalate-and-park step.
-        result = build_operator_console(
-            ChiefOfStaffConfig(
-                operator_console_enabled=True, operator_console_model=_CONSOLE_MODEL
-            ),
-            engine=_engine(has_mcp=True, has_governance=False),
-            autonomy_resolver=None,
-            clock=FakeClock(),
-        )
-        assert result is None
+        with pytest.raises(
+            SubsystemDeclinedError, match="security governance is inactive"
+        ):
+            build_operator_console(
+                ChiefOfStaffConfig(
+                    operator_console_enabled=True,
+                    operator_console_model=_CONSOLE_MODEL,
+                ),
+                engine=_engine(has_mcp=True, has_governance=False),
+                autonomy_resolver=None,
+                clock=FakeClock(),
+            )
 
-    def test_none_when_no_model_bound(self) -> None:
+    def test_declines_naming_the_unbound_model(self) -> None:
         # Fail-closed: the console cannot dispatch without an explicit
         # (provider, model) pair, so an unset model leaves it inert.
-        result = build_operator_console(
-            ChiefOfStaffConfig(operator_console_enabled=True),
-            engine=_engine(has_mcp=True, has_governance=True),
-            autonomy_resolver=None,
-            clock=FakeClock(),
-        )
-        assert result is None
+        with pytest.raises(
+            SubsystemDeclinedError, match="operator_console_model is bound"
+        ):
+            build_operator_console(
+                ChiefOfStaffConfig(operator_console_enabled=True),
+                engine=_engine(has_mcp=True, has_governance=True),
+                autonomy_resolver=None,
+                clock=FakeClock(),
+            )
 
     def test_builds_when_governed_and_model_bound(self) -> None:
         result = build_operator_console(

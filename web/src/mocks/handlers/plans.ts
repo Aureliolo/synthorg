@@ -4,6 +4,7 @@ import type {
   editPlan,
   getPlan,
   getPlanEvaluation,
+  getPlanTransitions,
   listPlans,
   replanPlan,
   requestPlanChanges,
@@ -49,6 +50,10 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     failure_reason: null,
     forecast_id: null,
     review: null,
+    // Null is the ordinary case for both: the configured planner produced the
+    // items, and a real panel reviewed them, so neither has anything to say.
+    planning_strategy: null,
+    review_absent_reason: null,
     open_questions: [],
     assumptions: [],
     objective_criteria: [],
@@ -78,6 +83,26 @@ export const plansHandlers = [
         plan_id: String(params['id']),
         attempts: [],
       }),
+    ),
+  ),
+  // One row by default: every plan on screen has been through at least the
+  // move that made it reviewable, so an empty ledger would model a state the
+  // backend only produces when the ledger itself failed to record.
+  http.get('/api/v1/plans/:id/transitions', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getPlanTransitions>([
+        {
+          id: 'transition-1',
+          entity_kind: 'plan',
+          entity_id: String(params['id']),
+          from_status: 'planning',
+          to_status: 'pending_review',
+          requested_by: null,
+          reason: null,
+          entity_version: 2,
+          occurred_at: '2026-07-01T10:00:00Z',
+        },
+      ]),
     ),
   ),
   http.patch('/api/v1/plans/:id', async ({ params, request }) => {

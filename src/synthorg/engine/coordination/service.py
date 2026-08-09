@@ -19,6 +19,12 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._phase_recorder import (
+    begin_phase,
+    record_phase_failure,
+    record_phase_success,
+)
+from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
     CoordinationResultWithAttribution,
@@ -58,7 +64,6 @@ from synthorg.observability.events.coordination import (
     COORDINATION_FAILED,
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
-    COORDINATION_PHASE_STARTED,
     COORDINATION_STARTED,
     COORDINATION_TOPOLOGY_RESOLVED,
 )
@@ -364,6 +369,16 @@ class MultiAgentCoordinator:
                 # Propagate middleware-mutated artifacts
                 if mw_ctx.decomposition_result is not None:
                     decomp_result = mw_ctx.decomposition_result
+
+            # Filed here rather than inside the decompose phase, which
+            # ``plan_preview`` also runs: a preview must leave no task rows
+            # behind for work a human has not approved. Both decompose
+            # branches reach this, so an approved-plan resume files its
+            # children too. After the middleware rather than before, because
+            # a replaced result is the tree that actually dispatches, and
+            # filing the superseded one would leave the wave assigning
+            # subtasks with no row.
+            await self._phase_file_children(decomp_result, phases)
 
             # Route
             routing_result = self._phase_route(context, decomp_result, phases)
@@ -705,6 +720,81 @@ class MultiAgentCoordinator:
             is_multi_agent=True,
         )
 
+    async def _file_missing_children(self, result: DecompositionResult) -> int:
+        """File any decomposed child the engine does not already hold.
+
+        Decomposition mints child tasks in memory, ids derived from the plan
+        items; until they are rows the engine holds, every later step acts on
+        objects nothing else can see, and the assignment write before each
+        wave has no row to move.
+
+        Only the absent ones are filed. The ids are derived, so a re-dispatch
+        of the same plan finds its rows already there, and saving over one
+        would push a subtask that is already running back to ``CREATED``.
+
+        Returns:
+            How many children this call filed, which on a re-dispatch is
+            fewer than the plan has and may be none.
+        """
+        engine = self._task_engine
+        if engine is None:
+            return 0
+        missing = [
+            child
+            for child in result.created_tasks
+            if await engine.get_task(str(child.id)) is None
+        ]
+        await engine.file_tasks(missing)
+        return len(missing)
+
+    async def _phase_file_children(
+        self,
+        result: DecompositionResult,
+        phases: list[CoordinationPhaseResult],
+    ) -> None:
+        """File the decomposed children, recorded as a coordination phase.
+
+        Durable task-engine I/O, so it is a phase like every other step that
+        touches storage: a raw engine error escaping here would reach the
+        caller without the ``partial_phases`` that say how far the pipeline
+        got, which is the whole reason the phase list exists.
+
+        Args:
+            result: The decomposition whose children are filed.
+            phases: The running phase list, appended to either way.
+
+        Raises:
+            CoordinationPhaseError: The children could not be filed.
+        """
+        phase_name = "file_children"
+        start = begin_phase(phase_name, clock=self._clock)
+        try:
+            filed = await self._file_missing_children(result)
+        except Exception as exc:
+            reraise_critical(exc)
+            msg = record_phase_failure(
+                phase_name,
+                start,
+                phases,
+                clock=self._clock,
+                exc=exc,
+                summary="Filing plan children failed",
+            )
+            raise CoordinationPhaseError(
+                msg, phase=phase_name, partial_phases=tuple(phases)
+            ) from exc
+        elapsed = record_phase_success(phase_name, start, phases, clock=self._clock)
+        logger.info(
+            COORDINATION_PHASE_COMPLETED,
+            phase=phase_name,
+            # What this phase wrote, not what the plan holds: a re-dispatch
+            # files nothing and a line reporting the plan's size would read
+            # as having written the tree over again.
+            filed_count=filed,
+            subtask_count=len(result.created_tasks),
+            duration_seconds=elapsed,
+        )
+
     async def _phase_decompose(
         self,
         context: CoordinationContext,
@@ -721,45 +811,26 @@ class MultiAgentCoordinator:
                 partial phase list is attached to the error so callers
                 see which phases completed.
         """
-        start = self._clock.monotonic()
         phase_name = "decompose"
-
-        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
+        start = begin_phase(phase_name, clock=self._clock)
         try:
             result = await self._decomposition_service.decompose_task(
                 context.task, context.decomposition_context
             )
         except Exception as exc:
             reraise_critical(exc)
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            msg = record_phase_failure(
+                phase_name,
+                start,
+                phases,
+                clock=self._clock,
+                exc=exc,
+                summary="Decomposition failed",
             )
-            phase = CoordinationPhaseResult(
-                phase=phase_name,
-                success=False,
-                duration_seconds=elapsed,
-                error=safe_error_description(exc),
-            )
-            phases.append(phase)
-            msg = f"Decomposition failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
-                msg,
-                phase=phase_name,
-                partial_phases=tuple(phases),
+                msg, phase=phase_name, partial_phases=tuple(phases)
             ) from exc
-
-        elapsed = self._clock.monotonic() - start
-        phases.append(
-            CoordinationPhaseResult(
-                phase=phase_name,
-                success=True,
-                duration_seconds=elapsed,
-            )
-        )
+        elapsed = record_phase_success(phase_name, start, phases, clock=self._clock)
         logger.info(
             COORDINATION_PHASE_COMPLETED,
             phase=phase_name,
@@ -785,10 +856,8 @@ class MultiAgentCoordinator:
                 phase list is attached so callers see the pipeline
                 shape up to the failure.
         """
-        start = self._clock.monotonic()
         phase_name = "route"
-
-        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
+        start = begin_phase(phase_name, clock=self._clock)
         try:
             result = self._routing_service.route(
                 decomp_result,
@@ -797,35 +866,18 @@ class MultiAgentCoordinator:
             )
         except Exception as exc:
             reraise_critical(exc)
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            msg = record_phase_failure(
+                phase_name,
+                start,
+                phases,
+                clock=self._clock,
+                exc=exc,
+                summary="Routing failed",
             )
-            phase = CoordinationPhaseResult(
-                phase=phase_name,
-                success=False,
-                duration_seconds=elapsed,
-                error=safe_error_description(exc),
-            )
-            phases.append(phase)
-            msg = f"Routing failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
-                msg,
-                phase=phase_name,
-                partial_phases=tuple(phases),
+                msg, phase=phase_name, partial_phases=tuple(phases)
             ) from exc
-
-        elapsed = self._clock.monotonic() - start
-        phases.append(
-            CoordinationPhaseResult(
-                phase=phase_name,
-                success=True,
-                duration_seconds=elapsed,
-            )
-        )
+        elapsed = record_phase_success(phase_name, start, phases, clock=self._clock)
         logger.info(
             COORDINATION_PHASE_COMPLETED,
             phase=phase_name,
@@ -964,10 +1016,8 @@ class MultiAgentCoordinator:
                 non-``CoordinationPhaseError`` exception is wrapped
                 into one with the partial phase list).
         """
-        start = self._clock.monotonic()
         phase_name = "dispatch"
-
-        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
+        start = begin_phase(phase_name, clock=self._clock)
         try:
             # Built once per coordinate() run (dispatch is a single phase),
             # then reused by the dispatcher across all its waves. Kept
@@ -980,6 +1030,7 @@ class MultiAgentCoordinator:
                 topology,
                 clock=self._clock,
                 orchestrator_strategy=orchestrator_strategy,
+                assignment_writer=AssignmentWriter(self._task_engine),
             )
             project_id = context.task.project
             repo_root = await self._resolve_repo_root(project_id)
@@ -996,23 +1047,14 @@ class MultiAgentCoordinator:
             raise
         except Exception as exc:
             reraise_critical(exc)
-            elapsed = self._clock.monotonic() - start
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            msg = record_phase_failure(
+                phase_name,
+                start,
+                phases,
+                clock=self._clock,
+                exc=exc,
+                summary="Dispatch failed",
             )
-            phase = CoordinationPhaseResult(
-                phase=phase_name,
-                success=False,
-                duration_seconds=elapsed,
-                error=safe_error_description(exc),
-            )
-            phases.append(phase)
-            msg = f"Dispatch failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
-                msg,
-                phase=phase_name,
-                partial_phases=tuple(phases),
+                msg, phase=phase_name, partial_phases=tuple(phases)
             ) from exc

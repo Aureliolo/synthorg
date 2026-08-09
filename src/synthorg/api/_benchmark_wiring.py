@@ -230,6 +230,7 @@ def build_pareto_inputs(
         cost_tracker.attach_durable_repos(
             project_cost_repo=persistence.project_cost_aggregates,
             claim_seen_repo=persistence.project_cost_claim_seen,
+            cost_record_repo=persistence.cost_records,
         )
     if registry is None or cost_tracker is None:
         return None, None, cost_tracker

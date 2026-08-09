@@ -137,10 +137,17 @@ directives are expected and monitored.
 {% if l1_tools %}
 
 ## Available Tools
+{% if has_tool_discovery %}
 
 You have access to {{ l1_tools | length }} tools. \
 Call `list_tools()` for details, \
 then `load_tool(tool_name)` before invoking a tool.
+{% else %}
+
+You can call these {{ l1_tools | length }} tools directly, with no discovery \
+step. There is no catalogue to browse and nothing to load first; a tool not \
+listed here does not exist in this session.
+{% endif %}
 
 {% for tool in l1_tools %}\
 - **{{ tool.name }}** ({{ tool.category }}, \

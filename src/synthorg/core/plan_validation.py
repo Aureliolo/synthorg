@@ -129,6 +129,200 @@ def describe_unroutable_role(
     )
 
 
+class PlanUnit(Protocol):
+    """What the graph invariants read off one plan unit.
+
+    Structural for the same reason :class:`DecisionOption` is: the durable
+    item and the decomposition subtask both satisfy it, and neither module
+    may import the other.
+    """
+
+    @property
+    def id(self) -> str:
+        """Identity of the unit within its plan."""
+        ...
+
+    @property
+    def title(self) -> str:
+        """Human title of the unit."""
+        ...
+
+    @property
+    def description(self) -> str:
+        """What the unit covers."""
+        ...
+
+    @property
+    def dependencies(self) -> tuple[str, ...]:
+        """Ids of the units this one waits for."""
+        ...
+
+
+#: Words too common to constitute a reference to another item. A title token
+#: only implicates another item when it names that item's subject, and every
+#: plan is full of these.
+_GENERIC_TITLE_TOKENS: Final[frozenset[str]] = frozenset(
+    {
+        "a",
+        "add",
+        "an",
+        "and",
+        "build",
+        "create",
+        "for",
+        "implement",
+        "in",
+        "of",
+        "on",
+        "set",
+        "setup",
+        "the",
+        "to",
+        "up",
+        "with",
+        "write",
+    }
+)
+
+#: Shortest token that can identify another item's subject. Anything shorter
+#: is a preposition or an abbreviation shared across unrelated items.
+_MIN_REFERENCE_TOKEN: Final[int] = 4
+
+#: Largest share of a plan's titles a token may appear in and still name one
+#: item; the bound is inclusive, so a token in exactly half the titles is kept.
+#: A word carried by MORE than half the plan is that plan's house vocabulary
+#: ("Subtask 1" / "Subtask 2", "Service layer" / "Service tests"), and treating
+#: it as a reference would make every item depend on every other.
+_MAX_DISTINCTIVE_SHARE: Final[float] = 0.5
+
+#: A plan of one item has no graph to contradict.
+_MIN_ORDERED_UNITS: Final[int] = 2
+
+
+def describe_structureless_graph(
+    *,
+    declared_sequential: bool,
+    units: Sequence[PlanUnit],
+) -> str | None:
+    """Describe a declared ordering that no edge expresses, or ``None``.
+
+    A plan that declares ``SEQUENTIAL`` or ``MIXED`` and then carries zero
+    dependency edges contradicts itself: the structure says the work is
+    ordered, the graph says every item may start at once, and dispatch
+    believes the graph. Six items with a declared ``mixed`` structure and no
+    edges at all went out as one wave, in an order nobody chose.
+
+    Reported rather than raised, so decomposition can turn it into a
+    correctable error the planning session resubmits against while an
+    operator edit path renders it as a validation failure.
+
+    Args:
+        declared_sequential: Whether the plan declared an ordered structure
+            (``SEQUENTIAL`` or ``MIXED``).
+        units: The plan's units, in plan order.
+
+    Returns:
+        A message naming the contradiction, or ``None`` when the plan is
+        consistent.
+    """
+    if not declared_sequential or len(units) < _MIN_ORDERED_UNITS:
+        return None
+    if any(unit.dependencies for unit in units):
+        return None
+    return (
+        f"the plan declares an ordered structure across {len(units)} items but "
+        "declares no dependencies at all, so every item would start at once. "
+        "Either declare the dependencies that order them, or declare the "
+        "structure as parallel"
+    )
+
+
+def _words(text: str) -> list[str]:
+    """Split *text* into lowercased alphanumeric words.
+
+    Returns:
+        The words, in order, with punctuation dropped.
+    """
+    return "".join(c if c.isalnum() else " " for c in text.lower()).split()
+
+
+def _title_tokens(unit: PlanUnit) -> frozenset[str]:
+    """Reduce a unit's title to the tokens that could name its subject.
+
+    Returns:
+        Lowercased alphanumeric title tokens, minus the generic verbs and
+        articles every plan title carries.
+    """
+    return frozenset(
+        word
+        for word in _words(unit.title)
+        if len(word) >= _MIN_REFERENCE_TOKEN and word not in _GENERIC_TITLE_TOKENS
+    )
+
+
+def _distinctive_tokens(
+    other: PlanUnit,
+    *,
+    plan_titles: Sequence[frozenset[str]],
+) -> frozenset[str]:
+    """Return the tokens of *other* that name it rather than the whole plan.
+
+    A token carried by more than half the plan's titles is that plan's house
+    vocabulary, not a reference: matching on it made "Subtask 2" a reference
+    to "Subtask 1", and would make every item in a plan named after one
+    subject depend on every other.
+
+    Returns:
+        The subset of *other*'s title tokens rare enough to identify it, empty
+        when none are.
+    """
+    ceiling = len(plan_titles) * _MAX_DISTINCTIVE_SHARE
+    return frozenset(
+        token
+        for token in _title_tokens(other)
+        if sum(token in title for title in plan_titles) <= ceiling
+    )
+
+
+def describe_unstated_reference(
+    *,
+    unit: PlanUnit,
+    others: Sequence[PlanUnit],
+) -> str | None:
+    """Describe an item that names another it does not depend on, or ``None``.
+
+    "Integrate game loop: tie engine, renderer, and input together" cannot
+    precede the three items it names, but with no declared dependency the
+    dispatcher is free to run it first, and did.
+
+    Matching is on whole words, and only on the other item's DISTINCTIVE title
+    tokens, so it fires on a genuine reference rather than on the vocabulary a
+    plan happens to repeat.
+
+    Args:
+        unit: The unit being checked.
+        others: Every other unit in the plan.
+
+    Returns:
+        A message naming both items, or ``None`` when no unstated reference
+        is found.
+    """
+    plan_titles = [_title_tokens(one) for one in (unit, *others)]
+    text = frozenset(_words(f"{unit.title} {unit.description}"))
+    for other in others:
+        if other.id == unit.id or other.id in unit.dependencies:
+            continue
+        tokens = _distinctive_tokens(other, plan_titles=plan_titles)
+        if tokens and tokens <= text:
+            return (
+                f"{unit.id!r} names {other.id!r} ({other.title!r}) in its own "
+                "title or description but declares no dependency on it, so it "
+                "may be dispatched first. Declare the dependency, or reword it "
+                "if the items are genuinely independent"
+            )
+    return None
+
+
 def validate_expected_artifacts(
     *,
     entity_id: str,

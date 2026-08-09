@@ -22,6 +22,7 @@ per request at the research MCP handlers, so it needs no rebuild.
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -70,9 +71,17 @@ class ResearchSettingsSubscriber:
     a settings change before the registry comes online does not crash; the
     boot-time wiring then builds the service with the up-to-date values.
 
-    Errors during rebuild propagate to the dispatcher, which logs them with full
-    subscriber context and continues; the previously wired service stays in
-    place.
+    A rebuild that DECLINES is a different outcome from one that fails. The
+    write cleared the bound pair or pointed it at a connection that is not
+    registered, which is a legitimate thing for an operator to do, so the
+    research slice is cleared and the write succeeds; the reconciler reports
+    the named condition on ``GET /subsystems``. Leaving the previous service
+    in place there would keep answering research requests through the
+    provider and model that were just removed.
+
+    Every other error during rebuild propagates to the dispatcher, which logs
+    it with full subscriber context and continues; the previously wired
+    service stays in place, because nothing has said it should not.
 
     Args:
         app_state: Application state holding the slices + service swap surface.
@@ -113,6 +122,7 @@ class ResearchSettingsSubscriber:
             _build_and_wire_research,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+        from synthorg.research.state import ResearchStateSlice  # noqa: PLC0415
 
         trigger = describe_changes(changes)
         registry = self._app_state.slice(ProvidersStateSlice).registry
@@ -130,6 +140,24 @@ class ResearchSettingsSubscriber:
                 provider_registry=registry,
                 runtime_settings=self._settings_service,
             )
+        except SubsystemDeclinedError as exc:
+            # A decline is an answer, not a failure: clearing the bound pair
+            # is a legitimate write, and raising would fail the operator's
+            # settings change for doing exactly what they asked. The
+            # reconciler reports the named condition on GET /subsystems.
+            #
+            # The slice is cleared, not merely left alone: the builder swaps
+            # only on success, so keeping the previous service would go on
+            # answering research requests through the provider and model the
+            # operator has just removed.
+            self._app_state.swap_slice(ResearchStateSlice())
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                trigger=trigger,
+                note=safe_error_description(exc),
+            )
+            return
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

@@ -44,6 +44,50 @@ carries only the plan's `plan_id`.
   item advances). A validator rejects a non-UUID id, a self-dependency, or duplicate
   dependencies.
 
+### Open questions are asked, not filed
+
+`open_questions` is what the planner could not resolve on its own, and for a
+while it was written to the plan and read by nothing: the org asked two good
+questions, `GET /meta/chat/questions` returned `[]`, and the escalation fired
+into a void. Asking the human is the single most-wanted behaviour on the
+product's own goal list, so a question that reaches no human is not a record,
+it is a loss.
+
+Each open question is now filed as a **parked question** alongside the plan
+approval, inside the same guard, with `action_type=CLARIFY_ACTION_TYPE`, the
+plan's parent task, and metadata carrying the plan id. That puts it on the
+surface that already exists: it appears in `GET /meta/chat/questions` and is
+answered or declined through the same narrow door as every agent-raised
+question, with no second decision path.
+
+The approval carries no question **index**. An index identifies a position in
+`open_questions`, and the first answer rewrites that tuple, so every remaining
+approval's index would point at a different question than the one its own text
+asks; the question text on the approval is the identity, and settling removes
+one matching entry rather than every duplicate.
+
+The answer goes back onto the plan the agents execute: answering removes the
+entry from `plan.open_questions` and appends the answer to `plan.assumptions`
+through `PlanService`, under a compare-and-set retry so two answers landing at
+once cannot lose one of the write-backs; declining keeps the existing
+declined-question note.
+
+That write-back is a fast path, not what makes the answer stick. It runs after
+the decision is already durable on the approval, so a persistence failure there
+would leave the plan asking something the operator answered, and the endpoint
+cannot report the decision as failed when it demonstrably happened. The decided
+approvals are the record, so `replay_decided_questions` reconciles the plan
+against them before dispatch rebuilds anything from it. The reconciliation
+counts rather than matches: a plan should still list one occurrence of a
+question per approval for that text still `PENDING`, so the surplus above that
+count is exactly what the plan has not heard. That keeps a repeat pass a no-op
+and stops one answer settling the occurrence that belongs to a second,
+identically worded question. An `EXPIRED` approval is not a decision and is
+never replayed: nobody answered it, so its occurrence stays open.
+
+Question text is persisted raw and fenced with `wrap_untrusted(TAG_TASK_DATA,
+...)` only at the LLM prompt boundary, per SEC-1.
+
 ### Decision items
 
 A `PlanItem` with `kind = DECISION` is a real choice the plan hinges on (stack,
@@ -68,9 +112,32 @@ plan and excluding the owner (no self-review). Each panellist runs a bounded
 persona session (`AgentSessionPlanReviewPanel`) and submits a structured verdict
 (`ENDORSED` / `CONCERNS` / `REVISION_REQUESTED`) with categorised findings; a
 deterministic synthesis (`synthesise_review`) consolidates them onto `Plan.review`
-(overall verdict = the most severe). The panel is wired at startup without failing boot, and
-runs as a distinct pipeline phase between decompose and the human gate; when no
-panel is attached the plan is parked with `review = None`.
+(overall verdict = the most severe). The panel is wired at startup without failing
+boot, and runs as a distinct pipeline phase between decompose and the human gate.
+
+**An absent review says why it is absent.** `review = None` used to mean three
+different things at once, and the operator saw the same empty
+`evidence_package` for all of them. The session now returns a
+`PlanReviewOutcome` carrying either a review or the reason there is none, and
+the reason is persisted on `Plan.review_absent_reason`, surfaced in the
+approval payload and shown as a blocking banner on the dashboard gate:
+
+| outcome | what the operator is told |
+| --- | --- |
+| a seated panel produced verdicts | the review, as before |
+| no panel is attached | no panel was seated for this plan; the plan carries zero quality signal |
+| a seated panel produced no verdict | the panel ran and returned nothing; the plan carries zero quality signal |
+| every seated reviewer failed on a provider error | not a review outcome at all: plan preparation FAILS (FAILED plan + FAILED task) rather than presenting an unreviewed plan as merely unreviewed |
+
+The last row is the load-bearing one. A provider outage during review is an
+outage, and parking the plan for approval turns it into a human rubber-stamp on
+a plan nothing checked.
+
+`request_plan_approval` takes the outcome as a **required** argument, on both
+the port and the gate: an optional one with a `None` default reintroduces the
+blank state the type exists to forbid, one caller at a time. The PLANNING shell
+opened before decomposition says so explicitly rather than leaving the field
+empty, and its provenance is replaced wholesale when the filled plan is parked.
 
 ### Lifecycle (`PlanStatus`)
 
@@ -78,7 +145,9 @@ panel is attached the plan is parked with `review = None`.
 stateDiagram-v2
     [*] --> PLANNING
     PLANNING --> PENDING_REVIEW: decomposition fills the shell
+    PLANNING --> DRAFT: operator edits the shell
     PLANNING --> FAILED: decomposition failed / empty
+    PLANNING --> SUPERSEDED: superseded by a re-plan
     DRAFT --> PENDING_REVIEW
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
@@ -95,9 +164,11 @@ stateDiagram-v2
     INTEGRATING --> EVALUATING: assembly job passed its review gate
     INTEGRATING --> EXECUTING: an item regressed
     INTEGRATING --> SUPERSEDED: superseded by a re-plan
+    INTEGRATING --> FAILED: assembly will not assemble
     EVALUATING --> COMPLETED: every success criterion met
     EVALUATING --> EXECUTING: an item regressed
     EVALUATING --> SUPERSEDED: superseded by a re-plan
+    EVALUATING --> FAILED: the judgement cannot run
     COMPLETED --> [*]
     REJECTED --> [*]
     FAILED --> [*]
@@ -306,8 +377,9 @@ so approval stays atomic).
 | `GET` | `/plans` | List plans (cursor pagination; `status` / `project` / `objective_id` filters) |
 | `GET` | `/plans/{id}` | Fetch a plan |
 | `GET` | `/plans/{id}/evaluation` | The evaluate stage's judgements, newest first (see [Initiative Tail](initiative-tail.md#the-verdict-is-a-record)) |
+| `GET` | `/plans/{id}/transitions` | The plan's recorded status transitions, newest first: who asked, why, and from which version (see [Initiative Tail](initiative-tail.md)) |
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
-| `DELETE` | `/plans/{id}` | Remove a plan that never became work (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED` only; 409 otherwise). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
+| `DELETE` | `/plans/{id}` | Remove a plan that is not a record of work. Always deletable while undispatched (`PLANNING` / `DRAFT` / `PENDING_REVIEW` / `FAILED`); a plan deletes only when it has **zero live task rows**, because "its items are building" is checked against the tasks rather than inferred from the status: a dispatch that died before writing a single row leaves nothing building. That check and the delete are ONE repository call in one transaction (`delete_if_no_live_tasks`), never a count followed by a delete: a task filed between the two would be stranded on a plan id that no longer resolves, and nothing would report it. A terminal plan is refused outright (its record and its delivery verdicts outlive it), and a genuinely building plan is refused naming the count (409). Expires the plan's parked `PLAN_REVIEW` approval FIRST, and deletes only if that lands: left pending, a reviewer could still approve it, and the resume path would then fail the parent task over a plan that no longer exists. A concurrent decision wins instead (409, nothing deleted), because the verdict was made while the plan still existed and the dispatch is already acting on it |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
 | `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |

@@ -15,8 +15,12 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
     CoordinationWave,
 )
+from synthorg.engine.failure_classification import (
+    FailureCategory,
+    category_for_error_type,
+    infer_failure_category,
+)
 from synthorg.engine.loop_protocol import TerminationReason
-from synthorg.engine.recovery import FailureCategory, infer_failure_category
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
@@ -46,6 +50,11 @@ _CATEGORY_TO_ATTRIBUTION: dict[FailureCategory, FailureAttribution] = {
     FailureCategory.DELEGATION_FAILED: "direct",
     FailureCategory.BUDGET_EXCEEDED: "coordination_overhead",
     FailureCategory.QUALITY_GATE_FAILED: "quality_gate",
+    # The provider never answered, so the agent's work was never scored:
+    # attributing it "direct" would penalise the agent for a credential or
+    # an outage it has no way to influence.
+    FailureCategory.PROVIDER_REFUSED: "coordination_overhead",
+    FailureCategory.PROVIDER_UNAVAILABLE: "coordination_overhead",
     FailureCategory.UNKNOWN: "direct",
 }
 
@@ -280,6 +289,13 @@ def _score_outcome(
         error_text = ""
         if exec_result is not None:
             error_text = getattr(exec_result, "error_message", "") or ""
+            # The typed cause outranks the termination reason. A provider
+            # that refused the request terminates ERROR like any other
+            # failure, and the termination map reads ERROR as "direct",
+            # which charges the agent for an outage it cannot influence.
+            typed = category_for_error_type(getattr(exec_result, "error_type", None))
+            if typed is not None:
+                failure_attr = _CATEGORY_TO_ATTRIBUTION.get(typed, failure_attr)
 
         return AgentContribution(
             agent_id=NotBlankStr(agent_id),

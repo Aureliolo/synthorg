@@ -26,6 +26,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.decomposition.plan_context import with_plan_context
 from synthorg.engine.errors import DecompositionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
@@ -54,6 +55,8 @@ class PlanProvenance(BaseModel):
         status: Initial lifecycle status (defaults to pending review).
         forecast_id: Cost forecast released alongside the plan, if any.
         review: The consolidated stakeholder-panel review, if a panel ran.
+        review_absent_reason: Why a seated panel produced no review, so an
+            unreviewed plan says so instead of looking merely un-panelled.
         objective_criteria: The objective's acceptance criteria, denormalised
             onto the plan so the coverage map can flag any uncovered criterion.
     """
@@ -76,6 +79,10 @@ class PlanProvenance(BaseModel):
     review: PlanReview | None = Field(
         default=None,
         description="The consolidated stakeholder-panel review, if a panel ran",
+    )
+    review_absent_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why a seated panel produced no review",
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -164,9 +171,11 @@ def plan_from_decomposition(
         status=provenance.status,
         forecast_id=provenance.forecast_id,
         review=provenance.review,
+        review_absent_reason=provenance.review_absent_reason,
         objective_criteria=provenance.objective_criteria,
         open_questions=result.plan.open_questions,
         assumptions=result.plan.assumptions,
+        planning_strategy=result.plan.planning_strategy,
         created_at=provenance.created_at,
         updated_at=provenance.created_at,
     )
@@ -232,7 +241,7 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     )
 
 
-def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task:
+def _task_from_item(item: PlanItem, *, plan: Plan, parent_task: Task) -> Task:
     """Rebuild the child task for a plan item under *parent_task*.
 
     Uses the same deterministic id mapping as the decomposition service, so a
@@ -241,6 +250,11 @@ def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task
     The plan and item ids are stamped onto the task so the rollup can query a
     plan's tasks directly, rather than re-deriving the id mapping at every
     call site.
+
+    The plan's settled and unsettled context rides on the description, which
+    is where the answer to a parked question finally reaches an agent: the
+    approval writes it onto ``plan.assumptions``, and nothing else on this
+    path carries a plan-level fact down to the work.
 
     Returns:
         A ``CREATED`` child :class:`Task` inheriting the parent's routing
@@ -251,11 +265,17 @@ def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task
     return Task(
         id=subtask_uuid(item.id),
         title=item.title,
-        description=item.description,
+        description=NotBlankStr(
+            with_plan_context(
+                item.description,
+                assumptions=plan.assumptions,
+                open_questions=plan.open_questions,
+            )
+        ),
         type=parent_task.type,
         priority=parent_task.priority,
         project=parent_task.project,
-        plan_id=plan_id,
+        plan_id=plan.id,
         plan_item_id=subtask_uuid(item.id),
         created_by=parent_task.created_by,
         parent_task_id=str(parent_task.id),
@@ -313,7 +333,7 @@ def decomposition_from_plan(
     )
     subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
     created_tasks = tuple(
-        _task_from_item(item, plan_id=plan.id, parent_task=parent_task)
+        _task_from_item(item, plan=plan, parent_task=parent_task)
         for item in dispatchable
     )
     edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)

@@ -49,14 +49,22 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.plan_evaluation_service import PlanEvaluationService
 from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.lifecycle_transition import (
+    LifecycleEntityKind,
+    LifecycleTransition,
+)
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
+)
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
 )
 from synthorg.persistence.state import persistence_of
 
@@ -72,7 +80,7 @@ def _service(state: State) -> PlanService:
         ``PlanService`` bound to this backend's plan store.
     """
     persistence = persistence_of(state.app_state)
-    return PlanService(repo=persistence.plans, clock=state.app_state.clock)
+    return build_plan_service(persistence, clock=state.app_state.clock)
 
 
 def _evaluation_service(state: State) -> PlanEvaluationService:
@@ -265,6 +273,45 @@ class PlanController(Controller):
             status_code=200,
         )
 
+    @get("/{plan_id:str}/transitions", guards=[require_read_access])
+    async def get_plan_transitions(
+        self,
+        state: State,
+        plan_id: PathId,
+        limit: CursorLimit = _DEFAULT_LIMIT,
+    ) -> Response[ApiResponse[tuple[LifecycleTransition, ...]]]:
+        """Get the durable record of how a plan reached its current status.
+
+        The status itself says where the plan is; this says how it got there
+        and who moved it, from persisted rows rather than a process's log.
+
+        Args:
+            state: Application state.
+            plan_id: Plan identifier.
+            limit: Maximum transitions to return, newest first.
+
+        Returns:
+            The recorded transitions, newest first, or 404 if no such plan.
+        """
+        require_resource_or_404(
+            await _service(state).get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+        )
+        rows = await persistence_of(state.app_state).lifecycle_transitions.query(
+            LifecycleTransitionFilterSpec(
+                entity_kind=LifecycleEntityKind.PLAN,
+                entity_id=plan_id,
+            ),
+            limit=limit,
+        )
+        return Response(
+            content=ApiResponse[tuple[LifecycleTransition, ...]](data=rows),
+            status_code=200,
+        )
+
     @patch(
         "/{plan_id:str}",
         guards=[
@@ -452,7 +499,8 @@ class PlanController(Controller):
 
         Raises:
             NotFoundError: No plan with ``plan_id`` exists.
-            PlanNotDeletableError: The plan is dispatched or already decided.
+            PlanNotDeletableError: The plan's items are still building, or it
+                is already decided.
             ConflictError: The parked review approval was decided while the
                 delete was being prepared, so the plan is still being acted
                 on. Nothing is removed and the operator retries.
@@ -469,6 +517,8 @@ class PlanController(Controller):
         # drive the resume path at a missing plan, and retiring it afterwards
         # has no recovery if the write does not land.
         await retire_review_approval(state.app_state, existing)
+        # Live work is counted inside the delete, in the same statement, so a
+        # task filed between the two cannot be stranded on a deleted plan.
         await service.delete(existing, requested_by=extract_requester(state))
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.

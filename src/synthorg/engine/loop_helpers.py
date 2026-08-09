@@ -31,6 +31,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import recorded_error_type
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
@@ -147,11 +148,15 @@ async def call_provider(
         # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
+        # The message names what was raised; ``error_type`` names what
+        # failed. They differ under the retry handler, which re-raises every
+        # retryable error as a ``RetryExhaustedError``: recording that name
+        # tells the diagnosis we retried, not that the provider timed out.
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error_type=type(exc).__name__,
+            error_type=recorded_error_type(exc),
             error=safe_error_description(exc),
         )
         return build_result(
@@ -159,6 +164,7 @@ async def call_provider(
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
+            error_type=recorded_error_type(exc),
         )
 
 
@@ -401,6 +407,7 @@ def build_result(
     turns: list[TurnRecord],
     *,
     error_message: str | None = None,
+    error_type: str | None = None,
     metadata: dict[str, object] | None = None,
     quality_signals: tuple[StepQualitySignal, ...] = (),
 ) -> ExecutionResult:
@@ -417,6 +424,7 @@ def build_result(
         turns=tuple(turns),
         quality_signals=quality_signals,
         error_message=error_message,
+        error_type=error_type,
         metadata=metadata or {},
     )
 

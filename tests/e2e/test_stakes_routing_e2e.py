@@ -31,13 +31,18 @@ from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.agent import (
+    AgentIdentity,
+    ModelConfig,
+    SkillSet,
+    ToolPermissions,
+)
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Complexity, Priority, TaskType
-from synthorg.core.types import ModelTier
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.models import (
@@ -53,6 +58,7 @@ from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.drivers.scripted import ScriptedDriver
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -111,7 +117,9 @@ class _MixedStakesStrategy:
     """Decompose into a low-stakes and a critical-stakes subtask.
 
     Prices every completion by the model tier it is invoked with, so the
-    accrued cost reflects the router's tier choice.
+    accrued cost reflects the router's tier choice. A sub-agent turn calls
+    one tool before answering, because a run that declares deliverables and
+    calls nothing is a silent no-op the engine fails on purpose.
     """
 
     def next_response(
@@ -121,7 +129,7 @@ class _MixedStakesStrategy:
         tools: list[ToolDefinition] | None,
         config: CompletionConfig | None,
     ) -> CompletionResponse:
-        del messages, config
+        del config
         cost = _cost_for_model(model)
         usage = TokenUsage(input_tokens=8, output_tokens=4, cost=cost)
         is_decomposition = tools is not None and any(
@@ -143,11 +151,19 @@ class _MixedStakesStrategy:
                                     "title": "Tidy the log formatting",
                                     "description": "Adjust logger output spacing.",
                                     "estimated_complexity": "simple",
+                                    "stakes": "low",
+                                    "required_role": "developer",
                                     "required_skills": [_DEBUG_SKILL],
                                     "acceptance_criteria": [
                                         "Log lines align consistently.",
                                     ],
-                                    "expected_artifacts": ["src/logging_format.py"],
+                                    # Prose, not a path: this harness runs no
+                                    # real editor, and the artifact probe asks
+                                    # the workspace only about path-shaped
+                                    # declarations.
+                                    "expected_artifacts": [
+                                        "log lines that align consistently"
+                                    ],
                                 },
                                 {
                                     "id": "sub-critical",
@@ -157,17 +173,29 @@ class _MixedStakesStrategy:
                                         "migration of the live schema."
                                     ),
                                     "estimated_complexity": "complex",
+                                    "stakes": "critical",
+                                    "required_role": "developer",
                                     "required_skills": [_DATABASE_SKILL],
                                     "acceptance_criteria": [
                                         "The schema migrates without data loss.",
                                     ],
                                     "expected_artifacts": [
-                                        "migrations/0001_schema.sql"
+                                        "a migrated production schema"
                                     ],
                                 },
                             ],
                         },
                     ),
+                ),
+                finish_reason=FinishReason.TOOL_USE,
+                usage=usage,
+                model=model,
+            )
+        if not any(m.role is MessageRole.TOOL for m in messages):
+            return CompletionResponse(
+                content=None,
+                tool_calls=(
+                    ToolCall(id="work-1", name="echo", arguments={"message": "done"}),
                 ),
                 finish_reason=FinishReason.TOOL_USE,
                 usage=usage,
@@ -231,8 +259,13 @@ def _provider_catalogue() -> dict[str, ProviderConfig]:
     }
 
 
-def _large_tier_agent(name: str, skill: str) -> AgentIdentity:
-    """An agent configured on the large tier (flat keeps it there)."""
+def _small_tier_agent(name: str, skill: str) -> AgentIdentity:
+    """An agent whose roster binding is the cheap tier.
+
+    Both arms start from the operator's own choice. ``flat`` keeps it for
+    every subtask; ``stakes_aware`` keeps it too, except where the stakes
+    floor is above it, which is the only reason it may move.
+    """
     return AgentIdentity(
         id=as_uuid(name),
         name=name,
@@ -242,11 +275,14 @@ def _large_tier_agent(name: str, skill: str) -> AgentIdentity:
         authority=Authority(budget_limit=100.0),
         model=ModelConfig(
             provider=_PROVIDER,
-            model_id=_TIER_MODEL_IDS["large"],
-            model_tier="large",
+            model_id=_TIER_MODEL_IDS["small"],
+            model_tier="small",
         ),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
+        # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
+        # excludes; the scripted turns call it, so it is allowed by name.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
     )
 
 
@@ -291,8 +327,8 @@ async def _build_pipeline(
     registry = ProviderRegistry({_PROVIDER: provider})
     agent_registry = AgentRegistryService()
     for agent in (
-        _large_tier_agent("debugger", _DEBUG_SKILL),
-        _large_tier_agent("dba", _DATABASE_SKILL),
+        _small_tier_agent("debugger", _DEBUG_SKILL),
+        _small_tier_agent("dba", _DATABASE_SKILL),
     ):
         await agent_registry.register(agent)
 
@@ -374,17 +410,19 @@ async def _run_brief(
     return await cost_tracker.get_total_cost()
 
 
-async def test_stakes_aware_costs_less_than_flat_on_mixed_brief(
+async def test_stakes_aware_spends_more_only_where_the_stakes_demand_it(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    """Stakes-aware routing accrues strictly less cost than the flat arm.
+    """Stakes-aware routing moves a model up for stakes, and never down.
 
-    The flat arm keeps every subtask on the agent's configured large
-    tier; stakes-aware routes the low-stakes subtask down to the cheap
-    tier, so the same brief costs less end-to-end with no quality-floor
-    regression (each selected tier still clears its per-stakes floor).
+    Both arms start from the same roster binding, the cheap tier the
+    operator chose. The flat arm keeps it for both subtasks. Stakes-aware
+    keeps it for the low-stakes one and routes only the critical one up to
+    clear its floor, so the same brief costs strictly more: the difference
+    is the escalation the stakes bought, not a cheaper model substituted
+    for the operator's choice.
     """
     await persistence.projects.create(_project("proj-aware"))
     await persistence.projects.create(_project("proj-flat"))
@@ -406,4 +444,4 @@ async def test_stakes_aware_costs_less_than_flat_on_mixed_brief(
 
     assert aware_cost > 0.0
     assert flat_cost > 0.0
-    assert aware_cost < flat_cost
+    assert aware_cost > flat_cost

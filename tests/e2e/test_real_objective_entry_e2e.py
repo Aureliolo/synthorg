@@ -27,12 +27,18 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
-from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.agent import (
+    AgentIdentity,
+    ModelConfig,
+    SkillSet,
+    ToolPermissions,
+)
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.pipeline.entry.boot import _project_uuid
@@ -46,6 +52,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.drivers.scripted import ScriptedDriver
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -80,9 +87,11 @@ class _StopStrategy:
     The multi-agent coordinator's decomposition stage invokes the LLM
     with a ``submit_decomposition_plan`` tool definition; the strategy
     returns a structured single-subtask plan so the decomposer parses
-    a valid response. Every other turn (agent execution) returns a
-    plain STOP completion so the worker execution service drives the
-    subtask past ASSIGNED through to a post-execution status.
+    a valid response. An agent-execution turn calls one tool and then
+    answers, so the worker execution service drives the subtask past
+    ASSIGNED to a delivered post-execution status: a run that declares
+    deliverables and calls nothing is a silent no-op the engine fails
+    on purpose.
     """
 
     def next_response(
@@ -92,7 +101,7 @@ class _StopStrategy:
         tools: list[ToolDefinition] | None,
         config: CompletionConfig | None,
     ) -> CompletionResponse:
-        del messages, config
+        del config
         usage = TokenUsage(input_tokens=8, output_tokens=4, cost=0.0)
         is_decomposition = tools is not None and any(
             t.name == _DECOMPOSITION_TOOL for t in tools
@@ -114,15 +123,33 @@ class _StopStrategy:
                                     "description": (
                                         "Investigate the work the objective describes."
                                     ),
+                                    "stakes": "normal",
+                                    "required_role": "developer",
                                     "required_skills": [_RESEARCH_SKILL],
                                     "acceptance_criteria": [
                                         "The release scope is documented.",
                                     ],
-                                    "expected_artifacts": ["docs/release-scope.md"],
+                                    # Prose, not a path: this harness runs no
+                                    # real editor, and the artifact probe asks
+                                    # the workspace only about path-shaped
+                                    # declarations.
+                                    "expected_artifacts": [
+                                        "a documented release scope"
+                                    ],
                                 },
                             ],
                         },
                     ),
+                ),
+                finish_reason=FinishReason.TOOL_USE,
+                usage=usage,
+                model=model,
+            )
+        if not any(m.role is MessageRole.TOOL for m in messages):
+            return CompletionResponse(
+                content=None,
+                tool_calls=(
+                    ToolCall(id="work-1", name="echo", arguments={"message": "done"}),
                 ),
                 finish_reason=FinishReason.TOOL_USE,
                 usage=usage,
@@ -147,6 +174,9 @@ def _make_agent() -> AgentIdentity:
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,
+        # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
+        # excludes; the scripted turns call it, so it is allowed by name.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
     )
 
 

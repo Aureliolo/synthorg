@@ -29,6 +29,26 @@ def validate_iso8601_deadline(deadline: str | None) -> None:
         raise ValueError(msg)
 
 
+def set_field_names(**fields: object) -> str:
+    """Name the supplied fields that carry a value.
+
+    For a cross-field validator whose message would otherwise say only
+    that the shape is wrong: the caller passes the fields the rejected
+    variant forbids, and the result names the ones actually set, so the
+    error points at what to remove rather than at the rule.
+
+    Args:
+        **fields: Candidate fields by name; pass ``None`` for any whose
+            unset form is not ``None`` (``flag or None`` for a bool).
+
+    Returns:
+        A comma-separated list of the field names whose value is not
+        ``None``, empty when every one of them is unset. The caller reads
+        it as a truthy "something is wrong, and here is which".
+    """
+    return ", ".join(name for name, value in fields.items() if value is not None)
+
+
 def is_valid_action_type(action_type: str) -> bool:
     """Check whether ``action_type`` follows ``category:action`` format.
 

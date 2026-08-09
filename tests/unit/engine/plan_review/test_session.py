@@ -19,6 +19,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.errors import PlanReviewUnavailableError
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
 from synthorg.engine.plan_review.session import AgentSessionPlanReviewPanel
 from tests._shared import FakeClock, as_uuid, sid
@@ -111,50 +112,63 @@ class TestAgentSessionPlanReviewPanel:
         panel = _panel(provider)
         reviewer = _agent("cfo", role="CFO")
 
-        review = await panel.review(
+        outcome = await panel.review(
             task=_task(), plan=_plan(), agents=(reviewer,), owner=None
         )
 
+        review = outcome.review
         assert review is not None
+        assert outcome.absent_reason is None
         assert review.verdict is PlanReviewVerdict.CONCERNS
         assert len(review.reviewers) == 1
         assert review.reviewers[0].reviewer_role == "CFO"
         assert review.reviewers[0].findings[0].detail == "over budget"
 
-    async def test_no_panel_when_only_owner_available(self) -> None:
+    async def test_no_panel_seated_says_so(self) -> None:
+        """An un-panelled plan carries the reason, not a blank review."""
         provider = ScriptedProvider([])
         panel = _panel(provider)
         owner = _agent("owner", role="CTO")
 
-        review = await panel.review(
+        outcome = await panel.review(
             task=_task(), plan=_plan(), agents=(owner,), owner=owner
         )
 
-        assert review is None
+        assert outcome.review is None
+        assert outcome.absent_reason is not None
+        assert "no eligible reviewer" in outcome.absent_reason
         assert provider.call_count == 0
 
-    async def test_no_verdict_submitted_yields_no_review(self) -> None:
-        # The reviewer reasons but never submits; the panel returns None rather
-        # than fabricating a verdict.
+    async def test_no_verdict_submitted_says_so(self) -> None:
+        """The reviewer reasoned and never submitted: no verdict, and a reason.
+
+        The plan still parks (a greenlight is never blocked on the panel), but
+        the operator is told it carries zero quality signal rather than shown
+        an empty review section that reads like approval.
+        """
         provider = ScriptedProvider([make_text_response("still thinking")])
         panel = _panel(provider)
         reviewer = _agent("cto", role="CTO")
 
-        review = await panel.review(
+        outcome = await panel.review(
             task=_task(), plan=_plan(), agents=(reviewer,), owner=None
         )
 
-        assert review is None
+        assert outcome.review is None
+        assert outcome.absent_reason is not None
+        assert "no reviewer submitted a verdict" in outcome.absent_reason
 
-    async def test_reviewer_session_failure_degrades_without_raising(self) -> None:
-        # A failing reviewer session must never abort the whole gated-plan flow:
-        # the panel degrades to no review (a greenlight is never blocked on it).
+    async def test_every_reviewer_failing_on_its_provider_raises(self) -> None:
+        """A plan nobody could review must not park as one nobody objected to.
+
+        The whole panel failing is an outage, not a quiet panel, so plan
+        preparation fails and the caller marks the plan FAILED with the reason.
+        """
         provider = ScriptedProvider(error=RuntimeError("provider down"))
         panel = _panel(provider)
         reviewer = _agent("cto", role="CTO")
 
-        review = await panel.review(
-            task=_task(), plan=_plan(), agents=(reviewer,), owner=None
-        )
-
-        assert review is None
+        with pytest.raises(PlanReviewUnavailableError, match="not reviewed at all"):
+            await panel.review(
+                task=_task(), plan=_plan(), agents=(reviewer,), owner=None
+            )

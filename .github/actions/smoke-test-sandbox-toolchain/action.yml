@@ -1,0 +1,68 @@
+name: 'Smoke-test sandbox toolchain'
+description: |
+  Run the sandbox image's own toolchain and fail if it warns about
+  itself. The sandbox executes every agent command, so whatever its
+  interpreters print on stderr is captured into each run's evidence and
+  read as if the agent's own command produced it.
+
+  The pairing this guards is not hypothetical: `nodejs-<major>` and
+  `npm` are separate Wolfi packages resolved independently, so a node
+  major the shipped npm does not declare support for installs cleanly
+  and then prints its unsupported-engine banner on every single npm
+  invocation, in every agent's captured stderr, for as long as nobody
+  notices.
+
+inputs:
+  image:
+    description: |
+      Image reference to run. Must be loadable via `docker run` (already
+      in the local daemon from a preceding build, or pullable).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Node and npm agree on the node major
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        # Every probe is bounded here rather than only by the caller's
+        # step timeout: a composite action's own steps cannot declare
+        # timeout-minutes, so an image whose interpreter hangs on --version
+        # would otherwise burn the whole job budget.
+        node_version="$(timeout 60 docker run --rm --entrypoint node "${IMAGE}" --version)"
+        # One invocation, with stdout and stderr captured separately: stderr
+        # is the assertion target (a banner printed alongside a SUCCESSFUL
+        # --version is exactly the failure this step exists to catch), and
+        # merging them would hide the banner inside the version string.
+        # Running npm twice instead would let the two runs disagree and
+        # would need a `|| true` that swallows a genuine npm crash.
+        out="${RUNNER_TEMP}/npm-version.out"
+        err="${RUNNER_TEMP}/npm-version.err"
+        status=0
+        timeout 60 docker run --rm --entrypoint npm "${IMAGE}" --version \
+          >"${out}" 2>"${err}" || status=$?
+        npm_version="$(cat "${out}")"
+        npm_err="$(cat "${err}")"
+        if [ "${status}" -ne 0 ]; then
+          echo "::error::sandbox npm --version exited ${status}:"
+          cat "${err}"
+          exit 1
+        fi
+        echo "node ${node_version} / npm ${npm_version}"
+        if [ -n "${npm_err}" ]; then
+          echo "::error::sandbox npm printed to stderr on a plain --version:"
+          echo "${npm_err}"
+          echo "Pin docker/sandbox/apko.yaml to a node major this npm supports."
+          exit 1
+        fi
+
+    - name: Python runs
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        timeout 60 docker run --rm --entrypoint python "${IMAGE}" --version

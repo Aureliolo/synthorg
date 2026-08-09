@@ -45,15 +45,15 @@ class AuthContext:
 
 
 def _raise_unresolved_credential(
-    provider_name: str, litellm_model: str, kind: str
+    provider_name: str, litellm_model: str, kind: str, detail: str
 ) -> NoReturn:
-    """Fail closed when a wired catalog did not resolve the credential.
+    """Fail closed when the credential this auth type requires is absent.
 
     Raises:
         AuthenticationError: Always.
     """
     logger.error(PROVIDER_AUTH_ERROR, provider=provider_name, model=litellm_model)
-    msg = f"{kind} credentials were not resolved from the catalog"
+    msg = f"{kind} credentials {detail}"
     raise errors.AuthenticationError(msg, context={"provider": provider_name})
 
 
@@ -126,11 +126,20 @@ def _resolve_custom_header(ctx: AuthContext) -> Mapping[str, str] | None:
 def _unresolved(ctx: AuthContext, kind: str) -> AuthMaterial:
     """Answer for an auth type whose credential nothing supplied.
 
-    A wired catalog owed this credential, so not having it is a failure
-    rather than a licence to send the request on unauthenticated: that
-    would leak the prompt to an endpoint that never accepted it. With no
-    catalog wired at all (the degraded and test paths) there was nothing
-    to resolve from, and omitting the credential is the honest answer.
+    Two shapes fail closed, because sending the request on unauthenticated
+    would leak the prompt to an endpoint that never accepted it.
+
+    A wired catalog owed this credential, so not having it is a failure.
+
+    A provider config naming a ``connection_name`` has declared that its
+    credential lives in the catalog, so reaching dispatch with no catalog
+    bound is a wiring failure, not a licence to omit: a registry swapped in
+    without the catalog produced exactly that, and the request went out with
+    no key and came back with the gateway's own unrelated complaint about a
+    missing environment variable.
+
+    Only a config naming no connection has nowhere to have resolved from, and
+    for it omitting the credential is the honest answer.
 
     Args:
         ctx: The resolution context, read for the catalog and the names
@@ -138,13 +147,29 @@ def _unresolved(ctx: AuthContext, kind: str) -> AuthMaterial:
         kind: What the missing credential is called, for the error.
 
     Returns:
-        Empty material, on the catalog-less path only.
+        Empty material, for a config naming no connection and no catalog.
 
     Raises:
-        AuthenticationError: If a catalog is wired.
+        AuthenticationError: If a catalog is wired, or the config names a
+            connection whose catalog is not bound.
     """
     if ctx.catalog_present:
-        _raise_unresolved_credential(ctx.provider_name, ctx.litellm_model, kind)
+        _raise_unresolved_credential(
+            ctx.provider_name,
+            ctx.litellm_model,
+            kind,
+            "were not resolved from the catalog",
+        )
+    if ctx.config.connection_name is not None:
+        _raise_unresolved_credential(
+            ctx.provider_name,
+            ctx.litellm_model,
+            kind,
+            (
+                f"live in connection {ctx.config.connection_name!r} but no "
+                "credential catalog is bound to this driver"
+            ),
+        )
     return AuthMaterial()
 
 
@@ -163,9 +188,10 @@ def _resolve_subscription(ctx: AuthContext) -> str | None:
 def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
     """Resolve a provider's credential per its auth type.
 
-    Catalog-resolved credentials win. A wired-but-unresolved catalog
-    fails closed (an unauthenticated request would leak the prompt),
-    while the catalog-less degraded/test path omits the credential.
+    Catalog-resolved credentials win. A wired-but-unresolved catalog fails
+    closed, as does a config naming a connection with no catalog bound (an
+    unauthenticated request would leak the prompt); only a config naming no
+    connection omits the credential.
 
     Shared by completion and embedding dispatch so one auth type cannot
     mean two different things depending on which call is being made.
@@ -174,8 +200,8 @@ def resolve_auth_material(ctx: AuthContext) -> AuthMaterial:
         The credential material to put on the outbound request.
 
     Raises:
-        AuthenticationError: If a wired catalog did not resolve a
-            credential the auth type requires.
+        AuthenticationError: If the credential the auth type requires was
+            not resolved and the config expected it to be.
     """
     # Every arm returns, so the match has to stay exhaustive over
     # AuthType: a new member added without an arm here falls off the end
@@ -211,9 +237,9 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
 
     Raises:
         AuthenticationError: Propagated from :func:`resolve_auth_material`
-            when a wired catalog did not resolve a credential the auth type
-            requires; sending the request unauthenticated would leak the
-            prompt to an endpoint that never accepted it.
+            when the credential the auth type requires was not resolved and
+            the config expected it to be; sending the request unauthenticated
+            would leak the prompt to an endpoint that never accepted it.
     """
     material = resolve_auth_material(ctx)
     if material.api_key is not None:

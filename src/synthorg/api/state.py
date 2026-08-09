@@ -271,9 +271,22 @@ class AppState(AppStateSliceMixin):
     # Public names preserved for the boot install + ``post_setup_reinit``.
 
     def swap_provider_registry(self, registry: ProviderRegistry) -> None:
-        """Hot-replace the provider registry (setup-complete reinit)."""
+        """Hot-replace the provider registry, credentials attached.
+
+        Binding the always-on credential catalog happens here because this is
+        the one place a registry becomes the live one. A replacement is built
+        by whoever rewrote the provider config (the management service, the
+        settings subscriber, the boot reload), and none of them holds the
+        catalog; a registry that arrived without it dispatched every call
+        unauthenticated, and only the features wired before the swap kept
+        working, so the failure looked like a single broken subsystem.
+        """
+        from synthorg.integrations.state import (  # noqa: PLC0415
+            provider_credential_catalog_of,
+        )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
+        registry.bind_credential_catalog(provider_credential_catalog_of(self))
         self.wire(ProvidersStateSlice, registry=registry)
 
     def set_worker_execution_service(

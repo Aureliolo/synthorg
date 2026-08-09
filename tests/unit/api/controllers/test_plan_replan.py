@@ -67,9 +67,16 @@ def _plan(status: PlanStatus) -> Plan:
     )
 
 
-def _task(item_id: str, status: TaskStatus) -> Task:
-    # A CREATED task carries no assignee; anything past it does.
-    assigned = None if status is TaskStatus.CREATED else sid("agent-1")
+def _task(
+    item_id: str,
+    status: TaskStatus,
+    *,
+    unassigned: bool = False,
+) -> Task:
+    # A CREATED task carries no assignee; anything past it does, unless the
+    # caller asks for the shape a task takes when it failed before it was ever
+    # assigned.
+    assigned = None if unassigned or status is TaskStatus.CREATED else sid("agent-1")
     return Task(
         id=as_uuid(item_id),
         title="Child",
@@ -218,6 +225,30 @@ class TestReplan:
 
         targets = [call.args[1] for call in engine.transition_task.await_args_list]
         assert targets == [TaskStatus.REJECTED]
+
+    async def test_a_task_that_failed_before_assignment_cancels_in_one_hop(
+        self,
+    ) -> None:
+        """The teardown no longer detours through a hop the task cannot take.
+
+        Routing abandonment via ASSIGNED assumed the task keeps its assignee.
+        A task that failed before it was ever assigned has none, the hop failed
+        the Task validator, and the raw error escaped as a 422 that repeated on
+        every retry. With the row unresolvable its plan and its project could
+        not be deleted either.
+        """
+        state, _, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.FAILED, unassigned=True),
+        )
+        backend_plan = _plan(PlanStatus.EXECUTING)
+
+        await replan_initiative(
+            state, backend_plan, revision=_REVISION, requested_by="admin"
+        )
+
+        targets = [call.args[1] for call in engine.transition_task.await_args_list]
+        assert targets == [TaskStatus.CANCELLED]
 
     async def test_work_finished_during_the_drain_is_skipped(self) -> None:
         """A task terminal in persistence is not driven through a dead transition.

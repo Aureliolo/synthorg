@@ -20,6 +20,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_DRIVER_WRAPPED,
+    PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED,
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,
@@ -62,6 +63,7 @@ class ProviderRegistry:
         drivers: dict[str, BaseCompletionProvider],
         *,
         cassette_session: CassetteSession | None = None,
+        credential_catalog: ConnectionCatalog | None = None,
     ) -> None:
         """Initialize with a name -> driver mapping.
 
@@ -73,11 +75,15 @@ class ProviderRegistry:
                 app shutdown hook can emit the session-flushed event;
                 data durability does not depend on it (the session
                 persists after every recorded interaction).
+            credential_catalog: The catalog already bound onto *drivers* at
+                construction, recorded so :meth:`bind_credential_catalog` can
+                tell a first bind from an unbind.
         """
         self._drivers: MappingProxyType[str, BaseCompletionProvider] = MappingProxyType(
             dict(drivers)
         )
         self._cassette_session = cassette_session
+        self._credential_catalog: ConnectionCatalog | None = credential_catalog
 
     @property
     def cassette_session(self) -> CassetteSession | None:
@@ -89,13 +95,33 @@ class ProviderRegistry:
 
         Boot order can build the provider registry before the always-on
         credential catalog is wired (the catalog needs a connected
-        persistence backend). Callers that hold the catalog later (the
-        runtime engine assembly) invoke this so every driver resolves
-        ``connection_name`` credentials at call time. Idempotent. Drivers
-        that do not use catalog-backed credentials inherit a no-op.
+        persistence backend), so a later caller holding the catalog binds it
+        here and every driver resolves ``connection_name`` credentials at call
+        time. Idempotent. Drivers that do not use catalog-backed credentials
+        inherit a no-op.
+
+        A ``None`` over an already-bound catalog is refused. Binding is
+        additive by design: the only reason to pass ``None`` is that the
+        caller has no catalog to offer, and letting that unbind a working one
+        turns a wiring gap into an authentication outage for every subsequent
+        dispatch, which is exactly what a mid-boot registry swap produced.
+        Clearing a genuinely stale catalog is a rebind with the new one.
         """
+        if catalog is None and self._credential_catalog is not None:
+            logger.warning(
+                PROVIDER_CREDENTIAL_CATALOG_BIND_REFUSED,
+                providers=sorted(self._drivers),
+                reason="would_unbind_live_catalog",
+            )
+            return
+        self._credential_catalog = catalog
         for driver in self._drivers.values():
             driver.bind_credential_catalog(catalog)
+
+    @property
+    def credential_catalog(self) -> ConnectionCatalog | None:
+        """The catalog currently bound onto this registry's drivers."""
+        return self._credential_catalog
 
     def get(self, name: str) -> BaseCompletionProvider:
         """Look up a driver by provider name.
@@ -272,8 +298,9 @@ class ProviderRegistry:
             PROVIDER_REGISTRY_BUILT,
             provider_count=len(drivers),
             providers=sorted(drivers),
+            credential_catalog_bound=connection_catalog is not None,
         )
-        return cls(drivers)
+        return cls(drivers, credential_catalog=connection_catalog)
 
     @classmethod
     def _build_cassette_registry(
@@ -346,8 +373,13 @@ class ProviderRegistry:
             PROVIDER_REGISTRY_BUILT,
             provider_count=len(drivers),
             providers=sorted(drivers),
+            credential_catalog_bound=connection_catalog is not None,
         )
-        return cls(drivers, cassette_session=session)
+        return cls(
+            drivers,
+            cassette_session=session,
+            credential_catalog=connection_catalog,
+        )
 
 
 def _apply_global_retry_default(

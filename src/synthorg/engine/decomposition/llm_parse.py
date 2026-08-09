@@ -13,7 +13,11 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from synthorg.core.plan_validation import describe_unroutable_role
+from synthorg.core.plan_validation import (
+    describe_structureless_graph,
+    describe_unroutable_role,
+    describe_unstated_reference,
+)
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse_subtask import (
@@ -43,6 +47,12 @@ _TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
 _TOPOLOGY_MAP: Final[dict[str, CoordinationTopology]] = {
     t.value: t for t in CoordinationTopology
 }
+
+#: Structures that promise an ordering. Declaring one and then declaring no
+#: dependencies leaves dispatch with a graph that says the opposite.
+_ORDERED_STRUCTURES: Final[frozenset[TaskStructure]] = frozenset(
+    {TaskStructure.SEQUENTIAL, TaskStructure.MIXED}
+)
 
 _MARKDOWN_FENCE_RE = re.compile(
     r"```(?:json)?\s*\n(.*?)\n\s*```",
@@ -119,6 +129,40 @@ def _validate_roles(
             raise DecompositionError(detail)
 
 
+def _validate_graph(
+    subtasks: tuple[SubtaskDefinition, ...],
+    structure: TaskStructure,
+) -> None:
+    """Reject a plan whose graph contradicts what the plan says about itself.
+
+    Both checks are correctable in-session for the same reason the roster
+    check is: the planner can restate the dependencies it meant. Discovered
+    at dispatch instead, the plan has already been approved by an operator
+    who was shown an ordering that does not exist.
+
+    Args:
+        subtasks: The parsed subtasks, in plan order.
+        structure: The structure the planner declared.
+
+    Raises:
+        DecompositionError: When an ordered structure carries no edges, or an
+            item names another it declares no dependency on.
+    """
+    detail = describe_structureless_graph(
+        declared_sequential=structure in _ORDERED_STRUCTURES,
+        units=subtasks,
+    )
+    if detail is None:
+        for subtask in subtasks:
+            detail = describe_unstated_reference(unit=subtask, others=subtasks)
+            if detail is not None:
+                break
+    if detail is None:
+        return
+    logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=detail)
+    raise DecompositionError(detail)
+
+
 def _args_to_plan(
     args: dict[str, JsonValue],
     parent_task_id: str,
@@ -157,6 +201,7 @@ def _args_to_plan(
     _validate_roles(subtasks, available_roles)
 
     structure = _declared_structure(args)
+    _validate_graph(subtasks, structure)
     topology = enum_or_default(
         args.get("coordination_topology", "auto"),
         _TOPOLOGY_MAP,

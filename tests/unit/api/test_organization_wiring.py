@@ -16,6 +16,7 @@ from synthorg.api.lifecycle_helpers.organization_wiring import (
 )
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.organization._team_service import TeamService
 from synthorg.organization.state import OrganizationStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
@@ -53,9 +54,10 @@ class TestTeamServiceWiring:
         await wire_team_service(app_state)
         assert app_state.slice(OrganizationStateSlice).team_service is not None
 
-    async def test_absent_without_settings(self) -> None:
+    async def test_declines_naming_the_absent_settings_service(self) -> None:
         app_state = _app_state(with_settings=False)
-        await wire_team_service(app_state)
+        with pytest.raises(SubsystemDeclinedError, match="no settings service"):
+            await wire_team_service(app_state)
         assert app_state.slice(OrganizationStateSlice).team_service is None
 
     async def test_idempotent_keeps_existing_instance(self) -> None:
@@ -72,14 +74,16 @@ class TestCompanyReadServiceWiring:
         await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is not None
 
-    async def test_absent_without_resolver(self) -> None:
+    async def test_declines_naming_the_absent_resolver(self) -> None:
         app_state = _app_state(with_resolver=False)
-        await wire_company_read_service(app_state, None, connected=False)
+        with pytest.raises(SubsystemDeclinedError, match="no settings resolver"):
+            await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is None
 
-    async def test_absent_without_mutation(self) -> None:
+    async def test_declines_naming_the_absent_mutation_service(self) -> None:
         app_state = _app_state(with_mutation=False)
-        await wire_company_read_service(app_state, None, connected=False)
+        with pytest.raises(SubsystemDeclinedError, match="no org mutation service"):
+            await wire_company_read_service(app_state, None, connected=False)
         assert app_state.slice(OrganizationStateSlice).company_read_service is None
 
 

@@ -39,6 +39,7 @@ from synthorg.providers.models import (
 )
 
 from .conftest import (
+    make_credential_catalog,
     make_mock_response,
     make_mock_tool_call,
     make_provider_config,
@@ -57,10 +58,23 @@ def _make_driver(
     provider_name: str = "example-provider",
     config: ProviderConfig | None = None,
 ) -> LiteLLMDriver:
-    return LiteLLMDriver(
+    """Build a driver in the state a real one dispatches from.
+
+    Every config here names a ``connection_name``, and a driver whose
+    connection resolved nothing fails closed rather than sending an
+    unauthenticated request, so the resolution is seeded here for the tests
+    that call ``_build_kwargs`` directly without awaiting a dispatch.
+
+    Returns:
+        A driver with its catalog bound and its credentials resolved.
+    """
+    driver = LiteLLMDriver(
         provider_name,
         config or make_provider_config(),
+        connection_catalog=make_credential_catalog(),
     )
+    driver._resolved_credentials = {"api_key": "test-api-key"}
+    return driver
 
 
 def _user_message(
@@ -1070,7 +1084,9 @@ class TestKeepAlive:
     async def test_keep_alive_sent_to_ollama(self) -> None:
         # An explicit provider value overrides the bounded default.
         config = make_provider_config().model_copy(update={"keep_alive": "10m"})
-        driver = LiteLLMDriver("ollama", config)
+        driver = LiteLLMDriver(
+            "ollama", config, connection_catalog=make_credential_catalog()
+        )
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = make_mock_response()
             await driver.complete(_user_message(), "medium")
@@ -1079,7 +1095,11 @@ class TestKeepAlive:
     async def test_keep_alive_defaults_to_bounded_when_unset(self) -> None:
         # Unset must NOT defer to the server (which could pin forever);
         # SynthOrg sends a bounded default so its models self-unload.
-        driver = LiteLLMDriver("ollama", make_provider_config())
+        driver = LiteLLMDriver(
+            "ollama",
+            make_provider_config(),
+            connection_catalog=make_credential_catalog(),
+        )
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = make_mock_response()
             await driver.complete(_user_message(), "medium")
@@ -1089,7 +1109,9 @@ class TestKeepAlive:
         # A non-ollama provider must never receive keep_alive: it is not a
         # universal kwarg and would break drivers that reject unknown options.
         config = make_provider_config().model_copy(update={"keep_alive": "5m"})
-        driver = LiteLLMDriver("example-provider", config)
+        driver = LiteLLMDriver(
+            "example-provider", config, connection_catalog=make_credential_catalog()
+        )
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = make_mock_response()
             await driver.complete(_user_message(), "medium")

@@ -16,6 +16,7 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     JsonbQueryUnsupportedError,
@@ -57,9 +58,12 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameAggregate,
     FlightRecorderFrameFilterSpec,
 )
+from synthorg.persistence.lifecycle_transition_protocol import (
+    LifecycleTransitionFilterSpec,
+)
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
-from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.persistence.plan_protocol import PlanDeleteOutcome, PlanFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
@@ -88,6 +92,15 @@ class FakeTaskRepository:
 
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
+
+    @property
+    def tasks(self) -> tuple[Task, ...]:
+        """Every stored task, for a collaborator fake that must join on them.
+
+        Returns:
+            The tasks currently held, in insertion order.
+        """
+        return tuple(self._tasks.values())
 
     async def save(self, entity: Task) -> None:
         self._tasks[str(entity.id)] = entity
@@ -299,6 +312,46 @@ class FakeLifecycleEventRepository:
         if limit is not None:
             result = result[:limit]
         return tuple(result)
+
+
+class FakeLifecycleTransitionRepository:
+    """In-memory lifecycle transition ledger for tests."""
+
+    def __init__(self) -> None:
+        self.transitions: list[LifecycleTransition] = []
+
+    async def append(self, event: LifecycleTransition) -> None:
+        # Idempotent on id, as both backends are: the ledger retries the same
+        # object after a lost response, and a fake that doubled the row would
+        # pass a test the real repositories fail.
+        if any(existing.id == event.id for existing in self.transitions):
+            return
+        self.transitions.append(event)
+
+    async def query(
+        self,
+        filter_spec: LifecycleTransitionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[LifecycleTransition, ...]:
+        rows = self.transitions
+        if filter_spec.entity_kind is not None:
+            rows = [r for r in rows if r.entity_kind == filter_spec.entity_kind]
+        if filter_spec.entity_id is not None:
+            rows = [r for r in rows if r.entity_id == filter_spec.entity_id]
+        # Both backends order by ``occurred_at DESC, id DESC``. Tests drive
+        # the ledger with a FakeClock, so many rows share one instant; without
+        # the id tie-break this fake would keep insertion order among them and
+        # a row-order assertion would pass here and fail against a real one.
+        rows = sorted(rows, key=lambda r: (r.occurred_at, str(r.id)), reverse=True)
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        kept = [r for r in self.transitions if r.occurred_at >= threshold]
+        removed = len(self.transitions) - len(kept)
+        self.transitions = kept
+        return removed
 
 
 class FakeTaskMetricRepository:
@@ -1363,10 +1416,15 @@ class FakeProjectRepository:
 
 
 class FakePlanRepository:
-    """In-memory plan repository for tests."""
+    """In-memory plan repository for tests.
 
-    def __init__(self) -> None:
+    Holds the task repository because the guarded delete asks a question
+    that spans both tables; the real backends answer it in one statement.
+    """
+
+    def __init__(self, *, task_repo: FakeTaskRepository | None = None) -> None:
         self._plans: dict[str, Plan] = {}
+        self._task_repo = task_repo
 
     async def create(self, plan: Plan) -> None:
         if str(plan.id) in self._plans:
@@ -1438,6 +1496,44 @@ class FakePlanRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._plans.pop(entity_id, None) is not None
+
+    async def delete_if_no_live_tasks(
+        self,
+        entity_id: NotBlankStr,
+        *,
+        terminal_statuses: frozenset[str],
+    ) -> PlanDeleteOutcome:
+        """Delete a plan only while nothing is still building under it.
+
+        Returns:
+            The outcome of the guarded delete.
+
+        Raises:
+            RuntimeError: When this fake was built without a task repository.
+                The real backends answer the guard by joining the two tables,
+                so a fake that cannot see tasks would report "no live tasks"
+                from a repository with no way to observe one, and a test
+                written against it would pass through a regressed guard.
+        """
+        if self._task_repo is None:
+            msg = (
+                "FakePlanRepository cannot answer the live-task guard without "
+                "a task_repo; construct it with one"
+            )
+            raise RuntimeError(msg)
+        if entity_id not in self._plans:
+            return PlanDeleteOutcome(deleted=False)
+        live = sum(
+            1
+            for task in self._task_repo.tasks
+            if task.plan_id is not None
+            and str(task.plan_id) == str(entity_id)
+            and task.status.value not in terminal_statuses
+        )
+        if live:
+            return PlanDeleteOutcome(deleted=False, live_task_count=live)
+        del self._plans[entity_id]
+        return PlanDeleteOutcome(deleted=True)
 
 
 class FakePlanItemCommentRepository:

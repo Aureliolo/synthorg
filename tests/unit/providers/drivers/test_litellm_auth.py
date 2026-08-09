@@ -78,16 +78,28 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config, resolved={"api_key": "sk-test"})
         assert kwargs["api_key"] == "sk-test"
 
-    def test_build_kwargs_api_key_none_omitted_without_catalog(self) -> None:
+    def test_build_kwargs_api_key_no_catalog_with_connection_fails_closed(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
             connection_name="provider-test",
         )
-        # No catalog wired (degraded boot / unit path): the key is omitted
-        # rather than failing closed. Fail-closed is reserved for the
-        # catalog-present-but-unresolved case (tested below).
-        kwargs = _build_kwargs(config)
-        assert "api_key" not in kwargs
+        # The config declares its key lives in a connection, so reaching
+        # dispatch with no catalog bound is a wiring failure. Omitting the key
+        # sent the request out unauthenticated and the gateway answered with
+        # its own unrelated complaint about a missing environment variable.
+        with pytest.raises(errors.AuthenticationError, match="provider-test"):
+            _build_kwargs(config)
+
+    def test_build_kwargs_oauth_no_catalog_with_connection_fails_closed(self) -> None:
+        config = _make_config(
+            auth_type=AuthType.OAUTH,
+            connection_name="provider-oauth",
+            oauth_token_url="https://auth.example.com/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="client-secret",
+        )
+        with pytest.raises(errors.AuthenticationError, match="provider-oauth"):
+            _build_kwargs(config)
 
     def test_build_kwargs_api_key_catalog_present_unresolved_fails_closed(
         self,

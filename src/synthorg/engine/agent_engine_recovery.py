@@ -1,85 +1,45 @@
-"""Recovery and checkpoint-resume mixin for :class:`AgentEngine`."""
+"""Recovery mixin for :class:`AgentEngine`.
+
+Owns the decision half of recovery: run the configured strategy on an error
+outcome, and either resume from its checkpoint or carry its updated task
+execution forward. The resume mechanics live in
+:class:`AgentEngineCheckpointResumeMixin`, which this inherits, so the engine
+still sees one flat surface.
+"""
 
 from typing import TYPE_CHECKING
 
-from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
-from synthorg.engine.checkpoint.resume import (
-    cleanup_checkpoint_artifacts,
-    deserialize_and_reconcile,
+from synthorg.engine.agent_engine_checkpoint_resume import (
+    AgentEngineCheckpointResumeMixin,
 )
-from synthorg.engine.context import AgentContext
-from synthorg.engine.cost_recording import record_execution_costs
+from synthorg.engine.checkpoint.resume import deserialize_and_reconcile
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
     ProjectNotFoundError,
 )
-from synthorg.engine.loop_protocol import (
-    BudgetChecker,
-    ExecutionResult,
-    TerminationReason,
-    make_budget_checker,
-)
-from synthorg.engine.recovery import (
-    FailureCategory,
-    RecoveryResult,
-    RecoveryStrategy,
-)
-from synthorg.engine.task_sync import apply_post_execution_transitions
+from synthorg.engine.failure_classification import FailureCategory
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_FAILED,
-    EXECUTION_RESUME_COMPLETE,
     EXECUTION_RESUME_FAILED,
-    EXECUTION_RESUME_START,
 )
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.budget.enforcer import BudgetEnforcer
-    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.core.effective_autonomy import EffectiveAutonomy
-    from synthorg.engine._agent_engine_callables import (
-        MakeLoopWithCallback,
-        MakeToolInvoker,
-        ResolveLoop,
-        ValidateProject,
-    )
-    from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
-    from synthorg.persistence.project_protocol import ProjectRepository
 
 logger = get_logger(__name__)
 
 
-class AgentEngineRecoveryMixin:
+class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
     """Mixin providing recovery and checkpoint-resume helpers."""
-
-    _recovery_strategy: RecoveryStrategy | None
-    _project_repo: ProjectRepository | None
-    _validate_project: ValidateProject
-    _budget_enforcer: BudgetEnforcer | None
-    _loop: ExecutionLoop
-    _resolve_loop: ResolveLoop
-    _make_loop_with_callback: MakeLoopWithCallback
-    _provider: CompletionProvider
-    _make_tool_invoker: MakeToolInvoker
-    _shutdown_checker: ShutdownChecker | None
-    _cost_tracker: CostTrackerProtocol | None
-    _task_engine: TaskEngine | None
-    _artifact_probe: ExpectedArtifactProbe | None
-    _approval_store: ApprovalStoreProtocol | None
-    _checkpoint_repo: CheckpointRepository | None
-    _heartbeat_repo: HeartbeatRepository | None
 
     async def _apply_recovery(
         self,
@@ -110,41 +70,22 @@ class AgentEngineRecoveryMixin:
             BudgetExhaustedError: Re-raised from the strategy when
                 resume cost would exceed the remaining budget.
         """
-        if self._recovery_strategy is None:
+        if (
+            self._recovery_strategy is None
+            or execution_result.context.task_execution is None
+        ):
             return execution_result, None
-        ctx = execution_result.context
-        if ctx.task_execution is None:
-            return execution_result, None
-
-        error_msg = execution_result.error_message or "Unknown error"
         try:
-            recovery_result = await self._recovery_strategy.recover(
-                task_execution=ctx.task_execution,
-                error_message=error_msg,
-                context=ctx,
+            return await self._run_recovery(
+                execution_result,
+                identity,
+                agent_id,
+                task_id,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
+                provider=provider,
+                project_id=project_id,
             )
-
-            if recovery_result.can_resume:
-                resumed = await self._resume_from_checkpoint(
-                    recovery_result,
-                    identity,
-                    ctx.task_execution.task,
-                    agent_id,
-                    task_id,
-                    completion_config=completion_config,
-                    effective_autonomy=effective_autonomy,
-                    provider=provider,
-                    project_id=project_id,
-                )
-                return resumed, recovery_result
-
-            updated_ctx = ctx.model_copy(
-                update={"task_execution": recovery_result.task_execution},
-            )
-            updated_result = execution_result.model_copy(
-                update={"context": updated_ctx},
-            )
-            return updated_result, recovery_result  # noqa: TRY300
         except ProjectNotFoundError, ProjectAgentNotMemberError:
             raise
         except BudgetExhaustedError:
@@ -161,107 +102,61 @@ class AgentEngineRecoveryMixin:
             )
             return execution_result, None
 
-    def _validate_checkpoint_json(
+    async def _run_recovery(
         self,
-        recovery_result: RecoveryResult,
-        agent_id: str,
-        task_id: str,
-    ) -> str:
-        """Return checkpoint JSON or raise if unexpectedly absent.
-
-        Returns:
-            The serialised checkpoint context JSON string from
-            ``recovery_result``.
-
-        Raises:
-            RuntimeError: If ``checkpoint_context_json`` is ``None``
-                despite the strategy reporting ``can_resume`` true.
-        """
-        if recovery_result.checkpoint_context_json is None:
-            logger.error(
-                EXECUTION_RESUME_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="checkpoint_context_json is None but can_resume was True",
-            )
-            msg = "checkpoint_context_json is None but can_resume was True"
-            raise RuntimeError(msg)
-        return recovery_result.checkpoint_context_json
-
-    async def _resume_from_checkpoint(  # noqa: PLR0913
-        self,
-        recovery_result: RecoveryResult,
+        execution_result: ExecutionResult,
         identity: AgentIdentity,
-        task: Task,
         agent_id: str,
         task_id: str,
         *,
-        completion_config: CompletionConfig | None = None,
-        effective_autonomy: EffectiveAutonomy | None = None,
-        provider: CompletionProvider | None = None,
-        project_id: str | None = None,
-    ) -> ExecutionResult:
-        """Resume execution from a checkpoint.
+        completion_config: CompletionConfig | None,
+        effective_autonomy: EffectiveAutonomy | None,
+        provider: CompletionProvider | None,
+        project_id: str | None,
+    ) -> tuple[ExecutionResult, RecoveryResult | None]:
+        """Run the strategy and apply whichever outcome it chose.
+
+        Split from :meth:`_apply_recovery` so the typed re-raises and the
+        best-effort swallow stay one flat handler chain around a single
+        call, rather than wrapping the recovery logic they must not catch
+        the wrong half of.
 
         Returns:
-            The :class:`ExecutionResult` from the resumed loop, after
-            post-execution cost recording and task-state transitions
-            have been applied.
+            ``(execution_result, recovery_result)``: the resumed execution
+            when the strategy could resume, else the original execution
+            carrying the strategy's updated task execution.
         """
-        project_budget = 0.0
-        if self._project_repo is not None:
-            project_budget = await self._validate_project(
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-            )
-            project_id = task.project
-
-        checkpoint_json = self._validate_checkpoint_json(
-            recovery_result,
-            agent_id,
-            task_id,
+        strategy = self._recovery_strategy
+        ctx = execution_result.context
+        execution = ctx.task_execution
+        # The caller narrowed both; repeated here because neither narrowing
+        # survives the call boundary.
+        if strategy is None or execution is None:
+            return execution_result, None
+        recovery_result = await strategy.recover(
+            task_execution=execution,
+            error_message=execution_result.error_message or "Unknown error",
+            context=ctx,
+            error_type=execution_result.error_type,
         )
-        logger.info(
-            EXECUTION_RESUME_START,
-            agent_id=agent_id,
-            task_id=task_id,
-            resume_attempt=recovery_result.resume_attempt,
-        )
-
-        try:
-            result, execution_id = await self._reconstruct_and_run_resume(
-                checkpoint_json,
-                recovery_result.error_message,
+        if recovery_result.can_resume:
+            resumed = await self._resume_from_checkpoint(
+                recovery_result,
+                identity,
+                execution.task,
                 agent_id,
                 task_id,
-                failure_category=recovery_result.failure_category,
-                criteria_failed=recovery_result.criteria_failed,
                 completion_config=completion_config,
                 effective_autonomy=effective_autonomy,
                 provider=provider,
                 project_id=project_id,
-                project_budget=project_budget,
             )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_RESUME_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-        else:
-            return await self._finalize_resume(
-                result,
-                identity,
-                execution_id,
-                agent_id,
-                task_id,
-                project_id=project_id,
-            )
+            return resumed, recovery_result
+        updated_ctx = ctx.model_copy(
+            update={"task_execution": recovery_result.task_execution},
+        )
+        updated = execution_result.model_copy(update={"context": updated_ctx})
+        return updated, recovery_result
 
     async def _reconstruct_and_run_resume(  # noqa: PLR0913
         self,
@@ -306,9 +201,11 @@ class AgentEngineRecoveryMixin:
         )
         return result, checkpoint_ctx.execution_id
 
-    async def _execute_resumed_loop(
+    async def _resume_from_checkpoint(  # noqa: PLR0913
         self,
-        checkpoint_ctx: AgentContext,
+        recovery_result: RecoveryResult,
+        identity: AgentIdentity,
+        task: Task,
         agent_id: str,
         task_id: str,
         *,
@@ -316,105 +213,51 @@ class AgentEngineRecoveryMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
-        project_budget: float = 0.0,
     ) -> ExecutionResult:
-        """Run the execution loop on a reconstituted checkpoint context.
+        """Resume execution from a checkpoint.
 
         Returns:
-            The :class:`ExecutionResult` from running the engine's
-            configured loop against the reconciled checkpoint context.
+            The :class:`ExecutionResult` from the resumed loop, after
+            post-execution cost recording and task-state transitions
+            have been applied.
         """
-        budget_checker: BudgetChecker | None
-        if checkpoint_ctx.task_execution is None:
-            budget_checker = None
-        elif self._budget_enforcer:
-            budget_checker = await self._budget_enforcer.make_budget_checker(
-                checkpoint_ctx.task_execution.task,
-                agent_id,
-                project_id=project_id,
-                project_budget=project_budget,
-            )
-        else:
-            budget_checker = make_budget_checker(
-                checkpoint_ctx.task_execution.task,
-            )
-
-        base_loop = self._loop
-        if checkpoint_ctx.task_execution is not None:
-            base_loop = await self._resolve_loop(
-                checkpoint_ctx.task_execution.task,
-                agent_id,
-                task_id,
-            )
-        loop = self._make_loop_with_callback(base_loop, agent_id, task_id)
-        result: ExecutionResult = await loop.execute(
-            context=checkpoint_ctx,
-            provider=provider or self._provider,
-            tool_invoker=self._make_tool_invoker(
-                checkpoint_ctx.identity,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-                project_id=project_id,
-            ),
-            budget_checker=budget_checker,
-            shutdown_checker=self._shutdown_checker,
-            completion_config=completion_config,
-        )
-        return result
-
-    async def _finalize_resume(
-        self,
-        result: ExecutionResult,
-        identity: AgentIdentity,
-        execution_id: str,
-        agent_id: str,
-        task_id: str,
-        *,
-        project_id: str | None = None,
-    ) -> ExecutionResult:
-        """Record costs, apply transitions, and clean up after resume.
-
-        Returns:
-            The :class:`ExecutionResult` with post-execution task-state
-            transitions applied; checkpoint artefacts are cleaned up
-            when the resumed run did not terminate with ``ERROR``.
-
-        Raises:
-            ExecutionStateError: When a post-execution transition cannot
-                land. The cleanup still runs first: a task whose state
-                could not be moved must not also leave its checkpoint and
-                heartbeat rows behind for a resume that will never come.
-        """
-        await record_execution_costs(
-            result,
-            identity,
+        prepared = await self._prepare_resume(
+            recovery_result,
+            task,
             agent_id,
             task_id,
-            tracker=self._cost_tracker,
             project_id=project_id,
         )
         try:
-            result = await apply_post_execution_transitions(
+            result, execution_id = await self._reconstruct_and_run_resume(
+                prepared.checkpoint_json,
+                recovery_result.error_message,
+                agent_id,
+                task_id,
+                failure_category=recovery_result.failure_category,
+                criteria_failed=recovery_result.criteria_failed,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
+                provider=provider,
+                project_id=prepared.project_id,
+                project_budget=prepared.project_budget,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_RESUME_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        else:
+            return await self._finalize_resume(
                 result,
-                agent_id=agent_id,
-                task_id=task_id,
-                task_engine=self._task_engine,
-                approval_store=self._approval_store,
-                artifact_probe=self._artifact_probe,
+                identity,
+                execution_id,
+                agent_id,
+                task_id,
+                project_id=prepared.project_id,
             )
-            logger.info(
-                EXECUTION_RESUME_COMPLETE,
-                agent_id=agent_id,
-                task_id=task_id,
-                termination_reason=result.termination_reason.value,
-            )
-        finally:
-            if result.termination_reason != TerminationReason.ERROR:
-                if self._recovery_strategy is not None:
-                    await self._recovery_strategy.finalize(execution_id)
-                await cleanup_checkpoint_artifacts(
-                    self._checkpoint_repo,
-                    self._heartbeat_repo,
-                    execution_id,
-                )
-        return result

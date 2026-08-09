@@ -43,6 +43,7 @@ from synthorg.core.plan_enums import (
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.core.validation import set_field_names
 
 #: Task statuses that count as work needing operator attention. Neither is a
 #: lifecycle state for the plan or project; both surface as derived counts.
@@ -123,6 +124,10 @@ class ItemProgress(BaseModel):
             whose task is not yet found).
         task_status: The task's persisted status, post verify gate.
         chosen_option_id: The option recorded for a ``DECISION`` item.
+        has_options: Whether a ``DECISION`` item offers anything to choose
+            between. An undecided item with none can be resolved by nobody,
+            which is the difference between waiting on a human and being
+            stuck; always ``False`` for a ``WORK`` item.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -141,14 +146,19 @@ class ItemProgress(BaseModel):
         default=None,
         description="Option recorded for a decision item",
     )
+    has_options: bool = Field(
+        default=False,
+        description="Whether a decision item offers options to choose from",
+    )
 
     @model_validator(mode="after")
     def _validate_kind_fields(self) -> ItemProgress:
         """Reject a progress record carrying the other kind's fields.
 
         A DECISION item never dispatches a task and a WORK item never records
-        a chosen option, so a record holding both is a construction mistake
-        whose only symptom would be a silently wrong done-ness verdict.
+        a chosen option or carries options, so a record holding both is a
+        construction mistake whose only symptom would be a silently wrong
+        done-ness verdict.
 
         Returns:
             The validated model.
@@ -157,12 +167,19 @@ class ItemProgress(BaseModel):
             ValueError: When the fields do not match ``kind``.
         """
         if self.kind is PlanItemKind.DECISION and (
-            self.task_id is not None or self.task_status is not None
+            offending := set_field_names(
+                task_id=self.task_id, task_status=self.task_status
+            )
         ):
-            msg = "A DECISION item carries no task"
+            msg = f"A DECISION item carries no task, but {offending} is set"
             raise ValueError(msg)
-        if self.kind is PlanItemKind.WORK and self.chosen_option_id is not None:
-            msg = "A WORK item records no chosen option"
+        if self.kind is PlanItemKind.WORK and (
+            offending := set_field_names(
+                chosen_option_id=self.chosen_option_id,
+                has_options=self.has_options or None,
+            )
+        ):
+            msg = f"A WORK item records no decision, but {offending} is set"
             raise ValueError(msg)
         return self
 
@@ -243,15 +260,10 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
 )
 
 
-def stall_reason(items: tuple[ItemProgress, ...]) -> StallReason | None:
-    """Classify whether a plan has run out of ways to advance.
+def _work_item_is_dead(item: ItemProgress) -> bool:
+    """Whether an outstanding WORK item can no longer move on its own.
 
-    A plan is stalled when it has outstanding work and *none* of it can move
-    without a new decision. That is a shape, not a duration, so there is no
-    threshold to tune and no timer to run: the derivation is exact the moment
-    the last live item dies.
-
-    Three cases are deliberately not stalls, each because replanning would
+    Three task states are deliberately not dead, each because replanning would
     destroy something. Work still moving (CREATED through IN_REVIEW) is simply
     in flight. A human wait (AWAITING_INPUT, AUTH_REQUIRED) is the org waiting
     on the operator, and a replan would discard the question. An item whose
@@ -261,17 +273,77 @@ def stall_reason(items: tuple[ItemProgress, ...]) -> StallReason | None:
     initiative during its own dispatch window.
 
     Returns:
+        ``True`` when the item's task is in a status nothing will move it out
+        of without a new decision.
+    """
+    return item.task_status in _DEAD_STATUSES
+
+
+def _decision_item_is_dead(item: ItemProgress) -> bool:
+    """Whether an undecided DECISION item can no longer be resolved by anyone.
+
+    A DECISION item never has a task row, so the WORK rule's "no task row yet"
+    carve-out never applies to it and asking it about ``task_status`` answered
+    ``None`` forever: the plan could not be classified as stalled no matter
+    what happened to it, so no replan could ever fire while the item itself
+    was unanswerable. Both exits were shut.
+
+    An undecided decision with options is a human wait, exactly like
+    AWAITING_INPUT: the org is waiting on the operator and replanning would
+    discard the question. With no options there is nothing for anyone to
+    choose, so it is dead and the plan replans instead of hanging.
+
+    Returns:
+        ``True`` when the item is undecided and offers nothing to decide.
+    """
+    return not item.has_options
+
+
+def _outstanding_is_dead(item: ItemProgress) -> bool:
+    """Dispatch the dead test on the item's kind.
+
+    Returns:
+        ``True`` when this outstanding item cannot move on its own.
+    """
+    if item.kind is PlanItemKind.DECISION:
+        return _decision_item_is_dead(item)
+    return _work_item_is_dead(item)
+
+
+def _is_failure_dead(item: ItemProgress) -> bool:
+    """Whether a dead item was attempted and did not survive.
+
+    An unanswerable decision was never attempted: nobody could act on it, so
+    it reads as blocked rather than failed.
+
+    Returns:
+        ``True`` when the item's work was attempted and died.
+    """
+    if item.kind is PlanItemKind.DECISION:
+        return False
+    return item.task_status in _DEAD_BY_FAILURE
+
+
+def stall_reason(items: tuple[ItemProgress, ...]) -> StallReason | None:
+    """Classify whether a plan has run out of ways to advance.
+
+    A plan is stalled when it has outstanding items and *none* of them can
+    move without a new decision. That is a shape, not a duration, so there is
+    no threshold to tune and no timer to run: the derivation is exact the
+    moment the last live item dies.
+
+    Returns:
         The reason, or ``None`` when the plan is done or can still advance.
     """
     outstanding = [item for item in items if not item_is_done(item)]
     if not outstanding:
         return None
-    statuses = [item.task_status for item in outstanding]
-    if not all(status in _DEAD_STATUSES for status in statuses):
+    if not all(_outstanding_is_dead(item) for item in outstanding):
         return None
-    if all(status in _DEAD_BY_FAILURE for status in statuses):
+    failure_dead = [_is_failure_dead(item) for item in outstanding]
+    if all(failure_dead):
         return StallReason.ALL_FAILED
-    if not any(status in _DEAD_BY_FAILURE for status in statuses):
+    if not any(failure_dead):
         return StallReason.BLOCKED
     return StallReason.MIXED_DEAD
 

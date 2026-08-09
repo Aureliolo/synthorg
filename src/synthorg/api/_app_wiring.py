@@ -19,6 +19,7 @@ from synthorg.api._benchmark_wiring import (
     select_benchmark_provider,
 )
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -319,6 +320,10 @@ async def wire_steering_service(
     id; a missing provider or disabled flag degrades it to the no-op proposer. A
     missing brain leaves the steering controllers + MCP tools to 503 rather than
     poisoning startup.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator steering acts through is
+            absent, named so the status surface can report which.
     """
     from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
     from synthorg.engine.intervention import SteeringService  # noqa: PLC0415
@@ -335,12 +340,15 @@ async def wire_steering_service(
     if app_state.slice(CockpitStateSlice).steering_service is not None:
         return
     brain_service = app_state.slice(ProjectBrainStateSlice).service
-    if (
-        brain_service is None
-        or app_state.slice(PersistenceStateSlice).backend is None
-        or app_state.slice(EngineStateSlice).task_engine is None
-    ):
-        return
+    if brain_service is None:
+        msg = "no project brain; a steering directive is recorded through it"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        msg = "no persistence backend; the steering inbox is durable"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(EngineStateSlice).task_engine is None:
+        msg = "no task engine; steering acts on running tasks"
+        raise SubsystemDeclinedError(msg)
     proposer = await _build_steering_proposer(
         app_state, provider_registry=provider_registry
     )

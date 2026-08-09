@@ -21,6 +21,7 @@ activation call cannot silently take its arguments in the wrong order.
 
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.api.subsystems.spec import CapabilityId, SubsystemSpec
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -767,7 +768,11 @@ async def _activate_company_read_service(app_state: AppState) -> None:
 
 
 async def _activate_role_version_service(app_state: AppState) -> None:
-    """Wire the role-version read facade."""
+    """Wire the role-version read facade.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend to read history from.
+    """
     from synthorg.api.lifecycle_helpers.organization_wiring import (  # noqa: PLC0415
         wire_role_version_service,
     )
@@ -775,9 +780,10 @@ async def _activate_role_version_service(app_state: AppState) -> None:
     backend = _persistence(app_state)
     if backend is None:
         # Declared in requires, so the reconciler should not have reached
-        # here. Returning leaves the subsystem reading not-active and the
-        # next pass retries, which is what every other unmet dependency does.
-        return
+        # here. Saying so anyway means an operator reading the status surface
+        # sees the condition rather than a shrug.
+        msg = "no persistence backend; role history is entirely durable"
+        raise SubsystemDeclinedError(msg)
     await wire_role_version_service(app_state, backend)
 
 

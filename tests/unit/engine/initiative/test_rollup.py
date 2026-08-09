@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
@@ -131,7 +131,7 @@ async def _seed(
     clock = FakeClock()
     service = ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         task_engine=task_engine,
         ship_retro_capture=ship_retro_capture,
@@ -204,8 +204,31 @@ class TestCompletion:
             ProjectStatus.ACTIVE,
         )
 
-    async def test_failed_task_leaves_the_project_active(self) -> None:
-        """Failure is a derived count, never a lifecycle state."""
+    async def test_a_stalled_plan_replans_when_a_trigger_is_wired(self) -> None:
+        """Failure is a derived count on the project, never a status."""
+        trigger = _RecordingReplanTrigger()
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _task(_ITEM_B, TaskStatus.FAILED),
+            replan_trigger=trigger,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert trigger.fired == [(str(as_uuid(_PLAN_ID)), StallReason.ALL_FAILED)]
+        assert await _statuses(backend) == (
+            PlanStatus.EXECUTING,
+            ProjectStatus.ACTIVE,
+        )
+
+    async def test_a_stalled_plan_fails_when_nothing_can_replan_it(self) -> None:
+        """The watcher half: a stall nobody handles is not left running.
+
+        Every outstanding item is dead, so the initiative cannot advance and
+        nothing will move it. Parked, it sat in EXECUTING with no work left to
+        execute and no later event could repair it.
+        """
         service, backend = await _seed(
             _plan(_item(_ITEM_A), _item(_ITEM_B)),
             _task(_ITEM_A, TaskStatus.COMPLETED),
@@ -215,9 +238,13 @@ class TestCompletion:
         await service.recompute(as_uuid(_PLAN_ID))
 
         assert await _statuses(backend) == (
-            PlanStatus.EXECUTING,
+            PlanStatus.FAILED,
             ProjectStatus.ACTIVE,
         )
+        failed = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert failed is not None
+        assert failed.failure_reason is not None
+        assert StallReason.ALL_FAILED.value in failed.failure_reason
 
     async def test_unresolved_decision_blocks_completion(self) -> None:
         service, backend = await _seed(
@@ -766,7 +793,33 @@ class TestIntegrationStage:
         await service.recompute(as_uuid(_PLAN_ID))
 
         # A failed integration task counted as an item would regress the plan
-        # to EXECUTING; it must not.
+        # to EXECUTING; it must not. With no replan trigger to route the failed
+        # assembly, the plan fails rather than parking at INTEGRATING forever.
+        plan = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert plan is not None
+        assert plan.status is PlanStatus.FAILED
+        # The reason, not merely the status: an item-derived stall also lands
+        # on FAILED here, so asserting the status alone would still pass if
+        # the assembly job started counting as a plan item.
+        assert plan.failure_reason == (
+            "integration failed and no replan trigger is wired"
+        )
+
+    async def test_a_failed_assembly_replans_when_a_trigger_is_wired(self) -> None:
+        trigger = _RecordingReplanTrigger()
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A), status=PlanStatus.INTEGRATING),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _integration_task(TaskStatus.FAILED),
+            integration=_RecordingIntegration(),
+            replan_trigger=trigger,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert trigger.fired == [
+            (str(as_uuid(_PLAN_ID)), StallReason.INTEGRATION_FAILED)
+        ]
         plan_status, _ = await _statuses(backend)
         assert plan_status is PlanStatus.INTEGRATING
 

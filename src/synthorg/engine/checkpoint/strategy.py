@@ -17,11 +17,13 @@ from synthorg.engine.checkpoint.models import (
 )
 from synthorg.engine.checkpoint.resume import cleanup_checkpoint_artifacts
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import (
+    infer_failure_category_without_evidence,
+)
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
-    infer_failure_category_without_evidence,
 )
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger, log_exception_redacted
@@ -88,6 +90,7 @@ class CheckpointRecoveryStrategy:
         task_execution: TaskExecution,
         error_message: str,
         context: AgentContext,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Apply checkpoint recovery.
 
@@ -101,6 +104,9 @@ class CheckpointRecoveryStrategy:
             task_execution: Current execution state.
             error_message: Description of the failure.
             context: Full agent context at the time of failure.
+            error_type: Class name of the exception that terminated the
+                run, forwarded to the fallback so its diagnosis reads the
+                typed cause rather than the message.
 
         Returns:
             ``RecoveryResult`` -- either resumable or fallback.
@@ -124,6 +130,7 @@ class CheckpointRecoveryStrategy:
                 task_execution=task_execution,
                 error_message=error_message,
                 context=context,
+                error_type=error_type,
             )
 
         should_fallback, resume_attempt = await self._reserve_resume_attempt(
@@ -135,6 +142,7 @@ class CheckpointRecoveryStrategy:
                 task_execution=task_execution,
                 error_message=error_message,
                 context=context,
+                error_type=error_type,
             )
 
         return self._build_resume_result(
@@ -143,6 +151,7 @@ class CheckpointRecoveryStrategy:
             context=context,
             checkpoint=checkpoint,
             resume_attempt=resume_attempt,
+            error_type=error_type,
         )
 
     async def finalize(self, execution_id: str) -> None:
@@ -264,8 +273,21 @@ class CheckpointRecoveryStrategy:
         context: AgentContext,
         checkpoint: Checkpoint,
         resume_attempt: int,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Build a resumable ``RecoveryResult``.
+
+        Args:
+            task_execution: Current execution state.
+            error_message: Description of the failure.
+            context: Full agent context at the time of failure.
+            checkpoint: The checkpoint the resume will restore from.
+            resume_attempt: Which resume attempt this is.
+            error_type: Class name of the exception that terminated the
+                run. The fallback path already reads it; a resumable
+                result that ignored it would diagnose the same failure
+                differently depending on whether a checkpoint happened to
+                exist.
 
         Returns:
             A :class:`RecoveryResult` carrying the checkpoint
@@ -289,7 +311,9 @@ class CheckpointRecoveryStrategy:
         # acceptance-criteria data, so inferring STAGNATION or
         # QUALITY_GATE_FAILED here would violate RecoveryResult's
         # cross-field invariants.
-        category = infer_failure_category_without_evidence(error_message)
+        category = infer_failure_category_without_evidence(
+            error_message, error_type=error_type
+        )
         return RecoveryResult(
             task_execution=task_execution,
             strategy_type=self.STRATEGY_TYPE,
@@ -301,6 +325,7 @@ class CheckpointRecoveryStrategy:
                 "checkpoint_id": str(checkpoint.id),
                 "turn_number": checkpoint.turn_number,
                 "resume_attempt": resume_attempt,
+                "error_type": error_type,
             },
             checkpoint_context_json=checkpoint.context_json,
             resume_attempt=resume_attempt,
@@ -312,6 +337,7 @@ class CheckpointRecoveryStrategy:
         task_execution: TaskExecution,
         error_message: str,
         context: AgentContext,
+        error_type: str | None = None,
     ) -> RecoveryResult:
         """Delegate recovery to the fallback strategy.
 
@@ -331,4 +357,5 @@ class CheckpointRecoveryStrategy:
             task_execution=task_execution,
             error_message=error_message,
             context=context,
+            error_type=error_type,
         )

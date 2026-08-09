@@ -16,6 +16,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.scaling_wiring import wire_scaling
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -96,27 +97,30 @@ async def test_already_wired_is_idempotent() -> None:
     assert app_state.slice(HrStateSlice).scaling_service is existing
 
 
-async def test_skips_when_persistence_absent() -> None:
+async def test_declines_naming_absent_persistence() -> None:
     app_state = _ready_app_state(backend=None)
-    await wire_scaling(app_state)
+    with pytest.raises(SubsystemDeclinedError, match="no persistence backend"):
+        await wire_scaling(app_state)
     assert app_state.slice(HrStateSlice).scaling_service is None
 
 
 @pytest.mark.parametrize(
-    ("registry", "tracker"),
+    ("registry", "tracker", "expected"),
     [
-        (None, PerformanceTracker()),
-        (AgentRegistryService(), None),
-        (None, None),
+        (None, PerformanceTracker(), "no agent registry"),
+        (AgentRegistryService(), None, "no performance tracker"),
+        (None, None, "no agent registry"),
     ],
 )
-async def test_skips_when_registry_or_tracker_absent(
+async def test_declines_naming_the_absent_collaborator(
     registry: AgentRegistryService | None,
     tracker: PerformanceTracker | None,
+    expected: str,
 ) -> None:
     # Cover each missing collaborator independently: with both absent at once a
     # guard that flipped from ``or`` to ``and`` (wire only when BOTH are absent)
-    # would still pass. The single-absent cases catch that regression.
+    # would still pass. The single-absent cases catch that regression, and the
+    # expected reason catches a guard that declines for the wrong one.
     app_state = make_app_state(
         slices={
             HrStateSlice: {
@@ -128,7 +132,8 @@ async def test_skips_when_registry_or_tracker_absent(
             PersistenceStateSlice: {"backend": object()},
         },
     )
-    await wire_scaling(app_state)
+    with pytest.raises(SubsystemDeclinedError, match=expected):
+        await wire_scaling(app_state)
     assert app_state.slice(HrStateSlice).scaling_service is None
 
 
@@ -159,7 +164,7 @@ async def test_wires_pipeline_and_hydrates_durable_requests(
     repo.list_items.assert_awaited_once()
 
 
-async def test_skips_when_approval_store_absent() -> None:
+async def test_declines_naming_the_absent_approval_store() -> None:
     # Exercises the third arm of the collaborator guard: a wired registry +
     # tracker but no approval store must NOT wire the pipeline, else
     # auto-hire / auto-prune decisions would execute with no human-approval gate.
@@ -174,7 +179,8 @@ async def test_skips_when_approval_store_absent() -> None:
             PersistenceStateSlice: {"backend": object()},
         },
     )
-    await wire_scaling(app_state)
+    with pytest.raises(SubsystemDeclinedError, match="no approval store"):
+        await wire_scaling(app_state)
     assert app_state.slice(HrStateSlice).scaling_service is None
 
 

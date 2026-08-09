@@ -646,7 +646,10 @@ class TestSecOpsScanOutputAuditFailure:
         result = await service.scan_output(ctx, "AKIAIOSFODNN7EXAMPLE")
 
         assert result.has_sensitive_data is True
-        assert result.redacted_content == "[REDACTED]"
+        # The service carries no autonomy, so the tiered policy responds at
+        # its strictest tier; the point here is that a failed audit write
+        # still returns the screened result rather than raising.
+        assert result.outcome is ScanOutcome.WITHHELD
 
     async def test_scan_audit_failure_does_not_propagate(self) -> None:
         """RuntimeError from audit_log.record does not propagate."""
@@ -754,8 +757,13 @@ class TestSecOpsScanOutputPolicy:
         assert call_args[0] == clean
         assert call_args[0].has_sensitive_data is False
 
-    async def test_default_policy_from_config_passes_through(self) -> None:
-        """Default config uses RedactPolicy, which passes result through."""
+    async def test_default_policy_without_autonomy_withholds(self) -> None:
+        """The shipped default is autonomy_tiered, and this screen has no tier.
+
+        A service built with no run behind it responds at the strictest tier
+        rather than passing a finding through at whatever tier a missing
+        argument happened to select.
+        """
         finding = OutputScanResult(
             has_sensitive_data=True,
             findings=("secret",),
@@ -770,8 +778,8 @@ class TestSecOpsScanOutputPolicy:
 
         result = await service.scan_output(ctx, "secret data")
 
-        # Default config → RedactPolicy → identity transform.
-        assert result == finding
+        assert result.outcome is ScanOutcome.WITHHELD
+        assert result.redacted_content is None
 
     async def test_policy_failure_returns_raw_scan_result(self) -> None:
         """When policy.apply raises, raw scan result is returned."""

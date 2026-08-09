@@ -24,6 +24,7 @@ request at the knowledge MCP handlers, so they need no rebuild.
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -111,6 +112,17 @@ class KnowledgeSettingsSubscriber:
                 provider_registry=registry,
                 synthesis_failure_event=SETTINGS_SERVICE_SWAP_FAILED,
             )
+        except SubsystemDeclinedError as exc:
+            # A decline is not a failed write: the setting landed, and the
+            # substrate stays down for a reason the reconciler reports. Failing
+            # the operator's write here would blame them for a missing backend.
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                trigger=trigger,
+                note=exc.reason,
+            )
+            return
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

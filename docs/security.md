@@ -120,6 +120,31 @@ on resolution.
   behind an ``InflightStore`` protocol with the same default/Redis
   roadmap. Tuned via ``api.per_op_concurrency.overrides``.
 
+### Provider credential resolution fails closed
+
+A provider config that names a ``connection_name`` is asserting that its calls
+carry a credential brokered from the connection catalog. When the catalog
+cannot supply one, the driver **raises ``AuthenticationError`` naming the
+provider and the connection** rather than dispatching with empty auth material.
+Only a config with no ``connection_name`` (the genuinely catalog-less and test
+paths) may omit credentials.
+
+The rule exists because the silent path was reachable in production. A
+boot-time model-refresh sweep rebuilt the provider registry and installed it
+with no catalog bound; the credential resolver read "no catalog" as "omit the
+credential" and every subsequent dispatch went out unauthenticated, forever,
+behind a single startup log line. Two changes close it:
+
+- ``AppState.swap_provider_registry`` rebinds the always-on credential catalog
+  onto any incoming registry before installing it, so a replacement cannot
+  arrive unbound; ``bind_credential_catalog(None)`` on a registry that already
+  holds one is a refused no-op with a WARNING rather than a silent unbind.
+- The credential-catalog construction is **not** inside the
+  integrations-feature ``try/except``. A failure there is fatal to provider
+  auth, so it is logged at ERROR and re-raised; only the integrations feature
+  surface (health prober, OAuth, webhooks, rate-limit coordinator) may fail
+  without failing the boot.
+
 ### Notification Security
 
 Notification adapter configuration may contain credentials (SMTP passwords,

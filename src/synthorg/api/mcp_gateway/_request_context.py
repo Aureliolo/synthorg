@@ -30,6 +30,7 @@ from synthorg.approval.state import approval_store_of
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._security_factory import make_security_interceptor
 from synthorg.engine.workspace.state import agent_workspace_root_of
@@ -94,6 +95,7 @@ class _ResolvedContextInputs:
     deploy_settings: _DeploySettings
     publish_settings: _PublishSettings
     actor: AgentIdentity | None
+    effective_autonomy: EffectiveAutonomy | None
 
 
 async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
@@ -183,18 +185,28 @@ def _context_opener(
 
 
 async def _gather_context_inputs(
-    app_state: AppState, resolver: ConfigResolver, *, agent_id: str
+    app_state: AppState,
+    resolver: ConfigResolver,
+    *,
+    agent_id: str,
+    task_id: str | None,
 ) -> _ResolvedContextInputs:
     """Read every independent per-request input concurrently.
 
     The reads (forge / chat settings, the deploy and publish settings bundles,
     and the actor lookup) do not depend on one another, so they run under one
-    ``TaskGroup`` and the group's error flattening is handled here.
+    ``TaskGroup`` and the group's error flattening is handled here. Autonomy
+    depends on the actor, so it is chained behind that one lookup rather than
+    behind the whole group: every governed tool call pays for this context, and
+    serialising a project read after seven settings reads that never needed it
+    is latency on the hot path for nothing.
 
     Args:
         app_state: The live application state.
         resolver: The per-request configuration resolver.
         agent_id: The caller id from the verified bearer.
+        task_id: The task id from the verified bearer, when the call belongs
+            to one.
 
     Returns:
         The awaited reads a context is assembled from.
@@ -218,9 +230,12 @@ async def _gather_context_inputs(
             )
             deploy = tg.create_task(_resolve_deploy_settings(resolver))
             publish = tg.create_task(_resolve_publish_settings(resolver))
-            actor = tg.create_task(_resolve_actor(app_state, agent_id=agent_id))
+            governed = tg.create_task(
+                _resolve_actor_autonomy(app_state, agent_id=agent_id, task_id=task_id)
+            )
     except ExceptionGroup as eg:
         _reraise_first(eg)
+    resolved_actor, effective_autonomy = governed.result()
     return _ResolvedContextInputs(
         forge_connection=forge_conn.result(),
         chat_connection=chat_conn.result(),
@@ -229,8 +244,77 @@ async def _gather_context_inputs(
         forge_max_read_chars=forge_read.result(),
         deploy_settings=deploy.result(),
         publish_settings=publish.result(),
-        actor=actor.result(),
+        actor=resolved_actor,
+        effective_autonomy=effective_autonomy,
     )
+
+
+async def _resolve_actor_autonomy(
+    app_state: AppState,
+    *,
+    agent_id: str,
+    task_id: str | None,
+) -> tuple[AgentIdentity | None, EffectiveAutonomy | None]:
+    """Look the caller up, then resolve the autonomy governing them.
+
+    One task rather than two because the second read needs the first's answer;
+    running the pair inside the context group overlaps it with the settings
+    reads it has nothing to do with.
+
+    Args:
+        app_state: The live application state.
+        agent_id: The caller id from the verified bearer.
+        task_id: The task id from the verified bearer, when there is one.
+
+    Returns:
+        The resolved actor and the autonomy governing this call, either of
+        which may be ``None``.
+    """
+    actor = await _resolve_actor(app_state, agent_id=agent_id)
+    return actor, await _resolve_autonomy(app_state, actor, task_id=task_id)
+
+
+async def _resolve_autonomy(
+    app_state: AppState,
+    actor: AgentIdentity | None,
+    *,
+    task_id: str | None,
+) -> EffectiveAutonomy | None:
+    """Resolve the autonomy governing this credentialed call.
+
+    A gateway call is not a runless screen: the bearer names the agent and the
+    task, which is exactly what autonomy is resolved from. It is resolved
+    through the execution service that owns the answer for every other dispatch
+    path, so a tool reached over the gateway is tiered the same way the same
+    tool is tiered inside a run.
+
+    Args:
+        app_state: The live application state.
+        actor: The caller, when the HR registry knows them.
+        task_id: The task id from the verified bearer, when there is one.
+
+    Returns:
+        The resolved autonomy, or ``None`` on any of three counts: the caller
+        is outside a run (no actor, or no task), the install has no security
+        runtime config so there is no screen to tier, or no agent-backed
+        execution service is installed. All three leave the screen at its
+        strictest tier.
+    """
+    from synthorg.workers.execution_service import (  # noqa: PLC0415
+        AgentEngineExecutionService,
+    )
+    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+    if actor is None or task_id is None:
+        return None
+    if app_state.security_runtime_config.current is None:
+        # No security config means no screen at all, so there is nothing to
+        # tier; the interceptor factory refuses an autonomy it cannot enforce.
+        return None
+    service = app_state.slice(RuntimeStateSlice).worker_execution_service
+    if not isinstance(service, AgentEngineExecutionService):
+        return None
+    return await service.resolve_effective_autonomy(actor, task_id=task_id)
 
 
 def _reraise_first(eg: ExceptionGroup[Exception]) -> NoReturn:
@@ -279,7 +363,9 @@ async def _build_context(
             would surface an unexplained 500 instead of naming what is unset.
     """
     resolver = config_resolver_of(app_state)
-    inputs = await _gather_context_inputs(app_state, resolver, agent_id=agent_id)
+    inputs = await _gather_context_inputs(
+        app_state, resolver, agent_id=agent_id, task_id=task_id
+    )
     try:
         return _assemble_context(app_state, inputs, agent_id=agent_id, task_id=task_id)
     except ValidationError as exc:
@@ -315,6 +401,7 @@ def _assemble_context(
         app_state.security_runtime_config.current,
         audit_log_of(app_state),
         approval_store=approval_store_of(app_state),
+        effective_autonomy=inputs.effective_autonomy,
     )
     deploy_settings = inputs.deploy_settings
     publish_settings = inputs.publish_settings

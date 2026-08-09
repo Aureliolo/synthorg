@@ -16,6 +16,7 @@ from uuid import UUID
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import StallReason
 
 
@@ -34,8 +35,14 @@ class PlanStatusWriter(Protocol):
         *,
         requested_by: str | None = None,
         reason: str | None = None,
+        failure_reason: NotBlankStr | None = None,
     ) -> Plan:
         """Persist *status* onto *existing*, validating the transition.
+
+        *failure_reason* is required exactly when *status* is FAILED and
+        refused for every other status, so Plan Review can always show why a
+        failed initiative failed and never shows a stale reason on a live one.
+        The implementation raises on both halves rather than dropping either.
 
         Returns:
             The persisted plan carrying the new status.

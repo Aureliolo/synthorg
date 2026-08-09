@@ -8,6 +8,7 @@ resolve one live backend instead of receiving ``None``.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -25,6 +26,10 @@ async def wire_org_memory_backend(app_state: AppState) -> None:
     of the vector memory backend. A build/connect failure logs a warning
     and leaves the slice unset (consumers degrade to ``None``) rather than
     poisoning startup.
+
+    Raises:
+        SubsystemDeclinedError: No persistence backend, so there is no
+            org-fact store to wrap.
     """
     from synthorg.memory.org.factory import (  # noqa: PLC0415
         build_org_memory_backend,
@@ -38,7 +43,8 @@ async def wire_org_memory_backend(app_state: AppState) -> None:
     if app_state.slice(MemoryStateSlice).org_memory_backend is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; the org-fact store is persistence-backed"
+        raise SubsystemDeclinedError(msg)
     try:
         backend = build_org_memory_backend(
             app_state.config.org_memory,

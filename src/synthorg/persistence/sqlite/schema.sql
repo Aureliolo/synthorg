@@ -124,7 +124,17 @@ CREATE TABLE cost_records (
     CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     timestamp TEXT NOT NULL,
     call_category TEXT,
-    prompt_class_id TEXT
+    prompt_class_id TEXT,
+    -- The tracker's idempotency key, persisted so the durable append is
+    -- idempotent for a record with no project (the project-aggregate path
+    -- skips dedup entirely for those).
+    claim_id TEXT,
+    -- No foreign key, matching project_cost_aggregates.project_id, which the
+    -- same record() call writes in the same transaction. A cost row is
+    -- evidence of a call that really happened: refusing the insert because
+    -- the project row is missing would lose the spend rather than protect
+    -- it, and would leave the aggregate counting money this table dropped.
+    project_id TEXT
 );
 
 CREATE INDEX idx_cost_records_agent_id ON cost_records (agent_id);
@@ -136,6 +146,14 @@ CREATE INDEX idx_cost_records_task_timestamp
 ON cost_records (task_id, timestamp DESC);
 CREATE INDEX idx_cost_records_prompt_class_timestamp
 ON cost_records (prompt_class_id, timestamp DESC);
+-- ``timestamp`` rides in the key because the Postgres twin is a TimescaleDB
+-- hypertable, where a unique index must include the partitioning column.
+-- Both backends therefore enforce the same thing, and it still catches the
+-- duplicate that happens: a redelivery carries the same record.
+CREATE UNIQUE INDEX idx_cost_records_claim_id
+ON cost_records (claim_id, timestamp);
+CREATE INDEX idx_cost_records_project_timestamp
+ON cost_records (project_id, timestamp DESC);
 
 -- ── Messages ──────────────────────────────────────────────────
 CREATE TABLE messages (
@@ -2673,6 +2691,19 @@ CREATE TABLE plans (
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    -- Which planner produced the items, recorded when a fallback stood in for
+    -- the configured strategy so the approval gate shows what is being approved.
+    planning_strategy TEXT
+    CHECK (planning_strategy IS NULL OR LENGTH(TRIM(planning_strategy)) > 0),
+    -- Why a seated review panel produced no verdict, so an unreviewed plan is
+    -- visibly unreviewed rather than silently blank. Blank is the state both
+    -- columns exist to distinguish from absent, so the model types them
+    -- ``NotBlankStr | None`` and the row mirrors it.
+    review_absent_reason TEXT
+    CHECK (
+        review_absent_reason IS NULL
+        OR LENGTH(TRIM(review_absent_reason)) > 0
+    ),
     -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
     -- a reason (so Plan Review always shows why), and no other status may carry
     -- one. Mirrors the Plan model validator as the persistence-level backstop.
@@ -2686,6 +2717,28 @@ CREATE INDEX idx_plans_project_status ON plans (project, status, id);
 -- so `id` rides the index: equality first, then the ordering, as
 -- idx_plans_project_status already does.
 CREATE INDEX idx_plans_parent_task ON plans (parent_task_id, id);
+
+-- ── Lifecycle transitions (who moved this initiative, and when) ─
+-- Append-only. A plan reaching COMPLETED left no durable actor record, so
+-- "only the evaluate stage writes COMPLETED" was provable from a container
+-- log and nowhere else. Plans and projects share one ledger because they
+-- answer one question.
+CREATE TABLE lifecycle_transitions (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    entity_kind TEXT NOT NULL CHECK (entity_kind IN ('plan', 'project')),
+    entity_id TEXT NOT NULL CHECK (LENGTH(TRIM(entity_id)) > 0),
+    from_status TEXT CHECK (from_status IS NULL OR LENGTH(TRIM(from_status)) > 0),
+    to_status TEXT NOT NULL CHECK (LENGTH(TRIM(to_status)) > 0),
+    requested_by TEXT CHECK (requested_by IS NULL OR LENGTH(TRIM(requested_by)) > 0),
+    reason TEXT CHECK (reason IS NULL OR LENGTH(TRIM(reason)) > 0),
+    entity_version INTEGER NOT NULL CHECK (entity_version >= 0),
+    occurred_at TEXT NOT NULL
+);
+-- The read is always "this entity's transitions, newest first", and the
+-- tie-break on id is part of that ordering, so both sort keys ride in the
+-- index and the query never needs a sort step.
+CREATE INDEX idx_lifecycle_transitions_entity
+ON lifecycle_transitions (entity_kind, entity_id, occurred_at DESC, id DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

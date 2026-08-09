@@ -13,6 +13,7 @@ boot).
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -32,6 +33,8 @@ async def wire_refinement_router(app_state: AppState) -> None:
             criticals are never swallowed by the best-effort handler.
         RecursionError: Propagated from router construction for the same
             reason.
+        SubsystemDeclinedError: No proposer to refine with, or no work
+            pipeline to attach the router to.
     """
     from synthorg.engine.state import (  # noqa: PLC0415
         EngineStateSlice,
@@ -40,8 +43,12 @@ async def wire_refinement_router(app_state: AppState) -> None:
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
     proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-    if proposer is None or app_state.slice(EngineStateSlice).work_pipeline is None:
-        return
+    if proposer is None:
+        msg = "no chief-of-staff proposer; refinement is its capability"
+        raise SubsystemDeclinedError(msg)
+    if app_state.slice(EngineStateSlice).work_pipeline is None:
+        msg = "no work pipeline; the router attaches to it"
+        raise SubsystemDeclinedError(msg)
     try:
         from synthorg.meta.chief_of_staff.refinement import (  # noqa: PLC0415
             ChiefOfStaffRefinementRouter,
@@ -52,7 +59,11 @@ async def wire_refinement_router(app_state: AppState) -> None:
     except MemoryError, RecursionError:
         # Interpreter-level criticals are never best-effort; let them abort.
         raise
-    except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log and continue
+    except Exception as exc:
+        # Reported, not returned: every declared dependency is present, so a
+        # failure here is the build failing, and a quiet return leaves the
+        # pipeline router-less for a reason only a container log carries.
+        msg = f"refinement router wiring failed: {safe_error_description(exc)}"
         logger.warning(
             API_APP_STARTUP,
             service="work_refinement_router",
@@ -60,7 +71,7 @@ async def wire_refinement_router(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return
+        raise SubsystemDeclinedError(msg) from exc
     logger.info(API_APP_STARTUP, service="work_refinement_router", note="wired")
 
 

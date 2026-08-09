@@ -174,6 +174,27 @@ async run(
 ) -> AgentRunResult
 ```
 
+`effective_autonomy` is an override, not a requirement. When a caller supplies
+none the engine resolves it itself, through the `AutonomyResolution` seam the
+worker installs (`set_autonomy_resolution`), so every dispatch path gets the
+same answer from one owner: the solo `execute_once`, the coordinated
+`ParallelAgentExecutor`, and a resume. Only the solo path used to resolve it,
+which is why every coordinated agent silently lost its autonomy-tiered output
+scanning; the team path is the one the general loop actually uses.
+
+The credentialed-MCP screen is the same dispatch under a different transport,
+so it resolves through the same owner: `api/mcp_gateway/_request_context.py`
+reads the agent and task the verified bearer names and asks
+`AgentEngineExecutionService.resolve_effective_autonomy` for the answer, rather
+than screening a credentialed forge write or production deploy at whatever tier
+a missing argument happened to select.
+
+`AutonomyTieredPolicy` closes the remaining gap. With genuinely no tier to read
+(no run behind the screen, or a level the map does not cover) it responds at the
+STRICTEST tier and logs why, never a middle one: the map runs from `LogOnly` at
+FULL to `Withhold` at LOCKED, so substituting the middle `RedactPolicy` handed a
+LOCKED organisation a weaker response than it chose and said nothing.
+
 **Pipeline steps:**
 
 1. **Validate inputs**: agent must be `ACTIVE`, task must be `ASSIGNED` or
@@ -208,7 +229,12 @@ async run(
 6. **Seed conversation**: injects system prompt, optional memory messages, and
    formatted task instruction as initial messages.
 7. **Transition task**: `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
-   `IN_PROGRESS`).
+   `IN_PROGRESS`). This is the entry sync to the central engine, and it is
+   fail-loud: a refused transition raises `ExecutionStateError` rather than
+   proceeding locally, so the engine never runs work the central engine has no
+   record of starting. It runs here rather than at validation time because it
+   applies to the local context: `transition_task_if_needed` takes the seeded
+   context and returns the moved one, so the context has to exist first.
 8. **Prepare tools and budget**: creates `ToolInvoker` from registry and
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
    with pre-computed baselines and alert deduplication) or from task budget limit

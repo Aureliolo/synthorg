@@ -40,6 +40,13 @@ class TestValidTransitions:
             (TaskStatus.IN_PROGRESS, TaskStatus.SUSPENDED),
             (TaskStatus.BLOCKED, TaskStatus.ASSIGNED),
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
+            # Abandonment from every stuck state, direct. Reassignment is not
+            # an exit for a task with no assignee, and routing abandonment
+            # through ASSIGNED left one with no exit at all.
+            (TaskStatus.FAILED, TaskStatus.CANCELLED),
+            (TaskStatus.BLOCKED, TaskStatus.CANCELLED),
+            (TaskStatus.INTERRUPTED, TaskStatus.CANCELLED),
+            (TaskStatus.SUSPENDED, TaskStatus.CANCELLED),
             (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
             (TaskStatus.SUSPENDED, TaskStatus.ASSIGNED),
             # A greenlit objective's root task can fail during planning,
@@ -165,10 +172,14 @@ class TestTransitionMapCompleteness:
         """SUSPENDED has outgoing transitions (resume from checkpoint)."""
         assert len(VALID_TRANSITIONS[TaskStatus.SUSPENDED]) > 0
 
-    def test_suspended_has_single_outgoing(self) -> None:
-        """SUSPENDED can only transition to ASSIGNED (resume)."""
+    def test_suspended_resumes_or_is_abandoned(self) -> None:
+        """SUSPENDED resumes (ASSIGNED) or is abandoned (CANCELLED).
+
+        Resuming needs an assignee; abandoning needs nothing, which is what
+        keeps a suspended task with none from having no exit at all.
+        """
         assert VALID_TRANSITIONS[TaskStatus.SUSPENDED] == frozenset(
-            {TaskStatus.ASSIGNED}
+            {TaskStatus.ASSIGNED, TaskStatus.CANCELLED}
         )
 
     def test_all_targets_are_valid_statuses(self) -> None:

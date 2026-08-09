@@ -18,6 +18,7 @@ service unwired (its controllers + handlers honestly 503).
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -49,17 +50,24 @@ async def wire_risk_override_service(
             override subsystem only wires for a tiered policy.
         approval_timeout_scheduler: The background timeout scheduler whose
             policy classifier is hot-swapped to the override-aware one.
+
+    Raises:
+        SubsystemDeclinedError: No persistence, no timeout scheduler, or the
+            approval-timeout policy is not the tiered one overrides apply to.
     """
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
     if app_state.slice(SecurityStateSlice).risk_override_service is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        return
+        msg = "no persistence backend; risk overrides are durable"
+        raise SubsystemDeclinedError(msg)
     if approval_timeout_scheduler is None:
-        return
+        msg = "no approval-timeout scheduler; its classifier is what overrides swap"
+        raise SubsystemDeclinedError(msg)
     if not isinstance(approval_timeout_config, TieredTimeoutConfig):
-        return
+        msg = "the approval-timeout policy is not tiered; overrides apply to tiers"
+        raise SubsystemDeclinedError(msg)
     try:
         await _wire(app_state, approval_timeout_config, approval_timeout_scheduler)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

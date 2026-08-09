@@ -6,13 +6,19 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.evaluation_verdict import CriterionOutcome, CriterionVerdict
+from synthorg.core.lifecycle_transition import (
+    LifecycleEntityKind,
+    LifecycleTransition,
+)
 from synthorg.core.plan import MAX_PLAN_VERSION_HISTORY, Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.evaluation_report_protocol import EvaluationReportRecord
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient, as_uuid, sid
+from tests._shared import LoopAsyncClient, as_pk, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 _CREATED_AT = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
@@ -100,9 +106,33 @@ def _evaluation(
     )
 
 
-async def _seed(client: LoopAsyncClient, plan: Plan) -> None:
+async def _seed(client: LoopAsyncClient, plan: Plan, *tasks: Task) -> None:
     backend = persistence_of(client.app.state.app_state)
     await backend.plans.save(plan)
+    for task in tasks:
+        await backend.tasks.save(task)
+
+
+def _plan_task(plan: Plan, item_id: str, status: TaskStatus) -> Task:
+    """A task dispatched from *plan* for one of its items.
+
+    Returns:
+        The task, keyed so the plan's live-task count finds it.
+    """
+    return Task(
+        id=as_uuid(f"task-{item_id}"),
+        title="Child",
+        description="Child work",
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr(str(plan.project)),
+        created_by="manager",
+        plan_id=plan.id,
+        # ``item_id`` is already a canonical UUID string, so it passes through
+        # rather than being hashed again into an id no plan item carries.
+        plan_item_id=as_pk(item_id),
+        assigned_to=sid("agent-1") if status is not TaskStatus.CREATED else None,
+        status=status,
+    )
 
 
 @pytest.mark.unit
@@ -171,6 +201,70 @@ class TestPlanController:
         assert attempts[0]["objective_met"] is True
         assert attempts[1]["verdicts"][0]["outcome"] == "unmet"
         assert attempts[1]["verdicts"][0]["evidence"] == "the board never renders"
+
+    async def test_get_transitions_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/plans/nonexistent/transitions")
+        assert resp.status_code == 404
+
+    async def test_get_transitions_returns_the_ledger_newest_first(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """C0: how a plan reached its status, from rows rather than a log.
+
+        The claim that only the evaluate stage writes COMPLETED was provable
+        from a container's stdout and nowhere else; this endpoint is what makes
+        it answerable from persisted state, so it has to actually serve them.
+        """
+        await _seed(async_test_client, _plan(status=PlanStatus.EXECUTING))
+        plan_id = str(as_uuid("plan-001"))
+        backend = persistence_of(async_test_client.app.state.app_state)
+        for index, (previous, current) in enumerate(
+            (("planning", "pending_review"), ("pending_review", "approved"))
+        ):
+            await backend.lifecycle_transitions.append(
+                LifecycleTransition(
+                    entity_kind=LifecycleEntityKind.PLAN,
+                    entity_id=NotBlankStr(plan_id),
+                    from_status=NotBlankStr(previous),
+                    to_status=NotBlankStr(current),
+                    requested_by=NotBlankStr("operator-1"),
+                    entity_version=index + 2,
+                    occurred_at=_CREATED_AT + timedelta(minutes=index),
+                )
+            )
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/transitions")
+
+        assert resp.status_code == 200
+        rows = resp.json()["data"]
+        assert [row["to_status"] for row in rows] == ["approved", "pending_review"]
+        assert rows[0]["requested_by"] == "operator-1"
+        assert rows[0]["entity_kind"] == "plan"
+
+    async def test_get_transitions_reads_only_this_plan(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """One plan's history, not the whole ledger."""
+        await _seed(async_test_client, _plan(status=PlanStatus.EXECUTING))
+        plan_id = str(as_uuid("plan-001"))
+        backend = persistence_of(async_test_client.app.state.app_state)
+        for entity_id in (plan_id, str(as_uuid("other-plan"))):
+            await backend.lifecycle_transitions.append(
+                LifecycleTransition(
+                    entity_kind=LifecycleEntityKind.PLAN,
+                    entity_id=NotBlankStr(entity_id),
+                    to_status=NotBlankStr("approved"),
+                    entity_version=2,
+                    occurred_at=_CREATED_AT,
+                )
+            )
+
+        resp = await async_test_client.get(f"/api/v1/plans/{plan_id}/transitions")
+
+        assert resp.status_code == 200
+        assert [row["entity_id"] for row in resp.json()["data"]] == [plan_id]
 
     async def test_list_filter_by_status(
         self, async_test_client: LoopAsyncClient
@@ -680,11 +774,16 @@ class TestDeletePlan:
         ],
         ids=lambda value: str(value.value),
     )
-    async def test_refuses_a_dispatched_plan(
+    async def test_refuses_a_dispatched_plan_with_live_work(
         self, async_test_client: LoopAsyncClient, status: PlanStatus
     ) -> None:
         """Removing it would orphan every task already building under it."""
-        await _seed(async_test_client, _plan(plan_id="building", status=status))
+        plan = _plan(plan_id="building", status=status)
+        await _seed(
+            async_test_client,
+            plan,
+            _plan_task(plan, _I1, TaskStatus.IN_PROGRESS),
+        )
         plan_id = str(as_uuid("building"))
 
         resp = await async_test_client.delete(
@@ -695,6 +794,55 @@ class TestDeletePlan:
         # Still there: the refusal is not a partial delete.
         survivor = await async_test_client.get(f"/api/v1/plans/{plan_id}")
         assert survivor.status_code == 200
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PlanStatus.APPROVED,
+            PlanStatus.EXECUTING,
+            PlanStatus.INTEGRATING,
+            PlanStatus.EVALUATING,
+        ],
+        ids=lambda value: str(value.value),
+    )
+    async def test_deletes_a_dispatched_plan_with_nothing_building(
+        self, async_test_client: LoopAsyncClient, status: PlanStatus
+    ) -> None:
+        """Deletability is derived from live work, never from the status alone.
+
+        A dispatch that dies before it writes a task row leaves an EXECUTING
+        plan with items and no work. Refusing on status would tell the operator
+        to replan work that does not exist, and the project and task deletes
+        refuse for the same row: every exit shuts at once.
+        """
+        await _seed(async_test_client, _plan(plan_id="stranded", status=status))
+        plan_id = str(as_uuid("stranded"))
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{plan_id}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
+        follow_up = await async_test_client.get(f"/api/v1/plans/{plan_id}")
+        assert follow_up.status_code == 404
+
+    async def test_deletes_a_dispatched_plan_whose_work_all_finished(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Terminal tasks are not building either."""
+        plan = _plan(plan_id="spent", status=PlanStatus.EXECUTING)
+        await _seed(
+            async_test_client,
+            plan,
+            _plan_task(plan, _I1, TaskStatus.CANCELLED),
+            _plan_task(plan, _I2, TaskStatus.COMPLETED),
+        )
+
+        resp = await async_test_client.delete(
+            f"/api/v1/plans/{as_uuid('spent')}", headers=make_auth_headers("ceo")
+        )
+
+        assert resp.status_code == 204
 
     async def test_missing_plan_404(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.delete(

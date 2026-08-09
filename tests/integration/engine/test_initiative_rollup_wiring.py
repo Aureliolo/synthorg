@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 
-from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -41,6 +41,9 @@ pytestmark = pytest.mark.integration
 
 _PROJECT = "proj-rollup"
 _PLAN = "plan-rollup"
+#: When the fixture's plan and project were written. Every clock in this
+#: module starts here so a revision never predates what it revises.
+_SEEDED_AT = datetime(2026, 7, 19, tzinfo=UTC)
 _ITEM_A = "11111111-1111-5111-8111-111111111111"
 _ITEM_B = "22222222-2222-5222-8222-222222222222"
 
@@ -83,7 +86,7 @@ async def _wired(
     """
     backend = FakePersistenceBackend()
     await backend.connect()
-    now = datetime(2026, 7, 19, tzinfo=UTC)
+    now = _SEEDED_AT
     await backend.plans.save(
         Plan(
             id=as_uuid(_PLAN),
@@ -108,7 +111,10 @@ async def _wired(
     for item_id, status in statuses:
         await backend.tasks.save(_child(item_id, status))
 
-    clock = FakeClock()
+    # Started at the seed instant, not the FakeClock default: a plan written
+    # at 2026-07-19 and revised by a clock starting 2026-01-01 gets an
+    # updated_at before its created_at, which no real run can produce.
+    clock = FakeClock(start=_SEEDED_AT)
     engine = TaskEngine(
         config=TaskEngineConfig(),
         persistence=backend,
@@ -116,7 +122,7 @@ async def _wired(
     )
     rollup = ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         integration=integration,
         evaluation=evaluation,
@@ -194,7 +200,9 @@ class _PassingEvaluation:
         """Write the passing verdict's completion, then reconcile the graph."""
         plan = await backend.plans.get(NotBlankStr(sid(_PLAN)))
         assert plan is not None
-        await PlanService(repo=backend.plans, clock=FakeClock()).sync_status(
+        await build_plan_service(
+            backend, clock=FakeClock(start=_SEEDED_AT)
+        ).sync_status(
             plan,
             PlanStatus.COMPLETED,
             requested_by="initiative-evaluate",
@@ -215,10 +223,10 @@ def _rollup(
     Returns:
         The rollup service, for driving a recompute directly.
     """
-    clock = FakeClock()
+    clock = FakeClock(start=_SEEDED_AT)
     return ProjectRollupService(
         persistence=backend,
-        plan_status_writer=PlanService(repo=backend.plans, clock=clock),
+        plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
         integration=integration,
         evaluation=evaluation,

@@ -1,4 +1,4 @@
-"""Budget-aware autonomy promotion strategy (REWORK #9).
+"""Budget-aware autonomy promotion strategy.
 
 Denies promotion while risk-unit budget headroom is below a warn
 fraction (granting more autonomy under budget stress would let an

@@ -126,7 +126,7 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `memory/consolidation/config.py::ConsolidationStrategyType` (`SIMPLE` / `DUAL_MODE` / `LLM`): discriminator.
 - `memory/consolidation/factory.py::build_consolidation_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `MemoryConfigError` surfaces missing op-specific deps at construction.
 
-### Risk-tier classifier (timeout policy seam, REWORK #9)
+### Risk-tier classifier (timeout policy seam)
 
 - `security/timeout/protocol.py::RiskTierClassifier` Protocol (`classify(action_type) -> ApprovalRiskLevel`).
 - Impls: `risk_tier_classifier.py::DefaultRiskTierClassifier` (safe default), `workload_adaptive.py::WorkloadAdaptiveRiskClassifier`, `operator_configurable.py::OperatorConfigurableRiskClassifier`, `time_based_elevation.py::TimeBasedRiskElevationClassifier`.

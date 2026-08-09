@@ -8,6 +8,7 @@ import {
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   EditPlanRequest,
+  LifecycleTransition,
   Plan,
   PlanEvaluationResponse,
   PlanFilters,
@@ -43,6 +44,21 @@ export async function getPlanEvaluation(
 ): Promise<PlanEvaluationResponse> {
   const response = await apiClient.get<ApiResponse<PlanEvaluationResponse>>(
     `/plans/${encodeURIComponent(planId)}/evaluation`,
+  )
+  return unwrap(response)
+}
+
+/**
+ * Fetch the durable record of how a plan reached its current status.
+ *
+ * The status says where the plan is; these rows say how it got there and who
+ * moved it, from persisted state rather than a container's log. Newest first.
+ */
+export async function getPlanTransitions(
+  planId: string,
+): Promise<readonly LifecycleTransition[]> {
+  const response = await apiClient.get<ApiResponse<readonly LifecycleTransition[]>>(
+    `/plans/${encodeURIComponent(planId)}/transitions`,
   )
   return unwrap(response)
 }

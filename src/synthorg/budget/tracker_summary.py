@@ -257,6 +257,11 @@ class CostTrackerSummaryMixin(ABC):
 
         Returns:
             List of ``DepartmentSpending``.
+
+        Raises:
+            MixedCurrencyAggregationError: If two agents assigned to
+                the same department have different currencies on their
+                ``AgentSpending`` rollups.
         """
         dept_map: dict[str, list[AgentSpending]] = defaultdict(list)
         for agent_spend in agent_spendings:

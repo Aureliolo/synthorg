@@ -475,3 +475,29 @@ class TestRegistryCredentialCatalog:
         assert isinstance(driver, _CatalogRecordingDriver)
         assert driver.bound_catalog is second
         assert driver.bind_calls == 2
+
+    def test_registry_refuses_to_unbind_a_live_catalog(self) -> None:
+        catalog = mock_of[ConnectionCatalog]()
+        registry = ProviderRegistry.from_config(
+            {"prov": _make_config(driver="stub")},
+            factory_overrides={"stub": _CatalogRecordingDriver},
+            connection_catalog=catalog,
+        )
+        registry.bind_credential_catalog(None)
+        driver = registry.get("prov")
+        assert isinstance(driver, _CatalogRecordingDriver)
+        assert driver.bound_catalog is catalog
+        assert driver.bind_calls == 1
+        assert registry.credential_catalog is catalog
+
+    def test_registry_binds_a_catalog_over_none(self) -> None:
+        registry = ProviderRegistry.from_config(
+            {"prov": _make_config(driver="stub")},
+            factory_overrides={"stub": _CatalogRecordingDriver},
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        registry.bind_credential_catalog(catalog)
+        driver = registry.get("prov")
+        assert isinstance(driver, _CatalogRecordingDriver)
+        assert driver.bound_catalog is catalog
+        assert registry.credential_catalog is catalog

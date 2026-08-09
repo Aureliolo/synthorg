@@ -10,7 +10,11 @@ questions: what to ask the tool for, against how to run one at all.
 
 Subprocess invocations go through :func:`asyncio.create_subprocess_exec` with an
 explicit argv list (no shell) and ``PGPASSWORD`` injected via the child's
-environment so the secret never appears on argv.
+environment so the secret never appears on argv. That call is unavailable on the
+Windows ``SelectorEventLoop``, which is the loop psycopg's async pool requires,
+so :mod:`synthorg.persistence.postgres.pg_thread_fallback` runs the same argv on
+a worker thread rather than leaving backup unreachable on the loop the database
+itself forces. :func:`run_pg_tool` is the one door to both.
 """
 
 import asyncio
@@ -68,14 +72,23 @@ def resolve_binary(name: str) -> str:
 
 
 #: Environment keys passed through to a local-only pg tool (no DB
-#: connection). Restricted to PATH + locale so a subprocess that never
-#: talks to a database does not inherit the parent's full environment
-#: (which may carry unrelated secrets).
+#: connection). Restricted to PATH, locale and the two Windows system-root
+#: pointers so a subprocess that never talks to a database does not inherit
+#: the parent's full environment (which may carry unrelated secrets).
+#:
+#: ``SYSTEMROOT`` / ``WINDIR`` are not a widening of that rule: they name
+#: where Windows lives, carry no secret, and are absent on POSIX so the
+#: passthrough there is unchanged. Without ``SYSTEMROOT`` a Windows child
+#: cannot initialise Winsock, and libpq then reports the failure as
+#: ``pg_dump: error:`` followed by nothing at all, which is a backup that
+#: fails with no way to learn why.
 _LOCAL_PASSTHROUGH_ENV_KEYS: Final[tuple[str, ...]] = (
     "PATH",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
+    "SYSTEMROOT",
+    "WINDIR",
 )
 
 #: Owner-only mode for a dump file. The artefact is a full plaintext copy of
@@ -131,7 +144,7 @@ def minimal_local_env() -> dict[str, str]:
     }
 
 
-def _open_private_binary(path: Path) -> IO[bytes]:
+def open_private_binary(path: Path) -> IO[bytes]:
     """Open *path* for binary writing, readable only by the owner.
 
     Created through ``os.open`` with the mode supplied up front rather than
@@ -167,7 +180,7 @@ async def _close_and_unlink(output_path: Path, fp: IO[bytes]) -> None:
         await asyncio.to_thread(output_path.unlink)
 
 
-def _raise_pg_tool_failed(
+def raise_pg_tool_failed(
     binary: str, returncode: int | None, stderr: bytes
 ) -> NoReturn:
     """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``.
@@ -189,7 +202,7 @@ def _raise_pg_tool_failed(
     raise PgToolFailedError(msg)
 
 
-def _raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
+def raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
     """Normalise ``create_subprocess_exec`` ``OSError`` to a domain error.
 
     :func:`resolve_binary` is only a precheck; a binary can be deleted or
@@ -233,9 +246,18 @@ async def _run_pg_tool_file(
     Returns:
         Result of type ``bytes``.
     """
-    # ``open()`` can block on slow / network-attached storage, so
-    # offload to a thread to keep the event loop responsive.
-    fp = await asyncio.to_thread(_open_private_binary, output_path)
+    # Opened inline, not through ``to_thread``: a worker thread cannot be
+    # cancelled, so awaiting the open leaves a window where a cancellation
+    # returns nothing while the thread has already created the file, and the
+    # handle then has no owner to close it. On Windows that unclosed handle
+    # is also what stops the stray artefact being removed. Two syscalls
+    # against the backup directory do not need the loop released.
+    try:
+        fp = open_private_binary(output_path)
+    except OSError as exc:
+        # An unwritable target is the same class of failure as a binary that
+        # will not exec, and callers are promised the same three shapes.
+        raise_pg_tool_spawn_failed(binary, exc)
     try:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -247,7 +269,7 @@ async def _run_pg_tool_file(
             )
         except OSError as exc:
             await _close_and_unlink(output_path, fp)
-            _raise_pg_tool_spawn_failed(binary, exc)
+            raise_pg_tool_spawn_failed(binary, exc)
         except BaseException:
             await _close_and_unlink(output_path, fp)
             raise
@@ -266,7 +288,7 @@ async def _run_pg_tool_file(
     if proc.returncode != 0:
         with contextlib.suppress(OSError):
             await asyncio.to_thread(output_path.unlink)
-        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
+        raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
     return stderr or b""
 
 
@@ -295,7 +317,7 @@ async def _run_pg_tool_buffered(
             stderr=asyncio.subprocess.PIPE,
         )
     except OSError as exc:
-        _raise_pg_tool_spawn_failed(binary, exc)
+        raise_pg_tool_spawn_failed(binary, exc)
     try:
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(),
@@ -305,7 +327,7 @@ async def _run_pg_tool_buffered(
         await _terminate_proc(proc)
         raise
     if proc.returncode != 0:
-        _raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
+        raise_pg_tool_failed(binary, proc.returncode, stderr or b"")
     return stdout or b"", stderr or b""
 
 
@@ -327,18 +349,34 @@ async def run_pg_tool(
     Returns:
         ``(stdout, stderr)`` captured from the subprocess.
     """
-    if output_path is not None:
-        stderr = await _run_pg_tool_file(
+    try:
+        if output_path is not None:
+            stderr = await _run_pg_tool_file(
+                binary,
+                args,
+                env=env,
+                timeout_seconds=timeout_seconds,
+                output_path=output_path,
+            )
+            return b"", stderr
+        return await _run_pg_tool_buffered(
+            binary,
+            args,
+            env=env,
+            timeout_seconds=timeout_seconds,
+        )
+    except NotImplementedError:
+        # Imported here, not at module scope: the fallback imports this
+        # module's shared pieces, so a module-level edge back would be a
+        # cold-import cycle.
+        from synthorg.persistence.postgres.pg_thread_fallback import (  # noqa: PLC0415
+            run_pg_tool_threaded,
+        )
+
+        return await run_pg_tool_threaded(
             binary,
             args,
             env=env,
             timeout_seconds=timeout_seconds,
             output_path=output_path,
         )
-        return b"", stderr
-    return await _run_pg_tool_buffered(
-        binary,
-        args,
-        env=env,
-        timeout_seconds=timeout_seconds,
-    )

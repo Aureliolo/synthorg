@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.api._credential_catalog_wiring import (
+    build_provider_credential_catalog,
+)
 from synthorg.api._tunnel_wiring import (
     bind_tunnel_connection_health,
     wire_tunnel_provider,
@@ -15,7 +18,6 @@ from synthorg.api._tunnel_wiring import (
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
@@ -235,12 +237,20 @@ def auto_wire_integrations(
 ) -> IntegrationsBundle:
     """Wire the MCP catalog, installations repo, and integration services.
 
-    Best-effort: each stage logs and swallows non-fatal errors so the
-    app still boots with integrations disabled when a dependency is
-    missing.
+    Two halves with different failure contracts. The provider credential
+    catalog is always-on and fatal: provider authentication has no other
+    source, so a failure raises rather than booting an org that cannot
+    make one authenticated model call. The integrations feature surface
+    (health prober, OAuth, webhooks, rate-limit coordinator) stays
+    best-effort, logging and swallowing so the app boots with
+    integrations disabled when one of its dependencies is missing.
 
     Returns:
         ``IntegrationsBundle`` instance.
+
+    Raises:
+        Exception: Whatever :func:`build_provider_credential_catalog`
+            raises, propagated deliberately.
     """
     bundle = IntegrationsBundle(
         mcp_catalog_service=_wire_mcp_catalog(),
@@ -261,10 +271,33 @@ def auto_wire_integrations(
     if persistence is None:
         return bundle
 
+    # Built outside the best-effort block below and allowed to raise: provider
+    # auth has no other source, so a boot that continues past a failure here
+    # serves an org that cannot make one authenticated model call, and says
+    # nothing until the first dispatch reports a missing environment variable.
+    catalog, secret_backend = build_provider_credential_catalog(
+        effective_config=effective_config,
+        persistence=persistence,
+        db_url=db_url,
+        secret_db_path=_resolve_secret_db_path(
+            persistence,
+            resolved_db_path=resolved_db_path,
+            db_url=db_url,
+            boot_db_path=boot_db_path,
+        ),
+    )
+    bundle.provider_credential_catalog = catalog
+    logger.info(API_SERVICE_AUTO_WIRED, service="provider_credential_catalog")
+
+    # Everything below is the integrations feature surface; gate it on the
+    # flag. When integrations is off the catalog above still backs provider
+    # auth, but the connection-management / webhook / OAuth / health
+    # machinery (and the integrations controllers that read
+    # ``connection_catalog``) stay dormant.
+    if not effective_config.integrations.enabled:
+        return bundle
+
     try:
-        from synthorg.integrations.connections.catalog import (  # noqa: PLC0415
-            ConnectionCatalog,
-        )
         from synthorg.integrations.health.prober import (  # noqa: PLC0415
             HealthProberService,
             bind_github_default_api_url,
@@ -273,78 +306,6 @@ def auto_wire_integrations(
         from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
             OAuthTokenManager,
         )
-        from synthorg.persistence.db_handle import (  # noqa: PLC0415
-            postgres_pool_getter,
-        )
-        from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
-            create_secret_backend,
-            resolve_secret_backend_config,
-        )
-
-        postgres_mode = bool(db_url)
-        secret_db_path = _resolve_secret_db_path(
-            persistence,
-            resolved_db_path=resolved_db_path,
-            db_url=db_url,
-            boot_db_path=boot_db_path,
-        )
-        pg_pool_getter = postgres_pool_getter(persistence) if postgres_mode else None
-
-        selection = resolve_secret_backend_config(
-            effective_config.integrations.secret_backend,
-            postgres_mode=postgres_mode,
-            pg_pool_available=pg_pool_getter is not None,
-            sqlite_db_path=secret_db_path,
-        )
-        if selection.reason:
-            log_fn = {
-                "info": logger.info,
-                "warning": logger.warning,
-                "error": logger.error,
-            }.get(selection.level, logger.info)
-            log_fn(API_APP_STARTUP, note=selection.reason)
-        secret_backend = create_secret_backend(
-            selection.config,
-            db_path=secret_db_path,
-            pg_pool=pg_pool_getter,
-        )
-        try:
-            connections_repo = persistence.connections
-        except PersistenceConnectionError:
-            # ``auto_wire_integrations`` runs before ``persistence.connect()``
-            # in the ``create_app`` boot path; the lifecycle hook does the
-            # connect inside ``_safe_startup``. The durable connection repos
-            # require a live connection, so fall back to the in-memory stub
-            # for the wiring window. The controllers still need an instance
-            # attached to the bundle so they register on the app; OpenAPI
-            # export depends on that registration.
-            from synthorg.persistence.integration_inmemory import (  # noqa: PLC0415
-                InMemoryConnectionRepository,
-            )
-
-            connections_repo = InMemoryConnectionRepository()
-            logger.warning(
-                API_APP_STARTUP,
-                note=(
-                    "persistence not yet connected; using in-memory "
-                    "connection repository for integrations wiring"
-                ),
-            )
-        catalog = ConnectionCatalog(
-            repository=connections_repo,
-            secret_backend=secret_backend,
-        )
-        # Always-on: provider credential resolution depends on this.
-        bundle.provider_credential_catalog = catalog
-        logger.info(API_SERVICE_AUTO_WIRED, service="provider_credential_catalog")
-
-        # Everything below is the integrations feature surface; gate it on the
-        # flag. When integrations is off the catalog above still backs provider
-        # auth, but the connection-management / webhook / OAuth / health
-        # machinery (and the integrations controllers that read
-        # ``connection_catalog``) stay dormant.
-        if not effective_config.integrations.enabled:
-            return bundle
 
         bundle.connection_catalog = catalog
         bundle.secret_capture_service = SecretCaptureService(
@@ -372,7 +333,7 @@ def auto_wire_integrations(
 
         health_cfg = effective_config.integrations.health
         bundle.health_prober_service = HealthProberService(
-            catalog=bundle.connection_catalog,
+            catalog=catalog,
             interval_seconds=health_cfg.check_interval_seconds,
             healthy_recheck_seconds=health_cfg.healthy_recheck_seconds,
             degraded_recheck_seconds=health_cfg.degraded_recheck_seconds,
@@ -391,7 +352,7 @@ def auto_wire_integrations(
 
         init_pkce_cipher()
         bundle.oauth_token_manager = OAuthTokenManager(
-            catalog=bundle.connection_catalog,
+            catalog=catalog,
             refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")

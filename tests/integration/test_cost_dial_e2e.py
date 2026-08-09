@@ -49,6 +49,7 @@ from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import (
@@ -56,6 +57,7 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from tests._shared import (
+    FakeClock,
     FakeTierBenchmarkScoreProvider,
     StubWorkPipeline,
     as_uuid,
@@ -159,11 +161,19 @@ class _InMemoryForecastRepo:
 
 
 class _EngineHost(AgentEngineErrorsMixin):
-    """Host for the engine error mixin under test."""
+    """Host for the engine error mixin under test.
+
+    Every collaborator the mixin declares is supplied, because it reads them
+    directly rather than probing: a host missing one is a host the real
+    engine could never be, and the halt path would fail on the attribute
+    instead of on the behaviour under test.
+    """
 
     def __init__(self, *, approval_gate: object | None) -> None:
-        self._approval_gate = approval_gate
+        self._approval_gate = cast("ApprovalGate | None", approval_gate)
         self._cost_tracker = None
+        self._cost_forecast_repo = None
+        self._clock = FakeClock()
 
 
 # ── Fixtures ──────────────────────────────────────────────────────

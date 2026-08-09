@@ -525,6 +525,35 @@ class TestTaskWithTransition:
         assert new_task.status is TaskStatus.ASSIGNED
         assert new_task.assigned_to == "agent-2"
 
+    def test_a_task_that_failed_before_assignment_can_still_be_cancelled(
+        self,
+    ) -> None:
+        """A stuck task exits without needing anything it may not have.
+
+        Abandonment needs no assignee, so CANCELLED is reachable from FAILED
+        directly. Routing it through ASSIGNED would demand an assignee a task
+        that failed before assignment does not have, leaving the row
+        unresolvable and its plan and project undeletable with it.
+        """
+        task = _make_task(assigned_to=None, status=TaskStatus.FAILED)
+
+        cancelled = task.with_transition(TaskStatus.CANCELLED)
+
+        assert cancelled.status is TaskStatus.CANCELLED
+        assert cancelled.assigned_to is None
+
+    def test_reassigning_an_unassigned_failed_task_still_needs_an_assignee(
+        self,
+    ) -> None:
+        # The new exit does not weaken the reassignment rule: retrying the work
+        # still means naming who will do it.
+        task = _make_task(assigned_to=None, status=TaskStatus.FAILED)
+        with pytest.raises(
+            (ValueError, ValidationError),
+            match="assigned_to is required",
+        ):
+            task.with_transition(TaskStatus.ASSIGNED)
+
     def test_original_unchanged(self) -> None:
         """Ensure the original task is not modified (immutability)."""
         task = _make_task()

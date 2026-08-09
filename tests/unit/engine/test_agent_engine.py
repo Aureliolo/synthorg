@@ -1394,23 +1394,28 @@ class TestSyncToTaskEngine:
         synced = [c.args[0].target_status for c in mock_te.submit.call_args_list]
         assert synced == [TaskStatus.IN_PROGRESS, TaskStatus.FAILED]
 
-    async def test_sync_failure_isolated_from_subsequent_transitions(
+    async def test_exit_sync_failure_does_not_undo_completed_work(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """A failed sync does not block subsequent transitions."""
+        """Only the ENTRY sync is critical; a failed exit sync is reported.
+
+        The work is already done by then, so failing the run would discard a
+        real result over a bookkeeping write the next reconciliation repairs.
+        """
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
-        # First call (IN_PROGRESS) fails, rest succeed
-        mock_te = MagicMock(spec=TaskEngine)
-        mock_te.submit = AsyncMock(
-            side_effect=[
-                _make_sync_failure(),
-                _make_sync_success(),
-            ],
+        # Entry (IN_PROGRESS) succeeds; the terminal transition fails.
+        mock_te = mock_of[TaskEngine](
+            submit=AsyncMock(
+                side_effect=[
+                    _make_sync_success(),
+                    _make_sync_failure(),
+                ],
+            )
         )
 
         engine = AgentEngine(provider=provider, task_engine=mock_te)
@@ -1420,17 +1425,55 @@ class TestSyncToTaskEngine:
             task=sample_task_with_criteria,
         )
 
-        # Run still succeeds despite first sync failure
         assert result.is_success is True
         assert mock_te.submit.await_count == 2
 
-    async def test_task_engine_error_swallowed(
+    async def test_entry_sync_failure_aborts_before_any_work(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """TaskEngineError from submit() is logged and swallowed."""
+        """A refused ASSIGNED -> IN_PROGRESS stops the run at the door."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = mock_of[TaskEngine](
+            submit=AsyncMock(
+                side_effect=[
+                    _make_sync_failure(),
+                    _make_sync_success(),
+                ],
+            )
+        )
+
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.is_success is False
+        assert result.execution_result.error_type == "ExecutionStateError"
+        # The name of this test is its contract. A regression that ran the loop
+        # and only then failed on the exit sync produces exactly the two
+        # assertions above, so "before any work" has to be asserted directly:
+        # the provider is what the loop would have reached, and it never was.
+        assert provider.call_count == 0
+
+    async def test_task_engine_error_aborts_the_run(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A TaskEngineError on the entry sync refuses the run.
+
+        Continuing would run work the central engine has no record of
+        starting: the coordinator's local row said IN_PROGRESS while the
+        persisted one was still ASSIGNED, and nothing reconciled them.
+        """
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
@@ -1446,15 +1489,16 @@ class TestSyncToTaskEngine:
             task=sample_task_with_criteria,
         )
 
-        assert result.is_success is True
+        assert result.is_success is False
+        assert result.execution_result.error_type == "ExecutionStateError"
 
-    async def test_unexpected_error_swallowed(
+    async def test_unexpected_error_aborts_the_run(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Unexpected Exception from submit() is logged and swallowed."""
+        """An unexpected submit() failure refuses the run for the same reason."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
@@ -1470,7 +1514,8 @@ class TestSyncToTaskEngine:
             task=sample_task_with_criteria,
         )
 
-        assert result.is_success is True
+        assert result.is_success is False
+        assert result.execution_result.error_type == "ExecutionStateError"
 
     async def test_memory_error_propagates(
         self,

@@ -9,7 +9,7 @@ Observer notifications are dispatched via a separate background queue.
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
@@ -20,12 +20,14 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import PlanParentTaskInUseError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
     TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
+    TaskOrphanedPlanError,
     TaskVersionConflictError,
 )
 from synthorg.engine.task_engine_config import TaskEngineConfig
@@ -54,6 +56,7 @@ from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
     TASK_ENGINE_DRAIN_TIMEOUT,
+    TASK_ENGINE_FILE_FAILED,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_DIED,
     TASK_ENGINE_MAX_QUEUE_SIZE_SET,
@@ -66,6 +69,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOP_REJECTED,
     TASK_ENGINE_STOPPED,
+    TASK_ENGINE_TASKS_FILED,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
@@ -819,6 +823,80 @@ class TaskEngine(TaskEngineLoopsMixin):
                 error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
+
+    async def file_tasks(self, tasks: Sequence[Task]) -> None:
+        """Persist pre-built tasks that carry their own derived ids.
+
+        Decomposition mints child tasks whose ids are derived from the plan
+        items, which is what makes a re-dispatch of the same plan idempotent;
+        asking the engine to *create* them would mint new ids and duplicate
+        the tree on every retry. So they are saved as given.
+
+        This is filing, not a transition: every task must already carry the
+        status it is filed in, and moving one afterwards still goes through
+        the queue, so the single-writer invariant over status is untouched.
+        One transaction, because a plan's children are a tree and half a tree
+        is not a smaller plan.
+
+        Args:
+            tasks: The tasks to file, each carrying its own id and status.
+
+        Raises:
+            TaskOrphanedPlanError: A task names a plan that no longer exists,
+                so filing it would strand live work under nothing.
+            TaskInternalError: If the persistence backend fails.
+        """
+        if not tasks:
+            return
+        await self._reject_orphaned_plans(tasks)
+        try:
+            await self._persistence.tasks.save_many(tuple(tasks))
+        except Exception as exc:
+            reraise_critical(exc)
+            msg = f"Failed to file tasks: {safe_error_description(exc)}"
+            logger.warning(
+                TASK_ENGINE_FILE_FAILED,
+                task_count=len(tasks),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise TaskInternalError(msg) from exc
+        logger.info(TASK_ENGINE_TASKS_FILED, task_count=len(tasks))
+
+    async def _reject_orphaned_plans(self, tasks: Sequence[Task]) -> None:
+        """Refuse to file work under a plan that is no longer there.
+
+        The plan delete counts live tasks and removes the row in one
+        statement, so it cannot be raced by a task already filed. This is
+        the other side of that: a task filed AFTER the plan went would be
+        live work under nothing, running against a plan id that resolves to
+        no row, and the rollup that would notice reads the plan first.
+
+        Args:
+            tasks: The tasks about to be filed.
+
+        Raises:
+            TaskOrphanedPlanError: At least one task names a missing plan.
+        """
+        plan_ids = {str(task.plan_id) for task in tasks if task.plan_id is not None}
+        missing = [
+            plan_id
+            for plan_id in sorted(plan_ids)
+            if await self._persistence.plans.get(NotBlankStr(plan_id)) is None
+        ]
+        if not missing:
+            return
+        msg = (
+            f"refusing to file {len(tasks)} task(s): plan(s) {missing} no longer "
+            "exist, so the work would have no plan to belong to"
+        )
+        logger.warning(
+            TASK_ENGINE_FILE_FAILED,
+            task_count=len(tasks),
+            reason="orphaned_plan",
+            missing_plan_ids=tuple(missing),
+        )
+        raise TaskOrphanedPlanError(msg)
 
     @staticmethod
     def _validate_pagination(limit: int | None, offset: int) -> None:

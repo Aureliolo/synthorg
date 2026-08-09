@@ -14,7 +14,7 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import Final, cast, override
+from typing import Final, assert_never, cast, override
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -45,6 +45,7 @@ from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
+    TerminationReason,
 )
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
@@ -77,6 +78,48 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 _STRATEGY_NAME = "agent-session"
+
+
+def _ran_without_submitting(reason: TerminationReason) -> bool:
+    """Report whether a verdict-less session had a researched plan to lose.
+
+    Substituting a single-shot plan for a session that ran on its own terms
+    hands the operator a different plan than the one they asked for,
+    indistinguishable from the real thing at the approval gate. Where the
+    session could not run at all, nothing was lost and the fallback stands.
+
+    A ``match`` with :func:`assert_never` rather than a membership set: the
+    fallback is a safety decision per termination, so a newly-added
+    :class:`TerminationReason` must be classified deliberately, and this
+    makes omitting it a type error rather than a silent grant of the
+    fallback.
+
+    Returns:
+        ``True`` when the session ran and produced nothing.
+    """
+    match reason:
+        case (
+            TerminationReason.COMPLETED
+            | TerminationReason.NO_OP
+            | TerminationReason.MAX_TURNS
+            | TerminationReason.BUDGET_EXHAUSTED
+            | TerminationReason.STAGNATION
+        ):
+            return True
+        # ERROR never reached the model, SHUTDOWN lost the process under it,
+        # and PARKED / CANCELLED stopped the session by a decision taken
+        # outside it (an approval wait, an operator abort): in all four the
+        # session was prevented from producing rather than producing nothing.
+        case (
+            TerminationReason.ERROR
+            | TerminationReason.SHUTDOWN
+            | TerminationReason.PARKED
+            | TerminationReason.CANCELLED
+        ):
+            return False
+        case _ as unreachable:
+            assert_never(unreachable)
+
 
 # A planning session may only be granted tools that observe state, never ones
 # that mutate it: the objective text is attacker-controllable, so an
@@ -340,20 +383,27 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     ) -> DecompositionPlan:
         """Plan the task via an owner-run agent session, or fall back.
 
-        The fallback covers the cases where there is no researched plan to
-        lose: no owner staffed, an unresolvable provider, or a session that
-        submitted nothing. A plan that came back too big is not one of them.
+        The fallback covers only the cases where there was no researched
+        plan to lose: no owner staffed, an unresolvable provider, or a
+        session prevented from producing at all (``ERROR`` never reached
+        the model, ``SHUTDOWN`` lost the process under it, ``PARKED`` and
+        ``CANCELLED`` stopped it on a decision taken outside it, and
+        nothing resumes a parked planning session back into this path). A
+        session that ran on its own terms and finished without submitting
+        is not one of them, and neither is a plan that came back too big.
 
         Returns:
             The decomposition plan the owner submitted, or the fallback
-            strategy's plan when no owner is staffed / no plan was submitted.
+            strategy's plan when no session could run.
 
         Raises:
             DecompositionDepthError: If the current depth meets or exceeds the
                 configured max depth.
             DecompositionSubtaskLimitError: If the submitted plan carries more
                 subtasks than the caller allowed.
-            DecompositionError: If both the session and the fallback fail.
+            DecompositionError: If a session ran to completion without
+                submitting a plan, or if both the session and the fallback
+                fail.
         """
         self._check_depth(context)
         owner = context.owner_identity
@@ -363,7 +413,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 task_id=str(task.id),
                 reason="no_owner_staffed",
             )
-            return await self._fallback.decompose(task, context)
+            return await self._fallback_plan(task, context)
 
         try:
             provider = self._provider_selector(owner)
@@ -380,24 +430,28 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return await self._fallback.decompose(task, context)
+            return await self._fallback_plan(task, context)
 
         capture = _PlanCapture()
         result = await self._run_session(task, context, owner, provider, capture)
         plan = capture.plan
         if plan is None:
+            detail = (
+                scrub_secret_tokens(result.error_message)
+                if result.error_message is not None
+                else None
+            )
             logger.warning(
                 DECOMPOSITION_SESSION_NO_PLAN,
                 task_id=str(task.id),
                 owner_id=str(owner.id),
                 termination=result.termination_reason.value,
-                termination_detail=(
-                    scrub_secret_tokens(result.error_message)
-                    if result.error_message is not None
-                    else None
-                ),
+                termination_detail=detail,
             )
-            return await self._fallback.decompose(task, context)
+            self._reject_empty_session(
+                task, owner_id=str(owner.id), result=result, detail=detail
+            )
+            return await self._fallback_plan(task, context)
 
         if len(plan.subtasks) > context.max_subtasks:
             # The owner researched this plan across turns with read-only
@@ -425,7 +479,62 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             subtask_count=len(plan.subtasks),
             termination=result.termination_reason.value,
         )
-        return plan
+        return plan.model_copy(update={"planning_strategy": _STRATEGY_NAME})
+
+    def _reject_empty_session(
+        self,
+        task: Task,
+        *,
+        owner_id: str,
+        result: ExecutionResult,
+        detail: str | None,
+    ) -> None:
+        """Refuse to substitute a blind plan for a session that just ran.
+
+        A session that terminated on its own terms and never called its one
+        tool produced nothing, which is the planning counterpart of the
+        zero-artifact guard. Falling back there replaces a researched plan
+        with a single-shot one nobody asked for, and the operator approves
+        the substitute believing it is the original.
+
+        Raises:
+            DecompositionError: When the session terminated normally with
+                no plan submitted.
+        """
+        if not _ran_without_submitting(result.termination_reason):
+            return
+        msg = (
+            f"Planning session for task {task.id} terminated "
+            f"{result.termination_reason.value!r} without submitting a plan"
+        )
+        if detail is not None:
+            msg = f"{msg}: {detail}"
+        logger.warning(
+            DECOMPOSITION_VALIDATION_ERROR,
+            task_id=str(task.id),
+            owner_id=owner_id,
+            termination=result.termination_reason.value,
+            error=msg,
+        )
+        raise DecompositionError(msg)
+
+    async def _fallback_plan(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionPlan:
+        """Run the single-shot fallback, stamping what produced the plan.
+
+        Returns:
+            The fallback's plan, carrying its own strategy name so the
+            substitution is visible on the durable plan and at the
+            approval gate rather than being indistinguishable from a
+            researched one.
+        """
+        plan = await self._fallback.decompose(task, context)
+        return plan.model_copy(
+            update={"planning_strategy": self._fallback.get_strategy_name()}
+        )
 
     async def _run_session(
         self,
@@ -563,6 +672,19 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             memory digest, and the fenced planning brief.
         """
         ctx = AgentContext.from_identity(owner, max_turns=self._config.max_turns)
+        # Every granted tool starts LOADED. The loop offers the provider only
+        # the loaded tools plus the progressive-disclosure trio, and this
+        # session is deliberately not granted that trio: its whole toolkit is
+        # one terminal submit tool plus a few read tools. Left unloaded, the
+        # session was offered nothing at all and could never call the tool it
+        # exists to call, so it ran a turn, said something, and terminated
+        # 'completed' having submitted no plan, every single time.
+        ctx = ctx.model_copy(
+            update={
+                "loaded_tools": frozenset(granted_tools),
+                "tool_load_order": granted_tools,
+            }
+        )
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.SYSTEM,

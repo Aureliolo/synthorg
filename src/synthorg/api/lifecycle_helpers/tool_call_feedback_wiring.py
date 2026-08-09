@@ -20,6 +20,7 @@ dangling sink.
 """
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
@@ -37,26 +38,25 @@ async def wire_tool_call_feedback(app_state: AppState) -> None:
 
     Idempotent for re-entered lifespans (shared-app fixtures): returns
     early when a tracker is already wired.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the tracker reads or writes
+            through is absent, named so the status surface can report which.
     """
     if app_state.slice(ToolCallFeedbackStateSlice).tracker is not None:
         return
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="tool_call_feedback",
-            note="settings resolver absent; feedback disabled",
-        )
-        return
+        msg = "no settings resolver; the feedback thresholds are settings-driven"
+        raise SubsystemDeclinedError(msg)
     management = app_state.slice(ProvidersStateSlice).management
     backend = app_state.slice(PersistenceStateSlice).backend
-    if management is None or backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="tool_call_feedback",
-            note="management or persistence absent; feedback disabled",
-        )
-        return
+    if management is None:
+        msg = "no provider management service; the tracker writes capability updates"
+        raise SubsystemDeclinedError(msg)
+    if backend is None:
+        msg = "no persistence backend; tool-call signals are durable"
+        raise SubsystemDeclinedError(msg)
 
     tracker = ToolCallFeedbackTracker(
         repo=backend.model_tool_call_signals,

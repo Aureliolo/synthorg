@@ -367,18 +367,31 @@ async def apply_transition(
                 **mutation.overrides,
             )
         except ValueError as exc:
+            # A model-validation failure reaches here as a ``ValidationError``,
+            # which subclasses ``ValueError``. Rendered rather than stringified:
+            # its ``str`` is a multi-line dump of every failing field with the
+            # offending input and a docs URL, and that dump travelled all the
+            # way out as the body of a 422 when a transition tripped a Task
+            # invariant. Rendering names the field and the reason and nothing
+            # else. A plain ``ValueError`` (the state machine refusing the hop)
+            # already carries a one-line message.
+            error_msg = (
+                format_validation_error("Invalid transition", exc)
+                if isinstance(exc, PydanticValidationError)
+                else safe_error_description(exc)
+            )
             logger.warning(
                 TASK_ENGINE_MUTATION_FAILED,
                 mutation_type="transition",
                 request_id=mutation.request_id,
                 task_id=mutation.task_id,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=error_msg,
             )
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
-                error=safe_error_description(exc),
+                error=error_msg,
                 error_code="validation",
             )
 

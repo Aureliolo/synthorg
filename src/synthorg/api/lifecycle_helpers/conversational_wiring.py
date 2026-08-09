@@ -57,9 +57,13 @@ async def wire_group_chat_service(
 ) -> None:
     """Wire the multi-agent group chat behind group_chat_enabled + deps.
 
-    Returns ``None`` (leaving ``POST /meta/chat/group`` at 503) when the
-    flag is off, no provider/agent registry is present, or persistence
-    is absent. Idempotent: a second boot pass skips when already wired.
+    Leaves ``POST /meta/chat/group`` at 503 when the flag is off, no
+    provider/agent registry is present, or persistence is absent.
+    Idempotent: a second boot pass skips when already wired.
+
+    Raises:
+        SubsystemDeclinedError: No provider registry or no agent registry,
+            so there is nobody to convene and nothing to convene them with.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
@@ -72,8 +76,12 @@ async def wire_group_chat_service(
     if app_state.slice(MetaStateSlice).group_chat_service is not None:
         return
     agent_registry = app_state.slice(HrStateSlice).agent_registry
-    if provider_registry is None or agent_registry is None:
-        return
+    if provider_registry is None:
+        msg = "no provider registry; every voice in the room is an LLM call"
+        raise SubsystemDeclinedError(msg)
+    if agent_registry is None:
+        msg = "no agent registry; there is nobody to convene"
+        raise SubsystemDeclinedError(msg)
     repositories = build_conversational_repositories(persistence)
     service = build_group_chat_service(
         si_config.chief_of_staff,
@@ -137,19 +145,14 @@ async def wire_conversational_actor(
             "drive an MCP action (an empty company reaches this)"
         )
         raise SubsystemDeclinedError(msg)
+    # The builder is fail-closed and raises with the condition that fired,
+    # so there is nothing to guess at here.
     actor = build_conversational_actor(
         si_config.chief_of_staff,
         engine=service.engine,
         agent_registry=agent_registry,
         autonomy_resolver=service.autonomy_resolver,
     )
-    if actor is None:
-        msg = (
-            "the fail-closed actor gate refused: direct MCP acting is off, "
-            "or the boot engine has no MCP self-consumer or no enabled "
-            "security governance; the builder logged which"
-        )
-        raise SubsystemDeclinedError(msg)
     app_state.wire(MetaStateSlice, conversational_actor=actor)
     logger.info(
         API_APP_STARTUP,
@@ -434,6 +437,10 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     hook attaches the dispatcher afterwards. A missing pipeline or store
     leaves the proposer unable to draft a plan (its act path 503s); a
     missing worker service degrades to a synchronous decompose+park.
+
+    Raises:
+        SubsystemDeclinedError: The proposer, the work pipeline, or the
+            project store the dispatcher binds to is absent.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.chief_of_staff.plan_intake import (  # noqa: PLC0415
@@ -446,16 +453,16 @@ async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
 
     proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
     if proposer is None:
-        return
+        msg = "no chief-of-staff proposer; the dispatcher attaches to it"
+        raise SubsystemDeclinedError(msg)
     work_pipeline = app_state.slice(EngineStateSlice).work_pipeline
     backend = app_state.slice(PersistenceStateSlice).backend
-    if work_pipeline is None or backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="chief_of_staff_proposer",
-            note="plan dispatcher skipped: work pipeline or persistence not wired",
-        )
-        return
+    if work_pipeline is None:
+        msg = "no work pipeline; the dispatcher drives the decompose+park spine"
+        raise SubsystemDeclinedError(msg)
+    if backend is None:
+        msg = "no persistence backend; the dispatcher provisions a project row"
+        raise SubsystemDeclinedError(msg)
     dispatcher = ConversationalPlanDispatcher(
         project_repo=backend.projects,
         work_pipeline=work_pipeline,

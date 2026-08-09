@@ -1,4 +1,4 @@
-"""Tests for the risk-tier-classifier plugin surface (REWORK #9)."""
+"""Tests for the risk-tier-classifier plugin surface."""
 
 from datetime import UTC, datetime
 

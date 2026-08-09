@@ -56,7 +56,7 @@ class ExecutionResult(BaseModel):
             system boundaries per project conventions.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     context: AgentContext = Field(description="Final agent context")
     termination_reason: TerminationReason = Field(
@@ -73,6 +73,10 @@ class ExecutionResult(BaseModel):
     error_message: str | None = Field(
         default=None,
         description="Error description (when reason is ERROR)",
+    )
+    error_type: str | None = Field(
+        default=None,
+        description="Class name of the exception that terminated the run",
     )
     metadata: dict[str, object] = Field(
         default_factory=dict,

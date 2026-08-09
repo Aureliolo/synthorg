@@ -122,6 +122,62 @@ deliberate hold. Resuming returns to `ACTIVE`, from which the tail is
 re-derived, rather than dropping the operator back into a half-finished stage
 whose gate has already run.
 
+### Every state has an exit a writer can always take
+
+A transition table full of legal edges is not the same as a reachable exit. The
+task machine had one edge out of `FAILED`, `BLOCKED`, `INTERRUPTED` and
+`SUSPENDED`, and it was `ASSIGNED`, which `Task`'s validator refuses without an
+assignee. A task that failed *before* assignment therefore could not leave any
+state: the raw `ValidationError` escaped as a repeating 422, and its plan and
+its project became undeletable behind it.
+
+So each `StateMachine` declares `unconditional_targets`: the statuses a writer
+can always reach because they need nothing the entity might lack (a reason the
+writer authors, never an assignee or a non-empty item DAG). Every stuck task
+status carries a direct `CANCELLED` (abandonment needs no assignee) and every
+tail plan status carries `FAILED`. `check_lifecycle_exit_reachable.py` walks
+those hops alone, breadth-first, so plain terminal reachability cannot
+satisfy it.
+
+### Every status change is recorded
+
+The status says where an initiative is. The append-only
+`lifecycle_transitions` ledger says how it got there and who moved it:
+`PlanService.sync_status` and `advance_project_status` each append a row per
+persisted hop, including the intermediate hops of a multi-hop walk that a log
+line loses. `GET /plans/{id}/transitions` reads it back, which is what makes
+"only the evaluate stage writes COMPLETED" provable from persisted state
+rather than from a container's stdout.
+
+Every write path is covered; the write itself is not guaranteed. The append
+runs after the status write has committed, so it cannot be rolled back into
+it, and a ledger outage that outlasts the retries leaves a status with no row
+behind it. That gap is bounded and loud rather than silent: the append is
+idempotent on the row's own id (a retry after a lost response is the success
+it was, not a duplicate-key failure), a row that still does not land is logged
+at ERROR with every field it would have carried so it can be reconstructed,
+and a run of them says so explicitly instead of reporting each as an isolated
+blip. Read the ledger as complete up to a reported outage, not as complete by
+construction.
+
+That reporting covers the persistence failures the append is allowed to
+absorb, which is every one except a critical exception. `MemoryError`,
+`RecursionError` and an exception group carrying either are re-raised the
+moment they surface, ahead of the ERROR line and ahead of the outage streak,
+because a process out of memory is not a ledger outage to report and carrying
+on to format a log record is how the report itself fails. A gap left that way
+is announced by the crash rather than by the ledger.
+
+The ledger repository is a **required** collaborator, not an optional one, on
+both `LifecycleLedger` and `PlanService`: a service built without it would
+persist the status and emit the transition log line while the durable row
+silently never happened, which is a ledger that looks complete and is not.
+`build_plan_service` is the single construction site that binds it.
+
+The append runs after the status write commits, so a ledger outage is logged at
+ERROR with every field the row would have carried and never reported to the
+caller as a failed transition: the move already happened.
+
 ### There is no failed project
 
 `ProjectStatus` has no failure value, and this is a design decision rather than

@@ -21,6 +21,7 @@ from synthorg.api.mcp_gateway._request_context import (
     _context_opener,
     _parse_targets,
     _resolve_actor,
+    _resolve_autonomy,
     _resolve_deploy_settings,
     _resolve_kill_switches,
     _resolve_publish_settings,
@@ -36,13 +37,17 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.role import Skill
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.llm.gateway_token import GatewayTokenClaims
 from synthorg.security.audit import AuditLog
+from synthorg.security.runtime_config import MutableSecurityConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
+from synthorg.workers.execution_service import AgentEngineExecutionService
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -143,6 +148,89 @@ async def test_resolve_actor_returns_the_registered_identity() -> None:
     registry = _Registry(identity)
     actor = await _resolve_actor(_app_state(registry), agent_id="deployer")
     assert actor is identity
+
+
+def _autonomy_state(*, service: object, with_security: bool = True) -> AppState:
+    """A real app state whose runtime slice serves *service*.
+
+    Built rather than mocked: ``security_runtime_config`` is assigned in
+    ``AppState.__init__`` rather than declared on the class, so an autospec
+    double has no such attribute and cannot be given one. A real state also
+    resolves the runtime slice by class, which is what the path under test
+    actually does.
+
+    Args:
+        service: What the runtime slice serves as the execution service.
+        with_security: ``False`` replaces the holder with an empty one, which
+            is the only way to reach ``current is None``: ``RootConfig``
+            always carries a ``SecurityConfig``.
+    """
+    state = make_app_state(worker_execution_service=service)
+    if not with_security:
+        state.security_runtime_config = MutableSecurityConfig(None)
+    return state
+
+
+class TestGatewayAutonomy:
+    """C18: a credentialed gateway call is not a runless screen.
+
+    The bearer names the agent and the task, which is exactly what autonomy
+    is resolved from. Resolving nothing left every governed tool call reaching
+    the gateway screened at the untiered fallback, whatever the operator had
+    actually granted that agent.
+    """
+
+    async def test_a_runless_call_resolves_no_autonomy(self) -> None:
+        """No task means no run to be governed by."""
+        service = mock_of[AgentEngineExecutionService]()
+        state = _autonomy_state(service=service)
+
+        assert await _resolve_autonomy(state, _identity(), task_id=None) is None
+        service.resolve_effective_autonomy.assert_not_awaited()
+
+    async def test_an_unknown_actor_resolves_no_autonomy(self) -> None:
+        """An agent the registry does not know cannot be tiered."""
+        service = mock_of[AgentEngineExecutionService]()
+        state = _autonomy_state(service=service)
+
+        assert await _resolve_autonomy(state, None, task_id="task-1") is None
+        service.resolve_effective_autonomy.assert_not_awaited()
+
+    async def test_no_security_config_resolves_no_autonomy(self) -> None:
+        """With no screen installed there is nothing to tier."""
+        service = mock_of[AgentEngineExecutionService]()
+        state = _autonomy_state(service=service, with_security=False)
+
+        assert await _resolve_autonomy(state, _identity(), task_id="task-1") is None
+        service.resolve_effective_autonomy.assert_not_awaited()
+
+    async def test_a_foreign_execution_service_resolves_no_autonomy(self) -> None:
+        """Only the agent-backed service owns the answer for other paths."""
+        state = _autonomy_state(service=SimpleNamespace())
+
+        assert await _resolve_autonomy(state, _identity(), task_id="task-1") is None
+
+    async def test_a_governed_call_is_tiered_like_the_run_it_belongs_to(
+        self,
+    ) -> None:
+        """Same service, same answer, so the gateway is not a second owner."""
+        identity = _identity()
+        expected = EffectiveAutonomy(
+            level=AutonomyLevel.FULL,
+            auto_approve_actions=frozenset({"comms:external"}),
+            human_approval_actions=frozenset(),
+            security_agent=False,
+        )
+        service = mock_of[AgentEngineExecutionService]()
+        service.resolve_effective_autonomy.return_value = expected
+        state = _autonomy_state(service=service)
+
+        resolved = await _resolve_autonomy(state, identity, task_id="task-1")
+
+        assert resolved is expected
+        service.resolve_effective_autonomy.assert_awaited_once_with(
+            identity, task_id="task-1"
+        )
 
 
 async def test_resolve_deploy_settings_parses_the_bundle() -> None:

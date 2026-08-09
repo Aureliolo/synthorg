@@ -13,6 +13,7 @@ from collections.abc import Callable
 from synthorg.api.state import AppState
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
@@ -67,9 +68,16 @@ async def apply_provider_change(
         ProviderPersistenceError: If the DB write or the hot-reload (after
             rollback) fails.
     """
+    from synthorg.integrations.state import (  # noqa: PLC0415
+        provider_credential_catalog_of,
+    )
+
     retry_max_attempts = await resolve_retry_max_attempts(config_resolver)
     registry, router = _build_registry_and_router(
-        new_providers, build_router, retry_max_attempts
+        new_providers,
+        build_router,
+        retry_max_attempts,
+        connection_catalog=provider_credential_catalog_of(app_state),
     )
     serialized = _serialize_envelope(new_providers)
     had_db_row, prior_providers = await _snapshot_and_persist(
@@ -145,8 +153,16 @@ def _build_registry_and_router(
     new_providers: dict[str, ProviderConfig],
     build_router: Callable[[dict[str, ProviderConfig]], ModelRouter],
     retry_max_attempts: int | None = None,
+    *,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> tuple[ProviderRegistry, ModelRouter]:
     """Build the registry + router (validation) before any I/O.
+
+    *connection_catalog* is not optional in practice: this registry replaces
+    the live one through a direct two-field ``wire`` (the registry and the
+    router must land together), so it never passes the swap seam that would
+    otherwise attach credentials. Built without it, every driver dispatches
+    with no key, and only the features wired before the swap keep working.
 
     Returns:
         The ``(registry, router)`` pair built from ``new_providers``.
@@ -156,7 +172,9 @@ def _build_registry_and_router(
     """
     try:
         registry = ProviderRegistry.from_config(
-            new_providers, retry_max_attempts=retry_max_attempts
+            new_providers,
+            connection_catalog=connection_catalog,
+            retry_max_attempts=retry_max_attempts,
         )
         router = build_router(new_providers)
     except Exception as exc:

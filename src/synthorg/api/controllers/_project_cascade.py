@@ -4,6 +4,7 @@ from typing import Final
 
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
@@ -138,7 +139,7 @@ async def cascade_supersede_children(
         requested_by: Identity recorded on each task cancellation.
     """
     persistence = persistence_of(app_state)
-    plan_service = PlanService(repo=persistence.plans, clock=app_state.clock)
+    plan_service = build_plan_service(persistence, clock=app_state.clock)
     offset = 0
     plans_retired = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination

@@ -99,6 +99,9 @@ class TestIsTestRun:
             "vendor/bin/phpunit",
             "ctest --output-on-failure",
             "PYTEST_ADDOPTS=-q pytest",
+            "node --test",
+            "node --test test/",
+            "node --test --test-reporter=spec",
         ],
     )
     def test_recognised_runners(self, command: str) -> None:
@@ -117,6 +120,9 @@ class TestIsTestRun:
             "cargo build",
             "cat pytest_helper.py",
             "python testing_utils.py",
+            "node server.js",
+            "node --watch server.js",
+            "node --test-reporter=spec run.js",
         ],
     )
     def test_unrecognised_commands(self, command: str) -> None:

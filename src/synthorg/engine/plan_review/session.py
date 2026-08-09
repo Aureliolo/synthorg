@@ -7,25 +7,31 @@ raises concrete findings, and calls the terminal ``submit_plan_review`` tool
 with a verdict. Every panellist's verdict is consolidated (deterministically)
 into one :class:`~synthorg.core.plan_review.PlanReview` attached to the plan.
 
-Degrades gracefully: when no eligible reviewer can be seated, or no panellist
-submits a usable verdict, it returns ``None`` and the plan is parked for human
-approval without a panel review (a greenlight is never blocked on the panel).
+Degrades visibly, not silently: when no eligible reviewer can be seated, or a
+seated panel submits no usable verdict, the plan is still parked for human
+approval (a greenlight is never blocked on the panel) but the outcome names why
+it carries no review, so the operator approves knowing the plan has zero quality
+signal. The one case that is NOT a degradation is every seated reviewer failing
+on its provider: that is an outage, and a plan nobody could review must not
+present as a plan nobody objected to.
 """
 
 import asyncio
-from typing import override
+from dataclasses import dataclass
+from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.plan_review import PlanReview, PlanReviewerVerdict
+from synthorg.core.plan_review import PlanReviewerVerdict, PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
+from synthorg.engine.errors import PlanReviewUnavailableError
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ShutdownChecker,
@@ -57,6 +63,66 @@ from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
+
+#: Reasons a plan can reach the approval gate carrying no review. Each is
+#: shown to the operator, because "reviewed and unobjectionable" and "never
+#: reviewed" look identical on a plan that simply has no review attached.
+_NO_PANEL_SEATED: Final[str] = (
+    "no eligible reviewer could be seated from the active roster, so this "
+    "plan carries no stakeholder review"
+)
+_NO_VERDICT_SUBMITTED: Final[str] = (
+    "the review panel ran but no reviewer submitted a verdict, so this plan "
+    "carries no stakeholder review"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewerResult:
+    """One panellist's contribution, and whether its provider answered.
+
+    The distinction is load-bearing: a panel where every reviewer's provider
+    failed reviewed nothing, and treating that as a quiet panel would park a
+    plan whose review never ran as though it had passed.
+    """
+
+    verdict: PlanReviewerVerdict | None
+    provider_failed: bool
+
+    @classmethod
+    def unreachable(cls) -> _ReviewerResult:
+        """The session never reached a provider answer.
+
+        An unresolvable provider, a construction failure, or the call itself
+        raising: in all three nothing was reviewed, which is different from a
+        reviewer that ran and stayed quiet.
+
+        Returns:
+            A verdict-less result whose provider is blamed.
+        """
+        return cls(verdict=None, provider_failed=True)
+
+    @classmethod
+    def from_session(
+        cls,
+        verdict: PlanReviewerVerdict | None,
+        termination: TerminationReason,
+    ) -> _ReviewerResult:
+        """Read one finished session's outcome.
+
+        Args:
+            verdict: What the panellist submitted, if anything.
+            termination: How its loop ended, which is the only thing that
+                separates a reviewer that had nothing to say from one whose
+                provider stopped it saying anything.
+
+        Returns:
+            The panellist's contribution.
+        """
+        return cls(
+            verdict=verdict,
+            provider_failed=verdict is None and termination is TerminationReason.ERROR,
+        )
 
 
 class AgentSessionPlanReviewPanel(PlanReviewPanel):
@@ -113,18 +179,27 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         plan: DecompositionResult,
         agents: tuple[AgentIdentity, ...],
         owner: AgentIdentity | None,
-    ) -> PlanReview | None:
+    ) -> PlanReviewOutcome:
         """Review *plan* with a bounded panel, consolidating the verdicts.
 
         Returns:
-            The consolidated :class:`PlanReview`, or ``None`` when no panellist
-            could be seated or none submitted a usable verdict.
+            The outcome: a consolidated :class:`PlanReview`, or the reason
+            the plan carries none.
+
+        Raises:
+            PlanReviewUnavailableError: When every seated reviewer failed on
+                its provider. Nothing was reviewed, so the caller fails plan
+                preparation rather than parking an unreviewed plan that reads
+                like an unobjectionable one.
         """
         panel = select_review_panel(
             plan, agents, owner=owner, limit=self._config.panel_size
         )
         if not panel:
-            return None
+            logger.info(
+                PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_panel_seated"
+            )
+            return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_PANEL_SEATED))
         logger.info(
             PLAN_REVIEW_PANEL_STARTED,
             task_id=str(task.id),
@@ -137,12 +212,25 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 group.create_task(self._run_reviewer_session(task, reviewer, rendered))
                 for reviewer in panel
             ]
-        verdicts = [v for session in sessions if (v := session.result()) is not None]
+        results = [session.result() for session in sessions]
+        verdicts = [r.verdict for r in results if r.verdict is not None]
         if not verdicts:
+            if all(r.provider_failed for r in results):
+                msg = (
+                    f"every seated reviewer ({len(results)}) failed on its "
+                    "provider, so the plan was not reviewed at all"
+                )
+                logger.error(
+                    PLAN_REVIEW_PANEL_EMPTY,
+                    task_id=str(task.id),
+                    reason="all_providers_failed",
+                    panel_size=len(results),
+                )
+                raise PlanReviewUnavailableError(msg)
             logger.info(
                 PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts"
             )
-            return None
+            return PlanReviewOutcome(absent_reason=NotBlankStr(_NO_VERDICT_SUBMITTED))
         review = synthesise_review(tuple(verdicts), now=self._clock.now())
         logger.info(
             PLAN_REVIEW_PANEL_COMPLETED,
@@ -150,14 +238,14 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             reviewer_count=len(verdicts),
             verdict=review.verdict.value,
         )
-        return review
+        return PlanReviewOutcome(review=review)
 
     async def _run_reviewer_session(
         self,
         task: Task,
         reviewer: AgentIdentity,
         rendered_plan: str,
-    ) -> PlanReviewerVerdict | None:
+    ) -> _ReviewerResult:
         """Run one panellist's bounded review session, capturing its verdict.
 
         Isolated so one panellist's failure never blocks the greenlight: any
@@ -166,8 +254,8 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         never cancels its siblings on a single bad session.
 
         Returns:
-            The panellist's :class:`PlanReviewerVerdict`, or ``None`` when the
-            session ended without submitting a usable verdict.
+            The panellist's verdict, or the absence of one together with
+            whether its provider was the reason.
         """
         capture = VerdictCapture()
         try:
@@ -214,19 +302,19 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return None
+            return _ReviewerResult.unreachable()
         verdict = capture.verdict
         if verdict is None:
             self._log_no_verdict(task, reviewer, result.termination_reason)
-            return None
-        logger.info(
-            PLAN_REVIEW_REVIEWER_COMPLETED,
-            task_id=str(task.id),
-            reviewer_id=str(reviewer.id),
-            verdict=verdict.verdict.value,
-            finding_count=len(verdict.findings),
-        )
-        return verdict
+        else:
+            logger.info(
+                PLAN_REVIEW_REVIEWER_COMPLETED,
+                task_id=str(task.id),
+                reviewer_id=str(reviewer.id),
+                verdict=verdict.verdict.value,
+                finding_count=len(verdict.findings),
+            )
+        return _ReviewerResult.from_session(verdict, result.termination_reason)
 
     def _log_no_verdict(
         self,

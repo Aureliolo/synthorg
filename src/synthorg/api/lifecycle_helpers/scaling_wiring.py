@@ -23,6 +23,7 @@ service absent rather than poisoning startup.
 from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
+from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -49,6 +50,10 @@ async def wire_scaling(app_state: AppState) -> None:
 
     Args:
         app_state: The application state holding the collaborator slices.
+
+    Raises:
+        SubsystemDeclinedError: A collaborator the pipeline is assembled
+            from is absent, named so the status surface can report which.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
@@ -62,27 +67,18 @@ async def wire_scaling(app_state: AppState) -> None:
     # the next request with no restart. A missing collaborator is routine
     # (the service simply stays absent and the endpoint 503s), so it logs INFO.
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="scaling",
-            note="persistence absent; scaling pipeline unwired",
-        )
-        return
+        msg = "no persistence backend; hiring requests are durable"
+        raise SubsystemDeclinedError(msg)
     approval_store = app_state.slice(ApprovalStateSlice).store
-    if (
-        hr.agent_registry is None
-        or hr.performance_tracker is None
-        or approval_store is None
-    ):
-        logger.info(
-            API_APP_STARTUP,
-            service="scaling",
-            note="a scaling collaborator is absent; pipeline unwired",
-            registry_present=hr.agent_registry is not None,
-            tracker_present=hr.performance_tracker is not None,
-            approval_store_present=approval_store is not None,
-        )
-        return
+    if hr.agent_registry is None:
+        msg = "no agent registry; scaling adds to the roster"
+        raise SubsystemDeclinedError(msg)
+    if hr.performance_tracker is None:
+        msg = "no performance tracker; scaling is decided from its records"
+        raise SubsystemDeclinedError(msg)
+    if approval_store is None:
+        msg = "no approval store; hiring is a gated decision"
+        raise SubsystemDeclinedError(msg)
     try:
         await _wire(
             app_state,

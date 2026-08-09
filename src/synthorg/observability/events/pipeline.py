@@ -51,6 +51,20 @@ PIPELINE_PLAN_SHELL_OPENED: Final[str] = "pipeline.plan_review.shell_opened"
 PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 """A decomposed plan was parked for human approval before team dispatch."""
 
+PIPELINE_PLAN_QUESTION_PARKED: Final[str] = "pipeline.plan_review.question_parked"
+"""A plan's unresolved questions were parked as answerable questions."""
+
+PIPELINE_PLAN_QUESTION_ANSWERED: Final[str] = "pipeline.plan_review.question_answered"
+"""A decided plan question was written back onto the durable plan."""
+
+PIPELINE_PLAN_QUESTION_WRITE_FAILED: Final[str] = (
+    "pipeline.plan_review.question_write_failed"
+)
+"""A decided plan question could not be written back on the decision path."""
+
+PIPELINE_PLAN_QUESTION_REPLAYED: Final[str] = "pipeline.plan_review.question_replayed"
+"""Answers decided earlier were replayed onto the plan before it dispatched."""
+
 PIPELINE_PLAN_PARENT_MISSING: Final[str] = "pipeline.plan_review.parent_missing"
 """The objective task was deleted mid-decomposition; the plan is not parked."""
 
@@ -77,6 +91,12 @@ PIPELINE_PLAN_APPROVAL_PARK_FAILED: Final[str] = (
     "pipeline.plan_review.approval_park_failed"
 )
 """Parking the plan's approval item failed; the plan is being marked FAILED."""
+
+PIPELINE_PLAN_APPROVAL_RETIRE_FAILED: Final[str] = (
+    "pipeline.plan_review.approval_retire_failed"
+)
+"""An approval parked before a failed park could not be removed; it outlives
+its plan and is still actionable."""
 
 PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
 """The stakeholder plan-review panel was attached to the work pipeline."""

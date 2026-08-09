@@ -32,6 +32,7 @@ import { PlanEvaluationPanel } from './plans/PlanEvaluationPanel'
 import { PlanForecastPanel } from './plans/PlanForecastPanel'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
+import { PlanHistoryPanel } from './plans/PlanHistoryPanel'
 import { PlanOpenQuestionsPanel } from './plans/PlanOpenQuestionsPanel'
 import { PlanStaffingPanel } from './plans/PlanStaffingPanel'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
@@ -60,7 +61,7 @@ function usePlanViewMode(planId: string | undefined): [Mode, (mode: Mode) => voi
 function planMetadataItems(plan: Plan): MetadataGridItem[] {
   // The forecast is surfaced meaningfully by PlanForecastPanel, so the raw
   // forecast_id UUID is deliberately not shown here (never a UUID on the surface).
-  return [
+  const items: MetadataGridItem[] = [
     { label: 'Project', value: plan.project },
     { label: 'Revision', value: `v${String(plan.version)}` },
     { label: 'Structure', value: plan.task_structure },
@@ -68,6 +69,14 @@ function planMetadataItems(plan: Plan): MetadataGridItem[] {
     { label: 'Proposed', value: formatDateTime(plan.created_at) },
     { label: 'Updated', value: formatRelativeTime(plan.updated_at) },
   ]
+  // Only when a fallback stood in. The configured planner leaves this null,
+  // and an operator approving those items has no reason to be told which
+  // planner produced them; an operator approving a single-shot fallback's
+  // items very much does.
+  if (plan.planning_strategy) {
+    items.push({ label: 'Planned by', value: plan.planning_strategy })
+  }
+  return items
 }
 
 function PlanDetailHeader({ plan }: { plan: Plan }) {
@@ -225,7 +234,8 @@ function PlanReviewView({ plan, roles, setMode }: {
       <PlanForecastPanel forecastId={plan.forecast_id} />
       <PlanStaffingPanel plan={plan} />
       <PlanCoveragePanel plan={plan} />
-      <PlanReviewPanel review={plan.review} />
+      <PlanReviewPanel review={plan.review} absentReason={plan.review_absent_reason} />
+      <PlanHistoryPanel planId={plan.id} />
       <PlanVersionDiff plan={plan} />
       <PlanTimeline items={plan.items} />
       <SectionCard title="Plan items" icon={ListTree}>

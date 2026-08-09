@@ -11,9 +11,9 @@ from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.checkpoint.models import Checkpoint, CheckpointConfig
 from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
 from synthorg.engine.context import AgentContext
+from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
-    FailureCategory,
     RecoveryResult,
     RecoveryStrategy,
 )

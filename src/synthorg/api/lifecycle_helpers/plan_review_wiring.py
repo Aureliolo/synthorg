@@ -11,12 +11,22 @@ approval are exactly what builds. Default off, so behaviour is unchanged
 unless an operator opts in.
 """
 
+import asyncio
+import contextlib
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Final
 from uuid import UUID
 
 from synthorg.api.channels import PlanNotifier
+from synthorg.api.lifecycle_helpers.plan_questions import (
+    PLAN_ID_METADATA_KEY,
+    build_plan_questions,
+    log_parked,
+)
+from synthorg.api.services.plan_service import PlanService
+from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -30,12 +40,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     PlanParentTaskMissingError,
     ResourceNotFoundError,
-    VersionConflictError,
 )
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
-from synthorg.core.plan_review import PlanReview
+from synthorg.core.plan_review import PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -49,13 +57,13 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.pipeline import (
     PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+    PIPELINE_PLAN_APPROVAL_RETIRE_FAILED,
     PIPELINE_PLAN_FAIL_SHELL_MISSING,
     PIPELINE_PLAN_FAIL_WRITE_FAILED,
     PIPELINE_PLAN_MARKED_FAILED,
     PIPELINE_PLAN_PARENT_MISSING,
     PIPELINE_PLAN_SHELL_OPENED,
 )
-from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.providers.registry import ProviderRegistry
 
@@ -63,15 +71,31 @@ logger = get_logger(__name__)
 
 _PLAN_ACTION_TYPE = "plan:approve"
 
+#: Recorded as the actor on the compensating FAILED write. No human asked for
+#: it: the pipeline is cleaning up after a failure it already surfaced, and the
+#: ledger row should say so rather than leave "who" blank, which the ledger
+#: reserves for a reconciler moving something on its own schedule.
+_COMPENSATION_ACTOR: Final[str] = "plan_review_gate"
+
+#: Stamped on the PLANNING shell, which is opened before anything has been
+#: decomposed and so before there is anything to review. Stated rather than
+#: left blank: an empty review section reads the same whether a plan passed
+#: scrutiny or was never looked at, which is the ambiguity the outcome type
+#: exists to remove. Replaced wholesale when the filled plan is parked.
+_SHELL_NOT_YET_REVIEWED: Final[PlanReviewOutcome] = PlanReviewOutcome(
+    absent_reason=NotBlankStr("the plan has not been decomposed yet"),
+)
+
 # Bounded compare-and-swap retries when the plan is reworked concurrently with
 # its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
 # than aborting the one write meant to make a failure visible.
 _MAX_FAIL_ATTEMPTS: Final[int] = 3
 
-#: ``ApprovalItem.metadata`` keys carrying resume context. The plan itself is
-#: durable (referenced by ``plan_id``); the approval only points at it.
+#: ``ApprovalItem.metadata`` key carrying resume context. The plan itself is
+#: durable (referenced by ``PLAN_ID_METADATA_KEY``, re-exported here because
+#: the resume and retire paths have always imported it from this module); the
+#: approval only points at it.
 PROJECT_METADATA_KEY = "project"
-PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
@@ -131,11 +155,14 @@ class PlanReviewApprovalGate:
         self,
         *,
         approval_store: ApprovalStoreProtocol,
-        plans: PlanRepository,
+        plans: PlanService,
         tasks: TaskRepository,
         clock: Clock,
         notifier: PlanNotifier | None = None,
     ) -> None:
+        # A service, not the repository: every status this gate writes is a
+        # transition the lifecycle ledger has to carry, and a gate holding the
+        # repository writes them where nothing records them.
         self._approval_store = approval_store
         self._plans = plans
         self._tasks = tasks
@@ -163,7 +190,7 @@ class PlanReviewApprovalGate:
         now: datetime,
         *,
         status: PlanStatus,
-        review: PlanReview | None,
+        review: PlanReviewOutcome,
     ) -> PlanProvenance:
         """Build the plan provenance shared by the shell and the filled plan.
 
@@ -179,7 +206,8 @@ class PlanReviewApprovalGate:
             created_at=now,
             status=status,
             forecast_id=work_item.forecast_id,
-            review=review,
+            review=review.review,
+            review_absent_reason=review.absent_reason,
             objective_criteria=tuple(
                 NotBlankStr(c.description) for c in task.acceptance_criteria
             ),
@@ -221,7 +249,11 @@ class PlanReviewApprovalGate:
         now = self._clock.now()
         shell = plan_shell(
             self._provenance(
-                work_item, task, now, status=PlanStatus.PLANNING, review=None
+                work_item,
+                task,
+                now,
+                status=PlanStatus.PLANNING,
+                review=_SHELL_NOT_YET_REVIEWED,
             )
         )
         await self._plans.create(shell)
@@ -240,7 +272,7 @@ class PlanReviewApprovalGate:
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
-        review: PlanReview | None = None,
+        review: PlanReviewOutcome,
     ) -> PlanReviewHandoff:
         """Fill the PLANNING shell with *plan* and park it as an approval item.
 
@@ -255,6 +287,9 @@ class PlanReviewApprovalGate:
             PlanParentTaskMissingError: When the objective task was deleted
                 while decomposition ran. The caller compensates by failing
                 the plan, so an orphan never reaches the review queue.
+            CancelledError: Propagated once the approvals written so far are
+                retired and the plan is failed, so a shutdown mid-park leaves
+                nothing an operator can still act on.
         """
         await self._require_parent(task, plan_id)
         approval_id = uuid.uuid4()
@@ -275,13 +310,10 @@ class PlanReviewApprovalGate:
                 "updated_at": now,
             }
         )
-        if shell is not None:
-            await self._plans.update(durable_plan, expected_version=shell.version)
-        else:
-            # The shell was lost (e.g. opened on a prior boot then pruned);
-            # persist the filled plan fresh so the approval still references a
-            # durable plan rather than dangling.
-            await self._plans.create(durable_plan)
+        # A lost shell (opened on a prior boot, then pruned) persists the
+        # filled plan fresh so the approval still references a durable plan
+        # rather than dangling; the service owns that fork.
+        await self._plans.record_decomposed(durable_plan, shell=shell)
         approval = ApprovalItem(
             id=approval_id,
             action_type=NotBlankStr(_PLAN_ACTION_TYPE),
@@ -298,8 +330,45 @@ class PlanReviewApprovalGate:
                 PROJECT_METADATA_KEY: work_item.project,
             },
         )
+        parked: list[ApprovalItem] = []
         try:
             await self._approval_store.add(approval)
+            parked.append(approval)
+            # Parked after the plan approval, and inside the same guard: a
+            # question nobody can answer is the state this whole path exists
+            # to close, so a failure here fails the plan rather than parking
+            # an approval whose open questions reach nobody.
+            questions = build_plan_questions(
+                durable_plan,
+                task_id=NotBlankStr(str(task.id)),
+                requested_by=work_item.requested_by,
+                now=now,
+            )
+            for question in questions:
+                await self._approval_store.add(question)
+                parked.append(question)
+            log_parked(durable_plan, len(questions))
+        except asyncio.CancelledError:
+            # Cancellation reaches here as a BaseException, so the handler
+            # below never sees it: a shutdown between two of these writes
+            # would leave every approval written so far PENDING against a
+            # plan stuck in PENDING_REVIEW. The compensation is shielded
+            # because the cancellation that got us here would cancel it too.
+            logger.warning(
+                PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+                plan_id=str(durable_plan.id),
+                error_type="CancelledError",
+                error="approval parking was cancelled",
+            )
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.shield(
+                    self._abandon_parked(
+                        parked,
+                        plan_id=durable_plan.id,
+                        reason="approval parking was cancelled",
+                    )
+                )
+            raise
         except Exception as exc:
             reraise_critical(exc)
             # The plan is filled but the approval did not park: without an
@@ -312,8 +381,10 @@ class PlanReviewApprovalGate:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            await self.fail_plan(
-                plan_id=durable_plan.id, reason="approval-store write failed"
+            await self._abandon_parked(
+                parked,
+                plan_id=durable_plan.id,
+                reason="approval-store write failed",
             )
             raise
         self._announce(durable_plan)
@@ -323,6 +394,58 @@ class PlanReviewApprovalGate:
             subtask_count=len(plan.plan.subtasks),
             detail=NotBlankStr(detail),
         )
+
+    async def _abandon_parked(
+        self,
+        parked: Sequence[ApprovalItem],
+        *,
+        plan_id: UUID,
+        reason: str,
+    ) -> None:
+        """Retire what parked, then fail the plan, in that order.
+
+        Retiring first is the load-bearing half: an approval that outlives
+        its plan is still actionable, and answering one writes back onto a
+        plan the operator is being told failed.
+
+        Args:
+            parked: The approvals written before the park failed.
+            plan_id: The durable plan the failed park belongs to.
+            reason: What the operator is told failed the plan.
+        """
+        await self._retire_parked(parked)
+        await self.fail_plan(plan_id=plan_id, reason=reason)
+
+    async def _retire_parked(self, parked: Sequence[ApprovalItem]) -> None:
+        """Remove approvals written before a later park failed.
+
+        Parking is several writes and the store has no batch, so a failure
+        partway leaves PENDING approvals for a plan that is about to be
+        FAILED. Those are not inert: the plan approval still offers approve
+        and reject, and answering a question writes back onto the plan
+        through :func:`apply_plan_question_answer`. Removing them is what
+        makes the failure the whole outcome rather than half of one.
+
+        Best-effort per row, like ``fail_plan``: the caller is already
+        re-raising the write failure that brought it here, and a compensation
+        that raises would replace that diagnosis with its own.
+
+        Args:
+            parked: The approvals this call had already written, in order.
+        """
+        for item in parked:
+            try:
+                await self._approval_store.delete(NotBlankStr(str(item.id)))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # lint-allow: swallow-ok -- compensation for a failure already
+                # being raised; replacing that diagnosis would hide the cause.
+                reraise_critical(exc)
+                logger.warning(
+                    PIPELINE_PLAN_APPROVAL_RETIRE_FAILED,
+                    approval_id=str(item.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def fail_plan(self, *, plan_id: UUID, reason: str) -> None:
         """Mark a plan FAILED so a failed run leaves a visible plan, best-effort.
@@ -348,12 +471,18 @@ class PlanReviewApprovalGate:
         async def write(plan: Plan, _version: int) -> None:
             if plan.status is PlanStatus.FAILED:
                 return  # idempotent: a prior compensation already marked it
-            failed = plan.fail(marked_reason, now=self._clock.now())
-            try:
-                await self._plans.update(failed, expected_version=plan.version)
-            except PersistenceVersionConflictError as exc:
-                # Translate to the domain twin CASRetryHandler retries on.
-                raise VersionConflictError(str(exc)) from exc
+            # Through the service, not the repository: this is the write that
+            # ends a plan, and it is the one an operator asks about months
+            # later. Its sibling on the resume path already routes here, so a
+            # raw write made the ledger look complete while the compensating
+            # failure was the row missing from it.
+            failed = await self._plans.sync_status(
+                plan,
+                PlanStatus.FAILED,
+                requested_by=_COMPENSATION_ACTOR,
+                reason=str(marked_reason),
+                failure_reason=marked_reason,
+            )
             # After the write, never before: a viewer told the plan failed and
             # then refetching a plan that is still PENDING_REVIEW would read as
             # the announcement being wrong rather than early.
@@ -392,6 +521,10 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     is set and the work pipeline is wired. Default off keeps the historic
     dispatch-straight-to-team behaviour, so wiring this never changes an
     org that has not opted in.
+
+    Raises:
+        SubsystemDeclinedError: The gate is not required, or a collaborator
+            it parks approvals through is absent.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
@@ -402,38 +535,34 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
-        return
+        msg = "no work pipeline; the gate attaches to it"
+        raise SubsystemDeclinedError(msg)
     required = await config_resolver_of(app_state).get_bool(
         "coordination", "plan_approval_required"
     )
     if not required:
-        return
-    # Best-effort: the approval store + persistence backend are normally wired
-    # by the time this hook runs, but an early boot (before persistence
-    # connects) can reach here without them. Skip rather than let an accessor
-    # raise a 503 out of a wiring hook. The operator explicitly opted into a
-    # mandatory gate, so a skip is warn-worthy: without it every splittable
-    # plan builds ungated, and a silent skip would hide that regression.
+        msg = "coordination.plan_approval_required is off"
+        raise SubsystemDeclinedError(msg)
+    # The approval store + persistence backend are normally wired by the time
+    # this hook runs, but an early boot (before persistence connects) can reach
+    # here without them. Declining beats letting an accessor raise a 503 out of
+    # a wiring hook. The operator explicitly opted into a mandatory gate, so
+    # the reason is warn-worthy: without the gate every splittable plan builds
+    # ungated, and a silent skip would hide that regression.
     if app_state.slice(ApprovalStateSlice).store is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="plan_review_gate",
-            note="skipped: plan_approval_required but approval store not wired",
-        )
-        return
+        msg = "plan_approval_required is on but no approval store is wired"
+        logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
+        raise SubsystemDeclinedError(msg)
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="plan_review_gate",
-            note="skipped: plan_approval_required but persistence not wired",
-        )
-        return
+        msg = "plan_approval_required is on but no persistence backend is wired"
+        logger.warning(API_APP_STARTUP, service="plan_review_gate", note=msg)
+        raise SubsystemDeclinedError(msg)
     from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
 
     gate = PlanReviewApprovalGate(
         approval_store=approval_store_of(app_state),
-        plans=backend.plans,
+        plans=build_plan_service(backend, clock=app_state.clock),
         tasks=backend.tasks,
         clock=app_state.clock,
         notifier=app_state.slice(ApiCoreStateSlice).plan_notifier,
@@ -457,6 +586,10 @@ async def wire_plan_review_panel(
     introducing a second required model setting. An absent provider or a
     disabled setting leaves the pipeline panel-less (a gated plan is parked for
     approval with no panel review), so wiring this never blocks a boot.
+
+    Raises:
+        SubsystemDeclinedError: The panel is switched off, or a collaborator
+            it reviews through is absent.
     """
     from synthorg.engine.plan_review.models import (  # noqa: PLC0415
         PlanReviewPanelConfig,
@@ -471,12 +604,15 @@ async def wire_plan_review_panel(
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(EngineStateSlice).work_pipeline is None:
-        return
+        msg = "no work pipeline; the panel runs inside its gated-plan flow"
+        raise SubsystemDeclinedError(msg)
     resolver = config_resolver_of(app_state)
     if not await resolver.get_bool("coordination", "plan_review_panel_enabled"):
-        return
+        msg = "coordination.plan_review_panel_enabled is off"
+        raise SubsystemDeclinedError(msg)
     if provider_registry is None:
-        return
+        msg = "no provider registry; every panellist verdict is an LLM call"
+        raise SubsystemDeclinedError(msg)
     from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
     from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
 
