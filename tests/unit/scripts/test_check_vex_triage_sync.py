@@ -40,6 +40,26 @@ entries:
       Triggered only by infocmp -i, which nothing in the image invokes.
 """
 
+_TWO_ENTRY_TEMPLATE = """\
+author: SynthOrg
+updated: "2026-08-09T00:00:00Z"
+entries:
+  - id: CVE-2026-00001
+    purls: ["pkg:apk/wolfi/ncurses"]
+    status: not_affected
+    justification: vulnerable_code_not_in_execute_path
+    re_review_by: "{first}"
+    statement: |
+      Triggered only by infocmp -i, which nothing in the image invokes.
+  - id: CVE-2026-00002
+    purls: ["pkg:apk/wolfi/zlib"]
+    status: not_affected
+    justification: vulnerable_code_not_present
+    re_review_by: "{second}"
+    statement: |
+      The affected helper is excluded from the packaged source.
+"""
+
 
 def _load(name: str, path: Path) -> ModuleType:
     """Import a script as a module."""
@@ -51,9 +71,13 @@ def _load(name: str, path: Path) -> ModuleType:
     return module
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def gate() -> ModuleType:
-    """The gate module under test."""
+    """The gate module under test.
+
+    Module-scoped because nothing here mutates it outside ``monkeypatch``,
+    which undoes itself per test.
+    """
     return _load("_check_vex_triage_sync", _GATE_PATH)
 
 
@@ -175,18 +199,47 @@ def test_a_future_re_review_date_passes(
     assert gate.check(today=dt.date(2026, 12, 31), generator=generator) == []
 
 
+def test_only_the_expired_entry_of_several_is_reported(
+    gate: ModuleType,
+    generator: ModuleType,
+) -> None:
+    """A mixed ledger names the entry that expired, not the whole file."""
+    generator.TRIAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    generator.TRIAGE_FILE.write_text(
+        _TWO_ENTRY_TEMPLATE.format(first="2027-01-01", second="2099-01-01"),
+        encoding="utf-8",
+    )
+    for path, contents in generator.rendered_files(generator.load_triage()).items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8", newline="\n")
+
+    problems = gate.check(today=dt.date(2027, 6, 1), generator=generator)
+
+    assert len(problems) == 1
+    assert "CVE-2026-00001" in problems[0]
+    assert "CVE-2026-00002" not in problems[0]
+
+
 def test_a_malformed_ledger_is_a_problem_not_a_pass(
     gate: ModuleType,
     generator: ModuleType,
 ) -> None:
-    """A ledger the generator rejects must never read as a clean tree."""
+    """A ledger the generator rejects must never read as a clean tree.
+
+    Reported one problem per entry rather than as a single joined blob, so
+    the list reads the same way whether the fault was drift, expiry, or
+    schema.
+    """
     generator.TRIAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
     generator.TRIAGE_FILE.write_text("entries: not a list\n", encoding="utf-8")
 
     problems = gate.check(today=dt.date(2026, 8, 9), generator=generator)
 
-    assert len(problems) == 1
-    assert "entries" in problems[0]
+    assert [problem.split(":")[0] for problem in problems] == [
+        "author",
+        "updated",
+        "entries",
+    ]
 
 
 def test_a_missing_ledger_is_a_problem(
@@ -197,6 +250,7 @@ def test_a_missing_ledger_is_a_problem(
     problems = gate.check(today=dt.date(2026, 8, 9), generator=generator)
 
     assert len(problems) == 1
+    assert "triage.yaml" in problems[0]
 
 
 def test_an_unimportable_generator_fails_loudly(gate: ModuleType) -> None:
@@ -205,6 +259,54 @@ def test_an_unimportable_generator_fails_loudly(gate: ModuleType) -> None:
         gate.load_generator(_REPO_ROOT / "scripts" / "no_such_generator.py")
 
 
-def test_the_committed_tree_is_synchronised(gate: ModuleType) -> None:
-    """The repository's own ledger and rendered files agree right now."""
-    assert gate.check() == []
+def test_the_committed_tree_renders_to_its_committed_files(gate: ModuleType) -> None:
+    """The repository's own ledger and rendered files agree right now.
+
+    Held against a date no ``re_review_by`` can precede, so this asserts
+    drift only. Expiry is a property of the calendar, not of the tree, and
+    checking it here would turn a real entry's re-review date into the day
+    this test starts failing on every branch at once. The gate's own run, in
+    the pre-push hook and in CI, is what holds the ledger to today.
+    """
+    assert gate.check(today=dt.date.min) == []
+
+
+def test_main_reports_a_clean_tree(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing to report exits 0 and says nothing."""
+    monkeypatch.setattr(gate, "check", list)
+
+    assert gate.main([]) == 0
+
+
+def test_main_reports_problems(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every problem reaches the reader, not just the count."""
+    monkeypatch.setattr(gate, "check", lambda: ["first problem", "second problem"])
+
+    assert gate.main([]) == 1
+    captured = capsys.readouterr().err
+    assert "first problem" in captured
+    assert "second problem" in captured
+
+
+def test_main_fails_when_the_gate_cannot_reach_a_verdict(
+    gate: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unusable generator is a failure, never a silent pass."""
+
+    def _raise() -> list[str]:
+        msg = "generator is unimportable"
+        raise gate.VexSyncError(msg)
+
+    monkeypatch.setattr(gate, "check", _raise)
+
+    assert gate.main([]) == 1
+    assert "could not reach a verdict" in capsys.readouterr().err

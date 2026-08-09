@@ -21,6 +21,8 @@ looks right and says the wrong thing:
 import datetime as dt
 import importlib.util
 import json
+import re
+import textwrap
 from pathlib import Path
 from types import ModuleType
 
@@ -75,16 +77,19 @@ def _ledger(
     tmp_path: Path,
     entries: str,
     *,
-    updated: str = "2026-08-09T00:00:00Z",
+    author: str = "author: SynthOrg\n",
+    updated: str = 'updated: "2026-08-09T00:00:00Z"\n',
 ) -> Path:
-    """Write a ledger holding *entries* and return its path."""
+    """Write a ledger holding *entries* and return its path.
+
+    The fragment is dedented and re-indented under ``entries:``, so a case can
+    be written at whatever indentation reads well without a wrong-but-still-
+    valid YAML shape slipping through as a different structure.
+    """
     path = tmp_path / "triage.yaml"
-    body = entries.strip("\n")
+    body = textwrap.indent(textwrap.dedent(entries.strip("\n")), "  ")
     rendered = f"entries:\n{body}\n" if body else "entries: []\n"
-    path.write_text(
-        f'author: SynthOrg\nupdated: "{updated}"\n{rendered}',
-        encoding="utf-8",
-    )
+    path.write_text(f"{author}{updated}{rendered}", encoding="utf-8")
     return path
 
 
@@ -181,11 +186,54 @@ def test_timestamp_comes_from_the_ledger(
     tmp_path: Path,
 ) -> None:
     """Nothing reads the wall clock, or the document would never compare equal."""
-    path = _ledger(tmp_path, _NOT_AFFECTED_ENTRY, updated="2026-01-02T03:04:05Z")
+    path = _ledger(
+        tmp_path,
+        _NOT_AFFECTED_ENTRY,
+        updated='updated: "2026-01-02T03:04:05Z"\n',
+    )
 
     document = json.loads(generator.render_openvex(generator.load_triage(path)))
 
     assert document["timestamp"] == "2026-01-02T03:04:05Z"
+
+
+@pytest.mark.parametrize(
+    ("updated", "expected"),
+    [
+        pytest.param(
+            'updated: "2026-01-02T03:04:05+00:00"\n',
+            "2026-01-02T03:04:05Z",
+            id="explicit_utc_offset",
+        ),
+        pytest.param(
+            'updated: "2026-01-02T03:04:05"\n',
+            "2026-01-02T03:04:05Z",
+            id="offset_omitted_reads_as_utc",
+        ),
+        pytest.param(
+            "updated: 2026-01-02\n",
+            "2026-01-02T00:00:00Z",
+            id="unquoted_bare_date_is_midnight_utc",
+        ),
+    ],
+)
+def test_updated_accepts_every_shape_a_ledger_edit_takes(
+    generator: ModuleType,
+    tmp_path: Path,
+    updated: str,
+    expected: str,
+) -> None:
+    """An unquoted date is a date, not a malformed timestamp.
+
+    PyYAML hands back a ``datetime.date`` for ``updated: 2026-01-02``, which
+    is how anyone would write it having just written ``re_review_by`` the same
+    way, so rejecting it would fail a ledger edit that is in no sense wrong.
+    """
+    path = _ledger(tmp_path, _NOT_AFFECTED_ENTRY, updated=updated)
+
+    document = json.loads(generator.render_openvex(generator.load_triage(path)))
+
+    assert document["timestamp"] == expected
 
 
 def test_empty_ledger_renders_both_files(
@@ -214,101 +262,122 @@ def test_load_triage_parses_dates_and_purls(
 
 
 @pytest.mark.parametrize(
-    ("label", "entries", "expected"),
+    ("entries", "expected"),
     [
-        (
-            "not_affected_without_purls",
+        pytest.param(
             """
-  - id: CVE-2026-00003
-    status: not_affected
-    justification: vulnerable_code_not_present
-    re_review_by: "2099-01-01"
-    statement: nothing ships it
-""",
+            - id: CVE-2026-00003
+              status: not_affected
+              justification: vulnerable_code_not_present
+              re_review_by: "2099-01-01"
+              statement: nothing ships it
+            """,
             "at least one purl",
+            id="not_affected_without_purls",
         ),
-        (
-            "justification_outside_the_vocabulary",
+        pytest.param(
             """
-  - id: CVE-2026-00004
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: not_affected
-    justification: we_looked_and_it_is_fine
-    re_review_by: "2099-01-01"
-    statement: nothing ships it
-""",
-            "needs a justification from",
+            - id: CVE-2026-00004
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: not_affected
+              justification: we_looked_and_it_is_fine
+              re_review_by: "2099-01-01"
+              statement: nothing ships it
+            """,
+            "justification must be one of",
+            id="justification_outside_the_vocabulary",
         ),
-        (
-            "accepted_carrying_a_justification",
+        pytest.param(
             """
-  - id: CVE-2026-00005
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: accepted
-    justification: vulnerable_code_not_present
-    re_review_by: "2099-01-01"
-    statement: risk accepted
-""",
+            - id: CVE-2026-00005
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              justification: vulnerable_code_not_present
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
             "must carry no justification",
+            id="accepted_carrying_a_justification",
         ),
-        (
-            "unknown_status",
+        pytest.param(
             """
-  - id: CVE-2026-00006
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: probably_fine
-    re_review_by: "2099-01-01"
-    statement: risk accepted
-""",
+            - id: CVE-2026-00006
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: probably_fine
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
             "status must be one of",
+            id="unknown_status",
         ),
-        (
-            "missing_re_review_date",
+        pytest.param(
             """
-  - id: CVE-2026-00007
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: accepted
-    statement: risk accepted
-""",
+            - id: CVE-2026-00007
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              statement: risk accepted
+            """,
             "re_review_by",
+            id="missing_re_review_date",
         ),
-        (
-            "unparseable_re_review_date",
+        pytest.param(
             """
-  - id: CVE-2026-00008
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: accepted
-    re_review_by: "next spring"
-    statement: risk accepted
-""",
+            - id: CVE-2026-00008
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              re_review_by: "next spring"
+              statement: risk accepted
+            """,
             "is not an ISO date",
+            id="unparseable_re_review_date",
         ),
-        (
-            "missing_statement",
+        pytest.param(
             """
-  - id: CVE-2026-00009
-    purls: ["pkg:apk/wolfi/zlib"]
-    status: accepted
-    re_review_by: "2099-01-01"
-""",
+            - id: CVE-2026-00009
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              re_review_by: "2099-01-01"
+            """,
             "statement is missing",
+            id="missing_statement",
         ),
-        (
-            "missing_id",
+        pytest.param(
             """
-  - purls: ["pkg:apk/wolfi/zlib"]
-    status: accepted
-    re_review_by: "2099-01-01"
-    statement: risk accepted
-""",
+            - purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
             "id is missing",
+            id="missing_id",
+        ),
+        pytest.param(
+            """
+            - id: CVE-2026-00012
+              purls: [""]
+              status: accepted
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
+            "purls entries must be non-empty",
+            id="blank_purl",
+        ),
+        pytest.param(
+            """
+            - id: CVE-2026-00013
+              purls: "pkg:apk/wolfi/zlib"
+              status: accepted
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
+            "purls must be a list",
+            id="purls_not_a_list",
         ),
     ],
 )
 def test_schema_violations_are_rejected(
     generator: ModuleType,
     tmp_path: Path,
-    label: str,
     entries: str,
     expected: str,
 ) -> None:
@@ -317,7 +386,45 @@ def test_schema_violations_are_rejected(
 
     with pytest.raises(generator.VexTriageError, match=expected):
         generator.load_triage(path)
-    assert label
+
+
+@pytest.mark.parametrize(
+    ("author", "updated", "expected"),
+    [
+        pytest.param("", 'updated: "2026-08-09T00:00:00Z"\n', "author", id="no_author"),
+        pytest.param(
+            "author: '   '\n",
+            'updated: "2026-08-09T00:00:00Z"\n',
+            "author",
+            id="blank_author",
+        ),
+        pytest.param("author: SynthOrg\n", "", "updated", id="no_updated"),
+        pytest.param(
+            "author: SynthOrg\n",
+            "updated: whenever\n",
+            "not an ISO 8601 timestamp",
+            id="unparseable_updated",
+        ),
+        pytest.param(
+            "author: SynthOrg\n",
+            "updated: 12345\n",
+            "missing or not a timestamp",
+            id="updated_not_a_timestamp",
+        ),
+    ],
+)
+def test_ledger_level_fields_are_validated(
+    generator: ModuleType,
+    tmp_path: Path,
+    author: str,
+    updated: str,
+    expected: str,
+) -> None:
+    """The document header is schema too; it names and dates the claim."""
+    path = _ledger(tmp_path, _ACCEPTED_ENTRY, author=author, updated=updated)
+
+    with pytest.raises(generator.VexTriageError, match=expected):
+        generator.load_triage(path)
 
 
 def test_duplicate_ids_are_rejected(generator: ModuleType, tmp_path: Path) -> None:
@@ -354,8 +461,85 @@ def test_every_problem_is_reported_together(
 
     message = str(caught.value)
     assert "at least one purl" in message
-    assert "needs a justification from" in message
+    assert "justification must be one of" in message
     assert "is not an ISO date" in message
+    assert len(caught.value.problems) == len(message.strip().splitlines()) - 1
+
+
+def test_an_entry_cannot_be_built_in_a_state_its_status_forbids(
+    generator: ModuleType,
+) -> None:
+    """The rule binds the constructor, not only the ledger parser.
+
+    The ledger is one caller. Anything else building an entry gets the same
+    refusal, so a ``not_affected`` claim with nothing to attach it to cannot
+    reach rendering by a route that skipped validation.
+    """
+    with pytest.raises(generator.VexTriageError, match="at least one purl"):
+        generator.TriageEntry(
+            id="CVE-2026-00014",
+            purls=(),
+            status="not_affected",
+            justification="vulnerable_code_not_present",
+            re_review_by=dt.date(2099, 1, 1),
+            statement="nothing ships it",
+        )
+
+
+def test_a_well_formed_entry_still_builds(generator: ModuleType) -> None:
+    """The guard rejects the forbidden combination, not every entry."""
+    entry = generator.TriageEntry(
+        id="CVE-2026-00015",
+        purls=("pkg:apk/wolfi/zlib",),
+        status="not_affected",
+        justification="vulnerable_code_not_present",
+        re_review_by=dt.date(2099, 1, 1),
+        statement="nothing ships it",
+    )
+
+    assert entry.purls == ("pkg:apk/wolfi/zlib",)
+
+
+def test_the_rendered_document_is_the_shape_trivy_reads(
+    generator: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """Pin the whole wire shape, not the keys this generator happens to set.
+
+    Every other assertion here re-derives its expectation from the generator,
+    so all of them would keep passing if a key were renamed on both sides at
+    once. This is the one that would not.
+    """
+    triage = generator.load_triage(_ledger(tmp_path, _NOT_AFFECTED_ENTRY))
+
+    document = json.loads(generator.render_openvex(triage))
+    document_id = document.pop("@id")
+
+    assert document == {
+        "@context": "https://openvex.dev/ns/v0.2.0",
+        "author": "SynthOrg",
+        "timestamp": "2026-08-09T00:00:00Z",
+        "version": 1,
+        "statements": [
+            {
+                "vulnerability": {"name": "CVE-2026-00002"},
+                "products": [
+                    {"@id": "pkg:apk/wolfi/ncurses"},
+                    {"@id": "pkg:apk/wolfi/ncurses-terminfo"},
+                ],
+                "status": "not_affected",
+                "justification": "vulnerable_code_not_in_execute_path",
+                "impact_statement": (
+                    "Triggered only by infocmp -i, which nothing in the image invokes."
+                ),
+            },
+        ],
+    }
+    assert re.fullmatch(
+        r"https://github\.com/Aureliolo/synthorg/\.github/vex/"
+        r"synthorg-openvex-[0-9a-f]{64}",
+        document_id,
+    )
 
 
 def test_missing_ledger_is_an_error(generator: ModuleType, tmp_path: Path) -> None:

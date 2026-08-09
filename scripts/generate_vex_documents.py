@@ -35,7 +35,15 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Final, TypedDict, override
+from typing import (
+    Final,
+    Literal,
+    NotRequired,
+    TypedDict,
+    TypeIs,
+    get_args,
+    override,
+)
 
 import yaml
 
@@ -47,21 +55,26 @@ OPENVEX_FILE: Final[Path] = REPO_ROOT / ".github" / "vex" / "synthorg.openvex.js
 
 REGENERATE_COMMAND: Final[str] = "uv run python scripts/generate_vex_documents.py"
 
-STATUS_NOT_AFFECTED: Final[str] = "not_affected"
-STATUS_ACCEPTED: Final[str] = "accepted"
-_STATUSES: Final[frozenset[str]] = frozenset({STATUS_NOT_AFFECTED, STATUS_ACCEPTED})
+TriageStatus = Literal["not_affected", "accepted"]
 
 # The OpenVEX justification vocabulary is closed. A statement outside it is not
 # a weaker statement, it is one no consumer can interpret.
-_JUSTIFICATIONS: Final[frozenset[str]] = frozenset(
-    {
-        "component_not_present",
-        "vulnerable_code_not_present",
-        "vulnerable_code_not_in_execute_path",
-        "vulnerable_code_cannot_be_controlled_by_adversary",
-        "inline_mitigations_already_exist",
-    },
-)
+Justification = Literal[
+    "component_not_present",
+    "vulnerable_code_not_present",
+    "vulnerable_code_not_in_execute_path",
+    "vulnerable_code_cannot_be_controlled_by_adversary",
+    "inline_mitigations_already_exist",
+]
+
+STATUS_NOT_AFFECTED: Final[TriageStatus] = "not_affected"
+STATUS_ACCEPTED: Final[TriageStatus] = "accepted"
+
+# Derived from the types rather than restated, so the set a value is validated
+# against and the type it is validated into cannot drift apart.
+_STATUSES: Final[frozenset[str]] = frozenset(get_args(TriageStatus))
+_JUSTIFICATIONS: Final[frozenset[str]] = frozenset(get_args(Justification))
+
 
 _OPENVEX_CONTEXT: Final[str] = "https://openvex.dev/ns/v0.2.0"
 
@@ -88,9 +101,58 @@ _YAML_WIDTH: Final[int] = 88
 _MIDNIGHT_UTC_SUFFIX: Final[str] = "T00:00:00Z"
 
 
+def _is_status(value: object) -> TypeIs[TriageStatus]:
+    """Narrow a parsed scalar to a status."""
+    return value in _STATUSES
+
+
+def _is_justification(value: object) -> TypeIs[Justification]:
+    """Narrow a parsed scalar to an OpenVEX justification."""
+    return value in _JUSTIFICATIONS
+
+
+def _status_coupling_problems(
+    status: TriageStatus,
+    purls: tuple[str, ...],
+    justification: Justification | None,
+    label: str,
+) -> list[str]:
+    """State the status/justification/purls coupling, once.
+
+    Both the ledger parser and :meth:`TriageEntry.__post_init__` decide from
+    this, so the rule cannot hold in one and quietly not in the other.
+    """
+    if status == STATUS_NOT_AFFECTED:
+        problems: list[str] = []
+        if not purls:
+            problems.append(
+                f"{label}: not_affected needs at least one purl, because an "
+                f"OpenVEX statement addresses a product",
+            )
+        if justification is None:
+            problems.append(f"{label}: not_affected needs a justification")
+        return problems
+    if justification is not None:
+        return [
+            (
+                f"{label}: accepted must carry no justification; OpenVEX "
+                f"justifications assert the product is not affected, which is "
+                f"the opposite of accepting the risk"
+            ),
+        ]
+    return []
+
+
 # One row of Trivy's structured ignore file. `purls` is absent rather than
 # empty when an assessment applies everywhere, which is how Trivy spells it.
-type _IgnoreFinding = dict[str, str | list[str]]
+class _IgnoreFinding(TypedDict):
+    """One row of Trivy's structured ignore file."""
+
+    id: str
+    purls: NotRequired[list[str]]
+    expired_at: str
+    statement: str
+
 
 # The OpenVEX wire shapes. Spelled functionally where a key is not a Python
 # identifier, so the rendered JSON is the type rather than a comment about it.
@@ -125,7 +187,16 @@ class VexTriageError(Exception):
 
     Carries every problem found rather than the first, because a ledger with
     three malformed entries should cost one round trip to fix, not three.
+
+    Attributes:
+        problems: One entry per problem. Kept itemised alongside the joined
+            message so a caller reporting a list does not have to re-split
+            prose it did not format.
     """
+
+    def __init__(self, message: str, problems: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.problems: tuple[str, ...] = problems or (message,)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -146,10 +217,24 @@ class TriageEntry:
 
     id: str
     purls: tuple[str, ...]
-    status: str
-    justification: str | None
+    status: TriageStatus
+    justification: Justification | None
     re_review_by: dt.date
     statement: str
+
+    def __post_init__(self) -> None:
+        """Refuse an entry the docstring above forbids.
+
+        The parser reports the same rule as a collected list, for a ledger
+        edit worth one round trip. This is the version that binds every other
+        caller, so a hand-built entry cannot reach rendering claiming
+        ``not_affected`` with nothing to attach the claim to.
+        """
+        problems = _status_coupling_problems(
+            self.status, self.purls, self.justification, self.id
+        )
+        if problems:
+            raise VexTriageError("; ".join(problems), problems=tuple(problems))
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -192,9 +277,18 @@ def _parse_date(value: object, label: str, problems: list[str]) -> dt.date | Non
 
 
 def _parse_updated(value: object, problems: list[str]) -> dt.datetime | None:
-    """Parse the ledger's ``updated`` timestamp into an aware UTC datetime."""
+    """Parse the ledger's ``updated`` timestamp into an aware UTC datetime.
+
+    A value carrying no offset is read as UTC, which is what the field is
+    declared to be. A date with no time at all is midnight UTC: an unquoted
+    ``updated: 2026-08-09`` reaches here as a :class:`datetime.date`, and
+    writing it that way is what anyone would do having just written
+    ``re_review_by`` in the same shape.
+    """
     if isinstance(value, dt.datetime):
         return value if value.tzinfo else value.replace(tzinfo=dt.UTC)
+    if isinstance(value, dt.date):
+        return dt.datetime.combine(value, dt.time.min, tzinfo=dt.UTC)
     if isinstance(value, str):
         try:
             parsed = dt.datetime.fromisoformat(value)
@@ -223,33 +317,22 @@ def _parse_purls(raw: object, label: str, problems: list[str]) -> tuple[str, ...
 
 
 def _check_status_rules(
-    status: str,
+    status: TriageStatus,
     purls: tuple[str, ...],
     justification: object,
     label: str,
     problems: list[str],
-) -> str | None:
-    """Apply the per-status rules, returning the justification to render."""
-    if status == STATUS_NOT_AFFECTED:
-        if not purls:
-            problems.append(
-                f"{label}: not_affected needs at least one purl, because an "
-                f"OpenVEX statement addresses a product",
-            )
-        if not isinstance(justification, str) or justification not in _JUSTIFICATIONS:
-            problems.append(
-                f"{label}: not_affected needs a justification from "
-                f"{sorted(_JUSTIFICATIONS)}",
-            )
-            return None
-        return justification
-    if justification is not None:
+) -> Justification | None:
+    """Validate the justification vocabulary and the per-status coupling."""
+    resolved: Justification | None = None
+    if _is_justification(justification):
+        resolved = justification
+    elif justification is not None:
         problems.append(
-            f"{label}: accepted must carry no justification; OpenVEX "
-            f"justifications assert the product is not affected, which is the "
-            f"opposite of accepting the risk",
+            f"{label}: justification must be one of {sorted(_JUSTIFICATIONS)}",
         )
-    return None
+    problems.extend(_status_coupling_problems(status, purls, resolved, label))
+    return resolved
 
 
 def _parse_entry(raw: object, index: int, problems: list[str]) -> TriageEntry | None:
@@ -266,14 +349,16 @@ def _parse_entry(raw: object, index: int, problems: list[str]) -> TriageEntry | 
     label = f"entries[{index}] ({identifier})"
 
     status = raw.get("status")
-    if not isinstance(status, str) or status not in _STATUSES:
+    if not _is_status(status):
         problems.append(f"{label}: status must be one of {sorted(_STATUSES)}")
         return None
 
     purls = _parse_purls(raw.get("purls"), label, problems)
+    before_status_rules = len(problems)
     justification = _check_status_rules(
         status, purls, raw.get("justification"), label, problems
     )
+    status_rules_ok = len(problems) == before_status_rules
     re_review_by = _parse_date(
         raw.get("re_review_by"), f"{label}: re_review_by", problems
     )
@@ -283,7 +368,11 @@ def _parse_entry(raw: object, index: int, problems: list[str]) -> TriageEntry | 
         problems.append(f"{label}: statement is missing or empty")
         statement = ""
 
-    if re_review_by is None:
+    # Constructing an entry that broke the coupling would raise from
+    # ``__post_init__`` and cost the caller the rest of the ledger's problems,
+    # which is the whole reason they are collected rather than raised one by
+    # one. The problems are already recorded, so drop the entry instead.
+    if re_review_by is None or not status_rules_ok:
         return None
     return TriageEntry(
         id=identifier.strip(),
@@ -354,9 +443,10 @@ def load_triage(path: Path | None = None) -> Triage:
         seen.add(entry.id)
 
     if problems or updated is None:
-        joined = "\n  ".join(problems or ["updated: missing or not a timestamp"])
+        collected = problems or ["updated: missing or not a timestamp"]
+        joined = "\n  ".join(collected)
         msg = f"{path}:\n  {joined}"
-        raise VexTriageError(msg)
+        raise VexTriageError(msg, problems=tuple(collected))
 
     return Triage(author=author.strip(), updated=updated, entries=tuple(entries))
 
@@ -403,13 +493,25 @@ def render_trivyignore(triage: Triage) -> str:
     for entry in triage.entries:
         if entry.status != STATUS_ACCEPTED:
             continue
-        finding: _IgnoreFinding = {"id": entry.id}
-        if entry.purls:
-            finding["purls"] = list(entry.purls)
-        finding["expired_at"] = (
-            f"{entry.re_review_by.isoformat()}{_MIDNIGHT_UTC_SUFFIX}"
+        expired_at = f"{entry.re_review_by.isoformat()}{_MIDNIGHT_UTC_SUFFIX}"
+        statement = f"{entry.statement}\n"
+        # Spelled as two whole literals rather than one built key by key: the
+        # rendered order is the file a person reads, and `purls` belongs next
+        # to the id it narrows, not appended after the prose.
+        finding: _IgnoreFinding = (
+            {
+                "id": entry.id,
+                "purls": list(entry.purls),
+                "expired_at": expired_at,
+                "statement": statement,
+            }
+            if entry.purls
+            else {
+                "id": entry.id,
+                "expired_at": expired_at,
+                "statement": statement,
+            }
         )
-        finding["statement"] = f"{entry.statement}\n"
         findings.append(finding)
 
     body = yaml.dump(
@@ -426,18 +528,28 @@ def render_trivyignore(triage: Triage) -> str:
 def _openvex_statements(triage: Triage) -> list[_Statement]:
     """Build the OpenVEX statements for the not-affected entries.
 
+    Each statement's product is the package purl rather than an image purl.
+    That is the form the OpenVEX specification uses in its own minimal
+    document, and it is the only form that matches at both ends: Trivy derives
+    no purl for the root of a locally loaded image, so an image-scoped product
+    would match nothing in the six scans that read this file from disk, while
+    a package-scoped product matches the leaf component locally and remotely
+    alike.
+
     Raises:
-        VexTriageError: A not-affected entry reached rendering without a
-            justification. ``load_triage`` rejects that, so it can only mean
-            the ledger was built by something that skipped validation, and
-            publishing an unjustified claim is worse than failing here.
+        VexTriageError: A not-affected entry reached rendering without the
+            justification or the product its claim needs. ``TriageEntry``
+            refuses to hold that combination, so reaching it means something
+            bypassed the constructor, and publishing a claim with nothing to
+            attach it to is worse than failing here.
     """
     statements: list[_Statement] = []
     for entry in triage.entries:
         if entry.status != STATUS_NOT_AFFECTED:
             continue
-        if entry.justification is None:
-            msg = f"{entry.id}: not_affected reached rendering with no justification"
+        if entry.justification is None or not entry.purls:
+            missing = "justification" if entry.justification is None else "product"
+            msg = f"{entry.id}: not_affected reached rendering with no {missing}"
             raise VexTriageError(msg)
         statements.append(
             {

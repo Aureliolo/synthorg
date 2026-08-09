@@ -38,8 +38,7 @@ import datetime as dt
 import importlib.util
 import sys
 from pathlib import Path
-from types import ModuleType
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _GENERATOR_PATH: Final[Path] = _REPO_ROOT / "scripts" / "generate_vex_documents.py"
@@ -70,6 +69,28 @@ class _TriageLike(Protocol):
     entries: tuple[_EntryLike, ...]
 
 
+class _GeneratorLike(Protocol):
+    """The part of the generator this gate calls.
+
+    Without it every attribute reached through the loaded module would be
+    ``Any``, and the contract this gate exists to hold would be the one thing
+    the type-checker never looked at.
+
+    Attributes:
+        REPO_ROOT: Root the rendered paths are reported relative to.
+        REGENERATE_COMMAND: What a reader runs to fix a drifted file.
+        VexTriageError: Raised when the ledger violates its schema.
+    """
+
+    REPO_ROOT: Path
+    REGENERATE_COMMAND: str
+    VexTriageError: type[Exception]
+
+    def load_triage(self) -> _TriageLike: ...
+
+    def rendered_files(self, triage: _TriageLike) -> dict[Path, str]: ...
+
+
 class VexSyncError(Exception):
     """The gate could not load the generator it renders through.
 
@@ -78,14 +99,14 @@ class VexSyncError(Exception):
     """
 
 
-def load_generator(path: Path = _GENERATOR_PATH) -> ModuleType:
+def load_generator(path: Path = _GENERATOR_PATH) -> _GeneratorLike:
     """Import the generator so the gate renders through the same code.
 
     Args:
         path: Generator script.
 
     Returns:
-        The imported module.
+        The imported module, narrowed to the surface this gate uses.
 
     Raises:
         VexSyncError: The generator could not be imported. Re-implementing its
@@ -102,17 +123,35 @@ def load_generator(path: Path = _GENERATOR_PATH) -> ModuleType:
     except Exception as exc:
         msg = f"could not import {path}: {type(exc).__name__}: {exc}"
         raise VexSyncError(msg) from exc
-    return module
+    return cast("_GeneratorLike", module)
 
 
-def _drift_problems(generator: ModuleType, triage: _TriageLike) -> list[str]:
+def _ledger_problems(exc: Exception) -> list[str]:
+    """Unpack a ledger violation into one entry per problem.
+
+    The generator collects every problem and joins them for its own output.
+    Reading them back itemised keeps this gate's list uniform, rather than one
+    pre-joined blob sitting beside individually reported drift and expiry
+    entries. Reached across a path-loaded module, so the attribute is asked
+    for rather than assumed.
+    """
+    problems = getattr(exc, "problems", None)
+    if isinstance(problems, tuple):
+        return [str(problem) for problem in problems]
+    return [str(exc)]
+
+
+def _drift_problems(generator: _GeneratorLike, triage: _TriageLike) -> list[str]:
     """Compare every rendered file against what the ledger requires."""
     problems: list[str] = []
     for path, expected in generator.rendered_files(triage).items():
         relative = path.relative_to(generator.REPO_ROOT).as_posix()
         try:
             actual = path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
+            # A generated file that is not valid UTF-8 has been corrupted, not
+            # merely drifted; `UnicodeDecodeError` is a `ValueError`, so it
+            # would otherwise escape as a traceback rather than a verdict.
             problems.append(f"{relative}: unreadable ({exc})")
             continue
         if actual != expected:
@@ -136,7 +175,7 @@ def _expiry_problems(triage: _TriageLike, today: dt.date) -> list[str]:
 
 def check(
     today: dt.date | None = None,
-    generator: ModuleType | None = None,
+    generator: _GeneratorLike | None = None,
 ) -> list[str]:
     """Run the full comparison.
 
@@ -155,7 +194,7 @@ def check(
     try:
         triage = module.load_triage()
     except module.VexTriageError as exc:
-        return [str(exc)]
+        return _ledger_problems(exc)
 
     problems = _drift_problems(module, triage)
     problems += _expiry_problems(triage, today or dt.datetime.now(dt.UTC).date())
