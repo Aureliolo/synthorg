@@ -332,8 +332,8 @@
     },
     "src/synthorg/budget/tracker.py": {
       "cap": 1100,
-      "loc": 1086,
-      "ratio": 0.987,
+      "loc": 1030,
+      "ratio": 0.936,
       "tier": "complex_service"
     },
     "src/synthorg/client/factory.py": {
@@ -1638,7 +1638,7 @@
     "synthorg.budget.config": 30,
     "synthorg.budget.coordination_config": 24,
     "synthorg.budget.cost_record": 28,
-    "synthorg.budget.currency": 76,
+    "synthorg.budget.currency": 75,
     "synthorg.budget.errors": 28,
     "synthorg.budget.state": 46,
     "synthorg.budget.tracker_protocol": 118,
@@ -1832,8 +1832,8 @@
       "loc": 692
     },
     "synthorg.budget.tracker:CostTracker": {
-      "lcom4": 3,
-      "loc": 984
+      "lcom4": 2,
+      "loc": 937
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,

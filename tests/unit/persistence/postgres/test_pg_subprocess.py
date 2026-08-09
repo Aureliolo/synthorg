@@ -15,6 +15,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import IO
 
@@ -218,6 +219,53 @@ class TestThreadFallback:
         assert spawned
         for child in spawned:
             assert child.wait(timeout=_CHILD_EXIT_GRACE) is not None
+        assert not target.exists()
+
+    async def test_a_worker_that_starts_after_cancellation_creates_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A queued worker can outlive the request that queued it.
+
+        The cleanup removes the dump and returns, so a worker that only gets
+        a thread slot afterwards would create its dump into a directory
+        nothing is coming back to: an artefact left behind precisely because
+        the caller did everything right.
+        """
+        target = tmp_path / "dump.pgc"
+        entered = asyncio.Event()
+        release = threading.Event()
+        settled = threading.Event()
+        loop = asyncio.get_running_loop()
+        real_blocking = pg_thread_fallback._run_blocking
+
+        def _stall_then_run(*args: object, **kwargs: object) -> object:
+            loop.call_soon_threadsafe(entered.set)
+            release.wait(timeout=_CHILD_EXIT_GRACE)
+            try:
+                return real_blocking(*args, **kwargs)  # type: ignore[arg-type]
+            finally:
+                settled.set()
+
+        monkeypatch.setattr(pg_thread_fallback, "_run_blocking", _stall_then_run)
+
+        task = asyncio.create_task(
+            run_pg_tool(
+                sys.executable,
+                ["-c", _SLEEP_SCRIPT],
+                env=_CHILD_ENV,
+                timeout_seconds=30.0,
+                output_path=target,
+            )
+        )
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Only now does the worker get to run, which is the whole point.
+        release.set()
+        await asyncio.to_thread(settled.wait, _CHILD_EXIT_GRACE)
+
         assert not target.exists()
 
     async def test_an_unwritable_target_does_not_hang_the_fallback(

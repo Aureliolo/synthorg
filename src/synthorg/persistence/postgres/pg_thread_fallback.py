@@ -34,6 +34,11 @@ from synthorg.persistence.postgres.pg_subprocess import (
 #: worse than leaving one stray dump behind.
 _CHILD_EXIT_GRACE_SECONDS: Final[float] = 5.0
 
+#: What the worker reports when it was abandoned before it started. The async
+#: side left with the cancellation that abandoned it, so nothing reads this;
+#: it exists so the refusal has a shape rather than an invented exit status.
+_NOT_RUN: Final[tuple[int, bytes, bytes]] = (-1, b"", b"")
+
 
 class _ChildHandle:
     """Lets the async side stop a run it can no longer wait for.
@@ -52,7 +57,24 @@ class _ChildHandle:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[bytes] | None = None
         self._stopped = False
+        self._started = False
         self.finished = threading.Event()
+
+    def begin(self) -> bool:
+        """Report whether the run should start at all.
+
+        A worker can sit queued past the cancellation that abandoned it, and
+        starting then would create a dump after the cleanup that removes it
+        has already run: an artefact nothing else will ever collect.
+
+        Returns:
+            Whether the run may proceed; ``False`` once a stop has arrived.
+        """
+        with self._lock:
+            if self._stopped:
+                return False
+            self._started = True
+            return True
 
     def publish(self, proc: subprocess.Popen[bytes]) -> bool:
         """Register the freshly spawned child.
@@ -71,10 +93,19 @@ class _ChildHandle:
             return True
 
     def stop(self) -> None:
-        """Kill the running child, or refuse one about to be published."""
+        """Kill the running child, or refuse one about to start.
+
+        Signals completion itself when the run had not begun: ``begin`` and
+        this share the lock, so a stop that observes an unstarted run has
+        already guaranteed it never will, and there is nothing left for the
+        cleanup to wait on.
+        """
         with self._lock:
             self._stopped = True
             proc = self._proc
+            never_started = not self._started
+        if never_started:
+            self.finished.set()
         if proc is not None and proc.poll() is None:
             proc.kill()
 
@@ -116,6 +147,8 @@ def _run_blocking(
     # async side waiting on a flag nothing will ever set.
     sink: IO[bytes] | int = subprocess.PIPE
     try:
+        if not handle.begin():
+            return _NOT_RUN
         if output_path is not None:
             sink = open_private_binary(output_path)
         proc = subprocess.Popen(  # noqa: S603 -- list argv, no shell

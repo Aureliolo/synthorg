@@ -12,9 +12,8 @@ window is rehydrated from it on boot so a ceiling survives a restart.
 """
 
 import asyncio
-import math
 import time
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Final, NamedTuple, override
@@ -26,15 +25,8 @@ from synthorg.budget._tracker_helpers import (
 )
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.currency import assert_currencies_match
-from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.spending_summary import (
-    AgentSpending,
-    DepartmentSpending,
-)
 from synthorg.budget.tracker_summary import CostTrackerSummaryMixin
-from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import (
@@ -49,7 +41,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
-    BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_HYDRATED,
     BUDGET_HYDRATION_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
@@ -417,12 +408,56 @@ class CostTracker(CostTrackerSummaryMixin):
                 does not match the configured ``budget.currency``.
             BaseException: Raised when the relevant invariant fails.
         """
-        # Currency check first -- it's synchronous, has no in-flight
-        # state to roll back, and a mismatch is a hard caller-contract
-        # violation that must surface BEFORE we reserve a claim_id
-        # slot. Per-project same-currency invariant is enforced by
-        # ``ProjectCostAggregateRepository.increment``; no tracker-
-        # side pin is required there.
+        self._reject_mixed_currency(cost_record)
+        if not await self._reserve_claim(cost_record):
+            return
+        # Durable restart-survival guard, applied atomically. The
+        # in-memory LRU above is empty after a crash/OOM/container
+        # restart, so a JetStream redelivery of an already-billed
+        # record would otherwise pass the memory check and re-increment
+        # the durable aggregate. ``increment_if_unseen`` records the
+        # dedup row and increments the aggregate in ONE transaction, so
+        # a crash between the two can never leave the aggregate
+        # incremented without its dedup row. A duplicate returns
+        # ``was_new=False`` and skips the increment. The in-flight
+        # reservation is held across this DB call, so any failure or
+        # cancellation must release it -- ``except Exception`` would
+        # miss CancelledError (timeout / shutdown), so catch
+        # BaseException and re-raise.
+        try:
+            was_new = await self._durable_increment_if_unseen(cost_record)
+        except BaseException:
+            # Release the reservation WITHOUT awaiting the lock. Acquiring it
+            # here opens a cancellation window (a timeout cancel racing a
+            # shutdown cancel) in which the ``await`` is interrupted before the
+            # discard runs, permanently leaking the claim into
+            # ``_inflight_claims`` so every JetStream redelivery of it is
+            # deduped away. ``set.discard`` is atomic on the single-threaded
+            # event loop and no locked region iterates ``_inflight_claims``, so
+            # a lockless discard of this call's own claim is race-free.
+            self._inflight_claims.discard(cost_record.claim_id)
+            raise
+        if not was_new:
+            await self._complete_duplicate(cost_record)
+            return
+        await self._finalise_new_record(cost_record)
+
+    def _reject_mixed_currency(self, cost_record: CostRecord) -> None:
+        """Refuse a record denominated in another currency than the budget.
+
+        Checked first: it is synchronous, has no in-flight state to roll
+        back, and a mismatch is a hard caller-contract violation that must
+        surface BEFORE a claim slot is reserved. The per-project
+        same-currency invariant is enforced by
+        ``ProjectCostAggregateRepository.increment``, so no tracker-side pin
+        is required there.
+
+        Args:
+            cost_record: The record being ingested.
+
+        Raises:
+            MixedCurrencyAggregationError: The currencies disagree.
+        """
         if (
             self._budget_config is not None
             and cost_record.currency != self._budget_config.currency
@@ -456,16 +491,24 @@ class CostTracker(CostTrackerSummaryMixin):
                 project_id=cost_record.project_id,
             )
 
-        # Idempotency fast-path with in-flight reservation. ``_lock``
-        # protects both ``_inflight_claims`` (set of in-flight reservations)
-        # and ``_seen_claims`` (bounded LRU of finalised entries). We
-        # check both states under the lock, then either dedupe (if
-        # already seen / in flight) or reserve the claim in
-        # ``_inflight_claims`` so a concurrent second call sees the
-        # entry and dedupes immediately. Keeping in-flight separate
-        # from the LRU prevents the capacity trim from popping a
-        # still-running reservation, which would let a duplicate
-        # slip past the membership check.
+    async def _reserve_claim(self, cost_record: CostRecord) -> bool:
+        """Reserve the claim, or report it as one already being handled.
+
+        The idempotency fast path. ``_lock`` protects both
+        ``_inflight_claims`` (reservations in progress) and ``_seen_claims``
+        (the bounded LRU of finalised entries). Both are checked under the
+        lock, then the claim is either deduped or reserved so a concurrent
+        second call sees the entry and dedupes immediately. Keeping
+        in-flight separate from the LRU stops the capacity trim popping a
+        still-running reservation, which would let a duplicate slip past the
+        membership check.
+
+        Args:
+            cost_record: The record being ingested.
+
+        Returns:
+            Whether the caller now holds the reservation and should proceed.
+        """
         async with self._get_lock():
             if (
                 cost_record.claim_id in self._inflight_claims
@@ -482,79 +525,65 @@ class CostTracker(CostTrackerSummaryMixin):
                     model=cost_record.model,
                     cost=cost_record.cost,
                 )
-                return
+                return False
             self._inflight_claims.add(cost_record.claim_id)
+        return True
 
-        # Durable restart-survival guard, applied atomically. The
-        # in-memory LRU above is empty after a crash/OOM/container
-        # restart, so a JetStream redelivery of an already-billed
-        # record would otherwise pass the memory check and re-increment
-        # the durable aggregate. ``increment_if_unseen`` records the
-        # dedup row and increments the aggregate in ONE transaction, so
-        # a crash between the two can never leave the aggregate
-        # incremented without its dedup row. A duplicate returns
-        # ``was_new=False`` and skips the increment. The in-flight
-        # reservation is held across this DB call, so any failure or
-        # cancellation must release it -- ``except Exception`` would
-        # miss CancelledError (timeout / shutdown), so catch
-        # BaseException and re-raise.
+    async def _complete_duplicate(self, cost_record: CostRecord) -> None:
+        """Finish what a redelivery of an already-counted claim can finish.
+
+        Args:
+            cost_record: The redelivered record.
+        """
+        # The aggregate already counts this claim, and its dedup row
+        # committed in the same transaction, so no redelivery can ever
+        # re-increment it. What a redelivery CAN still be missing is the
+        # record itself: an append cancelled after that commit leaves the
+        # claim counted and unrecorded, and this branch is the only place
+        # a later delivery of it lands. The insert is idempotent on
+        # ``(claim_id, timestamp)``, so completing it costs one no-op
+        # insert when the row is already there.
         try:
-            was_new = await self._durable_increment_if_unseen(cost_record)
-        except BaseException:
-            # Release the reservation WITHOUT awaiting the lock. Acquiring it
-            # here opens a cancellation window (a timeout cancel racing a
-            # shutdown cancel) in which the ``await`` is interrupted before the
-            # discard runs, permanently leaking the claim into
-            # ``_inflight_claims`` so every JetStream redelivery of it is
-            # deduped away. ``set.discard`` is atomic on the single-threaded
-            # event loop and no locked region iterates ``_inflight_claims``, so
-            # a lockless discard of this call's own claim is race-free.
+            recorded = await self._append_durable(cost_record)
+            async with self._get_lock():
+                # Promoted only once the record is durably present: the
+                # LRU short-circuits ahead of this branch, so promoting a
+                # claim whose row never landed would close the one door
+                # left to it. Promoted BEFORE the release below, so the
+                # membership check never sees it in neither set.
+                if recorded:
+                    self._promote_seen_claim(cost_record.claim_id)
+        finally:
+            # Released however this leaves, for the same reason the first
+            # delivery releases in its own guard: a cancellation between
+            # the reservation and the discard strands the claim for the
+            # life of the process, and every later redelivery of it is
+            # then deduped away as still in flight.
             self._inflight_claims.discard(cost_record.claim_id)
-            raise
-        if not was_new:
-            # The aggregate already counts this claim, and its dedup row
-            # committed in the same transaction, so no redelivery can ever
-            # re-increment it. What a redelivery CAN still be missing is the
-            # record itself: an append cancelled after that commit leaves the
-            # claim counted and unrecorded, and this branch is the only place
-            # a later delivery of it lands. The insert is idempotent on
-            # ``(claim_id, timestamp)``, so completing it costs one no-op
-            # insert when the row is already there.
-            try:
-                recorded = await self._append_durable(cost_record)
-                async with self._get_lock():
-                    # Promoted only once the record is durably present: the
-                    # LRU short-circuits ahead of this branch, so promoting a
-                    # claim whose row never landed would close the one door
-                    # left to it. Promoted BEFORE the release below, so the
-                    # membership check never sees it in neither set.
-                    if recorded:
-                        self._promote_seen_claim(cost_record.claim_id)
-            finally:
-                # Released however this leaves, for the same reason the first
-                # delivery releases in its own guard: a cancellation between
-                # the reservation and the discard strands the claim for the
-                # life of the process, and every later redelivery of it is
-                # then deduped away as still in flight.
-                self._inflight_claims.discard(cost_record.claim_id)
-            logger.info(
-                BUDGET_RECORD_DEDUPED,
-                claim_id=cost_record.claim_id,
-                agent_id=cost_record.agent_id,
-                task_id=cost_record.task_id,
-                provider=cost_record.provider,
-                model=cost_record.model,
-                cost=cost_record.cost,
-                reason="durable",
-            )
-            return
+        logger.info(
+            BUDGET_RECORD_DEDUPED,
+            claim_id=cost_record.claim_id,
+            agent_id=cost_record.agent_id,
+            task_id=cost_record.task_id,
+            provider=cost_record.provider,
+            model=cost_record.model,
+            cost=cost_record.cost,
+            reason="durable",
+        )
 
-        # Every await from here to the promotion is inside the guard, for the
-        # same reason the reservation above is: a cancellation between the
-        # reservation and the discard strands the claim in
-        # ``_inflight_claims`` for the life of the process, and every later
-        # redelivery of it is then deduped away as still in flight. The record
-        # is retryable; a reservation nothing will ever release is not.
+    async def _finalise_new_record(self, cost_record: CostRecord) -> None:
+        """Record a first delivery durably, then admit it to the window.
+
+        Every await from here to the promotion is inside the guard, for the
+        same reason the reservation is: a cancellation between the
+        reservation and the discard strands the claim in
+        ``_inflight_claims`` for the life of the process, and every later
+        redelivery of it is then deduped away as still in flight. The record
+        is retryable; a reservation nothing will ever release is not.
+
+        Args:
+            cost_record: The accepted record, holding its own reservation.
+        """
         try:
             # Durable before in-memory: the record is what a receipt reads and
             # what a restart rehydrates from, so a record that exists only in
@@ -1273,114 +1302,3 @@ class CostTracker(CostTrackerSummaryMixin):
         before = len(self._records)
         self._records = [r for r in self._records if r.timestamp >= cutoff]
         return before - len(self._records)
-
-    @override
-    def _build_dept_spendings(
-        self,
-        agent_spendings: list[AgentSpending],
-    ) -> list[DepartmentSpending]:
-        """Aggregate per-department spending from agent spendings.
-
-        Returns:
-            List of ``DepartmentSpending``.
-
-        Raises:
-            MixedCurrencyAggregationError: If two agents assigned to
-                the same department have different currencies on their
-                ``AgentSpending`` rollups.
-        """
-        dept_map: dict[str, list[AgentSpending]] = defaultdict(list)
-        for agent_spend in agent_spendings:
-            # Work no agent owns sits in no department either; there is
-            # nothing to resolve it to.
-            if agent_spend.agent_id is None:
-                continue
-            dept = self._resolve_department(agent_spend.agent_id)
-            if dept is not None:
-                dept_map[dept].append(agent_spend)
-
-        results: list[DepartmentSpending] = []
-        for dname, spends in sorted(dept_map.items()):
-            dept_currency = assert_currencies_match(
-                (s.currency for s in spends),
-                department_id=dname,
-            )
-            results.append(
-                DepartmentSpending(
-                    department_name=dname,
-                    total_cost=round(
-                        math.fsum(s.total_cost for s in spends),
-                        BUDGET_ROUNDING_PRECISION,
-                    ),
-                    currency=dept_currency,
-                    total_input_tokens=sum(s.total_input_tokens for s in spends),
-                    total_output_tokens=sum(s.total_output_tokens for s in spends),
-                    record_count=sum(s.record_count for s in spends),
-                )
-            )
-        return results
-
-    @override
-    def _build_budget_context(
-        self,
-        total_cost: float,
-    ) -> tuple[float, float, BudgetAlertLevel]:
-        """Compute budget monthly, used percentage, and alert level.
-
-        Returns:
-            Tuple ``(float, float, BudgetAlertLevel)``.
-        """
-        budget_monthly = (
-            self._budget_config.total_monthly if self._budget_config else 0.0
-        )
-        used_pct = (
-            round(
-                total_cost / budget_monthly * 100,
-                BUDGET_ROUNDING_PRECISION,
-            )
-            if budget_monthly > 0
-            else 0.0
-        )
-        alert = self._compute_alert_level(used_pct)
-        return budget_monthly, used_pct, alert
-
-    @override
-    def _compute_alert_level(self, used_pct: float) -> BudgetAlertLevel:
-        """Determine alert level from the rounded budget percentage.
-
-        Returns:
-            Result of type ``BudgetAlertLevel``.
-        """
-        if self._budget_config is None or self._budget_config.total_monthly <= 0:
-            return BudgetAlertLevel.NORMAL
-
-        alerts = self._budget_config.alerts
-
-        if used_pct >= alerts.hard_stop_at:
-            return BudgetAlertLevel.HARD_STOP
-        if used_pct >= alerts.critical_at:
-            return BudgetAlertLevel.CRITICAL
-        if used_pct >= alerts.warn_at:
-            return BudgetAlertLevel.WARNING
-        return BudgetAlertLevel.NORMAL
-
-    @override
-    def _resolve_department(self, agent_id: str) -> str | None:
-        """Resolve agent to department, logging resolver errors.
-
-        Returns:
-            The matching ``str``, or ``None`` when no match is found.
-        """
-        if self._department_resolver is None:
-            return None
-        try:
-            return self._department_resolver(agent_id)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                BUDGET_DEPARTMENT_RESOLVE_FAILED,
-                agent_id=agent_id,
-                error=safe_error_description(exc),
-                error_type=type(exc).__qualname__,
-            )
-            return None
