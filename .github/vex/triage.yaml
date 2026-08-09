@@ -33,8 +33,6 @@
 # the results rather than recording it, even under `--show-suppressed`. So the
 # uploaded `trivy-*-report` artifacts cannot tell you what was answered or
 # why, and this ledger is the only place that can.
-#
-# Removal owner for every entry: issue #2202.
 
 author: SynthOrg
 updated: "2026-08-09T00:00:00Z"

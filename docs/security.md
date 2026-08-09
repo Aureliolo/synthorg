@@ -476,8 +476,13 @@ An entry's status decides which file it reaches, and no entry reaches both:
 | `not_affected` | `.github/vex/synthorg.openvex.json` | Our own scans (`--vex`) **and** every consumer of the image |
 | `accepted` (risk accepted) | `.github/.trivyignore.yaml` | Our own scans only; VEX has no status for accepting a risk |
 
-The OpenVEX document is attached to every published image as an attestation
-(`cosign attest --type openvex`), so the reasoning travels with the bytes:
+The OpenVEX document is attached as an attestation (`cosign attest --type
+openvex`) to every published product image that carries at least one statement,
+so the reasoning travels with the bytes. A ledger with no `not_affected` entry
+renders an empty document. Nothing is attached in that case, because an empty
+claim is not worth a signature. The apko `-base` images are scanned with
+`--vex` but carry no attestation of their own, since nothing resolves them as a
+product.
 
 ```bash
 trivy image --vex oci ghcr.io/aureliolo/synthorg-sandbox:<tag> --show-suppressed
@@ -488,10 +493,19 @@ provenance, and independently verifiable:
 
 ```bash
 cosign verify-attestation --type openvex \
-  --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
+  --certificate-identity-regexp='^https://github\.com/Aureliolo/synthorg/\.github/workflows/reusable-publish-image(-loaded)?\.yml@refs/heads/main$' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --certificate-github-workflow-repository='Aureliolo/synthorg' \
   ghcr.io/aureliolo/synthorg-sandbox@sha256:<digest>
 ```
+
+Both halves of that identity are load-bearing, for the reason the [SLSA
+provenance](#artifact-provenance) section gives at length: our reusable
+workflows are public, a `workflow_call` job's certificate names the reusable
+workflow rather than its caller, and cosign matches an identity regexp by
+search rather than by full match. An unanchored pattern with no repository
+binding would accept an attestation signed by any workflow in any repository
+whose name contains ours.
 
 **Residual gap.** Trivy does **not** verify the signature of a VEX attestation
 it discovers, so anyone able to push to an image repository can attach one that
@@ -505,7 +519,7 @@ that silently claims more than it delivers.
 
 ### Signed Artifacts
 
-- **Container images**: cosign keyless signatures (verify via `cosign verify`) + SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
+- **Container images**: cosign keyless signatures (verify via `cosign verify`) + SLSA Level 3 provenance attestations (verify via `gh attestation verify`), plus an OpenVEX attestation on any product image whose [vulnerability triage](#vulnerability-triage) carries a statement (verify via `cosign verify-attestation --type openvex`)
 - **CLI binaries**:
   - cosign keyless signature on checksums file (verify via `cosign verify-blob`)
   - SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
