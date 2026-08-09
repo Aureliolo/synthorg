@@ -106,23 +106,30 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
             ),
             security_agent=True,
         ),
+        # SUPERVISED gates blast radius, not verbs. An agent writing, running
+        # or committing inside its own isolated workspace changes nothing an
+        # operator has to see: the worktree is thrown away, and the review
+        # gate judges what comes out of it. Gating those made the shipped
+        # default unable to write a line of code, because every
+        # ``shell_command`` and ``git_branch`` queued for a human. What still
+        # needs one is everything that leaves the box.
         AutonomyLevel.SUPERVISED: AutonomyPreset(
             level=AutonomyLevel.SUPERVISED,
             description=(
-                "Supervised -- read-only and test actions auto-approved; "
-                "all mutations require human approval"
+                "Supervised -- the org works freely inside its own sandboxed "
+                "workspace; anything leaving it requires human approval"
             ),
-            auto_approve=("code:read", "vcs:read", "test:run", "db:query"),
-            human_approval=(
-                "code:write",
-                "code:create",
-                "code:delete",
-                "code:refactor",
-                "test:write",
-                "docs:write",
+            auto_approve=(
+                "code",
+                "test",
+                "docs",
+                "vcs:read",
                 "vcs:commit",
-                "vcs:push",
                 "vcs:branch",
+                "db:query",
+            ),
+            human_approval=(
+                "vcs:push",
                 "deploy",
                 "publish",
                 "comms",
@@ -168,11 +175,13 @@ class AutonomyConfig(BaseModel):
     level: AutonomyLevel = Field(
         default=AutonomyLevel.SUPERVISED,
         description=(
-            "Default company autonomy level. Ships as 'supervised' so"
-            " most state-mutating agent actions queue for approval;"
-            " raise to 'semi' or 'full' once operators trust the"
-            " organisation. Kept in sync with the"
-            " ``company.autonomy_level`` SettingDefinition default."
+            "Default company autonomy level. Ships as 'supervised': the org"
+            " works freely inside its own sandboxed workspace and queues"
+            " anything that leaves it (a push, a deploy, a publish, an"
+            " outbound message, a budget or org change) for approval. Raise"
+            " to 'semi' or 'full' once operators trust the organisation."
+            " Kept in sync with the ``company.autonomy_level``"
+            " SettingDefinition default."
         ),
     )
     presets: dict[str, AutonomyPreset] = Field(

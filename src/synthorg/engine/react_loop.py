@@ -45,6 +45,7 @@ from .loop_control_helpers import (
     check_stagnation,
     invoke_compaction,
 )
+from .loop_empty_run import nudge_empty_run
 from .loop_helpers import (
     build_result,
     check_response_errors,
@@ -466,6 +467,9 @@ class ReactLoop:
                 )
 
         if not response.tool_calls:
+            nudged = nudge_empty_run(ctx, turns, turn_number)
+            if nudged is not None:
+                return nudged
             return await self._handle_completion(ctx, response, turns)
 
         # Check shutdown before tool invocations

@@ -71,8 +71,10 @@ _r.register(
         default=_EXPECTED_AUTONOMY_DEFAULT,
         description=(
             "Default company-wide autonomy level. Fresh installs ship with"
-            " 'supervised' so most state-mutating agent actions queue for"
-            " approval before execution; raise to 'semi' or 'full' once"
+            " 'supervised': agents work freely inside their own sandboxed"
+            " workspace, and anything that leaves it (a push, a deploy, a"
+            " publish, an outbound message, a budget or org change) queues"
+            " for approval before execution. Raise to 'semi' or 'full' once"
             " operators trust the organization. Rank: full > semi >"
             " supervised > locked."
         ),

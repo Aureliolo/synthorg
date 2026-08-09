@@ -178,10 +178,51 @@ class TestBuiltinPresets:
         assert len(semi.human_approval) > 0
 
     @pytest.mark.unit
-    def test_supervised_preset_read_only_auto(self) -> None:
+    def test_supervised_can_work_inside_its_own_sandbox(self) -> None:
+        """The shipped default must be able to build.
+
+        A live run died on the previous shape: `supervised` gated
+        `code:write` and `vcs:branch`, so every `shell_command` and every
+        `git_branch` in an agent's own isolated workspace queued for a
+        human, and the org could not write a line of code out of the box.
+        The tier gates blast radius, not verbs.
+        """
         supervised = BUILTIN_PRESETS[AutonomyLevel.SUPERVISED]
-        assert "code:read" in supervised.auto_approve
-        assert "code:write" in supervised.human_approval
+        for confined in ("code", "test", "docs", "vcs:commit", "vcs:branch"):
+            assert confined in supervised.auto_approve, (
+                f"{confined} is confined to the agent's own workspace"
+            )
+
+    @pytest.mark.unit
+    def test_supervised_gates_everything_that_leaves_the_sandbox(self) -> None:
+        supervised = BUILTIN_PRESETS[AutonomyLevel.SUPERVISED]
+        for outward in (
+            "vcs:push",
+            "deploy",
+            "publish",
+            "comms",
+            "budget",
+            "org",
+            "db:mutate",
+            "db:admin",
+        ):
+            assert outward in supervised.human_approval, (
+                f"{outward} leaves the sandbox and needs a human"
+            )
+
+    @pytest.mark.unit
+    def test_supervised_is_stricter_than_semi(self) -> None:
+        """The rank full > semi > supervised > locked must stay real."""
+        semi = BUILTIN_PRESETS[AutonomyLevel.SEMI]
+        supervised = BUILTIN_PRESETS[AutonomyLevel.SUPERVISED]
+        gated_by_supervised_only = set(supervised.human_approval) - set(
+            semi.human_approval
+        )
+        assert gated_by_supervised_only, (
+            "supervised must gate something semi does not, or the two tiers "
+            "are the same tier under two names"
+        )
+        assert "vcs:push" in gated_by_supervised_only
 
     @pytest.mark.unit
     def test_presets_are_disjoint(self) -> None:

@@ -11,6 +11,7 @@ from uuid import uuid4
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.coordination._wave_outcome import classify_wave
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
@@ -19,7 +20,9 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
-from synthorg.engine.parallel_models import ParallelExecutionGroup
+from synthorg.engine.parallel_models import (
+    ParallelExecutionGroup,
+)
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.engine.workspace.models import (
@@ -350,12 +353,7 @@ async def execute_waves(
             )
             waves.append(wave)
 
-            success = exec_result.all_succeeded
-            error_msg = (
-                None
-                if success
-                else f"Wave {wave_idx}: {exec_result.agents_failed} agent(s) failed"
-            )
+            success, error_msg = classify_wave(wave_idx, exec_result)
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
@@ -365,22 +363,15 @@ async def execute_waves(
                 )
             )
 
-            if success:
-                logger.info(
-                    COORDINATION_WAVE_COMPLETED,
-                    wave_index=wave_idx,
-                    succeeded=exec_result.agents_succeeded,
-                    failed=exec_result.agents_failed,
-                    duration_seconds=elapsed,
-                )
-            else:
-                logger.warning(
-                    COORDINATION_WAVE_COMPLETED,
-                    wave_index=wave_idx,
-                    succeeded=exec_result.agents_succeeded,
-                    failed=exec_result.agents_failed,
-                    duration_seconds=elapsed,
-                )
+            log = logger.info if success else logger.warning
+            log(
+                COORDINATION_WAVE_COMPLETED,
+                wave_index=wave_idx,
+                succeeded=exec_result.agents_succeeded,
+                failed=exec_result.agents_failed,
+                awaiting_human=exec_result.agents_awaiting_human,
+                duration_seconds=elapsed,
+            )
 
             if not success and fail_fast:
                 break

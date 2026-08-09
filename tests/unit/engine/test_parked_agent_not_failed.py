@@ -1,0 +1,245 @@
+"""A parked agent is waiting on a human, not a failure.
+
+An agent whose run terminates ``PARKED`` has escalated a tool call for a human
+decision. It has not failed: the task is alive, an approval is pending, and the
+run resumes into its own workspace once the human answers.
+
+A live run collapsed on exactly this conflation. One agent parked on a
+``shell_command`` escalation, the parallel executor reported ``success=False``,
+the wave counted two failures out of two, the merge was skipped, both
+workspaces were torn down, and the plan was driven to ``FAILED`` fifty seconds
+after dispatch while its tasks were still ``in_progress`` and the approval was
+still pending. Approving it afterwards decided nothing.
+
+The invariant these tests hold: a wave whose only non-successes are parks is
+not a failed wave, and a parked agent's workspace outlives the wave that
+started it.
+"""
+
+from datetime import UTC, datetime
+
+import pytest
+
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.parallel_models import AgentOutcome, ParallelExecutionResult
+from synthorg.engine.workspace.models import Workspace
+from tests._shared import coerce_id
+from tests.unit.engine.conftest import (
+    build_run_result,
+    make_decomposition,
+    make_exec_result,
+    make_routing,
+    make_subtask,
+)
+from tests.unit.engine.test_coordination_dispatchers import (
+    _mock_executor,
+    _mock_workspace_service,
+)
+
+pytestmark = pytest.mark.unit
+
+
+def _outcome(task_id: str, agent_id: str, reason: TerminationReason) -> AgentOutcome:
+    canonical = coerce_id(task_id)
+    return AgentOutcome(
+        task_id=canonical,
+        agent_id=agent_id,
+        result=build_run_result(canonical, agent_id, reason=reason),
+    )
+
+
+def _workspace(task_id: str, agent_id: str, label: str) -> Workspace:
+    # ``coerce_id`` mirrors production: the routing decision's subtask id is
+    # both the workspace's ``task_id`` and the outcome's, so they join.
+    return Workspace(
+        workspace_id=f"ws-{label}",
+        task_id=coerce_id(task_id),
+        agent_id=agent_id,
+        branch_name=f"workspace/{label}",
+        worktree_path=f"fake/ws-{label}",
+        base_branch="main",
+        created_at=datetime.now(UTC),
+    )
+
+
+class TestRunResultClassification:
+    """``PARKED`` is a suspension, and every consumer must read it as one."""
+
+    @pytest.mark.parametrize(
+        ("reason", "awaiting"),
+        [
+            (TerminationReason.PARKED, True),
+            (TerminationReason.COMPLETED, False),
+            (TerminationReason.ERROR, False),
+            (TerminationReason.NO_OP, False),
+            (TerminationReason.MAX_TURNS, False),
+            (TerminationReason.CANCELLED, False),
+        ],
+    )
+    def test_only_parked_is_awaiting_human(
+        self,
+        reason: TerminationReason,
+        awaiting: bool,
+    ) -> None:
+        result = build_run_result("task-1", "agent-1", reason=reason)
+        assert result.is_awaiting_human is awaiting
+
+    def test_parked_is_not_a_success(self) -> None:
+        result = build_run_result("task-1", "agent-1", reason=TerminationReason.PARKED)
+        assert result.is_success is False
+
+
+class TestGroupAccounting:
+    """A park is counted apart from a failure, never folded into one."""
+
+    def test_park_is_not_counted_as_a_failure(self) -> None:
+        group = ParallelExecutionResult(
+            group_id="wave-0",
+            outcomes=(
+                _outcome("task-a", "agent-a", TerminationReason.COMPLETED),
+                _outcome("task-b", "agent-b", TerminationReason.PARKED),
+            ),
+            total_duration_seconds=1.0,
+        )
+
+        assert group.agents_succeeded == 1
+        assert group.agents_awaiting_human == 1
+        assert group.agents_failed == 0
+        assert group.any_failed is False
+        # A park is still not a success: the wave is incomplete, not done.
+        assert group.all_succeeded is False
+
+    def test_a_real_failure_is_still_a_failure(self) -> None:
+        group = ParallelExecutionResult(
+            group_id="wave-0",
+            outcomes=(
+                _outcome("task-a", "agent-a", TerminationReason.NO_OP),
+                _outcome("task-b", "agent-b", TerminationReason.PARKED),
+            ),
+            total_duration_seconds=1.0,
+        )
+
+        assert group.agents_failed == 1
+        assert group.agents_awaiting_human == 1
+        assert group.any_failed is True
+
+    def test_an_errored_outcome_with_no_result_is_a_failure(self) -> None:
+        group = ParallelExecutionResult(
+            group_id="wave-0",
+            outcomes=(
+                AgentOutcome(task_id="task-a", agent_id="agent-a", error="boom"),
+            ),
+            total_duration_seconds=1.0,
+        )
+
+        assert group.agents_failed == 1
+        assert group.agents_awaiting_human == 0
+        assert group.any_failed is True
+
+
+class TestWaveDispatch:
+    """A wave that is merely waiting on a human has not failed."""
+
+    async def test_wave_with_only_parks_is_not_failed(self) -> None:
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_id)],
+                    parked_task_ids=frozenset({"sub-a"}),
+                ),
+            ]
+        )
+
+        result = await WaveDispatcher(
+            isolation_required=False,
+            topology_label="centralized",
+        ).dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(),
+        )
+
+        execute_phases = [
+            p for p in result.phases if p.phase.startswith("execute_wave")
+        ]
+        assert execute_phases, "the wave must record an execute phase"
+        assert all(p.success for p in execute_phases)
+        assert all(p.error is None for p in execute_phases)
+
+    async def test_a_parked_agents_workspace_is_not_torn_down(self) -> None:
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+
+        ws_a = _workspace("sub-a", agent_a, "a")
+        ws_b = _workspace("sub-b", agent_b, "b")
+        ws_service = _mock_workspace_service(workspaces=(ws_a, ws_b))
+        executor = _mock_executor(
+            [
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_a), ("sub-b", agent_b)],
+                    parked_task_ids=frozenset({"sub-b"}),
+                ),
+            ]
+        )
+
+        await WaveDispatcher(
+            isolation_required=False,
+            topology_label="centralized",
+        ).dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(),
+        )
+
+        ws_service.teardown_group.assert_called_once()
+        torn_down = ws_service.teardown_group.call_args.kwargs["workspaces"]
+        torn_down_ids = {w.workspace_id for w in torn_down}
+        assert ws_b.workspace_id not in torn_down_ids, (
+            "the parked agent resumes into its workspace; tearing it down "
+            "leaves the pending approval with nothing to resume"
+        )
+        assert ws_a.workspace_id in torn_down_ids
+
+    async def test_a_genuine_failure_still_fails_the_wave(self) -> None:
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False)]
+        )
+
+        result = await WaveDispatcher(
+            isolation_required=False,
+            topology_label="centralized",
+        ).dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(),
+        )
+
+        execute_phases = [
+            p for p in result.phases if p.phase.startswith("execute_wave")
+        ]
+        assert execute_phases
+        assert not any(p.success for p in execute_phases)

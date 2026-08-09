@@ -11,7 +11,9 @@ from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.state import task_engine_of
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -19,6 +21,7 @@ from synthorg.observability.events.api import (
     API_PROJECT_CASCADE_CONTENDED,
 )
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -185,6 +188,18 @@ async def cascade_supersede_children(
             break
         offset += DEFAULT_PAGE_SIZE
 
+    # Retiring a child is not removing it. A terminal status stops a plan
+    # advancing; it does not stop the row existing, and every listing endpoint
+    # still returns it. A live run deleted three projects and left three plans
+    # and eight tasks naming ids that returned 404, two of them permanently:
+    # the cascade retires a plan with items to SUPERSEDED, and SUPERSEDED is
+    # the one status `DELETE /plans/{id}` refuses, so whether an operator could
+    # ever clean up depended on whether the plan happened to have items.
+    plans_deleted = await _delete_retired_plans(persistence, plan_service, project_id)
+    tasks_deleted = await _delete_cancelled_tasks(
+        persistence, task_engine, project_id, requested_by=requested_by
+    )
+
     # The one record of how much a delete actually took with it. Without it a
     # cascade over dozens of children is indistinguishable from one over none,
     # and the delete that follows looks like the whole operation.
@@ -193,5 +208,79 @@ async def cascade_supersede_children(
         project_id=project_id,
         plans_retired=plans_retired,
         tasks_cancelled=tasks_cancelled,
+        plans_deleted=plans_deleted,
+        tasks_deleted=tasks_deleted,
         requested_by=requested_by,
     )
+
+
+async def _delete_retired_plans(
+    persistence: PersistenceBackend,
+    plan_service: PlanService,
+    project_id: NotBlankStr,
+) -> int:
+    """Remove every plan of *project_id*, now that each is terminal.
+
+    Plans go before tasks: ``plans.parent_task_id`` is ``ON DELETE
+    RESTRICT``, so a task cannot be removed while a plan still names it.
+
+    Returns:
+        How many plan rows were removed.
+    """
+    deleted = 0
+    offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
+    while True:
+        plans = await persistence.plans.query(
+            PlanFilterSpec(project=project_id),
+            limit=DEFAULT_PAGE_SIZE,
+            offset=offset,
+        )
+        for plan in plans:
+            if await plan_service.delete_for_project_teardown(plan):
+                deleted += 1
+        if len(plans) < DEFAULT_PAGE_SIZE:
+            break
+        offset += DEFAULT_PAGE_SIZE
+    return deleted
+
+
+async def _delete_cancelled_tasks(
+    persistence: PersistenceBackend,
+    task_engine: TaskEngine,
+    project_id: NotBlankStr,
+    *,
+    requested_by: str,
+) -> int:
+    """Remove every task of *project_id*, now that each is terminal.
+
+    A task that has already gone is not an error: the delete is idempotent
+    forward-recovery, so a re-issued project delete finds fewer children
+    and still finishes.
+
+    Returns:
+        How many task rows were removed.
+    """
+    deleted = 0
+    offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
+    while True:
+        tasks = await persistence.tasks.query(
+            TaskFilterSpec(project=project_id),
+            limit=DEFAULT_PAGE_SIZE,
+            offset=offset,
+        )
+        for task in tasks:
+            try:
+                removed = await task_engine.delete_task(
+                    str(task.id),
+                    requested_by=requested_by,
+                )
+            except TaskNotFoundError:
+                continue
+            if removed:
+                deleted += 1
+        if len(tasks) < DEFAULT_PAGE_SIZE:
+            break
+        offset += DEFAULT_PAGE_SIZE
+    return deleted

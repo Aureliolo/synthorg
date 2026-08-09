@@ -204,6 +204,27 @@ class AgentOutcome(BaseModel):
         """True when result is present and successful."""
         return self.result is not None and self.result.is_success
 
+    @computed_field(
+        description="Whether the agent is suspended awaiting a human decision",
+    )
+    @property
+    def is_awaiting_human(self) -> bool:
+        """True when the agent parked on an escalation."""
+        return self.result is not None and self.result.is_awaiting_human
+
+    @computed_field(
+        description="Whether the agent failed (neither succeeded nor parked)",
+    )
+    @property
+    def is_failure(self) -> bool:
+        """True when the outcome is neither a success nor a human wait.
+
+        An outcome carrying an ``error`` (a raise, or a fail-fast
+        cancellation) is a failure, and so is any terminal reason that is
+        not ``COMPLETED`` or ``PARKED``.
+        """
+        return not self.is_success and not self.is_awaiting_human
+
 
 class ParallelExecutionResult(BaseModel):
     """Result of a complete parallel execution group.
@@ -299,19 +320,48 @@ class ParallelExecutionResult(BaseModel):
         return sum(1 for o in self.outcomes if o.is_success)
 
     @computed_field(
+        description="Number of agents suspended awaiting a human decision",
+    )
+    @property
+    def agents_awaiting_human(self) -> int:
+        """Count of outcomes parked on an escalation."""
+        return sum(1 for o in self.outcomes if o.is_awaiting_human)
+
+    @computed_field(
         description="Number of agents that failed",
     )
     @property
     def agents_failed(self) -> int:
-        """Count of non-successful outcomes (includes cancelled)."""
-        return sum(1 for o in self.outcomes if not o.is_success)
+        """Count of failed outcomes (includes cancelled, excludes parked).
+
+        A parked agent is waiting on a human, not failing, so it is counted
+        by :attr:`agents_awaiting_human` instead.
+        """
+        return sum(1 for o in self.outcomes if o.is_failure)
+
+    @computed_field(
+        description="Whether any agent failed",
+    )
+    @property
+    def any_failed(self) -> bool:
+        """True when at least one outcome genuinely failed.
+
+        The question a caller deciding "did this wave fail" must ask.
+        ``not all_succeeded`` is the wrong test: a group in which every
+        non-success is a human wait has not failed, it is unfinished.
+        """
+        return any(o.is_failure for o in self.outcomes)
 
     @computed_field(
         description="Whether all agents completed successfully",
     )
     @property
     def all_succeeded(self) -> bool:
-        """True when every outcome is a success."""
+        """True when every outcome is a success.
+
+        A parked outcome is deliberately not a success: the group is
+        incomplete until the human decides.
+        """
         return all(o.is_success for o in self.outcomes)
 
 
@@ -321,11 +371,13 @@ class ParallelProgress(BaseModel):
     Attributes:
         group_id: Group identifier.
         total: Total number of assignments.
-        completed: Number of assignments finished (success or failure).
+        completed: Number of assignments finished (success, failure, or a
+            park awaiting a human).
         in_progress: Number of assignments currently running.
         pending: Derived: ``total - completed - in_progress`` (clamped >= 0).
         succeeded: Number of successful completions.
         failed: Number of failed completions.
+        awaiting_human: Number of runs parked on an escalation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -336,14 +388,19 @@ class ParallelProgress(BaseModel):
     in_progress: int = Field(ge=0, description="Currently running")
     succeeded: int = Field(ge=0, description="Successful completions")
     failed: int = Field(ge=0, description="Failed completions")
+    awaiting_human: int = Field(
+        default=0,
+        ge=0,
+        description="Runs parked awaiting a human decision",
+    )
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
         if self.completed + self.in_progress > self.total:
             msg = "completed + in_progress must not exceed total"
             raise ValueError(msg)
-        if self.succeeded + self.failed > self.completed:
-            msg = "succeeded + failed must not exceed completed"
+        if self.succeeded + self.failed + self.awaiting_human > self.completed:
+            msg = "succeeded + failed + awaiting_human must not exceed completed"
             raise ValueError(msg)
         return self
 

@@ -492,29 +492,25 @@ class TestProjectController:
             )
         assert delete_resp.status_code == 204
 
-        superseded = await backend.plans.get(str(plan.id))
-        assert superseded is not None
-        assert superseded.status is PlanStatus.SUPERSEDED
+        # Retiring a child is not removing it. A live run left two SUPERSEDED
+        # plans and their tasks naming a project that returned 404, and
+        # SUPERSEDED is the one status DELETE /plans/{id} refuses, so nothing
+        # could ever clear them.
+        assert await backend.plans.get(str(plan.id)) is None
+        for task in (created_task, running_task, stuck_task):
+            assert await backend.tasks.get(str(task.id)) is None
 
-        # The supersede must keep the initiating actor + reason on its audit
-        # log, matching the context a task transition records.
+        # The retirement still records the initiating actor + reason on its
+        # audit log before the row goes, matching a task transition's context.
         transitions = [
             log for log in logs if log["event"] == "api.plan.status_transitioned"
         ]
         assert len(transitions) == 1
         assert transitions[0]["reason"] == "project deleted"
+        assert transitions[0]["to_status"] == PlanStatus.SUPERSEDED.value
         # No auth middleware in the unit harness, so the requester resolves to
         # the documented "api" fallback; the point is the context flows through.
         assert transitions[0]["requested_by"] == "api"
-
-        async def _reloaded_status(task_id: str) -> TaskStatus:
-            reloaded = await backend.tasks.get(task_id)
-            assert reloaded is not None
-            return reloaded.status
-
-        assert await _reloaded_status(str(created_task.id)) is TaskStatus.REJECTED
-        assert await _reloaded_status(str(running_task.id)) is TaskStatus.CANCELLED
-        assert await _reloaded_status(str(stuck_task.id)) is TaskStatus.CANCELLED
 
     async def test_delete_project_fails_an_itemless_plan_rather_than_500(
         self, async_test_client: LoopAsyncClient
@@ -553,10 +549,10 @@ class TestProjectController:
         )
 
         assert delete_resp.status_code == 204
-        retired = await backend.plans.get(str(shell.id))
-        assert retired is not None
-        assert retired.status is PlanStatus.FAILED
-        assert retired.failure_reason == "project deleted"
+        # SUPERSEDED demands a non-empty item DAG, so an itemless shell is
+        # failed on the way out rather than violating the items CHECK. Either
+        # way the row goes with its project.
+        assert await backend.plans.get(str(shell.id)) is None
 
 
 @pytest.mark.unit

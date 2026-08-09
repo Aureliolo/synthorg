@@ -377,6 +377,53 @@ class PlanService(PlanWriteRecorderMixin):
             requested_by=requested_by,
         )
 
+    async def delete_for_project_teardown(self, existing: Plan) -> bool:
+        """Remove a plan because the project it belongs to is being deleted.
+
+        The per-resource refusal in :meth:`delete` protects a *decided*
+        plan from an operator removing it on its own: its verdicts are the
+        record of what was decided. That record is about a subject. Once
+        the operator deletes the project, the subject is gone, and keeping
+        a SUPERSEDED plan that names a 404 preserves nothing readable while
+        making the row unreachable and unremovable by any route.
+
+        A live run proved the shape: project delete returned 204, retired
+        each plan, and left two SUPERSEDED plans and their objective tasks
+        permanently in the system, each pointing at a project that no
+        longer resolved. Which children survived depended on nothing more
+        principled than whether the plan had items, because that is what
+        chooses SUPERSEDED over FAILED.
+
+        The live-work guard still applies: it is one conditional statement
+        in the repository, so a task filed between the check and the delete
+        cannot be stranded.
+
+        Returns:
+            ``True`` when the plan was removed, ``False`` when live work
+            under it refused the delete or it had already gone.
+        """
+        outcome = await self._repo.delete_if_no_live_tasks(
+            NotBlankStr(str(existing.id)),
+            terminal_statuses=TERMINAL_TASK_STATUS_VALUES,
+        )
+        if outcome.live_task_count:
+            logger.info(
+                API_PLAN_DELETE_REFUSED,
+                plan_id=str(existing.id),
+                status=existing.status.value,
+                live_task_count=outcome.live_task_count,
+                reason="live_tasks_during_project_teardown",
+            )
+            return False
+        if outcome.deleted:
+            logger.info(
+                API_PLAN_DELETED,
+                plan_id=str(existing.id),
+                status=existing.status.value,
+                requested_by="project-teardown",
+            )
+        return outcome.deleted
+
     async def sync_status(
         self,
         existing: Plan,

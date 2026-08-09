@@ -1257,10 +1257,16 @@ class TestReactLoopNoOpFailLoud:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """Two empty turns: nudged once, then failed loud."""
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria
         )
-        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        provider = mock_provider_factory(
+            [
+                _stop_response("All done, trust me."),
+                _stop_response("Still done, still trust me."),
+            ]
+        )
         loop = ReactLoop()
 
         result = await loop.execute(context=ctx, provider=provider)
@@ -1268,6 +1274,95 @@ class TestReactLoopNoOpFailLoud:
         assert result.termination_reason == TerminationReason.NO_OP
         assert result.total_tool_calls == 0
         assert result.error_message is not None
+
+    async def test_a_first_empty_turn_is_corrected_not_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """An agent that answered in prose gets one chance to deliver.
+
+        A live run lost a whole plan item to this: the agent answered on
+        turn 1 of 20 and the task was failed with nineteen turns unused.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _stop_response("I would start by designing the module."),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+        nudges = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER
+            and "Prose is not a deliverable" in (m.content or "")
+        ]
+        assert len(nudges) == 1, "the correction fires exactly once"
+        assert "src/x.py" in (nudges[0].content or ""), (
+            "the correction names the declared deliverable"
+        )
+
+    async def test_no_correction_when_no_turn_remains(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A one-turn budget has nowhere to correct, so it fails loud."""
+        work_task = sample_task_with_criteria.model_copy(
+            update={
+                "artifacts_expected": (
+                    ExpectedArtifact(type=ArtifactType.CODE, path="src/x.py"),
+                ),
+            }
+        )
+        ctx = _ctx_with_user_msg(
+            AgentContext.from_identity(
+                sample_agent_with_personality,
+                task=work_task,
+                max_turns=1,
+            )
+        )
+        provider = mock_provider_factory([_stop_response("All done, trust me.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+
+    async def test_no_correction_for_a_task_expecting_no_artifacts(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Nothing was declared, so there is nothing to correct against."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Here is the answer.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert not any(
+            "Prose is not a deliverable" in (m.content or "")
+            for m in result.context.conversation
+        )
 
     async def test_work_run_with_tool_call_completes(
         self,

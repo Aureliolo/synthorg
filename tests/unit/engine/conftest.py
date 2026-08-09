@@ -31,6 +31,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
@@ -613,9 +614,13 @@ def make_routing(
     )
 
 
-def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
+def build_run_result(
+    task_id: str,
+    agent_id: str,
+    *,
+    reason: TerminationReason = TerminationReason.COMPLETED,
+) -> AgentRunResult:
     """Build a minimal AgentRunResult for testing."""
-    from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
     from synthorg.engine.prompt import SystemPrompt
 
     task_id = coerce_id(task_id)
@@ -626,9 +631,12 @@ def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
         status=TaskStatus.ASSIGNED,
     )
     ctx = AgentContext.from_identity(identity, task=task)
+    # ERROR / NO_OP require a message; PARKED forbids one.
+    needs_message = reason in (TerminationReason.ERROR, TerminationReason.NO_OP)
     execution_result = ExecutionResult(
         context=ctx,
-        termination_reason=TerminationReason.COMPLETED,
+        termination_reason=reason,
+        error_message=f"test {reason.value}" if needs_message else None,
     )
     return AgentRunResult(
         execution_result=execution_result,
@@ -651,12 +659,37 @@ def make_exec_result(
     task_agent_pairs: list[tuple[str, str]],
     *,
     all_succeed: bool = True,
+    parked_task_ids: frozenset[str] = frozenset(),
 ) -> ParallelExecutionResult:
-    """Build a ParallelExecutionResult with given outcomes."""
+    """Build a ParallelExecutionResult with given outcomes.
+
+    Args:
+        group_id: Group identifier for the result.
+        task_agent_pairs: ``(task_id, agent_id)`` pairs to build outcomes for.
+        all_succeed: Whether the non-parked outcomes completed or errored.
+        parked_task_ids: Task ids whose run terminated ``PARKED`` (awaiting a
+            human decision), regardless of *all_succeed*.
+
+    Returns:
+        A ``ParallelExecutionResult`` over the requested outcomes.
+    """
+    parked = {coerce_id(t) for t in parked_task_ids}
     outcomes: list[AgentOutcome] = []
     for raw_task_id, agent_id in task_agent_pairs:
         task_id = coerce_id(raw_task_id)
-        if all_succeed:
+        if task_id in parked:
+            outcomes.append(
+                AgentOutcome(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    result=build_run_result(
+                        task_id,
+                        agent_id,
+                        reason=TerminationReason.PARKED,
+                    ),
+                )
+            )
+        elif all_succeed:
             run_result = build_run_result(task_id, agent_id)
             outcomes.append(
                 AgentOutcome(

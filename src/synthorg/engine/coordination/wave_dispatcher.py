@@ -19,6 +19,7 @@ from synthorg.engine.coordination._dispatch_helpers import (
     teardown_workspaces,
     validate_routing_against_decomposition,
 )
+from synthorg.engine.coordination._wave_outcome import parked_tasks
 from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
@@ -36,6 +37,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_ISOLATION_DEGRADED,
     COORDINATION_PHASE_FAILED,
+    COORDINATION_WAVE_AWAITING_HUMAN,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 
@@ -128,6 +130,10 @@ class WaveDispatcher:
         all_phases: list[CoordinationPhaseResult] = []
         workspaces: tuple[Workspace, ...] = ()
         merge_result: WorkspaceGroupResult | None = None
+        # Everything is torn down unless a run parks in it. Narrowed once the
+        # waves report; an unwind before that keeps the original guarantee
+        # that no workspace outlives a dispatch that never ran.
+        settled: tuple[Workspace, ...] = ()
 
         if isolation_active and workspace_service is not None:
             workspaces, setup_phase = await setup_workspaces(
@@ -140,6 +146,7 @@ class WaveDispatcher:
             all_phases.append(setup_phase)
             if not setup_phase.success:
                 self._on_setup_failed(setup_phase.error)
+            settled = workspaces
 
         try:
             groups = build_execution_waves(
@@ -169,16 +176,26 @@ class WaveDispatcher:
             all_phases.extend(exec_phases)
 
             all_succeeded = all(p.success for p in exec_phases)
-            if workspaces and workspace_service is not None and all_succeeded:
+            # A parked run resumes into its own workspace, so that workspace
+            # is neither merged (its work is mid-flight and unverified) nor
+            # torn down (the resume needs it).
+            parked_task_ids = parked_tasks(waves)
+            settled = tuple(w for w in workspaces if w.task_id not in parked_task_ids)
+            if parked_task_ids:
+                logger.info(
+                    COORDINATION_WAVE_AWAITING_HUMAN,
+                    retained_workspaces=len(workspaces) - len(settled),
+                )
+            if settled and workspace_service is not None and all_succeeded:
                 merge_result, merge_phase = await merge_workspaces(
                     workspace_service,
-                    workspaces,
+                    settled,
                     clock=self._clock,
                     project_id=project_id,
                     repo_root=repo_root,
                 )
                 all_phases.append(merge_phase)
-            elif workspaces and workspace_service is not None:
+            elif workspaces and workspace_service is not None and not all_succeeded:
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
                     phase="merge",
@@ -192,8 +209,8 @@ class WaveDispatcher:
                 phases=tuple(all_phases),
             )
         finally:
-            if workspaces and workspace_service is not None:
-                await teardown_workspaces(workspace_service, workspaces)
+            if settled and workspace_service is not None:
+                await teardown_workspaces(workspace_service, settled)
 
     def _on_setup_failed(self, detail: str | None) -> None:
         """Decide what a failed workspace setup means for this topology.

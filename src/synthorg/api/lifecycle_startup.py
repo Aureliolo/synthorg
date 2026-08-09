@@ -15,6 +15,9 @@ from synthorg.api.auth.secret import resolve_dev_auth_bypass, resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.api.bus_bridge import MessageBusBridge
+from synthorg.api.lifecycle_helpers.approval_store_autowire import (
+    wire_durable_approvals,
+)
 from synthorg.api.lifecycle_helpers.auth_store_autowire import wire_auth_stores
 from synthorg.api.lifecycle_shared import _cleanup_on_failure
 from synthorg.api.state import AppState
@@ -352,6 +355,13 @@ async def _safe_startup(  # noqa: PLR0913
             # connected persistence backend; extracted to keep this hook
             # readable.
             await wire_auth_stores(app_state, persistence)
+
+            # The approval store is built during the synchronous phase, before
+            # the backend is connected, so its durable repository can only be
+            # offered here. Without it every pending human decision lives in
+            # memory: a restart destroys the operator's queue and strands
+            # every plan waiting at PENDING_REVIEW with nothing to approve.
+            wire_durable_approvals(app_state, persistence)
 
         if message_bus is not None:
             try:

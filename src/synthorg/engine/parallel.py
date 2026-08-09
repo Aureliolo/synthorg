@@ -200,6 +200,7 @@ class ParallelExecutor:
             group_id=group.group_id,
             succeeded=result.agents_succeeded,
             failed=result.agents_failed,
+            awaiting_human=result.agents_awaiting_human,
             duration_seconds=result.total_duration_seconds,
         )
 
@@ -426,8 +427,11 @@ class ParallelExecutor:
                     result=run_result,
                 )
                 success = run_result.is_success
+                awaiting_human = run_result.is_awaiting_human
                 if success:
                     progress.succeeded += 1
+                elif awaiting_human:
+                    progress.awaiting_human += 1
                 else:
                     progress.failed += 1
                 logger.info(
@@ -436,6 +440,7 @@ class ParallelExecutor:
                     agent_id=agent_id,
                     task_id=task_id,
                     success=success,
+                    awaiting_human=awaiting_human,
                 )
             finally:
                 progress.in_progress -= 1

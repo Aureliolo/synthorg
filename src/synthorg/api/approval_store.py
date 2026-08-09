@@ -38,6 +38,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime
 
+from synthorg.api._approval_durability import ApprovalDurabilityMixin
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
@@ -61,7 +62,7 @@ from synthorg.persistence.approval_protocol import (
 logger = get_logger(__name__)
 
 
-class ApprovalStore(ApprovalExpirationMixin):
+class ApprovalStore(ApprovalDurabilityMixin, ApprovalExpirationMixin):
     """Approval store with in-memory cache and optional durable persistence.
 
     Uses a plain ``dict`` for O(1) lookups by ID.  A single instance
@@ -117,17 +118,6 @@ class ApprovalStore(ApprovalExpirationMixin):
         # not a concern -- the value is only ever compared for
         # equality.
         self._generation: int = 0
-
-    @property
-    def has_persistent_repo(self) -> bool:
-        """``True`` iff a durable :class:`ApprovalRepository` is wired.
-
-        Used by startup wiring to detect backend combinations where
-        conversational-intake approvals cannot be durably persisted.
-        Callers should refuse proposer wiring for unsupported
-        persistence modes.
-        """
-        return self._repo is not None
 
     async def clear(self) -> None:
         """Reset the in-memory approval cache (cache-only).

@@ -90,23 +90,40 @@ class ToolInvokerDiscoveryMixin:
         self,
         loaded_tools: frozenset[str],
     ) -> tuple[ToolDefinition, ...]:
-        """Return full definitions for loaded tools + discovery tools.
+        """Return the full definitions this turn may call.
 
-        Only tools in ``loaded_tools`` get their full
-        ``ToolDefinition`` (with L2 body) included.  The three
-        discovery tools (``list_tools``, ``load_tool``,
-        ``load_tool_resource``) are always included.
+        Progressive disclosure sends only what the agent has loaded, plus
+        the three discovery tools it loads more with. That trade only works
+        while the discovery tools are there: without them there is no way
+        to load anything, so an unloaded tool is not deferred, it is
+        unreachable.
+
+        A session holding no discovery tool therefore gets its whole
+        permitted registry. Three live runs lost every plan-review verdict
+        to the other answer: the panellist held exactly one tool,
+        ``submit_plan_review``, nothing was loaded, no discovery tool
+        existed to load it with, and the provider was called with no tools
+        at all. Four reviewers across four different models each answered
+        in prose and were recorded as having no opinion, because the only
+        thing they could have done was never offered. The planning session
+        next door escapes the same gate by seeding ``loaded_tools`` with
+        what it granted; relying on every caller to remember that is what
+        made this reachable.
 
         Args:
             loaded_tools: Tool names with L2 active.
 
         Returns:
-            Sorted tuple of full definitions for loaded and
-            discovery tools only.
+            Sorted tuple of callable definitions for this turn.
         """
         from synthorg.tools.discovery import _DISCOVERY_NAMES  # noqa: PLC0415
 
-        target_names = set(loaded_tools) | _DISCOVERY_NAMES
+        held = set(self._registry.list_tools())
+        target_names = (
+            (set(loaded_tools) | _DISCOVERY_NAMES) & held
+            if held & _DISCOVERY_NAMES
+            else held
+        )
         included: list[ToolDefinition] = []
         for name in sorted(target_names):
             try:
