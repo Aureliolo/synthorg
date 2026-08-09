@@ -56,7 +56,11 @@ _INSERT_COMMENT = (
 
 
 def _revisions_before(into: Path) -> Path:
-    """Copy every SQLite revision except the one under test into *into*.
+    """Copy the SQLite revisions that precede the one under test into *into*.
+
+    Strictly preceding, not "all but this one": revisions are applied in
+    name order, so holding out only the revision under test would apply its
+    successors first and then run it against a schema from its own future.
 
     Args:
         into: Directory to populate.
@@ -66,7 +70,7 @@ def _revisions_before(into: Path) -> Path:
     """
     into.mkdir(parents=True, exist_ok=True)
     for source in sorted(migrations.revisions_dir("sqlite").glob("*.sql")):
-        if source.name != _REVISION:
+        if source.name < _REVISION:
             (into / source.name).write_bytes(source.read_bytes())
     return into
 

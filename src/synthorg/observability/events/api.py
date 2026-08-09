@@ -51,6 +51,10 @@ API_APPROVAL_CREATED: Final[str] = "api.approval.created"
 # (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED) so the audit
 # chain signs the human decision.
 API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
+# Distinct from the expiry above: that one ran out of time, this one lost its
+# subject. Reading them under one name would make a deletion look like a
+# deadline nobody met.
+API_APPROVAL_RETIRED: Final[str] = "api.approval.retired"
 API_APPROVAL_EXPIRE_BATCH_FAILED: Final[str] = "api.approval.expire_batch_failed"
 API_APPROVAL_ADD_CALLBACK_FAILED: Final[str] = "api.approval.add_callback_failed"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"

@@ -16,6 +16,7 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
+from synthorg.core.deleted_entity import DeletedEntity
 from synthorg.core.lifecycle_transition import LifecycleTransition
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
@@ -51,6 +52,9 @@ from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportFilterSpec,
+)
+from synthorg.persistence.deleted_entity_protocol import (
+    DeletedEntityFilterSpec,
 )
 from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.flight_recorder_protocol import (
@@ -351,6 +355,45 @@ class FakeLifecycleTransitionRepository:
         kept = [r for r in self.transitions if r.occurred_at >= threshold]
         removed = len(self.transitions) - len(kept)
         self.transitions = kept
+        return removed
+
+
+class FakeDeletedEntityRepository:
+    """In-memory tombstone store for tests."""
+
+    def __init__(self) -> None:
+        self.tombstones: list[DeletedEntity] = []
+
+    async def append(self, event: DeletedEntity) -> None:
+        # Idempotent on id, as both backends are: a re-issued teardown
+        # writes the same object, and a fake that doubled the row would pass
+        # a test the real repositories fail.
+        if any(existing.id == event.id for existing in self.tombstones):
+            return
+        self.tombstones.append(event)
+
+    async def query(
+        self,
+        filter_spec: DeletedEntityFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DeletedEntity, ...]:
+        rows = self.tombstones
+        if filter_spec.entity_kind is not None:
+            rows = [r for r in rows if r.entity_kind == filter_spec.entity_kind]
+        if filter_spec.entity_id is not None:
+            rows = [r for r in rows if r.entity_id == filter_spec.entity_id]
+        # Both backends order by ``deleted_at DESC, id DESC``; the id
+        # tie-break matters here for the same reason it does on the
+        # transition ledger, where a FakeClock gives many rows one instant.
+        rows = sorted(rows, key=lambda r: (r.deleted_at, str(r.id)), reverse=True)
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        kept = [r for r in self.tombstones if r.deleted_at >= threshold]
+        removed = len(self.tombstones) - len(kept)
+        self.tombstones = kept
         return removed
 
 

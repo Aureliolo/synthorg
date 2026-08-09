@@ -1,0 +1,229 @@
+"""Tests for retiring the approvals about a row before the row is deleted.
+
+A pending approval outlives the plan or task it names. Deciding it afterwards
+drives the resume path at an id that resolves to nothing, so the delete has to
+take the approval with it. A live run left four ``review:task_failed``
+approvals PENDING against tasks a project teardown had already removed.
+"""
+
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+
+import pytest
+
+from synthorg.api.controllers._approval_retire import (
+    retire_plan_approvals,
+    retire_task_approvals,
+)
+from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
+from synthorg.core.types import NotBlankStr
+from tests._shared import as_uuid, mock_of, sid
+from tests._shared.app_state import make_app_state
+
+pytestmark = pytest.mark.unit
+
+_NOW = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+_PLAN_ID = str(as_uuid("doomed"))
+_TASK_ID = sid("task-doomed")
+
+
+def _approval(
+    approval_id: str,
+    *,
+    source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
+    plan_id: str | None = _PLAN_ID,
+    task_id: str | None = None,
+) -> ApprovalItem:
+    metadata = {} if plan_id is None else {PLAN_ID_METADATA_KEY: plan_id}
+    return ApprovalItem(
+        id=as_uuid(approval_id),
+        action_type=NotBlankStr("plan:approve"),
+        title=NotBlankStr("Approve plan"),
+        description=NotBlankStr("1 subtask(s)"),
+        requested_by=NotBlankStr("user-1"),
+        risk_level=ApprovalRiskLevel.MEDIUM,
+        source=source,
+        status=ApprovalStatus.PENDING,
+        created_at=_NOW,
+        task_id=None if task_id is None else NotBlankStr(task_id),
+        metadata=metadata,
+    )
+
+
+class _RecordingStore:
+    """Approval store double recording the conditional writes it received."""
+
+    def __init__(self, items: tuple[ApprovalItem, ...]) -> None:
+        self._items = items
+        self.saved: list[ApprovalItem] = []
+        # ``False`` stands for a decision landing between the read and the
+        # conditional write, which is what the real store reports by
+        # answering ``None``.
+        self.cas_wins = True
+
+    async def list_items(self, **_: object) -> tuple[ApprovalItem, ...]:
+        return self._items
+
+    async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.saved.append(item)
+        return item if self.cas_wins else None
+
+
+def _state(store: _RecordingStore | None) -> object:
+    """Build an app state carrying *store* on the approval slice.
+
+    Returns:
+        The composed ``AppState``.
+    """
+    return make_app_state(
+        slices={ApprovalStateSlice: {"store": store}} if store else None
+    )
+
+
+#: Each retire entry point bound to the id it is asked about, so the shared
+#: behaviour (store failure, concurrent decision, unwired store) is asserted
+#: once per entry point rather than once for whichever was written first.
+_Retire = Callable[[object], Awaitable[None]]
+
+_ENTRY_POINTS: tuple[tuple[str, _Retire], ...] = (
+    ("plan", lambda state: retire_plan_approvals(state, _PLAN_ID)),  # type: ignore[arg-type]  # composed AppState
+    ("task", lambda state: retire_task_approvals(state, _TASK_ID)),  # type: ignore[arg-type]  # composed AppState
+)
+
+
+class TestRetirePlanApprovals:
+    async def test_the_plans_own_pending_approval_is_expired(self) -> None:
+        store = _RecordingStore((_approval("parked"),))
+
+        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
+        assert store.saved[0].id == as_uuid("parked")
+
+    async def test_another_plans_approval_is_left_alone(self) -> None:
+        """The metadata is the link; matching on source alone would take it."""
+        store = _RecordingStore(
+            (_approval("other", plan_id=str(as_uuid("other-plan"))),)
+        )
+
+        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert store.saved == []
+
+    async def test_a_non_review_approval_is_left_alone(self) -> None:
+        store = _RecordingStore((_approval("gate", source=ApprovalSource.REVIEW_GATE),))
+
+        await retire_plan_approvals(_state(store), _PLAN_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert store.saved == []
+
+
+class TestRetireTaskApprovals:
+    async def test_the_tasks_pending_review_is_expired(self) -> None:
+        """The four rows a live teardown left decidable against nothing."""
+        store = _RecordingStore(
+            (
+                _approval(
+                    "failed-review",
+                    source=ApprovalSource.REVIEW_GATE,
+                    plan_id=None,
+                    task_id=_TASK_ID,
+                ),
+            )
+        )
+
+        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
+
+    @pytest.mark.parametrize("source", list(ApprovalSource))
+    async def test_every_source_goes_with_the_task(
+        self, source: ApprovalSource
+    ) -> None:
+        """Which sources asked about a task is a property of the run.
+
+        Cases come from the enum, so a source added later is covered without
+        anyone remembering to widen a hand-written list.
+        """
+        store = _RecordingStore(
+            (_approval("asked", source=source, plan_id=None, task_id=_TASK_ID),)
+        )
+
+        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.status for item in store.saved] == [ApprovalStatus.EXPIRED]
+
+    async def test_another_tasks_approval_is_left_alone(self) -> None:
+        store = _RecordingStore(
+            (
+                _approval(
+                    "elsewhere",
+                    source=ApprovalSource.REVIEW_GATE,
+                    plan_id=None,
+                    task_id=sid("task-other"),
+                ),
+            )
+        )
+
+        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert store.saved == []
+
+    async def test_an_approval_naming_no_task_is_left_alone(self) -> None:
+        store = _RecordingStore((_approval("planwide"),))
+
+        await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert store.saved == []
+
+
+@pytest.mark.parametrize(
+    ("label", "retire"), _ENTRY_POINTS, ids=[name for name, _ in _ENTRY_POINTS]
+)
+class TestRetirementGatesTheDelete:
+    """Shared across entry points: retiring is a precondition, not a courtesy."""
+
+    async def test_a_store_failure_stops_the_delete(
+        self, label: str, retire: _Retire
+    ) -> None:
+        """Retiring gates the delete, so a store that cannot answer blocks it.
+
+        Swallowing here is what the ordering was inverted to remove: the row
+        would be deleted next while its approval stayed decidable, and the
+        only remaining move would be to log a window that is already open.
+        """
+        del label
+        store = mock_of[ApprovalStoreProtocol]()
+        store.list_items.side_effect = RuntimeError("store down")
+
+        with pytest.raises(RuntimeError, match="store down"):
+            await retire(_state(store))
+
+    async def test_a_concurrent_decision_refuses_the_delete(
+        self, label: str, retire: _Retire
+    ) -> None:
+        """A verdict made while the row existed outranks the deletion."""
+        store = _RecordingStore(
+            (
+                _approval(
+                    "parked",
+                    source=ApprovalSource.PLAN_REVIEW,
+                    task_id=_TASK_ID,
+                ),
+            )
+        )
+        store.cas_wins = False
+
+        with pytest.raises(ConflictError, match=f"{label} .*decided while the delete"):
+            await retire(_state(store))
+
+    async def test_an_unwired_store_is_a_no_op(
+        self, label: str, retire: _Retire
+    ) -> None:
+        del label
+        await retire(_state(None))

@@ -20,7 +20,7 @@ from synthorg.api.channels import (
     plan_updated_payload,
     publish_ws_event,
 )
-from synthorg.api.controllers._plan_approval_retire import retire_review_approval
+from synthorg.api.controllers._approval_retire import retire_plan_approvals
 from synthorg.api.controllers._plan_replan import (
     RevisionInputs,
     reject_unroutable_owners,
@@ -516,7 +516,7 @@ class PlanController(Controller):
         # Ahead of the delete, and gating it: an approval left pending would
         # drive the resume path at a missing plan, and retiring it afterwards
         # has no recovery if the write does not land.
-        await retire_review_approval(state.app_state, existing)
+        await retire_plan_approvals(state.app_state, str(existing.id))
         # Live work is counted inside the delete, in the same statement, so a
         # task filed between the two cannot be stranded on a deleted plan.
         await service.delete(existing, requested_by=extract_requester(state))

@@ -9,6 +9,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._plan_review_resume import (
+    _DISPATCH_ACTOR,
     _sync_plan_status,
     try_plan_review_resume,
 )
@@ -16,6 +17,7 @@ from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.lifecycle_transition import LifecycleEntityKind
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -490,3 +492,79 @@ class TestPlanReviewResume:
         assert stored is not None
         assert stored.status is PlanStatus.FAILED
         assert stored.failure_reason is not None
+
+
+def _ledger(backend: FakePersistenceBackend) -> dict[PlanStatus, tuple[str, str]]:
+    """Map each recorded plan status to its ``(actor, reason)`` pair.
+
+    Returns:
+        One entry per transition the ledger holds, keyed by destination.
+    """
+    return {
+        PlanStatus(row.to_status): (row.requested_by or "", row.reason or "")
+        for row in backend.lifecycle_transitions.transitions
+        if row.entity_kind is LifecycleEntityKind.PLAN
+    }
+
+
+class TestWhoTheLedgerNames:
+    """The one question the ledger exists to answer: who did this.
+
+    An operator searches it by their own name. Recording a dispatch failure
+    against the approver puts a transition they never made under that name,
+    and leaves the decision they did make attributed to nobody, so the ledger
+    answers the question backwards on both rows.
+    """
+
+    async def test_the_operator_owns_the_decision_they_made(self) -> None:
+        state, _, _, backend = await _seed(
+            task=_task("parent-1"), plan=_durable_plan("parent-1")
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="Aurelio"
+        )
+
+        actor, _reason = _ledger(backend)[PlanStatus.APPROVED]
+        assert actor == "Aurelio"
+
+    async def test_the_operator_owns_a_rejection(self) -> None:
+        state, _, _, backend = await _seed(
+            task=_task("parent-1"), plan=_durable_plan("parent-1")
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=False, decided_by="Aurelio"
+        )
+
+        actor, _reason = _ledger(backend)[PlanStatus.REJECTED]
+        assert actor == "Aurelio"
+
+    async def test_the_dispatcher_owns_what_follows_the_decision(self) -> None:
+        """Entering execution is the system acting on the greenlight."""
+        state, _, _, backend = await _seed(
+            task=_task("parent-1"), plan=_durable_plan("parent-1")
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="Aurelio"
+        )
+
+        actor, _reason = _ledger(backend)[PlanStatus.EXECUTING]
+        assert actor == _DISPATCH_ACTOR
+
+    async def test_a_failed_dispatch_names_the_dispatcher_and_says_why(self) -> None:
+        """The row an operator reads months later, on the run that died."""
+        state, _, _, backend = await _seed(
+            task=_task("parent-1"),
+            plan=_durable_plan("parent-1"),
+            coordination=_Coordination(succeeded=False),
+        )
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="Aurelio"
+        )
+
+        actor, reason = _ledger(backend)[PlanStatus.FAILED]
+        assert actor == _DISPATCH_ACTOR
+        assert "execute_wave_0" in reason

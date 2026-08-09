@@ -64,6 +64,12 @@ logger = get_logger(__name__)
 # than leaving the plan's status permanently diverged from the recorded decision.
 _MAX_STATUS_SYNC_ATTEMPTS: Final[int] = 3
 
+# The operator decides the approval; everything downstream of it is the
+# dispatcher's. Recording a dispatch failure against the approver puts the one
+# name an operator searches the ledger for on a transition they did not make,
+# and leaves the decision they did make attributed to nobody.
+_DISPATCH_ACTOR: Final[str] = "plan-dispatch"
+
 
 async def try_plan_review_resume(
     app_state: AppState,
@@ -109,10 +115,14 @@ async def try_plan_review_resume(
     task_id = item.task_id
     plan_id = item.metadata.get(PLAN_ID_METADATA_KEY)
     if not approved:
-        await _sync_plan_status(app_state, plan_id, PlanStatus.REJECTED)
+        await _sync_plan_status(
+            app_state, plan_id, PlanStatus.REJECTED, requested_by=decided_by
+        )
         await _cancel_task(app_state, task_id, decided_by)
         return True
-    await _sync_plan_status(app_state, plan_id, PlanStatus.APPROVED)
+    await _sync_plan_status(
+        app_state, plan_id, PlanStatus.APPROVED, requested_by=decided_by
+    )
     await _dispatch_approved_plan(
         app_state,
         approval_id=approval_id,
@@ -129,7 +139,6 @@ async def _resolve_dispatch_inputs(
     approval_id: str,
     task_id: str | None,
     plan_id: str | None,
-    decided_by: str,
 ) -> tuple[MultiAgentCoordinator, Task, Plan] | None:
     """Resolve the three things a dispatch cannot proceed without.
 
@@ -145,7 +154,6 @@ async def _resolve_dispatch_inputs(
         task_id: The parent task the plan decomposes, if the approval named
             one.
         plan_id: The durable plan, if the approval named one.
-        decided_by: Who decided, recorded on the failure writes.
 
     Returns:
         The ``(coordinator, task, plan)`` triple, or ``None`` when one was
@@ -167,12 +175,7 @@ async def _resolve_dispatch_inputs(
     else:
         return coordinator, task, plan
     await _fail_dispatch(
-        app_state,
-        approval_id,
-        task_id=task_id,
-        plan_id=plan_id,
-        decided_by=decided_by,
-        why=why,
+        app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
     )
     return None
 
@@ -225,11 +228,7 @@ async def _dispatch_approved_plan(
         RecursionError: Re-raised uncaught alongside ``MemoryError``.
     """
     resolved = await _resolve_dispatch_inputs(
-        app_state,
-        approval_id=approval_id,
-        task_id=task_id,
-        plan_id=plan_id,
-        decided_by=decided_by,
+        app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
     )
     if resolved is None:
         return
@@ -261,7 +260,6 @@ async def _dispatch_approved_plan(
                 approval_id,
                 task_id=task_id,
                 plan_id=plan_id,
-                decided_by=decided_by,
                 why="project could not be linked to its plan",
             )
             return
@@ -295,7 +293,6 @@ async def _dispatch_approved_plan(
                 approval_id,
                 task_id=task_id,
                 plan_id=plan_id,
-                decided_by=decided_by,
                 why=_coordination_failure_detail(result.result),
             )
             return
@@ -313,15 +310,12 @@ async def _dispatch_approved_plan(
         await _mark_task(
             app_state,
             task_id,
-            decided_by,
+            _DISPATCH_ACTOR,
             target=TaskStatus.FAILED,
             reason="approved plan could not be resumed",
         )
         await _fail_plan(
-            app_state,
-            plan_id,
-            decided_by,
-            f"dispatch failed: {safe_error_description(exc)}",
+            app_state, plan_id, f"dispatch failed: {safe_error_description(exc)}"
         )
 
 
@@ -349,7 +343,9 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     )
     if linked is None:
         return False
-    await _sync_plan_status(app_state, str(plan.id), PlanStatus.EXECUTING)
+    await _sync_plan_status(
+        app_state, str(plan.id), PlanStatus.EXECUTING, requested_by=_DISPATCH_ACTOR
+    )
     return True
 
 
@@ -382,7 +378,6 @@ async def _fail_dispatch(
     *,
     task_id: str | None,
     plan_id: str | None,
-    decided_by: str,
     why: str,
 ) -> None:
     """Log an approved-plan dispatch precondition failure; fail task and plan.
@@ -402,19 +397,14 @@ async def _fail_dispatch(
     await _mark_task(
         app_state,
         task_id,
-        decided_by,
+        _DISPATCH_ACTOR,
         target=TaskStatus.FAILED,
         reason=f"approved plan could not be resumed: {why}",
     )
-    await _fail_plan(app_state, plan_id, decided_by, f"dispatch failed: {why}")
+    await _fail_plan(app_state, plan_id, f"dispatch failed: {why}")
 
 
-async def _fail_plan(
-    app_state: AppState,
-    plan_id: str | None,
-    decided_by: str,
-    why: str,
-) -> None:
+async def _fail_plan(app_state: AppState, plan_id: str | None, why: str) -> None:
     """Drive a plan that cannot dispatch out of its dispatch status.
 
     Without this the plan rests in APPROVED or EXECUTING with a failed parent
@@ -426,7 +416,7 @@ async def _fail_plan(
         app_state,
         plan_id,
         PlanStatus.FAILED,
-        requested_by=decided_by,
+        requested_by=_DISPATCH_ACTOR,
         failure_reason=NotBlankStr(why),
     )
 
@@ -449,7 +439,7 @@ async def _cancel_task(
 async def _mark_task(
     app_state: AppState,
     task_id: str | None,
-    decided_by: str,
+    actor: str,
     *,
     target: TaskStatus,
     reason: str,
@@ -461,6 +451,9 @@ async def _mark_task(
     task never reached FAILED), which is operationally meaningful: log ERROR so
     the divergence is visible, but do not raise (the decision is already
     persisted; a 5xx here would mislabel an already-recorded decision).
+
+    *actor* is the operator on a cancellation they asked for and the dispatcher
+    on a failure they did not.
     """
     if task_id is None:
         return
@@ -468,7 +461,7 @@ async def _mark_task(
         await task_engine_of(app_state).transition_task(
             task_id,
             target,
-            requested_by=decided_by,
+            requested_by=actor,
             reason=reason,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

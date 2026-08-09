@@ -80,6 +80,9 @@ from synthorg.persistence.custom_rule_protocol import (
     CustomRuleRepository,
 )
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deleted_entity_protocol import (
+    DeletedEntityRepository,
+)
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptRepository,
 )
@@ -451,6 +454,11 @@ class PersistenceBackend(Protocol):
     @property
     def lifecycle_transitions(self) -> LifecycleTransitionRepository:
         """Repository for plan and project status-transition records."""
+        ...
+
+    @property
+    def deleted_entities(self) -> DeletedEntityRepository:
+        """Repository recording what a deleted task, plan or project was."""
         ...
 
     @property

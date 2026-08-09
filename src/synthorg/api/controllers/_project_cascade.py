@@ -2,10 +2,16 @@
 
 from typing import Final
 
+from synthorg.api.controllers._approval_retire import (
+    retire_plan_approvals,
+    retire_task_approvals,
+)
+from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.plan_service_factory import build_plan_service
 from synthorg.api.state import AppState
+from synthorg.core.deleted_entity import DeletedEntityKind
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan
@@ -21,7 +27,6 @@ from synthorg.observability.events.api import (
     API_PROJECT_CASCADE_CONTENDED,
 )
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
-from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -195,9 +200,11 @@ async def cascade_supersede_children(
     # the cascade retires a plan with items to SUPERSEDED, and SUPERSEDED is
     # the one status `DELETE /plans/{id}` refuses, so whether an operator could
     # ever clean up depended on whether the plan happened to have items.
-    plans_deleted = await _delete_retired_plans(persistence, plan_service, project_id)
+    plans_deleted = await _delete_retired_plans(
+        app_state, plan_service, project_id, requested_by=requested_by
+    )
     tasks_deleted = await _delete_cancelled_tasks(
-        persistence, task_engine, project_id, requested_by=requested_by
+        app_state, task_engine, project_id, requested_by=requested_by
     )
 
     # The one record of how much a delete actually took with it. Without it a
@@ -215,9 +222,11 @@ async def cascade_supersede_children(
 
 
 async def _delete_retired_plans(
-    persistence: PersistenceBackend,
+    app_state: AppState,
     plan_service: PlanService,
     project_id: NotBlankStr,
+    *,
+    requested_by: str,
 ) -> int:
     """Remove every plan of *project_id*, now that each is terminal.
 
@@ -226,7 +235,12 @@ async def _delete_retired_plans(
 
     Returns:
         How many plan rows were removed.
+
+    Raises:
+        ConflictError: A plan's review approval was decided while the teardown
+            was preparing to remove it.
     """
+    persistence = persistence_of(app_state)
     deleted = 0
     offset = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
@@ -237,7 +251,18 @@ async def _delete_retired_plans(
             offset=offset,
         )
         for plan in plans:
+            # The teardown reaches the plan repository directly rather than
+            # through the route that already retires, so without this the
+            # approval survives whichever way the operator removed the plan.
+            await retire_plan_approvals(app_state, str(plan.id))
             if await plan_service.delete_for_project_teardown(plan):
+                await record_deletion(
+                    persistence,
+                    kind=DeletedEntityKind.PLAN,
+                    entity_id=str(plan.id),
+                    label=plan.objective_title,
+                    deleted_by=requested_by,
+                )
                 deleted += 1
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
@@ -246,7 +271,7 @@ async def _delete_retired_plans(
 
 
 async def _delete_cancelled_tasks(
-    persistence: PersistenceBackend,
+    app_state: AppState,
     task_engine: TaskEngine,
     project_id: NotBlankStr,
     *,
@@ -260,7 +285,12 @@ async def _delete_cancelled_tasks(
 
     Returns:
         How many task rows were removed.
+
+    Raises:
+        ConflictError: An approval about one of these tasks was decided while
+            the teardown was preparing to remove it.
     """
+    persistence = persistence_of(app_state)
     deleted = 0
     offset = 0
     # lint-allow: long-running-loop-kill-switch -- bounded child pagination
@@ -271,6 +301,10 @@ async def _delete_cancelled_tasks(
             offset=offset,
         )
         for task in tasks:
+            # A live teardown left four `review:task_failed` approvals pending
+            # against tasks it had already removed, each still offering a
+            # decision that would resume nothing.
+            await retire_task_approvals(app_state, str(task.id))
             try:
                 removed = await task_engine.delete_task(
                     str(task.id),
@@ -279,6 +313,13 @@ async def _delete_cancelled_tasks(
             except TaskNotFoundError:
                 continue
             if removed:
+                await record_deletion(
+                    persistence,
+                    kind=DeletedEntityKind.TASK,
+                    entity_id=str(task.id),
+                    label=task.title,
+                    deleted_by=requested_by,
+                )
                 deleted += 1
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break

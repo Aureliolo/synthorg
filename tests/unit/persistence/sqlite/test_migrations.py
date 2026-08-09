@@ -42,10 +42,10 @@ class TestSchemaConstraints:
         assert pk_columns["namespace"] == 1
         assert pk_columns["key"] == 2
 
-    async def test_decision_records_enforces_audit_constraints(
+    async def test_decision_records_enforces_no_self_review(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """decision_records enforces no-self-review and RESTRICT."""
+        """A reviewer may not be the agent whose work is reviewed."""
         cursor = await migrated_db.execute(
             "SELECT sql FROM sqlite_master "
             "WHERE type='table' AND name='decision_records'"
@@ -55,15 +55,24 @@ class TestSchemaConstraints:
         ddl = row[0]
         assert "reviewer_agent_id" in ddl
         assert "executing_agent_id" in ddl
-        assert "RESTRICT" in ddl
+        assert "reviewer_agent_id != executing_agent_id" in ddl
 
+    async def test_decision_records_does_not_pin_its_task(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """The record of a decision outlives the task without holding it.
+
+        A pin here made every logged decision a veto on ever removing the
+        task it was about, and with it the project. The identifier is kept
+        so the record still says what it decided about; ``deleted_entities``
+        says what that identifier was.
+        """
         fk_cursor = await migrated_db.execute(
             "PRAGMA foreign_key_list('decision_records')"
         )
         fks = await fk_cursor.fetchall()
-        task_fks = [fk for fk in fks if fk[2] == "tasks" and fk[3] == "task_id"]
-        assert len(task_fks) == 1
-        assert task_fks[0][6] == "RESTRICT"
+
+        assert [fk for fk in fks if fk[2] == "tasks"] == []
 
     async def test_agent_states_rejects_invalid_status(
         self, migrated_db: aiosqlite.Connection

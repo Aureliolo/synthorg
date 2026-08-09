@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from synthorg.api.controllers._approval_retire import retire_task_approvals
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -260,6 +261,10 @@ async def _tasks_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
+        # Ahead of the delete, like the REST route: an approval about a task
+        # that no longer exists is still decidable, and a retirement after the
+        # row is gone has no recovery if it does not land.
+        await retire_task_approvals(app_state, task_id)
         await task_engine_of(app_state).delete_task(
             task_id,
             requested_by=requested_by,

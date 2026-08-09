@@ -12,6 +12,7 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
+from synthorg.api.controllers._approval_retire import retire_task_approvals
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
@@ -436,8 +437,15 @@ class TaskController(Controller):
         Raises:
             NotFoundError: If the task is not found.
             PlanParentTaskInUseError: If a plan still references this task.
+            ConflictError: An approval about this task was decided while the
+                delete was being prepared, so it is still being acted on.
+                Nothing is removed and the operator retries.
         """
         app_state: AppState = state.app_state
+        # Ahead of the delete, and gating it: an approval left pending would
+        # offer a decision on a task that no longer exists, and retiring it
+        # afterwards has no recovery if the write does not land.
+        await retire_task_approvals(app_state, task_id)
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,

@@ -92,7 +92,13 @@ CREATE TABLE cost_records (
     -- their inserts fail the constraint and lose the spend; what the call was
     -- for is carried by prompt_class_id instead.
     agent_id TEXT,
-    task_id TEXT REFERENCES tasks (id),
+    -- No foreign key, for the same reason project_id below carries none: a
+    -- cost row is evidence of a call that really happened, and the pin made
+    -- it a veto on ever removing the task. A live run could not delete a
+    -- project because one of its tasks had spent money, and the refusal
+    -- read as a constraint name rather than a reason. The identifier is
+    -- retained verbatim, and ``deleted_entities`` says what it was.
+    task_id TEXT,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens BIGINT NOT NULL,
@@ -175,7 +181,9 @@ CREATE INDEX idx_le_metadata_gin ON lifecycle_events USING GIN (metadata);
 CREATE TABLE task_metrics (
     id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL REFERENCES tasks (id),
+    -- Unpinned like cost_records.task_id: a measurement of a run that
+    -- happened must not be able to veto removing what it measured.
+    task_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
     completed_at TIMESTAMPTZ NOT NULL,
     is_success BOOLEAN NOT NULL,
@@ -1019,7 +1027,10 @@ ON workflow_definition_versions (entity_id, content_hash);
 -- ── Decision records (auditable decisions drop-box) ─────────────
 CREATE TABLE decision_records (
     id TEXT NOT NULL PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES tasks (id) ON DELETE RESTRICT,
+    -- Unpinned like cost_records.task_id. The record of a decision outlives
+    -- the task it was about, which is the point of a decisions drop-box;
+    -- being unable to delete the task is not.
+    task_id TEXT NOT NULL,
     approval_id TEXT,
     executing_agent_id TEXT NOT NULL,
     reviewer_agent_id TEXT NOT NULL
@@ -1588,7 +1599,9 @@ CREATE TABLE approvals (
     decided_at TIMESTAMPTZ,
     decided_by TEXT,
     decision_reason TEXT,
-    task_id TEXT REFERENCES tasks (id),
+    -- Unpinned like cost_records.task_id: a decided approval is a record of
+    -- what a person chose, and must not veto removing what they chose about.
+    task_id TEXT,
     evidence_package JSONB,
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
     consumed_at TIMESTAMPTZ,
@@ -2613,6 +2626,32 @@ CREATE TABLE lifecycle_transitions (
 -- index and the query never needs a sort step.
 CREATE INDEX idx_lifecycle_transitions_entity
 ON lifecycle_transitions (entity_kind, entity_id, occurred_at DESC, id DESC);
+
+-- ── Deleted entities (what the id in a surviving record names) ─
+-- Append-only. Spend, metrics, approvals and decision records all name the
+-- task they are about; pinning that task with a foreign key made each of
+-- them a reason it could never be removed, so a project whose task had once
+-- spent money was undeletable and said so with a constraint name. Those
+-- pins are gone and the identifier is retained verbatim instead, which
+-- leaves exactly one question: what was it. This answers it.
+--
+-- Written only when a person deletes something. Nothing the system does on
+-- its own removes an entity, so nothing the system does on its own writes
+-- here, and ``deleted_by`` is NOT NULL to keep it that way.
+CREATE TABLE deleted_entities (
+    id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
+    entity_kind TEXT NOT NULL
+    CHECK (entity_kind IN ('task', 'plan', 'project')),
+    entity_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(entity_id)) > 0),
+    label TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(label)) > 0),
+    deleted_by TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(deleted_by)) > 0),
+    deleted_at TIMESTAMPTZ NOT NULL
+);
+-- The read is "resolve this identifier", so the lookup key leads; the
+-- timestamp rides along because a re-created and re-deleted id is answered
+-- newest-first.
+CREATE INDEX idx_deleted_entities_lookup
+ON deleted_entities (entity_kind, entity_id, deleted_at DESC);
 
 -- ── Initiative evaluation reports (the delivery verdict) ─────
 -- The verdict is what decides whether an initiative delivered, so it is
