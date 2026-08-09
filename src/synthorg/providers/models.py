@@ -433,6 +433,12 @@ class CompletionConfig(BaseModel):
 class CompletionResponse(BaseModel):
     """Result of a non-streaming completion call.
 
+    ``content``, ``reasoning`` and ``tool_calls`` are three independent
+    channels, not three cases: one turn can carry any combination of them,
+    and a reasoning model routinely emits all three at once. Only their
+    disjunction is constrained, by ``_validate_has_output``. They are
+    deliberately not a discriminated union.
+
     Attributes:
         content: Generated text content (may be ``None`` for tool-use-only responses).
         reasoning: Extended-reasoning text, when the model answered on that

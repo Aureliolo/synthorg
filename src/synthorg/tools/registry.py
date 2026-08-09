@@ -134,11 +134,17 @@ class ToolRegistry:
             if wanted in normalize_ascii_lowercase(candidate).split(".")
             or wanted in normalize_ascii_lowercase(candidate)
         ]
+        # Normalised on both sides: registered names are lower-case by
+        # convention, but the edit distance is what a caller's near-miss is
+        # scored against, and scoring a normalised query against an
+        # unnormalised key would silently stop matching if that ever changed.
+        by_normalised = {normalize_ascii_lowercase(t): t for t in sorted(self._tools)}
         for candidate in difflib.get_close_matches(
-            wanted, sorted(self._tools), n=_MAX_SUGGESTIONS
+            wanted, sorted(by_normalised), n=_MAX_SUGGESTIONS
         ):
-            if candidate not in ranked:
-                ranked.append(candidate)
+            registered = by_normalised[candidate]
+            if registered not in ranked:
+                ranked.append(registered)
         return tuple(ranked[:_MAX_SUGGESTIONS])
 
     def list_tools(self) -> tuple[str, ...]:

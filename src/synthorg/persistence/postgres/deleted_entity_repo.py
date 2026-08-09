@@ -19,6 +19,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.deleted_entity import (
     PERSISTENCE_DELETED_ENTITY_APPEND_FAILED,
+    PERSISTENCE_DELETED_ENTITY_APPENDED,
     PERSISTENCE_DELETED_ENTITY_DESERIALIZE_FAILED,
     PERSISTENCE_DELETED_ENTITY_PURGE_FAILED,
     PERSISTENCE_DELETED_ENTITY_QUERIED,
@@ -66,6 +67,15 @@ class PostgresDeletedEntityRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(_INSERT_SQL, _to_row(event))
                 await conn.commit()
+            # The one record that survives the deletion: an operator asking
+            # why an identifier no longer resolves needs to see that it was
+            # written, not only that a write failed.
+            logger.info(
+                PERSISTENCE_DELETED_ENTITY_APPENDED,
+                entity_kind=event.entity_kind.value,
+                entity_id=event.entity_id,
+                deleted_by=event.deleted_by,
+            )
         except psycopg.Error as exc:
             msg = f"Failed to record deletion of {event.entity_id!r}"
             logger.warning(

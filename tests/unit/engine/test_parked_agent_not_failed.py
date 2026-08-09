@@ -18,6 +18,9 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.context_dependent_dispatcher import (
+    ContextDependentDispatcher,
+)
 from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.parallel_models import AgentOutcome, ParallelExecutionResult
@@ -318,3 +321,104 @@ class TestWaveDispatch:
         ]
         assert execute_phases
         assert not any(p.success for p in execute_phases)
+
+
+class TestContextDependentDispatch:
+    """The second dispatcher has its own copy of the wave loop.
+
+    Two copies of a rule is how two dispatchers came to disagree about it,
+    so the parked-outcome behaviour is asserted here as well as against
+    ``WaveDispatcher``.
+    """
+
+    async def test_a_wave_with_only_parks_is_not_failed(self) -> None:
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_id)],
+                    parked_task_ids=frozenset({"sub-a"}),
+                ),
+            ]
+        )
+
+        result = await ContextDependentDispatcher().dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=_mock_workspace_service(),
+            config=CoordinationConfig(),
+        )
+
+        execute_phases = [
+            p for p in result.phases if p.phase.startswith("execute_wave")
+        ]
+        assert execute_phases
+        assert all(p.success for p in execute_phases)
+
+    async def test_a_park_stops_the_waves_that_depend_on_it(self) -> None:
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_a)],
+                    parked_task_ids=frozenset({"sub-a"}),
+                ),
+            ]
+        )
+
+        result = await ContextDependentDispatcher().dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=_mock_workspace_service(),
+            config=CoordinationConfig(),
+        )
+
+        assert executor.execute_group.await_count == 1
+        assert len(result.waves) == 1
+
+    async def test_a_cancelled_wave_is_not_merged(self) -> None:
+        """Cancellation is a BaseException; "not failed" has to be earned.
+
+        Taking the merge branch on an unwind pushes half-written work from
+        a wave that never reported, and tears down the workspace a pending
+        approval has to resume into.
+        """
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+
+        ws_service = _mock_workspace_service(
+            workspaces=(
+                _workspace("sub-a", agent_a, "a"),
+                _workspace("sub-b", agent_b, "b"),
+            )
+        )
+        executor = _mock_executor()
+        executor.execute_group.side_effect = asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            await ContextDependentDispatcher().dispatch(
+                decomposition_result=decomp,
+                routing_result=routing,
+                parallel_executor=executor,
+                workspace_service=ws_service,
+                config=CoordinationConfig(),
+            )
+
+        ws_service.merge_group.assert_not_called()

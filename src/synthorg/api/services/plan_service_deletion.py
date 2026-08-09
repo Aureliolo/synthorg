@@ -61,13 +61,15 @@ class PlanDeletionMixin:
     def _require_deletable_status(plan: Plan) -> None:
         """Refuse a delete on a status that is a record, not a request.
 
-        A terminal plan is what was decided, and its delivery verdicts hang
-        off the row, so it outlives the decision to stop pursuing it. Every
-        other status may be deleted subject to the live-work guard, which is
-        the database's answer rather than this one.
+        A *decided* plan is what was decided, and its delivery verdicts hang
+        off the row, so it outlives the decision to stop pursuing it. Decided
+        is narrower than ``TERMINAL_STATUSES``: ``FAILED`` is terminal and
+        deletable, because a plan that failed recorded no verdict about
+        anything. Every other status may be deleted subject to the live-work
+        guard, which is the database's answer rather than this one.
 
         Raises:
-            PlanNotDeletableError: The plan is terminal.
+            PlanNotDeletableError: The plan is already decided.
         """
         if plan.status in DELETABLE_STATUSES | REPLANNABLE_STATUSES | TAIL_STATUSES:
             return

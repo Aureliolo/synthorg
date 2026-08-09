@@ -16,7 +16,10 @@ from synthorg.api.lifecycle_helpers.approval_store_autowire import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.persistence.approval_factory import build_approval_repo
 from synthorg.persistence.approval_protocol import ApprovalRepository
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -79,6 +82,48 @@ class TestStartupWiring:
         wire_durable_approvals(app_state, None)
 
         assert substitute.method_calls == []
+
+    async def test_a_connected_backend_makes_the_store_durable(self) -> None:
+        """The whole mechanism, end to end: connect, build, attach.
+
+        Every half is covered on its own; this is the one assertion that
+        the halves are joined, which is the shape of the gap they were
+        added to close.
+        """
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        await backend.connect()
+        store = ApprovalStore()
+
+        try:
+            wire_durable_approvals(_app_state_with(store), backend)
+        finally:
+            await backend.disconnect()
+
+        assert store.has_persistent_repo is True
+
+
+class TestBuildApprovalRepo:
+    """Which backends yield a durable repository, and which degrade."""
+
+    async def test_a_connected_sqlite_backend_yields_a_repo(self) -> None:
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        await backend.connect()
+
+        try:
+            repo = build_approval_repo(backend)
+        finally:
+            await backend.disconnect()
+
+        assert repo is not None
+
+    async def test_an_unconnected_backend_yields_none(self) -> None:
+        """Degrade rather than raise: a boot without durability still boots."""
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+
+        assert build_approval_repo(backend) is None
+
+    def test_no_backend_yields_none(self) -> None:
+        assert build_approval_repo(None) is None
 
 
 def _app_state_with(store: ApprovalStoreProtocol) -> AppState:

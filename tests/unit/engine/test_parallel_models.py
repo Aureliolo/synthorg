@@ -512,21 +512,39 @@ class TestParallelProgress:
                 failed=0,
             )
 
-    def test_succeeded_plus_failed_exceeds_completed_rejected(
+    def test_succeeded_plus_failed_exceeds_total_rejected(
         self,
     ) -> None:
         with pytest.raises(
             ValidationError,
-            match=r"succeeded.*failed.*must not exceed completed",
+            match=r"succeeded.*failed.*must not exceed total",
         ):
             ParallelProgress(
                 group_id="grp",
-                total=5,
+                total=1,
                 completed=1,
                 in_progress=0,
                 succeeded=1,
                 failed=1,
             )
+
+    def test_a_counted_category_may_lead_its_completion(self) -> None:
+        """A live snapshot catches a sibling task mid-update.
+
+        A task counts its category and then its completion; a callback
+        firing between the two is a moment that legitimately occurs, and
+        raising on it would report the moment rather than an error.
+        """
+        progress = ParallelProgress(
+            group_id="grp",
+            total=5,
+            completed=1,
+            in_progress=1,
+            succeeded=1,
+            failed=1,
+        )
+
+        assert progress.succeeded + progress.failed > progress.completed
 
     @pytest.mark.parametrize(
         "field",

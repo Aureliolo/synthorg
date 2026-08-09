@@ -1,7 +1,7 @@
 """Tests for extracted loop helper functions."""
 
 from typing import override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,6 +16,7 @@ from synthorg.engine.loop_control_helpers import (
     invoke_compaction,
 )
 from synthorg.engine.loop_helpers import (
+    _ERROR_DETAIL_CHARS,
     build_result,
     call_provider,
     check_response_errors,
@@ -40,6 +41,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import mock_of
 from tests._shared.scripted_provider import ScriptedProvider
 
 
@@ -423,6 +425,23 @@ class TestCheckResponseErrors:
         # diagnostic it exists for.
         assert "auth failed" in (result.error_message or "")
 
+    def test_a_long_body_is_bounded(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """The body is provider-controlled and lands in a persisted reason."""
+        response = CompletionResponse(
+            content="x" * 5000,
+            finish_reason=FinishReason.ERROR,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        result = check_response_errors(sample_agent_context, response, 4, [])
+
+        assert result is not None
+        assert (result.error_message or "").count("x") == _ERROR_DETAIL_CHARS
+
     def test_a_silent_provider_still_reports_the_turn(
         self,
         sample_agent_context: AgentContext,
@@ -510,7 +529,7 @@ class TestExecuteToolCalls:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         response = _tool_use_response()
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker]()
         mock_invoker.invoke_all = AsyncMock(
             side_effect=RuntimeError("boom"),
         )
@@ -533,7 +552,7 @@ class TestExecuteToolCalls:
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         response = _tool_use_response()
-        mock_invoker = MagicMock()
+        mock_invoker = mock_of[ToolInvoker]()
         mock_invoker.invoke_all = AsyncMock(side_effect=MemoryError)
 
         with pytest.raises(MemoryError):
@@ -585,6 +604,26 @@ class TestResponseToMessage:
         msg = response_to_message(response)
         assert msg.role == MessageRole.ASSISTANT
         assert len(msg.tool_calls) == 1
+
+    def test_a_reasoning_only_turn_says_nothing_out_loud(self) -> None:
+        """The working is not something the model said, so it is not content.
+
+        Replaying it as assistant content would change what the model sees
+        on the next turn; the empty message records that the turn happened.
+        """
+        response = CompletionResponse(
+            content=None,
+            reasoning="weighing two layouts before writing the file",
+            finish_reason=FinishReason.MAX_TOKENS,
+            usage=_usage(),
+            model="test-model-001",
+        )
+
+        msg = response_to_message(response)
+
+        assert msg.role == MessageRole.ASSISTANT
+        assert msg.content == ""
+        assert msg.tool_calls == ()
 
 
 # ── make_turn_record ────────────────────────────────────────────────

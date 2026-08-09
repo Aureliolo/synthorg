@@ -327,7 +327,10 @@ def extract_reasoning(source: object) -> str | None:
         return flat
 
     blocks: object = _get(source, "thinking_blocks", None)
-    if isinstance(blocks, str) or not isinstance(blocks, Sequence):
+    # Both string types excluded before the Sequence test: each is a Sequence
+    # of its own elements, so iterating one yields characters or ints and
+    # every ``_get`` below misses, returning None the long way round.
+    if isinstance(blocks, (str, bytes)) or not isinstance(blocks, Sequence):
         return None
     parts = [
         text

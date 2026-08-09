@@ -29,11 +29,12 @@ def _nudge_message(
     Fired at most once, immediately after the first empty turn, and only when
     correcting is possible and warranted:
 
-    * the task declares artifacts, so there is a concrete deliverable to name;
-    * no tool has been called in any turn, so nothing was delivered;
-    * a turn remains to correct in;
     * the run is not a resumed segment, whose earlier segments may already
-      have delivered.
+      have delivered;
+    * the task declares artifacts, so there is a concrete deliverable to name;
+    * this is the first turn, so nothing has had a chance to deliver yet;
+    * no tool has been called in any turn, so nothing was delivered;
+    * a turn remains to correct in.
 
     A second empty turn falls through to the zero-artifact guard, so the
     correction costs one round trip and never loops.

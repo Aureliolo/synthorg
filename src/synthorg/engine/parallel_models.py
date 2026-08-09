@@ -222,6 +222,11 @@ class AgentOutcome(BaseModel):
         An outcome carrying an ``error`` (a raise, or a fail-fast
         cancellation) is a failure, and so is any terminal reason that is
         not ``COMPLETED`` or ``PARKED``.
+
+        Deliberately the complement rather than a list of failing reasons: a
+        terminal reason added later has not succeeded and is not waiting on
+        anyone, so counting it as a failure is the fail-closed answer and
+        needs no one to remember to widen a list.
         """
         return not self.is_success and not self.is_awaiting_human
 
@@ -396,11 +401,26 @@ class ParallelProgress(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
+        """Bound the counters without demanding they agree exactly.
+
+        The three outcome categories are exhaustive over a completed run, so
+        equality looks like the stronger check. It is the wrong one: this is
+        a snapshot of a live group, taken by one task's callback while its
+        siblings are mid-update, and a task that has counted its category but
+        not yet its completion is a moment that legitimately occurs. Bounding
+        catches an accounting error; equality would report the moment.
+
+        Returns:
+            The validated snapshot.
+
+        Raises:
+            ValueError: A counter exceeds what the group can account for.
+        """
         if self.completed + self.in_progress > self.total:
             msg = "completed + in_progress must not exceed total"
             raise ValueError(msg)
-        if self.succeeded + self.failed + self.awaiting_human > self.completed:
-            msg = "succeeded + failed + awaiting_human must not exceed completed"
+        if self.succeeded + self.failed + self.awaiting_human > self.total:
+            msg = "succeeded + failed + awaiting_human must not exceed total"
             raise ValueError(msg)
         return self
 

@@ -40,11 +40,16 @@ class ApprovalDurabilityMixin:
     def attach_repo(self, repo: ApprovalRepository | None) -> None:
         """Bind the durable repository once persistence is connected.
 
-        Without this seam the shipped deployment ran the whole process in
-        memory: a restart between an approval being raised and an operator
-        deciding it destroyed the queue and stranded every plan that waited
-        on one at ``pending_review``, with no route to re-create the
-        decision.
+        Without this seam an approval lives only in memory: a restart
+        between it being raised and an operator deciding it destroys the
+        queue and strands every plan waiting on one at ``pending_review``,
+        with no route to re-create the decision.
+
+        Check-then-set without a lock, and safe only while binding happens
+        once during startup, before the store serves a request. Two
+        concurrent callers could both read ``None`` and the second's warning
+        would never fire; the refusals below are the audit trail for a
+        mis-sequenced boot, not a concurrency guard.
 
         Additive, like the provider registry's credential catalog. A
         ``None`` over an already-bound repository is refused rather than

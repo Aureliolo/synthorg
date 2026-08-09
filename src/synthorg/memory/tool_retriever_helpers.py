@@ -108,8 +108,8 @@ def _parse_categories(
 
     Any sequence of values is accepted, not a ``list`` specifically. An
     empty tuple means the same thing an empty list does, and rejecting it
-    told a live decomposition session its unfiltered search was malformed,
-    repeatedly, costing a turn each time.
+    tells the session its unfiltered search was malformed, on every call,
+    costing a turn each time.
 
     Args:
         raw: Raw value from tool arguments (expected a sequence of str).

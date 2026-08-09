@@ -256,19 +256,20 @@ async def _tasks_delete(
     Returns:
         JSON-encoded MCP envelope string.
     """
-    # Local, so the meta package keeps its module-level independence from
-    # ``api``: the state type it shares is already TYPE_CHECKING-only, and a
-    # runtime import here would make the dependency real.
-    from synthorg.api.controllers._approval_retire import (  # noqa: PLC0415
-        retire_task_approvals,
-    )
-    from synthorg.api.controllers._deletion_record import (  # noqa: PLC0415
-        record_deletion_for,
-    )
-
     tool = "synthorg_tasks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        # Local, and after the guardrail, so the meta package keeps its
+        # module-level independence from ``api`` (the state type it shares is
+        # already TYPE_CHECKING-only) without displacing the attribution
+        # check that must run before anything else.
+        from synthorg.api.controllers._approval_retire import (  # noqa: PLC0415
+            retire_task_approvals,
+        )
+        from synthorg.api.controllers._deletion_record import (  # noqa: PLC0415
+            record_deletion_for,
+        )
+
         task_id = typed_args(arguments, TasksDeleteArgs).task_id
         requested_by = require_actor_id(resolved_actor)
         # Ahead of the delete, like the REST route: an approval about a task

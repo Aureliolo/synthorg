@@ -43,11 +43,12 @@ _SUPERSEDE_ATTEMPTS: Final[int] = 3
 def _retire_target(plan: Plan) -> tuple[PlanStatus, NotBlankStr | None]:
     """Choose the terminal status a teardown may legally write for *plan*.
 
-    SUPERSEDED demands a non-empty item DAG, so a plan still being drafted
-    (the state a fresh proposal sits in) cannot be superseded at all: the
-    write violates the items CHECK and surfaces as a 500 on an otherwise
-    valid project delete. An itemless plan is failed instead, which is the
-    status that permits an empty list and which carries the reason.
+    SUPERSEDED demands a non-empty item DAG, so a plan whose decomposition
+    has not produced one (a PLANNING plan, whose items arrive at the end of
+    that stage) cannot be superseded at all: the write violates the items
+    CHECK and surfaces as a 500 on an otherwise valid project delete. An
+    itemless plan is failed instead, which is the status that permits an
+    empty list and which carries the reason.
 
     Returns:
         The ``(status, failure_reason)`` pair to write.

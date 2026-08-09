@@ -553,6 +553,23 @@ class TestStreamChunk:
         with pytest.raises(ValidationError, match=r"content_delta.*content"):
             StreamChunk(event_type=StreamEventType.CONTENT_DELTA)
 
+    def test_reasoning_delta_valid(self) -> None:
+        chunk = StreamChunk(
+            event_type=StreamEventType.REASONING_DELTA,
+            content="weighing two layouts",
+        )
+        assert chunk.content == "weighing two layouts"
+
+    def test_reasoning_delta_requires_content(self) -> None:
+        """The channel it arrives on is what makes it reasoning, not the text.
+
+        An empty reasoning delta is indistinguishable from no reasoning at
+        all, and a consumer folding it in cannot tell a thinking turn from a
+        silent one.
+        """
+        with pytest.raises(ValidationError, match=r"reasoning_delta.*content"):
+            StreamChunk(event_type=StreamEventType.REASONING_DELTA)
+
     def test_tool_call_delta_valid(self) -> None:
         tc = ToolCall(id="c1", name="ping", arguments={})
         chunk = StreamChunk(
