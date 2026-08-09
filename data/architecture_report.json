@@ -398,8 +398,8 @@
     },
     "src/synthorg/communication/meeting/orchestrator.py": {
       "cap": 600,
-      "loc": 600,
-      "ratio": 1.0,
+      "loc": 549,
+      "ratio": 0.915,
       "tier": "orchestrator"
     },
     "src/synthorg/communication/meeting/round_robin.py": {
@@ -1659,7 +1659,7 @@
     "synthorg.core.boundary": 70,
     "synthorg.core.clock": 270,
     "synthorg.core.completion_enums": 21,
-    "synthorg.core.critical_errors": 733,
+    "synthorg.core.critical_errors": 734,
     "synthorg.core.domain_errors": 280,
     "synthorg.core.effective_autonomy": 36,
     "synthorg.core.error_taxonomy": 75,
@@ -1712,7 +1712,7 @@
     "synthorg.llm.model_pins": 44,
     "synthorg.llm.prompt_purpose": 58,
     "synthorg.memory.embedding.fine_tune_models": 24,
-    "synthorg.memory.errors": 27,
+    "synthorg.memory.errors": 25,
     "synthorg.memory.models": 81,
     "synthorg.memory.protocol": 77,
     "synthorg.memory.state": 24,
@@ -1736,7 +1736,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 22,
     "synthorg.notifications.models": 25,
-    "synthorg.observability": 1999,
+    "synthorg.observability": 2000,
     "synthorg.observability.background_tasks": 31,
     "synthorg.observability.events.api": 245,
     "synthorg.observability.events.approval_gate": 29,
@@ -1841,7 +1841,7 @@
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
-      "loc": 522
+      "loc": 489
     },
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
