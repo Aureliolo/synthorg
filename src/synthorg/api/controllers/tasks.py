@@ -278,7 +278,7 @@ class TaskController(Controller):
                 "needs a provider" signal explicit.
         """
         app_state: AppState = state.app_state
-        requester = extract_requester(state)
+        requester = extract_requester()
         # Read the adapter once and reuse the same instance for the
         # presence check and the spawn; otherwise a concurrent unwire/
         # rewire between the check and the second ``*_of(app_state)``
@@ -358,7 +358,7 @@ class TaskController(Controller):
         task = await task_engine.update_task(
             task_id,
             updates,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
             expected_version=data.expected_version,
         )
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
@@ -390,7 +390,7 @@ class TaskController(Controller):
             ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
-        requester = extract_requester(state)
+        requester = extract_requester()
         overrides: dict[str, object] = {}
         if data.assigned_to is not None:
             overrides["assigned_to"] = data.assigned_to
@@ -449,7 +449,7 @@ class TaskController(Controller):
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
         )
         logger.info(API_TASK_DELETED, task_id=task_id)
 
@@ -484,7 +484,7 @@ class TaskController(Controller):
             ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
-        requester = extract_requester(state)
+        requester = extract_requester()
         task = await worker_execution_service_of(app_state).execute_once(
             task_id=task_id,
             previous_status=data.previous_status,
@@ -531,7 +531,7 @@ class TaskController(Controller):
         task_engine = task_engine_of(app_state)
         task, _prior_status = await task_engine.cancel_task(
             task_id,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
             reason=data.reason,
         )
         logger.info(API_TASK_CANCELLED, task_id=task_id)

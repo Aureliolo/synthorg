@@ -412,7 +412,7 @@ class PlanController(Controller):
                 task_structure=data.task_structure,
                 coordination_topology=data.coordination_topology,
             ),
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
         )
         publish_ws_event(
             request,
@@ -519,7 +519,7 @@ class PlanController(Controller):
         await retire_plan_approvals(state.app_state, str(existing.id))
         # Live work is counted inside the delete, in the same statement, so a
         # task filed between the two cannot be stranded on a deleted plan.
-        await service.delete(existing, requested_by=extract_requester(state))
+        await service.delete(existing, requested_by=extract_requester())
         # The review inbox and any open detail view drop it on the same
         # event every other plan mutation publishes.
         publish_ws_event(

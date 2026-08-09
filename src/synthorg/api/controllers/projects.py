@@ -296,7 +296,7 @@ class ProjectController(Controller):
         audit_autonomy_mode_change(
             project_id=project_id,
             transition=transition,
-            requested_by=extract_requester(state),
+            requested_by=extract_requester(),
         )
         publish_ws_event(
             request,
@@ -353,7 +353,7 @@ class ProjectController(Controller):
             operation="delete",
             extra_log_kwargs={"project_id": project_id},
         )
-        requested_by = extract_requester(state)
+        requested_by = extract_requester()
         await cascade_supersede_children(
             state.app_state,
             project_id,

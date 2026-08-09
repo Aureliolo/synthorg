@@ -52,8 +52,9 @@ SELECT
 Through the dashboard chat, in ordinary language, with the vagueness a real
 brief has:
 
-> I want a tetris game, single player, one mode to start, playable in the
-> browser. Nothing fancy. Would like something working this week.
+> I want a falling-blocks puzzle game, single player, one mode to start,
+> playable in the browser. Nothing fancy. Would like something working this
+> week.
 
 The chat path is the one to use, not `POST /objectives`: several failures are
 only visible from the operator's seat, and the objective route leaves

@@ -1,10 +1,16 @@
 """Unit tests for task controller helper functions."""
 
 import pytest
-from litestar.datastructures import State
 
+from synthorg.api.auth.context import (
+    AuthContextMissingError,
+    authenticated_user_scope,
+)
 from synthorg.api.controllers._requester import extract_requester
+from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -19,26 +25,31 @@ from synthorg.engine.errors import (
 
 @pytest.mark.unit
 class TestExtractRequester:
-    """Tests for extracting requester identity from state."""
+    """Naming the operator behind an audited write.
 
-    def test_returns_user_id_when_present(self) -> None:
-        """Auth middleware sets _connection_user with user_id."""
+    The previous implementation looked for the user on the application
+    ``State``, which nothing populates, and these tests hand-built exactly
+    that shape: a ``State`` carrying ``_connection_user``. Both the lookup
+    and its test agreed with each other and with nothing the runtime does,
+    so every audited write recorded ``"api"`` and the suite stayed green.
+    They now go through the binding production actually installs.
+    """
 
-        class FakeUser:
-            user_id = "user-123"
+    async def test_the_bound_user_is_who_the_write_names(self) -> None:
+        user = AuthenticatedUser(
+            user_id=NotBlankStr("user-123"),
+            username=NotBlankStr("Aurelio"),
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
 
-        state = State({"_connection_user": FakeUser()})
-        assert extract_requester(state) == "user-123"
+        async with authenticated_user_scope(user):
+            assert extract_requester() == "user-123"
 
-    def test_returns_api_fallback_when_no_user(self) -> None:
-        assert extract_requester(State({})) == "api"
-
-    def test_returns_api_when_user_has_no_user_id(self) -> None:
-        class FakeUser:
-            pass
-
-        state = State({"_connection_user": FakeUser()})
-        assert extract_requester(state) == "api"
+    async def test_no_bound_user_raises_rather_than_inventing_one(self) -> None:
+        """An audited write that cannot name its actor is not completed."""
+        with pytest.raises(AuthContextMissingError):
+            extract_requester()
 
 
 # ── TaskEngine error HTTP metadata (replaces the deleted mapper) ─────

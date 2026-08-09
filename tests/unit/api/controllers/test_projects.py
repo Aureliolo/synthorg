@@ -1,7 +1,7 @@
 """Tests for project controller."""
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import pytest
 import structlog.testing
@@ -508,9 +508,11 @@ class TestProjectController:
         assert len(transitions) == 1
         assert transitions[0]["reason"] == "project deleted"
         assert transitions[0]["to_status"] == PlanStatus.SUPERSEDED.value
-        # No auth middleware in the unit harness, so the requester resolves to
-        # the documented "api" fallback; the point is the context flows through.
-        assert transitions[0]["requested_by"] == "api"
+        # The operator who asked, by name. This read "api" for as long as the
+        # requester was looked up on the application State, where no
+        # authenticated user is ever put: the row named the transport that
+        # carried the request rather than the person who made it.
+        assert transitions[0]["requested_by"] == str(uuid5(NAMESPACE_DNS, "test-ceo"))
 
     async def test_delete_project_fails_an_itemless_plan_rather_than_500(
         self, async_test_client: LoopAsyncClient
