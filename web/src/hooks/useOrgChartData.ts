@@ -157,11 +157,22 @@ function _snapshotOf(nodes: readonly Node[]): LayoutSnapshot {
   return snapshot
 }
 
-/** Re-attach a cached placement to a freshly built (live-status) tree. */
+/**
+ * Re-attach a cached placement to a freshly built (live-status) tree.
+ *
+ * Both trees come from the same config, owners and collapse set, so their id
+ * sets match; the snapshot tree only omits runtime statuses and department
+ * health. Should node emission ever start depending on a field only the live
+ * tree carries, the miss says so rather than parking the card unsized at the
+ * canvas origin under every other unplaced node.
+ */
 function _placeNodes(nodes: readonly Node[], snapshot: LayoutSnapshot): Node[] {
   return nodes.map((node) => {
     const placed = snapshot.get(node.id)
-    if (!placed) return node
+    if (!placed) {
+      log.warn('node missing from the layout snapshot, rendering it unplaced:', node.id)
+      return node
+    }
     const next: Node = { ...node, position: placed.position }
     if (placed.width !== undefined) next.width = placed.width
     if (placed.height !== undefined) next.height = placed.height

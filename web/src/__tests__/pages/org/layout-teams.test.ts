@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEPT_HORIZONTAL_WIDTH_BUDGET } from '@/pages/org/layout-shared'
+import { DEPT_HORIZONTAL_WIDTH_BUDGET, getNodeDim } from '@/pages/org/layout-shared'
 import {
   type DeptSpec,
   agentIds,
@@ -26,8 +26,8 @@ const TEAMED_ORG: readonly DeptSpec[] = [
     teams: [{ name: 'core', members: ['bob', 'carol', 'dave'] }],
   },
   {
-    // Every member belongs to the one staffed team, so the department box has
-    // nothing but that box, an unstaffed team and its own head to wrap.
+    // Only the head sits outside the staffed team, so the department box has
+    // nothing but that team box, an unstaffed team and the head to wrap.
     name: 'platform',
     members: ['pia', 'paul', 'pearl'],
     teams: [
@@ -39,9 +39,9 @@ const TEAMED_ORG: readonly DeptSpec[] = [
 
 describe('team boxes', () => {
   it('sizes a team box around its members', () => {
-    const team = nodeById(layoutOf(orgConfig(TEAMED_ORG)), CORE)
-    expect(team.width as number).toBeGreaterThan(0)
-    expect(team.height as number).toBeGreaterThan(0)
+    const team = getNodeDim(nodeById(layoutOf(orgConfig(TEAMED_ORG)), CORE))
+    expect(team.w).toBeGreaterThan(0)
+    expect(team.h).toBeGreaterThan(0)
   })
 
   it('positions a team member relative to its team box', () => {
@@ -63,18 +63,18 @@ describe('team boxes', () => {
   it('gives an unstaffed team a card of its own inside the department', () => {
     const nodes = layoutOf(orgConfig(TEAMED_ORG))
     const unstaffed = nodeById(nodes, UNSTAFFED)
-    expect(unstaffed.width as number).toBeGreaterThan(0)
-    expect(unstaffed.height as number).toBeGreaterThan(0)
+    expect(getNodeDim(unstaffed).w).toBeGreaterThan(0)
+    expect(getNodeDim(unstaffed).h).toBeGreaterThan(0)
     expect(childrenOf(nodes, UNSTAFFED)).toHaveLength(0)
     expect(fitsInside(unstaffed, nodeById(nodes, 'dept-platform'))).toBe(true)
   })
 
-  it('sizes a department around its team box when every member is in a team', () => {
+  it('sizes a department around its team box and its head', () => {
     const nodes = layoutOf(orgConfig(TEAMED_ORG))
-    const dept = nodeById(nodes, 'dept-platform')
-    const team = nodeById(nodes, PLATFORM)
-    expect(dept.width as number).toBeGreaterThanOrEqual(team.width as number)
-    expect(dept.height as number).toBeGreaterThanOrEqual(team.height as number)
+    const dept = getNodeDim(nodeById(nodes, 'dept-platform'))
+    const team = getNodeDim(nodeById(nodes, PLATFORM))
+    expect(dept.w).toBeGreaterThanOrEqual(team.w)
+    expect(dept.h).toBeGreaterThanOrEqual(team.h)
   })
 
   it('renders team members in the operator\'s order', () => {
@@ -109,7 +109,7 @@ describe('team boxes', () => {
     const reports = childrenOf(nodes, CORE).filter((n) => n.id !== 'agent-lead')
     // Seven reports laid out in a row would blow far past the budget; in a
     // column the team box stays inside it.
-    expect(team.width as number).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
+    expect(getNodeDim(team).w).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
     expect(new Set(reports.map((r) => r.position.x)).size).toBe(1)
     expect(topToBottom(nodes, agentIds(['m1', 'm7']))).toEqual(agentIds(['m1', 'm7']))
   })
@@ -153,37 +153,53 @@ describe('team boxes', () => {
   })
 
   it('does not reorder the survivors when a member leaves a team', () => {
-    const survivors = agentIds(['carol'])
-    const before = leftToRight(layoutOf(orgConfig(TEAMED_ORG)), survivors)
-    const shrunk: DeptSpec[] = [
+    // Both survivors report to the same team lead, so they share a rank and a
+    // frame and a swap between them is a real reorder. A single id sorts to
+    // itself whatever the layout does, and the lead is no good either: it is
+    // centred across its reports, so losing one moves it for a reason that is
+    // not a reorder at all.
+    const engineering = (teamMembers: string[]): DeptSpec => ({
+      name: 'engineering',
+      members: ['alice', 'bob', 'carol', 'dave', 'erin'],
+      teams: [{ name: 'core', members: teamMembers }],
+    })
+    const survivors = agentIds(['carol', 'dave'])
+    const staffed = [TEAMED_ORG[0]!, engineering(['bob', 'carol', 'dave', 'erin']), TEAMED_ORG[2]!]
+    const before = leftToRight(layoutOf(orgConfig(staffed)), survivors)
+
+    const nodes = layoutOf(orgConfig([
       TEAMED_ORG[0]!,
-      {
-        name: 'engineering',
-        members: ['alice', 'bob', 'carol', 'dave', 'erin'],
-        teams: [{ name: 'core', members: ['bob', 'carol'] }],
-      },
+      engineering(['bob', 'carol', 'dave']),
       TEAMED_ORG[2]!,
-    ]
-    const nodes = layoutOf(orgConfig(shrunk))
+    ]))
     expect(leftToRight(nodes, survivors)).toEqual(before)
-    // dave left the team, so it now draws him beside his department head.
-    expect(childrenOf(nodes, CORE).map((n) => n.id)).not.toContain('agent-dave')
-    expect(childrenOf(nodes, 'dept-engineering').map((n) => n.id)).toContain('agent-dave')
+    // erin left the team, so it now draws her beside her department head.
+    expect(childrenOf(nodes, CORE).map((n) => n.id)).not.toContain('agent-erin')
+    expect(childrenOf(nodes, 'dept-engineering').map((n) => n.id)).toContain('agent-erin')
   })
 
-  it('counts a team box when choosing its department\'s direction', () => {
-    // Four teams side by side would overrun the budget, so the department
-    // itself must flow left-to-right and stack them instead.
+  it('measures a team box when choosing its department\'s direction', () => {
+    // Four members is a rank the budget accommodates as plain cards, so a
+    // member count alone reads this department as top-to-bottom. Each of these
+    // members is a team box holding a lead over two reports, which is more
+    // than twice a card wide, and the four side by side overrun the budget:
+    // the department must measure them and flow left-to-right instead.
     const manyTeams: DeptSpec[] = [
       { name: 'executive', members: ['zoe'] },
       {
         name: 'engineering',
-        members: ['alice', 't1a', 't1b', 't2a', 't2b', 't3a', 't3b', 't4a', 't4b'],
+        members: [
+          'alice',
+          't1a', 't1b', 't1c',
+          't2a', 't2b', 't2c',
+          't3a', 't3b', 't3c',
+          't4a', 't4b', 't4c',
+        ],
         teams: [
-          { name: 'one', members: ['t1a', 't1b'] },
-          { name: 'two', members: ['t2a', 't2b'] },
-          { name: 'three', members: ['t3a', 't3b'] },
-          { name: 'four', members: ['t4a', 't4b'] },
+          { name: 'one', members: ['t1a', 't1b', 't1c'] },
+          { name: 'two', members: ['t2a', 't2b', 't2c'] },
+          { name: 'three', members: ['t3a', 't3b', 't3c'] },
+          { name: 'four', members: ['t4a', 't4b', 't4c'] },
         ],
       },
     ]
@@ -197,5 +213,9 @@ describe('team boxes', () => {
     for (const box of teamBoxes) {
       expect(fitsInside(box, nodeById(nodes, 'dept-engineering'))).toBe(true)
     }
+    // The direction itself, not just the absence of overlap: a top-to-bottom
+    // department would also pass the two assertions above, so without this the
+    // case survives the very regression it is named for.
+    expect(new Set(teamBoxes.map((b) => b.position.x)).size).toBe(1)
   })
 })

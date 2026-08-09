@@ -1,6 +1,5 @@
-import type { Edge, Node } from '@xyflow/react'
+import type { Node } from '@xyflow/react'
 import type { Density } from '@/stores/theme'
-import type { CrossDeptKind } from './build-org-tree-types'
 
 // The direction of the chart AS A WHOLE.  Only 'TB' is used: the
 // post-layout adjustment pass (Steps 4-5) places owner row, root box and
@@ -131,31 +130,6 @@ export const DESIRED_INTER_DEPT_GAP = 48
 // the dept BOXES that wrap them, so wide multi-agent depts would otherwise
 // overlap their neighbours. A dedicated de-overlap pass uses this.
 export const DESIRED_INTER_DEPT_GAP_X = 56
-
-// Rank distance per tagged edge kind, keeping dagre from compacting a
-// department-crossing hop into a single rank.  Only the ranking depends on
-// these; the visible spacing comes from the post-layout shift passes.
-const CROSS_DEPT_MINLEN: Record<CrossDeptKind, number> = {
-  'owner-to-root': 2,
-  'ceo-to-child': 2,
-}
-const DEFAULT_MINLEN = 1
-
-function isCrossDeptKind(value: unknown): value is CrossDeptKind {
-  return typeof value === 'string' && Object.hasOwn(CROSS_DEPT_MINLEN, value)
-}
-
-/**
- * Rank distance dagre must put between an edge's endpoints.
- *
- * Two children of the same parent reached over edges of equal minlen land on
- * the same rank, which is what lets the ordering constraints be derived from
- * the tree's shape without a second layout pass.
- */
-export function dagreEdgeMinlen(edge: Edge): number {
-  const kind: unknown = edge.data?.['crossDeptKind']
-  return isCrossDeptKind(kind) ? CROSS_DEPT_MINLEN[kind] : DEFAULT_MINLEN
-}
 
 export function computeHeaderHeight(prefs: LayoutVisualPrefs, cardPadding: number): number {
   let h = cardPadding + HEADER_TITLE_ROW + HEADER_STATS_BAR

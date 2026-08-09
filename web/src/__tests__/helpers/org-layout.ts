@@ -139,11 +139,12 @@ export function overlaps(a: Node, b: Node): boolean {
 /** True when a child's box sits wholly inside its parent's, in the parent's frame. */
 export function fitsInside(child: Node, parent: Node): boolean {
   const { w, h } = getNodeDim(child)
+  const box = getNodeDim(parent)
   return (
     child.position.x >= 0
     && child.position.y >= 0
-    && child.position.x + w <= (parent.width as number)
-    && child.position.y + h <= (parent.height as number)
+    && child.position.x + w <= box.w
+    && child.position.y + h <= box.h
   )
 }
 

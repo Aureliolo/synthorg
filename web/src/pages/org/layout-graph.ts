@@ -8,7 +8,7 @@ import {
   layout,
 } from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
-import { type ClusterDirection, dagreEdgeMinlen, getNodeDim } from './layout-shared'
+import { type ClusterDirection, getNodeDim } from './layout-shared'
 
 export interface DagreParams {
   direction: ClusterDirection
@@ -57,9 +57,12 @@ export function runDagreLayout(
     const { w, h } = getNodeDim(node)
     g.setNode(node.id, { width: w, height: h })
   }
+  // Every edge takes dagre's default rank distance of one. A wider distance
+  // would only insert an empty rank: the frame lays out pre-sized boxes and
+  // the gaps between them are set afterwards by the shift passes.
   for (const edge of edges) {
     if (g.hasNode(edge.source) && g.hasNode(edge.target)) {
-      g.setEdge(edge.source, edge.target, { minlen: dagreEdgeMinlen(edge) })
+      g.setEdge(edge.source, edge.target)
     }
   }
 

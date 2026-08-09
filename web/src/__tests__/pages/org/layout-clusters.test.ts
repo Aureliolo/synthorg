@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Node } from '@xyflow/react'
-import { chooseClusterDirection } from '@/pages/org/layout-clusters'
+import type { Edge, Node } from '@xyflow/react'
+import { chooseClusterDirection, liftEdges } from '@/pages/org/layout-clusters'
 import {
   DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
@@ -22,38 +22,105 @@ import {
   topToBottom,
 } from '../../helpers/org-layout'
 
-/** Widest rank that still fits the budget at the given separation. */
+/** What a rank of `count` default-width cards measures at the given separation. */
+function rankWidth(count: number, nodeSep: number): number {
+  return count * DEFAULT_NODE_WIDTH + (count - 1) * nodeSep
+}
+
+/** Most default-width cards that still fit the budget at the given separation. */
 function largestFittingRank(nodeSep: number): number {
   let count = 1
-  while ((count + 1) * (DEFAULT_NODE_WIDTH + nodeSep) - nodeSep <= DEPT_HORIZONTAL_WIDTH_BUDGET) {
-    count++
-  }
+  while (rankWidth(count + 1, nodeSep) <= DEPT_HORIZONTAL_WIDTH_BUDGET) count++
   return count
 }
 
-/** Members of one department, in the laid-out order. */
-function membersOf(nodes: readonly Node[], deptName: string): Node[] {
-  return nodes.filter((n) => n.type === 'agent' && n.parentId === `dept-${deptName}`)
+/** The department's own members, in the laid-out order, lead first. */
+function membersOf(nodes: readonly Node[], deptName: string): [Node, Node[]] {
+  const members = nodes.filter((n) => n.type === 'agent' && n.parentId === `dept-${deptName}`)
+  // The lead is found by its flag, not by list position: `findDeptHead`
+  // resolves it from the department's declared head role and does not reorder
+  // the member array, so an operator whose head is not listed first would
+  // otherwise make every one of these cases assert against the wrong node.
+  const lead = members.find((n) => n.data['isDeptLead'] === true)
+  if (!lead) throw new Error(`department ${deptName} has no lead node`)
+  return [lead, members.filter((n) => n.id !== lead.id)]
 }
 
 describe('chooseClusterDirection', () => {
   it('keeps a department that fits the width budget top-to-bottom', () => {
-    expect(chooseClusterDirection(largestFittingRank(DEFAULT_NODE_SEP), DEFAULT_NODE_SEP))
-      .toBe('TB')
+    const fitting = rankWidth(largestFittingRank(DEFAULT_NODE_SEP), DEFAULT_NODE_SEP)
+    expect(chooseClusterDirection(fitting)).toBe('TB')
   })
 
   it('turns a department that overruns the width budget left-to-right', () => {
-    expect(chooseClusterDirection(largestFittingRank(DEFAULT_NODE_SEP) + 1, DEFAULT_NODE_SEP))
-      .toBe('LR')
+    const overrun = rankWidth(largestFittingRank(DEFAULT_NODE_SEP) + 1, DEFAULT_NODE_SEP)
+    expect(chooseClusterDirection(overrun)).toBe('LR')
   })
 
   it('keeps a single-member department top-to-bottom', () => {
-    expect(chooseClusterDirection(1, DEFAULT_NODE_SEP)).toBe('TB')
+    expect(chooseClusterDirection(rankWidth(1, DEFAULT_NODE_SEP))).toBe('TB')
   })
 
-  it('turns fewer members left-to-right as the separation grows', () => {
-    expect(largestFittingRank(DEFAULT_NODE_SEP * 2))
-      .toBeLessThan(largestFittingRank(DEFAULT_NODE_SEP))
+  it('turns the same members left-to-right once the separation grows', () => {
+    const count = largestFittingRank(DEFAULT_NODE_SEP)
+    expect(chooseClusterDirection(rankWidth(count, DEFAULT_NODE_SEP))).toBe('TB')
+    expect(chooseClusterDirection(rankWidth(count, DEFAULT_NODE_SEP * 2))).toBe('LR')
+  })
+
+  it('turns a rank of wide boxes left-to-right on a count that would fit', () => {
+    // Three team boxes are three members, which the budget accommodates as
+    // plain cards; at their rendered width the same rank overruns it.
+    const asCards = rankWidth(3, DEFAULT_NODE_SEP)
+    expect(chooseClusterDirection(asCards)).toBe('TB')
+    expect(chooseClusterDirection(3 * 400 + 2 * DEFAULT_NODE_SEP)).toBe('LR')
+  })
+})
+
+function edge(id: string, source: string, target: string, data?: Edge['data']): Edge {
+  return data === undefined ? { id, source, target } : { id, source, target, data }
+}
+
+/**
+ * The hidden cross-department edges exist to give the layout a rank
+ * relationship, and `build-org-tree` emits each one right after the visible
+ * edge between the same two boxes. Lifting collapses both onto one top-level
+ * pair, so whatever a hidden edge carries never reaches dagre; a rank distance
+ * keyed off its tag would be applied to nothing. Pinned here because the tag
+ * still exists and reads like it is load-bearing.
+ */
+describe('liftEdges', () => {
+  it('collapses an owner-to-root hidden edge into its visible counterpart', () => {
+    const lifted = liftEdges(
+      [
+        edge('visible', 'owner-1', 'dept-executive'),
+        edge('hidden', 'owner-1', 'agent-zoe', { crossDeptKind: 'owner-to-root' }),
+      ],
+      new Map([['agent-zoe', 'dept-executive']]),
+    )
+    expect(lifted).toHaveLength(1)
+    expect(lifted[0]!.id).toBe('visible')
+    expect(lifted[0]!.data).toBeUndefined()
+  })
+
+  it('collapses a ceo-to-child hidden edge into its visible counterpart', () => {
+    const lifted = liftEdges(
+      [
+        edge('visible', 'dept-executive', 'dept-ops'),
+        edge('hidden', 'agent-zoe', 'agent-ola', { crossDeptKind: 'ceo-to-child' }),
+      ],
+      new Map([['agent-zoe', 'dept-executive'], ['agent-ola', 'dept-ops']]),
+    )
+    expect(lifted).toHaveLength(1)
+    expect(lifted[0]!.id).toBe('visible')
+    expect(lifted[0]!.data).toBeUndefined()
+  })
+
+  it('drops an edge whose endpoints lift into the same box', () => {
+    const lifted = liftEdges(
+      [edge('within', 'agent-zoe', 'agent-zed')],
+      new Map([['agent-zoe', 'dept-executive'], ['agent-zed', 'dept-executive']]),
+    )
+    expect(lifted).toEqual([])
   })
 })
 
@@ -71,19 +138,17 @@ const MIXED_ORG: readonly DeptSpec[] = [
 
 describe('per-cluster direction', () => {
   it('stacks a narrow department under its lead', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    const [lead, ...reports] = membersOf(nodes, 'ops')
+    const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'ops')
     for (const report of reports) {
-      expect(lead!.position.y).toBeLessThan(report.position.y)
+      expect(lead.position.y).toBeLessThan(report.position.y)
     }
     expect(new Set(reports.map((r) => r.position.y)).size).toBe(1)
   })
 
   it('puts a wide department\'s reports in a column beside its lead', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    const [lead, ...reports] = membersOf(nodes, 'engineering')
+    const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'engineering')
     for (const report of reports) {
-      expect(lead!.position.x).toBeLessThan(report.position.x)
+      expect(lead.position.x).toBeLessThan(report.position.x)
     }
     expect(new Set(reports.map((r) => r.position.x)).size).toBe(1)
     expect(new Set(reports.map((r) => r.position.y)).size).toBe(reports.length)
@@ -91,16 +156,15 @@ describe('per-cluster direction', () => {
 
   it('keeps a wide department\'s card inside the width budget', () => {
     const dept = nodeById(layoutOf(orgConfig(MIXED_ORG)), 'dept-engineering')
-    expect(dept.width as number).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
+    expect(getNodeDim(dept).w).toBeLessThanOrEqual(DEPT_HORIZONTAL_WIDTH_BUDGET)
   })
 
   it('centres a left-to-right department\'s lead on its reports', () => {
-    const nodes = layoutOf(orgConfig(MIXED_ORG))
-    const [lead, ...reports] = membersOf(nodes, 'engineering')
+    const [lead, reports] = membersOf(layoutOf(orgConfig(MIXED_ORG)), 'engineering')
     const tops = reports.map((r) => r.position.y)
     const bottoms = reports.map((r) => r.position.y + getNodeDim(r).h)
     const reportsMidpoint = (Math.min(...tops) + Math.max(...bottoms)) / 2
-    expect(lead!.position.y + getNodeDim(lead!).h / 2).toBeCloseTo(reportsMidpoint, 5)
+    expect(lead.position.y + getNodeDim(lead).h / 2).toBeCloseTo(reportsMidpoint, 5)
   })
 
   it('leaves the global top-to-bottom flow unchanged', () => {

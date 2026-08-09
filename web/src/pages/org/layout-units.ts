@@ -3,6 +3,8 @@ import { chooseClusterDirection, planRanks } from './layout-clusters'
 import { runDagreLayout, type DagreParams } from './layout-graph'
 import {
   type ClusterDirection,
+  EMPTY_GROUP_HEIGHT,
+  EMPTY_GROUP_MIN_WIDTH,
   EMPTY_TEAM_HEIGHT,
   EMPTY_TEAM_WIDTH,
   POPULATED_GROUP_MIN_WIDTH,
@@ -28,7 +30,7 @@ export interface SizedUnit {
 }
 
 /** Set an explicit rendered size on a group node. */
-export function sized(node: Node, width: number, height: number): Node {
+function sized(node: Node, width: number, height: number): Node {
   return { ...node, width, height, style: { ...node.style, width, height } }
 }
 
@@ -95,8 +97,8 @@ function layoutUnit(
   edges: readonly Edge[],
   params: DagreParams,
 ): LaidOutUnit {
-  const ranks = planRanks(members.map((m) => m.id), edges)
-  const direction = chooseClusterDirection(ranks.widestRank, params.nodeSep)
+  const ranks = planRanks(members, edges, params.nodeSep)
+  const direction = chooseClusterDirection(ranks.widestRankWidth)
   const positioned = [
     ...runDagreLayout(members, edges, { ...params, direction }, ranks.constraints).values(),
   ]
@@ -163,7 +165,9 @@ export interface DepartmentChrome {
  *
  * The box handed back is the size the card actually renders at, so the frame
  * that places it separates departments by their true footprint rather than by
- * their contents alone.
+ * their contents alone. An unstaffed department is sized here too, from the
+ * empty-state card's own bounds: `layoutUnit` seeds its bounding box with
+ * infinities, so measuring nothing would hand React Flow a `NaN` geometry.
  */
 export function sizeDepartment(
   department: Node,
@@ -172,6 +176,12 @@ export function sizeDepartment(
   params: DagreParams,
   chrome: DepartmentChrome,
 ): SizedUnit {
+  if (members.length === 0) {
+    return {
+      node: sized(department, EMPTY_GROUP_MIN_WIDTH, EMPTY_GROUP_HEIGHT),
+      childrenRelative: [],
+    }
+  }
   const unit = layoutUnit(members, edges, params)
   const { cardPadding, headerHeight, footerHeight } = chrome
   const width = Math.max(unit.contentWidth + cardPadding * 2, POPULATED_GROUP_MIN_WIDTH)

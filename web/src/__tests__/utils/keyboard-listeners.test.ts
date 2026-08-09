@@ -34,8 +34,12 @@ function trackedSourceFiles(): string[] {
     encoding: 'utf8',
   })
   if (listed.status !== 0) {
+    // A spawn that never started reports a null status and nothing on stderr;
+    // only `error` says why, so it is quoted too or the message reads
+    // "status=null: undefined" and hides the cause.
+    const cause = listed.error ? ` ${String(listed.error)}` : ''
     throw new Error(
-      `git ls-files failed (status=${String(listed.status)}): ${listed.stderr}`,
+      `git ls-files failed (status=${String(listed.status)}): ${listed.stderr}${cause}`,
     )
   }
   return listed.stdout

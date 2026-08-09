@@ -53,8 +53,7 @@ function splitPositioned(
   const groupResults: GroupResult[] = []
   const topLevelLeaves = new Map<string, Node>()
   for (const [id, node] of positioned) {
-    const isDepartment = plan.departments.has(id) || plan.emptyDepartments.has(id)
-    if (!isDepartment) {
+    if (!plan.departments.has(id)) {
       topLevelLeaves.set(id, node)
       continue
     }
@@ -107,10 +106,7 @@ export function applyDagreLayout(
     },
   })
 
-  const topLevelRanks = planRanks(
-    plan.topLevelNodes.map((n) => n.id),
-    plan.topLevelEdges,
-  )
+  const topLevelRanks = planRanks(plan.topLevelNodes, plan.topLevelEdges, nodeSep)
   const { groupResults: allGroupResults, topLevelLeaves } = splitPositioned(
     runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params, topLevelRanks.constraints),
     plan,

@@ -96,12 +96,12 @@ test.describe('Org chart layout', () => {
     await freezeTime(page)
     await installWebSocketHarness(page)
     await mockApiRoutes(page)
-    await page.route('**/api/v1/company', (route) => {
+    await page.route('**/api/v1/company', async (route) => {
       if (route.request().method() !== 'GET') {
-        route.fallback()
+        await route.fallback()
         return
       }
-      route.fulfill({
+      await route.fulfill({
         json: { success: true, data: COMPANY, error: null, error_detail: null },
       })
     })

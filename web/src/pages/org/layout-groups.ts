@@ -6,9 +6,7 @@ import {
   type SizedUnit,
   sizeDepartment,
   sizeTeam,
-  sized,
 } from './layout-units'
-import { EMPTY_GROUP_HEIGHT, EMPTY_GROUP_MIN_WIDTH } from './layout-shared'
 
 /** The dept group ids flagged as the root by build-org-tree. */
 export function collectRootGroupIds(groupNodes: readonly Node[]): Set<string> {
@@ -31,8 +29,6 @@ export interface HierarchyPlan {
   readonly departments: Map<string, SizedUnit>
   /** Teams with their contents, keyed by team id. */
   readonly teams: Map<string, SizedUnit>
-  /** Empty-state department boxes, keyed by department id. */
-  readonly emptyDepartments: Map<string, Node>
 }
 
 export interface HierarchyArgs {
@@ -44,6 +40,11 @@ export interface HierarchyArgs {
 
 function isLeaf(node: Node): boolean {
   return node.type !== 'department' && node.type !== 'team'
+}
+
+/** True when this node is already drawn inside a team's box. */
+function isTeamMember(node: Node, teamIds: ReadonlySet<string>): boolean {
+  return isLeaf(node) && node.parentId !== undefined && teamIds.has(node.parentId)
 }
 
 /** Lay out every team box, walking in emission order. */
@@ -96,23 +97,33 @@ function scopeEdgesTo(edges: readonly Edge[], members: readonly Node[]): Edge[] 
 /**
  * What the top-level frame arranges: every department as one box, staffed or
  * not, plus the nodes that belong to no department, in emission order.
+ *
+ * A leaf already drawn inside a team box is excluded even when no department
+ * claims it. A `parentId` cycle among teams leaves their members with no
+ * resolvable department, and without this they would be placed twice: once
+ * here on the canvas and once inside the team box, which React Flow reads as
+ * one id at two positions. The exclusion is for leaves only, since a team
+ * parented to another team is not one of that team's members and so is drawn
+ * nowhere unless this frame places it.
  */
 function collectTopLevel(
   nodes: readonly Node[],
   boxes: {
     departments: ReadonlyMap<string, SizedUnit>
-    emptyDepartments: ReadonlyMap<string, Node>
     departmentOf: ReadonlyMap<string, string>
+    teamIds: ReadonlySet<string>
   },
 ): Node[] {
   const topLevel: Node[] = []
   for (const node of nodes) {
-    if (node.type !== 'department') {
-      if (!boxes.departmentOf.has(node.id)) topLevel.push(node)
+    if (node.type === 'department') {
+      const box = boxes.departments.get(node.id)?.node
+      if (box) topLevel.push(box)
       continue
     }
-    const box = boxes.departments.get(node.id)?.node ?? boxes.emptyDepartments.get(node.id)
-    if (box) topLevel.push(box)
+    if (boxes.departmentOf.has(node.id)) continue
+    if (isTeamMember(node, boxes.teamIds)) continue
+    topLevel.push(node)
   }
   return topLevel
 }
@@ -134,19 +145,12 @@ export function planHierarchy(args: HierarchyArgs): HierarchyPlan {
   const { teams, teamOf } = planTeams(args, teamIds)
   const teamScopedEdges = liftEdges(args.edges, teamOf)
 
+  // An unstaffed department is sized and placed by the same frame as the rest,
+  // so it keeps the slot the operator gave it rather than being appended to
+  // the end of the row.
   const departments = new Map<string, SizedUnit>()
-  const emptyDepartments = new Map<string, Node>()
   for (const department of departmentNodes) {
     const members = departmentMembers(args, department.id, { departmentOf, teamIds, teams })
-    if (members.length === 0) {
-      // An unstaffed department is still a box in the row, placed by the same
-      // frame as the rest so it keeps the slot the operator gave it.
-      emptyDepartments.set(
-        department.id,
-        sized(department, EMPTY_GROUP_MIN_WIDTH, EMPTY_GROUP_HEIGHT),
-      )
-      continue
-    }
     departments.set(
       department.id,
       sizeDepartment(
@@ -160,10 +164,9 @@ export function planHierarchy(args: HierarchyArgs): HierarchyPlan {
   }
 
   return {
-    topLevelNodes: collectTopLevel(args.nodes, { departments, emptyDepartments, departmentOf }),
+    topLevelNodes: collectTopLevel(args.nodes, { departments, departmentOf, teamIds }),
     topLevelEdges: liftEdges(args.edges, departmentOf),
     departments,
     teams,
-    emptyDepartments,
   }
 }

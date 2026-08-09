@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Node, Edge } from '@xyflow/react'
 import { applyDagreLayout } from '@/pages/org/layout'
+import { getNodeDim } from '@/pages/org/layout-shared'
 import {
   type DeptSpec,
   ROOT_DEPT_NODE_ID,
@@ -143,10 +144,10 @@ describe('applyDagreLayout', () => {
 
     const reportsXMin = Math.min(...reports.map((r) => r.position.x))
     const reportsXMax = Math.max(
-      ...reports.map((r) => r.position.x + (r.width as number)),
+      ...reports.map((r) => r.position.x + getNodeDim(r).w),
     )
     const reportsMidpoint = (reportsXMin + reportsXMax) / 2
-    const leadMidpoint = lead.position.x + (lead.width as number) / 2
+    const leadMidpoint = lead.position.x + getNodeDim(lead).w / 2
 
     expect(Math.abs(reportsMidpoint - leadMidpoint)).toBeLessThan(1)
   })
@@ -177,8 +178,8 @@ describe('applyDagreLayout on degenerate charts', () => {
     ]
     const nodes = layoutOf(orgConfig(specs))
     const empty = nodeById(nodes, 'dept-legal')
-    expect(empty.width as number).toBeGreaterThan(0)
-    expect(empty.height as number).toBeGreaterThan(0)
+    expect(getNodeDim(empty).w).toBeGreaterThan(0)
+    expect(getNodeDim(empty).h).toBeGreaterThan(0)
     expect(overlaps(empty, nodeById(nodes, 'dept-engineering'))).toBe(false)
     expect(overlaps(empty, nodeById(nodes, ROOT_DEPT_NODE_ID))).toBe(false)
   })
@@ -202,7 +203,7 @@ describe('applyDagreLayout on degenerate charts', () => {
     for (const node of nodes) {
       expect(Number.isFinite(node.position.x)).toBe(true)
       expect(Number.isFinite(node.position.y)).toBe(true)
-      expect(node.width as number).toBeGreaterThan(0)
+      expect(getNodeDim(node).w).toBeGreaterThan(0)
     }
   })
 
@@ -226,6 +227,9 @@ describe('applyDagreLayout on degenerate charts', () => {
       makeNode('agent-2', { parentId: 'dept-eng', width: 176, height: 80 }),
     ]
     const result = applyDagreLayout(nodes, [makeEdge('agent-2', 'agent-1')])
+    // Every node comes back: a cycle that made production drop the offending
+    // nodes would leave the loop below with nothing to disagree with.
+    expect(result).toHaveLength(nodes.length)
     for (const node of result) {
       expect(Number.isFinite(node.position.x)).toBe(true)
       expect(Number.isFinite(node.position.y)).toBe(true)
@@ -239,8 +243,7 @@ describe('applyDagreLayout on degenerate charts', () => {
     ]
     const config = orgConfig(specs)
     const heightAt = (density: 'dense' | 'balanced' | 'sparse'): number =>
-      nodeById(layoutOf(config, { layout: { density } }), 'dept-engineering')
-        .height as number
+      getNodeDim(nodeById(layoutOf(config, { layout: { density } }), 'dept-engineering')).h
     expect(heightAt('dense')).toBeLessThan(heightAt('balanced'))
     expect(heightAt('balanced')).toBeLessThan(heightAt('sparse'))
   })

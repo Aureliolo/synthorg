@@ -2,21 +2,21 @@ import type { OrderConstraint } from '@dagrejs/dagre'
 import type { Edge, Node } from '@xyflow/react'
 import {
   type ClusterDirection,
-  DEFAULT_NODE_WIDTH,
   DEPT_HORIZONTAL_WIDTH_BUDGET,
-  dagreEdgeMinlen,
+  getNodeDim,
 } from './layout-shared'
 
 /**
- * Pick a unit's internal flow from what it would cost laid out top-to-bottom:
- * one rank of `widestRankSize` cards side by side.
+ * Pick a unit's internal flow from what its widest rank would really measure
+ * laid out top-to-bottom.
+ *
+ * The decision is made on summed rendered widths rather than a member count
+ * times a card width: a department's members include team boxes already sized
+ * around their own contents, routinely several cards wide, so a count clears
+ * the budget on paper while the row it stands for overruns the canvas.
  */
-export function chooseClusterDirection(
-  widestRankSize: number,
-  nodeSep: number,
-): ClusterDirection {
-  const stackedWidth = widestRankSize * (DEFAULT_NODE_WIDTH + nodeSep) - nodeSep
-  return stackedWidth > DEPT_HORIZONTAL_WIDTH_BUDGET ? 'LR' : 'TB'
+export function chooseClusterDirection(widestRankWidth: number): ClusterDirection {
+  return widestRankWidth > DEPT_HORIZONTAL_WIDTH_BUDGET ? 'LR' : 'TB'
 }
 
 /** Members with no parent inside `memberIds`, keeping the given order. */
@@ -32,46 +32,39 @@ function rootsWithin(memberIds: readonly string[], edges: readonly Edge[]): stri
 /**
  * Same-rank sibling sets within one unit, each in the given order.
  *
- * Two members reached from the same parent over edges of equal minlen land on
- * the same rank, and members with no parent in the unit are its first rank.
- * That is the whole basis for ordering without a second layout pass: each unit
- * is laid out from a tree, so an edge of a given minlen always lands its
- * target exactly that far below its parent.
+ * Every edge a unit is laid out from carries dagre's default rank distance of
+ * one, so two members reached from the same parent land on the same rank, and
+ * members with no parent in the unit are its first rank. That is the whole
+ * basis for ordering without a second layout pass.
  *
- * Sibling sets are keyed through nested maps rather than a joined string, so
- * no operator-authored name can make two different parents share a bucket.
+ * Sibling sets are keyed by parent through a map rather than a joined string,
+ * so no operator-authored name can make two different parents share a bucket.
  */
-function bucketByParentAndMinlen(
+function bucketByParent(
   members: ReadonlySet<string>,
   edges: readonly Edge[],
-): Map<string, Map<number, string[]>> {
-  const byParent = new Map<string, Map<number, string[]>>()
+): Map<string, string[]> {
+  const byParent = new Map<string, string[]>()
   for (const edge of edges) {
     if (!members.has(edge.source) || !members.has(edge.target)) continue
-    const byMinlen = byParent.get(edge.source) ?? new Map<number, string[]>()
-    const minlen = dagreEdgeMinlen(edge)
-    const bucket = byMinlen.get(minlen) ?? []
+    const bucket = byParent.get(edge.source) ?? []
     if (!bucket.includes(edge.target)) bucket.push(edge.target)
-    byMinlen.set(minlen, bucket)
-    byParent.set(edge.source, byMinlen)
+    byParent.set(edge.source, bucket)
   }
   return byParent
 }
 
 function sameRankSets(memberIds: readonly string[], edges: readonly Edge[]): string[][] {
   const order = new Map(memberIds.map((id, index) => [id, index]))
-  const sets = [rootsWithin(memberIds, edges)]
-  for (const byMinlen of bucketByParentAndMinlen(new Set(memberIds), edges).values()) {
-    sets.push(...byMinlen.values())
-  }
+  const sets = [rootsWithin(memberIds, edges), ...bucketByParent(new Set(memberIds), edges).values()]
   for (const set of sets) set.sort((a, b) => order.get(a)! - order.get(b)!)
   return sets
 }
 
 /** What one unit's rank structure tells the layout, from a single traversal. */
 export interface RankPlan {
-  /** How many cards the widest rank would put side by side. */
-  readonly widestRank: number
+  /** What the widest rank would measure laid out side by side, gaps included. */
+  readonly widestRankWidth: number
   /** Consecutive `{left, right}` pairs over each rank, in the operator's order. */
   readonly constraints: OrderConstraint[]
 }
@@ -79,7 +72,7 @@ export interface RankPlan {
 /**
  * Read a unit's rank structure: how wide it gets, and how to pin its order.
  *
- * `memberIds` must already be in the operator's order. Emission order IS that
+ * `members` must already be in the operator's order. Emission order IS that
  * order: `build-org-tree` walks `config.departments`, and `groupAgentsByDept`
  * keeps each department's slice of the flat `config.agents` array intact. Both
  * arrays are what the `reorder-departments` / `reorder-agents` endpoints
@@ -93,15 +86,27 @@ export interface RankPlan {
  * endpoints sit on different ranks is not inert: chaining every member of a
  * unit in one run reversed sibling pairs that the per-rank chains get right.
  */
-export function planRanks(memberIds: readonly string[], edges: readonly Edge[]): RankPlan {
-  const sets = sameRankSets(memberIds, edges)
+export function planRanks(
+  members: readonly Node[],
+  edges: readonly Edge[],
+  nodeSep: number,
+): RankPlan {
+  const byId = new Map(members.map((member) => [member.id, member]))
+  const sets = sameRankSets([...byId.keys()], edges)
   const constraints: OrderConstraint[] = []
+  let widestRankWidth = 0
   for (const set of sets) {
     for (let index = 1; index < set.length; index++) {
       constraints.push({ left: set[index - 1]!, right: set[index]! })
     }
+    const gaps = Math.max(0, set.length - 1) * nodeSep
+    const rankWidth = set.reduce((total, id) => {
+      const member = byId.get(id)
+      return member === undefined ? total : total + getNodeDim(member).w
+    }, gaps)
+    widestRankWidth = Math.max(widestRankWidth, rankWidth)
   }
-  return { widestRank: Math.max(...sets.map((set) => set.length)), constraints }
+  return { widestRankWidth, constraints }
 }
 
 /**
