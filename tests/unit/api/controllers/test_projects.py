@@ -492,10 +492,10 @@ class TestProjectController:
             )
         assert delete_resp.status_code == 204
 
-        # Retiring a child is not removing it. A live run left two SUPERSEDED
-        # plans and their tasks naming a project that returned 404, and
-        # SUPERSEDED is the one status DELETE /plans/{id} refuses, so nothing
-        # could ever clear them.
+        # Retiring a child is not removing it. A retired plan and its tasks
+        # keep naming a project that now returns 404, and SUPERSEDED is the
+        # one status DELETE /plans/{id} refuses, so nothing could ever
+        # clear them.
         assert await backend.plans.get(str(plan.id)) is None
         for task in (created_task, running_task, stuck_task):
             assert await backend.tasks.get(str(task.id)) is None

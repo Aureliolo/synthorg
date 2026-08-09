@@ -1,9 +1,9 @@
 """A missing tool name must say which one the caller probably meant.
 
-A live run lost a whole task to this. An agent called ``search`` eleven
-times, was handed all forty registered tool names on every attempt, never
-connected it to ``memory.search``, and terminated on ``max_turns`` having
-delivered nothing. The registry knew the answer and buried it in a list.
+An agent that guesses a bare name and is handed the whole registry every
+attempt retries the same guess until its turn budget is gone, never
+connecting ``search`` to ``memory.search``. The registry knows the answer;
+burying it in a list is what makes it useless.
 """
 
 from typing import override

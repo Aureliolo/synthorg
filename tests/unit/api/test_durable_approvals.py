@@ -1,13 +1,11 @@
 """Pending human decisions must survive a restart.
 
-A live run lost its whole operator queue to a backend restart: four
-approvals held in memory, zero rows in the `approvals` table, and a plan
-left at `PENDING_REVIEW` with nothing to approve and no route to re-create
-the decision. Every durable piece existed (table, protocol, both backend
+An approval held only in memory is lost to a restart, and a plan left at
+`PENDING_REVIEW` then has nothing to approve and no route to re-create the
+decision. Every durable piece exists (table, protocol, both backend
 repositories, dual-backend conformance, and `ApprovalStore`'s own `repo`
-support); the one production construction site simply passed no repository,
-and `_repo` was assignable only in `__init__`, so nothing could attach one
-later either.
+support), so the thing worth pinning is that the production construction
+site actually attaches one.
 """
 
 import pytest

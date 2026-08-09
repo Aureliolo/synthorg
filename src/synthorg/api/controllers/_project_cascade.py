@@ -195,11 +195,11 @@ async def cascade_supersede_children(
 
     # Retiring a child is not removing it. A terminal status stops a plan
     # advancing; it does not stop the row existing, and every listing endpoint
-    # still returns it. A live run deleted three projects and left three plans
-    # and eight tasks naming ids that returned 404, two of them permanently:
-    # the cascade retires a plan with items to SUPERSEDED, and SUPERSEDED is
-    # the one status `DELETE /plans/{id}` refuses, so whether an operator could
-    # ever clean up depended on whether the plan happened to have items.
+    # still returns it, naming a project id that no longer resolves. Worse,
+    # the cascade retires a plan with items to SUPERSEDED, which is the one
+    # status `DELETE /plans/{id}` refuses: leaving them behind would make
+    # whether an operator can ever clean up depend on whether the plan
+    # happened to have items.
     plans_deleted = await _delete_retired_plans(
         app_state, plan_service, project_id, requested_by=requested_by
     )

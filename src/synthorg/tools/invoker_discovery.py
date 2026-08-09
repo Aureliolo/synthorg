@@ -99,16 +99,14 @@ class ToolInvokerDiscoveryMixin:
         unreachable.
 
         A session holding no discovery tool therefore gets its whole
-        permitted registry. Three live runs lost every plan-review verdict
-        to the other answer: the panellist held exactly one tool,
-        ``submit_plan_review``, nothing was loaded, no discovery tool
-        existed to load it with, and the provider was called with no tools
-        at all. Four reviewers across four different models each answered
-        in prose and were recorded as having no opinion, because the only
-        thing they could have done was never offered. The planning session
-        next door escapes the same gate by seeding ``loaded_tools`` with
-        what it granted; relying on every caller to remember that is what
-        made this reachable.
+        permitted registry. The other answer calls the provider with no
+        tools at all: a plan-review panellist holds exactly one tool,
+        nothing is loaded, and no discovery tool exists to load it with, so
+        the reviewer answers in prose and is recorded as having no opinion
+        because the only thing it could have done was never offered. The
+        planning session next door escapes the same gate by seeding
+        ``loaded_tools`` with what it granted; relying on every caller to
+        remember that is what makes this reachable.
 
         Args:
             loaded_tools: Tool names with L2 active.

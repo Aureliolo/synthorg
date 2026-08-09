@@ -98,11 +98,10 @@ class ToolRegistry:
                 suggestions=suggestions,
                 available=available,
             )
-            # Lead with the near-matches. A live run lost an entire task to
-            # this: an agent called 'search' eleven times, was handed all
-            # forty registered names each time, never connected it to
-            # 'memory.search', and burned its whole turn budget. A wall of
-            # names is not an answer to "which one did I mean".
+            # Lead with the near-matches. An agent that guesses a bare name
+            # retries the same guess while the whole registry is handed back
+            # each time, because a wall of names is not an answer to "which
+            # one did I mean" and the near-match is buried in it.
             hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
             msg = (
                 f"Tool {name!r} is not registered.{hint} "

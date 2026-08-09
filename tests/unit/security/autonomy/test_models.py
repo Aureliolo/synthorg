@@ -181,11 +181,10 @@ class TestBuiltinPresets:
     def test_supervised_can_work_inside_its_own_sandbox(self) -> None:
         """The shipped default must be able to build.
 
-        A live run died on the previous shape: `supervised` gated
-        `code:write` and `vcs:branch`, so every `shell_command` and every
-        `git_branch` in an agent's own isolated workspace queued for a
-        human, and the org could not write a line of code out of the box.
-        The tier gates blast radius, not verbs.
+        Gating `code:write` and `vcs:branch` queues every `shell_command`
+        and every `git_branch` in an agent's own isolated workspace for a
+        human, and the org cannot write a line of code out of the box. The
+        tier gates blast radius, not verbs.
         """
         supervised = BUILTIN_PRESETS[AutonomyLevel.SUPERVISED]
         for confined in ("code", "test", "docs", "vcs:commit", "vcs:branch"):

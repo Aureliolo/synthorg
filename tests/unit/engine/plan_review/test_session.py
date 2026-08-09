@@ -167,10 +167,9 @@ class TestAgentSessionPlanReviewPanel:
     async def test_a_prose_answer_is_corrected_into_a_verdict(self) -> None:
         """A reviewer that answered in prose gets one push-back, not a shrug.
 
-        Three live runs produced four-of-four ``no_verdict`` panels: every
-        plan reached its human gate with zero quality signal because a
-        session that never called its only tool was recorded as an absent
-        opinion instead of being corrected.
+        A session that never called its only tool, recorded as an absent
+        opinion instead of corrected, sends the plan to its human gate with
+        no quality signal, and every panellist fails that way at once.
         """
         provider = ScriptedProvider(
             [

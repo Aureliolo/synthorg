@@ -27,12 +27,11 @@ from synthorg.engine.errors import (
 class TestExtractRequester:
     """Naming the operator behind an audited write.
 
-    The previous implementation looked for the user on the application
-    ``State``, which nothing populates, and these tests hand-built exactly
-    that shape: a ``State`` carrying ``_connection_user``. Both the lookup
-    and its test agreed with each other and with nothing the runtime does,
-    so every audited write recorded ``"api"`` and the suite stayed green.
-    They now go through the binding production actually installs.
+    Driven through the request-scoped binding production installs, and not
+    a hand-built shape agreeing only with the lookup under test: a lookup
+    and its test can agree with each other and with nothing the runtime
+    does, leaving every audited write naming the transport while the suite
+    stays green.
     """
 
     async def test_the_bound_user_is_who_the_write_names(self) -> None:

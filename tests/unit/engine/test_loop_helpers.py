@@ -384,11 +384,11 @@ class TestCheckResponseErrors:
         self,
         sample_agent_context: AgentContext,
     ) -> None:
-        """A live run failed every task on "LLM returned error on turn N".
+        """ "LLM returned error on turn N" is not a diagnosis.
 
         The turn number and the finish reason do not distinguish an unserved
         model from a rate limit from a context overflow; only the body the
-        provider sent back does, and it was being dropped.
+        provider sent back does.
         """
         response = CompletionResponse(
             content="context length 131072 exceeded by 4210 tokens",

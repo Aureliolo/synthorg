@@ -187,10 +187,10 @@ def check_response_errors(
     failing turn's token usage so callers see accurate totals.
 
     A provider that reports its failure in a response rather than by raising
-    still says why in that response, and dropping it left a live run with
-    "LLM returned error on turn 2" and no way to tell an unserved model from
-    a rate limit. The sibling exception path already carries its cause; this
-    one now does too.
+    still says why in that response. Dropping it leaves the reason as "LLM
+    returned error on turn N", with no way to tell an unserved model from a
+    rate limit, so the cause travels here exactly as it does on the sibling
+    exception path.
     """
     if response.finish_reason not in (
         FinishReason.CONTENT_FILTER,

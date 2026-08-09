@@ -548,8 +548,8 @@ class TestNormalizeEmptyFinish:
 
     def test_reasoning_only_turn_is_not_empty(self) -> None:
         # A reasoning model can spend a whole turn on its thinking channel.
-        # Calling that an error killed a live task on turn 48 of 50 and threw
-        # away the forty-seven turns before it.
+        # Calling that an error ends the run and throws away every turn
+        # before it.
         result = normalize_empty_finish(
             content=None,
             reasoning="weighing two layouts before writing the file",

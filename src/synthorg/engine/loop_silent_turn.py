@@ -3,9 +3,8 @@
 A reasoning model answers on two channels, and its visible one can come back
 empty: the turn's token budget went entirely to reasoning. That is not the
 agent finishing and not the provider failing, so ending the run there throws
-away every turn before it. A live run died exactly this way on turn 48 of 50,
-forty-seven productive turns discarded because the forty-eighth said nothing
-out loud.
+away every productive turn before it because the latest one said nothing out
+loud.
 
 The correction fires at most once in a row: a second silent turn straight
 after it falls through, so the run ends on its own guards rather than looping.

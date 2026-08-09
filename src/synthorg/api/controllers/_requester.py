@@ -12,14 +12,11 @@ def extract_requester() -> str:
     """Return the id of the user driving this request.
 
     Reads the request-scoped binding :class:`AuthContextMiddleware` installs,
-    which is where the authenticated user actually is. The previous lookup
-    went to the application ``State`` for a ``_connection_user`` attribute
-    that nothing sets, so it missed on every request, including fully
-    authenticated ones: every audited write recorded ``"api"`` in place of
-    the operator, and the warning meant to make an auth misconfiguration
-    visible fired on every single call instead of on a real one. A live
-    teardown wrote twenty-six deletion records naming a transport rather
-    than the person who ordered them.
+    which is where the authenticated user actually is. Looking anywhere else
+    misses on every request, including fully authenticated ones, and an
+    audited write that misses records the transport in place of the operator
+    while the warning meant to make an auth misconfiguration visible fires on
+    every call instead of on a real one.
 
     Returns:
         The authenticated user id.

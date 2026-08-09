@@ -81,12 +81,11 @@ _NO_VERDICT_SUBMITTED: Final[str] = (
 
 #: The one correction a panellist gets. A session that answered in prose has
 #: not abstained: it holds exactly one tool and reviewing means calling it.
-#: Three live runs produced four-of-four ``no_verdict`` panels, every plan
-#: reaching its human gate with zero quality signal, because a session that
-#: terminated ``COMPLETED`` without using its only tool was recorded as an
-#: absent opinion rather than corrected. The planning session next door
-#: already works this way: it rejects an invalid submission as a correctable
-#: error and the session resubmits.
+#: Recording that as an absent opinion sends the plan to its human gate with
+#: no quality signal at all, and does so for every panellist at once, because
+#: they all fail the same way. The planning session next door already works
+#: this way: it rejects an invalid submission as a correctable error and the
+#: session resubmits.
 _RESUBMIT_PROMPT: Final[str] = (
     "You have not submitted a review. Prose is not a verdict: this session "
     "holds exactly one tool, submit_plan_review, and reviewing means calling "

@@ -72,8 +72,8 @@ def _is_unmapped_model(exc: Exception) -> bool:
     That is an ordinary condition for a self-hosted or newly-released model
     and the caller already handles it by falling back to config defaults, so
     it belongs at INFO alongside the other "no metadata" answers. Logged as
-    an unexpected error it fired on every single completion: a live run
-    produced hundreds of warnings that said nothing was wrong.
+    an unexpected error it fires on every single completion, burying the
+    warnings that do mean something under ones that do not.
 
     Returns:
         Whether the exception is the unmapped-model miss.

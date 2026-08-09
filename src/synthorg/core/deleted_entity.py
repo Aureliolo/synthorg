@@ -2,10 +2,10 @@
 """What a deleted row was, so the records that name it still make sense.
 
 Spend, metrics, approvals and decision records all name the task they are
-about. Pinning the task with a foreign key made every one of them a reason
-the task could never be removed: a live run could not delete a project
-because one of its tasks had once spent money, and the delete failed with a
-constraint name rather than an explanation.
+about. Pinning the task with a foreign key makes every one of them a reason
+the task can never be removed: a project cannot be deleted because one of
+its tasks once spent money, and the delete fails with a constraint name
+rather than an explanation.
 
 Dropping the pin alone would trade that for a worse problem, an id that
 resolves to nothing. So the id stays exactly as written and a tombstone

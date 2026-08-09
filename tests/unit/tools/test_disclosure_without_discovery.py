@@ -4,12 +4,11 @@ Progressive disclosure sends only what an agent has loaded plus the three
 discovery tools it loads more with. Without those three there is no way to
 load anything, so an unloaded tool is not deferred, it is unreachable.
 
-Three live runs lost every plan-review verdict to that gap. The panellist
-held exactly one tool, ``submit_plan_review``, nothing was loaded, no
-discovery tool existed to load it with, and the provider was called with no
-tools at all. Four reviewers on four different models each answered in prose
-and were recorded as having no opinion, because the only thing they could
-have done was never offered.
+A plan-review panellist is the sharp edge: it holds exactly one tool,
+``submit_plan_review``, nothing is loaded, and no discovery tool exists to
+load it with, so the provider is called with no tools at all. The reviewer
+answers in prose and is recorded as having no opinion, because the only
+thing it could have done was never offered.
 """
 
 from typing import override

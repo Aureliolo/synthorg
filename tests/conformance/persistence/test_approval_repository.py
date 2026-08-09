@@ -122,12 +122,11 @@ class TestApprovalRepository:
         migration chain: a backend whose ``source`` constraint omits a
         value rejects the save here rather than silently in prod.
 
-        The cases come from the enum, never a hand-written list. A list
-        is a second copy of the enum that no one updates: this one said
-        "every source" while naming four of five, so ``plan_review`` was
-        absent from the schema CHECK *and* from the test meant to catch
-        that, and every plan reaching human review failed to persist its
-        approval.
+        The cases come from the enum, never a hand-written list. A list is
+        a second copy of the enum that no one updates, and a stale one says
+        "every source" while omitting the newest: the schema CHECK and the
+        test meant to catch it then go stale together, and every approval
+        on the missing source fails to persist.
         """
         repo = _approval_repo(backend)
         item = _make_item(approval_id=f"src-{source.value}", source=source)

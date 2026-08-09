@@ -205,10 +205,10 @@ def _reassemble_response(
     through the same helper the non-streaming driver uses, so the built
     response is well-formed and the loop applies its own error handling.
 
-    Through that helper rather than a second copy of the rule: this path had
-    its own, which meant a streamed empty turn became a bare ``ERROR`` with no
-    record that it was empty. A live task failed on turn 48 and the log said
-    only that the LLM returned an error.
+    Through that helper rather than a second copy of the rule: a copy drifts,
+    and the drift here turns a streamed empty turn into a bare ``ERROR`` whose
+    log says only that the LLM returned an error, with no record that the turn
+    was empty.
 
     Reasoning is kept as its own field rather than merged into *content*: it is
     the model's working, and replaying it back as assistant content changes

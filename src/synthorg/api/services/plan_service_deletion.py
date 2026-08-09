@@ -89,9 +89,9 @@ class PlanDeletionMixin:
         A decided plan is retained because it records what was decided, and a
         record is about a subject. Once the project is gone the record answers
         nothing, and the only route that may remove a decided plan is the
-        project's own teardown, which can never run again. A live run left two
-        SUPERSEDED plans naming deleted projects: unreachable by every route,
-        and holding their objective tasks undeletable with them.
+        project's own teardown, which can never run again: the plan would be
+        unreachable by every route, holding its objective task undeletable
+        with it.
 
         A read failure answers ``True``. The alternative would let a transient
         outage open the delete on a plan whose project is sitting there, which
@@ -184,12 +184,11 @@ class PlanDeletionMixin:
         a SUPERSEDED plan that names a 404 preserves nothing readable while
         making the row unreachable and unremovable by any route.
 
-        A live run proved the shape: project delete returned 204, retired
-        each plan, and left two SUPERSEDED plans and their objective tasks
-        permanently in the system, each pointing at a project that no
-        longer resolved. Which children survived depended on nothing more
-        principled than whether the plan had items, because that is what
-        chooses SUPERSEDED over FAILED.
+        Retiring alone leaves the plan and its objective task permanently in
+        the system, each pointing at a project that no longer resolves, and
+        which children survive depends on nothing more principled than
+        whether the plan had items, because that is what chooses SUPERSEDED
+        over FAILED.
 
         The live-work guard still applies: it is one conditional statement
         in the repository, so a task filed between the check and the delete

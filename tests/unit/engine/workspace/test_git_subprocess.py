@@ -253,8 +253,9 @@ async def test_thread_fallback_separates_spawn_error_from_missing_binary() -> No
 async def test_native_path_reports_missing_git() -> None:
     """The native spawn path classifies a missing binary the same way.
 
-    The dogfood failure took this branch, not the thread fallback, and
-    reported it as an indistinguishable ``rc=-1``.
+    This is the branch a real spawn takes, not the thread fallback, and it
+    is where a missing binary would otherwise surface as an
+    indistinguishable ``rc=-1``.
     """
     with patch(
         "asyncio.create_subprocess_exec",

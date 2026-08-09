@@ -61,10 +61,9 @@ bounds an ordinary run is its cost ceiling, its stagnation detector and its
 stage timeout, each of which stops a run that is spending without
 progressing. The turn cap only has to sit above what real work takes.
 
-It did not. At 20 an agent building one layer of a browser game ran out of
-turns four times out of five in a live run, having written real files, and
-every one of those runs was discarded. Twenty is a chat-assistant number; a
-build agent spends that reading the code before it edits anything.
+Twenty is a chat-assistant number: a build agent spends that reading the
+code before it edits anything, so it ran out mid-build with real files
+written and the run was discarded.
 
 Fallback when ``engine.max_turns`` is not resolvable; the operator-tunable
 value flows through that setting (see ``AgentEngine._resolve_max_turns``)."""

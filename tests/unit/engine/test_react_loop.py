@@ -1327,8 +1327,8 @@ class TestReactLoopNoOpFailLoud:
     ) -> None:
         """An agent that answered in prose gets one chance to deliver.
 
-        A live run lost a whole plan item to this: the agent answered on
-        turn 1 of 20 and the task was failed with nineteen turns unused.
+        Without it the zero-artifact guard fires on turn 1 and the task is
+        failed with its whole budget unused.
         """
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria
@@ -1416,9 +1416,9 @@ class TestReactLoopNoOpFailLoud:
     ) -> None:
         """A turn that produced only reasoning gets the run's next turn.
 
-        A live run died on turn 48 of 50 this way: the model spent the turn's
-        whole token budget thinking, the visible channel came back empty, and
-        the loop discarded forty-seven productive turns with it.
+        The model spends the turn's whole token budget thinking, the visible
+        channel comes back empty, and ending there discards every productive
+        turn before it.
         """
         ctx = self._work_context(
             sample_agent_with_personality, sample_task_with_criteria

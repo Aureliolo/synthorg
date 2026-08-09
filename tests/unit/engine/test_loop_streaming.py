@@ -199,9 +199,8 @@ class TestStreamProviderReassembly:
     ) -> None:
         """The streamed turn reports it, like the non-streamed one does.
 
-        This path carried its own copy of the normalisation and none of the
-        reporting, so a live task that produced an empty turn 48 failed with
-        "LLM returned error on turn 48" and nothing anywhere saying the
+        A copy of the normalisation without the reporting fails the turn as
+        "LLM returned error on turn N", with nothing anywhere saying the
         completion had simply come back empty.
         """
         with structlog.testing.capture_logs() as logs:

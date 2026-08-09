@@ -209,12 +209,10 @@ def test_normalize_mcp_tool_label_folds_unregistered_name() -> None:
 class TestTheAgentToolNameAllowlist:
     """Published by the registries, not pulled on a scrape.
 
-    The pull read ``app_state.tool_registry``, an attribute ``AppState``
-    does not have, so ``getattr`` resolved it to ``None``, the fetcher
-    reported the empty set as a successful read, and every tool
-    invocation was rejected for the life of the process. A live run
-    logged two warnings per tool call and recorded no per-tool metric at
-    all.
+    A pull through ``getattr`` resolves a misnamed attribute to ``None``,
+    the fetcher reports the empty set as a successful read, and every tool
+    invocation is then rejected for the life of the process: two warnings
+    per tool call and no per-tool metric at all.
     """
 
     def test_bootstrap_rejects_every_name(self) -> None:

@@ -87,9 +87,8 @@ class TestGetLoadedDefinitions:
     def test_no_discovery_tool_means_no_deferral(self) -> None:
         """Without a way to load, deferring makes a tool uncallable.
 
-        A live run lost every plan-review verdict here: the panellist held
-        one tool and no discovery tool, so nothing was offered and it could
-        only answer in prose.
+        A session holding one tool and no discovery tool is offered nothing
+        at all, so it can only answer in prose.
         """
         invoker = _build_invoker()
         defs = invoker.get_loaded_definitions(frozenset())
