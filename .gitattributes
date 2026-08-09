@@ -22,6 +22,15 @@ src/synthorg/persistence/sqlite/schema.sql text eol=lf
 src/synthorg/persistence/postgres/revisions/*.sql text eol=lf
 src/synthorg/persistence/postgres/schema.sql text eol=lf
 
+# Vulnerability triage -- Trivy reads the rendered documents and cosign signs
+# the OpenVEX one as an attestation predicate, so what is on disk is the
+# artefact, byte for byte. `text=auto` with the default core.eol=native hands
+# a Windows checkout CRLF, which would sign different bytes than were
+# reviewed. scripts/check_vex_triage_sync.py compares bytes and reports a
+# CRLF checkout by name, so this pin is enforced rather than assumed.
+.github/vex/* text eol=lf
+.github/.trivyignore.yaml text eol=lf
+
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 

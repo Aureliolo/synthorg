@@ -165,6 +165,22 @@ jobs:
           # code. Excluding it narrows the noise band that has repeatedly
           # produced phantom regressions. Scoped to simulation results only,
           # so the `memory` instrument's allocation counts are untouched.
+          #
+          # This input first bound on 2026-08-08 with action v5.0.2, the first
+          # release to declare it; before that it was passed and logged as an
+          # unexpected input on every run, so the numbers only narrowed from
+          # that date. CodSpeed reports that boundary as "not directly
+          # comparable", which is correct and one-off.
+          #
+          # Cycle estimation is a SEPARATE boundary and is deliberately not
+          # pinned here. The runner enables it by default from v5.0.1 (arrived
+          # 2026-08-01), and the action forwards `--cycle-estimation` only when
+          # the input is non-empty, so leaving it unset is what keeps the more
+          # accurate weighting on. Pinning it false would restore continuity
+          # with nothing: everything before 2026-08-01 was measured by the v4
+          # runner, which CodSpeed separately declares incomparable, and
+          # everything since is cycle-estimated. It would create a third
+          # baseline and measure less accurately to do it.
           exclude-allocations: "true"
           # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
           # pytest-codspeed must run serial for deterministic measurements.

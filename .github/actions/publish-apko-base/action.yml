@@ -310,10 +310,16 @@ runs:
     # ~nine attestation-bearing publish jobs fan out in parallel and, when two
     # main-push runs overlap, briefly exceed the secondary limit; that limit
     # clears within ~a minute, so a 15s/30s ladder retried too soon to help.
+    #
+    # NODE_OPTIONS raises node's 16 KB cap on the headers of a single
+    # response: `push-to-registry` talks to an OCI registry, and registries
+    # have answered with more than that.
     - name: Attest build provenance (SLSA Level 3, attempt 1)
       id: attest_base_1
       continue-on-error: true
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -328,7 +334,9 @@ runs:
       if: steps.attest_base_1.outcome == 'failure'
       id: attest_base_2
       continue-on-error: true
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -341,7 +349,9 @@ runs:
 
     - name: Attest build provenance (SLSA Level 3, final attempt)
       if: steps.attest_base_2.outcome == 'failure'
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
         subject-digest: ${{ steps.push.outputs.digest }}

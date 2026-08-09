@@ -161,6 +161,16 @@
     },
     {
       "customType": "regex",
+      "description": "PyPI package version env vars in CI workflows. A workflow that needs one library without the project's whole dependency graph installs it with `uv run --with <pkg>==$VERSION`; that pin resolves inside the image-publish jobs that sign artefacts, so it must not float, and this manager is what keeps a non-floating pin from going stale instead.",
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=pypi depName=(?<depName>[^\\s]+)\\n\\s*[A-Z0-9_]+_VERSION[:=]\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    },
+    {
+      "customType": "regex",
       "description": "go install binary versions in CI workflows and local dev setup scripts",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/", "/scripts/install_.*\\.sh$/"],
       "matchStrings": [

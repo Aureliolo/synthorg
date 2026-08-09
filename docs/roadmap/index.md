@@ -66,7 +66,7 @@ provider, zero LLM spend, unless noted):
   agent-initiated invites and direct MCP acting are off by default.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
-  with CSRF protection, Wolfi apko-composed distroless images, Trivy + Grype
+  with CSRF protection, Wolfi apko-composed distroless images, Trivy
   scanning, cosign signatures, and SLSA L3 provenance.
 - **Product studio substrate**: persistent project workspace with pluggable
   git, brownfield codebase intake, living documentation, and a deep

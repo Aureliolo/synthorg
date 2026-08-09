@@ -121,6 +121,7 @@ def test_expected_pattern_matches_the_real_constants(gate: ModuleType) -> None:
 @pytest.mark.parametrize(
     ("label", "step"),
     [
+        ("attest", "- uses: actions/attest@0f67c3f"),
         ("attest_build_provenance", "- uses: actions/attest-build-provenance@0f67c3f"),
         ("attest_sbom", "- uses: actions/attest-sbom@0f67c3f"),
         ("cosign_sign", '- run: cosign sign --yes "${IMAGE}"'),
