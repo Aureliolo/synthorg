@@ -30,9 +30,11 @@ from synthorg.engine.artifacts.expected_artifact_check import (
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.loop_turn_budget import TURN_CEILING_METADATA_KEY
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_sync_review import create_review_approval
+from synthorg.engine.task_sync_turn_ceiling import raise_turn_ceiling_approval
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:
@@ -239,13 +241,27 @@ async def apply_post_execution_transitions(
     if reason == TerminationReason.PARKED and (
         execution_result.metadata.get("clarification") is True
         or execution_result.metadata.get("decision") is True
+        or execution_result.metadata.get(TURN_CEILING_METADATA_KEY) is True
     ):
-        # Both a clarification question and an execution-time decision fork
-        # wait on the operator, so the task parks in AWAITING_INPUT until the
-        # human answers / picks an option; the resume path moves it back.
-        return await transition_to_awaiting_input(
+        # A clarification question, an execution-time decision fork and a
+        # spent turn budget all wait on the operator, so the task parks in
+        # AWAITING_INPUT until the human answers; the resume path moves it
+        # back. The first two arrive with an approval the agent already
+        # raised through its tool; a spent budget has no such author, so the
+        # question is raised here. Without it the task would sit in
+        # AWAITING_INPUT with nothing in the queue to answer it, which is a
+        # quieter deadlock than the failure this replaced.
+        parked = await transition_to_awaiting_input(
             execution_result, ctx, agent_id, task_id, task_engine
         )
+        if execution_result.metadata.get(TURN_CEILING_METADATA_KEY) is True:
+            await raise_turn_ceiling_approval(
+                ctx,
+                agent_id=agent_id,
+                task_id=task_id,
+                approval_store=approval_store,
+            )
+        return parked
 
     move = _Move(
         execution_result=execution_result,

@@ -1020,6 +1020,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="max_turn_extensions",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "How many further turn budgets a run may grant itself before it"
+            " parks for a human. Reaching the cap usually means the work was"
+            " bigger than the estimate, so the common case carries on rather"
+            " than interrupting anyone; once these are spent the run parks"
+            " with its workspace intact and asks whether to continue. Zero"
+            " restores the old behaviour, where the first ceiling ends the"
+            " run and its work is discarded."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="task_engine_max_queue_size",
         type=SettingType.INTEGER,
         default="1000",

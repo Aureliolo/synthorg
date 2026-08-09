@@ -69,6 +69,17 @@ build agent spends that reading the code before it edits anything.
 Fallback when ``engine.max_turns`` is not resolvable; the operator-tunable
 value flows through that setting (see ``AgentEngine._resolve_max_turns``)."""
 
+DEFAULT_MAX_TURN_EXTENSIONS: Final[int] = 3
+"""How many further turn budgets a run may grant itself before it parks.
+
+Reaching the cap usually means the work was bigger than the estimate, not
+that anything is wrong, so the common case is answered by carrying on rather
+than by interrupting a human. Bounded, because a run that has taken four
+full budgets is no longer a long task, it is a question; at that point the
+run parks with its workspace intact and asks whether to continue.
+
+Zero restores the old behaviour: the first ceiling ends the run."""
+
 
 class AgentContext(BaseModel):
     """Frozen runtime context for agent execution.
@@ -131,6 +142,16 @@ class AgentContext(BaseModel):
         default=DEFAULT_MAX_TURNS,
         gt=0,
         description="Hard turn limit",
+    )
+    turn_extensions_remaining: int = Field(
+        default=DEFAULT_MAX_TURN_EXTENSIONS,
+        ge=0,
+        description="Further turn budgets this run may grant itself",
+    )
+    turn_extensions_granted: int = Field(
+        default=0,
+        ge=0,
+        description="Further turn budgets this run has already taken",
     )
     cost_ceiling: float | None = Field(
         default=None,
@@ -223,6 +244,7 @@ class AgentContext(BaseModel):
         *,
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        turn_extensions: int = DEFAULT_MAX_TURN_EXTENSIONS,
         context_capacity_tokens: int | None = None,
         cost_ceiling: float | None = None,
     ) -> AgentContext:
@@ -232,6 +254,9 @@ class AgentContext(BaseModel):
             identity: The frozen agent identity card.
             task: Optional task to bind to this execution.
             max_turns: Maximum number of LLM turns allowed.
+            turn_extensions: How many further turn budgets the run may grant
+                itself before parking for a human. Zero ends the run at the
+                first ceiling.
             context_capacity_tokens: Model's max context window
                 tokens, or ``None`` when unknown.
             cost_ceiling: Optional per-session cost ceiling. Passed through
@@ -247,6 +272,7 @@ class AgentContext(BaseModel):
             identity=identity,
             task_execution=task_execution,
             max_turns=max_turns,
+            turn_extensions_remaining=turn_extensions,
             started_at=datetime.now(UTC),
             context_capacity_tokens=context_capacity_tokens,
             cost_ceiling=cost_ceiling,

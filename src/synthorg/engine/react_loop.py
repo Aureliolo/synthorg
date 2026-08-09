@@ -72,6 +72,7 @@ from .loop_tool_execution import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
+from .loop_turn_budget import ceiling_result, grant_extension
 
 logger = get_logger(__name__)
 
@@ -278,7 +279,19 @@ class ReactLoop:
         corrections_injected = 0
         effective_observer = turn_observer or self._turn_observer
 
-        while ctx.has_turns_remaining:
+        # Bounded by the turn budget and its extensions; every iteration
+        # re-checks shutdown, task cancellation and the cost budget below.
+        # lint-allow: long-running-loop-kill-switch -- turn-budget bounded
+        while True:
+            if not ctx.has_turns_remaining:
+                # The ceiling is a backstop against a pathological loop, not
+                # a verdict on work that is taking longer than the estimate.
+                # Carry on while there are extensions left; park only once
+                # they are spent, so nothing is discarded either way.
+                extended = grant_extension(ctx)
+                if extended is None:
+                    break
+                ctx = extended
             shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
             if shutdown_result is not None:
                 return await self._attach_whole_run_signals(shutdown_result, turns)
@@ -369,14 +382,8 @@ class ReactLoop:
             if compacted is not None:
                 ctx = compacted
 
-        logger.info(
-            EXECUTION_LOOP_TERMINATED,
-            execution_id=ctx.execution_id,
-            reason=TerminationReason.MAX_TURNS.value,
-            turns=len(turns),
-        )
         return await self._attach_whole_run_signals(
-            build_result(ctx, TerminationReason.MAX_TURNS, turns),
+            ceiling_result(ctx, turns),
             turns,
         )
 

@@ -305,9 +305,11 @@ class TestReactLoopMaxTurns:
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """With extensions disabled, the first ceiling still ends the run."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             max_turns=2,
+            turn_extensions=0,
         )
         ctx = _ctx_with_user_msg(ctx)
         # Both turns request tools, never stops
@@ -329,6 +331,35 @@ class TestReactLoopMaxTurns:
         assert result.termination_reason == TerminationReason.MAX_TURNS
         assert len(result.turns) == 2
         assert result.context.turn_count == 2
+
+    async def test_the_ceiling_extends_before_it_stops(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A run with extensions left carries on past its first ceiling.
+
+        The work is what matters, not the estimate that sized the budget.
+        """
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            max_turns=2,
+            turn_extensions=1,
+        )
+        ctx = _ctx_with_user_msg(ctx)
+        provider = mock_provider_factory(
+            [_tool_use_response("echo", f"tc-{n}") for n in range(1, 4)]
+        )
+        invoker = _make_invoker("echo")
+
+        result = await ReactLoop().execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert len(result.turns) > 2, "the run stopped at its original ceiling"
+        assert result.context.turn_extensions_granted == 1
 
 
 @pytest.mark.unit

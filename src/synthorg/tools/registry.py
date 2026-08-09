@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from types import MappingProxyType
 from typing import Final
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
@@ -120,13 +121,14 @@ class ToolRegistry:
             Up to ``_MAX_SUGGESTIONS`` candidates, best first, or empty when
             nothing resembles *name*.
         """
-        wanted = name.strip().lower()
+        wanted = normalize_ascii_lowercase(name)
         if not wanted:
             return ()
         ranked: list[str] = [
             candidate
             for candidate in sorted(self._tools)
-            if wanted in candidate.lower().split(".") or wanted in candidate.lower()
+            if wanted in normalize_ascii_lowercase(candidate).split(".")
+            or wanted in normalize_ascii_lowercase(candidate)
         ]
         for candidate in difflib.get_close_matches(
             wanted, sorted(self._tools), n=_MAX_SUGGESTIONS

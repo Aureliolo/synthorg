@@ -6,6 +6,8 @@ connected it to ``memory.search``, and terminated on ``max_turns`` having
 delivered nothing. The registry knew the answer and buried it in a list.
 """
 
+from typing import override
+
 import pytest
 
 from synthorg.security.autonomy.enums import ToolCategory
@@ -27,6 +29,7 @@ class _Named(BaseTool):
             category=ToolCategory.ANALYTICS,
         )
 
+    @override
     async def execute(self, **kwargs: object) -> ToolExecutionResult:
         del kwargs
         return ToolExecutionResult(content="ok")
