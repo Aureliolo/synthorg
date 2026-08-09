@@ -1,0 +1,33 @@
+# Every vulnerability this project has assessed and chosen not to fix, and the
+# only place one is ever silenced. `scripts/generate_vex_documents.py` renders
+# it into the two files scanners actually read, and
+# `scripts/check_vex_triage_sync.py` fails the push when either has drifted,
+# when an entry is malformed, or when a re-review date has passed.
+#
+# An entry's `status` decides which file it reaches, and no entry reaches both:
+#
+#   not_affected  The vulnerable component ships but cannot be exploited
+#                 through this product. VEX expresses exactly that, so the
+#                 entry becomes an OpenVEX statement published as an
+#                 attestation on every image; a consumer picks it up with
+#                 `trivy image --vex oci <image>` and sees the reasoning
+#                 instead of re-triaging it. Needs an OpenVEX justification
+#                 and at least one purl, because a statement addresses a
+#                 product.
+#
+#   accepted      The product is affected and the risk is accepted anyway.
+#                 VEX has no status for that, so the entry becomes a Trivy
+#                 ignore-file row that only our own scans read. Writing a
+#                 not_affected justification instead would publish a false
+#                 claim under our signature.
+#
+# Every entry carries `re_review_by`. The gate fails the push once that date
+# arrives, which is louder than Trivy's own `expired_at` (it merely stops
+# suppressing, at the next scan, in a log nobody reads).
+#
+# Removal owner for every entry: issue #2202.
+
+author: SynthOrg
+updated: "2026-08-09T00:00:00Z"
+
+entries: []

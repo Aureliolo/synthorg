@@ -22,6 +22,13 @@ src/synthorg/persistence/sqlite/schema.sql text eol=lf
 src/synthorg/persistence/postgres/revisions/*.sql text eol=lf
 src/synthorg/persistence/postgres/schema.sql text eol=lf
 
+# Vulnerability triage -- the ledger and the two files it renders into are
+# compared byte-for-byte by scripts/check_vex_triage_sync.py, and `text=auto`
+# with the default core.eol=native hands a Windows checkout CRLF, which would
+# read as drift on a tree nobody touched.
+.github/vex/* text eol=lf
+.github/.trivyignore.yaml text eol=lf
+
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 

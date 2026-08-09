@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Retry cosign sign / sign-blob on transient registry / Rekor / Fulcio failures.
+# Retry cosign sign / sign-blob / attest on transient registry / Rekor /
+# Fulcio failures.
 #
 # `cosign sign` against a published digest is idempotent: signing the
 # same digest twice either succeeds again or hits a Rekor
 # `createLogEntryConflict` (already-logged) response, which callers
-# treat as success. `cosign sign-blob` over a local file (the keyless
+# treat as success. `cosign attest` over the same digest and the same
+# predicate produces the same DSSE payload, so it lands on that branch
+# too. `cosign sign-blob` over a local file (the keyless
 # CLI-checksums path) is likewise safe to re-run: a retry overwrites the
 # `--bundle` output file and mints a fresh keyless signature over the
 # same bytes, which verifies identically. Transient GHCR/Rekor/Fulcio
@@ -20,12 +23,16 @@
 #   cosign_sign_with_retry.sh sign-blob <file> [cosign args...]
 #     Keyless blob signing. <file> is the local artifact; remaining args
 #     (e.g. --bundle <path>) are forwarded verbatim to `cosign sign-blob`.
+#   cosign_sign_with_retry.sh attest <ref> [cosign args...]
+#     Attach an attestation to a published digest. Remaining args (e.g.
+#     --type openvex --predicate <path>) are forwarded verbatim, and the
+#     ref is passed last, where `cosign attest` expects it.
 #
 # Behaviour:
 #   - Captures combined stdout+stderr of the cosign invocation.
 #   - On exit 0: prints captured output, exits 0.
 #   - On exit non-0:
-#     * (image mode only) Output contains `createLogEntryConflict` ->
+#     * (digest modes only) Output contains `createLogEntryConflict` ->
 #       already signed, emit `::notice::` and exit 0 (a re-sign that lost
 #       the Rekor createLogEntry race is success, not failure).
 #     * Output matches the shared transient regex sourced from
@@ -39,11 +46,14 @@
 set -euo pipefail
 
 # Mode dispatch: a leading `sign-blob` selects keyless blob signing over a
-# local file; the default mode signs a published image digest. Both hit
-# the same Fulcio/Rekor backends, so both share the transient classifier
-# and backoff ladder below. ACTION/SUBJECT drive the log lines; in blob
-# mode the remaining positionals ("$@") are forwarded to cosign verbatim.
-if [ "${1:-}" = "sign-blob" ]; then
+# local file, a leading `attest` attaches an attestation to a published
+# digest, and the default mode signs one. All three hit the same
+# Fulcio/Rekor backends, so all three share the transient classifier and
+# backoff ladder below. ACTION/SUBJECT drive the log lines; in blob and
+# attest mode the remaining positionals ("$@") are forwarded to cosign
+# verbatim.
+case "${1:-}" in
+sign-blob)
   MODE="blob"
   ACTION="cosign sign-blob"
   shift
@@ -52,12 +62,22 @@ if [ "${1:-}" = "sign-blob" ]; then
     exit 2
   fi
   SUBJECT="$1"
-else
+  ;;
+attest)
+  MODE="attest"
+  ACTION="cosign attest"
+  shift
+  REF="${1:?usage: cosign_sign_with_retry.sh attest <ref> [cosign args...]}"
+  shift
+  SUBJECT="$REF"
+  ;;
+*)
   MODE="image"
   ACTION="cosign sign"
-  REF="${1:?usage: cosign_sign_with_retry.sh <ref>   (or: sign-blob <file> [args...])}"
+  REF="${1:?usage: cosign_sign_with_retry.sh <ref>   (or: sign-blob <file> [args...], attest <ref> [args...])}"
   SUBJECT="$REF"
-fi
+  ;;
+esac
 
 # Same regex the docker push helper uses; `--print-transient-re` keeps
 # both scripts in lockstep so a new transient signature added in one
@@ -101,22 +121,22 @@ fi
 for ((i = 1; i <= ATTEMPTS; i++)); do
   out=""
   rc=0
-  if [ "$MODE" = "blob" ]; then
-    out="$(cosign sign-blob --yes "$@" 2>&1)" || rc=$?
-  else
-    out="$(cosign sign --yes "$REF" 2>&1)" || rc=$?
-  fi
+  case "$MODE" in
+  blob) out="$(cosign sign-blob --yes "$@" 2>&1)" || rc=$? ;;
+  attest) out="$(cosign attest --yes "$@" "$REF" 2>&1)" || rc=$? ;;
+  *) out="$(cosign sign --yes "$REF" 2>&1)" || rc=$? ;;
+  esac
   if [ "$rc" -eq 0 ]; then
     printf '%s\n' "$out"
     exit 0
   fi
 
-  # Idempotency branch (image mode only): a re-sign that lost the
+  # Idempotency branch (digest modes only): a re-sign that lost the
   # createLogEntry race is success, not a transient error. Check this
   # BEFORE the regex so attempt 1 -> 5xx -> attempt 2 -> conflict resolves
   # cleanly. sign-blob never produces this response (each call mints a
-  # fresh Rekor entry rather than colliding on a digest), so the branch is
-  # gated to image mode.
+  # fresh Rekor entry rather than colliding on a digest), so the branch
+  # excludes it.
   #
   # Grep a here-string, never `printf "$out" | grep -q`: under `set -o
   # pipefail` a large `$out` (a GHCR 5xx HTML error body easily exceeds
@@ -125,9 +145,9 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # pipeline inherits its non-zero status: the match is masked and a
   # transient error is misclassified as terminal. A here-string is not a
   # pipeline, so the status is purely grep's.
-  if [ "$MODE" = "image" ] && grep -q 'createLogEntryConflict' <<<"$out"; then
+  if [ "$MODE" != "blob" ] && grep -q 'createLogEntryConflict' <<<"$out"; then
     printf '%s\n' "$out"
-    echo "::notice::Image ${SUBJECT} already signed: skipping"
+    echo "::notice::${ACTION} ${SUBJECT}: already recorded in Rekor, skipping"
     exit 0
   fi
 

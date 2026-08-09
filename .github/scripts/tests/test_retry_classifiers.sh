@@ -134,7 +134,7 @@ rc=0
 out="$(PATH="$STUB_DIR:$PATH" \
   COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
   bash "$COSIGN_HELPER" "ghcr.io/example/image@${fake_digest}" 2>&1)" || rc=$?
-if [ "$rc" -eq 0 ] && grep -q 'already signed' <<<"$out"; then
+if [ "$rc" -eq 0 ] && grep -q 'already recorded in Rekor' <<<"$out"; then
   pass "cosign_sign treats createLogEntryConflict as success"
 else
   fail "cosign_sign did not treat createLogEntryConflict as idempotent success (rc=${rc})"
@@ -185,6 +185,90 @@ if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient error' <<
   pass "cosign sign-blob does not retry a genuine non-transient error"
 else
   fail "cosign sign-blob retried a non-transient error (classifier too broad)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# A predicate file for the attest mode cases (cleaned by the STUB_DIR trap).
+vex_file="$STUB_DIR/synthorg.openvex.json"
+printf '{"@context":"https://openvex.dev/ns/v0.2.0","statements":[]}\n' >"$vex_file"
+
+# --- cosign attest mode: a Rekor tlog timeout must be retried -----------
+# The VEX attestation reaches the same Fulcio/Rekor backends as image
+# signing, and it runs in the publish path, so a transient failure there
+# would leave a published image without the triage it claims to carry.
+cat >"$STUB_DIR/cosign" <<STUB
+#!/usr/bin/env bash
+$REKOR_TIMEOUT
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=2 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" attest "ghcr.io/example/image@${fake_digest}" \
+  --type openvex --predicate "$vex_file" 2>&1)" || true
+if grep -q 'hit transient error' <<<"$out" && ! grep -q 'non-transient error' <<<"$out"; then
+  pass "cosign attest retries a Rekor network timeout"
+else
+  fail "cosign attest did not retry a Rekor network timeout (attest mode or Rekor signature broken)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign attest mode: a genuine error must NOT be retried ------------
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "denied: requested access to the resource is denied"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" attest "ghcr.io/example/image@${fake_digest}" \
+  --type openvex --predicate "$vex_file" 2>&1)" || true
+if grep -q 'non-transient error' <<<"$out" && ! grep -q 'hit transient error' <<<"$out"; then
+  pass "cosign attest does not retry a genuine non-transient error"
+else
+  fail "cosign attest retried a non-transient error (classifier too broad)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign attest mode: a re-attested digest is success ----------------
+# Re-attesting the same digest with the same predicate produces the same
+# DSSE payload, so a re-run collides on the Rekor entry exactly as a
+# re-sign does. Treating that as failure would red-light every re-run of
+# an already-published image.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+echo "error: ... createLogEntryConflict: ... already exists"
+exit 1
+STUB
+chmod +x "$STUB_DIR/cosign"
+rc=0
+out="$(PATH="$STUB_DIR:$PATH" \
+  COSIGN_SIGN_RETRY_ATTEMPTS=3 COSIGN_SIGN_RETRY_BACKOFF=0 \
+  bash "$COSIGN_HELPER" attest "ghcr.io/example/image@${fake_digest}" \
+  --type openvex --predicate "$vex_file" 2>&1)" || rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'already recorded in Rekor' <<<"$out"; then
+  pass "cosign attest treats createLogEntryConflict as success"
+else
+  fail "cosign attest did not treat createLogEntryConflict as idempotent success (rc=${rc})"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- cosign attest mode: the ref goes last, the flags stay in order -----
+# `cosign attest` takes the image as its final positional. A helper that
+# forwarded them the other way round would still exit 0 against a stub and
+# only fail against the real binary, in the publish path, after merge.
+cat >"$STUB_DIR/cosign" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*"
+STUB
+chmod +x "$STUB_DIR/cosign"
+out="$(PATH="$STUB_DIR:$PATH" \
+  bash "$COSIGN_HELPER" attest "ghcr.io/example/image@${fake_digest}" \
+  --type openvex --predicate "$vex_file" 2>&1)" || true
+if grep -q "attest --yes --type openvex --predicate ${vex_file} ghcr.io/example/image@${fake_digest}\$" <<<"$out"; then
+  pass "cosign attest passes the ref last, after the forwarded flags"
+else
+  fail "cosign attest built the wrong argument order"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

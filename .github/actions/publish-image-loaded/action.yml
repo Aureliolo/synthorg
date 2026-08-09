@@ -410,6 +410,90 @@ runs:
           exit 1
         fi
 
+    # The vulnerability triage travels with the image. `not_affected`
+    # assessments live in `.github/vex/triage.yaml` and render into this
+    # OpenVEX document, which is attached as an attestation so that
+    # `trivy image --vex oci <image>` shows a consumer the reasoning instead
+    # of making them re-triage a finding we already investigated.
+    #
+    # An empty document claims nothing, so publishing one would spend a
+    # Sigstore round trip per image to say so.
+    - name: Resolve the VEX triage to publish
+      id: vex
+      shell: bash
+      run: |
+        set -euo pipefail
+        DOC="${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
+        if [ ! -f "$DOC" ]; then
+          echo "::error::VEX document not found at ${DOC}"
+          exit 1
+        fi
+        COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8"))["statements"]))' "$DOC")"
+        if [ "$COUNT" -gt 0 ]; then
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${COUNT} VEX statement(s) with this image"
+        else
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::VEX document carries no statements; nothing to attest"
+        fi
+
+    - name: Attest VEX triage
+      if: steps.vex.outputs.publish == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        bash "${GITHUB_WORKSPACE}/.github/scripts/cosign_sign_with_retry.sh" attest \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" \
+          --type openvex \
+          --predicate "${GITHUB_WORKSPACE}/.github/vex/synthorg.openvex.json"
+
+    # An attestation that failed to land leaves the image claiming a triage
+    # it does not carry, and the consumer's scanner reports findings we
+    # promised were answered. cosign resolves the attestation the same way
+    # that scanner will, which no referrer-index probe can promise.
+    #
+    # The identity is pinned to the two reusable workflows that can reach
+    # this composite. A third caller would fail here, which is the same
+    # thing `check_signing_identity_pins.py` says about a new signing path.
+    #
+    # GHCR is eventually consistent on the referrer it just accepted, so the
+    # same bounded poll the signature check uses applies (5 attempts,
+    # 2s -> 4s -> 8s -> 16s); a genuinely missing attestation still fails.
+    - name: Verify the VEX attestation
+      if: steps.vex.outputs.publish == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}"
+        SAN_RE='^https://github\.com/Aureliolo/synthorg/\.github/workflows/reusable-publish-image(-loaded)?\.yml@refs/heads/main$'
+        ATTEMPTS=5
+        BACKOFF=2
+        verify() {
+          cosign verify-attestation --type openvex \
+            --certificate-identity-regexp "${SAN_RE}" \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "${REF}" > /dev/null
+        }
+        for ((a = 1; a < ATTEMPTS; a++)); do
+          if verify 2>/dev/null; then
+            echo "✓ OpenVEX attestation present and signed for ${REF}"
+            exit 0
+          fi
+          echo "::warning::OpenVEX attestation for ${REF} not yet verifiable (attempt ${a}/${ATTEMPTS}); GHCR propagation lag, retrying in ${BACKOFF}s"
+          sleep "${BACKOFF}"
+          BACKOFF=$((BACKOFF * 2))
+        done
+        # Final attempt runs with cosign's diagnostics on stderr intact, so a
+        # genuine failure names itself instead of exiting on a swallowed error.
+        verify
+        echo "✓ OpenVEX attestation present and signed for ${REF}"
+
     # Rekor retry ladder (see the cosign-installer ladder above for the
     # full rationale): the attestation writes a Rekor tlog entry against
     # Sigstore's public-good backend, which intermittently times out. Three
@@ -423,10 +507,16 @@ runs:
     # ~nine attestation-bearing publish jobs fan out in parallel and, when two
     # main-push runs overlap, briefly exceed the secondary limit; that limit
     # clears within ~a minute, so a 15s/30s ladder retried too soon to help.
+    #
+    # NODE_OPTIONS raises node's 16 KB cap on the headers of a single
+    # response: `push-to-registry` talks to an OCI registry, and registries
+    # have answered with more than that.
     - name: Attest build provenance (SLSA Level 3, attempt 1)
       id: attest_image_1
       continue-on-error: true
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -441,7 +531,9 @@ runs:
       if: steps.attest_image_1.outcome == 'failure'
       id: attest_image_2
       continue-on-error: true
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}
@@ -454,7 +546,9 @@ runs:
 
     - name: Attest build provenance (SLSA Level 3, final attempt)
       if: steps.attest_image_2.outcome == 'failure'
-      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      env:
+        NODE_OPTIONS: "--max-http-header-size=32768"
       with: # zizmor: ignore[template-injection]
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
         subject-digest: ${{ steps.push.outputs.digest }}

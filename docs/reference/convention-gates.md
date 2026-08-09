@@ -131,6 +131,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_timeout_interval_default_drift.py` | commit+push | boot-resolver + security defaults | full | no | none | harden |
 | `check_vale_ledger_complete.py` | push (CI: vale step) | `.vale.ini` + `.vale/styles/` | full | no | none (no opt-out) | add |
 | `check_verified_completion_paths.py` | push | plan/project transitions + `src/synthorg/` | full | no | none | add |
+| `check_vex_triage_sync.py` | push | `.github/vex/triage.yaml` + the files it renders | full | no | none (no opt-out) | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |
 | `check_workflow_shell_git_commits.py` | commit+push | `.github/workflows/` | staged | yes | none | keep |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |

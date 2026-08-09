@@ -3,10 +3,10 @@ name: Reusable - Publish apko Base
 # The build definition for every apko base-image publish, held in a trusted
 # reusable workflow rather than inline in the caller.
 #
-# That indirection is what the SLSA Build L3 claim rests on.
-# `actions/attest-build-provenance` running inside a directly-triggered
-# workflow attests a build definition the calling workflow itself controls, so
-# the provenance is authentic but not isolated -- GitHub rates that Build L2.
+# That indirection is what the SLSA Build L3 claim rests on. `actions/attest`
+# running inside a directly-triggered workflow attests a build definition the
+# calling workflow itself controls, so the provenance is authentic but not
+# isolated -- GitHub rates that Build L2.
 # Invoked through `workflow_call`, the signed provenance names THIS file as the
 # builder, and a consumer can pin to it:
 #

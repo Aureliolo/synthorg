@@ -114,7 +114,8 @@ runs:
         TAG="sha-${GITHUB_SHA::7}"
         IMAGE_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}"
         trivy image "${IMAGE_REF}" --format json --output "trivy-${IMAGE_NAME}-base.json" \
-          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml \
+          --vex .github/vex/synthorg.openvex.json
 
     - name: Evaluate Trivy results
       shell: bash
@@ -131,7 +132,8 @@ runs:
       run: |
         IMAGE_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${IMAGE_TAG}"
         trivy image "${IMAGE_REF}" --format sarif --output "trivy-${IMAGE_NAME}-base.sarif" \
-          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml \
+          --vex .github/vex/synthorg.openvex.json
 
     - name: Upload SARIF to GitHub Security
       if: always()

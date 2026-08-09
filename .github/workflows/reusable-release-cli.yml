@@ -159,7 +159,7 @@ jobs:
       - name: Attest build provenance (SLSA Level 3, attempt 1)
         id: attest_manifest_1
         continue-on-error: true
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           # subject-checksums treats the file as a manifest: attests every
           # binary archive listed inside it (the primary SLSA L3 attestations).
@@ -174,7 +174,7 @@ jobs:
         if: steps.attest_manifest_1.outcome == 'failure'
         id: attest_manifest_2
         continue-on-error: true
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: cli/dist/checksums.txt
 
@@ -185,7 +185,7 @@ jobs:
 
       - name: Attest build provenance (SLSA Level 3, final attempt)
         if: steps.attest_manifest_2.outcome == 'failure'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: cli/dist/checksums.txt
 
@@ -198,7 +198,7 @@ jobs:
       - name: Attest checksums file provenance (attempt 1)
         id: attest_checksums_1
         continue-on-error: true
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           # subject-path attests the checksums.txt file itself; bundle-path
           # output is uploaded as .sigstore.json for OpenSSF Scorecard scoring.
@@ -213,7 +213,7 @@ jobs:
         if: steps.attest_checksums_1.outcome == 'failure'
         id: attest_checksums_2
         continue-on-error: true
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: cli/dist/checksums.txt
 
@@ -225,7 +225,7 @@ jobs:
       - name: Attest checksums file provenance (final attempt)
         if: steps.attest_checksums_2.outcome == 'failure'
         id: attest_checksums_3
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: cli/dist/checksums.txt
 

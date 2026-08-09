@@ -361,7 +361,8 @@ runs:
         TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format json --output "trivy-${IMAGE_NAME}-${PLATFORM}.json" \
-          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml \
+          --vex .github/vex/synthorg.openvex.json
 
     - name: Evaluate Trivy results
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}
@@ -396,7 +397,8 @@ runs:
         TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format sarif --output "trivy-${IMAGE_NAME}-${PLATFORM}.sarif" \
-          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
+          --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml \
+          --vex .github/vex/synthorg.openvex.json
 
     - name: Upload SARIF to GitHub Security
       if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load.outcome == 'success') }}

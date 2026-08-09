@@ -65,7 +65,7 @@ HTTP_TIMEOUT_SECONDS: Final[int] = 30
 HTTP_OK: Final[int] = 200
 HTTP_NOT_FOUND: Final[int] = 404
 
-# `attest-build-provenance` publishes a sigstore bundle referrer carrying the
+# `actions/attest` publishes a sigstore bundle referrer carrying the
 # predicate type in this annotation.
 PROVENANCE_PREDICATE: Final[str] = "https://slsa.dev/provenance/v1"
 _PREDICATE_ANNOTATION: Final[str] = "dev.sigstore.bundle.predicateType"
@@ -553,12 +553,12 @@ def provenance_present(
 
     A signature proves who pushed the bytes; provenance proves how they were
     built. The project claims SLSA Build L3 on the strength of
-    ``attest-build-provenance``, so verifying the signature alone would leave
+    ``actions/attest``, so verifying the signature alone would leave
     that claim asserted rather than enforced -- an image whose attestation
     step silently failed would still pass.
 
     GHCR does not serve these through the OCI Referrers API; both cosign and
-    ``attest-build-provenance`` publish into the same ``sha256-<hex>`` tag
+    ``actions/attest`` publish into the same ``sha256-<hex>`` tag
     that ``signature_present`` HEADs. That tag is an index whose children are
     the sigstore bundles, so provenance is one GET further: fetch the index
     and look for a child annotated with the SLSA predicate type.
