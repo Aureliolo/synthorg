@@ -32,7 +32,13 @@ def _ctx(**overrides: object) -> AgentContext:
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
-    ctx = AgentContext.from_identity(identity, max_turns=20)
+    # Extensions are asked for, never inherited: a context that did not
+    # request them ends at its first ceiling, so the run under test says so.
+    ctx = AgentContext.from_identity(
+        identity,
+        max_turns=20,
+        turn_extensions=DEFAULT_MAX_TURN_EXTENSIONS,
+    )
     return ctx.model_copy(update=overrides) if overrides else ctx
 
 

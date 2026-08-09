@@ -45,7 +45,10 @@ def continue_silent_turn(
         turn was not silent, no turn remains, or the previous turn already
         earned this correction.
     """
-    if response.content is not None or response.tool_calls:
+    # Falsy, not ``is not None``: the streamed path joins to ``None`` but a
+    # buffered one hands back the empty string the wire carried, and a turn
+    # that said nothing is the same turn either way.
+    if response.content or response.tool_calls:
         return None
     if response.reasoning is None:
         return None

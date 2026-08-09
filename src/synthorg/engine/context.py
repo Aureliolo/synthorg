@@ -144,7 +144,7 @@ class AgentContext(BaseModel):
         description="Hard turn limit",
     )
     turn_extensions_remaining: int = Field(
-        default=DEFAULT_MAX_TURN_EXTENSIONS,
+        default=0,
         ge=0,
         description="Further turn budgets this run may grant itself",
     )
@@ -244,7 +244,7 @@ class AgentContext(BaseModel):
         *,
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
-        turn_extensions: int = DEFAULT_MAX_TURN_EXTENSIONS,
+        turn_extensions: int = 0,
         context_capacity_tokens: int | None = None,
         cost_ceiling: float | None = None,
     ) -> AgentContext:
@@ -255,8 +255,11 @@ class AgentContext(BaseModel):
             task: Optional task to bind to this execution.
             max_turns: Maximum number of LLM turns allowed.
             turn_extensions: How many further turn budgets the run may grant
-                itself before parking for a human. Zero ends the run at the
-                first ceiling.
+                itself before parking for a human. Zero, the default, ends the
+                run at the first ceiling: extensions are task-run policy, and
+                a bounded session (decomposition, a review panellist, a chat
+                action) sets its own cap and never asked to exceed it. Only
+                the task-run path passes the operator's configured value.
             context_capacity_tokens: Model's max context window
                 tokens, or ``None`` when unknown.
             cost_ceiling: Optional per-session cost ceiling. Passed through
