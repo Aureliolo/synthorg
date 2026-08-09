@@ -4,8 +4,10 @@ Immutable after construction.  Provides lookup, membership testing,
 and conversion to a tuple of ``ToolDefinition`` objects for LLM providers.
 """
 
+import difflib
 from collections.abc import Iterable
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.observability import get_logger
@@ -21,6 +23,10 @@ from .base import BaseTool
 from .errors import ToolNotFoundError
 
 logger = get_logger(__name__)
+
+#: Enough to disambiguate a namespaced miss without becoming another wall
+#: of names; the whole point is that the list is short enough to read.
+_MAX_SUGGESTIONS: Final[int] = 4
 
 
 class ToolRegistry:
@@ -79,17 +85,55 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             available = sorted(self._tools) or ["(none)"]
+            suggestions = self._nearest(name)
             logger.warning(
                 TOOL_NOT_FOUND,
                 tool_name=name,
+                suggestions=suggestions,
                 available=available,
             )
+            # Lead with the near-matches. A live run lost an entire task to
+            # this: an agent called 'search' eleven times, was handed all
+            # forty registered names each time, never connected it to
+            # 'memory.search', and burned its whole turn budget. A wall of
+            # names is not an answer to "which one did I mean".
+            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
             msg = (
-                f"Tool {name!r} is not registered. "
+                f"Tool {name!r} is not registered.{hint} "
                 f"Available tools: {', '.join(available)}"
             )
             raise ToolNotFoundError(msg, context={"tool": name})
         return tool
+
+    def _nearest(self, name: str) -> tuple[str, ...]:
+        """Registered names a caller asking for *name* most likely meant.
+
+        Namespaced tools are the common miss (``search`` for
+        ``memory.search``), and those score poorly on edit distance because
+        the prefix dominates, so a segment/substring match is taken first
+        and edit distance only fills the gap.
+
+        Args:
+            name: The name that was not found.
+
+        Returns:
+            Up to ``_MAX_SUGGESTIONS`` candidates, best first, or empty when
+            nothing resembles *name*.
+        """
+        wanted = name.strip().lower()
+        if not wanted:
+            return ()
+        ranked: list[str] = [
+            candidate
+            for candidate in sorted(self._tools)
+            if wanted in candidate.lower().split(".") or wanted in candidate.lower()
+        ]
+        for candidate in difflib.get_close_matches(
+            wanted, sorted(self._tools), n=_MAX_SUGGESTIONS
+        ):
+            if candidate not in ranked:
+                ranked.append(candidate)
+        return tuple(ranked[:_MAX_SUGGESTIONS])
 
     def list_tools(self) -> tuple[str, ...]:
         """Return sorted tuple of registered tool names.

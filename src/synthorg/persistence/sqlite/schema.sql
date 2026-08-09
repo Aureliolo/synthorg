@@ -1491,12 +1491,16 @@ CREATE TABLE approvals (
     risk_level TEXT NOT NULL DEFAULT 'medium' CHECK (
         risk_level IN ('low', 'medium', 'high', 'critical')
     ),
+    -- Every member of ApprovalSource, and nothing else. A missing member
+    -- is not a narrower contract, it is a row the code writes and the
+    -- table refuses: every plan reaching human review failed here, nine
+    -- milliseconds after arriving, because 'plan_review' was absent.
+    -- check_sql_enum_check_constraints.py holds this list to the enum.
     source TEXT NOT NULL DEFAULT 'review_gate' CHECK (
-        -- Matches the Postgres domain so a persistent-SQLite
-        -- ApprovalStore can hold conversational-interface rows.
         source IN (
             'parked_context', 'review_gate',
-            'conversational_intake', 'conversational_invite'
+            'conversational_intake', 'conversational_invite',
+            'plan_review'
         )
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (

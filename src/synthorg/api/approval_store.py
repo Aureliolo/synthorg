@@ -45,7 +45,10 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
-from synthorg.core.persistence_errors import ConstraintViolationError
+from synthorg.core.persistence_errors import (
+    SQLSTATE_UNIQUE,
+    ConstraintViolationError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -178,6 +181,11 @@ class ApprovalStore(ApprovalDurabilityMixin, ApprovalExpirationMixin):
 
         Raises:
             ConflictError: If an item with the same ID already exists.
+            ConstraintViolationError: The durable write was refused for any
+                other reason. Propagated rather than relabelled: only a
+                uniqueness clash means "already exists", and reporting a
+                CHECK or foreign-key failure as a duplicate sends the reader
+                after one that is not there.
         """
         async with self._lock:
             if str(item.id) in self._items:
@@ -201,11 +209,19 @@ class ApprovalStore(ApprovalDurabilityMixin, ApprovalExpirationMixin):
                     raise ConflictError(msg)
                 try:
                     await self._repo.save(item)
-                except ConstraintViolationError:
+                except ConstraintViolationError as exc:
+                    # Only a uniqueness clash means "already exists". Every
+                    # other constraint failure is a different fact about the
+                    # row, and reporting it as a duplicate sends the reader
+                    # after one that was never there: a CHECK that refused
+                    # source='plan_review' surfaced as a phantom duplicate
+                    # while the real cause sat one log line above.
+                    if exc.sqlstate != SQLSTATE_UNIQUE:
+                        raise
                     msg = f"Approval {str(item.id)!r} already exists"
                     logger.warning(
                         API_APPROVAL_CONFLICT,
-                        error="constraint_violation",
+                        error="duplicate_on_write",
                         approval_id=str(item.id),
                     )
                     raise ConflictError(msg) from None

@@ -64,6 +64,9 @@ from synthorg.core.error_taxonomy import (
     category_type_uri,
 )
 from synthorg.core.persistence_errors import (
+    SQLSTATE_FOREIGN_KEY,
+    SQLSTATE_NOT_NULL,
+    SQLSTATE_UNIQUE,
     ArtifactStorageFullError,
     ArtifactTooLargeError,
     ConstraintViolationError,
@@ -608,9 +611,9 @@ def handle_persistence_error(
     )
 
 
-_INTEGRITY_UNIQUE_SQLSTATE = "23505"
-_INTEGRITY_FOREIGN_KEY_SQLSTATE = "23503"
-_INTEGRITY_NOT_NULL_SQLSTATE = "23502"
+_INTEGRITY_UNIQUE_SQLSTATE = SQLSTATE_UNIQUE
+_INTEGRITY_FOREIGN_KEY_SQLSTATE = SQLSTATE_FOREIGN_KEY
+_INTEGRITY_NOT_NULL_SQLSTATE = SQLSTATE_NOT_NULL
 
 
 def _classify_integrity_violation(

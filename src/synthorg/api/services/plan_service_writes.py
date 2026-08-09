@@ -61,11 +61,17 @@ class PlanWriteRecorderMixin:
         """
         if from_status == plan.status:
             return
+        # A failing plan always has a reason: the service refuses the write
+        # without one. Only the separate ``reason`` argument reached the
+        # ledger, so the single transition where a reason is mandatory was
+        # the one recorded as null, and the ledger answered "how did this
+        # plan get here" with silence on the row that mattered most.
+        recorded_reason = reason if reason is not None else plan.failure_reason
         context: dict[str, str] = {}
         if requested_by is not None:
             context["requested_by"] = requested_by
-        if reason is not None:
-            context["reason"] = reason
+        if recorded_reason is not None:
+            context["reason"] = recorded_reason
         logger.info(
             API_PLAN_STATUS_TRANSITIONED,
             plan_id=str(plan.id),
@@ -80,7 +86,7 @@ class PlanWriteRecorderMixin:
             to_status=plan.status,
             entity_version=plan.version,
             requested_by=requested_by,
-            reason=reason,
+            reason=recorded_reason,
         )
 
     async def _persist_update(
