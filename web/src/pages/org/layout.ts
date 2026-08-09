@@ -26,7 +26,15 @@ import {
 
 export type { LayoutOptions } from './layout-shared'
 
-/** Grid fallback when there are no agent leaf nodes to lay out. */
+/**
+ * Grid fallback for a chart with nothing to rank: no department to wrap the
+ * nodes in and no edge to order them by.
+ *
+ * Reached before the operator has created a department, when the canvas holds
+ * a handful of unrelated cards. A chart whose departments are merely unstaffed
+ * does NOT come here: those boxes still carry the order the operator chose and
+ * still need the spine anchored, and this grid can express neither.
+ */
 function layoutEmptyChart(nodes: Node[]): Node[] {
   return nodes.map((n, i) => {
     const major = i % 3
@@ -88,7 +96,7 @@ export function applyDagreLayout(
   } = options
   const cardPadding = cardPaddingFor(density)
 
-  if (!nodes.some((n) => n.type !== 'department' && n.type !== 'owner')) {
+  if (!nodes.some((n) => n.type === 'department') && edges.length === 0) {
     return layoutEmptyChart(nodes)
   }
 

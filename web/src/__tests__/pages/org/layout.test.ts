@@ -4,12 +4,14 @@ import { applyDagreLayout } from '@/pages/org/layout'
 import { getNodeDim } from '@/pages/org/layout-shared'
 import {
   type DeptSpec,
+  OWNER_NODE_ID,
   ROOT_DEPT_NODE_ID,
   layoutOf,
   leftToRight,
   nodeById,
   orgConfig,
   overlaps,
+  pairsOf,
 } from '../../helpers/org-layout'
 
 function makeNode(id: string, opts: Partial<Node> = {}): Node {
@@ -197,8 +199,36 @@ describe('applyDagreLayout on degenerate charts', () => {
     expect(overlaps(nodeById(nodes, 'dept-engineering'), nodeById(nodes, 'dept-sales'))).toBe(false)
   })
 
-  it('falls back to a grid when no agent has been hired yet', () => {
-    const nodes = layoutOf(orgConfig([{ name: 'engineering', members: [] }]))
+  it('lays out an org whose departments are all unstaffed', () => {
+    // The state a freshly set-up company sits in: departments arranged, nobody
+    // hired. It still goes through the real layout, because the boxes carry
+    // the order the operator chose and the grid fallback cannot express it.
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: [] },
+      { name: 'sales', members: [] },
+      { name: 'support', members: [] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    const order = ['dept-engineering', 'dept-sales', 'dept-support']
+    expect(leftToRight(nodes, order)).toEqual(order)
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+      expect(getNodeDim(node).w).toBeGreaterThan(0)
+      expect(getNodeDim(node).h).toBeGreaterThan(0)
+    }
+    for (const [a, b] of pairsOf(order.map((id) => nodeById(nodes, id)))) {
+      expect(overlaps(a, b)).toBe(false)
+    }
+    // The owner still reads as the top of the chart.
+    const owner = nodeById(nodes, OWNER_NODE_ID)
+    for (const id of order) {
+      expect(owner.position.y).toBeLessThan(nodeById(nodes, id).position.y)
+    }
+  })
+
+  it('falls back to a grid before any department exists', () => {
+    const nodes = layoutOf({ company_name: 'Test Corp', agents: [], departments: [] })
     expect(nodes.length).toBeGreaterThan(0)
     for (const node of nodes) {
       expect(Number.isFinite(node.position.x)).toBe(true)

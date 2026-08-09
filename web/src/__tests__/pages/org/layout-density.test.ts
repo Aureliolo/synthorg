@@ -8,7 +8,7 @@ import { cardPaddingFor } from '@/pages/org/layout-shared'
 /**
  * The layout reserves a department card's inner padding before React renders
  * it, so its table has to track `--so-density-card-padding` rather than merely
- * having matched it once. Nothing else compares the two: a density retuned in
+ * having matched it once. Nothing else compares the two: a density adjusted in
  * CSS alone would go on reserving the old value, and the first agent row would
  * crowd the stats bar at exactly the densities that were changed.
  */

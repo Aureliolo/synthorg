@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Node, Edge } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
@@ -170,7 +171,9 @@ function _placeNodes(nodes: readonly Node[], snapshot: LayoutSnapshot): Node[] {
   return nodes.map((node) => {
     const placed = snapshot.get(node.id)
     if (!placed) {
-      log.warn('node missing from the layout snapshot, rendering it unplaced:', node.id)
+      // The id is built from operator-authored department and agent names.
+      log.warn('node missing from the layout snapshot, rendering it unplaced:',
+        sanitizeForLog(node.id))
       return node
     }
     const next: Node = { ...node, position: placed.position }
