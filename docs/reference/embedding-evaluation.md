@@ -1,6 +1,6 @@
 ---
 title: Embedding Model Evaluation
-description: LMEB-guided embedding model selection for agent memory retrieval, with taxonomy mapping and fine-tuning pipeline design.
+description: LMEB-guided embedding model selection for agent memory retrieval, with taxonomy mapping, fine-tuning pipeline design, and the measured torch.compile result for the local embedder.
 ---
 
 # Embedding Model Evaluation
@@ -186,6 +186,97 @@ Entries themselves survive a width change: rows, tags, and the lexical index are
 width-independent, so recall degrades to lexical-only for the older entries rather than
 losing them. Re-embedding restores semantic recall. Plan model selection before the
 first production deployment regardless.
+
+---
+
+## Local embedder and torch.compile
+
+This section covers the **in-process** embedder
+(`memory/embedding/sentence_transformer.py`), which the meeting conflict
+detector selects through `embedder_strategy`. It is not `memory.embedder_model`:
+that binding dispatches over HTTP through LiteLLM and loads no local model.
+
+sentence-transformers 5.7.0 routes `encode()` through `nn.Module.__call__`,
+which is where `torch.compile` installs its compiled path. Earlier versions
+called `forward()` directly, so `compile()` was a silent no-op for inference.
+That raised the question of whether the embedder should compile itself. The
+answer is measured rather than assumed, because this embedder encodes a single
+string per call: the shape where compilation gains most, and also the shape
+where a very small model loses, since its inference is dominated by
+tokenisation and Python overhead.
+
+### Method
+
+Arms are timed in **pairs**: eager and the candidate alternate inside one loop,
+so drift in machine load falls on both equally. Running arms one after another
+instead scored one arm at 0.96x that a paired run scored at 1.19x, which would
+have inverted the conclusion. Warm-up is reported rather than folded away,
+because lazy compilation makes it the other half of the trade. Compiled vectors
+are compared against eager, because a speedup that changes what the embedder
+returns is not a speedup.
+
+Re-run with `scripts/measure_embedder_compile.py`, which needs the
+`fine-tune-cpu` or `fine-tune-gpu` group and a C++ compiler for Inductor.
+
+### Results
+
+Model `all-MiniLM-L6-v2` (about 22M parameters, 384 dimensions), batch size 1,
+`torch` 2.13.0, sentence-transformers 5.7.0, over a corpus of meeting titles
+and agendas spanning 1 to 14 words.
+
+CPU, in a 4-vCPU container with 2 `torch` threads, 140 timed calls per arm.
+Warm-up is omitted from this table because these three arms were re-run
+interleaved to cancel machine drift, and that run measured latency only; the
+warm-up figures quoted below come from the sequential CPU run of the same
+arms, which measured 10.8 s for `dynamic=True` and 25.5 s for `dynamic=auto`:
+
+| arm | median ms | p90 ms | speedup |
+|---|---|---|---|
+| eager | 11.357 | 13.557 | 1.00x |
+| default, `dynamic=auto` | 9.382 | 11.714 | 1.21x |
+| default, `dynamic=True` | 9.527 | 12.103 | 1.19x |
+
+CUDA, on an RTX 4090:
+
+| arm | eager ms | compiled ms | speedup | warm-up s | cosine |
+|---|---|---|---|---|---|
+| fp32 default, `auto` | 9.984 | 7.477 | 1.34x | 18.5 | 1.000000 |
+| fp32 default, `dynamic=True` | 11.142 | 8.291 | 1.34x | 7.5 | 1.000000 |
+| fp32 reduce-overhead, `dynamic=True` | 10.756 | 3.637 | 2.96x | 10.6 | 1.000000 |
+| bf16 reduce-overhead, `dynamic=True` | 9.510 | 3.872 | 2.46x | 9.6 | 0.999964 |
+| bf16 default, `dynamic=True` | 11.359 | 8.220 | 1.38x | 8.8 | 0.999964 |
+
+Four readings:
+
+- `mode="reduce-overhead"` with `dynamic=True` reproduces the roughly 3x that
+  upstream reported, and the compiled vectors are identical to eager, so recall
+  is unaffected. The mechanism is CUDA graphs, so the gain is a GPU one: CPU
+  reaches about 1.2x.
+- `dynamic=True` is the correct pairing. CUDA graphs absorb varying lengths by
+  recording one graph per distinct size, at some memory cost. `dynamic=False`
+  is the configuration to avoid: with varying lengths it compiles again for
+  each new shape until it trips the Dynamo recompile limit, then serves eager
+  for every further shape while still appearing compiled.
+- Half precision is not worth taking. Compiled fp32 (3.637 ms) beats compiled
+  bf16 (3.872 ms), and bf16 perturbs the vectors.
+- The whole gain is launch overhead rather than compute. Eager CUDA (10.8 ms)
+  is barely faster than eager CPU (11.4 ms) for a model this small.
+
+### Why no setting was added
+
+`EmbeddingSimilarityDetector` embeds one text per agent position, so a
+structured-phases meeting performs roughly 3 to 8 embed calls, once per
+conflict check. On CPU, which is where this embedder runs, the two winning
+arms save 1.83 ms and 1.98 ms per call, so roughly 6 to 16 ms per meeting,
+against 10.8 s to 25.5 s of one-off compilation. Break-even therefore needs
+between about 5,900 and 12,900 embed calls, meaning hundreds to thousands of
+meetings within a single process lifetime, while a meeting already spends
+seconds per LLM call.
+
+So the technique is sound and the application is not, so the embedder is left
+as it is. Re-measure whenever `torch` or sentence-transformers is bumped, or
+if the local embedder ever runs a larger model or serves a GPU deployment:
+those are the conditions that change the answer.
 
 ---
 

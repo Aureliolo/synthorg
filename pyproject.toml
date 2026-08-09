@@ -174,8 +174,8 @@ dev = [
 # ---------------------------------------------------------------------------
 # uv -- package resolution (torch CPU vs GPU split)
 # ---------------------------------------------------------------------------
-# The fine-tune container ships in two flavors:
-#   - fine-tune-gpu   (GPU, default): torch 2.11.0 with bundled CUDA runtime
+# The fine-tune container ships in two flavours:
+#   - fine-tune-gpu   (GPU, default): torch 2.13.0 with bundled CUDA runtime
 #                      (~2.5 GB of nvidia-* wheels). Needed for CUDA-accelerated
 #                      fine-tuning on hosts with an NVIDIA GPU + driver.
 #   - fine-tune-cpu   (CPU-only, ~200 MB torch): pulled from the PyTorch CPU
@@ -216,7 +216,14 @@ override-dependencies = [
     "click>=8.3",                # litellm pins ==8.1.8; 8.2 dropped 3.7/3.8/3.9 support
     "importlib-metadata>=9.0",   # litellm pins ==8.5.0; 9.0 raises MetadataNotFound on missing metadata
     "openai>=2.33",              # litellm pins ==2.24.0; 2.25-2.33 are additive
-    "tokenizers>=0.23.1",        # litellm pins ==0.22.2; 0.23.x adds proper Python 3.14 support
+    # The ceiling here is transformers', not ours: it declares
+    # tokenizers>=0.22.0,<=0.23.0 in its own dependency_versions_table and
+    # asserts that at import time, and 0.23.0 was never published as a final
+    # (only 0.23.0rc0), so 0.22.2 is the newest release it accepts. An override
+    # replaces EVERY declaration of a package, transformers' included, so a bare
+    # floor here reaches past litellm and takes `import sentence_transformers`
+    # down wherever the fine-tune extra is installed.
+    "tokenizers>=0.22.2,<0.23",  # litellm's own range (>=0.21.0,<1.0) is wider
     "typer>=0.25",               # transitive downgrade from litellm's click==8.1.8 + openai==2.24
 ]
 
