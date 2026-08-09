@@ -1502,9 +1502,8 @@ CREATE TABLE approvals (
     ),
     -- Every member of ApprovalSource, and nothing else. A missing member
     -- is not a narrower contract, it is a row the code writes and the
-    -- table refuses: every plan reaching human review failed here, nine
-    -- milliseconds after arriving, because 'plan_review' was absent.
-    -- check_sql_enum_check_constraints.py holds this list to the enum.
+    -- table refuses at insert time, on a path nothing else can recover.
+    -- Widening the enum means widening this list in the same change.
     source TEXT NOT NULL DEFAULT 'review_gate' CHECK (
         source IN (
             'parked_context', 'review_gate',

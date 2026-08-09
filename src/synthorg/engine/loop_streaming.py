@@ -43,6 +43,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Final
 
+from synthorg.core.clock import Clock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
@@ -84,6 +85,14 @@ logger = get_logger(__name__)
 # on every chunk, bounding the settings / brain reads while still catching an
 # operator interrupt within a fraction of a second during active generation.
 _INTERRUPT_POLL_EVERY_N_CHUNKS: Final[int] = 8
+
+# And no more often than this, whatever the chunk rate. A poll is two
+# uncached round trips; a chunk count alone ties their frequency to how fast
+# the model happens to be emitting, so a fast model on a shared SQLite
+# executor turns generation into a read storm while a slow one polls rarely.
+# Wall-clock pacing makes the cost per second the same for both, and an
+# operator still sees their interrupt taken within it.
+_INTERRUPT_POLL_MIN_SECONDS: Final[float] = 0.25
 
 
 @dataclass(frozen=True)
@@ -295,6 +304,7 @@ async def _drain_stream(
     *,
     cancellation_checker: TaskCancellationChecker | None,
     steering_inbox: SteeringInbox | None,
+    clock: Clock,
 ) -> ExecutionResult | _TurnInterrupted | None:
     """Drain *stream* into *acc*, polling for interruption between chunks.
 
@@ -308,6 +318,9 @@ async def _drain_stream(
         cancellation or a pending steering REDIRECT.
     """
     index = 0
+    # One interval in the past, so the first chunk boundary polls rather than
+    # waiting out an interval a cancellation issued before the call started.
+    last_poll = clock.monotonic() - _INTERRUPT_POLL_MIN_SECONDS
     async for chunk in stream:
         _accumulate_chunk(chunk, acc)
         if chunk.event_type is StreamEventType.USAGE and chunk.usage:
@@ -335,7 +348,12 @@ async def _drain_stream(
                 error_message=stream_error,
             )
 
-        if index % _INTERRUPT_POLL_EVERY_N_CHUNKS == 0:
+        now = clock.monotonic()
+        if (
+            index % _INTERRUPT_POLL_EVERY_N_CHUNKS == 0
+            and now - last_poll >= _INTERRUPT_POLL_MIN_SECONDS
+        ):
+            last_poll = now
             interrupt = await _check_interrupt(
                 ctx,
                 turn_number,
@@ -361,6 +379,7 @@ async def stream_provider(  # noqa: PLR0913
     turns: list[TurnRecord],
     cancellation_checker: TaskCancellationChecker | None,
     steering_inbox: SteeringInbox | None,
+    clock: Clock,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
     """Stream a per-turn LLM call, interruptible mid-flight.
 
@@ -405,6 +424,7 @@ async def stream_provider(  # noqa: PLR0913
                 turns,
                 cancellation_checker=cancellation_checker,
                 steering_inbox=steering_inbox,
+                clock=clock,
             )
         finally:
             # Shielded: a re-delivered cancellation lands on the first await
@@ -506,6 +526,7 @@ async def run_provider_turn(  # noqa: PLR0913
     streaming_enabled: bool,
     cancellation_checker: TaskCancellationChecker | None,
     steering_inbox: SteeringInbox | None,
+    clock: Clock,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
     """Issue the per-turn LLM call, streaming when enabled for the run.
 
@@ -529,6 +550,7 @@ async def run_provider_turn(  # noqa: PLR0913
             turns=turns,
             cancellation_checker=cancellation_checker,
             steering_inbox=steering_inbox,
+            clock=clock,
         )
     return await call_provider(
         ctx,

@@ -7,7 +7,8 @@ does not park at all.
 """
 
 from datetime import date
-from unittest.mock import AsyncMock
+from typing import cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -82,7 +83,7 @@ class TestArmTurnCeilingPark:
         )
 
         assert armed is result
-        store.add.assert_not_awaited()
+        cast(Mock, store).add.assert_not_awaited()
 
     async def test_the_approval_routes_to_the_resume_path(self) -> None:
         """Any other source falls through to the review gate and strands it."""
@@ -97,7 +98,7 @@ class TestArmTurnCeilingPark:
         )
 
         assert armed.termination_reason is TerminationReason.PARKED
-        item = store.add.await_args.args[0]
+        item = cast(Mock, store).add.await_args.args[0]
         assert isinstance(item, ApprovalItem)
         assert item.source is ApprovalSource.PARKED_CONTEXT
         assert item.task_id == _TASK_ID
@@ -114,7 +115,8 @@ class TestArmTurnCeilingPark:
             approval_gate=_gate(),
         )
 
-        assert store.add.await_args.args[0].action_type == TURN_CEILING_ACTION_TYPE
+        raised = cast(Mock, store).add.await_args.args[0]
+        assert raised.action_type == TURN_CEILING_ACTION_TYPE
 
     async def test_the_context_is_parked_under_the_same_approval(self) -> None:
         gate = _gate()
@@ -127,7 +129,7 @@ class TestArmTurnCeilingPark:
             approval_gate=gate,
         )
 
-        kwargs = gate.park_context.await_args.kwargs
+        kwargs = cast(Mock, gate).park_context.await_args.kwargs
         assert kwargs["task_id"] == _TASK_ID
         assert kwargs["escalation"].action_type == TURN_CEILING_ACTION_TYPE
 
@@ -184,4 +186,4 @@ class TestArmTurnCeilingPark:
         )
 
         assert armed.termination_reason is TerminationReason.MAX_TURNS
-        store.add.assert_not_awaited()
+        cast(Mock, store).add.assert_not_awaited()

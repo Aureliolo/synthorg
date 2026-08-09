@@ -8,6 +8,7 @@ check for LLM errors -> update context -> handle completion or
 
 import asyncio
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
@@ -120,6 +121,7 @@ class ReactLoop:
         steering_inbox: SteeringInbox | None = None,
         step_classifier: StepQualityClassifier | None = None,
         turn_observer: TurnObserver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
@@ -128,6 +130,7 @@ class ReactLoop:
         self._steering_inbox = steering_inbox
         self._step_classifier = step_classifier
         self._turn_observer = turn_observer
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def _attach_whole_run_signals(
         self,
@@ -293,6 +296,7 @@ class ReactLoop:
                 streaming_enabled=streaming_enabled,
                 cancellation_checker=task_cancellation_checker,
                 steering_inbox=self._steering_inbox,
+                clock=self._clock,
             )
             if isinstance(outcome, ExecutionResult):
                 return await self._attach_whole_run_signals(outcome, turns)

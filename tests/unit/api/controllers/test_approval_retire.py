@@ -333,8 +333,8 @@ class TestRetiringManyTasksAtOnce:
         )
         store = _RecordingStore((mine, theirs, elsewhere))
 
-        await retire_approvals_for_tasks(  # type: ignore[arg-type]  # composed AppState
-            _state(store),
+        await retire_approvals_for_tasks(
+            _state(store),  # type: ignore[arg-type]  # composed AppState
             [_TASK_ID, sid("task-other")],
         )
 

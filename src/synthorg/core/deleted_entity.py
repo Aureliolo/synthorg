@@ -18,9 +18,16 @@ own removes an entity, so nothing the system does on its own writes here.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid5
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr
 
@@ -33,11 +40,31 @@ class DeletedEntityKind(StrEnum):
     PROJECT = "project"
 
 
+def tombstone_id(kind: DeletedEntityKind, entity_id: str) -> UUID:
+    """Derive the row identifier a tombstone for *entity_id* must carry.
+
+    Derived rather than minted, so writing the same tombstone twice writes
+    the same row. An entity is deleted once and its identifier is never
+    reused, so what it was is a fact about the pair and not about the
+    attempt: a teardown re-issued after a lost response then lands on the
+    conflict clause instead of leaving a second copy behind.
+
+    Args:
+        kind: Whether a task, plan or project was removed.
+        entity_id: The identifier the deleted row carried.
+
+    Returns:
+        The deterministic row identifier.
+    """
+    return uuid5(NAMESPACE_URL, f"synthorg:deleted:{kind.value}:{entity_id}")
+
+
 class DeletedEntity(BaseModel):
     """The record that a named entity was deleted, and what it was.
 
     Attributes:
-        id: Row identifier.
+        id: Row identifier, derived from the kind and the identifier so the
+            same deletion always writes the same row.
         entity_kind: Whether the tombstone stands for a task, plan or
             project.
         entity_id: The identifier the deleted row carried. Records that
@@ -53,7 +80,9 @@ class DeletedEntity(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: UUID = Field(default_factory=uuid4, description="Row identifier")
+    id: UUID = Field(
+        description="Row identifier, derived from the kind and the identifier",
+    )
     entity_kind: DeletedEntityKind = Field(description="Task, plan or project")
     entity_id: NotBlankStr = Field(description="The identifier that was removed")
     display_name: NotBlankStr = Field(description="What the entity was called")
@@ -75,5 +104,28 @@ class DeletedEntity(BaseModel):
         """
         return value.astimezone(UTC)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_id(cls, data: object) -> object:
+        """Bind an unsupplied row identifier to the entity it stands for.
 
-__all__ = ["DeletedEntity", "DeletedEntityKind"]
+        Only when unsupplied: a row read back from either backend carries
+        the identifier it was stored with, and answering with a different
+        one would misreport what is in the table.
+
+        Args:
+            data: The raw input to validate.
+
+        Returns:
+            The input, carrying a derived ``id`` when it had none.
+        """
+        if not isinstance(data, dict) or data.get("id") is not None:
+            return data
+        kind = data.get("entity_kind")
+        entity_id = data.get("entity_id")
+        if kind is None or entity_id is None:
+            return data
+        return {**data, "id": tombstone_id(DeletedEntityKind(kind), str(entity_id))}
+
+
+__all__ = ["DeletedEntity", "DeletedEntityKind", "tombstone_id"]

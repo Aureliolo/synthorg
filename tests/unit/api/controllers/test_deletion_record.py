@@ -105,3 +105,33 @@ class TestRecordDeletion:
             display_name="anything",
             deleted_by="Aurelio",
         )
+
+    async def test_a_reissued_teardown_writes_one_row(self) -> None:
+        """The identifier is derived, so a retry lands on the conflict clause."""
+        backend = FakePersistenceBackend()
+
+        for _ in range(2):
+            await record_deletion(
+                backend,
+                kind=DeletedEntityKind.TASK,
+                entity_id="task-3",
+                display_name="Ship it",
+                deleted_by="Aurelio",
+            )
+
+        assert len(await _tombstones(backend, "task-3")) == 1
+
+    async def test_the_same_id_under_two_kinds_is_two_tombstones(self) -> None:
+        """A plan and a task could carry the same identifier; both are recorded."""
+        backend = FakePersistenceBackend()
+
+        for kind in (DeletedEntityKind.TASK, DeletedEntityKind.PLAN):
+            await record_deletion(
+                backend,
+                kind=kind,
+                entity_id="shared-1",
+                display_name="Ambiguous",
+                deleted_by="Aurelio",
+            )
+
+        assert len(await _tombstones(backend, "shared-1")) == 2

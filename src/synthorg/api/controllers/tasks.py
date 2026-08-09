@@ -13,7 +13,10 @@ from litestar.status_codes import (
 )
 
 from synthorg.api.controllers._approval_retire import retire_task_approvals
-from synthorg.api.controllers._deletion_record import record_deletion
+from synthorg.api.controllers._deletion_record import (
+    deleted_entity_not_found,
+    record_deletion,
+)
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
@@ -34,7 +37,6 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
@@ -45,7 +47,6 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
     TaskBoardFiling,
@@ -63,7 +64,6 @@ from synthorg.observability import (
 )
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
-    API_RESOURCE_NOT_FOUND,
     API_TASK_BOARD_PIPELINE_FAILED,
     API_TASK_BOARD_REJECTED_NO_ADAPTER,
     API_TASK_BOARD_SUBMITTED,
@@ -233,19 +233,22 @@ class TaskController(Controller):
             Task envelope.
 
         Raises:
-            NotFoundError: If the task is not found.
+            TaskNotFoundError: If the task is not found. When a tombstone
+                answers for the id, the message says what the task was and
+                who removed it: this route is what the surviving cost,
+                metric and decision rows resolve their ``task_id`` through,
+                and "not found" alone is the dangling reference dropping
+                the foreign keys would otherwise have created.
         """
         app_state: AppState = state.app_state
         task_engine = task_engine_of(app_state)
         task = await task_engine.get_task(task_id)
-        task = require_resource_or_404(
-            task,
-            resource_type="task",
-            identifier=task_id,
-            log_event=API_RESOURCE_NOT_FOUND,
-            operation="read",
-            error_class=TaskNotFoundError,
-        )
+        if task is None:
+            raise await deleted_entity_not_found(
+                app_state,
+                kind=DeletedEntityKind.TASK,
+                entity_id=task_id,
+            )
         return ApiResponse(data=task)
 
     @post(

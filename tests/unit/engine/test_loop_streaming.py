@@ -26,6 +26,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from tests._shared import FakeClock
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -67,6 +68,23 @@ async def _never_cancelled() -> bool:
 
 async def _always_cancelled() -> bool:
     return True
+
+
+class _TickingCancellation:
+    """Never cancelled, and moves virtual time on far enough to poll again.
+
+    Polls are spaced by wall clock as well as by chunk count, so a frozen
+    clock would let only the first boundary through. Advancing here models
+    the time a real poll's two round trips take, and keeps the chunk-boundary
+    cadence the thing under test.
+    """
+
+    def __init__(self, clock: FakeClock) -> None:
+        self._clock = clock
+
+    async def __call__(self) -> bool:
+        self._clock.advance(1.0)
+        return False
 
 
 def _redirect_directive() -> ActiveSteeringDirective:
@@ -122,7 +140,9 @@ async def _stream(
     *,
     cancellation_checker: object = None,
     steering_inbox: object = None,
+    clock: FakeClock | None = None,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
+    poll_clock = clock if clock is not None else FakeClock()
     provider = ScriptedProvider(stream_chunks=chunks)
     turns: list[TurnRecord] = []
     return await stream_provider(
@@ -133,8 +153,10 @@ async def _stream(
         config=CompletionConfig(),
         turn_number=1,
         turns=turns,
-        cancellation_checker=cancellation_checker or _never_cancelled,  # type: ignore[arg-type]
+        cancellation_checker=cancellation_checker  # type: ignore[arg-type]
+        or _TickingCancellation(poll_clock),
         steering_inbox=steering_inbox,  # type: ignore[arg-type]
+        clock=poll_clock,
     )
 
 
@@ -318,6 +340,25 @@ class TestStreamProviderInterruption:
         assert isinstance(result, _TurnInterrupted)
         assert inbox.calls == 2
 
+    async def test_polls_are_paced_by_the_clock_not_only_the_chunk_count(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """A poll is two round trips, so a fast stream must not storm them."""
+        inbox = _DelayedRedirectInbox()
+
+        # Time never moves, so every boundary past the first is inside the
+        # minimum interval and polls once for the whole stream.
+        result = await _stream(
+            sample_agent_context,
+            [_content(str(i)) for i in range(17)],
+            cancellation_checker=_never_cancelled,
+            steering_inbox=inbox,
+            clock=FakeClock(),
+        )
+
+        assert isinstance(result, CompletionResponse)
+        assert inbox.calls == 1
+
 
 class TestRunProviderTurnDispatch:
     async def test_non_streaming_uses_complete(
@@ -342,6 +383,7 @@ class TestRunProviderTurnDispatch:
             streaming_enabled=False,
             cancellation_checker=_never_cancelled,
             steering_inbox=None,
+            clock=FakeClock(),
         )
         assert isinstance(outcome, CompletionResponse)
         assert provider.call_count == 1
@@ -364,6 +406,7 @@ class TestRunProviderTurnDispatch:
             streaming_enabled=True,
             cancellation_checker=_never_cancelled,
             steering_inbox=None,
+            clock=FakeClock(),
         )
         assert isinstance(outcome, CompletionResponse)
         # complete() was never called on the streaming path.
