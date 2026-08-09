@@ -48,27 +48,39 @@ Reconciliation mechanisms:
 
 ## Image tags and what each one points at
 
-Every image carries the same tag ladder, applied by
-`.github/actions/publish-image-loaded`. Which tag a deployment pins decides
-how current it is, and two of them move on release events only.
+Every published image carries the same tag ladder. `desktop` is absent from
+it for the reason above: it is never built or published here, so it has no
+release tags and no signature coverage. Which tag a deployment pins decides
+how current it is, and the release tags move on release events only.
+
+Two actions apply the ladder, on different events. A push to `main` runs
+`.github/actions/publish-image-loaded`, which pushes the image and signs
+it. A `v*` tag push runs `.github/actions/publish-image-retag`, which
+applies the release tags to that same already-signed digest rather than
+rebuilding. The tag policy is deliberately identical between them, so a
+release gets the same set either way.
 
 | Tag | Applied on | Points at |
 |-----|-----------|-----------|
 | `sha-<short>` | every push to `main` | that one commit's build |
-| `dev` | a `v*` tag containing `-dev.` | the newest prerelease, so it tracks `main` |
-| `X.Y.Z`, `X.Y` | a `v*` tag; the two-part form only when the ref has no `-dev.` | that release |
-| `latest` | a `v*` tag whose ref does **not** contain `-dev.` | the last stable release |
+| `dev` | a `v*` tag containing `-dev.` | the newest `-dev.` prerelease; it does **not** move on a `main` push |
+| `X.Y.Z`, `X.Y` | a `v*` tag; the two-part form only on a stable ref | that release |
+| `latest` | a stable `v*` tag | the last stable release |
 
-The gate is that literal `-dev.` substring, not a general prerelease test:
-an `-rc.` or `-beta.` tag would take `latest` even though this project
-treats each of those as a prerelease elsewhere. Only the `-dev.N` shape is
-minted today, so the distinction has not yet mattered.
+"Stable" for `latest` is a semver test, not a substring one:
+`docker/metadata-action` runs at its default `latest=auto`, which resolves
+`latest` from the `type=semver` tag and withholds it from any version
+carrying a prerelease component. `-dev.`, `-rc.` and `-beta.` are therefore
+all excluded on the same rule, and only `-dev.N` is minted today. The
+literal `-dev.` substring does still gate the `X.Y` and raw-version tags,
+which is narrower, though `docker/metadata-action` independently withholds
+`X.Y` from every prerelease.
 
 `latest` therefore does not mean current. A stretch of prerelease-only
 releases leaves it pointing at whatever stable release came before, however
 long ago, which is correct for a stable channel and misleading if read as
 "the newest build". Probe a specific build by digest or by `sha-<short>`,
-and read `dev` for the newest prerelease.
+and read `dev` for the newest `-dev.` prerelease.
 
 `synthorg init` pins a tag once, into `image_tag` in the CLI config. A
 released binary pins its own version, so the stack matches the release that

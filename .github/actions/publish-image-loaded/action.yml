@@ -88,12 +88,20 @@ runs:
       uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        # `latest` names the stable channel, so it is withheld from every
+        # prerelease shape rather than from the `-dev.N` one this project
+        # happens to mint: any dash in a `refs/tags/vX.Y.Z` ref is a semver
+        # prerelease component. The siblings below keep the narrower
+        # `-dev.` literal because a prerelease reaching them is harmless
+        # (`{{major}}.{{minor}}` is withheld from prereleases by the action
+        # itself, and the raw version tag equals `{{version}}` there),
+        # whereas `latest` moving onto an `-rc.` build is not.
         tags: |
           type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
           type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
           type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-          type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
           type=sha,prefix=sha-
 
     # Push the loaded per-arch images to GHCR, capturing each per-arch

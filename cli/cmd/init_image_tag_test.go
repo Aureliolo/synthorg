@@ -59,9 +59,31 @@ func TestResolveImageTag(t *testing.T) {
 // a usable tag came from outside this binary, so it falls back to the
 // stable channel. Malformed input must not be what moves an install onto
 // prereleases.
+//
+// A bare "v" is the case that separates the two fallbacks: it trims to the
+// empty string, which is what an absent version also trims to, yet it was
+// supplied rather than absent. Only the raw value distinguishes them.
 func TestImageTagForVersionFallsBackToStableOnGarbage(t *testing.T) {
-	if got := config.ImageTagForVersion("not a tag!"); got != config.StableImageTag {
-		t.Errorf("ImageTagForVersion(garbage) = %q, want %q", got, config.StableImageTag)
+	tests := []struct {
+		name string
+		ver  string
+		want string
+	}{
+		{name: "unusable characters", ver: "not a tag!", want: config.StableImageTag},
+		{name: "bare v prefix", ver: "v", want: config.StableImageTag},
+		{name: "leading separator", ver: "v.1.2.3", want: config.StableImageTag},
+		{name: "absent version is a source build", ver: "", want: config.SourceBuildImageTag},
+		{
+			name: "source-build sentinel",
+			ver:  config.SourceBuildVersion, want: config.SourceBuildImageTag,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := config.ImageTagForVersion(tt.ver); got != tt.want {
+				t.Errorf("ImageTagForVersion(%q) = %q, want %q", tt.ver, got, tt.want)
+			}
+		})
 	}
 }
 

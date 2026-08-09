@@ -204,7 +204,7 @@ graph LR
     S2["2. Hard Negative Mining\nBase model embeds all passages,\nselects top-k confusing negatives"]
     S3["3. Contrastive Fine-Tuning\nInfoNCE loss, tau = 0.02\n3 epochs, lr = 1e-5"]
     S4["4. Evaluation\nNDCG@10 A/B against the incumbent,\npromotion gated on a positive margin"]
-    S5["5. Deploy\nSave checkpoint,\nrecord it as active"]
+    S5["5. Deploy\nSave checkpoint, record it active\nonly on a strictly positive NDCG@10 win"]
     S1 --> S2 --> S3 --> S4 --> S5
 ```
 

@@ -281,8 +281,9 @@ const (
 	// SourceBuildVersion is what version.Version reports when the binary
 	// was not built by a release: `go build` leaves the ldflags unset.
 	SourceBuildVersion = "dev"
-	// SourceBuildImageTag follows the newest prerelease, so it tracks
-	// main.
+	// SourceBuildImageTag follows the newest `-dev.` prerelease. It moves
+	// on those tag pushes rather than on every main push, so it lags main
+	// by whatever has landed since the last one.
 	SourceBuildImageTag = "dev"
 	// StableImageTag names the last release that was not a `-dev.`
 	// prerelease, which is what `Channel: "stable"` selects.
@@ -306,11 +307,11 @@ const (
 // it falls back to the stable channel rather than to `dev`: malformed
 // input must not be what moves an operator onto prereleases.
 func ImageTagForVersion(ver string) string {
-	tag := strings.TrimPrefix(ver, "v")
-	if tag == "" || tag == SourceBuildVersion {
+	if ver == "" || ver == SourceBuildVersion {
 		return SourceBuildImageTag
 	}
-	if !IsValidImageTag(tag) {
+	tag := strings.TrimPrefix(ver, "v")
+	if tag == "" || !IsValidImageTag(tag) {
 		return StableImageTag
 	}
 	return tag

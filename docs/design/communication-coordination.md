@@ -307,12 +307,16 @@ the protocol running that meeting is built from. Cost bounds are enforced by
       conflict_detector: "keyword"       # keyword | structured | llm_judge | embedding | hybrid | auto
     ```
 
-    The `embedding` and `hybrid` detectors score each agent's position with
-    the built-in lexical embedder, which compares shared vocabulary rather
-    than meaning. That is the whole of the embedding tier: there is one
-    embedding model an operator names, `memory.embedder_model`, it serves
-    durable agent memory, and it dispatches to a provider rather than
-    loading a model into the backend process.
+    The `embedding` and `hybrid` detectors always score each agent's
+    position with the built-in lexical hashing embedder, which compares
+    shared vocabulary rather than meaning. There is nothing to select
+    here: no meeting setting names an embedding model, and none of these
+    detectors reads one.
+
+    `memory.embedder_model` is a separate binding that these detectors
+    never touch. It is the one embedding model an operator names, it
+    serves durable agent memory, and it dispatches to a provider rather
+    than loading a model into the backend process.
 
     - Cost-efficient: parallel input, discussion only when needed
     - More complex orchestration; conflict detection between inputs adds

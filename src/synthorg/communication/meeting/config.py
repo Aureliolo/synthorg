@@ -192,6 +192,15 @@ class MeetingProtocolConfig(BaseModel):
         for several protocols and switching ``protocol`` between them is
         legitimate.
 
+        A sub-config counts as customised when it differs from its
+        default by value, never by ``model_fields_set``: ``model_dump()``
+        writes every nested default out explicitly and ``model_validate()``
+        marks each one as set, so a config that has been persisted and
+        reloaded reports every field of every sub-config as set even
+        though nothing was ever tuned. Keying off that would fire the
+        warning on the round trip alone, for defaults the operator never
+        touched.
+
         Returns:
             This config, unchanged.
         """
@@ -210,7 +219,7 @@ class MeetingProtocolConfig(BaseModel):
                     self.structured_phases,
                 ),
             )
-            if active is not self.protocol and len(value.model_fields_set) > 0
+            if active is not self.protocol and value != type(value)()
         }
         if inactive:
             logger.warning(

@@ -366,13 +366,18 @@ readiness ignores. Truncating automatically would be sound only for a Matryoshka
 model, and knowing which models those are is the shipped-table approach this
 section replaced.
 
-This binding is the only embedding model the product runs. Nothing else loads
-one in-process: a meeting's conflict detectors score positions with the
-built-in lexical embedder, chosen for that job rather than offered as one
-option among several, and the fine-tuning pipeline trains in its own image.
-A second locally-loaded embedder selected from somewhere else would be a
-second surface for the same decision, and the backend image carries neither
-`torch` nor `sentence-transformers`.
+This binding is the only embedding model the product serves retrieval from,
+and nothing else is selectable: a meeting's conflict detectors score positions
+with the built-in lexical embedder, chosen for that job rather than offered as
+one option among several. A second locally-loaded embedder selected from
+somewhere else would be a second surface for the same decision.
+
+Fine-tuning is the one place a model is loaded locally, and where that happens
+depends on the install. A Docker install runs each stage in the configured
+fine-tuning image, so nothing loads into the backend process: the backend image
+carries neither `torch` nor `sentence-transformers`. A bare-metal install with
+those extras present and no image configured runs the stage in-process instead
+(the execution-config derivation below picks between the two).
 
 #### Why the rankings were about quality, not selection
 
