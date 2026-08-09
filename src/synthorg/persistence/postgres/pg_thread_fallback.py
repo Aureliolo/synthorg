@@ -20,13 +20,19 @@ import contextlib
 import subprocess
 import threading
 from pathlib import Path
-from typing import IO
+from typing import IO, Final
 
 from synthorg.persistence.postgres.pg_subprocess import (
     open_private_binary,
     raise_pg_tool_failed,
     raise_pg_tool_spawn_failed,
 )
+
+#: How long the cleanup blocks waiting for a stopped child to exit. It has
+#: just been killed, so this is slack rather than a budget; a process that has
+#: not gone by now is not going to, and holding the event loop to find out is
+#: worse than leaving one stray dump behind.
+_CHILD_EXIT_GRACE_SECONDS: Final[float] = 5.0
 
 
 class _ChildHandle:
@@ -105,10 +111,13 @@ def _run_blocking(
         TimeoutExpired: The tool exceeded ``timeout_seconds``; the child is
             killed and reaped before it propagates.
     """
-    sink: IO[bytes] | int = (
-        subprocess.PIPE if output_path is None else open_private_binary(output_path)
-    )
+    # Opened inside the guard, not while computing it: an unwritable target
+    # raises here, and a raise that skips ``handle.finished`` leaves the
+    # async side waiting on a flag nothing will ever set.
+    sink: IO[bytes] | int = subprocess.PIPE
     try:
+        if output_path is not None:
+            sink = open_private_binary(output_path)
         proc = subprocess.Popen(  # noqa: S603 -- list argv, no shell
             [binary, *args],
             env=env,
@@ -123,17 +132,18 @@ def _run_blocking(
             proc.kill()
             proc.communicate()
             raise
+        return proc.returncode, stdout or b"", stderr or b""
     finally:
         if not isinstance(sink, int):
             sink.close()
         # Set last, and in a finally: it is what the async side waits on
         # before removing the dump, so it must not be reachable while this
-        # thread still holds the file open.
+        # thread still holds the file open, and it must be reachable however
+        # this thread leaves.
         handle.finished.set()
-    return proc.returncode, stdout or b"", stderr or b""
 
 
-async def _settle_and_discard(handle: _ChildHandle, output_path: Path | None) -> None:
+def _settle_and_discard(handle: _ChildHandle, output_path: Path | None) -> None:
     """Wait for the run to finish, then remove the dump it was writing.
 
     In that order, and never the reverse: Windows refuses to unlink a file
@@ -142,16 +152,24 @@ async def _settle_and_discard(handle: _ChildHandle, output_path: Path | None) ->
     thread rather than on the child covers both, and covers the window before
     the child exists at all.
 
+    Synchronous on purpose. This runs on the cancellation path, and a
+    cancelled coroutine is not promised another suspension point: an awaited
+    cleanup there is one that may never run, which is how a stopped child and
+    a stray dump both survive the request that owned them. Every caller
+    reaches it with the child already stopped, so the wait is the few
+    milliseconds it takes to exit, and it is capped so a child that will
+    never exit cannot hold the loop instead.
+
     Args:
         handle: The run to wait on; already finished is the common case.
         output_path: The partial dump to remove, or ``None`` when stdout was
             buffered and there is nothing on disk.
     """
-    await asyncio.to_thread(handle.finished.wait)
+    handle.finished.wait(timeout=_CHILD_EXIT_GRACE_SECONDS)
     if output_path is None:
         return
     with contextlib.suppress(OSError):
-        await asyncio.to_thread(output_path.unlink)
+        output_path.unlink()
 
 
 async def run_pg_tool_threaded(
@@ -190,23 +208,22 @@ async def run_pg_tool_threaded(
             handle=handle,
         )
     except subprocess.TimeoutExpired as exc:
-        await _settle_and_discard(handle, output_path)
+        _settle_and_discard(handle, output_path)
         msg = f"{binary} timed out after {timeout_seconds}s"
         raise TimeoutError(msg) from exc
     except OSError as exc:
-        await _settle_and_discard(handle, output_path)
+        _settle_and_discard(handle, output_path)
         raise_pg_tool_spawn_failed(binary, exc)
     except BaseException:
         # Cancellation never reaches the worker thread, so without this the
         # child outlives the request and goes on streaming into a dump the
-        # caller believes was removed. Awaited rather than shielded, exactly
-        # as the loop-native branch does: these are local OS resources this
-        # call owns, the child is already stopped so the wait is short, and a
-        # detached cleanup is one nothing can observe finishing.
+        # caller believes was removed. Stopping covers the window before the
+        # spawn as well; the settle that follows is synchronous because a
+        # cancelled coroutine is not promised another suspension point.
         handle.stop()
-        await _settle_and_discard(handle, output_path)
+        _settle_and_discard(handle, output_path)
         raise
     if returncode != 0:
-        await _settle_and_discard(handle, output_path)
+        _settle_and_discard(handle, output_path)
         raise_pg_tool_failed(binary, returncode, stderr)
     return stdout, stderr

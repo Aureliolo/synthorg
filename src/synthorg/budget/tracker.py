@@ -520,14 +520,23 @@ class CostTracker(CostTrackerSummaryMixin):
             # a later delivery of it lands. The insert is idempotent on
             # ``(claim_id, timestamp)``, so completing it costs one no-op
             # insert when the row is already there.
-            recorded = await self._append_durable(cost_record)
-            async with self._get_lock():
+            try:
+                recorded = await self._append_durable(cost_record)
+                async with self._get_lock():
+                    # Promoted only once the record is durably present: the
+                    # LRU short-circuits ahead of this branch, so promoting a
+                    # claim whose row never landed would close the one door
+                    # left to it. Promoted BEFORE the release below, so the
+                    # membership check never sees it in neither set.
+                    if recorded:
+                        self._promote_seen_claim(cost_record.claim_id)
+            finally:
+                # Released however this leaves, for the same reason the first
+                # delivery releases in its own guard: a cancellation between
+                # the reservation and the discard strands the claim for the
+                # life of the process, and every later redelivery of it is
+                # then deduped away as still in flight.
                 self._inflight_claims.discard(cost_record.claim_id)
-                # Promoted only once the record is durably present: the LRU
-                # short-circuits ahead of this branch, so promoting a claim
-                # whose row never landed would close the one door left to it.
-                if recorded:
-                    self._promote_seen_claim(cost_record.claim_id)
             logger.info(
                 BUDGET_RECORD_DEDUPED,
                 claim_id=cost_record.claim_id,

@@ -332,8 +332,8 @@
     },
     "src/synthorg/budget/tracker.py": {
       "cap": 1100,
-      "loc": 1084,
-      "ratio": 0.985,
+      "loc": 1086,
+      "ratio": 0.987,
       "tier": "complex_service"
     },
     "src/synthorg/client/factory.py": {
@@ -1833,7 +1833,7 @@
     },
     "synthorg.budget.tracker:CostTracker": {
       "lcom4": 3,
-      "loc": 982
+      "loc": 984
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,

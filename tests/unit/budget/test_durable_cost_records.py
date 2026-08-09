@@ -35,6 +35,10 @@ pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 
+#: How many deliveries are cancelled before the store is allowed to accept
+#: one: the first (which counts the aggregate) and the redelivery after it.
+_CANCELLED_DELIVERIES: int = 2
+
 
 class _RecordingRepo:
     """In-memory stand-in for the durable cost-record store.
@@ -309,6 +313,44 @@ class TestDurableAppend:
         assert counted == [record.claim_id]
         assert await tracker.get_total_cost() == pytest.approx(0.25)
 
+    async def test_a_cancelled_redelivery_releases_its_claim_too(self) -> None:
+        """The duplicate branch reserves the claim exactly as the first does.
+
+        It awaits a durable append while holding that reservation, so a
+        cancellation there strands the claim for the life of the process and
+        every further redelivery is deduped away as still in flight, which is
+        the one state the record can never be written from.
+        """
+        counted: list[str] = []
+        repo = mock_of[CostRecordRepository]()
+        landed: list[CostRecord] = []
+        deliveries = 0
+
+        async def _append(record: CostRecord) -> None:
+            nonlocal deliveries
+            deliveries += 1
+            if deliveries <= _CANCELLED_DELIVERIES:
+                raise asyncio.CancelledError
+            landed.append(record)
+
+        repo.append.side_effect = _append
+        tracker = CostTracker(clock=FakeClock(start=_NOW))
+        _attach(tracker, repo, project_cost_repo=_counting_aggregate_repo(counted))
+        record = _record(0.25, project="proj-1")
+
+        # First delivery: aggregate counted, append cancelled.
+        with pytest.raises(asyncio.CancelledError):
+            await tracker.record(record)
+        # Redelivery lands in the duplicate branch and is cancelled there.
+        with pytest.raises(asyncio.CancelledError):
+            await tracker.record(record)
+
+        # A third delivery must still be able to complete the record.
+        await tracker.record(record)
+
+        assert [r.cost for r in landed] == [0.25]
+        assert counted == [record.claim_id]
+
     async def test_a_dropped_append_without_durable_dedup_is_not_retried(
         self,
     ) -> None:
@@ -319,14 +361,28 @@ class TestDurableAppend:
         the loud, escalating failure it is logged as.
         """
         repo = mock_of[CostRecordRepository]()
-        repo.append.side_effect = QueryError("store down")
+        attempts = 0
+
+        async def _append(record: CostRecord) -> None:
+            nonlocal attempts
+            del record
+            attempts += 1
+            msg = "store down"
+            raise QueryError(msg)
+
+        repo.append.side_effect = _append
         tracker = CostTracker(clock=FakeClock(start=_NOW))
         _attach(tracker, repo)
         record = _record(0.25)
 
         await tracker.record(record)
+        first_delivery = attempts
         await tracker.record(record)
 
+        # The redelivery is deduped in memory, not retried: reaching the
+        # store again would mean the claim was withheld from the LRU, which
+        # is what would let the same spend be counted a second time.
+        assert attempts == first_delivery
         assert await tracker.get_total_cost() == pytest.approx(0.25)
 
     async def test_a_run_of_drops_says_spend_is_not_being_recorded(self) -> None:

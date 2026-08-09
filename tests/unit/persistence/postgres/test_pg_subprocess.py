@@ -13,6 +13,7 @@ one-liner reaches every branch without needing ``pg_dump`` on PATH.
 
 import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import IO
@@ -40,6 +41,40 @@ _CHILD_ENV: dict[str, str] = {"PATH": ""}
 #: Which open belongs to the fallback. The loop-native attempt creates the
 #: dump before it discovers it cannot spawn, so its open comes first.
 _FALLBACK_OPEN: int = 2
+
+#: How long a stopped child gets to exit before the test calls it leaked. The
+#: script it runs sleeps far longer, so anything that returns inside this
+#: window was stopped rather than left to finish.
+_CHILD_EXIT_GRACE: float = 5.0
+
+
+def _record_spawns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[subprocess.Popen[bytes]]:
+    """Collect every child the fallback spawns, so it can be checked stopped.
+
+    Recorded where the child is handed over rather than by wrapping
+    ``subprocess.Popen``: replacing that class with a function makes
+    ``isinstance`` against it a ``TypeError``, which the runtime type check on
+    this very hand-over would then raise, killing the run before it registers
+    the child and manufacturing the leak the test is meant to detect.
+
+    Args:
+        monkeypatch: Patch scope for the recording hand-over.
+
+    Returns:
+        The list the recorder appends each spawned child to.
+    """
+    spawned: list[subprocess.Popen[bytes]] = []
+    handle_type = pg_thread_fallback._ChildHandle
+    real_publish = handle_type.publish
+
+    def _recording_publish(handle: object, proc: subprocess.Popen[bytes]) -> bool:
+        spawned.append(proc)
+        return real_publish(handle, proc)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(handle_type, "publish", _recording_publish)
+    return spawned
 
 
 @pytest.fixture
@@ -157,6 +192,7 @@ class TestThreadFallback:
         # loop-native attempt opens through one and the fallback the other.
         monkeypatch.setattr(pg_subprocess, "open_private_binary", _announce_open)
         monkeypatch.setattr(pg_thread_fallback, "open_private_binary", _announce_open)
+        spawned = _record_spawns(monkeypatch)
 
         task = asyncio.create_task(
             run_pg_tool(
@@ -174,7 +210,45 @@ class TestThreadFallback:
         with pytest.raises(asyncio.CancelledError):
             await task
 
+        # The file going is only half of it: an orphaned pg_dump would go on
+        # running for its whole dump against a database nobody is waiting on.
+        # Waited rather than polled, because polling asks whether the child
+        # has already been reaped, which is a different question with its own
+        # race; waiting asks the one that matters, does it stop.
+        assert spawned
+        for child in spawned:
+            assert child.wait(timeout=_CHILD_EXIT_GRACE) is not None
         assert not target.exists()
+
+    async def test_an_unwritable_target_does_not_hang_the_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed open still has to release what the caller waits on.
+
+        The cleanup waits for the worker thread to signal it has finished, so
+        an open that raises before that signal is armed leaves the caller
+        waiting on a flag nothing will ever set: a backup that never returns
+        at all, which is worse than the failure it was reporting.
+        """
+        target = tmp_path / "dump.pgc"
+
+        def _refuse_open(path: Path) -> IO[bytes]:
+            del path
+            msg = "target is not writable"
+            raise PermissionError(msg)
+
+        # Only the fallback's open: the loop-native attempt must still get far
+        # enough to hand over, or the fallback is never reached.
+        monkeypatch.setattr(pg_thread_fallback, "open_private_binary", _refuse_open)
+
+        with pytest.raises(PgToolFailedError):
+            await run_pg_tool(
+                sys.executable,
+                ["-c", _ECHO_SCRIPT],
+                env=_CHILD_ENV,
+                timeout_seconds=30.0,
+                output_path=target,
+            )
 
     async def test_a_timeout_is_reported_as_a_timeout(self, tmp_path: Path) -> None:
         """``subprocess`` raises its own; callers are promised ``TimeoutError``."""

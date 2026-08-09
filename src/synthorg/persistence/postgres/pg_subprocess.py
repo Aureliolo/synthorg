@@ -252,7 +252,12 @@ async def _run_pg_tool_file(
     # handle then has no owner to close it. On Windows that unclosed handle
     # is also what stops the stray artefact being removed. Two syscalls
     # against the backup directory do not need the loop released.
-    fp = open_private_binary(output_path)
+    try:
+        fp = open_private_binary(output_path)
+    except OSError as exc:
+        # An unwritable target is the same class of failure as a binary that
+        # will not exec, and callers are promised the same three shapes.
+        raise_pg_tool_spawn_failed(binary, exc)
     try:
         try:
             proc = await asyncio.create_subprocess_exec(
