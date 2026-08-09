@@ -142,23 +142,39 @@ def _ledger_problems(exc: Exception) -> list[str]:
 
 
 def _drift_problems(generator: _GeneratorLike, triage: _TriageLike) -> list[str]:
-    """Compare every rendered file against what the ledger requires."""
+    """Compare every rendered file against what the ledger requires.
+
+    Compared as bytes. Reading as text applies universal-newline translation,
+    so a CRLF checkout is handed back as LF and matches a freshly rendered
+    file that never had a carriage return in it. The scanners and the
+    attestation consume these bytes, so the gate has to see the bytes: text
+    comparison would hold the `.gitattributes` LF pin to nothing.
+    """
     problems: list[str] = []
     for path, expected in generator.rendered_files(triage).items():
         relative = path.relative_to(generator.REPO_ROOT).as_posix()
         try:
-            actual = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            # A generated file that is not valid UTF-8 has been corrupted, not
-            # merely drifted; `UnicodeDecodeError` is a `ValueError`, so it
-            # would otherwise escape as a traceback rather than a verdict.
+            actual = path.read_bytes()
+        except OSError as exc:
             problems.append(f"{relative}: unreadable ({exc})")
             continue
-        if actual != expected:
+        wanted = expected.encode("utf-8")
+        if actual == wanted:
+            continue
+        if actual.replace(b"\r\n", b"\n") == wanted:
+            # Distinguished from real drift because the fix is different: the
+            # content is right and the checkout is wrong, so regenerating is
+            # a detour around renormalising the working tree.
             problems.append(
-                f"{relative}: does not match the ledger; run "
-                f"`{generator.REGENERATE_COMMAND}`",
+                f"{relative}: checked out with CRLF line endings; the "
+                f"`.gitattributes` LF pin did not apply to this working tree. "
+                f"Run `git add --renormalize .` or re-clone",
             )
+            continue
+        problems.append(
+            f"{relative}: does not match the ledger; run "
+            f"`{generator.REGENERATE_COMMAND}`",
+        )
     return problems
 
 

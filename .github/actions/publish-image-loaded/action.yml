@@ -554,6 +554,12 @@ runs:
     #
     # An empty document claims nothing, so publishing one would spend a
     # Sigstore round trip per image to say so.
+    #
+    # The resolver also refuses a document whose `@id` does not
+    # content-address its own statements, which is what a hand edit produces.
+    # The pre-push gate and CI both compare the document against the ledger,
+    # but neither runs on this job, and a signature outlives the review that
+    # should have preceded it.
     - name: Resolve the VEX triage to publish
       id: vex
       shell: bash
@@ -564,7 +570,7 @@ runs:
           echo "::error::VEX document not found at ${DOC}"
           exit 1
         fi
-        COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8"))["statements"]))' "$DOC")"
+        COUNT="$(python3 "${GITHUB_WORKSPACE}/scripts/vex_publication_plan.py" "$DOC")"
         if [ "$COUNT" -gt 0 ]; then
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "Publishing ${COUNT} VEX statement(s) with this image"

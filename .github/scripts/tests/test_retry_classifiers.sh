@@ -197,8 +197,17 @@ printf '{"@context":"https://openvex.dev/ns/v0.2.0","statements":[]}\n' >"$vex_f
 # The VEX attestation reaches the same Fulcio/Rekor backends as image
 # signing, and it runs in the publish path, so a transient failure there
 # would leave a published image without the triage it claims to carry.
+#
+# The invocation counter is the assertion that matters. A helper that
+# printed the warning and gave up after one call satisfies every text
+# check here, so counting the calls is what separates "classified as
+# transient" from "actually retried".
+attest_counter="$STUB_DIR/attest_attempts"
+printf '0\n' >"$attest_counter"
 cat >"$STUB_DIR/cosign" <<STUB
 #!/usr/bin/env bash
+n=\$(cat "$attest_counter")
+printf '%s\n' "\$((n + 1))" >"$attest_counter"
 $REKOR_TIMEOUT
 STUB
 chmod +x "$STUB_DIR/cosign"
@@ -206,10 +215,13 @@ out="$(PATH="$STUB_DIR:$PATH" \
   COSIGN_SIGN_RETRY_ATTEMPTS=2 COSIGN_SIGN_RETRY_BACKOFF=0 \
   bash "$COSIGN_HELPER" attest "ghcr.io/example/image@${fake_digest}" \
   --type openvex --predicate "$vex_file" 2>&1)" || true
-if grep -q 'hit transient error' <<<"$out" && ! grep -q 'non-transient error' <<<"$out"; then
+attest_attempts="$(cat "$attest_counter")"
+if [ "$attest_attempts" -eq 2 ] &&
+  grep -q 'hit transient error' <<<"$out" &&
+  ! grep -q 'non-transient error' <<<"$out"; then
   pass "cosign attest retries a Rekor network timeout"
 else
-  fail "cosign attest did not retry a Rekor network timeout (attest mode or Rekor signature broken)"
+  fail "cosign attest did not retry a Rekor network timeout exactly once (attempts=${attest_attempts})"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
@@ -381,10 +393,13 @@ rc=0
 out="$(PATH="$STUB_DIR:$PATH" \
   COSIGN_VERIFY_RETRY_ATTEMPTS=4 COSIGN_VERIFY_RETRY_BACKOFF=0 \
   bash "$VERIFY_HELPER" "ghcr.io/example/image@${fake_digest}" "$published_doc" 2>&1)" || rc=$?
-if [ "$rc" -eq 0 ] && grep -q 'not yet verifiable' <<<"$out"; then
+verify_attempts="$(cat "$counter")"
+if [ "$rc" -eq 0 ] &&
+  [ "$verify_attempts" -eq 2 ] &&
+  grep -q 'not yet verifiable' <<<"$out"; then
   pass "verify-attestation polls through GHCR propagation lag"
 else
-  fail "verify-attestation did not retry a first miss (rc=${rc})"
+  fail "verify-attestation did not retry a first miss exactly once (rc=${rc}, attempts=${verify_attempts})"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

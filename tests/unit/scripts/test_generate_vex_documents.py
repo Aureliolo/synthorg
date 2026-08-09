@@ -373,6 +373,29 @@ def test_load_triage_parses_dates_and_purls(
             "purls must be a list",
             id="purls_not_a_list",
         ),
+        pytest.param(
+            """
+            - id: CVE-2026-00016
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: []
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
+            "status must be one of",
+            id="status_is_a_list",
+        ),
+        pytest.param(
+            """
+            - id: CVE-2026-00017
+              purls: ["pkg:apk/wolfi/zlib"]
+              status: accepted
+              justification: {}
+              re_review_by: "2099-01-01"
+              statement: risk accepted
+            """,
+            "justification must be one of",
+            id="justification_is_a_mapping",
+        ),
     ],
 )
 def test_schema_violations_are_rejected(

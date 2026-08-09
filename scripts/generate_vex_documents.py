@@ -102,13 +102,24 @@ _MIDNIGHT_UTC_SUFFIX: Final[str] = "T00:00:00Z"
 
 
 def _is_status(value: object) -> TypeIs[TriageStatus]:
-    """Narrow a parsed scalar to a status."""
-    return value in _STATUSES
+    """Narrow a parsed scalar to a status.
+
+    The type check is not redundant with the membership test: YAML yields
+    lists and mappings for ``status: []`` and ``status: {}``, and those are
+    unhashable, so asking a set whether it contains one raises rather than
+    answering no. That would escape as a traceback from a ledger fault the
+    caller collects and reports.
+    """
+    return isinstance(value, str) and value in _STATUSES
 
 
 def _is_justification(value: object) -> TypeIs[Justification]:
-    """Narrow a parsed scalar to an OpenVEX justification."""
-    return value in _JUSTIFICATIONS
+    """Narrow a parsed scalar to an OpenVEX justification.
+
+    Type-checked before the membership test, for the reason :func:`_is_status`
+    gives.
+    """
+    return isinstance(value, str) and value in _JUSTIFICATIONS
 
 
 def _status_coupling_problems(

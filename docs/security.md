@@ -502,10 +502,30 @@ cosign verify-attestation --type openvex \
 Both halves of that identity are load-bearing, for the reason the [SLSA
 provenance](#artifact-provenance) section gives at length: our reusable
 workflows are public, a `workflow_call` job's certificate names the reusable
-workflow rather than its caller, and cosign matches an identity regexp by
-search rather than by full match. An unanchored pattern with no repository
-binding would accept an attestation signed by any workflow in any repository
-whose name contains ours.
+workflow rather than its caller, and cosign matches an identity regular
+expression by search rather than by full match. An unanchored pattern with no
+repository binding would accept an attestation signed by any workflow in any
+repository whose name contains ours.
+
+Identity alone still answers a narrower question than it appears to. It
+establishes that *an* OpenVEX attestation on this digest was signed by a
+workflow allowed to sign one, not that it is the current triage: a digest
+published earlier under an older ledger carries that attestation too, and it
+satisfies the same policy. The document's `@id` is a SHA-256 over its own
+statements, so comparing it is what settles which triage is attached:
+
+```bash
+cosign verify-attestation --type openvex \
+  --certificate-identity-regexp='^https://github\.com/Aureliolo/synthorg/\.github/workflows/reusable-publish-image(-loaded)?\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --certificate-github-workflow-repository='Aureliolo/synthorg' \
+  ghcr.io/aureliolo/synthorg-sandbox@sha256:<digest> \
+  | jq -r '.payload | @base64d | fromjson | .predicate["@id"]'
+```
+
+That is the check the publish job runs on itself, in
+`.github/scripts/cosign_verify_attestation_with_retry.sh`, against the
+document it just rendered.
 
 **Residual gap.** Trivy does **not** verify the signature of a VEX attestation
 it discovers, so anyone able to push to an image repository can attach one that

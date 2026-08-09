@@ -154,6 +154,27 @@ def test_a_missing_rendered_file_fails(
     assert "unreadable" in problems[0]
 
 
+def test_a_crlf_checkout_is_reported_as_such(
+    gate: ModuleType,
+    generator: ModuleType,
+) -> None:
+    """CRLF is drift, and the gate has to see bytes to notice.
+
+    Reading as text would translate the carriage returns away and compare
+    equal, which would leave the `.gitattributes` LF pin asserting something
+    nothing checks. Trivy reads these bytes and cosign signs them.
+    """
+    _write_tree(generator)
+    intact = generator.OPENVEX_FILE.read_bytes()
+    generator.OPENVEX_FILE.write_bytes(intact.replace(b"\n", b"\r\n"))
+
+    problems = gate.check(today=dt.date(2026, 8, 9), generator=generator)
+
+    assert len(problems) == 1
+    assert "CRLF" in problems[0]
+    assert generator.REGENERATE_COMMAND not in problems[0]
+
+
 def test_both_files_are_reported_together(
     gate: ModuleType,
     generator: ModuleType,
