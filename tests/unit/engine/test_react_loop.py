@@ -12,6 +12,7 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.resume_scope import resumed_run_scope
@@ -51,6 +52,18 @@ def _stop_response(content: str = "Done.") -> CompletionResponse:
     return CompletionResponse(
         content=content,
         finish_reason=FinishReason.STOP,
+        usage=_usage(),
+        model="test-model-001",
+    )
+
+
+def _reasoning_only_response(
+    reasoning: str = "weighing two layouts",
+) -> CompletionResponse:
+    """A turn the model spent entirely on its thinking channel."""
+    return CompletionResponse(
+        reasoning=reasoning,
+        finish_reason=FinishReason.MAX_TOKENS,
         usage=_usage(),
         model="test-model-001",
     )
@@ -1394,6 +1407,70 @@ class TestReactLoopNoOpFailLoud:
             "Prose is not a deliverable" in (m.content or "")
             for m in result.context.conversation
         )
+
+    async def test_a_silent_reasoning_turn_is_corrected_not_fatal(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A turn that produced only reasoning gets the run's next turn.
+
+        A live run died on turn 48 of 50 this way: the model spent the turn's
+        whole token budget thinking, the visible channel came back empty, and
+        the loop discarded forty-seven productive turns with it.
+        """
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [
+                _reasoning_only_response(),
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_tool_calls == 1
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
+
+    async def test_two_silent_turns_in_a_row_stop_correcting(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The correction is its own bound, so a mute model cannot loop."""
+        ctx = self._work_context(
+            sample_agent_with_personality, sample_task_with_criteria
+        )
+        provider = mock_provider_factory(
+            [_reasoning_only_response(), _reasoning_only_response()]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.NO_OP
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == 1
 
     async def test_work_run_with_tool_call_completes(
         self,

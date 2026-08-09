@@ -435,6 +435,23 @@ class TestCompletionResponse:
                 model="test-small-001",
             )
 
+    def test_reasoning_alone_counts_as_output(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        # A reasoning model can spend a turn entirely on its thinking channel;
+        # that response is not empty, and rejecting it forced the driver to
+        # relabel a real turn as an error.
+        resp = CompletionResponse(
+            content=None,
+            reasoning="weighing two layouts",
+            finish_reason=FinishReason.MAX_TOKENS,
+            usage=sample_token_usage,
+            model="test-small-001",
+        )
+        assert resp.reasoning == "weighing two layouts"
+        assert resp.content is None
+
     def test_empty_response_allowed_for_content_filter(
         self,
         sample_token_usage: TokenUsage,

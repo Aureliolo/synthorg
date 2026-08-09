@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import structlog.testing
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
@@ -16,6 +17,7 @@ from synthorg.engine.loop_streaming import (
     stream_provider,
 )
 from synthorg.execution.turn import TurnRecord
+from synthorg.observability.events.provider import PROVIDER_EMPTY_COMPLETION
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import (
     CompletionConfig,
@@ -38,6 +40,10 @@ def _usage() -> TokenUsage:
 
 def _content(text: str) -> StreamChunk:
     return StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content=text)
+
+
+def _reasoning(text: str) -> StreamChunk:
+    return StreamChunk(event_type=StreamEventType.REASONING_DELTA, content=text)
 
 
 def _usage_chunk() -> StreamChunk:
@@ -165,6 +171,53 @@ class TestStreamProviderReassembly:
         result = await _stream(sample_agent_context, [_done()])
         assert isinstance(result, CompletionResponse)
         assert result.finish_reason is FinishReason.ERROR
+
+    async def test_an_empty_completion_says_it_was_empty(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """The streamed turn reports it, like the non-streamed one does.
+
+        This path carried its own copy of the normalisation and none of the
+        reporting, so a live task that produced an empty turn 48 failed with
+        "LLM returned error on turn 48" and nothing anywhere saying the
+        completion had simply come back empty.
+        """
+        with structlog.testing.capture_logs() as logs:
+            await _stream(sample_agent_context, [_done()])
+
+        assert any(entry["event"] == PROVIDER_EMPTY_COMPLETION for entry in logs)
+
+    async def test_reasoning_only_turn_is_not_an_error(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        """A turn spent entirely on the thinking channel is still a turn.
+
+        The loop sends a reasoning effort and read only ``delta.content``, so
+        a model that answered on its other channel looked like a model that
+        said nothing: the turn became ``ERROR`` and the task failed, throwing
+        away every turn before it.
+        """
+        result = await _stream(
+            sample_agent_context,
+            [_reasoning("weighing "), _reasoning("two layouts")],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.reasoning == "weighing two layouts"
+        assert result.content is None
+        assert result.finish_reason is not FinishReason.ERROR
+
+    async def test_reasoning_is_kept_out_of_content(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        # Replaying the model's working back as assistant content would change
+        # what it sees next, so the two channels stay apart.
+        result = await _stream(
+            sample_agent_context,
+            [_reasoning("thinking"), _content("answer"), _done(FinishReason.STOP)],
+        )
+        assert isinstance(result, CompletionResponse)
+        assert result.content == "answer"
+        assert result.reasoning == "thinking"
 
     async def test_done_finish_reason_preserved(
         self, sample_agent_context: AgentContext

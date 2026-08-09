@@ -247,13 +247,21 @@ def get_tool_definitions(
 def response_to_message(response: CompletionResponse) -> ChatMessage:
     """Convert a ``CompletionResponse`` to an assistant ``ChatMessage``.
 
+    A turn that produced only reasoning becomes an empty assistant message
+    rather than carrying its reasoning as content: the transcript records
+    that the turn happened, without replaying the model's working back to it
+    as something it said out loud.
+
     Returns:
         A :class:`ChatMessage` with role ASSISTANT carrying the
         response content and tool calls.
     """
+    content = response.content
+    if content is None and not response.tool_calls:
+        content = ""
     return ChatMessage(
         role=MessageRole.ASSISTANT,
-        content=response.content,
+        content=content,
         tool_calls=response.tool_calls,
     )
 

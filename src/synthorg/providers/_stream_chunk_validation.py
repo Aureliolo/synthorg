@@ -9,6 +9,8 @@ types back from ``models`` (which would close an import cycle); only the
 ``StreamEventType`` discriminator needs its real type.
 """
 
+from typing import assert_never
+
 from synthorg.providers.enums import StreamEventType
 
 
@@ -39,7 +41,9 @@ def validate_stream_chunk_fields(
     }
     required: set[str] = set()
     match event_type:
-        case StreamEventType.CONTENT_DELTA:
+        case StreamEventType.CONTENT_DELTA | StreamEventType.REASONING_DELTA:
+            # Both carry text in ``content``; the discriminator says which of
+            # the model's two channels it arrived on.
             required = {"content"}
         case StreamEventType.TOOL_CALL_DELTA:
             required = {"tool_call_delta"}
@@ -49,9 +53,10 @@ def validate_stream_chunk_fields(
             required = {"error_message"}
         case StreamEventType.DONE:
             pass  # Terminal event, no required payload fields.
-        case _:
-            msg = f"Unhandled stream event type: {event_type}"  # type: ignore[unreachable]
-            raise ValueError(msg)
+        case _ as unreachable:
+            # A new event type without a payload contract is a type-check
+            # error here, not a chunk that silently validates against nothing.
+            assert_never(unreachable)
 
     for name in required:
         if payload[name] is None:

@@ -2,12 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from types import SimpleNamespace
 
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.resilience import parse_retry_after_seconds
 from synthorg.providers.drivers.mappers import (
+    extract_reasoning,
     extract_retry_after,
     extract_tool_calls,
     map_finish_reason,
@@ -470,6 +472,7 @@ class TestNormalizeEmptyFinish:
     def test_empty_stop_turn_becomes_error(self) -> None:
         result = normalize_empty_finish(
             content=None,
+            reasoning=None,
             tool_calls=(),
             finish=FinishReason.STOP,
             provider="test-provider",
@@ -483,6 +486,7 @@ class TestNormalizeEmptyFinish:
         # TOOL_USE turn with no surviving tool calls: also unusable.
         result = normalize_empty_finish(
             content=None,
+            reasoning=None,
             tool_calls=(),
             finish=FinishReason.TOOL_USE,
             provider="test-provider",
@@ -494,6 +498,7 @@ class TestNormalizeEmptyFinish:
     def test_content_present_is_unchanged(self) -> None:
         result = normalize_empty_finish(
             content="here is the answer",
+            reasoning=None,
             tool_calls=(),
             finish=FinishReason.STOP,
             provider="test-provider",
@@ -506,6 +511,7 @@ class TestNormalizeEmptyFinish:
         call = ToolCall(id="call-1", name="do_it", arguments={})
         result = normalize_empty_finish(
             content=None,
+            reasoning=None,
             tool_calls=(call,),
             finish=FinishReason.TOOL_USE,
             provider="test-provider",
@@ -517,6 +523,7 @@ class TestNormalizeEmptyFinish:
     def test_already_error_is_left_alone(self) -> None:
         result = normalize_empty_finish(
             content=None,
+            reasoning=None,
             tool_calls=(),
             finish=FinishReason.ERROR,
             provider="test-provider",
@@ -530,6 +537,7 @@ class TestNormalizeEmptyFinish:
         # CompletionResponse already accepts; do not mask it as ERROR.
         result = normalize_empty_finish(
             content=None,
+            reasoning=None,
             tool_calls=(),
             finish=FinishReason.CONTENT_FILTER,
             provider="test-provider",
@@ -537,3 +545,58 @@ class TestNormalizeEmptyFinish:
             had_raw_tool_calls=False,
         )
         assert result is FinishReason.CONTENT_FILTER
+
+    def test_reasoning_only_turn_is_not_empty(self) -> None:
+        # A reasoning model can spend a whole turn on its thinking channel.
+        # Calling that an error killed a live task on turn 48 of 50 and threw
+        # away the forty-seven turns before it.
+        result = normalize_empty_finish(
+            content=None,
+            reasoning="weighing two layouts before writing the file",
+            tool_calls=(),
+            finish=FinishReason.MAX_TOKENS,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=False,
+        )
+        assert result is FinishReason.MAX_TOKENS
+
+
+# ── extract_reasoning ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestExtractReasoning:
+    """Both reasoning shapes are read; neither invents text."""
+
+    def test_flat_reasoning_content(self) -> None:
+        assert extract_reasoning({"reasoning_content": "step one"}) == "step one"
+
+    def test_thinking_blocks_are_joined(self) -> None:
+        blocks = [
+            {"type": "thinking", "thinking": "first "},
+            {"type": "thinking", "thinking": "second"},
+        ]
+        assert extract_reasoning({"thinking_blocks": blocks}) == "first second"
+
+    def test_flat_field_wins_over_blocks(self) -> None:
+        source = {
+            "reasoning_content": "flat",
+            "thinking_blocks": [{"thinking": "blocked"}],
+        }
+        assert extract_reasoning(source) == "flat"
+
+    def test_attribute_access_source(self) -> None:
+        delta = SimpleNamespace(reasoning_content="from an attribute")
+        assert extract_reasoning(delta) == "from an attribute"
+
+    def test_absent_reasoning_is_none(self) -> None:
+        assert extract_reasoning({"content": "visible only"}) is None
+
+    def test_blank_reasoning_is_none(self) -> None:
+        # Blank is not "the model reasoned"; a caller must be able to tell a
+        # silent turn from an empty string.
+        assert extract_reasoning({"reasoning_content": ""}) is None
+
+    def test_malformed_blocks_are_ignored(self) -> None:
+        assert extract_reasoning({"thinking_blocks": "not a list"}) is None

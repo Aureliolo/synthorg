@@ -63,6 +63,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TURN_START,
     EXECUTION_LOOP_TURN_STREAMED,
 )
+from synthorg.providers.drivers.mappers import normalize_empty_finish
 from synthorg.providers.enums import StreamEventType
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
@@ -163,52 +164,66 @@ async def _aclose_quietly(stream: AsyncIterator[StreamChunk]) -> None:
         reraise_critical(exc)
 
 
-def _accumulate_chunk(
-    chunk: StreamChunk,
-    content_parts: list[str],
-    tool_calls: list[ToolCall],
-) -> None:
+def _accumulate_chunk(chunk: StreamChunk, acc: _StreamAccumulator) -> None:
     """Fold one stream chunk's payload into the reassembly accumulators."""
     if chunk.event_type is StreamEventType.CONTENT_DELTA and chunk.content:
-        content_parts.append(chunk.content)
+        acc.content_parts.append(chunk.content)
+    elif chunk.event_type is StreamEventType.REASONING_DELTA and chunk.content:
+        acc.reasoning_parts.append(chunk.content)
     elif (
         chunk.event_type is StreamEventType.TOOL_CALL_DELTA
         and chunk.tool_call_delta is not None
     ):
-        tool_calls.append(chunk.tool_call_delta)
+        acc.tool_calls.append(chunk.tool_call_delta)
 
 
 def _reassemble_response(
     *,
     content_parts: list[str],
+    reasoning_parts: list[str],
     tool_calls: list[ToolCall],
     usage: TokenUsage,
     finish_reason: FinishReason | None,
     model_id: str,
+    provider_name: str,
 ) -> CompletionResponse:
     """Reassemble streamed deltas into a ``CompletionResponse``.
 
     Recovers the finish reason from the terminal chunk when the driver
     surfaced one, else infers it (tool calls imply ``TOOL_USE``, otherwise
-    ``STOP``). An empty completion (no content, no tool calls) is normalised to
-    ``ERROR`` so the built response is well-formed and the loop applies its own
-    error handling, mirroring the non-streaming driver's empty-completion path.
+    ``STOP``). A completion empty on every channel is normalised to ``ERROR``
+    through the same helper the non-streaming driver uses, so the built
+    response is well-formed and the loop applies its own error handling.
+
+    Through that helper rather than a second copy of the rule: this path had
+    its own, which meant a streamed empty turn became a bare ``ERROR`` with no
+    record that it was empty. A live task failed on turn 48 and the log said
+    only that the LLM returned an error.
+
+    Reasoning is kept as its own field rather than merged into *content*: it is
+    the model's working, and replaying it back as assistant content changes
+    what the model sees on the next turn.
 
     Returns:
         The reassembled :class:`CompletionResponse`.
     """
     content = "".join(content_parts) or None
+    reasoning = "".join(reasoning_parts) or None
     finish = finish_reason
     if finish is None:
         finish = FinishReason.TOOL_USE if tool_calls else FinishReason.STOP
-    if (
-        content is None
-        and not tool_calls
-        and finish not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
-    ):
-        finish = FinishReason.ERROR
+    finish = normalize_empty_finish(
+        content=content,
+        reasoning=reasoning,
+        tool_calls=tuple(tool_calls),
+        finish=finish,
+        provider=provider_name,
+        model=model_id,
+        had_raw_tool_calls=bool(tool_calls),
+    )
     return CompletionResponse(
         content=content,
+        reasoning=reasoning,
         tool_calls=tuple(tool_calls),
         finish_reason=finish,
         usage=usage,
@@ -226,6 +241,7 @@ class _StreamAccumulator:
     """
 
     content_parts: list[str] = field(default_factory=list)
+    reasoning_parts: list[str] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: TokenUsage = ZERO_TOKEN_USAGE
     finish_reason: FinishReason | None = None
@@ -292,7 +308,7 @@ async def _drain_stream(
     """
     index = 0
     async for chunk in stream:
-        _accumulate_chunk(chunk, acc.content_parts, acc.tool_calls)
+        _accumulate_chunk(chunk, acc)
         if chunk.event_type is StreamEventType.USAGE and chunk.usage:
             acc.usage = chunk.usage
         elif (
@@ -427,14 +443,17 @@ async def stream_provider(  # noqa: PLR0913
         execution_id=ctx.execution_id,
         turn=turn_number,
         content_chars=sum(len(part) for part in acc.content_parts),
+        reasoning_chars=sum(len(part) for part in acc.reasoning_parts),
         tool_calls=len(acc.tool_calls),
     )
     return _reassemble_response(
         content_parts=acc.content_parts,
+        reasoning_parts=acc.reasoning_parts,
         tool_calls=acc.tool_calls,
         usage=acc.usage,
         finish_reason=acc.finish_reason,
         model_id=model_id,
+        provider_name=type(provider).__name__,
     )
 
 
