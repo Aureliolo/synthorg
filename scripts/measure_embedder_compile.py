@@ -502,6 +502,10 @@ def measure_arm(*, model_name: str, device: str, arm: Arm, rounds: int) -> ArmRe
 
     Returns:
         The paired measurement.
+
+    Raises:
+        MissingMlExtraError: If sentence-transformers is not installed.
+        BenchmarkConfigError: If the arm produced no usable measurement.
     """
     sync = _synchroniser(device)
     eager = _load_model(model_name, device, None)
@@ -653,7 +657,10 @@ def main(argv: list[str] | None = None) -> int:
             " 'uv sync --group fine-tune-cpu' (or fine-tune-gpu)",
             file=sys.stderr,
         )
-        exit_code = _EXIT_CONFIG
+        # Combined rather than assigned: an arm that already diverged is the
+        # more serious finding, and a later missing extra must not downgrade
+        # the run to "misconfigured".
+        exit_code = max(exit_code, _EXIT_CONFIG)
     finally:
         env = RunEnvironment(
             device=args.device,

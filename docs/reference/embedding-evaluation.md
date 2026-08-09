@@ -269,7 +269,7 @@ structured-phases meeting performs roughly 3 to 8 embed calls, once per
 conflict check. On CPU, which is where this embedder runs, the two winning
 arms save 1.83 ms and 1.98 ms per call, so roughly 6 to 16 ms per meeting,
 against 10.8 s to 25.5 s of one-off compilation. Break-even therefore needs
-between about 5,100 and 13,700 embed calls, meaning hundreds to thousands of
+between about 5,900 and 12,900 embed calls, meaning hundreds to thousands of
 meetings within a single process lifetime, while a meeting already spends
 seconds per LLM call.
 

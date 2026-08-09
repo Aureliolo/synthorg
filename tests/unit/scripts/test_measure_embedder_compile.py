@@ -483,6 +483,26 @@ class TestMain:
         assert module.main(["--arms", "default,default-dynamic"]) == 2
         assert "| default |" in capsys.readouterr().out
 
+    def test_divergence_outranks_a_later_missing_extra(
+        self,
+        module: _ScriptModule,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A divergence is the more serious outcome, so it owns the exit code."""
+        measured: list[str] = []
+
+        def _diverge_then_fail(**kwargs: object) -> _ArmResult:
+            arm = cast("_Arm", kwargs["arm"])
+            if measured:
+                msg = "no module named triton"
+                raise module.MissingMlExtraError(msg)
+            measured.append(arm.name)
+            return _result(module, arm=arm.name, cosine=0.5)
+
+        monkeypatch.setattr(module, "_versions", lambda: ("2.13.0", "5.7.0"))
+        monkeypatch.setattr(module, "measure_arm", _diverge_then_fail)
+        assert module.main(["--arms", "default,default-dynamic"]) == 3
+
 
 class TestCheckedRounds:
     @pytest.mark.parametrize("rounds", [0, -1])
