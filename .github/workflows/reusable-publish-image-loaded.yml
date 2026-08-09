@@ -47,12 +47,14 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-24.04
-    # `publish-image-loaded`'s login / push / cosign / attest / syft-SBOM steps
-    # each carry a bounded retry ladder. This must clear the SUM of them (~36m
-    # composed worst case, more than the retag path since it also signs and
-    # attests) so a transient blip that trips several is retried, not cancelled
-    # mid-retry.
-    timeout-minutes: 40
+    # `publish-image-loaded`'s login / push / cosign / VEX-attest / provenance
+    # / syft-SBOM steps each carry a bounded retry ladder. This must clear the
+    # SUM of them (~39m composed worst case, more than the retag path since it
+    # also signs and attests) so a transient blip that trips several is
+    # retried, not cancelled mid-retry. A cancellation there is not a benign
+    # timeout: it can leave an image pushed but unsigned or unattested, which
+    # is the outcome the ladders exist to prevent.
+    timeout-minutes: 45
     environment: image-push
     permissions:
       actions: read

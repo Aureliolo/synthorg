@@ -13,7 +13,11 @@
 #                 `trivy image --vex oci <image>` and sees the reasoning
 #                 instead of re-triaging it. Needs an OpenVEX justification
 #                 and at least one purl, because a statement addresses a
-#                 product.
+#                 product. Write the purl as bare as it can be while still
+#                 naming the right package (`pkg:apk/wolfi/ncurses`, not the
+#                 version-and-qualifier form a scan report prints): both
+#                 match, and the pinned form stops matching at the next
+#                 base-image bump without telling anyone.
 #
 #   accepted      The product is affected and the risk is accepted anyway.
 #                 VEX has no status for that, so the entry becomes a Trivy
@@ -24,6 +28,11 @@
 # Every entry carries `re_review_by`. The gate fails the push once that date
 # arrives, which is louder than Trivy's own `expired_at` (it merely stops
 # suppressing, at the next scan, in a log nobody reads).
+#
+# A suppressed finding leaves no trace in the scan report: Trivy drops it from
+# the results rather than recording it, even under `--show-suppressed`. So the
+# uploaded `trivy-*-report` artifacts cannot tell you what was answered or
+# why, and this ledger is the only place that can.
 #
 # Removal owner for every entry: issue #2202.
 

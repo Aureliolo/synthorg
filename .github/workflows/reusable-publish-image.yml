@@ -53,10 +53,12 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-24.04
-    # Fixed rather than a caller input: every caller (backend, sandbox,
-    # sidecar, fine-tune) used 30 before the split, and a configurable budget
-    # nobody set is a knob that only ever drifts from what the jobs need.
-    timeout-minutes: 30
+    # Fixed rather than a caller input: a configurable budget nobody sets is a
+    # knob that only ever drifts from what the jobs need. The value clears the
+    # summed retry ladders of `publish-image-loaded` (~39m) plus the two
+    # `download-artifact` ladders this path adds ahead of it, so a transient
+    # blip that trips several is retried rather than cancelled mid-retry.
+    timeout-minutes: 45
     environment: image-push
     permissions:
       actions: read

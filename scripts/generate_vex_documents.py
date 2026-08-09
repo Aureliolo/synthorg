@@ -35,7 +35,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import Final, TypedDict, override
 
 import yaml
 
@@ -368,7 +368,23 @@ def _block_scalar_str(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
 
 
 class _TriageDumper(yaml.SafeDumper):
-    """Dumper that keeps rendered prose readable."""
+    """Dumper that keeps rendered prose readable.
+
+    PyYAML puts a block sequence at its parent's indentation by default, so
+    entries would sit at column 0 under ``vulnerabilities:``. Valid, but this
+    file is read by a person mid-triage, and the hand-written form it renders
+    into indents its entries.
+    """
+
+    @override
+    def increase_indent(
+        self,
+        flow: bool = False,
+        indentless: bool = False,
+    ) -> None:
+        # `indentless` is accepted to match PyYAML's signature and then
+        # ignored: forcing it False is the entire reason this override exists.
+        super().increase_indent(flow=flow, indentless=False)
 
 
 _TriageDumper.add_representer(str, _block_scalar_str)
