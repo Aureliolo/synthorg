@@ -11,18 +11,23 @@ import {
   computeFooterHeight,
   computeHeaderHeight,
 } from './layout-shared'
+import { deriveLayoutModel } from './layout-clusters'
+import { runDagreLayout } from './layout-graph'
 import {
+  collectRootGroupIds,
+  computePopulatedGroups,
+  placeEmptyGroups,
+  toGroupRelative,
+} from './layout-groups'
+import { planTeams } from './layout-teams'
+import {
+  anchorLayout,
   centerLeadsOverReports,
   centerNonRootUnderRoot,
   centerOwnersOverRoot,
-  collectRootGroupIds,
-  computePopulatedGroups,
   enforceHorizontalGaps,
   enforceVerticalGaps,
-  placeEmptyGroups,
-  runDagreOnLeaves,
-  toGroupRelative,
-} from './layout-internals'
+} from './layout-passes'
 
 export type { LayoutOptions } from './layout-shared'
 
@@ -48,9 +53,11 @@ function layoutEmptyChart(nodes: Node[]): Node[] {
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
  *
- * Returns a new array of nodes with `position` set. Edges are
- * unchanged.  Group (department) nodes are excluded from dagre and
- * sized to contain their children after layout.
+ * Returns a new array of nodes with `position` set; edges are unchanged.
+ * Each populated department is a dagre cluster laid out in its own direction,
+ * teams are folded into single sized boxes beforehand, and every card is then
+ * sized around its contents and shifted into the constant gaps the chart
+ * reads by.
  */
 export function applyDagreLayout(
   nodes: Node[],
@@ -67,24 +74,34 @@ export function applyDagreLayout(
   const footerHeight = computeFooterHeight(options)
 
   const groupNodes = nodes.filter((n) => n.type === 'department')
-  const leafNodes = nodes.filter((n) => n.type !== 'department')
 
   if (groupNodes.length > 0) {
     nodeSep += DEFAULT_GROUP_PADDING * 2
   }
 
-  const agentLeafNodes = leafNodes.filter((n) => n.type !== 'owner')
-  if (agentLeafNodes.length === 0) {
+  if (!nodes.some((n) => n.type !== 'department' && n.type !== 'owner')) {
     return layoutEmptyChart(nodes)
   }
 
-  const positionedLeafMap = runDagreOnLeaves(leafNodes, edges, { direction, nodeSep, rankSep })
+  const teams = planTeams(nodes, edges, { direction, nodeSep, rankSep })
+  const model = deriveLayoutModel({
+    groupNodes,
+    allNodes: nodes,
+    leafNodes: teams.leafNodes,
+    edges: teams.edges,
+    nodeSep,
+  })
+  const positionedLeafMap = runDagreLayout(teams.leafNodes, teams.edges, model, {
+    direction,
+    nodeSep,
+    rankSep,
+  })
   const rootGroupIds = collectRootGroupIds(groupNodes)
 
-  // Centre each lead over its in-box reports on the raw dagre coords,
+  // Centre each lead across its in-box reports on the raw dagre coords,
   // BEFORE box bounds are derived, so each dept card wraps the tight
-  // (centred) layout instead of dagre's spread-out one.
-  centerLeadsOverReports(groupNodes, positionedLeafMap)
+  // (centred) layout instead of dagre's balanced one.
+  centerLeadsOverReports(model.clusters, positionedLeafMap)
 
   const { populatedResults, emptyGroups } = computePopulatedGroups(
     groupNodes,
@@ -119,6 +136,11 @@ export function applyDagreLayout(
   centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
   enforceVerticalGaps(allGroupResults, positionedLeafMap, rootGroupIds)
   centerOwnersOverRoot(positionedLeafMap, rootResult)
+  anchorLayout(allGroupResults, positionedLeafMap, rootResult)
 
-  return [...allGroupResults.map((r) => r.node), ...positionedLeafMap.values()]
+  return [
+    ...allGroupResults.map((r) => r.node),
+    ...positionedLeafMap.values(),
+    ...teams.memberNodes,
+  ]
 }

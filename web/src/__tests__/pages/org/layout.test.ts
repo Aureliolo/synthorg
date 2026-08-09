@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Node, Edge } from '@xyflow/react'
 import { applyDagreLayout } from '@/pages/org/layout'
+import { getNodeDim } from '@/pages/org/layout-shared'
+import {
+  type DeptSpec,
+  ROOT_DEPT_NODE_ID,
+  layoutOf,
+  nodeById,
+  orgConfig,
+} from '../../helpers/org-layout'
 
 function makeNode(id: string, opts: Partial<Node> = {}): Node {
   return {
@@ -156,5 +164,55 @@ describe('applyDagreLayout', () => {
     const lead = result.find((n) => n.id === 'solo-lead')!
     expect(typeof lead.position.x).toBe('number')
     expect(Number.isFinite(lead.position.x)).toBe(true)
+  })
+})
+
+describe('applyDagreLayout on degenerate charts', () => {
+  function overlaps(a: Node, b: Node): boolean {
+    const dimA = getNodeDim(a)
+    const dimB = getNodeDim(b)
+    return (
+      a.position.x < b.position.x + dimB.w
+      && b.position.x < a.position.x + dimA.w
+      && a.position.y < b.position.y + dimB.h
+      && b.position.y < a.position.y + dimA.h
+    )
+  }
+
+  it('gives an unstaffed department a card of its own beside the staffed ones', () => {
+    const specs: DeptSpec[] = [
+      { name: 'executive', members: ['zoe'] },
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'legal', members: [] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    const empty = nodeById(nodes, 'dept-legal')
+    expect(empty.width as number).toBeGreaterThan(0)
+    expect(empty.height as number).toBeGreaterThan(0)
+    expect(overlaps(empty, nodeById(nodes, 'dept-engineering'))).toBe(false)
+    expect(overlaps(empty, nodeById(nodes, ROOT_DEPT_NODE_ID))).toBe(false)
+  })
+
+  it('lays out an org with no CEO', () => {
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'sales', members: ['carol'] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+    }
+    expect(overlaps(nodeById(nodes, 'dept-engineering'), nodeById(nodes, 'dept-sales'))).toBe(false)
+  })
+
+  it('falls back to a grid when no agent has been hired yet', () => {
+    const nodes = layoutOf(orgConfig([{ name: 'engineering', members: [] }]))
+    expect(nodes.length).toBeGreaterThan(0)
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+      expect(node.width as number).toBeGreaterThan(0)
+    }
   })
 })

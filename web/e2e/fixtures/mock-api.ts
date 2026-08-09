@@ -158,6 +158,30 @@ export async function mockApiRoutes(page: Page) {
     }),
   )
 
+  // Cookie-session check. The catch-all already answers this with a non-401,
+  // which is enough to keep the SPA out of the login redirect, but its
+  // ``data: []`` leaves ``useAuthStore.user`` an array: any surface that reads
+  // a field off the session user (the org chart synthesises its owner node
+  // from ``user.username``) then renders ``undefined`` and takes its error
+  // boundary down. Answer with a real ``UserInfoResponse``.
+  await page.route('**/api/v1/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          id: 'user-001',
+          username: 'operator',
+          role: 'ceo',
+          org_roles: [],
+          scoped_departments: [],
+          must_change_password: false,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
   // Auth ticket for WebSocket. Must be the full ``ApiResponse`` envelope:
   // ``getWsTicket`` calls ``unwrap()``, so a bare ``{ ticket }`` throws and
   // the SPA's WebSocket setup fails (no socket is ever constructed, and

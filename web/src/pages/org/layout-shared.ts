@@ -1,9 +1,14 @@
-import type { Node } from '@xyflow/react'
+import type { Edge, Node } from '@xyflow/react'
 
-// Only 'TB' is currently used.  The post-layout adjustment pass
-// (Steps 4-5) assumes a top-to-bottom layout.  Adding 'LR' support
-// would require mirroring those steps along the x-axis.
+// The direction of the chart AS A WHOLE.  Only 'TB' is used: the
+// post-layout adjustment pass (Steps 4-5) places owner row, root box and
+// department row along the y-axis, and 'LR' would need all of it mirrored.
 export type LayoutDirection = 'TB'
+
+// The direction INSIDE one department card.  A department is laid out in
+// isolation and placed as a single box by the passes above, so its own flow
+// is contained by its card and leaves the global top-to-bottom reading intact.
+export type ClusterDirection = 'TB' | 'LR'
 
 /**
  * Per-render visual preferences that affect how much space the dept
@@ -57,6 +62,16 @@ const HEADER_STATUS_DOTS = 20
 // Bottom footer chip ("+ Add agent")
 const FOOTER_ADD_AGENT = 34
 
+// Team card chrome: `p-2` padding on all sides plus a `text-xs` title row
+// with a `pb-1` gap under it, matching what TeamGroupNode renders.
+export const TEAM_PADDING = 8
+export const TEAM_HEADER_HEIGHT = 20
+
+// A team can exist before it is staffed, so it has no members to derive
+// bounds from and is laid out as a plain card of its own.
+export const EMPTY_TEAM_WIDTH = 200
+export const EMPTY_TEAM_HEIGHT = 64
+
 export const EMPTY_GROUP_MIN_WIDTH = 240
 // Matches the empty-state card's min-h -- header + "No agents yet"
 // icon + label + (optional) add agent chip.
@@ -67,6 +82,13 @@ export const EMPTY_GROUP_HEIGHT = 180
 // clipping past the card's left edge, and so a 1-agent dept reads with the
 // same visual weight as a multi-agent one.
 export const POPULATED_GROUP_MIN_WIDTH = 340
+
+// Widest a department card may get before it flows left-to-right instead.
+// Every department sits in the same row under the root, so their widths add
+// up while their heights only take the max: past three minimum-width cards a
+// single flat department dominates the canvas and shoves its siblings out of
+// view, where the same members in a column cost nothing but row height.
+export const DEPT_HORIZONTAL_WIDTH_BUDGET = POPULATED_GROUP_MIN_WIDTH * 3
 
 // Target visible gap between any two adjacent dept boxes.  Enforced
 // AFTER dagre by a manual shift pass, not by dagre's minlen (dagre's
@@ -86,6 +108,21 @@ export const DESIRED_INTER_DEPT_GAP_X = 56
 // comes from the post-shift pass.
 export const OWNER_TO_ROOT_MINLEN = 2
 export const CEO_TO_CHILD_MINLEN = 2
+const DEFAULT_MINLEN = 1
+
+/**
+ * Rank distance dagre must put between an edge's endpoints.
+ *
+ * Two children of the same parent reached over edges of equal minlen land on
+ * the same rank, which is what lets the ordering constraints be derived from
+ * the tree's shape without a second layout pass.
+ */
+export function dagreEdgeMinlen(edge: Edge): number {
+  const kind = (edge.data as { crossDeptKind?: string } | undefined)?.crossDeptKind
+  if (kind === 'owner-to-root') return OWNER_TO_ROOT_MINLEN
+  if (kind === 'ceo-to-child') return CEO_TO_CHILD_MINLEN
+  return DEFAULT_MINLEN
+}
 
 export function computeHeaderHeight(prefs: LayoutVisualPrefs): number {
   let h = HEADER_BASE + HEADER_STATS_BAR
