@@ -2651,7 +2651,7 @@ CREATE TABLE deleted_entities (
 -- timestamp rides along because a re-created and re-deleted id is answered
 -- newest-first.
 CREATE INDEX idx_deleted_entities_lookup
-ON deleted_entities (entity_kind, entity_id, deleted_at DESC);
+ON deleted_entities (entity_id, entity_kind, deleted_at DESC);
 
 -- ── Initiative evaluation reports (the delivery verdict) ─────
 -- The verdict is what decides whether an initiative delivered, so it is

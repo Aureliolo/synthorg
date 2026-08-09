@@ -58,14 +58,13 @@ class PlanWriteRecorderMixin:
             plan: The plan as persisted.
             requested_by: Identity driving the transition, when there is one.
             reason: Why the transition happened, when the caller has one.
+                Omitted, a failing plan falls back to its own
+                ``failure_reason``, which the service refuses the write
+                without; ``FAILED`` is terminal and only ``FAILED`` may carry
+                that field, so no later row can inherit a stale one.
         """
         if from_status == plan.status:
             return
-        # A failing plan always has a reason: the service refuses the write
-        # without one. Only the separate ``reason`` argument reached the
-        # ledger, so the single transition where a reason is mandatory was
-        # the one recorded as null, and the ledger answered "how did this
-        # plan get here" with silence on the row that mattered most.
         recorded_reason = reason if reason is not None else plan.failure_reason
         context: dict[str, str] = {}
         if requested_by is not None:

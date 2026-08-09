@@ -69,4 +69,4 @@ CREATE TABLE deleted_entities (
 );
 
 CREATE INDEX idx_deleted_entities_lookup
-ON deleted_entities (entity_kind, entity_id, deleted_at DESC);
+ON deleted_entities (entity_id, entity_kind, deleted_at DESC);

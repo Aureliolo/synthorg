@@ -32,7 +32,7 @@ from synthorg.engine.parallel_models import (
     ParallelProgress,
 )
 from synthorg.engine.parallel_progress import _ProgressState
-from synthorg.engine.resource_lock import ResourceLock
+from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import ShutdownManager
 from synthorg.observability import get_logger, safe_error_description
@@ -68,8 +68,11 @@ class ParallelExecutor:
         engine: Agent execution engine.
         shutdown_manager: Optional shutdown manager for task registration.
         resource_lock: Optional resource lock for exclusive file access.
-            Defaults to ``InMemoryResourceLock`` if any assignments
-            declare resource claims.
+            Defaults to one ``InMemoryResourceLock`` owned by this
+            executor. Owned rather than minted per group: a lock created
+            inside a group covers claims that group already proved
+            non-colliding, so it can only ever succeed, and two concurrent
+            groups naming the same resource would each hold their own.
         progress_callback: Optional synchronous callback invoked on
             progress updates.
     """
@@ -85,7 +88,9 @@ class ParallelExecutor:
     ) -> None:
         self._engine = engine
         self._shutdown_manager = shutdown_manager
-        self._resource_lock = resource_lock
+        self._resource_lock: ResourceLock = (
+            resource_lock if resource_lock is not None else InMemoryResourceLock()
+        )
         self._progress_callback = progress_callback
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -155,7 +160,11 @@ class ParallelExecutor:
         finally:
             if lock is not None:
                 try:
-                    await release_all_locks(group, lock)
+                    # Shielded: a re-delivered cancellation lands on the
+                    # first await of the unwind, and a claim that is never
+                    # released blocks every later group that names the same
+                    # resource. The release is local and bounded.
+                    await asyncio.shield(release_all_locks(group, lock))
                 except Exception as release_exc:  # noqa: BLE001 -- criticals re-raised
                     # lint-allow: swallow-ok -- best-effort teardown
                     reraise_critical(release_exc)

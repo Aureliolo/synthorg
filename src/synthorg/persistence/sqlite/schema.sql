@@ -2780,7 +2780,7 @@ CREATE TABLE deleted_entities (
 -- timestamp rides along because a re-created and re-deleted id is answered
 -- newest-first.
 CREATE INDEX idx_deleted_entities_lookup
-ON deleted_entities (entity_kind, entity_id, deleted_at DESC);
+ON deleted_entities (entity_id, entity_kind, deleted_at DESC);
 
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

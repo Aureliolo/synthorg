@@ -418,6 +418,10 @@ class TestCheckResponseErrors:
 
         assert result is not None
         assert "ghp_supersecret" not in (result.error_message or "")
+        # Positive half: a reason that stopped carrying the provider's
+        # message at all would pass the redaction check while losing the
+        # diagnostic it exists for.
+        assert "auth failed" in (result.error_message or "")
 
     def test_a_silent_provider_still_reports_the_turn(
         self,

@@ -3,8 +3,8 @@
 from typing import Final
 
 from synthorg.api.controllers._approval_retire import (
+    retire_approvals_for_tasks,
     retire_plan_approvals,
-    retire_task_approvals,
 )
 from synthorg.api.controllers._deletion_record import record_deletion
 from synthorg.api.controllers._task_teardown import terminate_task
@@ -309,12 +309,13 @@ async def _delete_cancelled_tasks(
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
         )
+        # Retired for the whole page at once: an approval about a task that
+        # has been removed still offers a decision, and the store answers
+        # "every pending approval" and nothing narrower, so asking per task
+        # would rescan the queue once per row.
+        await retire_approvals_for_tasks(app_state, [str(t.id) for t in tasks])
         removed_here = 0
         for task in tasks:
-            # A live teardown left four `review:task_failed` approvals pending
-            # against tasks it had already removed, each still offering a
-            # decision that would resume nothing.
-            await retire_task_approvals(app_state, str(task.id))
             try:
                 removed = await task_engine.delete_task(
                     str(task.id),

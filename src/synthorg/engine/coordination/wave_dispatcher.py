@@ -24,7 +24,10 @@ from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
-from synthorg.engine.coordination.models import CoordinationPhaseResult
+from synthorg.engine.coordination.models import (
+    CoordinationPhaseResult,
+    CoordinationWave,
+)
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.errors import CoordinationError
 from synthorg.engine.middleware.orchestrator_strategy import OrchestratorStrategy
@@ -130,10 +133,12 @@ class WaveDispatcher:
         all_phases: list[CoordinationPhaseResult] = []
         workspaces: tuple[Workspace, ...] = ()
         merge_result: WorkspaceGroupResult | None = None
-        # Everything is torn down unless a run parks in it. Narrowed once the
-        # waves report; an unwind before that keeps the original guarantee
-        # that no workspace outlives a dispatch that never ran.
-        settled: tuple[Workspace, ...] = ()
+        # Filled wave by wave rather than returned at the end, so the
+        # teardown below knows who parked even when a cancellation unwinds
+        # the dispatch mid-run. Read from the waves themselves and not from
+        # a separate flag, because a flag set on the success path is exactly
+        # what a BaseException skips.
+        waves: list[CoordinationWave] = []
 
         if isolation_active and workspace_service is not None:
             workspaces, setup_phase = await setup_workspaces(
@@ -146,7 +151,6 @@ class WaveDispatcher:
             all_phases.append(setup_phase)
             if not setup_phase.success:
                 self._on_setup_failed(setup_phase.error)
-            settled = workspaces
 
         try:
             groups = build_execution_waves(
@@ -166,12 +170,13 @@ class WaveDispatcher:
                 record_exception=False,
                 set_status_on_exception=False,
             ):
-                waves, exec_phases = await execute_waves(
+                exec_phases = await execute_waves(
                     groups,
                     parallel_executor,
                     clock=self._clock,
                     fail_fast=config.fail_fast,
                     assignment_writer=self._assignment_writer,
+                    waves=waves,
                 )
             all_phases.extend(exec_phases)
 
@@ -209,8 +214,12 @@ class WaveDispatcher:
                 phases=tuple(all_phases),
             )
         finally:
-            if settled and workspace_service is not None:
-                await teardown_workspaces(workspace_service, settled)
+            if workspace_service is not None:
+                torn_down = tuple(
+                    w for w in workspaces if w.task_id not in parked_tasks(waves)
+                )
+                if torn_down:
+                    await teardown_workspaces(workspace_service, torn_down)
 
     def _on_setup_failed(self, detail: str | None) -> None:
         """Decide what a failed workspace setup means for this topology.

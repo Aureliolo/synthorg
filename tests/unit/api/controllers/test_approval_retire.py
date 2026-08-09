@@ -2,16 +2,18 @@
 
 A pending approval outlives the plan or task it names. Deciding it afterwards
 drives the resume path at an id that resolves to nothing, so the delete has to
-take the approval with it. A live run left four ``review:task_failed``
-approvals PENDING against tasks a project teardown had already removed.
+take the approval with it, and a delete that is refused has to leave the queue
+as it found it.
 """
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 
 from synthorg.api.controllers._approval_retire import (
+    retire_approvals_for_tasks,
     retire_plan_approvals,
     retire_task_approvals,
 )
@@ -61,13 +63,31 @@ class _RecordingStore:
     def __init__(self, items: tuple[ApprovalItem, ...]) -> None:
         self._items = items
         self.saved: list[ApprovalItem] = []
-        # ``False`` stands for a decision landing between the read and the
+        self.restored: list[ApprovalItem] = []
+        # ``False`` stands for a write landing between the read and the
         # conditional write, which is what the real store reports by
-        # answering ``None``.
+        # answering ``None``. It reports the same for a row that has gone or
+        # already expired, so ``refused_status`` says which this stands for.
         self.cas_wins = True
+        self.refused_status: ApprovalStatus | None = ApprovalStatus.APPROVED
 
     async def list_items(self, **_: object) -> tuple[ApprovalItem, ...]:
         return self._items
+
+    async def get(self, approval_id: UUID | str) -> ApprovalItem | None:
+        if self.refused_status is None:
+            return None
+        found = next(
+            (i for i in self._items if str(i.id) == str(approval_id)),
+            None,
+        )
+        if found is None:
+            return None
+        return found.model_copy(update={"status": self.refused_status})
+
+    async def save(self, item: ApprovalItem) -> ApprovalItem | None:
+        self.restored.append(item)
+        return item
 
     async def save_if_pending(self, item: ApprovalItem) -> ApprovalItem | None:
         self.saved.append(item)
@@ -219,11 +239,110 @@ class TestRetirementGatesTheDelete:
         )
         store.cas_wins = False
 
-        with pytest.raises(ConflictError, match=f"{label} .*decided while the delete"):
+        with pytest.raises(ConflictError, match=f"{label} .*no longer pending"):
             await retire(_state(store))
+
+    @pytest.mark.parametrize(
+        "already",
+        [ApprovalStatus.EXPIRED, None],
+        ids=["already_expired", "already_gone"],
+    )
+    async def test_a_concurrent_delete_does_not_refuse_this_one(
+        self,
+        label: str,
+        retire: _Retire,
+        already: ApprovalStatus | None,
+    ) -> None:
+        """Two deletes of the same row: the second is satisfied, not blocked."""
+        del label
+        store = _RecordingStore(
+            (
+                _approval(
+                    "parked",
+                    source=ApprovalSource.PLAN_REVIEW,
+                    task_id=_TASK_ID,
+                ),
+            )
+        )
+        store.cas_wins = False
+        store.refused_status = already
+
+        await retire(_state(store))
 
     async def test_an_unwired_store_is_a_no_op(
         self, label: str, retire: _Retire
     ) -> None:
         del label
         await retire(_state(None))
+
+
+class TestRefusalLeavesTheQueueAlone:
+    """A refused delete must not leave half a task's questions dead."""
+
+    async def test_the_approvals_already_expired_are_put_back(self) -> None:
+        first = _approval(
+            "first",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        second = _approval(
+            "second",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        store = _RecordingStore((first, second))
+
+        # The first write lands, the second is refused by a real decision.
+        original = store.save_if_pending
+
+        async def _first_only(item: ApprovalItem) -> ApprovalItem | None:
+            store.cas_wins = item.id == first.id
+            return await original(item)
+
+        store.save_if_pending = _first_only  # type: ignore[method-assign]
+
+        with pytest.raises(ConflictError):
+            await retire_task_approvals(_state(store), _TASK_ID)  # type: ignore[arg-type]  # composed AppState
+
+        assert [item.id for item in store.restored] == [first.id]
+        assert store.restored[0].status is ApprovalStatus.PENDING
+
+
+class TestRetiringManyTasksAtOnce:
+    async def test_one_pass_covers_every_named_task(self) -> None:
+        """The cascade reads the queue once, not once per child."""
+        mine = _approval(
+            "mine",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=_TASK_ID,
+        )
+        theirs = _approval(
+            "theirs",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=sid("task-other"),
+        )
+        elsewhere = _approval(
+            "elsewhere",
+            source=ApprovalSource.REVIEW_GATE,
+            plan_id=None,
+            task_id=sid("task-unrelated"),
+        )
+        store = _RecordingStore((mine, theirs, elsewhere))
+
+        await retire_approvals_for_tasks(  # type: ignore[arg-type]  # composed AppState
+            _state(store),
+            [_TASK_ID, sid("task-other")],
+        )
+
+        assert {item.id for item in store.saved} == {mine.id, theirs.id}
+
+    async def test_an_empty_set_touches_nothing(self) -> None:
+        store = _RecordingStore(())
+
+        await retire_approvals_for_tasks(_state(store), [])  # type: ignore[arg-type]  # composed AppState
+
+        assert store.saved == []

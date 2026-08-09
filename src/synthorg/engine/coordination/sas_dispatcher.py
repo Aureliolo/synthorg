@@ -9,6 +9,7 @@ from synthorg.engine.coordination.assignment_writer import AssignmentWriter
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
+from synthorg.engine.coordination.models import CoordinationWave
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
@@ -66,12 +67,14 @@ class SasDispatcher:
             config=config,
         )
 
-        waves, phases = await execute_waves(
+        waves: list[CoordinationWave] = []
+        phases = await execute_waves(
             groups,
             parallel_executor,
             clock=self._clock,
             fail_fast=config.fail_fast,
             assignment_writer=self._assignment_writer,
+            waves=waves,
         )
 
         return DispatchResult(

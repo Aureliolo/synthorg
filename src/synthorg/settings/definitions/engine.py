@@ -1003,12 +1003,16 @@ _r.register(
         type=SettingType.INTEGER,
         default="300",
         description=(
-            "Backstop against a pathological loop, not a work budget: a"
-            " run's cost ceiling, stagnation detector and stage timeout are"
-            " what stop it spending without progressing, so this only has to"
-            " sit above what real work takes. Applied by AgentEngine.run when"
-            " a caller does not pass an explicit max_turns. Reaching it parks"
-            " the run for a human rather than discarding it."
+            "Turn budget a run starts with, not the last word on how long it"
+            " may go: reaching it buys another budget while"
+            " engine.max_turn_extensions remain AND the budget just spent"
+            " called a tool, so a working run can reach"
+            " max_turns * (1 + max_turn_extensions) turns while one going in"
+            " circles stops here. Applied by AgentEngine.run when a caller"
+            " does not pass an explicit max_turns. The money backstop is"
+            " budget.run_hard_ceiling, which is enforced in-loop and on by"
+            " default; the stagnation detector ships off, so do not count on"
+            " it unless you have chosen one."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,
@@ -1025,12 +1029,14 @@ _r.register(
         default="3",
         description=(
             "How many further turn budgets a run may grant itself before it"
-            " parks for a human. Reaching the cap usually means the work was"
-            " bigger than the estimate, so the common case carries on rather"
-            " than interrupting anyone; once these are spent the run parks"
-            " with its workspace intact and asks whether to continue. Zero"
-            " restores the old behaviour, where the first ceiling ends the"
-            " run and its work is discarded."
+            " parks for a human, each worth engine.max_turns again, so the"
+            " effective ceiling is max_turns * (1 + this). Reaching the cap"
+            " usually means the work was bigger than the estimate, so the"
+            " common case carries on rather than interrupting anyone; an"
+            " extension goes only to a run that called a tool in the budget"
+            " it just spent, so idling does not buy more turns. Once these"
+            " are spent the run parks with its workspace intact and asks"
+            " whether to continue. Zero ends every run at its first ceiling."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

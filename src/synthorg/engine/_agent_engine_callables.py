@@ -58,6 +58,12 @@ class ValidateProject(Protocol):
     ) -> float: ...
 
 
+class ResolveTurnExtensions(Protocol):
+    """Signature of ``AgentEngineContextMixin._resolve_turn_extensions``."""
+
+    async def __call__(self, *, agent_id: str, task_id: str) -> int: ...
+
+
 class ResolveLoop(Protocol):
     """Signature of ``AgentEngineFactoriesMixin._resolve_loop``."""
 

@@ -1,14 +1,16 @@
 """What happens when a run reaches its turn ceiling.
 
-Reaching the ceiling used to end the run: the task was failed, its workspace
-was torn down, and everything the agent had written was discarded. In a live
-run four of five build agents ended that way, each having produced real
-files. A ceiling is a backstop against a pathological loop, not a verdict on
-work that is simply taking longer than the estimate.
+A ceiling is a backstop against a pathological loop, not a verdict on work
+that is simply taking longer than the estimate. Ending the run there fails
+the task, tears down the workspace and discards everything the agent wrote,
+which is the wrong answer for the agent that is nearly finished and the right
+one only for the agent going in circles.
 
-So the run first grants itself another budget, a bounded number of times, and
-only parks for a human once those are spent. Parking preserves the workspace
-and asks a question; it never throws the work away.
+So the run grants itself another budget, a bounded number of times and only
+while it is still doing something, and parks for a human once those are
+spent. Parking preserves the workspace and asks a question; it never throws
+the work away. An extension is earned rather than automatic, so the run that
+is going in circles still stops at its first ceiling.
 """
 
 from synthorg.engine.context import AgentContext
@@ -29,26 +31,57 @@ logger = get_logger(__name__)
 TURN_CEILING_METADATA_KEY = "turn_ceiling"
 
 
-def grant_extension(ctx: AgentContext) -> AgentContext | None:
-    """Give the run another turn budget, while it has extensions left.
+def _budget_size(ctx: AgentContext) -> int:
+    """Return the budget one extension is worth.
+
+    The ceiling grows by one configured budget per extension taken, so
+    dividing by the extensions taken recovers the budget the operator set,
+    whatever it was.
+
+    Returns:
+        The per-extension turn budget.
+    """
+    return ctx.max_turns // (ctx.turn_extensions_granted + 1)
+
+
+def grant_extension(
+    ctx: AgentContext,
+    turns: list[TurnRecord],
+) -> AgentContext | None:
+    """Give the run another turn budget, if it earned one and has one left.
 
     Each extension is worth the run's original budget again, so the headroom
     granted scales with whatever the operator configured rather than with a
-    second number nobody tuned.
+    second number nobody tuned. It is granted only to a run that called a
+    tool in the budget it just spent: a run with the default allowance can
+    reach four times the configured ceiling, and the difference between that
+    being a rescue and being a runaway is whether the turns were doing
+    anything.
 
     Args:
         ctx: The context of a run that has just reached its ceiling.
+        turns: Every turn the run recorded.
 
     Returns:
         A context carrying further headroom and one fewer extension, or
-        ``None`` when the extensions are spent and the run must park.
+        ``None`` when the extensions are spent, or when the budget just
+        spent produced nothing, and the run must stop.
     """
     if ctx.turn_extensions_remaining <= 0:
+        return None
+    if not any(turn.tool_calls_made for turn in turns[-_budget_size(ctx) :]):
+        logger.info(
+            EXECUTION_LOOP_TERMINATED,
+            execution_id=ctx.execution_id,
+            reason=TerminationReason.MAX_TURNS.value,
+            turns=len(turns),
+            note="no tool call in the budget just spent; extension not granted",
+        )
         return None
     granted = ctx.turn_extensions_granted + 1
     extended = ctx.model_copy(
         update={
-            "max_turns": ctx.max_turns + ctx.max_turns // granted,
+            "max_turns": ctx.max_turns + _budget_size(ctx),
             "turn_extensions_remaining": ctx.turn_extensions_remaining - 1,
             "turn_extensions_granted": granted,
         }
@@ -61,6 +94,59 @@ def grant_extension(ctx: AgentContext) -> AgentContext | None:
         extensions_remaining=extended.turn_extensions_remaining,
     )
     return extended
+
+
+def restore_turn_budget(
+    ctx: AgentContext,
+    *,
+    approved: bool,
+    extensions: int,
+) -> AgentContext:
+    """Give a resumed run somewhere to run, or leave it alone.
+
+    A context restored from a park has whatever budget it parked with. For
+    every park but this one that is turns to spare; for a run that parked
+    because it ran out, resuming into a spent budget means reaching the
+    ceiling again on re-entry and asking the same question, which is a loop
+    the human cannot break by answering.
+
+    So a run with nothing left is handed one more budget of the size the
+    operator configured, and the decision sets what happens after it:
+    approving restores the extension allowance too, so the run can carry on
+    the way it did before and ask again if it needs to; rejecting leaves it
+    at zero, so the next ceiling ends the run instead of re-asking. Either
+    way the resumed run terminates.
+
+    Args:
+        ctx: The restored context.
+        approved: Whether the human approved carrying on.
+        extensions: The operator's configured extension allowance.
+
+    Returns:
+        *ctx* unchanged when it still has turns, else a context with one
+        further budget and the decision's extension allowance.
+    """
+    if ctx.turn_count < ctx.max_turns:
+        return ctx
+    granted = ctx.turn_extensions_granted
+    budget = _budget_size(ctx)
+    logger.info(
+        EXECUTION_LOOP_TURNS_EXTENDED,
+        execution_id=ctx.execution_id,
+        turns_used=ctx.turn_count,
+        new_max_turns=ctx.max_turns + budget,
+        extensions_remaining=extensions if approved else 0,
+    )
+    return ctx.model_copy(
+        update={
+            "max_turns": ctx.max_turns + budget,
+            "turn_extensions_remaining": extensions if approved else 0,
+            # Zero on a rejection so the next ceiling ends the run rather
+            # than parking it: ``ceiling_result`` parks only a run that
+            # took an extension, and a rejected one may take no more.
+            "turn_extensions_granted": granted + 1 if approved else 0,
+        }
+    )
 
 
 def ceiling_result(
@@ -113,4 +199,9 @@ def ceiling_result(
     )
 
 
-__all__ = ["TURN_CEILING_METADATA_KEY", "ceiling_result", "grant_extension"]
+__all__ = [
+    "TURN_CEILING_METADATA_KEY",
+    "ceiling_result",
+    "grant_extension",
+    "restore_turn_budget",
+]

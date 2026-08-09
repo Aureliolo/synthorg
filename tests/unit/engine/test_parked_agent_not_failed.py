@@ -2,20 +2,17 @@
 
 An agent whose run terminates ``PARKED`` has escalated a tool call for a human
 decision. It has not failed: the task is alive, an approval is pending, and the
-run resumes into its own workspace once the human answers.
+run resumes into its own workspace once the human answers. Conflating the two
+kills the plan while the approval is still open, so approving it afterwards
+decides nothing.
 
-A live run collapsed on exactly this conflation. One agent parked on a
-``shell_command`` escalation, the parallel executor reported ``success=False``,
-the wave counted two failures out of two, the merge was skipped, both
-workspaces were torn down, and the plan was driven to ``FAILED`` fifty seconds
-after dispatch while its tasks were still ``in_progress`` and the approval was
-still pending. Approving it afterwards decided nothing.
-
-The invariant these tests hold: a wave whose only non-successes are parks is
-not a failed wave, and a parked agent's workspace outlives the wave that
-started it.
+Three invariants these tests hold: a wave whose only non-successes are parks is
+not a failed wave; a parked agent's workspace outlives the wave that started it,
+including when the dispatch is cancelled underneath it; and the waves after a
+park do not run, because they were scheduled on the promise that it finished.
 """
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -216,6 +213,84 @@ class TestWaveDispatch:
             "leaves the pending approval with nothing to resume"
         )
         assert ws_a.workspace_id in torn_down_ids
+
+    async def test_a_park_stops_the_waves_that_depend_on_it(self) -> None:
+        """Wave 1 was scheduled on the promise that wave 0 finished."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [
+                make_exec_result(
+                    "wave-0",
+                    [("sub-a", agent_a)],
+                    parked_task_ids=frozenset({"sub-a"}),
+                ),
+            ]
+        )
+
+        result = await WaveDispatcher(
+            isolation_required=False,
+            topology_label="centralized",
+        ).dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(),
+        )
+
+        # One call only: the second wave never ran, so the executor's
+        # side_effect list was never exhausted into a StopIteration either.
+        assert executor.execute_group.await_count == 1
+        assert len(result.waves) == 1
+
+    async def test_a_cancelled_dispatch_keeps_an_earlier_parked_workspace(
+        self,
+    ) -> None:
+        """Cancellation is a BaseException, so teardown must read the waves."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+
+        ws_a = _workspace("sub-a", agent_a, "a")
+        ws_b = _workspace("sub-b", agent_b, "b")
+        ws_service = _mock_workspace_service(workspaces=(ws_a, ws_b))
+        executor = _mock_executor()
+        executor.execute_group.side_effect = [
+            make_exec_result(
+                "wave-0",
+                [("sub-a", agent_a)],
+                parked_task_ids=frozenset({"sub-a"}),
+            ),
+            asyncio.CancelledError(),
+        ]
+
+        # The park already stops the run, so drive the cancellation through
+        # the merge instead: it is the same unwind, one step later.
+        ws_service.merge_group.side_effect = asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            await WaveDispatcher(
+                isolation_required=False,
+                topology_label="centralized",
+            ).dispatch(
+                decomposition_result=decomp,
+                routing_result=routing,
+                parallel_executor=executor,
+                workspace_service=ws_service,
+                config=CoordinationConfig(),
+            )
+
+        ws_service.teardown_group.assert_called_once()
+        torn_down = ws_service.teardown_group.call_args.kwargs["workspaces"]
+        assert ws_a.workspace_id not in {w.workspace_id for w in torn_down}
 
     async def test_a_genuine_failure_still_fails_the_wave(self) -> None:
         sub_a = make_subtask("sub-a")

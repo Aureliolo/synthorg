@@ -14,8 +14,6 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.api.controllers._approval_retire import retire_task_approvals
-from synthorg.api.controllers._deletion_record import record_deletion_for
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -258,6 +256,16 @@ async def _tasks_delete(
     Returns:
         JSON-encoded MCP envelope string.
     """
+    # Local, so the meta package keeps its module-level independence from
+    # ``api``: the state type it shares is already TYPE_CHECKING-only, and a
+    # runtime import here would make the dependency real.
+    from synthorg.api.controllers._approval_retire import (  # noqa: PLC0415
+        retire_task_approvals,
+    )
+    from synthorg.api.controllers._deletion_record import (  # noqa: PLC0415
+        record_deletion_for,
+    )
+
     tool = "synthorg_tasks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -279,7 +287,7 @@ async def _tasks_delete(
             app_state,
             kind=DeletedEntityKind.TASK,
             entity_id=task_id,
-            display_name=getattr(existing, "title", None),
+            display_name=existing.title if existing is not None else None,
             deleted_by=requested_by,
         )
     except GuardrailViolationError as exc:

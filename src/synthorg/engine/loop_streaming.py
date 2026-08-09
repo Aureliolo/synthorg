@@ -37,6 +37,7 @@ re-issuing could duplicate side effects. This is why streaming is opt-in
 non-streaming ``call_provider`` path always available as the fallback.
 """
 
+import asyncio
 import copy
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -406,7 +407,13 @@ async def stream_provider(  # noqa: PLR0913
                 steering_inbox=steering_inbox,
             )
         finally:
-            await _aclose_quietly(stream)
+            # Shielded: a re-delivered cancellation lands on the first await
+            # in the unwind, and abandoning the close leaves the provider
+            # stream holding its rate-limit slot and HTTP connection for the
+            # rest of the process. ``_aclose_quietly`` is bounded and
+            # swallows its own errors, so shielding it cannot hang the
+            # cancellation for long.
+            await asyncio.shield(_aclose_quietly(stream))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)

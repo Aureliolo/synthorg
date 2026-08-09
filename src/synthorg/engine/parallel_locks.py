@@ -7,7 +7,7 @@ per-assignment resource locks for a :class:`ParallelExecutionGroup`.
 
 from synthorg.engine.errors import ResourceConflictError
 from synthorg.engine.parallel_models import ParallelExecutionGroup
-from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
+from synthorg.engine.resource_lock import ResourceLock
 from synthorg.observability import get_logger
 from synthorg.observability.events.parallel import (
     PARALLEL_VALIDATION_ERROR,
@@ -18,24 +18,26 @@ logger = get_logger(__name__)
 
 def resolve_lock(
     group: ParallelExecutionGroup,
-    resource_lock: ResourceLock | None,
+    resource_lock: ResourceLock,
 ) -> ResourceLock | None:
-    """Return the resource lock to use, or ``None`` if not needed.
+    """Return the caller's lock, or ``None`` when the group needs none.
 
-    When no assignments declare resource claims, returns ``None``
-    (no locking needed).  When claims exist, falls back to
-    a shared ``InMemoryResourceLock()`` if no lock was injected.
+    The lock is always the caller's. Minting one here would scope it to a
+    single group, whose claims are validated non-colliding before anything
+    is acquired, so it could never contend and would leave two concurrent
+    groups naming the same resource each holding a lock of their own.
+
+    Args:
+        group: The group about to run.
+        resource_lock: The executor's lock, shared across its groups.
 
     Returns:
-        The injected lock, a fresh ``InMemoryResourceLock``, or
-        ``None`` when the group declares no resource claims.
+        *resource_lock*, or ``None`` when no assignment claims a resource
+        and there is nothing to serialise.
     """
-    has_claims = any(a.resource_claims for a in group.assignments)
-    if not has_claims:
+    if not any(a.resource_claims for a in group.assignments):
         return None
-    if resource_lock is not None:
-        return resource_lock
-    return InMemoryResourceLock()
+    return resource_lock
 
 
 def validate_resource_claims(

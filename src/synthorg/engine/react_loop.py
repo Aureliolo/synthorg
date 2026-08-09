@@ -254,7 +254,7 @@ class ReactLoop:
                 # a verdict on work that is taking longer than the estimate.
                 # Carry on while there are extensions left; park only once
                 # they are spent, so nothing is discarded either way.
-                extended = grant_extension(ctx)
+                extended = grant_extension(ctx, turns)
                 if extended is None:
                     break
                 ctx = extended

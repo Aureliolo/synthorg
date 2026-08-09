@@ -45,13 +45,11 @@ autonomy:
       security_agent: true
 
     supervised:
-      description: "Read-only and test actions auto-approved; all mutations need approval."
-      auto_approve: ["code:read", "vcs:read", "test:run", "db:query"]
+      description: "The org works freely inside its own sandboxed workspace; anything leaving it needs approval."
+      auto_approve: ["code", "test", "docs", "vcs:read", "vcs:commit", "vcs:branch", "db:query"]
       human_approval:
-        ["code:write", "code:create", "code:delete", "code:refactor",
-         "test:write", "docs:write", "vcs:commit", "vcs:push", "vcs:branch",
-         "deploy", "publish", "comms", "budget", "org", "db:mutate", "db:admin",
-         "arch:decide", "tool"]
+        ["vcs:push", "deploy", "publish", "comms", "budget", "org",
+         "db:mutate", "db:admin", "arch:decide", "tool"]
       security_agent: true
 
     locked:
@@ -60,6 +58,22 @@ autonomy:
       human_approval: ["all"]
       security_agent: true        # still runs for audit logging
 ```
+
+A bare category in either list covers its whole verb family:
+`AutonomyResolver` expands `code` to `code:read`, `code:write`, `code:create`,
+`code:delete` and `code:refactor`, and `test` and `docs` likewise. So
+`supervised` auto-approves an agent creating, rewriting and deleting files, and
+committing and branching over them.
+
+**`supervised` gates blast radius, not verbs.** Everything it auto-approves
+happens inside an isolated per-task worktree that is thrown away afterwards,
+and the review gate judges what comes out of it; nothing an operator would be
+asked about has happened yet. What still needs a human is everything that
+leaves the box: `vcs:push`, `deploy`, `publish`, any outbound `comms`, a
+schema or data mutation, an architectural decision, budget and org changes,
+and installing a tool. Gating the in-workspace verbs instead made the tier
+unable to write a line of code, because every `shell_command` and
+`git_branch` queued for a decision nobody could usefully make.
 
 Built-in templates set autonomy levels appropriate to their archetype (e.g. `full` for
 Solo Builder, Research Lab, and Data Team, `supervised` for Agency, Enterprise Org, and

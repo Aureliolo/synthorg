@@ -283,6 +283,7 @@ class ResumeDispatchMixin:
                     parked_context=ctx,
                     approval_id=approval_id,
                     decision_message=decision_message,
+                    approved=approved,
                     effective_autonomy=effective_autonomy,
                 )
         finally:

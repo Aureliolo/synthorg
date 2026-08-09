@@ -5,9 +5,87 @@ copies of the first are how two dispatchers came to disagree about it.
 """
 
 from collections.abc import Iterable
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.engine.coordination.models import CoordinationWave
 from synthorg.engine.parallel_models import ParallelExecutionResult
+
+
+class WaveVerdict(BaseModel):
+    """What a wave's result means for the waves after it.
+
+    Failing and waiting are different things and the dispatchers need both:
+    a failed wave skips its merge, while a wave with someone waiting on a
+    human is unfinished, keeps its work, and must not be built on yet.
+
+    Attributes:
+        failed: Whether an agent in the wave genuinely failed.
+        parked_task_ids: Tasks whose run is waiting on an operator.
+        error: Why the wave failed, present exactly when it did.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    failed: bool = Field(description="An agent in the wave failed")
+    parked_task_ids: frozenset[str] = Field(
+        default=frozenset(),
+        description="Tasks waiting on an operator decision",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Why the wave failed; None when it did not",
+    )
+
+    @model_validator(mode="after")
+    def _error_accompanies_failure(self) -> Self:
+        """Keep the reason and the verdict from drifting apart.
+
+        Returns:
+            The validated verdict.
+
+        Raises:
+            ValueError: When a failure carries no reason, or a
+                non-failure carries one.
+        """
+        if self.failed is (self.error is None):
+            msg = "a failed wave names its error and a passing wave carries none"
+            raise ValueError(msg)
+        return self
+
+    @computed_field
+    @property
+    def success(self) -> bool:
+        """Whether the wave is free of failures."""
+        return not self.failed
+
+    @computed_field
+    @property
+    def blocks_dependents(self) -> bool:
+        """Whether the waves after this one may run.
+
+        Waves are dependency levels, so everything after this one was
+        scheduled on the promise that this one finished. A park has not
+        finished: its work is mid-flight in a workspace a human has yet to
+        release, and a dependent wave started now reads a half-written
+        result as its input.
+        """
+        return self.failed or bool(self.parked_task_ids)
+
+
+def parked_in_result(exec_result: ParallelExecutionResult) -> frozenset[str]:
+    """Task ids in one wave's result whose run parked for a human.
+
+    Args:
+        exec_result: One wave's parallel-execution result.
+
+    Returns:
+        The set of task ids waiting on an operator.
+    """
+    return frozenset(
+        outcome.task_id for outcome in exec_result.outcomes if outcome.is_awaiting_human
+    )
 
 
 def parked_tasks(waves: Iterable[CoordinationWave]) -> frozenset[str]:
@@ -22,19 +100,18 @@ def parked_tasks(waves: Iterable[CoordinationWave]) -> frozenset[str]:
         nothing.
     """
     return frozenset(
-        outcome.task_id
+        task_id
         for wave in waves
         if wave.execution_result is not None
-        for outcome in wave.execution_result.outcomes
-        if outcome.is_awaiting_human
+        for task_id in parked_in_result(wave.execution_result)
     )
 
 
 def classify_wave(
     wave_idx: int,
     exec_result: ParallelExecutionResult,
-) -> tuple[bool, str | None]:
-    """Decide whether a wave failed, and say why when it did.
+) -> WaveVerdict:
+    """Decide what a wave's result means, and say why when it failed.
 
     A wave fails when an agent genuinely failed. An agent parked on an
     escalation is waiting on a human: the wave is unfinished, not failed, and
@@ -46,14 +123,14 @@ def classify_wave(
         exec_result: The wave's parallel-execution result.
 
     Returns:
-        ``(success, error)``: ``success`` is False only when an agent failed;
-        ``error`` names the counts when it did, else ``None``.
+        The wave's :class:`WaveVerdict`.
     """
+    parked = parked_in_result(exec_result)
     if not exec_result.any_failed:
-        return True, None
-    parked = exec_result.agents_awaiting_human
-    suffix = f", {parked} awaiting a human" if parked else ""
-    return (
-        False,
-        f"Wave {wave_idx}: {exec_result.agents_failed} agent(s) failed{suffix}",
+        return WaveVerdict(failed=False, parked_task_ids=parked)
+    suffix = f", {len(parked)} awaiting a human" if parked else ""
+    return WaveVerdict(
+        failed=True,
+        parked_task_ids=parked,
+        error=f"Wave {wave_idx}: {exec_result.agents_failed} agent(s) failed{suffix}",
     )

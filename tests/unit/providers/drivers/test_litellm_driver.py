@@ -401,18 +401,20 @@ class TestDoStream:
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             collected = await _collect_stream(driver, m, chunks)
 
-        reasoning = [
-            c.content
+        # Ordered across both channels, not two independent lists: the
+        # working comes before the answer, and a driver that interleaved
+        # them would satisfy per-channel assertions while handing the
+        # consumer a transcript that never happened.
+        assert [
+            (c.event_type, c.content)
             for c in collected
-            if c.event_type == StreamEventType.REASONING_DELTA
+            if c.event_type
+            in (StreamEventType.REASONING_DELTA, StreamEventType.CONTENT_DELTA)
+        ] == [
+            (StreamEventType.REASONING_DELTA, "weighing "),
+            (StreamEventType.REASONING_DELTA, "two layouts"),
+            (StreamEventType.CONTENT_DELTA, "here goes"),
         ]
-        content = [
-            c.content
-            for c in collected
-            if c.event_type == StreamEventType.CONTENT_DELTA
-        ]
-        assert reasoning == ["weighing ", "two layouts"]
-        assert content == ["here goes"]
 
     async def test_streaming_with_tool_calls(self) -> None:
         driver = _make_driver()

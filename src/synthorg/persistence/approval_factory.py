@@ -38,7 +38,7 @@ def build_approval_repo(
         connected, or an unknown variant, so the caller degrades to the
         in-memory store rather than raising during boot.
     """
-    if backend is None or not getattr(backend, "is_connected", False):
+    if backend is None or not backend.is_connected:
         return None
     name = backend.backend_name
     if name not in (_SQLITE, _POSTGRES):

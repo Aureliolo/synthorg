@@ -40,6 +40,7 @@ from synthorg.observability.events.coordination import (
     COORDINATION_PHASE_COMPLETED,
     COORDINATION_PHASE_FAILED,
     COORDINATION_PHASE_STARTED,
+    COORDINATION_WAVE_AWAITING_HUMAN,
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
 )
@@ -304,21 +305,29 @@ async def execute_waves(
     clock: Clock,
     fail_fast: bool,
     assignment_writer: AssignmentWriter,
-) -> tuple[list[CoordinationWave], list[CoordinationPhaseResult]]:
-    """Execute wave groups sequentially, returning waves and phases.
+    waves: list[CoordinationWave],
+) -> list[CoordinationPhaseResult]:
+    """Execute wave groups sequentially, recording waves and phases.
 
     Each wave's assignments are persisted through *assignment_writer*
     immediately before that wave runs, so the central engine holds the
     assignment before any agent acts on it, and a wave whose assignment
     was refused fails visibly instead of running unsynced.
 
+    Args:
+        groups: The dependency-ordered wave groups.
+        parallel_executor: Runs one wave's assignments.
+        clock: Injectable time source.
+        fail_fast: Whether a failed wave stops the run.
+        assignment_writer: Persists each wave's assignments before it runs.
+        waves: Filled with every executed :class:`CoordinationWave`
+            (including failed ones with no ``execution_result``) as each
+            completes, so a caller unwinding on a cancellation can still
+            see which waves ran and who parked in them.
+
     Returns:
-        ``(waves, phases)`` where ``waves`` lists every executed
-        :class:`CoordinationWave` (including failed ones with no
-        ``execution_result``) and ``phases`` carries the matching
-        :class:`CoordinationPhaseResult` for each wave.
+        The matching :class:`CoordinationPhaseResult` for each wave.
     """
-    waves: list[CoordinationWave] = []
     phases: list[CoordinationPhaseResult] = []
 
     for wave_idx, group in enumerate(groups):
@@ -353,17 +362,17 @@ async def execute_waves(
             )
             waves.append(wave)
 
-            success, error_msg = classify_wave(wave_idx, exec_result)
+            verdict = classify_wave(wave_idx, exec_result)
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
-                    success=success,
+                    success=verdict.success,
                     duration_seconds=elapsed,
-                    error=error_msg,
+                    error=verdict.error,
                 )
             )
 
-            log = logger.info if success else logger.warning
+            log = logger.info if verdict.success else logger.warning
             log(
                 COORDINATION_WAVE_COMPLETED,
                 wave_index=wave_idx,
@@ -373,7 +382,18 @@ async def execute_waves(
                 duration_seconds=elapsed,
             )
 
-            if not success and fail_fast:
+            if verdict.failed and fail_fast:
+                break
+            # Not subject to fail_fast: a park is not a failure to push
+            # through, it is a prerequisite that has not finished. The waves
+            # after this one were scheduled on the promise that it had.
+            if verdict.parked_task_ids:
+                logger.info(
+                    COORDINATION_WAVE_AWAITING_HUMAN,
+                    wave_index=wave_idx,
+                    parked_tasks=len(verdict.parked_task_ids),
+                    remaining_waves=len(groups) - wave_idx - 1,
+                )
                 break
 
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -404,7 +424,7 @@ async def execute_waves(
             if fail_fast:
                 break
 
-    return waves, phases
+    return phases
 
 
 def rebuild_group_with_workspaces(
