@@ -129,8 +129,9 @@ export function useOrgEditData(): UseOrgEditDataReturn {
       ORG_EDIT_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          useCompanyStore.getState().updateFromWsEvent(event)
-          markFresh()
+          // A frame the store ignores refetched nothing, so it is not the
+          // freshness the poll below is allowed to skip on.
+          if (useCompanyStore.getState().updateFromWsEvent(event)) markFresh()
         },
       })),
     [markFresh],

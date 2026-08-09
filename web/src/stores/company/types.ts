@@ -29,7 +29,14 @@ export interface CompanyState {
 
   fetchCompanyData: () => Promise<void>
   fetchDepartmentHealths: () => Promise<void>
-  updateFromWsEvent: (event: WsEvent) => void
+  /**
+   * Fold a WS frame into the store, reporting whether it started a refetch.
+   *
+   * Most frames on the channels this store listens to say nothing about the
+   * org structure, and a caller that treats every frame as a data update
+   * would suppress its own polling on the strength of one it ignored.
+   */
+  updateFromWsEvent: (event: WsEvent) => boolean
 
   /**
    * Every mutation follows the canonical Zustand store error contract:

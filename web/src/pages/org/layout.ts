@@ -2,31 +2,39 @@ import type { Node, Edge } from '@xyflow/react'
 import {
   type GroupResult,
   type LayoutOptions,
-  DEFAULT_GROUP_PADDING,
   DEFAULT_NODE_HEIGHT,
+  DEFAULT_NODE_SEP,
   DEFAULT_NODE_WIDTH,
+  DEFAULT_RANK_SEP,
   DESIRED_INTER_DEPT_GAP_X,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
+  cardPaddingFor,
   computeFooterHeight,
   computeHeaderHeight,
 } from './layout-shared'
+import { planRanks } from './layout-clusters'
+import { runDagreLayout } from './layout-graph'
+import { type HierarchyPlan, collectRootGroupIds, planHierarchy } from './layout-groups'
 import {
-  centerLeadsOverReports,
+  anchorLayout,
   centerNonRootUnderRoot,
   centerOwnersOverRoot,
-  collectRootGroupIds,
-  computePopulatedGroups,
   enforceHorizontalGaps,
   enforceVerticalGaps,
-  placeEmptyGroups,
-  runDagreOnLeaves,
-  toGroupRelative,
-} from './layout-internals'
+} from './layout-passes'
 
 export type { LayoutOptions } from './layout-shared'
 
-/** Grid fallback when there are no agent leaf nodes to lay out. */
+/**
+ * Grid fallback for a chart with nothing to rank: no department to wrap the
+ * nodes in and no edge to order them by.
+ *
+ * Reached before the operator has created a department, when the canvas holds
+ * a handful of unrelated cards. A chart whose departments are merely unstaffed
+ * does NOT come here: those boxes still carry the order the operator chose and
+ * still need the spine anchored, and this grid can express neither.
+ */
 function layoutEmptyChart(nodes: Node[]): Node[] {
   return nodes.map((n, i) => {
     const major = i % 3
@@ -45,80 +53,86 @@ function layoutEmptyChart(nodes: Node[]): Node[] {
   })
 }
 
+/** Separate the placed department boxes from the loose top-level nodes. */
+function splitPositioned(
+  positioned: ReadonlyMap<string, Node>,
+  plan: HierarchyPlan,
+): { groupResults: GroupResult[]; topLevelLeaves: Map<string, Node> } {
+  const groupResults: GroupResult[] = []
+  const topLevelLeaves = new Map<string, Node>()
+  for (const [id, node] of positioned) {
+    if (!plan.departments.has(id)) {
+      topLevelLeaves.set(id, node)
+      continue
+    }
+    groupResults.push({
+      node,
+      childrenRelative: plan.departments.get(id)?.childrenRelative ?? [],
+      groupWidth: node.width ?? 0,
+      groupHeight: node.height ?? 0,
+    })
+  }
+  return { groupResults, topLevelLeaves }
+}
+
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
  *
- * Returns a new array of nodes with `position` set. Edges are
- * unchanged.  Group (department) nodes are excluded from dagre and
- * sized to contain their children after layout.
+ * Returns a new array of nodes with `position` set; edges are unchanged.
+ * Units are sized from the inside out (teams, then the departments holding
+ * them), each laid out in its own direction and its own separations, and the
+ * top-level frame then arranges the resulting boxes top-to-bottom.
  */
 export function applyDagreLayout(
   nodes: Node[],
   edges: Edge[],
   options: LayoutOptions = {},
 ): Node[] {
-  const { direction = 'TB', rankSep = 50 } = options
-  let { nodeSep = 60 } = options
+  const {
+    direction = 'TB',
+    rankSep = DEFAULT_RANK_SEP,
+    nodeSep = DEFAULT_NODE_SEP,
+    density,
+  } = options
+  const cardPadding = cardPaddingFor(density)
 
-  // Dynamic header/footer sizes based on what's actually rendered, so
-  // toggling off budget bar / status dots shrinks the reserved space
-  // and leaves no dead whitespace inside the box.
-  const headerHeight = computeHeaderHeight(options)
-  const footerHeight = computeFooterHeight(options)
-
-  const groupNodes = nodes.filter((n) => n.type === 'department')
-  const leafNodes = nodes.filter((n) => n.type !== 'department')
-
-  if (groupNodes.length > 0) {
-    nodeSep += DEFAULT_GROUP_PADDING * 2
-  }
-
-  const agentLeafNodes = leafNodes.filter((n) => n.type !== 'owner')
-  if (agentLeafNodes.length === 0) {
+  if (!nodes.some((n) => n.type === 'department') && edges.length === 0) {
     return layoutEmptyChart(nodes)
   }
 
-  const positionedLeafMap = runDagreOnLeaves(leafNodes, edges, { direction, nodeSep, rankSep })
-  const rootGroupIds = collectRootGroupIds(groupNodes)
+  const params = { direction, nodeSep, rankSep }
+  const plan = planHierarchy({
+    nodes,
+    edges,
+    params,
+    chrome: {
+      cardPadding,
+      // Reserve exactly the chrome that will be rendered, so turning the
+      // budget bar or status dots off leaves no dead whitespace in the card.
+      headerHeight: computeHeaderHeight(options),
+      footerHeight: computeFooterHeight(options),
+    },
+  })
 
-  // Centre each lead over its in-box reports on the raw dagre coords,
-  // BEFORE box bounds are derived, so each dept card wraps the tight
-  // (centred) layout instead of dagre's spread-out one.
-  centerLeadsOverReports(groupNodes, positionedLeafMap)
-
-  const { populatedResults, emptyGroups } = computePopulatedGroups(
-    groupNodes,
-    positionedLeafMap,
-    headerHeight,
-    footerHeight,
-  )
-  toGroupRelative(populatedResults, positionedLeafMap)
-
-  const rootPopulated: GroupResult | undefined = populatedResults.find((r) =>
-    rootGroupIds.has(r.node.id),
-  )
-  const emptyResults = placeEmptyGroups(
-    emptyGroups,
-    populatedResults,
-    rootGroupIds,
-    headerHeight,
-    rootPopulated,
-  )
-  const allGroupResults = [...populatedResults, ...emptyResults]
-
-  // placeEmptyGroups can create the root group when it has no members, so
-  // re-resolve the root from the merged set before the alignment passes;
-  // otherwise a freshly-created empty root is skipped by them.
-  const rootResult: GroupResult | undefined = allGroupResults.find((r) =>
-    rootGroupIds.has(r.node.id),
+  const topLevelRanks = planRanks(plan.topLevelNodes, plan.topLevelEdges, nodeSep)
+  const { groupResults: allGroupResults, topLevelLeaves } = splitPositioned(
+    runDagreLayout(plan.topLevelNodes, plan.topLevelEdges, params, topLevelRanks.constraints),
+    plan,
   )
 
-  // De-overlap sibling dept boxes horizontally before centring the row
-  // under root (dagre separates only the leaf agents, not the boxes).
+  const rootGroupIds = collectRootGroupIds(nodes.filter((n) => n.type === 'department'))
+  const rootResult = allGroupResults.find((r) => rootGroupIds.has(r.node.id))
+
   enforceHorizontalGaps(allGroupResults, rootGroupIds, DESIRED_INTER_DEPT_GAP_X)
   centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
-  enforceVerticalGaps(allGroupResults, positionedLeafMap, rootGroupIds)
-  centerOwnersOverRoot(positionedLeafMap, rootResult)
+  enforceVerticalGaps(allGroupResults, topLevelLeaves, rootGroupIds)
+  centerOwnersOverRoot(topLevelLeaves, rootResult)
+  anchorLayout(allGroupResults, topLevelLeaves, rootResult)
 
-  return [...allGroupResults.map((r) => r.node), ...positionedLeafMap.values()]
+  return [
+    ...allGroupResults.map((r) => r.node),
+    ...topLevelLeaves.values(),
+    ...allGroupResults.flatMap((r) => r.childrenRelative),
+    ...[...plan.teams.values()].flatMap((t) => t.childrenRelative),
+  ]
 }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Node, Edge } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
 import { useAuthStore } from '@/stores/auth'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
+import { useThemeStore, type Density } from '@/stores/theme'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
@@ -16,11 +18,19 @@ import type { CommunicationLink } from '@/pages/org/aggregate-messages'
 import type { CommunicationEdgeData } from '@/pages/org/CommunicationEdge'
 import type { ViewMode } from '@/pages/org/OrgChartToolbar'
 import type { WsChannel } from '@/api/types/websocket'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { CompanyConfig } from '@/api/types/org'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 const log = createLogger('useOrgChartData')
 
 const ORG_POLL_INTERVAL = 30_000
 const ORG_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]
+
+// The structural tree the layout is measured from carries no live readings,
+// so a status or health frame cannot invalidate the cached placement.
+const NO_RUNTIME_STATUSES: Record<string, AgentRuntimeStatus> = {}
+const NO_DEPARTMENT_HEALTHS: readonly DepartmentHealth[] = []
 
 export interface UseOrgChartDataReturn {
   nodes: Node[]
@@ -107,6 +117,108 @@ interface DagrePrefs {
   readonly showBudgetBar: boolean
   readonly showStatusDots: boolean
   readonly showAddAgentButton: boolean
+  readonly density: Density
+}
+
+/**
+ * Everything the layout needs to reserve exactly the card chrome that will be
+ * rendered: the toggles that add or remove a header row, and the density the
+ * cards' `p-card` padding resolves at.
+ */
+function useDagrePrefs(): DagrePrefs {
+  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
+  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
+  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const density = useThemeStore((s) => s.density)
+  return useMemo(
+    () => ({ showBudgetBar, showStatusDots, showAddAgentButton, density }),
+    [showBudgetBar, showStatusDots, showAddAgentButton, density],
+  )
+}
+
+/** What the layout assigns to a node. None of it depends on live status. */
+interface PlacedNode {
+  readonly position: { x: number; y: number }
+  readonly width: number | undefined
+  readonly height: number | undefined
+  readonly style: Node['style']
+}
+type LayoutSnapshot = ReadonlyMap<string, PlacedNode>
+
+function _snapshotOf(nodes: readonly Node[]): LayoutSnapshot {
+  const snapshot = new Map<string, PlacedNode>()
+  for (const node of nodes) {
+    snapshot.set(node.id, {
+      position: node.position,
+      width: node.width,
+      height: node.height,
+      style: node.style,
+    })
+  }
+  return snapshot
+}
+
+/**
+ * Re-attach a cached placement to a freshly built (live-status) tree.
+ *
+ * Both trees come from the same config, owners and collapse set, so their id
+ * sets match; the snapshot tree only omits runtime statuses and department
+ * health. Should node emission ever start depending on a field only the live
+ * tree carries, the miss says so rather than parking the card unsized at the
+ * canvas origin under every other unplaced node.
+ */
+function _placeNodes(nodes: readonly Node[], snapshot: LayoutSnapshot): Node[] {
+  return nodes.map((node) => {
+    const placed = snapshot.get(node.id)
+    if (!placed) {
+      // The id is built from operator-authored department and agent names.
+      log.warn('node missing from the layout snapshot, rendering it unplaced:',
+        sanitizeForLog(node.id))
+      return node
+    }
+    const next: Node = { ...node, position: placed.position }
+    if (placed.width !== undefined) next.width = placed.width
+    if (placed.height !== undefined) next.height = placed.height
+    if (placed.style !== undefined) next.style = placed.style
+    return next
+  })
+}
+
+interface LayoutSnapshotArgs {
+  readonly config: CompanyConfig | null
+  readonly viewMode: ViewMode
+  readonly collapsedDeptIds?: ReadonlySet<string> | undefined
+  readonly owners: readonly OwnerInfo[]
+  readonly currentUserId: string | undefined
+  readonly prefs: DagrePrefs
+}
+
+/**
+ * Cache where the layout puts every node, keyed on the org's structure alone.
+ *
+ * The layout reads a node's type, its parent, and the isDeptLead /
+ * isRootDepartment flags, all of which come from the company config. Live
+ * agent status and department health only ever reach a card's rendered
+ * `data`, so measuring from a status-free tree yields the same placement and
+ * a status frame then costs one O(n) re-placement instead of relaying out
+ * every unit.
+ */
+function useLayoutSnapshot(args: LayoutSnapshotArgs): LayoutSnapshot | null {
+  const { config, viewMode, collapsedDeptIds, owners, currentUserId, prefs } = args
+  return useMemo(() => {
+    if (!config || viewMode !== 'hierarchy') return null
+    const tree = buildOrgTree({
+      config,
+      runtimeStatuses: NO_RUNTIME_STATUSES,
+      departmentHealths: NO_DEPARTMENT_HEALTHS,
+      owners,
+      currentUserId,
+    })
+    if (collapsedDeptIds && collapsedDeptIds.size > 0) {
+      _applyCollapse(tree, collapsedDeptIds)
+    }
+    return _snapshotOf(applyDagreLayout(tree.nodes, tree.edges, prefs))
+  }, [config, viewMode, collapsedDeptIds, owners, currentUserId, prefs])
 }
 
 interface DeriveViewArgs {
@@ -114,7 +226,7 @@ interface DeriveViewArgs {
   readonly viewMode: ViewMode
   readonly collapsedDeptIds?: ReadonlySet<string> | undefined
   readonly commLinks: CommunicationLink[]
-  readonly prefs: DagrePrefs
+  readonly layoutSnapshot: LayoutSnapshot | null
 }
 
 /**
@@ -140,8 +252,10 @@ function _deriveView(args: DeriveViewArgs): {
     const force = _buildForceView(args.tree, args.commLinks)
     return { ...force, allNodes }
   }
-  const layoutNodes = applyDagreLayout(args.tree.nodes, args.tree.edges, args.prefs)
-  return { nodes: layoutNodes, edges: args.tree.edges, allNodes }
+  const nodes = args.layoutSnapshot
+    ? _placeNodes(args.tree.nodes, args.layoutSnapshot)
+    : args.tree.nodes
+  return { nodes, edges: args.tree.edges, allNodes }
 }
 
 /**
@@ -185,6 +299,37 @@ function useOrgInitialFetch(start: () => void, stop: () => void): void {
   }, [start, stop])
 }
 
+/**
+ * Keep the org data fresh: poll department health, and fold every WS frame on
+ * the agents channel into the company and agents stores.
+ */
+function useOrgLiveSync(): { wsConnected: boolean; wsSetupError: string | null } {
+  const { skipIfFresh, markFresh } = useFreshnessGate()
+  const pollFn = useCallback(async () => {
+    await useCompanyStore.getState().fetchDepartmentHealths()
+  }, [])
+  const polling = usePolling(pollFn, ORG_POLL_INTERVAL, { skipIfFresh })
+  useOrgInitialFetch(polling.start, polling.stop)
+
+  const bindings: ChannelBinding[] = useMemo(
+    () =>
+      ORG_CHANNELS.map((channel) => ({
+        channel,
+        handler: (event) => {
+          // Only an org mutation refetches department health, and that is all
+          // the poll below fetches. A status frame carries its own update over
+          // the socket, so counting it as freshness would let a busy org
+          // suppress the health poll indefinitely.
+          if (useCompanyStore.getState().updateFromWsEvent(event)) markFresh()
+          useAgentsStore.getState().updateFromWsEvent(event)
+        },
+      })),
+    [markFresh],
+  )
+  const { connected, setupError } = useWebSocket({ bindings })
+  return { wsConnected: connected, wsSetupError: setupError }
+}
+
 export function useOrgChartData(
   viewMode: ViewMode = 'hierarchy',
   collapsedDeptIds?: ReadonlySet<string>,
@@ -196,14 +341,7 @@ export function useOrgChartData(
   const runtimeStatuses = useAgentsStore((s) => s.runtimeStatuses)
   const currentUser = useAuthStore((s) => s.user)
 
-  // Visual prefs that affect how much space the dept card chrome
-  // takes up.  Passed through to `applyDagreLayout` so the reserved
-  // header/footer space matches whatever the user currently has
-  // toggled on -- no dead whitespace when budget bar / status dots
-  // / add agent are off.
-  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
-  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const dagrePrefs = useDagrePrefs()
 
   // Synthesise owner list from the current session user.  Designed
   // as an array so future multi-user ownership (per-dept admins) can
@@ -214,30 +352,7 @@ export function useOrgChartData(
     return [{ id: currentUser.id, displayName: currentUser.username }]
   }, [currentUser])
 
-  const { skipIfFresh, markFresh } = useFreshnessGate()
-  const pollFn = useCallback(async () => {
-    await useCompanyStore.getState().fetchDepartmentHealths()
-  }, [])
-  const polling = usePolling(pollFn, ORG_POLL_INTERVAL, { skipIfFresh })
-  useOrgInitialFetch(polling.start, polling.stop)
-
-  // WebSocket bindings for real-time updates
-  const bindings: ChannelBinding[] = useMemo(
-    () =>
-      ORG_CHANNELS.map((channel) => ({
-        channel,
-        handler: (event) => {
-          markFresh()
-          useCompanyStore.getState().updateFromWsEvent(event)
-          useAgentsStore.getState().updateFromWsEvent(event)
-        },
-      })),
-    [markFresh],
-  )
-
-  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({
-    bindings,
-  })
+  const { wsConnected, wsSetupError } = useOrgLiveSync()
 
   // Communication data for force view (only fetched when needed)
   const {
@@ -247,6 +362,15 @@ export function useOrgChartData(
     truncated: commTruncated,
     refetch: refetchComm,
   } = useCommunicationEdges(viewMode === 'force')
+
+  const layoutSnapshot = useLayoutSnapshot({
+    config,
+    viewMode,
+    collapsedDeptIds,
+    owners,
+    currentUserId: currentUser?.id,
+    prefs: dagrePrefs,
+  })
 
   const { nodes, edges, allNodes } = useMemo(() => {
     if (!config) return { nodes: [], edges: [], allNodes: [] }
@@ -262,12 +386,11 @@ export function useOrgChartData(
       viewMode,
       collapsedDeptIds,
       commLinks,
-      prefs: { showBudgetBar, showStatusDots, showAddAgentButton },
+      layoutSnapshot,
     })
   }, [
     config, runtimeStatuses, departmentHealths, viewMode, commLinks, owners,
-    collapsedDeptIds, showBudgetBar, showStatusDots, showAddAgentButton,
-    currentUser?.id,
+    collapsedDeptIds, layoutSnapshot, currentUser?.id,
   ])
 
   return {

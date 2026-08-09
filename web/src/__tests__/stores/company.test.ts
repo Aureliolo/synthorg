@@ -175,12 +175,13 @@ describe('useCompanyStore', () => {
         return HttpResponse.json(apiSuccess(mockDeptHealth))
       }),
     )
-    useCompanyStore.getState().updateFromWsEvent({
+    const refetched = useCompanyStore.getState().updateFromWsEvent({
       event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
+    expect(refetched).toBe(true)
     await vi.waitFor(() => {
       expect(configCalls).toBeGreaterThan(0)
     })
@@ -224,12 +225,15 @@ describe('useCompanyStore', () => {
         return HttpResponse.json(apiSuccess(mockConfig))
       }),
     )
-    useCompanyStore.getState().updateFromWsEvent({
+    const refetched = useCompanyStore.getState().updateFromWsEvent({
       event_type: 'task.created',
       channel: 'tasks',
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
+    // The verdict is what a caller's freshness gate reads: reporting an
+    // ignored frame as an update would let it skip its own polling.
+    expect(refetched).toBe(false)
     // Drain the microtask queue; a refetch would be scheduled on the next
     // microtask, so asserting after a single Promise.resolve() reliably
     // catches any unintended fetch while still being a true negative test.

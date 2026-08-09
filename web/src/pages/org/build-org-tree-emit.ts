@@ -4,6 +4,7 @@ import { resolveRuntimeStatus } from './status-mapping'
 import { emitDeptChildren } from './build-org-tree-children'
 import {
   type BuildContext,
+  type CrossDeptEdgeData,
   type DepartmentAgentStatusDot,
   type DepartmentGroupData,
   type DeptAdminInfo,
@@ -194,11 +195,10 @@ export function emitRootDept(ctx: BuildContext, rootDept: DashboardDepartment): 
         target: rootHeadId,
         type: 'hierarchy',
         hidden: true,
-        // Tagged 'owner-to-root'.  layout.ts computes a dynamic minlen
-        // for this edge kind that accounts for the root dept's top
-        // chrome (header + padding) but NOT any source bottom chrome
-        // (owner is a standalone card, not a dept box).
-        data: { crossDeptKind: 'owner-to-root' },
+        // The rank distance has to clear the root dept box's top chrome
+        // (header + padding) but no source chrome: an owner is a standalone
+        // card, not a dept box.
+        data: { crossDeptKind: 'owner-to-root' } satisfies CrossDeptEdgeData,
       })
     }
   }
@@ -267,11 +267,9 @@ function wireDeptToRoot(
       target: headId,
       type: 'hierarchy',
       hidden: true,
-      // Tagged 'ceo-to-child'.  layout.ts computes a larger dynamic
-      // minlen for this kind because the path needs to clear BOTH the
-      // source root dept's bottom chrome (padding + add-agent footer)
-      // AND the target non-root dept's top chrome.
-      data: { crossDeptKind: 'ceo-to-child' },
+      // The rank distance has to clear BOTH the source root dept box's bottom
+      // chrome (padding + add-agent footer) AND the target dept box's top one.
+      data: { crossDeptKind: 'ceo-to-child' } satisfies CrossDeptEdgeData,
     })
   }
 }

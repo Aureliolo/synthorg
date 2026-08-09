@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { Node, Edge } from '@xyflow/react'
 import { applyDagreLayout } from '@/pages/org/layout'
+import { getNodeDim } from '@/pages/org/layout-shared'
+import {
+  type DeptSpec,
+  OWNER_NODE_ID,
+  ROOT_DEPT_NODE_ID,
+  layoutOf,
+  leftToRight,
+  nodeById,
+  orgConfig,
+  overlaps,
+  pairsOf,
+} from '../../helpers/org-layout'
 
 function makeNode(id: string, opts: Partial<Node> = {}): Node {
   return {
@@ -134,10 +146,10 @@ describe('applyDagreLayout', () => {
 
     const reportsXMin = Math.min(...reports.map((r) => r.position.x))
     const reportsXMax = Math.max(
-      ...reports.map((r) => r.position.x + (r.width as number)),
+      ...reports.map((r) => r.position.x + getNodeDim(r).w),
     )
     const reportsMidpoint = (reportsXMin + reportsXMax) / 2
-    const leadMidpoint = lead.position.x + (lead.width as number) / 2
+    const leadMidpoint = lead.position.x + getNodeDim(lead).w / 2
 
     expect(Math.abs(reportsMidpoint - leadMidpoint)).toBeLessThan(1)
   })
@@ -156,5 +168,115 @@ describe('applyDagreLayout', () => {
     const lead = result.find((n) => n.id === 'solo-lead')!
     expect(typeof lead.position.x).toBe('number')
     expect(Number.isFinite(lead.position.x)).toBe(true)
+  })
+})
+
+describe('applyDagreLayout on degenerate charts', () => {
+  it('gives an unstaffed department a card of its own beside the staffed ones', () => {
+    const specs: DeptSpec[] = [
+      { name: 'executive', members: ['zoe'] },
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'legal', members: [] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    const empty = nodeById(nodes, 'dept-legal')
+    expect(getNodeDim(empty).w).toBeGreaterThan(0)
+    expect(getNodeDim(empty).h).toBeGreaterThan(0)
+    expect(overlaps(empty, nodeById(nodes, 'dept-engineering'))).toBe(false)
+    expect(overlaps(empty, nodeById(nodes, ROOT_DEPT_NODE_ID))).toBe(false)
+  })
+
+  it('lays out an org with no CEO', () => {
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'sales', members: ['carol'] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+    }
+    expect(overlaps(nodeById(nodes, 'dept-engineering'), nodeById(nodes, 'dept-sales'))).toBe(false)
+  })
+
+  it('lays out an org whose departments are all unstaffed', () => {
+    // The state a freshly set-up company sits in: departments arranged, nobody
+    // hired. It still goes through the real layout, because the boxes carry
+    // the order the operator chose and the grid fallback cannot express it.
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: [] },
+      { name: 'sales', members: [] },
+      { name: 'support', members: [] },
+    ]
+    const nodes = layoutOf(orgConfig(specs))
+    const order = ['dept-engineering', 'dept-sales', 'dept-support']
+    expect(leftToRight(nodes, order)).toEqual(order)
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+      expect(getNodeDim(node).w).toBeGreaterThan(0)
+      expect(getNodeDim(node).h).toBeGreaterThan(0)
+    }
+    for (const [a, b] of pairsOf(order.map((id) => nodeById(nodes, id)))) {
+      expect(overlaps(a, b)).toBe(false)
+    }
+    // The owner still reads as the top of the chart, clear of every card:
+    // a top edge above another's says nothing about whether the two collide.
+    const owner = nodeById(nodes, OWNER_NODE_ID)
+    for (const id of order) {
+      expect(owner.position.y).toBeLessThan(nodeById(nodes, id).position.y)
+      expect(overlaps(owner, nodeById(nodes, id))).toBe(false)
+    }
+  })
+
+  it('falls back to a grid before any department exists', () => {
+    const nodes = layoutOf({ company_name: 'Test Corp', agents: [], departments: [] })
+    expect(nodes.length).toBeGreaterThan(0)
+    for (const node of nodes) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+      expect(getNodeDim(node).w).toBeGreaterThan(0)
+    }
+  })
+
+  it('renders departments in the configured order when there is no CEO', () => {
+    const specs: DeptSpec[] = [
+      { name: 'engineering', members: ['alice', 'bob'] },
+      { name: 'sales', members: ['carol'] },
+      { name: 'support', members: ['dave', 'erin'] },
+    ]
+    const order = ['dept-engineering', 'dept-sales', 'dept-support']
+    expect(leftToRight(layoutOf(orgConfig(specs)), order)).toEqual(order)
+  })
+
+  it('terminates on a parentId cycle instead of spinning', () => {
+    // Server data owns parentId; a cycle in it must not hang the canvas.
+    const nodes = [
+      makeNode('dept-eng', { type: 'department' }),
+      makeNode('team-a', { type: 'team', parentId: 'team-b' }),
+      makeNode('team-b', { type: 'team', parentId: 'team-a' }),
+      makeNode('agent-1', { parentId: 'team-a', width: 176, height: 80 }),
+      makeNode('agent-2', { parentId: 'dept-eng', width: 176, height: 80 }),
+    ]
+    const result = applyDagreLayout(nodes, [makeEdge('agent-2', 'agent-1')])
+    // Every node comes back: a cycle that made production drop the offending
+    // nodes would leave the loop below with nothing to disagree with.
+    expect(result).toHaveLength(nodes.length)
+    for (const node of result) {
+      expect(Number.isFinite(node.position.x)).toBe(true)
+      expect(Number.isFinite(node.position.y)).toBe(true)
+    }
+  })
+
+  it('reserves more card chrome at a sparser density', () => {
+    const specs: DeptSpec[] = [
+      { name: 'executive', members: ['zoe'] },
+      { name: 'engineering', members: ['alice', 'bob'] },
+    ]
+    const config = orgConfig(specs)
+    const heightAt = (density: 'dense' | 'balanced' | 'sparse'): number =>
+      getNodeDim(nodeById(layoutOf(config, { layout: { density } }), 'dept-engineering')).h
+    expect(heightAt('dense')).toBeLessThan(heightAt('balanced'))
+    expect(heightAt('balanced')).toBeLessThan(heightAt('sparse'))
   })
 })

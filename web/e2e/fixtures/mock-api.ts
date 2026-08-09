@@ -22,10 +22,9 @@ const SETUP_STATUS_DEFAULTS: SetupStatusResponse = {
 
 /**
  * Stub ``GET /setup/status`` so the wizard's backend reconcile derives the
- * step-completion map from real backend signals rather than the (removed)
- * client persistence. The wizard is a pure API consumer: it has no
- * localStorage seed, so the only way to land it mid-flow is to mock the
- * backend state it hydrates from. ``has_providers`` / ``has_company`` /
+ * step-completion map from real backend signals. The wizard is a pure API
+ * consumer: it has no localStorage seed, so the only way to land it mid-flow
+ * is to mock the backend state it hydrates from. ``has_providers`` / ``has_company`` /
  * ``has_agents`` drive which steps reconcile to complete (see
  * ``reconcileCompletionFromBackend``); a post-company step (agents, complete)
  * becomes directly reachable, while a pre-company step is reached by driving
@@ -151,6 +150,30 @@ export async function mockApiRoutes(page: Page) {
           telemetry: 'disabled',
           version: '0.6.4',
           uptime_seconds: 0,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
+  // Cookie-session check. The catch-all already answers this with a non-401,
+  // which is enough to keep the SPA out of the login redirect, but its
+  // ``data: []`` leaves ``useAuthStore.user`` an array: any surface that reads
+  // a field off the session user (the org chart synthesises its owner node
+  // from ``user.username``) then renders ``undefined`` and takes its error
+  // boundary down. Answer with a real ``UserInfoResponse``.
+  await page.route('**/api/v1/auth/me', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          id: 'user-001',
+          username: 'operator',
+          role: 'ceo',
+          org_roles: [],
+          scoped_departments: [],
+          must_change_password: false,
         },
         error: null,
         error_detail: null,
