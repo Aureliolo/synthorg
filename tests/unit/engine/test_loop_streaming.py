@@ -12,6 +12,7 @@ from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import ActiveSteeringDirective
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_streaming import (
+    InterruptWatch,
     _TurnInterrupted,
     run_provider_turn,
     stream_provider,
@@ -151,12 +152,13 @@ async def _stream(
         _MODEL,
         tool_defs=None,
         config=CompletionConfig(),
-        turn_number=1,
         turns=turns,
-        cancellation_checker=cancellation_checker  # type: ignore[arg-type]
-        or _TickingCancellation(poll_clock),
-        steering_inbox=steering_inbox,  # type: ignore[arg-type]
-        clock=poll_clock,
+        watch=InterruptWatch(
+            cancellation_checker=cancellation_checker  # type: ignore[arg-type]
+            or _TickingCancellation(poll_clock),
+            steering_inbox=steering_inbox,  # type: ignore[arg-type]
+            clock=poll_clock,
+        ),
     )
 
 
@@ -377,12 +379,13 @@ class TestRunProviderTurnDispatch:
             _MODEL,
             tool_defs=None,
             config=CompletionConfig(),
-            turn_number=1,
             turns=turns,
             streaming_enabled=False,
-            cancellation_checker=_never_cancelled,
-            steering_inbox=None,
-            clock=FakeClock(),
+            watch=InterruptWatch(
+                cancellation_checker=_never_cancelled,
+                steering_inbox=None,
+                clock=FakeClock(),
+            ),
         )
         assert isinstance(outcome, CompletionResponse)
         assert provider.call_count == 1
@@ -400,12 +403,13 @@ class TestRunProviderTurnDispatch:
             _MODEL,
             tool_defs=None,
             config=CompletionConfig(),
-            turn_number=1,
             turns=turns,
             streaming_enabled=True,
-            cancellation_checker=_never_cancelled,
-            steering_inbox=None,
-            clock=FakeClock(),
+            watch=InterruptWatch(
+                cancellation_checker=_never_cancelled,
+                steering_inbox=None,
+                clock=FakeClock(),
+            ),
         )
         assert isinstance(outcome, CompletionResponse)
         # complete() was never called on the streaming path.

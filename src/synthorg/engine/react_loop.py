@@ -65,6 +65,7 @@ from .loop_protocol import (
 from .loop_quality_signals import attach_whole_run_signals
 from .loop_silent_turn import continue_silent_turn
 from .loop_streaming import (
+    InterruptWatch,
     _TurnInterrupted,
     fold_interrupt_usage,
     run_provider_turn,
@@ -291,12 +292,13 @@ class ReactLoop:
                 model_id,
                 tool_defs=tool_defs,
                 config=config,
-                turn_number=turn_number,
                 turns=turns,
                 streaming_enabled=streaming_enabled,
-                cancellation_checker=task_cancellation_checker,
-                steering_inbox=self._steering_inbox,
-                clock=self._clock,
+                watch=InterruptWatch(
+                    cancellation_checker=task_cancellation_checker,
+                    steering_inbox=self._steering_inbox,
+                    clock=self._clock,
+                ),
             )
             if isinstance(outcome, ExecutionResult):
                 return await self._attach_whole_run_signals(outcome, turns)

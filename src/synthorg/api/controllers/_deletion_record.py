@@ -24,7 +24,6 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
-from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence.deleted_entity_protocol import DeletedEntityFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
@@ -178,9 +177,12 @@ async def deleted_entity_not_found(
     if not found:
         return NotFoundError(f"{label.capitalize()} {entity_id!r} not found")
     tombstone = found[0]
+    # ``isoformat`` directly: the model normalises ``deleted_at`` to UTC on
+    # construction, and reaching into the persistence marshaller from a
+    # controller is the layering the import contract forbids.
     return NotFoundError(
         f"{label.capitalize()} {entity_id!r} was deleted by "
-        f"{tombstone.deleted_by!r} on {format_iso_utc(tombstone.deleted_at)}. "
+        f"{tombstone.deleted_by!r} on {tombstone.deleted_at.isoformat()}. "
         f"It was {tombstone.display_name!r}."
     )
 

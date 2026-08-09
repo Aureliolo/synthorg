@@ -96,6 +96,26 @@ _INTERRUPT_POLL_MIN_SECONDS: Final[float] = 0.25
 
 
 @dataclass(frozen=True)
+class InterruptWatch:
+    """What a streamed turn watches for while it drains, and how often.
+
+    One value rather than three parameters because the three only make
+    sense together: the two signals are polled on the same schedule, and
+    the clock exists to pace exactly that polling.
+
+    Attributes:
+        cancellation_checker: Answers whether the operator cancelled.
+        steering_inbox: Answers whether a REDIRECT is pending.
+        clock: Paces the polls, so their cost does not scale with how fast
+            the model happens to be emitting.
+    """
+
+    cancellation_checker: TaskCancellationChecker | None
+    steering_inbox: SteeringInbox | None
+    clock: Clock
+
+
+@dataclass(frozen=True)
 class _TurnInterrupted:
     """A mid-turn steering REDIRECT aborted the in-flight streaming call.
 
@@ -302,9 +322,7 @@ async def _drain_stream(
     turn_number: int,
     turns: list[TurnRecord],
     *,
-    cancellation_checker: TaskCancellationChecker | None,
-    steering_inbox: SteeringInbox | None,
-    clock: Clock,
+    watch: InterruptWatch,
 ) -> ExecutionResult | _TurnInterrupted | None:
     """Drain *stream* into *acc*, polling for interruption between chunks.
 
@@ -320,7 +338,7 @@ async def _drain_stream(
     index = 0
     # One interval in the past, so the first chunk boundary polls rather than
     # waiting out an interval a cancellation issued before the call started.
-    last_poll = clock.monotonic() - _INTERRUPT_POLL_MIN_SECONDS
+    last_poll = watch.clock.monotonic() - _INTERRUPT_POLL_MIN_SECONDS
     async for chunk in stream:
         _accumulate_chunk(chunk, acc)
         if chunk.event_type is StreamEventType.USAGE and chunk.usage:
@@ -348,7 +366,7 @@ async def _drain_stream(
                 error_message=stream_error,
             )
 
-        now = clock.monotonic()
+        now = watch.clock.monotonic()
         if (
             index % _INTERRUPT_POLL_EVERY_N_CHUNKS == 0
             and now - last_poll >= _INTERRUPT_POLL_MIN_SECONDS
@@ -359,8 +377,8 @@ async def _drain_stream(
                 turn_number,
                 acc.usage,
                 turns,
-                cancellation_checker=cancellation_checker,
-                steering_inbox=steering_inbox,
+                cancellation_checker=watch.cancellation_checker,
+                steering_inbox=watch.steering_inbox,
             )
             if interrupt is not None:
                 return interrupt
@@ -368,23 +386,24 @@ async def _drain_stream(
     return None
 
 
-async def stream_provider(  # noqa: PLR0913
+async def stream_provider(
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
     *,
     tool_defs: list[ToolDefinition] | None,
     config: CompletionConfig,
-    turn_number: int,
     turns: list[TurnRecord],
-    cancellation_checker: TaskCancellationChecker | None,
-    steering_inbox: SteeringInbox | None,
-    clock: Clock,
+    watch: InterruptWatch,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
     """Stream a per-turn LLM call, interruptible mid-flight.
 
     Drains ``provider.stream()`` and reassembles the deltas, polling the
     cancellation checker and steering inbox between chunks.
+
+    The turn number is derived from *ctx* rather than passed: the context is
+    what the loop advances, so a separately-supplied number is one that can
+    disagree with the run it is numbering.
 
     Returns:
         The reassembled :class:`CompletionResponse` on success; a ``CANCELLED``
@@ -397,6 +416,7 @@ async def stream_provider(  # noqa: PLR0913
         MemoryError: Re-raised unconditionally.
         RecursionError: Re-raised unconditionally.
     """
+    turn_number = ctx.turn_count + 1
     char_count = sum(len(m.content or "") for m in ctx.conversation)
     logger.info(
         EXECUTION_LOOP_TURN_START,
@@ -422,9 +442,7 @@ async def stream_provider(  # noqa: PLR0913
                 ctx,
                 turn_number,
                 turns,
-                cancellation_checker=cancellation_checker,
-                steering_inbox=steering_inbox,
-                clock=clock,
+                watch=watch,
             )
         finally:
             # Shielded: a re-delivered cancellation lands on the first await
@@ -514,25 +532,23 @@ def fold_interrupt_usage(
     return _fold_usage(ctx, interrupted.partial_usage)
 
 
-async def run_provider_turn(  # noqa: PLR0913
+async def run_provider_turn(
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
     *,
     tool_defs: list[ToolDefinition] | None,
     config: CompletionConfig,
-    turn_number: int,
     turns: list[TurnRecord],
     streaming_enabled: bool,
-    cancellation_checker: TaskCancellationChecker | None,
-    steering_inbox: SteeringInbox | None,
-    clock: Clock,
+    watch: InterruptWatch,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
     """Issue the per-turn LLM call, streaming when enabled for the run.
 
     Streaming adds mid-turn cancellation and steer-interrupt; the non-streaming
     fallback (``call_provider``) is used when streaming is disabled for the run
-    or unsupported by the model.
+    or unsupported by the model, and cannot be interrupted once in flight, so
+    it watches for nothing.
 
     Returns:
         A :class:`CompletionResponse` on success, an :class:`ExecutionResult`
@@ -546,11 +562,8 @@ async def run_provider_turn(  # noqa: PLR0913
             model_id,
             tool_defs=tool_defs,
             config=config,
-            turn_number=turn_number,
             turns=turns,
-            cancellation_checker=cancellation_checker,
-            steering_inbox=steering_inbox,
-            clock=clock,
+            watch=watch,
         )
     return await call_provider(
         ctx,
@@ -558,6 +571,6 @@ async def run_provider_turn(  # noqa: PLR0913
         model_id,
         tool_defs=tool_defs,
         config=config,
-        turn_number=turn_number,
+        turn_number=ctx.turn_count + 1,
         turns=turns,
     )

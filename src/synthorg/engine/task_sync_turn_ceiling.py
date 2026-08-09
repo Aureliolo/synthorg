@@ -149,6 +149,9 @@ async def arm_turn_ceiling_park(
         )
         await approval_store.add(item)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- an unarmable park downgrades to MAX_TURNS,
+        # which is the visible, retryable outcome; raising here would lose the
+        # run's work as well as its question.
         reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_REVIEW_STORE_FAILED,
