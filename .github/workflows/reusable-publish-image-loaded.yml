@@ -88,8 +88,16 @@ jobs:
         uses: ./.github/actions/install-uv
 
       - name: Verify the VEX ledger matches what is committed
+        env:
+          # Pinned, not floating. This resolves inside the job that signs
+          # images, so an unpinned install would let whatever the index
+          # serves at publish time execute there. Held at the version
+          # `uv.lock` resolves, so the ledger is parsed by the same library
+          # the pre-push and CI gates parse it with.
+          # renovate: datasource=pypi depName=pyyaml
+          PYYAML_VERSION: "6.0.3"
         run: |
-          uv run --no-project --python 3.14 --with pyyaml \
+          uv run --no-project --python 3.14 --with "pyyaml==${PYYAML_VERSION}" \
             python scripts/check_vex_triage_sync.py
 
       - name: Download image tarball

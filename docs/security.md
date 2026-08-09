@@ -484,8 +484,13 @@ claim is not worth a signature. The apko `-base` images are scanned with
 `--vex` but carry no attestation of their own, since nothing resolves them as a
 product.
 
+Scan by digest, not by tag. The attestation is attached to a digest, and a tag
+can be moved to a different image after publication, so a tag-scoped scan can
+apply one image's triage to another. It is also the same reference the
+verification below takes, which is what lets the two be read together.
+
 ```bash
-trivy image --vex oci ghcr.io/aureliolo/synthorg-sandbox:<tag> --show-suppressed
+trivy image --vex oci ghcr.io/aureliolo/synthorg-sandbox@sha256:<digest> --show-suppressed
 ```
 
 It is signed keyless under the same reusable-workflow identity as the build
