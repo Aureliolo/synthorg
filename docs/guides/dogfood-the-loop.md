@@ -11,6 +11,32 @@ and real wall-clock, and it is the only way to see failures that no unit test
 reaches: nothing here is mocked, and every stage runs against the same
 configuration an operator would have.
 
+## Which arm proves which half
+
+Two arms, and each proves exactly one of the two claims. Running only one and
+reporting "the loop works" is the mistake this section exists to prevent.
+
+| arm | what it proves | how it ends |
+| --- | --- | --- |
+| the honest run | a passing wave marks the objective `COMPLETED` | `EVALUATING -> COMPLETED`, written by `initiative-evaluate` and by nothing else |
+| the blocked-build control | the oracle refuses an unverified build | the plan does not leave `INTEGRATING`, and no evaluation report is written |
+
+Neither arm substitutes for the other. A passing run says nothing about what
+the oracle refuses, and a refused build says nothing about what a passing one
+completes.
+
+Separately from the arms, decide where the backend runs, because it changes
+what the run is evidence *of*:
+
+| backend | what it costs | what it proves |
+| --- | --- | --- |
+| local, from your worktree (`/setup-live-iterative`) | seconds per fix | that the code in the branch behaves; iterate here |
+| the built image (`docker compose`) | an image build per round | that the artefact an operator receives behaves; take the confirming run here |
+
+Fixes are found on the local arm and confirmed on the container arm. A claim
+that only ever held locally is a claim about a developer's process, not about
+the product.
+
 ## Before you start
 
 You need a running stack with a configured organisation. The
