@@ -10,6 +10,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine._task_sync_engine import sync_to_task_engine
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -36,6 +37,7 @@ from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import apply_post_execution_transitions
+from synthorg.engine.task_sync_turn_ceiling import arm_turn_ceiling_park
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
@@ -91,6 +93,7 @@ class AgentEnginePostExecMixin:
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
     _approval_store: ApprovalStoreProtocol | None
+    _approval_gate: ApprovalGate | None
     _review_gate: ReviewGateService | None
     _review_pipeline: ReviewPipeline | None
     _artifact_probe: ExpectedArtifactProbe | None
@@ -151,6 +154,16 @@ class AgentEnginePostExecMixin:
             task_id,
             tracker=self._cost_tracker,
             project_id=project_id,
+        )
+        # Before the task moves: a spent turn budget parks only once its
+        # question is durable, so it can never land in AWAITING_INPUT with
+        # nothing able to answer it.
+        execution_result = await arm_turn_ceiling_park(
+            execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            approval_store=self._approval_store,
+            approval_gate=self._approval_gate,
         )
         try:
             execution_result = await apply_post_execution_transitions(
