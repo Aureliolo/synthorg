@@ -40,7 +40,7 @@ def _tombstone(
     row_id: str = "tomb-001",
     kind: DeletedEntityKind = DeletedEntityKind.TASK,
     entity_id: str = "task-001",
-    label: str = "Implement the game engine",
+    display_name: str = "Implement the game engine",
     deleted_by: str = "Aurelio",
     deleted_at: datetime | None = None,
 ) -> DeletedEntity:
@@ -53,7 +53,7 @@ def _tombstone(
         id=as_uuid(row_id),
         entity_kind=kind,
         entity_id=NotBlankStr(entity_id),
-        label=NotBlankStr(label),
+        display_name=NotBlankStr(display_name),
         deleted_by=NotBlankStr(deleted_by),
         deleted_at=deleted_at or datetime.now(UTC),
     )
@@ -69,7 +69,7 @@ class TestDeletedEntityRepository:
 
         (found,) = await repo.query(DeletedEntityFilterSpec(entity_id="task-001"))
 
-        assert found.label == "Implement the game engine"
+        assert found.display_name == "Implement the game engine"
         assert found.deleted_by == "Aurelio"
         assert found.entity_kind is DeletedEntityKind.TASK
         assert found.deleted_at.tzinfo is not None

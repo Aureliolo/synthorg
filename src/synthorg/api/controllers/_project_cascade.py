@@ -260,7 +260,7 @@ async def _delete_retired_plans(
                     persistence,
                     kind=DeletedEntityKind.PLAN,
                     entity_id=str(plan.id),
-                    label=plan.objective_title,
+                    display_name=plan.objective_title,
                     deleted_by=requested_by,
                 )
                 deleted += 1
@@ -317,7 +317,7 @@ async def _delete_cancelled_tasks(
                     persistence,
                     kind=DeletedEntityKind.TASK,
                     entity_id=str(task.id),
-                    label=task.title,
+                    display_name=task.title,
                     deleted_by=requested_by,
                 )
                 deleted += 1

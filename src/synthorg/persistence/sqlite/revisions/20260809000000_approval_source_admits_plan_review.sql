@@ -81,10 +81,29 @@ CREATE TABLE approvals_new (
     )
 );
 
-INSERT INTO approvals_new SELECT
+INSERT INTO approvals_new (
     id, action_type, title, description, requested_by, risk_level, source,
     status, created_at, expires_at, decided_at, decided_by, decision_reason,
     task_id, evidence_package, metadata, consumed_at
+)
+SELECT
+    id,
+    action_type,
+    title,
+    description,
+    requested_by,
+    risk_level,
+    source,
+    status,
+    created_at,
+    expires_at,
+    decided_at,
+    decided_by,
+    decision_reason,
+    task_id,
+    evidence_package,
+    metadata,
+    consumed_at
 FROM approvals;
 
 DROP TABLE approvals;
@@ -122,9 +141,25 @@ CREATE TABLE cost_records_new (
     project_id TEXT
 );
 
-INSERT INTO cost_records_new SELECT
+INSERT INTO cost_records_new (
     rowid, agent_id, task_id, provider, model, input_tokens, output_tokens,
     cost, currency, timestamp, call_category, prompt_class_id, claim_id,
+    project_id
+)
+SELECT
+    rowid,
+    agent_id,
+    task_id,
+    provider,
+    model,
+    input_tokens,
+    output_tokens,
+    cost,
+    currency,
+    timestamp,
+    call_category,
+    prompt_class_id,
+    claim_id,
     project_id
 FROM cost_records;
 
@@ -165,10 +200,26 @@ CREATE TABLE task_metrics_new (
     CHECK (run_outcome IN ('succeeded', 'empty', 'failed'))
 );
 
-INSERT INTO task_metrics_new SELECT
+INSERT INTO task_metrics_new (
     id, agent_id, task_id, task_type, completed_at, is_success,
     duration_seconds, cost, currency, turns_used, tokens_used, quality_score,
     complexity, run_outcome
+)
+SELECT
+    id,
+    agent_id,
+    task_id,
+    task_type,
+    completed_at,
+    is_success,
+    duration_seconds,
+    cost,
+    currency,
+    turns_used,
+    tokens_used,
+    quality_score,
+    complexity,
+    run_outcome
 FROM task_metrics;
 
 DROP TABLE task_metrics;
@@ -200,9 +251,22 @@ CREATE TABLE decision_records_new (
     UNIQUE (task_id, version)
 );
 
-INSERT INTO decision_records_new SELECT
+INSERT INTO decision_records_new (
     id, task_id, approval_id, executing_agent_id, reviewer_agent_id,
     decision, reason, criteria_snapshot, recorded_at, version, metadata
+)
+SELECT
+    id,
+    task_id,
+    approval_id,
+    executing_agent_id,
+    reviewer_agent_id,
+    decision,
+    reason,
+    criteria_snapshot,
+    recorded_at,
+    version,
+    metadata
 FROM decision_records;
 
 DROP TABLE decision_records;
@@ -220,7 +284,7 @@ CREATE TABLE deleted_entities (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     entity_kind TEXT NOT NULL CHECK (entity_kind IN ('task', 'plan', 'project')),
     entity_id TEXT NOT NULL CHECK (LENGTH(TRIM(entity_id)) > 0),
-    label TEXT NOT NULL CHECK (LENGTH(TRIM(label)) > 0),
+    display_name TEXT NOT NULL CHECK (LENGTH(TRIM(display_name)) > 0),
     deleted_by TEXT NOT NULL CHECK (LENGTH(TRIM(deleted_by)) > 0),
     deleted_at TEXT NOT NULL CHECK (
         deleted_at LIKE '%+00:00' OR deleted_at LIKE '%Z'

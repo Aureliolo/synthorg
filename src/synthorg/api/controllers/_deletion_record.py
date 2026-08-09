@@ -32,7 +32,7 @@ async def record_deletion(
     *,
     kind: DeletedEntityKind,
     entity_id: str,
-    label: str | None,
+    display_name: str | None,
     deleted_by: str,
 ) -> None:
     """Write the tombstone for one deleted entity.
@@ -46,17 +46,17 @@ async def record_deletion(
         persistence: Backend holding the tombstone store.
         kind: Whether a task, plan or project was removed.
         entity_id: The identifier surviving records still name.
-        label: What it was called, when it had a name.
+        display_name: What it was called, when it had a name.
         deleted_by: The person who asked. Never a system actor: nothing in
             the system deletes an entity on its own.
     """
-    stripped = (label or "").strip()
+    stripped = (display_name or "").strip()
     try:
         await persistence.deleted_entities.append(
             DeletedEntity(
                 entity_kind=kind,
                 entity_id=NotBlankStr(entity_id),
-                label=NotBlankStr(stripped) if stripped else _UNNAMED,
+                display_name=NotBlankStr(stripped) if stripped else _UNNAMED,
                 deleted_by=NotBlankStr(deleted_by),
                 deleted_at=datetime.now(UTC),
             )

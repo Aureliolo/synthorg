@@ -27,7 +27,7 @@ from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
-_COLUMNS = "id, entity_kind, entity_id, label, deleted_by, deleted_at"
+_COLUMNS = "id, entity_kind, entity_id, display_name, deleted_by, deleted_at"
 
 #: Idempotent on the row's own id, which the caller mints per tombstone. A
 #: teardown re-issued after a lost response writes the same object, and a
@@ -35,7 +35,7 @@ _COLUMNS = "id, entity_kind, entity_id, label, deleted_by, deleted_at"
 #: table whose whole job is to still be there afterwards.
 _INSERT_SQL = f"""\
 INSERT INTO deleted_entities ({_COLUMNS}) VALUES (
-    :id, :entity_kind, :entity_id, :label, :deleted_by, :deleted_at
+    :id, :entity_kind, :entity_id, :display_name, :deleted_by, :deleted_at
 ) ON CONFLICT (id) DO NOTHING"""
 
 

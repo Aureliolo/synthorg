@@ -43,8 +43,8 @@ class DeletedEntity(BaseModel):
         entity_id: The identifier the deleted row carried. Records that
             referenced it still carry this value, which is what makes them
             resolvable rather than dangling.
-        label: What the entity was called, so a reader gets a name rather
-            than a bare identifier.
+        display_name: What the entity was called, so a reader gets a name
+            rather than a bare identifier.
         deleted_by: Who asked for the deletion. Never ``None``: the system
             does not delete entities on its own, so a tombstone without a
             person is a tombstone that should not exist.
@@ -56,7 +56,7 @@ class DeletedEntity(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Row identifier")
     entity_kind: DeletedEntityKind = Field(description="Task, plan or project")
     entity_id: NotBlankStr = Field(description="The identifier that was removed")
-    label: NotBlankStr = Field(description="What the entity was called")
+    display_name: NotBlankStr = Field(description="What the entity was called")
     deleted_by: NotBlankStr = Field(description="Who asked for the deletion")
     deleted_at: AwareDatetime = Field(description="When it landed (UTC)")
 

@@ -2643,7 +2643,7 @@ CREATE TABLE deleted_entities (
     entity_kind TEXT NOT NULL
     CHECK (entity_kind IN ('task', 'plan', 'project')),
     entity_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(entity_id)) > 0),
-    label TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(label)) > 0),
+    display_name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(display_name)) > 0),
     deleted_by TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(deleted_by)) > 0),
     deleted_at TIMESTAMPTZ NOT NULL
 );

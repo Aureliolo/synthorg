@@ -32,7 +32,7 @@ from synthorg.persistence.deleted_entity_protocol import DeletedEntityFilterSpec
 logger = get_logger(__name__)
 
 _COLUMNS: Final[LiteralString] = (
-    "id, entity_kind, entity_id, label, deleted_by, deleted_at"
+    "id, entity_kind, entity_id, display_name, deleted_by, deleted_at"
 )
 
 #: Idempotent on the row's own id, which the caller mints per tombstone. A
@@ -41,7 +41,7 @@ _COLUMNS: Final[LiteralString] = (
 #: table whose whole job is to still be there afterwards.
 _INSERT_SQL: Final[LiteralString] = f"""\
 INSERT INTO deleted_entities ({_COLUMNS}) VALUES (
-    %(id)s, %(entity_kind)s, %(entity_id)s, %(label)s, %(deleted_by)s,
+    %(id)s, %(entity_kind)s, %(entity_id)s, %(display_name)s, %(deleted_by)s,
     %(deleted_at)s
 ) ON CONFLICT (id) DO NOTHING"""
 

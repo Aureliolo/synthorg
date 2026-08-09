@@ -2770,7 +2770,7 @@ CREATE TABLE deleted_entities (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     entity_kind TEXT NOT NULL CHECK (entity_kind IN ('task', 'plan', 'project')),
     entity_id TEXT NOT NULL CHECK (LENGTH(TRIM(entity_id)) > 0),
-    label TEXT NOT NULL CHECK (LENGTH(TRIM(label)) > 0),
+    display_name TEXT NOT NULL CHECK (LENGTH(TRIM(display_name)) > 0),
     deleted_by TEXT NOT NULL CHECK (LENGTH(TRIM(deleted_by)) > 0),
     deleted_at TEXT NOT NULL CHECK (
         deleted_at LIKE '%+00:00' OR deleted_at LIKE '%Z'

@@ -377,7 +377,7 @@ class ProjectController(Controller):
             persistence_of(state.app_state),
             kind=DeletedEntityKind.PROJECT,
             entity_id=project_id,
-            label=project.name,
+            display_name=project.name,
             deleted_by=requested_by,
         )
         publish_ws_event(

@@ -34,12 +34,12 @@ class TestRecordDeletion:
             backend,
             kind=DeletedEntityKind.TASK,
             entity_id="task-1",
-            label="Implement the game engine",
+            display_name="Implement the game engine",
             deleted_by="Aurelio",
         )
 
         (found,) = await _tombstones(backend, "task-1")
-        assert found.label == "Implement the game engine"
+        assert found.display_name == "Implement the game engine"
         assert found.entity_kind is DeletedEntityKind.TASK
 
     async def test_the_person_who_deleted_it_is_recorded(self) -> None:
@@ -50,7 +50,7 @@ class TestRecordDeletion:
             backend,
             kind=DeletedEntityKind.PROJECT,
             entity_id="proj-1",
-            label="Tetris",
+            display_name="Tetris",
             deleted_by="Aurelio",
         )
 
@@ -66,26 +66,26 @@ class TestRecordDeletion:
             backend,
             kind=DeletedEntityKind.PLAN,
             entity_id="plan-1",
-            label=None,
+            display_name=None,
             deleted_by="Aurelio",
         )
 
         (found,) = await _tombstones(backend, "plan-1")
-        assert found.label == "(unnamed)"
+        assert found.display_name == "(unnamed)"
 
-    async def test_a_blank_label_is_treated_as_no_label(self) -> None:
+    async def test_a_blank_display_name_is_treated_as_no_display_name(self) -> None:
         backend = FakePersistenceBackend()
 
         await record_deletion(
             backend,
             kind=DeletedEntityKind.PLAN,
             entity_id="plan-2",
-            label="   ",
+            display_name="   ",
             deleted_by="Aurelio",
         )
 
         (found,) = await _tombstones(backend, "plan-2")
-        assert found.label == "(unnamed)"
+        assert found.display_name == "(unnamed)"
 
     async def test_a_store_failure_never_undoes_the_deletion(self) -> None:
         """The deletion is already decided; the note about it is not the point."""
@@ -102,6 +102,6 @@ class TestRecordDeletion:
             backend,
             kind=DeletedEntityKind.TASK,
             entity_id="task-2",
-            label="anything",
+            display_name="anything",
             deleted_by="Aurelio",
         )
