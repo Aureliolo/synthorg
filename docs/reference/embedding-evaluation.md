@@ -1,6 +1,6 @@
 ---
 title: Embedding Model Evaluation
-description: LMEB-guided embedding model selection for agent memory retrieval, with taxonomy mapping and fine-tuning pipeline design.
+description: LMEB-guided embedding model selection for agent memory retrieval, with taxonomy mapping, fine-tuning pipeline design, and the measured torch.compile result for the local embedder.
 ---
 
 # Embedding Model Evaluation
@@ -222,9 +222,13 @@ Re-run with `scripts/measure_embedder_compile.py`, which needs the
 
 Model `all-MiniLM-L6-v2` (about 22M parameters, 384 dimensions), batch size 1,
 `torch` 2.13.0, sentence-transformers 5.7.0, over a corpus of meeting titles
-and agendas spanning 1 to 15 words.
+and agendas spanning 1 to 14 words.
 
-CPU, in a 4-vCPU container with 2 `torch` threads, 140 timed calls per arm:
+CPU, in a 4-vCPU container with 2 `torch` threads, 140 timed calls per arm.
+Warm-up is omitted from this table because these three arms were re-run
+interleaved to cancel machine drift, and that run measured latency only; the
+warm-up figures quoted below come from the sequential CPU run of the same
+arms, which measured 10.8 s for `dynamic=True` and 25.5 s for `dynamic=auto`:
 
 | arm | median ms | p90 ms | speedup |
 |---|---|---|---|
@@ -262,11 +266,12 @@ Four readings:
 
 `EmbeddingSimilarityDetector` embeds one text per agent position, so a
 structured-phases meeting performs roughly 3 to 8 embed calls, once per
-conflict check. On CPU, which is where this embedder runs, that saves about
-1.6 ms per call, so about 13 ms per meeting, against 10 to 25 s of one-off
-compilation. Break-even needs roughly 6,250 embed calls, meaning hundreds to
-thousands of meetings within a single process lifetime, while a meeting already
-spends seconds per LLM call.
+conflict check. On CPU, which is where this embedder runs, the two winning
+arms save 1.83 ms and 1.98 ms per call, so roughly 6 to 16 ms per meeting,
+against 10.8 s to 25.5 s of one-off compilation. Break-even therefore needs
+between about 5,100 and 13,700 embed calls, meaning hundreds to thousands of
+meetings within a single process lifetime, while a meeting already spends
+seconds per LLM call.
 
 So the technique is sound and the application is not, so the embedder is left
 as it is. Re-measure whenever `torch` or sentence-transformers is bumped, or

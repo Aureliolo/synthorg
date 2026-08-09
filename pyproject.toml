@@ -174,8 +174,8 @@ dev = [
 # ---------------------------------------------------------------------------
 # uv -- package resolution (torch CPU vs GPU split)
 # ---------------------------------------------------------------------------
-# The fine-tune container ships in two flavors:
-#   - fine-tune-gpu   (GPU, default): torch 2.11.0 with bundled CUDA runtime
+# The fine-tune container ships in two flavours:
+#   - fine-tune-gpu   (GPU, default): torch 2.13.0 with bundled CUDA runtime
 #                      (~2.5 GB of nvidia-* wheels). Needed for CUDA-accelerated
 #                      fine-tuning on hosts with an NVIDIA GPU + driver.
 #   - fine-tune-cpu   (CPU-only, ~200 MB torch): pulled from the PyTorch CPU
