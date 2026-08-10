@@ -1,5 +1,5 @@
 ---
-description: Stand up local live-reload frontend + backend dev servers
+description: Stand up the local dev arm (backend from this worktree, in the running stack) plus a live-reload frontend
 ---
 
 # Setup Live Iterative Dev
